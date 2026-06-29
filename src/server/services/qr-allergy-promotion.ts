@@ -42,6 +42,12 @@ function readExtractedDrugName(value: string | undefined) {
   return normalized;
 }
 
+function readExtractedYjCode(value: string | undefined) {
+  if (!value) return null;
+  const normalized = value.trim();
+  return /^[A-Z0-9]{6,16}$/i.test(normalized) ? normalized : null;
+}
+
 export function extractQrAllergyDrugName(text: string) {
   const lines = text
     .split(/\r?\n/)
@@ -78,6 +84,22 @@ export function extractQrAllergyDrugName(text: string) {
   return null;
 }
 
+export function extractQrAllergyDrugCode(text: string) {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !line.startsWith('[qr_supplemental:'));
+
+  for (const line of lines) {
+    const labeled = line.match(/(?:YJコード|薬価基準収載医薬品コード)[:：]\s*([A-Za-z0-9-]+)/);
+    const drugCode = readExtractedYjCode(labeled?.[1]?.replace(/-/g, ''));
+    if (drugCode) return drugCode;
+  }
+
+  return null;
+}
+
 export function buildQrAllergyEntryFromMedicationIssue(args: {
   issue: MedicationIssueForQrAllergy;
   confirmedAt: Date;
@@ -92,8 +114,10 @@ export function buildQrAllergyEntryFromMedicationIssue(args: {
   if (!drugName) return null;
 
   const dateKey = formatDateKey(confirmedAt);
+  const drugCode = extractQrAllergyDrugCode(issue.description);
   const entry = {
     drug_name: drugName,
+    ...(drugCode ? { drug_code: drugCode } : {}),
     category: 'drug',
     severity: 'unknown',
     confirmed_at: dateKey,
@@ -123,8 +147,30 @@ function readRawDrugName(value: Prisma.JsonValue) {
   return typeof drugName === 'string' ? readExtractedDrugName(drugName) : null;
 }
 
-function hasSameQrAllergyDrugName(entries: Prisma.JsonValue[], drugName: string) {
-  return entries.some((entry) => readRawDrugName(entry) === drugName);
+function readRawDrugCode(value: Prisma.JsonValue) {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const drugCode = value.drug_code;
+  return typeof drugCode === 'string' ? readExtractedYjCode(drugCode) : null;
+}
+
+function findDuplicateQrAllergyDrugReason(
+  entries: Prisma.JsonValue[],
+  entry: AllergyEntry,
+): 'duplicate_drug_code' | 'duplicate_drug_name' | null {
+  if (entry.drug_code) {
+    for (const rawEntry of entries) {
+      const rawDrugCode = readRawDrugCode(rawEntry);
+      if (rawDrugCode) {
+        if (rawDrugCode === entry.drug_code) return 'duplicate_drug_code';
+        continue;
+      }
+      if (readRawDrugName(rawEntry) === entry.drug_name) return 'duplicate_drug_name';
+    }
+    return null;
+  }
+  return entries.some((rawEntry) => readRawDrugName(rawEntry) === entry.drug_name)
+    ? 'duplicate_drug_name'
+    : null;
 }
 
 export async function promoteResolvedQrAllergyIssueToPatient(
@@ -152,9 +198,8 @@ export async function promoteResolvedQrAllergyIssueToPatient(
   if (entry.source && hasSameQrAllergySource(existingEntries, entry.source)) {
     return { promoted: false as const, reason: 'duplicate_source' as const };
   }
-  if (hasSameQrAllergyDrugName(rawEntries, entry.drug_name)) {
-    return { promoted: false as const, reason: 'duplicate_drug_name' as const };
-  }
+  const duplicateDrugReason = findDuplicateQrAllergyDrugReason(rawEntries, entry);
+  if (duplicateDrugReason) return { promoted: false as const, reason: duplicateDrugReason };
 
   await tx.patient.update({
     where: { id: patient.id },

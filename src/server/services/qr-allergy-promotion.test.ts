@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   buildQrAllergyEntryFromMedicationIssue,
+  extractQrAllergyDrugCode,
   extractQrAllergyDrugName,
   promoteResolvedQrAllergyIssueToPatient,
 } from './qr-allergy-promotion';
@@ -41,6 +42,18 @@ describe('extractQrAllergyDrugName', () => {
   });
 });
 
+describe('extractQrAllergyDrugCode', () => {
+  it('extracts only explicit YJ/canonical allergy drug codes', () => {
+    expect(extractQrAllergyDrugCode('YJコード: 2149001F1020\n薬剤名: アムロジピン')).toBe(
+      '2149001F1020',
+    );
+    expect(extractQrAllergyDrugCode('薬価基準収載医薬品コード: 2149-001F-1020')).toBe(
+      '2149001F1020',
+    );
+    expect(extractQrAllergyDrugCode('薬剤コード: RC001\n薬剤名: アムロジピン')).toBeNull();
+  });
+});
+
 describe('buildQrAllergyEntryFromMedicationIssue', () => {
   it('builds a patient allergy entry from a resolved QR allergy issue', () => {
     expect(
@@ -64,6 +77,29 @@ describe('buildQrAllergyEntryFromMedicationIssue', () => {
       severity: 'unknown',
       confirmed_at: '2026-06-08',
       source: 'qr_supplemental:issue_1',
+    });
+  });
+
+  it('keeps an explicit YJ code as allergy drug identity evidence', () => {
+    expect(
+      buildQrAllergyEntryFromMedicationIssue({
+        confirmedAt: new Date('2026-06-08T12:00:00.000Z'),
+        issue: {
+          id: 'issue_1',
+          patient_id: 'patient_1',
+          category: 'side_effect',
+          title: 'QR由来のアレルギー・副作用歴確認候補: 患者等記入事項',
+          description: [
+            '[qr_supplemental:intake_1:601:7]',
+            'YJコード: 2149001F1020',
+            '薬剤名: アムロジピン',
+            '発疹あり',
+          ].join('\n'),
+        },
+      }),
+    ).toMatchObject({
+      drug_name: 'アムロジピン',
+      drug_code: '2149001F1020',
     });
   });
 
@@ -266,5 +302,147 @@ describe('promoteResolvedQrAllergyIssueToPatient', () => {
 
     expect(result).toEqual({ promoted: false, reason: 'duplicate_drug_name' });
     expect(patientUpdate).not.toHaveBeenCalled();
+  });
+
+  it('skips duplicate canonical drug codes before falling back to drug names', async () => {
+    const patientUpdate = vi.fn().mockResolvedValue({});
+    const result = await promoteResolvedQrAllergyIssueToPatient(
+      {
+        patient: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'patient_1',
+            allergy_info: [
+              {
+                drug_name: 'アムロジピン先発',
+                drug_code: '2149001F1020',
+                category: 'drug',
+                severity: 'unknown',
+                source: 'manual',
+              },
+            ],
+          }),
+          update: patientUpdate,
+        },
+      },
+      {
+        orgId: 'org_1',
+        confirmedAt: new Date('2026-06-08T12:00:00.000Z'),
+        issue: {
+          id: 'issue_2',
+          patient_id: 'patient_1',
+          category: 'side_effect',
+          title: 'QR由来のアレルギー・副作用歴確認候補: 患者等記入事項',
+          description: [
+            '[qr_supplemental:intake_1:601:8]',
+            'YJコード: 2149001F1020',
+            '薬剤名: アムロジピン後発',
+            '発疹あり',
+          ].join('\n'),
+        },
+      },
+    );
+
+    expect(result).toEqual({ promoted: false, reason: 'duplicate_drug_code' });
+    expect(patientUpdate).not.toHaveBeenCalled();
+  });
+
+  it('skips coded QR allergy entries that duplicate a legacy name-only allergy', async () => {
+    const patientUpdate = vi.fn().mockResolvedValue({});
+    const result = await promoteResolvedQrAllergyIssueToPatient(
+      {
+        patient: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'patient_1',
+            allergy_info: [
+              {
+                drug_name: 'アムロジピン',
+                category: 'drug',
+                severity: 'unknown',
+                source: 'manual',
+              },
+            ],
+          }),
+          update: patientUpdate,
+        },
+      },
+      {
+        orgId: 'org_1',
+        confirmedAt: new Date('2026-06-08T12:00:00.000Z'),
+        issue: {
+          id: 'issue_legacy_name',
+          patient_id: 'patient_1',
+          category: 'side_effect',
+          title: 'QR由来のアレルギー・副作用歴確認候補: 患者等記入事項',
+          description: [
+            '[qr_supplemental:intake_1:601:8]',
+            'YJコード: 2149001F1020',
+            '薬剤名: アムロジピン',
+            '発疹あり',
+          ].join('\n'),
+        },
+      },
+    );
+
+    expect(result).toEqual({ promoted: false, reason: 'duplicate_drug_name' });
+    expect(patientUpdate).not.toHaveBeenCalled();
+  });
+
+  it('does not suppress a coded allergy entry only because a different code shares the display name', async () => {
+    const patientUpdate = vi.fn().mockResolvedValue({});
+    const result = await promoteResolvedQrAllergyIssueToPatient(
+      {
+        patient: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'patient_1',
+            allergy_info: [
+              {
+                drug_name: '同名薬',
+                drug_code: 'YJ0001A',
+                category: 'drug',
+                severity: 'unknown',
+                source: 'manual',
+              },
+            ],
+          }),
+          update: patientUpdate,
+        },
+      },
+      {
+        orgId: 'org_1',
+        confirmedAt: new Date('2026-06-08T12:00:00.000Z'),
+        issue: {
+          id: 'issue_3',
+          patient_id: 'patient_1',
+          category: 'side_effect',
+          title: 'QR由来のアレルギー・副作用歴確認候補: 患者等記入事項',
+          description: [
+            '[qr_supplemental:intake_1:601:9]',
+            'YJコード: YJ0002B',
+            '薬剤名: 同名薬',
+            '発疹あり',
+          ].join('\n'),
+        },
+      },
+    );
+
+    expect(result).toMatchObject({ promoted: true });
+    expect(patientUpdate).toHaveBeenCalledWith({
+      where: { id: 'patient_1' },
+      data: {
+        allergy_info: [
+          {
+            drug_name: '同名薬',
+            drug_code: 'YJ0001A',
+            category: 'drug',
+            severity: 'unknown',
+            source: 'manual',
+          },
+          expect.objectContaining({
+            drug_name: '同名薬',
+            drug_code: 'YJ0002B',
+          }),
+        ],
+      },
+    });
   });
 });

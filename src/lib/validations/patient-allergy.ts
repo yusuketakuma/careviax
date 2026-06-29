@@ -5,6 +5,7 @@ const optionalDateStringSchema = dateKeySchema('日付形式が不正です（YY
 
 export const allergyEntrySchema = z.object({
   drug_name: z.string().min(1),
+  drug_code: z.string().trim().min(1).optional(),
   therapeutic_category: z.string().optional(),
   substance: z.string().optional(),
   category: z.enum(['drug', 'food', 'other']),
