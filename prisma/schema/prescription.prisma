@@ -48,6 +48,12 @@ enum PackagingInstructionTag {
   unit_dose
   staple_required
   label_required
+  ptp
+  mixing
+  excipient
+  decapsulation
+  no_unit_dose
+  manual_ptp
 }
 
 /// 調剤ワークベンチ 共通 NG 分類 (14種)。

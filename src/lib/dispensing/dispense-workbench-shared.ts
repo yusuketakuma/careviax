@@ -29,6 +29,11 @@ export type WorkbenchCountRow = {
   result_id: string | null;
   line_number: number | null;
   drug_name: string;
+  drug_code?: string | null;
+  prescribed_drug_name?: string | null;
+  prescribed_drug_code?: string | null;
+  actual_drug_name?: string | null;
+  actual_drug_code?: string | null;
   dose: string | null;
   frequency: string;
   route: string | null;

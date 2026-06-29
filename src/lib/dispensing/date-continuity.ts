@@ -5,14 +5,16 @@
 
 import { differenceInDays } from 'date-fns';
 
+import { medicationIdentityKey } from '@/lib/prescription/medication-diff';
+
 export interface DateContinuityWarning {
   lineId: string;
   drugName: string;
   drugCode: string | null;
   type: 'gap' | 'overlap';
-  prevEndDate: string;   // ISO date
+  prevEndDate: string; // ISO date
   currentStartDate: string; // ISO date
-  gapDays: number;       // positive=gap, negative=overlap
+  gapDays: number; // positive=gap, negative=overlap
 }
 
 interface LineWithDates {
@@ -24,7 +26,7 @@ interface LineWithDates {
 }
 
 /**
- * 前回処方と今回処方の各行を drug_code or drug_name でマッチングし、
+ * 前回処方と今回処方の各行を drug_code 優先の namespaced identity でマッチングし、
  * 日付の継続性を検証する。
  */
 export function checkDateContinuity(
@@ -33,17 +35,17 @@ export function checkDateContinuity(
 ): DateContinuityWarning[] {
   const warnings: DateContinuityWarning[] = [];
 
-  // Build lookup from previous lines by drug_code or drug_name
+  // Build lookup from previous lines by namespaced drug identity.
   const prevByKey = new Map<string, LineWithDates>();
   for (const line of previousLines) {
-    const key = line.drug_code || line.drug_name;
+    const key = medicationIdentityKey(line);
     prevByKey.set(key, line);
   }
 
   for (const current of currentLines) {
     if (!current.start_date) continue;
 
-    const key = current.drug_code || current.drug_name;
+    const key = medicationIdentityKey(current);
     const prev = prevByKey.get(key);
     if (!prev || !prev.end_date) continue;
 

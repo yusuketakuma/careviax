@@ -59,6 +59,26 @@ export function resolveCanonicalActualUnit(input: {
   return input.prescribedUnit?.trim() || input.actualUnit?.trim() || undefined;
 }
 
+function normalizeMedicationCode(code?: string | null) {
+  return code?.trim() || null;
+}
+
+function hasMedicationDiff(input: {
+  actualName: string;
+  actualCode?: string | null;
+  prescribedName: string;
+  prescribedCode?: string | null;
+}) {
+  const actualCode = normalizeMedicationCode(input.actualCode);
+  const prescribedCode = normalizeMedicationCode(input.prescribedCode);
+
+  if (actualCode || prescribedCode) {
+    return actualCode !== prescribedCode;
+  }
+
+  return input.actualName !== input.prescribedName;
+}
+
 export function buildDiscrepancyReasonErrors(input: {
   submittedLines: DispenseResultValidationLine[];
   prescribedLines: PrescribedDispenseLine[];
@@ -69,9 +89,12 @@ export function buildDiscrepancyReasonErrors(input: {
     const prescribed = prescribedByLineId.get(line.line_id);
     if (!prescribed) return [];
 
-    const hasDrugDiff =
-      line.actual_drug_name !== prescribed.drug_name ||
-      (line.actual_drug_code?.trim() || null) !== (prescribed.drug_code?.trim() || null);
+    const hasDrugDiff = hasMedicationDiff({
+      actualName: line.actual_drug_name,
+      actualCode: line.actual_drug_code,
+      prescribedName: prescribed.drug_name,
+      prescribedCode: prescribed.drug_code,
+    });
     const hasQuantityDiff =
       prescribed.quantity != null &&
       !areQuantitiesEquivalentForUnit({

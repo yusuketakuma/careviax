@@ -398,6 +398,12 @@ export const PACKAGING_INSTRUCTION_TAG_ROLE: Record<string, StatusRoleOrNeutral>
   unit_dose: 'info',
   staple_required: 'info',
   label_required: 'info',
+  ptp: 'info',
+  mixing: 'info',
+  excipient: 'info',
+  decapsulation: 'info',
+  no_unit_dose: 'info',
+  manual_ptp: 'info',
 };
 
 /** DispenseAuditResult(調剤鑑査結果). approved/emergency_approved=done、rejected=blocked、hold=confirm。 */

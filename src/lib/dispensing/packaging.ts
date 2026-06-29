@@ -31,6 +31,12 @@ export const PACKAGING_INSTRUCTION_TAG_OPTIONS = [
   { value: 'unit_dose', label: '一包化' },
   { value: 'staple_required', label: 'ホッチキス止め' },
   { value: 'label_required', label: '名前ラベル' },
+  { value: 'ptp', label: 'PTP・ヒート' },
+  { value: 'mixing', label: '混合' },
+  { value: 'excipient', label: '賦形' },
+  { value: 'decapsulation', label: '脱カプセル' },
+  { value: 'no_unit_dose', label: '一包化しない' },
+  { value: 'manual_ptp', label: '手撒きPTP' },
 ] as const;
 
 export type PackagingInstructionTagValue =
@@ -134,8 +140,8 @@ const PACKAGING_PATTERNS: Array<{
   },
   {
     method: 'blister_pack',
-    patterns: [/ブリスター/i, /ptp/i, /ヒート管理/i],
-    phrases: ['ブリスター管理', 'ブリスター', 'PTP', 'ヒート管理'],
+    patterns: [/ブリスター/i, /ptp/i, /ヒート管理/i, /シート管理/i],
+    phrases: ['ブリスター管理', 'ブリスター', 'PTP', 'ヒート管理', 'シート管理'],
   },
   {
     method: 'crush_and_pack',
@@ -143,6 +149,17 @@ const PACKAGING_PATTERNS: Array<{
     phrases: ['粉砕・混合', '粉砕', '混合'],
   },
 ];
+
+const NO_UNIT_DOSE_PATTERN =
+  /一包化しない|一包化不可|一包化不要|一包化なし|一包化せず|一包化中止|分包しない|分包不可|分包不要|分包なし|分包せず|分包中止/;
+
+function compactInstructionText(value: string) {
+  return value.replace(/\s+/g, '');
+}
+
+function hasNoUnitDoseInstruction(value: string) {
+  return NO_UNIT_DOSE_PATTERN.test(compactInstructionText(value));
+}
 
 export function parsePackagingMethod(value?: string | null): {
   method: PackagingMethodValue | null;
@@ -152,6 +169,12 @@ export function parsePackagingMethod(value?: string | null): {
   if (!normalized) return { method: null, detail: null };
 
   for (const entry of PACKAGING_PATTERNS) {
+    if (
+      hasNoUnitDoseInstruction(normalized) &&
+      (entry.method === 'unit_dose' || entry.method === 'morning_evening_unit_dose')
+    ) {
+      continue;
+    }
     if (entry.patterns.some((pattern) => pattern.test(normalized))) {
       return {
         method: entry.method,
@@ -197,6 +220,30 @@ const PACKAGING_TAG_PATTERNS: Array<{
   {
     tag: 'label_required',
     patterns: [/名前シール/, /名前ラベル/, /ラベル/],
+  },
+  {
+    tag: 'ptp',
+    patterns: [/ptp/i, /ヒート/, /シート/],
+  },
+  {
+    tag: 'mixing',
+    patterns: [/混合/],
+  },
+  {
+    tag: 'excipient',
+    patterns: [/賦形/],
+  },
+  {
+    tag: 'decapsulation',
+    patterns: [/脱カプ(?:セル)?/],
+  },
+  {
+    tag: 'no_unit_dose',
+    patterns: [NO_UNIT_DOSE_PATTERN],
+  },
+  {
+    tag: 'manual_ptp',
+    patterns: [/手撒き/, /手まき/, /manual\s*ptp/i],
   },
 ];
 
@@ -261,7 +308,10 @@ export function extractPackagingInstructionTags(args: {
         tags.add(entry.tag);
       }
     }
-    if (/一包化/.test(detail)) {
+    if (hasNoUnitDoseInstruction(detail)) {
+      tags.add('no_unit_dose');
+    }
+    if (/一包化/.test(detail) && !hasNoUnitDoseInstruction(detail)) {
       tags.add('unit_dose');
     }
   }
