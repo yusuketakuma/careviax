@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0512 JST
+
+- current task: add sensitive no-store response headers and sanitized unexpected-error envelopes to `POST /api/care-reports/[id]/send` without changing delivery or idempotency semantics.
+- files inspected: agmsg inbox/send for `phos/codex2`, `git status --short --untracked-files=all`, `git log --oneline -12`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, local Next.js route-handler docs, `src/app/api/care-reports/[id]/send/route.ts`, `src/app/api/care-reports/[id]/send/route.test.ts`, `src/app/api/partner-visit-records/[id]/submit/route.ts`, `src/app/api/partner-visit-records/[id]/review/route.ts`, `src/lib/api/sensitive-response.ts`, and read-only peer diff in `src/app/api/visit-schedule-proposals/route.ts`.
+- files changed: `src/app/api/care-reports/[id]/send/route.ts`, `src/app/api/care-reports/[id]/send/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved codex-owned `src/app/api/visit-schedule-proposals/route.ts` and `.test.ts` WIP.
+- bugs found: `POST /api/care-reports/[id]/send` returned report-send success, validation, workflow-conflict, idempotency replay, and external-failure envelopes without sensitive no-store headers. Unexpected route throws also fell through to the framework 500 path instead of the repository's fixed `INTERNAL_ERROR` envelope.
+- security risks found: reduced PHI-adjacent report-send caching risk for report status, delivery ids, masked recipients, delivery outcomes, idempotency replay bodies, and external failure envelopes. Reduced raw unexpected-error response risk with a sanitized fixed 500 envelope. Delivery logic, idempotency body/status semantics, freshness-conflict mapping, external send implementation, audit writes, auth/RLS, schema, live DB data, push, deploy, and secret handling were not changed.
+- performance issues found: no DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only sets fixed response headers and wraps unexpected route errors.
+- validation commands: `pnpm exec prettier --write 'src/app/api/care-reports/[id]/send/route.ts' 'src/app/api/care-reports/[id]/send/route.test.ts'`; `pnpm exec vitest run 'src/app/api/care-reports/[id]/send/route.test.ts' --reporter=dot --testTimeout=30000`; `pnpm exec eslint --max-warnings=0 'src/app/api/care-reports/[id]/send/route.ts' 'src/app/api/care-reports/[id]/send/route.test.ts'`; `git diff --check -- 'src/app/api/care-reports/[id]/send/route.ts' 'src/app/api/care-reports/[id]/send/route.test.ts'`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused care-report send route Vitest passed `1` file / `57` tests. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. Ledger-inclusive Prettier and diff checks passed. Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation, typecheck, scoped lint/prettier checks, and adversarial review of idempotency/conflict non-regression plus no-store/raw-error behavior. codex ACKed the lock, preserved the care-report send files while working on visit-schedule proposal WIP, and was sent the same `PATCH_REVIEW_REQUEST`.
+- remaining work: stage only explicit codex2-owned files and commit while preserving codex schedule WIP.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
 ### 20260630-0503 JST
 
 - current task: harden MCS mutation responses so MCS profile, sync, and manual check-log endpoints are no-store and raw sync exception messages are not echoed to clients.

@@ -183,6 +183,11 @@ function createMalformedRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function buildExpectedSendRequestFingerprint(
   recipients: unknown[],
   expectedUpdatedAtOrSecret: Date | string = REPORT_UPDATED_AT,
@@ -366,6 +371,7 @@ describe('/api/care-reports/[id]/send POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
     expect(sendCareReportEmailMock).not.toHaveBeenCalled();
   });
@@ -385,6 +391,7 @@ describe('/api/care-reports/[id]/send POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '報告書が同時に更新されました。再読み込みしてください',
     });
@@ -1258,6 +1265,7 @@ describe('/api/care-reports/[id]/send POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '報告書IDが不正です',
@@ -1302,6 +1310,7 @@ describe('/api/care-reports/[id]/send POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(careReportFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
@@ -1318,6 +1327,7 @@ describe('/api/care-reports/[id]/send POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -1329,6 +1339,38 @@ describe('/api/care-reports/[id]/send POST', () => {
     expect(sendCareReportEmailMock).not.toHaveBeenCalled();
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
     expect(learnContactProfileFromCommunicationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when report lookup fails unexpectedly', async () => {
+    careReportFindFirstMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 report send lookup token=secret raw failure'),
+    );
+
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('token=secret');
+    expect(JSON.stringify(body)).not.toContain('raw failure');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
   });
 
   it('returns 400 when the safety acknowledgement is missing', async () => {
@@ -1464,6 +1506,7 @@ describe('/api/care-reports/[id]/send POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(sendCareReportEmailMock).toHaveBeenCalledWith({
       to: 'doctor@example.com',
       recipientName: '山田 太郎',
@@ -1849,6 +1892,7 @@ describe('/api/care-reports/[id]/send POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: {
         report: { id: 'report_1', status: 'sent' },
@@ -1915,6 +1959,7 @@ describe('/api/care-reports/[id]/send POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: {
         deliveries: [{ delivery_record_id: 'delivery_1', status: 'sent' }],
@@ -2145,6 +2190,7 @@ describe('/api/care-reports/[id]/send POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     const json = await response.json();
     expect(json).toMatchObject({
       code: 'WORKFLOW_CONFLICT',
@@ -2185,6 +2231,7 @@ describe('/api/care-reports/[id]/send POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(sendCareReportEmailMock).not.toHaveBeenCalled();
     expect(txMock.careReportSendRequest.updateMany).toHaveBeenCalledWith({
       where: {
@@ -2643,6 +2690,7 @@ describe('/api/care-reports/[id]/send POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(502);
+    expectSensitiveNoStore(response);
     expect(txMock.deliveryRecord.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

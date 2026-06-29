@@ -23,6 +23,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Care Report Send No-Store Envelope - 2026-06-30 05:12 JST
+
+- Scope:
+  - Continued codex2's report / other-profession collaboration objective on `POST /api/care-reports/[id]/send`.
+  - Focused only on response envelope/cache behavior and unexpected-error sanitization for the external report-send boundary.
+  - Preserved codex-owned `src/app/api/visit-schedule-proposals/route.ts` / `.test.ts` WIP.
+  - No schema migration, live DB mutation, RLS policy change, external send in validation, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - The report-send route now runs through an `authenticatedPOST` helper and wraps all returned responses with `withSensitiveNoStore`.
+  - Unexpected route throws now return a fixed `INTERNAL_ERROR` response with no-store headers instead of falling through to a framework 500 envelope.
+  - Existing delivery, idempotency replay/claim/completion, freshness-conflict, delivery-in-progress, SES failure, and success status/body semantics are preserved inside the authenticated handler.
+- Safety:
+  - Reduces PHI-adjacent caching risk for report-send responses that include report status, delivery ids, masked recipients, delivery outcomes, idempotency replay bodies, and external failure envelopes.
+  - Regression coverage asserts no-store headers on validation 400, draft/stale conflicts, delivery in-progress conflict, idempotency completion/replay/conflict paths, success 200, SES failure 502, and sanitized unknown 500 with raw patient/token text excluded.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/care-reports/[id]/send/route.ts' 'src/app/api/care-reports/[id]/send/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/care-reports/[id]/send/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `57` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/api/care-reports/[id]/send/route.ts' 'src/app/api/care-reports/[id]/send/route.test.ts'`: passed.
+  - `git diff --check -- 'src/app/api/care-reports/[id]/send/route.ts' 'src/app/api/care-reports/[id]/send/route.test.ts'`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation, typecheck, scoped lint/prettier checks, and adversarial review of idempotency/conflict non-regression plus no-store/raw-error behavior.
+  - codex ACKed the lock, preserved the care-report send files while working on visit-schedule proposal WIP, and was sent the same `PATCH_REVIEW_REQUEST`.
+- Remaining:
+  - Stage only explicit codex2-owned files plus ledgers and commit while preserving codex schedule WIP.
+
 ### MCS Mutation Response Hardening - 2026-06-30 05:03 JST
 
 - Scope:

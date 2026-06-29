@@ -1,3 +1,4 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { Prisma, type MemberRole } from '@prisma/client';
@@ -9,6 +10,7 @@ import {
   conflict,
   error,
   forbiddenResponse,
+  internalError,
   success,
   validationError,
   notFound,
@@ -39,6 +41,7 @@ import {
   type CareReportSendRecipient as SendRecipient,
 } from '@/lib/reports/care-report-send-validation';
 import { logCareReportEmailDeliveryFailure } from '@/server/services/care-report-send-observability';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 
 function toPrimaryCommunicationEventType(reportType: string) {
   switch (reportType) {
@@ -1614,7 +1617,10 @@ async function finalizeReportDelivery(args: {
   );
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedPOST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const authResult = await requireAuthContext(req, {
     permission: 'canSendCareReport',
     message: '報告書送信の権限がありません',
@@ -1903,3 +1909,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   return success(idempotencyClaim.kind === 'claimed' ? replayBody : responseBody);
 }
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
