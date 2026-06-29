@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/error-state';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
@@ -119,6 +120,26 @@ export function SignalTuningPanel() {
   const strongItems = SIGNAL_TUNING_ITEMS.filter((item) => desired[item.alertType]);
   const diff = diffSignalTuning(currentState, desired);
   const changedCount = diff.create.length + diff.activate.length + diff.deactivate.length;
+
+  if (rulesQuery.isError) {
+    // A failed fetch must not render every safety signal as 標準 (a false default that
+    // misrepresents the saved emphasis config on a patient-safety surface). Surface a
+    // retryable error instead of the misleading all-standard panel.
+    return (
+      <ErrorState
+        variant="server"
+        size="inline"
+        title="表示設定を取得できませんでした"
+        description={
+          rulesQuery.error instanceof Error
+            ? rulesQuery.error.message
+            : 'アラートルールの取得に失敗しました'
+        }
+        action={{ label: '再試行', onClick: () => void rulesQuery.refetch() }}
+        live="polite"
+      />
+    );
+  }
 
   return (
     <section

@@ -206,4 +206,31 @@ describe('SignalTuningPanel', () => {
     );
     expect(patchCalls).toHaveLength(0);
   });
+
+  it('fails closed with a retryable error instead of a misleading all-standard panel when the fetch fails', async () => {
+    // A failed rules fetch must not render the tuning panel with every signal defaulted to
+    // 標準 — on a patient-safety surface that false-empty misrepresents the saved emphasis.
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/drug-alert-rules' && !init?.method) {
+        return new Response(JSON.stringify({ message: 'boom' }), { status: 500 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPanel();
+
+    expect(await screen.findByText('表示設定を取得できませんでした')).toBeTruthy();
+    // the misleading panel (with all-standard signals) must not render on fetch failure
+    expect(screen.queryByTestId('signal-tuning-panel')).toBeNull();
+
+    fireEvent.click(await screen.findByRole('button', { name: '再試行' }));
+    await waitFor(() => {
+      const getCalls = fetchMock.mock.calls.filter(
+        ([u, i]) =>
+          String(u) === '/api/drug-alert-rules' && !(i as RequestInit | undefined)?.method,
+      );
+      expect(getCalls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
 });
