@@ -189,6 +189,74 @@ describe('/api/handoff-board', () => {
     expect(json.data.summary).toEqual({ outgoing_count: 0, incoming_count: 0 });
   });
 
+  it('defaults omitted date to the current Japan business day', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-30T15:30:00.000Z'));
+
+    try {
+      const newBoard = {
+        id: 'board_today',
+        org_id: 'org_1',
+        shift_date: new Date('2026-07-01T00:00:00.000Z'),
+        items: [],
+      };
+      const findUniqueMock = vi.fn().mockResolvedValue(null);
+      const createMock = vi.fn().mockResolvedValue(newBoard);
+      const countMock = vi.fn().mockResolvedValue(0);
+      withOrgContextMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => unknown) =>
+        fn({
+          handoffBoard: {
+            findUnique: findUniqueMock,
+            create: createMock,
+          },
+          handoffItem: {
+            count: countMock,
+          },
+        }),
+      );
+      userFindManyMock.mockResolvedValue([]);
+
+      const req = createRequest('http://localhost/api/handoff-board');
+      const res = await GET(req, { params: Promise.resolve({}) });
+      expect(res!.status).toBe(200);
+      expect(findUniqueMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            org_id_shift_date: {
+              org_id: 'org_1',
+              shift_date: new Date('2026-07-01T00:00:00.000Z'),
+            },
+          },
+        }),
+      );
+      expect(createMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            org_id: 'org_1',
+            shift_date: new Date('2026-07-01T00:00:00.000Z'),
+            created_by: 'user_1',
+          },
+        }),
+      );
+      expect(countMock).toHaveBeenCalledWith({
+        where: {
+          board: {
+            org_id: 'org_1',
+            shift_date: {
+              gte: new Date('2026-07-01T00:00:00.000Z'),
+              lt: new Date('2026-08-01T00:00:00.000Z'),
+            },
+          },
+        },
+      });
+      await expect(res!.json()).resolves.toMatchObject({
+        data: { id: 'board_today' },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('re-reads a concurrently created board after a unique constraint race', async () => {
     const raceWinner = {
       id: 'board_race_winner',

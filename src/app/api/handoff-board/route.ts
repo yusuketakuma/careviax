@@ -6,7 +6,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { memberRoleLabel } from '@/lib/auth/member-roles';
-import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { countHandoffBadge } from '@/server/services/nav-badges';
 import { z } from 'zod';
@@ -88,7 +88,7 @@ const authenticatedGET = withAuthContext(
       return validationError('日付の形式が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const dateStr = parsed.data.date ?? localDateKey();
+    const dateStr = parsed.data.date ?? japanDateKey();
     const shiftDate = toDateOnly(dateStr);
     const badgeOnly = searchParams.get('badge') === '1';
 

@@ -285,6 +285,33 @@ describe('/api/staff-workload', () => {
     expect(Object.keys(payload.data[0].visits[0]).sort()).toEqual(['id', 'patient_name']);
   });
 
+  it('defaults omitted date to the current Japan business day', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-11T15:30:00.000Z'));
+
+    try {
+      const response = await GET(createRequest('http://localhost/api/staff-workload'));
+      if (!response) throw new Error('response is undefined');
+
+      expect(response.status).toBe(200);
+      expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            scheduled_date: {
+              gte: new Date('2026-06-12T00:00:00.000Z'),
+              lt: new Date('2026-06-13T00:00:00.000Z'),
+            },
+          }),
+        }),
+      );
+      await expect(response.json()).resolves.toMatchObject({
+        date: '2026-06-12',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('wraps auth failure responses in no-store headers before querying staff', async () => {
     requireAuthContextMock.mockResolvedValueOnce({
       response: NextResponse.json({ code: 'AUTH_FORBIDDEN' }, { status: 403 }),

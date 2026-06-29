@@ -9,7 +9,7 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
-import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { addUtcDays, japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { dateKeySchema } from '@/lib/validations/date-key';
 
 const ROUTE = '/api/staff-workload';
@@ -92,7 +92,7 @@ async function authenticatedGET(req: NextRequest) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const dateKey = parsed.data.date ?? localDateKey();
+    const dateKey = parsed.data.date ?? japanDateKey();
     const dayStart = utcDateFromLocalKey(dateKey);
     const dayEnd = addUtcDays(dayStart, 1);
 

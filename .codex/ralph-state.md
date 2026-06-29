@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0424 JST
+
+- current task: make user-facing operational API default dates use Japan civil days for Japan-only deployment while preserving UTC midnight sentinels for `@db.Date` comparisons.
+- files inspected: agmsg inbox/send for `phos/codex2`, `git status --short --untracked-files=all`, local Next.js route-handler docs read earlier in this turn, `package.json`, `.github/workflows/ci.yml`, `src/lib/utils/date-boundary.ts`, `src/lib/date-key.ts`, `src/app/api/staff-workload/route.ts`, `src/app/api/staff-workload/route.test.ts`, `src/app/api/handoff-board/route.ts`, `src/app/api/handoff-board/route.test.ts`, and read-only findings from code mapper, test architect, and medical safety reviewer subagents.
+- files changed: `src/app/api/staff-workload/route.ts`, `src/app/api/staff-workload/route.test.ts`, `src/app/api/handoff-board/route.ts`, `src/app/api/handoff-board/route.test.ts`, `package.json`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved codex2-owned `src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts` and `.test.ts`.
+- bugs found: `GET /api/staff-workload` and `GET /api/handoff-board` defaulted omitted `date` to `localDateKey()`, which follows the runtime/server timezone. Under UTC or negative-offset runtimes during Japan early morning, staff workload and handoff-board views could open the previous business day; handoff-board could also create/count the wrong shift-date board.
+- security risks found: reduced PHI-bearing operational-view misrouting risk by making omitted dates follow Japan civil-day semantics. Explicit `date=YYYY-MM-DD`, auth/RLS, no-store behavior, response shape, board badge-only behavior, and UTC midnight `@db.Date` sentinel comparisons were preserved. No schema migration, live DB mutation, external send, push, deploy, secret handling, or destructive operation changed.
+- performance issues found: no new DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The schedule-time TZ gate now includes two additional API route tests, increasing CI coverage only.
+- validation commands: focused `TZ=Asia/Tokyo|UTC|America/Los_Angeles pnpm exec vitest run src/app/api/staff-workload/route.test.ts src/app/api/handoff-board/route.test.ts --reporter=dot --testTimeout=30000`; `TZ=Asia/Tokyo pnpm test:schedule-time:tz`; `TZ=UTC pnpm test:schedule-time:tz`; `TZ=America/Los_Angeles pnpm test:schedule-time:tz`; scoped ESLint on the four route/test files; scoped Prettier check on package plus four route/test files; scoped `git diff --check`; `pnpm typecheck:no-unused`; `pnpm typecheck`; `pnpm lint`; `pnpm format:check`; `pnpm date-slices:check`.
+- validation results: focused staff-workload/handoff-board Vitest passed `2` files / `17` tests under all three timezones. `pnpm test:schedule-time:tz` passed `27` files / `415` tests under all three timezones; stderr was limited to existing expected sanitized 500 route tests. Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck:no-unused`, `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, and `pnpm date-slices:check` passed.
+- remaining work: stage only explicit codex-owned API/default-date files plus this slice's progress-ledger hunks, commit, and send agmsg FYI while preserving codex2 physician-report-draft WIP.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
 ### 20260630-0423 JST
 
 - current task: harden the partner-visit physician-report-draft API boundary so workflow errors cannot echo raw service exception messages or unsafe details to report-generation clients.

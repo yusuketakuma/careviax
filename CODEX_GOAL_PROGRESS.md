@@ -23,6 +23,38 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Japan Business-Day API Defaults - 2026-06-30 04:24 JST
+
+- Scope:
+  - Addressed the Japan-only deployment assumption for user-facing operational API default dates.
+  - Preserved codex2's concurrent physician-report-draft API error-boundary WIP and did not touch its owned files.
+  - No schema migration, live DB mutation, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `GET /api/staff-workload` now defaults omitted `date` to the current Japan civil day instead of the runtime/server local day.
+  - `GET /api/handoff-board` now defaults omitted `date` to the current Japan civil day, including the create-if-missing board path and monthly count window.
+  - Explicit `date=YYYY-MM-DD` inputs continue to be respected as supplied, and Prisma `@db.Date` comparisons still use UTC midnight sentinels via `utcDateFromLocalKey`.
+  - `test:schedule-time:tz` now includes the staff workload and handoff board route tests so the regressions run under the existing CI three-timezone loop.
+- Safety:
+  - Reduces wrong-day staff workload, visit, handoff, and PHI-bearing operational-view exposure under UTC or negative-offset runtimes during Japan early morning.
+  - Preserves auth/RLS, no-store headers, response shapes, badge-only handoff behavior, and existing explicit-date behavior.
+- Validation:
+  - `TZ=Asia/Tokyo pnpm exec vitest run src/app/api/staff-workload/route.test.ts src/app/api/handoff-board/route.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `17` tests.
+  - Same focused command with `TZ=UTC`: passed, `2` files / `17` tests.
+  - Same focused command with `TZ=America/Los_Angeles`: passed, `2` files / `17` tests.
+  - `TZ=Asia/Tokyo pnpm test:schedule-time:tz`: passed, `27` files / `415` tests.
+  - `TZ=UTC pnpm test:schedule-time:tz`: passed, `27` files / `415` tests.
+  - `TZ=America/Los_Angeles pnpm test:schedule-time:tz`: passed, `27` files / `415` tests.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/staff-workload/route.ts src/app/api/staff-workload/route.test.ts src/app/api/handoff-board/route.ts src/app/api/handoff-board/route.test.ts`: passed.
+  - `pnpm exec prettier --check package.json src/app/api/staff-workload/route.ts src/app/api/staff-workload/route.test.ts src/app/api/handoff-board/route.ts src/app/api/handoff-board/route.test.ts`: passed.
+  - `git diff --check -- package.json src/app/api/staff-workload/route.ts src/app/api/staff-workload/route.test.ts src/app/api/handoff-board/route.ts src/app/api/handoff-board/route.test.ts`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm date-slices:check`: passed.
+- Remaining:
+  - Explicit-path commit and agmsg FYI notification are pending for this slice.
+
 ### Partner Visit Physician Report Draft Error Boundary - 2026-06-30 04:23 JST
 
 - Scope:
