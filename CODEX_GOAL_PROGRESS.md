@@ -48,8 +48,19 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Review:
   - `PATCH_REVIEW_REQUEST` sent to Claude and codex with scope and validation.
   - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation, typecheck, scoped lint/prettier checks, and adversarial review of string-match bypass, fixed `PdfNotFoundError` messages, and generic 500 fallback behavior.
+  - codex returned `NEEDS_FIX` after commit `9d2ce284`: aggregate `src/app/api/__tests__/pdf-routes.test.ts` still expected raw `new Error('報告書が見つかりません')` to map to 404. Follow-up changes now use `PdfNotFoundError('careReport')` for the safe 404 case and add hostile raw not-found-like message -> generic 500 non-leakage coverage.
+- Follow-up validation:
+  - `pnpm exec prettier --write src/app/api/__tests__/pdf-routes.test.ts`: passed.
+  - `pnpm exec vitest run 'src/app/api/care-reports/[id]/pdf/route.test.ts' 'src/app/api/visit-records/[id]/pdf/route.test.ts' src/app/api/__tests__/pdf-routes.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `25` tests.
+  - Scoped ESLint on the aggregate and two PDF route/test pairs: passed.
+  - Scoped `git diff --check` on the aggregate and two PDF route/test pairs: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` for the aggregate follow-up after independent focused aggregate/PDF validation, typecheck, scoped lint/prettier checks, and stale plain-Error-to-404 expectation scan.
 - Remaining:
-  - Stage only explicit codex2-owned files plus ledgers and commit while preserving codex visit-schedule WIP.
+  - Stage only explicit codex2-owned aggregate test plus ledgers and commit while preserving codex visit-schedule WIP.
   - Non-blocking reminder-route test hardening follow-up from codex remains separate: add auth-failure and schema-invalid object no-store assertions.
 
 ### Care Report Reminder No-Store Envelope - 2026-06-30 05:30 JST

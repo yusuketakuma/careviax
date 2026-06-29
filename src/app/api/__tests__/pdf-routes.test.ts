@@ -54,6 +54,7 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {},
 }));
 
+import { PdfNotFoundError } from '@/server/services/pdf-errors';
 import { GET as careReportPdfGet } from '../care-reports/[id]/pdf/route';
 import { GET as billingDocumentPdfGet } from '../billing-candidates/[id]/documents/pdf/route';
 import { GET as managementPlanPdfGet } from '../management-plans/[id]/pdf/route';
@@ -337,7 +338,7 @@ describe('PDF routes', () => {
   });
 
   it('maps pdf not found errors to 404', async () => {
-    buildCareReportPdfMock.mockRejectedValue(new Error('報告書が見つかりません'));
+    buildCareReportPdfMock.mockRejectedValue(new PdfNotFoundError('careReport'));
 
     const response = await careReportPdfGet(
       createRequest('http://localhost/api/care-reports/missing/pdf'),
@@ -351,5 +352,28 @@ describe('PDF routes', () => {
       throw new Error('Expected a response from missing care report pdf GET');
     }
     expect(response.status).toBe(404);
+  });
+
+  it('does not map raw not-found-like pdf errors to 404', async () => {
+    buildCareReportPdfMock.mockRejectedValue(
+      new Error('報告書が見つかりません: patient 山田 太郎 token aggregate_pdf_secret'),
+    );
+
+    const response = await careReportPdfGet(
+      createRequest('http://localhost/api/care-reports/missing/pdf'),
+      {
+        params: Promise.resolve({ id: 'missing' }),
+      },
+    );
+
+    expect(response).toBeDefined();
+    if (!response) {
+      throw new Error('Expected a response from raw-error care report pdf GET');
+    }
+    expect(response.status).toBe(500);
+    const body = await response.text();
+    expect(body).toContain('EXTERNAL_PDF_RENDER_FAILED');
+    expect(body).not.toContain('山田');
+    expect(body).not.toContain('aggregate_pdf_secret');
   });
 });
