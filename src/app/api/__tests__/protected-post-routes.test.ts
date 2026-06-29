@@ -43,6 +43,8 @@ import { POST as communicationRequestsPost } from '../communication-requests/rou
 import { POST as communicationRequestResponsesPost } from '../communication-requests/[id]/responses/route';
 import { POST as communicationRequestResolveFollowupPost } from '../communication-requests/[id]/resolve-followup/route';
 import { POST as conferenceNotesPost } from '../conference-notes/route';
+import { POST as conferenceNoteGenerateReportPost } from '../conference-notes/[id]/generate-report/route';
+import { POST as conferenceNoteTasksPost } from '../conference-notes/[id]/tasks/route';
 import { POST as careReportsPost } from '../care-reports/route';
 import { POST as consentRecordsPost } from '../consent-records/route';
 import { POST as commentsPost } from '../comments/route';
@@ -130,6 +132,17 @@ const routes: RouteEntry[] = [
       }),
   },
   { name: 'conference-notes POST', handler: (req) => conferenceNotesPost(req, emptyRouteContext) },
+  {
+    name: 'conference-notes/[id]/generate-report POST',
+    handler: (req) =>
+      conferenceNoteGenerateReportPost(req, { params: Promise.resolve({ id: 'note_1' }) }),
+    invalidBody: [],
+  },
+  {
+    name: 'conference-notes/[id]/tasks POST',
+    handler: (req) => conferenceNoteTasksPost(req, { params: Promise.resolve({ id: 'note_1' }) }),
+    invalidBody: [],
+  },
   { name: 'care-reports POST', handler: (req) => careReportsPost(req) },
   { name: 'consent-records POST', handler: (req) => consentRecordsPost(req) },
   { name: 'comments POST', handler: (req) => commentsPost(req) },
@@ -269,6 +282,8 @@ describe('protected POST routes auth/body matrix', () => {
         route.name === 'patient-self-reports POST' ||
         route.name === 'medication-profiles POST' ||
         route.name === 'medication-issues POST' ||
+        route.name === 'conference-notes/[id]/generate-report POST' ||
+        route.name === 'conference-notes/[id]/tasks POST' ||
         route.name === 'pharmacists POST' ||
         route.name === 'pharmacist-shifts POST' ||
         route.name === 'residual-medications POST' ||
@@ -309,6 +324,8 @@ describe('protected POST routes auth/body matrix', () => {
         route.name === 'patient-self-reports POST' ||
         route.name === 'medication-profiles POST' ||
         route.name === 'medication-issues POST' ||
+        route.name === 'conference-notes/[id]/generate-report POST' ||
+        route.name === 'conference-notes/[id]/tasks POST' ||
         route.name === 'pharmacists POST' ||
         route.name === 'pharmacist-shifts POST' ||
         route.name === 'residual-medications POST' ||
@@ -351,6 +368,8 @@ describe('protected POST routes auth/body matrix', () => {
         route.name === 'patient-self-reports POST' ||
         route.name === 'medication-profiles POST' ||
         route.name === 'medication-issues POST' ||
+        route.name === 'conference-notes/[id]/generate-report POST' ||
+        route.name === 'conference-notes/[id]/tasks POST' ||
         route.name === 'pharmacists POST' ||
         route.name === 'pharmacist-shifts POST' ||
         route.name === 'residual-medications POST' ||

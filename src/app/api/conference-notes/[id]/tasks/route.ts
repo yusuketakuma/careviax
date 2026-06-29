@@ -1,8 +1,10 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { unstable_rethrow } from 'next/navigation';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withAuthContext } from '@/lib/auth/context';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { internalError, success, validationError, notFound } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
-import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { normalizeJsonInput } from '@/lib/db/json';
@@ -24,7 +26,7 @@ function normalizeInputJsonArray(value: unknown): Prisma.InputJsonArray {
   return Array.isArray(normalized) ? normalized : [];
 }
 
-export const POST = withAuthContext<{ id: string }>(
+const authenticatedPOST = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
     const { id: rawId } = await routeContext.params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -38,33 +40,41 @@ export const POST = withAuthContext<{ id: string }>(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const note = await prisma.conferenceNote.findFirst({
-      where: {
-        id,
-        org_id: ctx.orgId,
-      },
-      select: {
-        id: true,
-        title: true,
-        case_id: true,
-        action_items: true,
-      },
-    });
+    return withOrgContext(ctx.orgId, async (tx) => {
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "ConferenceNote" WHERE "id" = ${id} AND "org_id" = ${ctx.orgId} FOR UPDATE`,
+      );
 
-    if (!note) return notFound('カンファレンス記録が見つかりません');
+      const note = await tx.conferenceNote.findFirst({
+        where: {
+          id,
+          org_id: ctx.orgId,
+        },
+        select: {
+          id: true,
+          title: true,
+          case_id: true,
+          patient_id: true,
+          action_items: true,
+        },
+      });
 
-    const actionItems = Array.isArray(note.action_items)
-      ? ([...note.action_items] as ActionItem[])
-      : [];
-    const actionItem = actionItems[parsed.data.action_item_index];
+      if (!note) return notFound('カンファレンス記録が見つかりません');
 
-    if (!actionItem?.title) {
-      return validationError('指定されたアクションアイテムが見つかりません');
-    }
-    const actionTitle = actionItem.title;
-    const dedupeKey = `conference-action-item:${note.id}:${parsed.data.action_item_index}`;
+      const actionItems = Array.isArray(note.action_items)
+        ? ([...note.action_items] as ActionItem[])
+        : [];
+      const actionItem = actionItems[parsed.data.action_item_index];
 
-    const task = await withOrgContext(ctx.orgId, async (tx) => {
+      if (!actionItem?.title) {
+        return validationError('指定されたアクションアイテムが見つかりません');
+      }
+      if (actionItem.converted_task_id) {
+        return success({ data: { task_id: actionItem.converted_task_id } });
+      }
+
+      const actionTitle = actionItem.title;
+      const dedupeKey = `conference-action-item:${note.id}:${parsed.data.action_item_index}`;
       const createdTask = await tx.task.upsert({
         where: {
           org_id_dedupe_key: {
@@ -90,6 +100,9 @@ export const POST = withAuthContext<{ id: string }>(
           },
         },
         update: {},
+        select: {
+          id: true,
+        },
       });
 
       actionItems[parsed.data.action_item_index] = {
@@ -104,14 +117,34 @@ export const POST = withAuthContext<{ id: string }>(
           action_items: normalizeInputJsonArray(actionItems),
         },
       });
+      await createAuditLogEntry(tx, ctx, {
+        action: 'conference_note.action_item_converted',
+        targetType: 'conference_note',
+        targetId: note.id,
+        patientId: note.patient_id ?? undefined,
+        changes: {
+          conference_note: {
+            action_item_index: parsed.data.action_item_index,
+            task_id: createdTask.id,
+            case_id: note.case_id,
+          },
+        },
+      });
 
-      return createdTask;
+      return success({ data: { task_id: createdTask.id } }, 201);
     });
-
-    return success({ data: task }, 201);
   },
   {
     permission: 'canReport',
     message: 'カンファレンス記録の更新権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

@@ -54,6 +54,48 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Stage and commit only the `.codex` agent/config files plus this ledger and `.codex/ralph-state.md`.
   - Resume backend hardening queue after this configuration slice.
 
+### Conference Notes Response / Idempotency Hardening - 2026-06-30 08:24 JST
+
+- Scope:
+  - Finished the conference-note report/task/suggestion hardening slice after codex2 and Claude coordination flagged overlapping WIP.
+  - Touched `generate-report`, action-item task conversion, participant suggestions, `ConferenceSyncService`, the dashboard conference caller, and protected route matrices.
+  - Preserved unrelated dirty `src/components/features/comments/comment-thread.tsx` and `.test.tsx` changes.
+- Fixed:
+  - Wrapped sensitive conference-note route responses in `withSensitiveNoStore` with fixed `INTERNAL_ERROR` outer fallbacks and `unstable_rethrow`.
+  - Minimized `generate-report` success responses to `report_draft_count` and `queued_recipient_count`; dashboard toast now consumes counts instead of report IDs or recipient rows.
+  - Added deterministic `CareReport` draft IDs and `skipDuplicates` for conference-note report generation.
+  - Added deterministic `delivery_intent_key` plus `skipDuplicates` for report delivery drafts, and covered existing-key duplicate suppression.
+  - Added patient context to report-generation audit and action-item conversion audit without recipient contact details or report bodies.
+  - Changed task conversion response to `{ task_id }`, made already converted items idempotent, and moved action-item read/update into the RLS transaction behind `SELECT ... FOR UPDATE`.
+  - Changed participant suggestions to require `conference_note_id`, verify note/facility/org match, and omit phone/email from suggestion responses.
+  - Fixed duplicate title/assignee UI task conversion by sending the clicked action-item index instead of re-finding by title/assignee.
+- Safety:
+  - Reduces PHI/PII/cache leakage for report IDs, queued recipient metadata, facility contact phone/email, task metadata, and raw unexpected error strings.
+  - Reduces duplicate report/delivery side effects and lost action-item conversion stamps under concurrent requests.
+  - Residual accepted caveats: conference-derived report drafts rely on deterministic primary keys rather than a semantic DB unique index, and action items remain JSON index based until a future stable `action_item_id` migration.
+- Performance:
+  - No unbounded queries or external requests added.
+  - Task conversion adds one row lock and moves the conference-note read into the existing short transaction only for mutation correctness.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/conference-notes/[id]/generate-report/route.test.ts' 'src/app/api/conference-notes/[id]/tasks/route.test.ts' src/app/api/conference-notes/participant-suggestions/route.test.ts src/server/services/conference-sync.test.ts 'src/app/(dashboard)/conferences/conferences-content.test.tsx' src/app/api/__tests__/protected-post-routes.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`: passed, `7` files / `552` tests; existing expected `webhook.org_dispatch_failed` stderr appeared in the protected POST matrix.
+  - `pnpm exec vitest run 'src/app/api/conference-notes/[id]/tasks/route.test.ts' 'src/app/api/conference-notes/[id]/generate-report/route.test.ts' src/server/services/conference-sync.test.ts 'src/app/(dashboard)/conferences/conferences-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `4` files / `38` tests after blocker fixes.
+  - Scoped ESLint on the twelve owned TS/TSX route/service/UI/test files: passed.
+  - Scoped `pnpm exec prettier --check` and `git diff --check --` on owned files plus ledgers: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: exit `0`; unrelated warnings remain in `src/components/features/comments/comment-thread.tsx` for unused `isError`, `isPending`, and `refetch`.
+  - `pnpm format:check`: passed.
+- Review:
+  - API contract reviewer approved counts-only/task-id-only/participant-suggestions contract compatibility.
+  - Privacy reviewer approved PHI/PII minimization with low residual audit/log caveats.
+  - Concurrency reviewer initially found an action-item lost-update race; fixed with transaction-local row lock and idempotent converted-item replay, then approved.
+  - Test auditor initially requested deterministic ID/key assertions; fixed and approved.
+  - Medical safety reviewer initially found duplicate title/assignee UI misrouting; fixed by passing the clicked index directly, then approved.
+  - Claude returned `APPROVED` after independent critical review plus reviewer-audit validation (`552` tests / `7` files and `pnpm typecheck`), with only a non-blocking observation that `participant-suggestions` currently has no production FE caller.
+- Remaining:
+  - Stage only the fourteen owned conference-note/service/UI/protected-matrix files plus this ledger and `.codex/ralph-state.md`, commit, and send agmsg FYI.
+  - Do not stage unrelated comments component changes.
+
 ### Visit Routes Outer Plumbing Regression - 2026-06-30 07:53 JST
 
 - Scope:
@@ -20802,3 +20844,29 @@ Next loop:
 - Remaining:
   - Preserve codex-owned prescription-history/drug-master dirty paths and do not stage them.
   - Wait briefly for codex review result if it arrives, then commit only care-report send route/test plus ledgers.
+
+### Conference Notes Sensitive Response Boundary Slice — 2026-06-30 08:01 JST
+
+- Scope:
+  - Continued codex2's report/interprofessional collaboration scope in conference-note report generation, action-item task conversion, and participant suggestions.
+  - Kept API response shapes, permissions, validations, database queries, and report/task behavior unchanged.
+- Fixed:
+  - `/api/conference-notes/[id]/generate-report` now wraps every response in `withSensitiveNoStore` and catches exported-route plumbing failures as fixed `INTERNAL_ERROR`.
+  - `/api/conference-notes/[id]/tasks` now applies the same no-store and fixed-error boundary while preserving the existing action-item-to-task semantics.
+  - `/api/conference-notes/participant-suggestions` now protects facility contact suggestions with the same no-store and fixed-error boundary.
+  - Regression tests assert success responses carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`.
+  - Regression tests assert unexpected failures return generic `INTERNAL_ERROR` without raw patient IDs, note IDs, emails, or phone numbers.
+- Safety:
+  - Reduces browser/proxy cache leakage risk for generated report metadata, queued recipient drafts, task conversion results, and facility contact suggestions.
+  - No database migration, destructive operation, external send, or live data operation was run.
+  - No new raw PHI is returned, logged, or persisted.
+- Validation:
+  - `pnpm exec prettier --write` on the six owned conference-note route/test files: passed, files already formatted.
+  - `pnpm exec vitest run 'src/app/api/conference-notes/[id]/generate-report/route.test.ts' 'src/app/api/conference-notes/[id]/tasks/route.test.ts' 'src/app/api/conference-notes/participant-suggestions/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `3` files / `17` tests.
+  - Scoped ESLint on the six owned route/test files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Request agmsg peer review, address any finding, then commit only the six route/test files plus ledgers.

@@ -11,6 +11,7 @@ const {
   deliveryRecordCreateManyMock,
   auditLogCreateMock,
   withOrgContextMock,
+  authContextFailureMock,
 } = vi.hoisted(() => ({
   conferenceNoteFindFirstMock: vi.fn(),
   conferenceNoteUpdateMock: vi.fn(),
@@ -21,12 +22,17 @@ const {
   deliveryRecordCreateManyMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  authContextFailureMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => unknown) => {
-    return (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
-      handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, routeContext);
+    return (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      const failure = authContextFailureMock();
+      if (failure) return Promise.reject(failure);
+
+      return handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, routeContext);
+    };
   },
 }));
 
@@ -60,9 +66,15 @@ function createMalformedJsonRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/conference-notes/[id]/generate-report POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authContextFailureMock.mockReset();
     conferenceNoteFindFirstMock.mockResolvedValue({
       id: 'note_1',
       case_id: 'case_1',
@@ -143,6 +155,7 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(careReportCreateManyMock).toHaveBeenCalledTimes(1);
     expect(deliveryRecordCreateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -152,9 +165,11 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
             channel: 'email',
             recipient_name: '佐藤CM',
             recipient_contact: 'cm@example.com',
+            delivery_intent_key: 'conf_delivery_59e3fb760b54be256c152688bd6cd282',
             status: 'draft',
           }),
         ]),
+        skipDuplicates: true,
       }),
     );
     expect(conferenceNoteUpdateMock).toHaveBeenCalledWith({
@@ -169,7 +184,7 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
         actor_id: 'user_1',
         actor_pharmacy_id: 'org_1',
         actor_site_id: undefined,
-        patient_id: undefined,
+        patient_id: 'patient_1',
         action: 'conference_note.report_generated',
         target_type: 'conference_note',
         target_id: 'note_1',
@@ -186,18 +201,17 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
       },
     });
 
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       data: {
-        report_draft_ids: ['report_cm_1'],
-        queued_recipients: [
-          {
-            report_id: 'report_cm_1',
-            name: '佐藤CM',
-            channel: 'email',
-          },
-        ],
+        report_draft_count: 1,
+        queued_recipient_count: 1,
       },
     });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('cm@example.com');
+    expect(serialized).not.toContain('佐藤CM');
+    expect(serialized).not.toContain('report_cm_1');
   });
 
   it('rejects blank note ids before loading the note or generating drafts', async () => {
@@ -207,6 +221,7 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'カンファレンス記録IDが不正です',
     });
@@ -225,6 +240,7 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(conferenceNoteFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
@@ -240,6 +256,7 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -252,6 +269,75 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
     expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
   });
 
+  it('returns no-store not-found before generating drafts', async () => {
+    conferenceNoteFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await POST(createRequest({ report_type: 'care_manager_report' }), {
+      params: Promise.resolve({ id: 'note_missing' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'カンファレンス記録が見つかりません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
+    expect(deliveryRecordCreateManyMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes unexpected report generation failures and keeps sensitive responses no-store', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('raw patient_1 cm@example.com conference report failure'),
+    );
+
+    const response = await POST(createRequest({ report_type: 'care_manager_report' }), {
+      params: Promise.resolve({ id: 'note_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('patient_1');
+    expect(serialized).not.toContain('cm@example.com');
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
+    expect(deliveryRecordCreateManyMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes auth plumbing failures before loading the note', async () => {
+    authContextFailureMock.mockReturnValueOnce(
+      new Error('raw auth patient_1 cm@example.com conference report failure'),
+    );
+
+    const response = await POST(createRequest({ report_type: 'care_manager_report' }), {
+      params: Promise.resolve({ id: 'note_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('patient_1');
+    expect(serialized).not.toContain('cm@example.com');
+    expect(conferenceNoteFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
+  });
+
   it('keeps empty request bodies as default report generation', async () => {
     const response = await POST(createRequest(), {
       params: Promise.resolve({ id: 'note_1' }),
@@ -259,6 +345,7 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(conferenceNoteFindFirstMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -268,6 +355,11 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
       }),
     );
     expect(careReportCreateManyMock).toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        report_draft_count: 1,
+      },
+    });
   });
 
   it('does not create duplicate delivery drafts when the same recipient is already queued', async () => {
@@ -291,10 +383,42 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(deliveryRecordCreateManyMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       data: {
-        queued_recipients: [],
+        queued_recipient_count: 0,
+      },
+    });
+  });
+
+  it('does not create duplicate delivery drafts when the delivery intent key already exists', async () => {
+    deliveryRecordFindManyMock.mockResolvedValue([
+      {
+        report_id: 'report_cm_1',
+        channel: 'email',
+        recipient_contact: 'cm@example.com',
+        delivery_intent_key: 'conf_delivery_59e3fb760b54be256c152688bd6cd282',
+      },
+    ]);
+
+    const response = await POST(
+      createRequest({
+        report_type: 'care_manager_report',
+        auto_send: true,
+      }),
+      {
+        params: Promise.resolve({ id: 'note_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
+    expect(deliveryRecordCreateManyMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        queued_recipient_count: 0,
       },
     });
   });
@@ -312,6 +436,7 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(careReportCreateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.arrayContaining([
@@ -356,6 +481,7 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(careReportCreateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({

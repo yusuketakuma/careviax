@@ -222,7 +222,7 @@ function NoteCard({
   generating,
 }: {
   note: ConferenceNote;
-  onConvertToTask: (note: ConferenceNote, item: ActionItem) => void;
+  onConvertToTask: (note: ConferenceNote, item: ActionItem, actionItemIndex: number) => void;
   onGenerateReport: (note: ConferenceNote) => void;
   generating: boolean;
 }) {
@@ -300,7 +300,7 @@ function NoteCard({
                     variant="ghost"
                     disabled={Boolean(item.converted_task_id)}
                     className="h-6 shrink-0 px-2 text-xs text-tag-info hover:bg-tag-info/10"
-                    onClick={() => onConvertToTask(note, item)}
+                    onClick={() => onConvertToTask(note, item, index)}
                   >
                     <ArrowRight className="mr-1 size-3" aria-hidden="true" />
                     {item.converted_task_id ? 'タスク化済み' : 'タスク化'}
@@ -842,20 +842,16 @@ export function ConferencesContent({
       }
       return response.json() as Promise<{
         data: {
-          report_draft_ids: string[];
-          queued_recipients?: Array<{
-            report_id: string;
-            name: string;
-            channel: string;
-          }>;
+          report_draft_count: number;
+          queued_recipient_count: number;
         };
       }>;
     },
     onSuccess: (payload) => {
       toast.success(
-        `報告書ドラフトを${payload.data.report_draft_ids.length}件生成しました${
-          payload.data.queued_recipients?.length
-            ? ` / 送付下書き ${payload.data.queued_recipients.length}件`
+        `報告書ドラフトを${payload.data.report_draft_count}件生成しました${
+          payload.data.queued_recipient_count
+            ? ` / 送付下書き ${payload.data.queued_recipient_count}件`
             : ''
         }`,
       );
@@ -1022,23 +1018,20 @@ export function ConferencesContent({
     });
   }
 
-  function handleConvertToTask(note: ConferenceNote, item: ActionItem) {
+  function handleConvertToTask(note: ConferenceNote, item: ActionItem, actionItemIndex: number) {
     if (item.converted_task_id) {
       toast.info('このアクションアイテムは既にタスク化されています');
       return;
     }
 
-    const index = (note.action_items ?? []).findIndex(
-      (candidate) => candidate.title === item.title && candidate.assignee === item.assignee,
-    );
-    if (index < 0) {
+    if (!Number.isInteger(actionItemIndex) || actionItemIndex < 0) {
       toast.error('アクションアイテムを特定できませんでした');
       return;
     }
 
     convertActionItemMutation.mutate({
       noteId: note.id,
-      actionItemIndex: index,
+      actionItemIndex,
     });
   }
 

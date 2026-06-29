@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { withOrgContextMock } = vi.hoisted(() => ({
+const { withOrgContextMock, authContextFailureMock } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
+  authContextFailureMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -17,6 +18,9 @@ vi.mock('@/lib/auth/context', () => ({
       req: NextRequest,
       routeContext: { params: Promise<Record<string, string>> } = { params: Promise.resolve({}) },
     ) => {
+      const failure = authContextFailureMock();
+      if (failure) return Promise.reject(failure);
+
       return handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, routeContext);
     };
   },
@@ -35,9 +39,15 @@ function createGetRequest(search = '') {
   return new NextRequest(`http://localhost/api/conference-notes/participant-suggestions${search}`);
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/conference-notes/participant-suggestions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authContextFailureMock.mockReset();
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         facility: {
@@ -56,6 +66,11 @@ describe('/api/conference-notes/participant-suggestions', () => {
             ],
           }),
         },
+        conferenceNote: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'note_1',
+          }),
+        },
       }),
     );
   });
@@ -64,16 +79,31 @@ describe('/api/conference-notes/participant-suggestions', () => {
     const response = (await GET(createGetRequest()))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'facility_id は必須です',
     });
   });
 
-  it('returns facility contact suggestions', async () => {
+  it('requires conference_note_id', async () => {
     const response = (await GET(createGetRequest('?facility_id=facility_1')))!;
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
+      message: 'conference_note_id は必須です',
+    });
+  });
+
+  it('returns facility contact suggestions', async () => {
+    const response = (await GET(
+      createGetRequest('?facility_id=facility_1&conference_note_id=note_1'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
       data: [
         {
           name: '相談員A',
@@ -84,5 +114,74 @@ describe('/api/conference-notes/participant-suggestions', () => {
         },
       ],
     });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('contact@example.com');
+    expect(serialized).not.toContain('03-1111-2222');
+  });
+
+  it('returns no-store validation when the facility is not found', async () => {
+    withOrgContextMock.mockImplementationOnce(async (_orgId, callback) =>
+      callback({
+        conferenceNote: {
+          findFirst: vi.fn().mockResolvedValue(null),
+        },
+        facility: {
+          findFirst: vi.fn().mockResolvedValue(null),
+        },
+      }),
+    );
+
+    const response = (await GET(
+      createGetRequest('?facility_id=missing_facility&conference_note_id=note_1'),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'カンファレンス記録と施設が一致しません',
+    });
+  });
+
+  it('sanitizes unexpected suggestion lookup failures and keeps sensitive responses no-store', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('raw contact@example.com 03-1111-2222 participant lookup failure'),
+    );
+
+    const response = (await GET(
+      createGetRequest('?facility_id=facility_1&conference_note_id=note_1'),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('contact@example.com');
+    expect(serialized).not.toContain('03-1111-2222');
+  });
+
+  it('sanitizes auth plumbing failures before looking up facility contacts', async () => {
+    authContextFailureMock.mockReturnValueOnce(
+      new Error('raw auth contact@example.com 03-1111-2222 suggestion failure'),
+    );
+
+    const response = (await GET(
+      createGetRequest('?facility_id=facility_1&conference_note_id=note_1'),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('contact@example.com');
+    expect(serialized).not.toContain('03-1111-2222');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 });

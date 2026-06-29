@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import {
   buildConferenceReportDisclosureContent,
@@ -53,6 +54,18 @@ export type ConferenceSyncTransactionClient = {
 };
 
 type TransactionClient = ConferenceSyncTransactionClient;
+
+function stableHashId(prefix: string, parts: Array<string | null | undefined>) {
+  const hash = createHash('sha256')
+    .update(parts.map((part) => part ?? '').join('\u001f'))
+    .digest('hex')
+    .slice(0, 32);
+  return `${prefix}_${hash}`;
+}
+
+function conferenceReportDraftId(orgId: string, noteId: string, reportType: string) {
+  return stableHashId('crpt', [orgId, noteId, reportType]);
+}
 
 type ActionItem = {
   title?: string;
@@ -995,6 +1008,7 @@ export class ConferenceSyncService {
             patient_id: patientId,
             case_id: note.case_id ?? null,
             report_type: reportType as ReportType,
+            id: conferenceReportDraftId(orgId, note.id, reportType),
             status: 'draft' as const,
             content: toPrismaJsonInput({
               ...buildConferenceReportDisclosureContent({
@@ -1011,6 +1025,7 @@ export class ConferenceSyncService {
             }),
             created_by: userId,
           })),
+          skipDuplicates: true,
         });
 
         const newDrafts = await careReportClient.findMany({
@@ -1072,6 +1087,7 @@ export class ConferenceSyncService {
           patient_id: patientId,
           case_id: note.case_id ?? null,
           report_type: reportType as ReportType,
+          id: conferenceReportDraftId(orgId, note.id, reportType),
           status: 'draft' as const,
           content: toPrismaJsonInput({
             ...buildConferenceReportDisclosureContent({

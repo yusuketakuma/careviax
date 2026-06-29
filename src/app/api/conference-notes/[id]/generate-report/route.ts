@@ -1,8 +1,11 @@
+import { createHash } from 'node:crypto';
+import { unstable_rethrow } from 'next/navigation';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withAuthContext } from '@/lib/auth/context';
 import { readOptionalJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { internalError, success, validationError, notFound } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { ConferenceSyncService } from '@/server/services/conference-sync';
@@ -11,7 +14,24 @@ import {
   type ConferenceParticipantInput,
 } from '@/lib/validations/conference';
 
-export const POST = withAuthContext<{ id: string }>(
+function stableHashId(prefix: string, parts: Array<string | null | undefined>) {
+  const hash = createHash('sha256')
+    .update(parts.map((part) => part ?? '').join('\u001f'))
+    .digest('hex')
+    .slice(0, 32);
+  return `${prefix}_${hash}`;
+}
+
+function deliveryIntentKey(
+  orgId: string,
+  reportId: string,
+  channel: string,
+  recipientContact: string,
+) {
+  return stableHashId('conf_delivery', [orgId, reportId, channel, recipientContact]);
+}
+
+const authenticatedPOST = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
     const { id: rawId } = await routeContext.params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -78,23 +98,20 @@ export const POST = withAuthContext<{ id: string }>(
           })
         : null;
 
+      const resolvedPatientId = note.patient_id ?? careCase?.patient_id ?? null;
       const reportDraftIds = await ConferenceSyncService.generateReportDraft(
         tx,
         ctx.orgId,
         ctx.userId,
         note,
-        note.patient_id ?? careCase?.patient_id ?? null,
+        resolvedPatientId,
         {
           ...(parsed.data.report_type ? { reportTypes: [parsed.data.report_type] } : {}),
           includeStructuredContent: parsed.data.include_structured_content,
         },
       );
 
-      const queuedRecipients: Array<{
-        report_id: string;
-        name: string;
-        channel: 'email' | 'fax';
-      }> = [];
+      let queuedRecipientCount = 0;
       if (parsed.data.auto_send && reportDraftIds.length > 0) {
         const participants = Array.isArray(note.participants)
           ? (note.participants as ConferenceParticipantInput[])
@@ -126,6 +143,7 @@ export const POST = withAuthContext<{ id: string }>(
                 report_id: string;
                 channel: string;
                 recipient_contact: string;
+                delivery_intent_key?: string | null;
               }>
             >;
             createMany?: (args: unknown) => Promise<unknown>;
@@ -141,30 +159,44 @@ export const POST = withAuthContext<{ id: string }>(
                     report_id: true,
                     channel: true,
                     recipient_contact: true,
+                    delivery_intent_key: true,
                   },
                 })
               : [];
           const existingKeys = new Set(
             existingDrafts.map(
-              (item) => `${item.report_id}:${item.channel}:${item.recipient_contact}`,
+              (item) =>
+                item.delivery_intent_key ??
+                `${item.report_id}:${item.channel}:${item.recipient_contact}`,
             ),
           );
           const newDraftRows = draftRows.filter(
             (item) =>
-              !existingKeys.has(`${item.report_id}:${item.channel}:${item.recipient_contact}`),
+              !existingKeys.has(
+                deliveryIntentKey(ctx.orgId, item.report_id, item.channel, item.recipient_contact),
+              ) && !existingKeys.has(`${item.report_id}:${item.channel}:${item.recipient_contact}`),
           );
           if (newDraftRows.length > 0 && typeof deliveryRecordClient.createMany === 'function') {
-            await deliveryRecordClient.createMany({
-              data: newDraftRows,
+            const createManyResult = await deliveryRecordClient.createMany({
+              data: newDraftRows.map((item) => ({
+                ...item,
+                delivery_intent_key: deliveryIntentKey(
+                  ctx.orgId,
+                  item.report_id,
+                  item.channel,
+                  item.recipient_contact,
+                ),
+              })),
+              skipDuplicates: true,
             });
+            queuedRecipientCount =
+              typeof createManyResult === 'object' &&
+              createManyResult !== null &&
+              'count' in createManyResult &&
+              typeof createManyResult.count === 'number'
+                ? createManyResult.count
+                : newDraftRows.length;
           }
-          queuedRecipients.push(
-            ...newDraftRows.map((item) => ({
-              report_id: item.report_id,
-              name: item.recipient_name,
-              channel: item.channel as 'email' | 'fax',
-            })),
-          );
         }
       }
 
@@ -179,20 +211,21 @@ export const POST = withAuthContext<{ id: string }>(
           action: 'conference_note.report_generated',
           targetType: 'conference_note',
           targetId: note.id,
+          patientId: resolvedPatientId ?? undefined,
           changes: {
             conference_note: {
               note_type: note.note_type,
               report_type: parsed.data.report_type ?? null,
               report_draft_ids: reportDraftIds,
-              queued_recipient_count: queuedRecipients.length,
+              queued_recipient_count: queuedRecipientCount,
             },
           },
         });
       }
 
       return {
-        report_draft_ids: reportDraftIds,
-        queued_recipients: queuedRecipients,
+        report_draft_count: reportDraftIds.length,
+        queued_recipient_count: queuedRecipientCount,
       };
     });
 
@@ -203,3 +236,12 @@ export const POST = withAuthContext<{ id: string }>(
     message: '報告書生成の権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

@@ -223,6 +223,7 @@ import { GET as commentsRecentGet } from '../comments/recent/route';
 import { GET as conferenceNotesGet } from '../conference-notes/route';
 import { GET as conferenceNoteGet } from '../conference-notes/[id]/route';
 import { GET as conferenceNotePdfGet } from '../conference-notes/[id]/pdf/route';
+import { GET as conferenceNoteParticipantSuggestionsGet } from '../conference-notes/participant-suggestions/route';
 import { GET as consentRecordsGet } from '../consent-records/route';
 import { GET as consentRecordGet } from '../consent-records/[id]/route';
 import { GET as contactProfilesGet } from '../contact-profiles/route';
@@ -711,6 +712,38 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
           'x-org-id': 'org_1',
         }),
         { params: Promise.resolve({ id: 'note_1' }) },
+      ),
+  },
+  {
+    name: 'conference-notes/participant-suggestions GET',
+    setupSuccess: () => {
+      txMock.conferenceNote.findFirst.mockResolvedValueOnce({
+        id: 'note_1',
+      });
+      txMock.facility.findFirst.mockResolvedValueOnce({
+        id: 'facility_1',
+        name: '施設A',
+        contacts: [
+          {
+            id: 'contact_1',
+            name: '相談員A',
+            role: '相談員',
+            phone: '03-1111-2222',
+            email: 'contact@example.com',
+            preferred_contact_method: 'phone',
+          },
+        ],
+      });
+    },
+    handler: () =>
+      conferenceNoteParticipantSuggestionsGet(
+        createRequest(
+          'http://localhost/api/conference-notes/participant-suggestions?facility_id=facility_1&conference_note_id=note_1',
+          {
+            'x-org-id': 'org_1',
+          },
+        ),
+        emptyRouteContext,
       ),
   },
   {
@@ -2012,6 +2045,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'conference-notes GET' ||
         route.name === 'conference-notes/[id] GET' ||
         route.name === 'conference-notes/[id]/pdf GET' ||
+        route.name === 'conference-notes/participant-suggestions GET' ||
         route.name === 'consent-records GET' ||
         route.name === 'consent-records/[id] GET' ||
         route.name === 'contact-profiles GET' ||
@@ -2147,6 +2181,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'conference-notes GET' ||
         route.name === 'conference-notes/[id] GET' ||
         route.name === 'conference-notes/[id]/pdf GET' ||
+        route.name === 'conference-notes/participant-suggestions GET' ||
         route.name === 'consent-records GET' ||
         route.name === 'consent-records/[id] GET' ||
         route.name === 'contact-profiles GET' ||
@@ -2264,6 +2299,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'conference-notes GET' ||
         route.name === 'conference-notes/[id] GET' ||
         route.name === 'conference-notes/[id]/pdf GET' ||
+        route.name === 'conference-notes/participant-suggestions GET' ||
         route.name === 'consent-records GET' ||
         route.name === 'consent-records/[id] GET' ||
         route.name === 'contact-profiles GET' ||

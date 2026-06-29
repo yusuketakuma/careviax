@@ -448,7 +448,7 @@ describe('ConferencesContent', () => {
     const hostileNoteId = 'note/id?task=1#frag';
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ data: { report_draft_ids: ['report_1'] } }),
+      json: async () => ({ data: { report_draft_count: 1, queued_recipient_count: 0 } }),
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -487,6 +487,36 @@ describe('ConferencesContent', () => {
     );
 
     vi.unstubAllGlobals();
+  });
+
+  it('uses the clicked action item index when duplicate titles and assignees exist', () => {
+    mockConferenceNoteQueries(
+      makeConferenceNote({
+        action_items: [
+          {
+            title: '医師へ共有',
+            assignee: '管理者',
+            converted_task_id: 'task_existing',
+          },
+          {
+            title: '医師へ共有',
+            assignee: '管理者',
+          },
+        ],
+      }),
+    );
+
+    render(<ConferencesContent initialFocus="notes" />);
+    fireEvent.click(screen.getByRole('button', { name: '詳細を開く' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'タスク化' }));
+
+    expect(
+      mutationMocks.flatMap((mock) => mock.mock.calls.map(([payload]) => payload)),
+    ).toContainEqual({
+      noteId: 'note_1',
+      actionItemIndex: 1,
+    });
   });
 
   it('rejects dot-segment conference note ids before fetch for dynamic note paths', async () => {

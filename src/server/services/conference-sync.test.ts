@@ -111,16 +111,20 @@ describe('ConferenceSyncService', () => {
     );
 
     expect(reportIds).toEqual(['report_1']);
-    expect(createManyMock).toHaveBeenCalledWith({
-      data: [
-        expect.objectContaining({
-          content: expect.objectContaining({
-            conference_note_id: 'note_1',
-            note_type: 'service_manager',
+    expect(createManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [
+          expect.objectContaining({
+            id: 'crpt_5bd5141b875ed51774f1dd2b7f8dabb2',
+            content: expect.objectContaining({
+              conference_note_id: 'note_1',
+              note_type: 'service_manager',
+            }),
           }),
-        }),
-      ],
-    });
+        ],
+        skipDuplicates: true,
+      }),
+    );
   });
 
   it('skips malformed structured sections when generating report drafts', async () => {
@@ -163,18 +167,22 @@ describe('ConferenceSyncService', () => {
     );
 
     expect(reportIds).toEqual(['report_1']);
-    expect(createManyMock).toHaveBeenCalledWith({
-      data: [
-        expect.objectContaining({
-          content: expect.objectContaining({
-            body: expect.stringContaining('服薬支援を追加'),
-            disclosure_scope: expect.objectContaining({
-              included_section_keys: ['care_plan_update'],
+    expect(createManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [
+          expect.objectContaining({
+            id: 'crpt_5bd5141b875ed51774f1dd2b7f8dabb2',
+            content: expect.objectContaining({
+              body: expect.stringContaining('服薬支援を追加'),
+              disclosure_scope: expect.objectContaining({
+                included_section_keys: ['care_plan_update'],
+              }),
             }),
           }),
-        }),
-      ],
-    });
+        ],
+        skipDuplicates: true,
+      }),
+    );
   });
 
   it('normalizes generated report draft content in single create fallback path', async () => {
@@ -211,6 +219,7 @@ describe('ConferenceSyncService', () => {
     expect(reportIds).toEqual(['report_1']);
     expect(createMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
+        id: 'crpt_7deb6ff5bbe2d6457acec050a74601fb',
         content: expect.objectContaining({
           conference_note_id: 'note_1',
           note_type: 'pre_discharge',
