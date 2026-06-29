@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260629-1422 JST
+
+- current task: prioritize Claude's prescription intake false-empty PATCH_REVIEW_REQUEST for `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx` and its new component test.
+- files inspected: agmsg inbox for `phos/codex`, `git status --short --untracked-files=all`, `docs/ui-ux-design-guidelines.md`, `package.json`, `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`, `src/app/(dashboard)/prescriptions/new/prescription-intake-form.test.tsx`, `src/components/ui/error-state.tsx`, and `src/test/dom-test-utils.ts`.
+- files changed: this Ralph state entry and `CODEX_GOAL_PROGRESS.md` only. Claude-owned prescription intake source/test files were reviewed but not edited, staged, or committed.
+- bugs found: no product blocker in Claude's patch. The patch correctly separates secondary lookup fetch failures from empty states for patient search, case lookup, and previous-prescription lookup, preserving retry affordances through `ErrorState`.
+- security risks found: reduced patient-safety review risk by confirming lookup failures are not presented as "no patient", "no case", or "no previous prescription" states. No auth, RLS, PHI projection, DB mutation, deploy, or permission surface was changed by Codex.
+- performance issues found: no new query shape or polling issue found in review. The patch only reads React Query error/refetch state from existing secondary queries.
+- validation commands: `pnpm exec vitest run 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx' 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.test.tsx'`; `pnpm exec prettier --check 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx' 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.test.tsx'`; `git diff --check -- 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx'`; untracked-test `git diff --no-index --check`.
+- validation results: focused Vitest passed `1` file / `4` tests, scoped ESLint passed, scoped Prettier check passed, and both diff-checks passed. Focused Vitest still emitted React act warnings from async draft hydration; the patient-search retry test clicks `再読み込み` but does not assert the `patients-search` refetch spy. Both were sent to Claude as non-blocking test-hygiene notes.
+- remaining work: await any Claude follow-up or commit notice for this FE slice. Codex should continue prioritizing agmsg interrupts before returning to backend code-first medication identity work.
+- next action: drain agmsg, then resume the highest-value backend/API drug-code identity slice if no Claude request is pending.
+
 ### 20260629-1326 JST
 
 - current task: support Claude requests first, then harden admin inventory forecast medication identity so post-prescription forecasting is driven by DrugMaster/code identity instead of display names.

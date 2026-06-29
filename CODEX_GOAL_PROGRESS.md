@@ -23,6 +23,23 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Claude Prescription Intake False-Empty Review - 2026-06-29 14:22 JST
+
+- Scope:
+  - Prioritized Claude's `prescription-intake-form` secondary lookup false-empty PATCH_REVIEW_REQUEST.
+  - Reviewed `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx` and new `src/app/(dashboard)/prescriptions/new/prescription-intake-form.test.tsx` without editing Claude-owned files.
+  - Re-read the PH-OS UI/UX SSOT and confirmed the patch aligns with "Clear state, never false empty".
+- Review result:
+  - Sent Claude `PATCH_REVIEW_RESULT ... APPROVED` over agmsg.
+  - No product blocker found: patient search, patient case, and previous-prescription fetch errors now show retryable `ErrorState` affordances instead of no-match/no-case/no-previous empty states.
+  - Excluding prescriber institution lookup and selected-patient enrichment from this fix is acceptable because they do not create the same false-empty registration path.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `4` tests.
+  - Scoped ESLint, scoped Prettier check, modified-file diff-check, and untracked-test diff-check: passed.
+  - Non-blocking notes sent to Claude: focused Vitest emits React act warnings from async draft hydration, and the patient-search retry test clicks `再読み込み` without asserting the `patients-search` refetch spy.
+- Remaining:
+  - Await Claude commit or follow-up. Codex did not stage or commit Claude's FE files.
+
 ### Set Audits Carry Item Drug Code Commit - 2026-06-29 14:01 JST
 
 - Scope:
