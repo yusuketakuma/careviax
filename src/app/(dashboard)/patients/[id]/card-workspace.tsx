@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loading } from '@/components/ui/loading';
@@ -3827,6 +3828,7 @@ export function CardWorkspace({
     data: patient,
     isLoading,
     error,
+    refetch: refetchPatient,
   } = useQuery<PatientOverview>({
     queryKey: ['patient-overview', patientId, orgId],
     queryFn: async () => {
@@ -4188,8 +4190,18 @@ export function CardWorkspace({
   });
 
   if (!orgId || isLoading) return <Loading />;
-  if (error || !patient) {
-    return (
+  if (!patient) {
+    // 取得失敗(error)を「患者が見つかりません」(=不在)に潰さない。
+    // error 時は再試行導線付き ErrorState、患者データが無く error も無い場合のみ not-found。
+    return error ? (
+      <ErrorState
+        variant="server"
+        title="患者情報を表示できません"
+        description="患者情報の取得に失敗しました。再試行してください。"
+        detail={error instanceof Error ? error.message : undefined}
+        action={{ label: '再試行', onClick: () => void refetchPatient() }}
+      />
+    ) : (
       <EmptyState
         icon={FileQuestion}
         title="患者が見つかりません"
@@ -4197,6 +4209,8 @@ export function CardWorkspace({
       />
     );
   }
+  // patient が存在する場合は、背景 refetch が失敗(error)していてもワークスペースを維持して表示する
+  // (react-query v5 は cached/initialData がある状態で error をセットしても data を保持する)。
 
   const workspace = patient.workspace;
   const rxNumber = workspace?.current_intake
@@ -4492,7 +4506,7 @@ export function CardWorkspace({
               <p
                 role="status"
                 data-testid="patient-header-summary-error"
-                className="flex items-center gap-1 px-1 text-[11px] font-medium text-tag-hazard"
+                className="flex items-center gap-1 px-1 text-xs font-medium text-tag-hazard"
               >
                 <TriangleAlert aria-hidden className="size-3.5" />
                 担当者・処方／訪問サマリーを取得できませんでした（最新の担当情報が表示されていない可能性があります）。

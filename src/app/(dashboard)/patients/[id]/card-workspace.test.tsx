@@ -294,6 +294,8 @@ function mockPatientQuery(
   > = {},
   options: {
     patientOverrides?: Partial<PatientOverview>;
+    patientOverviewError?: Error;
+    patientOverviewMissing?: boolean;
     partnerships?: {
       data: Array<{
         id: string;
@@ -707,6 +709,15 @@ function mockPatientQuery(
       };
     }
 
+    if (queryKey[0] === 'patient-overview') {
+      return {
+        data: options.patientOverviewMissing ? undefined : patientData,
+        isLoading: false,
+        error: options.patientOverviewError ?? null,
+        refetch: vi.fn(),
+      };
+    }
+
     return {
       data: patientData,
       isLoading: false,
@@ -727,6 +738,52 @@ function mockPatientQuery(
 }
 
 describe('CardWorkspace', () => {
+  it('shows a retryable error state instead of a not-found when the patient overview fetch fails', () => {
+    mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        patientOverviewMissing: true,
+        patientOverviewError: new Error('患者情報の取得に失敗しました'),
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    // 取得失敗を「患者が見つかりません」(=不在)に潰さず、再試行導線付きの ErrorState を出す。
+    expect(screen.getByText('患者情報を表示できません')).toBeTruthy();
+    expect(screen.queryByText('患者が見つかりません')).toBeNull();
+    expect(screen.getByRole('button', { name: '再試行' })).toBeTruthy();
+  });
+
+  it('shows a not-found state only when the patient overview resolves with no data and no error', () => {
+    mockPatientQuery(buildWorkspace(), null, {}, { patientOverviewMissing: true });
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    expect(screen.getByText('患者が見つかりません')).toBeTruthy();
+    expect(screen.queryByText('患者情報を表示できません')).toBeNull();
+  });
+
+  it('keeps the workspace visible when a background refetch fails but patient data is cached', () => {
+    mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        patientOverviewError: new Error('refetch failed'),
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    // patient データがある限り、背景 refetch 失敗でもワークスペースを全置換しない。
+    expect(screen.queryByText('患者情報を表示できません')).toBeNull();
+    expect(screen.queryByText('患者が見つかりません')).toBeNull();
+    expect(screen.getByRole('heading', { name: '処方カード作業台', level: 1 })).toBeTruthy();
+  });
+
   it('renders the 06_card single-scroll workspace: header, safety board, prescription, activities, rail', () => {
     mockPatientQuery(buildWorkspace(), {
       generated_at: '2026-06-16T00:00:00.000Z',
