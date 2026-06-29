@@ -1964,7 +1964,10 @@ describe('/api/visit-records POST', () => {
     expect(response.status).toBe(201);
     expect(medicationIssueFindFirstMock).toHaveBeenCalledWith({
       where: expect.objectContaining({
-        title: 'アムロジピン錠5mg（2149001） の残薬調整',
+        OR: expect.arrayContaining([
+          { title: 'アムロジピン錠5mg（2149001） の残薬調整' },
+          { title: { contains: '（2149001） の残薬調整' } },
+        ]),
       }),
       select: { id: true },
     });
@@ -2026,6 +2029,122 @@ describe('/api/visit-records POST', () => {
                 drug_identity_key: 'code:8114001',
               }),
             ],
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('reuses residual reduction issues by drug_code when the medication name changes', async () => {
+    medicationIssueFindFirstMock.mockResolvedValueOnce({ id: 'issue_existing_by_code' });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          soap_subjective: '服薬状況問題なし',
+          structured_soap: completedVisitStructuredSoap,
+          residual_medications: [
+            {
+              drug_name: 'アムロジピンOD錠5mg',
+              drug_code: '2149001',
+              remaining_quantity: 30,
+              prescribed_daily_dose: 2,
+              is_prohibited_reduction: false,
+            },
+          ],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(medicationIssueFindFirstMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        OR: expect.arrayContaining([
+          { title: 'アムロジピンOD錠5mg（2149001） の残薬調整' },
+          { title: { contains: '（2149001） の残薬調整' } },
+        ]),
+      }),
+      select: { id: true },
+    });
+    expect(medicationIssueCreateMock).not.toHaveBeenCalled();
+    expect(tracingReportCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        patient_id: 'patient_1',
+        issue_id: 'issue_existing_by_code',
+        status: 'draft',
+      }),
+      select: { id: true },
+    });
+    expect(taskUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          task_type: 'tracing_report_followup',
+          dedupe_key: 'tracing-report-followup:record_1:code:2149001',
+          metadata: expect.objectContaining({
+            drug_name: 'アムロジピンOD錠5mg',
+            drug_code: '2149001',
+            drug_identity_key: 'code:2149001',
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('keeps residual reduction issue lookup exact-title only for uncoded medications', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          soap_subjective: '服薬状況問題なし',
+          structured_soap: completedVisitStructuredSoap,
+          residual_medications: [
+            {
+              drug_name: '名称未確定薬',
+              remaining_quantity: 30,
+              prescribed_daily_dose: 2,
+              is_prohibited_reduction: false,
+            },
+          ],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(medicationIssueFindFirstMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        title: '名称未確定薬 の残薬調整',
+      }),
+      select: { id: true },
+    });
+    expect(medicationIssueFindFirstMock.mock.calls[0]?.[0].where).not.toHaveProperty('OR');
+    expect(medicationIssueCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        title: '名称未確定薬 の残薬調整',
+      }),
+      select: { id: true },
+    });
+    expect(taskUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          task_type: 'tracing_report_followup',
+          dedupe_key: 'tracing-report-followup:record_1:name:名称未確定薬',
+          metadata: expect.objectContaining({
+            drug_name: '名称未確定薬',
+            drug_code: null,
+            drug_identity_key: 'name:名称未確定薬',
           }),
         }),
       }),

@@ -10581,3 +10581,16 @@ Backup directory:
 - validation results: Prettier passed. Focused service tests passed `1` file / `34` tests. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and `git diff --check` passed. Medical safety review reported no blockers.
 - remaining work: commit this validated slice, send agmsg FYI, confirm clean status, then resume the next backend drug-code cleanup.
 - next action: stage only the four owned paths, commit, notify Claude via agmsg, and re-check clean tree.
+
+### 20260629-1939 JST
+
+- current task: continue backend drug-code cleanup by aligning residual reduction MedicationIssue reuse with existing code-based task dedupe.
+- files inspected: agmsg inbox/send for `phos/codex`, `git status --short --untracked-files=all`, latest route-engine context sent to Claude, Next.js route handler docs, `docs/drug-code-master-architecture.md`, `src/app/api/visit-records/route.ts`, `src/app/api/visit-records/route.test.ts`, `prisma/schema/medication.prisma`, this Ralph state file, and `CODEX_GOAL_PROGRESS.md`.
+- files changed: `src/app/api/visit-records/route.ts`, `src/app/api/visit-records/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this file.
+- bugs found: residual reduction operational tasks already deduped by `code:<drug_code>`, but the underlying `MedicationIssue` lookup used exact title. Same-code medicines whose display names drifted could create duplicate open residual-adjustment issues for the same patient/case.
+- security risks found: no auth/RLS/PHI boundary changed. The widened lookup is still scoped by org, patient, case, and open/in-progress status; no logging/export path changed.
+- performance issues found: no new query. The existing `findFirst` predicate now uses a small title OR only for coded candidates; uncoded candidates keep exact-title lookup.
+- validation commands: `pnpm exec prettier --write src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts`; `pnpm exec vitest run src/app/api/visit-records/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; owned-path `pnpm exec prettier --check .codex/ralph-state.md CODEX_GOAL_PROGRESS.md src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts`; owned-path `git diff --check -- .codex/ralph-state.md CODEX_GOAL_PROGRESS.md src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts`; subagent review by `medical_safety_reviewer`.
+- validation results: Prettier passed. Focused visit-records route tests passed `1` file / `70` tests. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, owned-path Prettier check, and owned-path diff-check passed. Final full `pnpm format:check` was blocked by concurrent FE WIP in `src/app/(dashboard)/schedules/route-compare/route-compare-content.tsx`, which was not staged for this backend commit. Medical safety review reported no blockers; a no-code exact-title negative regression was added after the review.
+- remaining work: commit this validated slice, send agmsg FYI, confirm clean status, then continue next backend drug-code cleanup.
+- next action: stage only the four owned paths, commit, notify Claude via agmsg, and re-check clean tree.

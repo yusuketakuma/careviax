@@ -19081,3 +19081,27 @@ Next loop:
   - `pnpm format:check && git diff --check`: passed.
 - Remaining:
   - Commit this validated slice and resume the next backend drug-code cleanup from a clean tree.
+
+### Residual Reduction Issue Code-Aware Dedupe Slice — 2026-06-29 19:39 JST
+
+- Scope:
+  - Updated visit-record residual reduction follow-up creation so open MedicationIssue lookup can reuse existing residual-adjustment issues by normalized `drug_code` when the display drug name changes.
+  - Kept uncoded residual medicines on exact-title matching only.
+- Fixed:
+  - Same-code residual reduction candidates with name drift, such as `アムロジピン錠5mg` vs `アムロジピンOD錠5mg`, no longer create duplicate residual-adjustment MedicationIssue rows for the same patient/case.
+  - Existing code-based operational task dedupe (`code:<drug_code>`) now matches the MedicationIssue reuse behavior.
+  - Name-only fallback remains bounded to exact title so uncoded medicines are not merged by loose text matching.
+- Review:
+  - `medical_safety_reviewer` found no blockers and confirmed the widened lookup remains constrained by org, patient, case, and open/in-progress status.
+  - Added an extra no-code negative regression after review to address the residual low coverage risk.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts`: passed.
+  - `pnpm exec vitest run src/app/api/visit-records/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `70` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - Owned-path `pnpm exec prettier --check .codex/ralph-state.md CODEX_GOAL_PROGRESS.md src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts`: passed.
+  - Owned-path `git diff --check -- .codex/ralph-state.md CODEX_GOAL_PROGRESS.md src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts`: passed.
+  - Final full `pnpm format:check` was blocked by concurrent FE WIP in `src/app/(dashboard)/schedules/route-compare/route-compare-content.tsx`; that file was not staged for this backend slice.
+- Remaining:
+  - Commit this validated slice and continue backend drug-code cleanup from a clean tree.

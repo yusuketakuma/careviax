@@ -375,6 +375,18 @@ function residualReductionIdentityKey(
   return drugCode ? `code:${drugCode}` : `name:${candidate.drug_name.trim()}`;
 }
 
+function residualReductionIssueTitleWhere(
+  candidate: Pick<ResidualReductionCandidate, 'drug_name' | 'drug_code'>,
+): Prisma.MedicationIssueWhereInput {
+  const exactTitle = `${residualReductionDrugLabel(candidate)} の残薬調整`;
+  const drugCode = normalizeDrugIdentityCode(candidate.drug_code);
+  if (!drugCode) return { title: exactTitle };
+
+  return {
+    OR: [{ title: exactTitle }, { title: { contains: `（${drugCode}） の残薬調整` } }],
+  };
+}
+
 function collectResidualReductionCandidates(
   residualMedications: CreateVisitRecordInput['residual_medications'],
 ): ResidualReductionCandidate[] {
@@ -1326,7 +1338,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
             org_id: ctx.orgId,
             patient_id: careCase.patient_id,
             case_id: schedule.case_id,
-            title: `${drugLabel} の残薬調整`,
+            ...residualReductionIssueTitleWhere(candidate),
             status: {
               in: ['open', 'in_progress'],
             },
