@@ -214,6 +214,57 @@ describe('/api/patients/board', () => {
     expect(json.data.truncated).toBe(false);
   });
 
+  it('UTC runtime の日本早朝でも日本業務日の予定を本日訪問として集計する', async () => {
+    const previousTz = process.env.TZ;
+    process.env.TZ = 'UTC';
+    try {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-06-11T15:30:00.000Z'));
+      const patient = buildPatientRow(new Date('2026-06-12T00:00:00.000Z'));
+      (
+        patient.cases[0]!.visit_schedules[0]! as { time_window_start: Date | null }
+      ).time_window_start = new Date(Date.UTC(1970, 0, 1, 9, 0));
+      patientFindManyMock.mockResolvedValue([
+        patient,
+        {
+          ...buildPatientRow(new Date('2026-06-13T00:00:00.000Z')),
+          id: 'patient_future',
+          name: '未来 太郎',
+        },
+      ]);
+      patientCountMock.mockResolvedValue(2);
+
+      const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+
+      expect(response.status).toBe(200);
+      const select = patientFindManyMock.mock.calls[0][0].select;
+      const scheduleWhere = select.cases.select.visit_schedules.where;
+      expect(scheduleWhere.scheduled_date.gte.toISOString()).toBe('2026-06-12T00:00:00.000Z');
+      const json = await response.json();
+      expect(json.data.chip_counts.visit_today).toBe(1);
+      expect(json.data.today_visit_count).toBe(1);
+      expect(json.data.cards[0]).toMatchObject({
+        attention: 'visit_today',
+        next_visit_date: '2026-06-12',
+        next_visit_time: '09:00',
+      });
+      expect(json.data.cards[1]).toMatchObject({
+        patient_id: 'patient_future',
+        attention: 'steady',
+        next_visit_date: '2026-06-13',
+        operation_summary: ['連絡先あり', '駐車場なし', '要介護 3'],
+      });
+      expect(json.data.cards[1].operation_summary).not.toContain('準備未完');
+      expect(json.data.cards[1].operation_summary).not.toContain('訪問準備済');
+    } finally {
+      if (previousTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = previousTz;
+      }
+    }
+  });
+
   it('flags truncated when more patients exist than the name-ordered fetch returns', async () => {
     vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
     patientFindManyMock.mockResolvedValue([buildPatientRow(new Date('2026-06-12T00:00:00.000Z'))]);

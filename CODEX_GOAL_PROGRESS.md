@@ -23,6 +23,40 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Patient Board Japan Business-Day Today - 2026-06-30 05:00 JST
+
+- Scope:
+  - Continued Japan-only timezone hardening on `GET /api/patients/board`.
+  - Changed only omitted "today" derivation for the patient board query and card classification; explicit date parameters do not exist on this route.
+  - Preserved codex2's concurrent MCS mutation response hardening WIP and did not touch its owned MCS paths.
+  - No schema migration, live DB mutation, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Patient board now derives `todayKey` from `japanDateKey(now)` instead of runtime/server-local `localDateKey(now)`.
+  - `visit_schedules.scheduled_date >= today` still uses `utcDateFromLocalKey(todayKey)` so Prisma `@db.Date` comparisons remain UTC midnight sentinels.
+  - `visit_today` card/chip/today-count classification now uses the same Japan business-day key.
+  - `test:schedule-time:tz` now includes `src/app/api/patients/board/route.test.ts`.
+- Safety:
+  - Reduces wrong-day patient-board exposure where Japan early-morning visits could be missed or previous-day visits could remain visible under UTC/negative-offset runtimes.
+  - Preserves no-store response handling, patient/contact/address response minimization, patient href encoding, and `formatUtcDateKey` display for stored `@db.Date` values.
+- Validation:
+  - `TZ=UTC pnpm exec vitest run src/app/api/patients/board/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `15` tests.
+  - Same focused command under `TZ=Asia/Tokyo`: passed, `1` file / `15` tests.
+  - Same focused command under `TZ=America/Los_Angeles`: passed, `1` file / `15` tests.
+  - `pnpm exec vitest run src/app/api/patients/board/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `15` tests.
+  - Scoped ESLint on `src/app/api/patients/board/route.ts` and `.test.ts`: passed.
+  - Scoped `git diff --check` on package plus patients-board files: passed.
+  - Scoped Prettier check on package plus patients-board files: passed.
+  - `pnpm date-slices:check`: passed.
+  - `TZ=UTC pnpm test:schedule-time:tz`: passed, `30` files / `458` tests.
+  - `TZ=Asia/Tokyo pnpm test:schedule-time:tz`: passed, `30` files / `458` tests.
+  - `TZ=America/Los_Angeles pnpm test:schedule-time:tz`: passed, `30` files / `458` tests.
+  - `pnpm format:check`: peer-WIP blocked by codex2-owned `src/app/api/patients/[id]/mcs-sync/route.ts` formatting while the MCS slice is in progress.
+- Review:
+  - `medical_safety_reviewer` found no route-safety blocker and confirmed the fix direction, then requested a UTC/LA runtime regression.
+  - `test_architect` recommended asserting both the Japan-business-day visit and a future visit in the same UTC-runtime test; the test now checks `scheduled_date.gte === 2026-06-12T00:00:00.000Z`, `visit_today === 1`, `today_visit_count === 1`, and the future card remains `steady`.
+- Remaining:
+  - Run full repo gates after codex2's MCS WIP clears or classify them if still peer-blocked, then commit only patients-board/package/ledger files and send FYI.
+
 ### Partner Visit Record POST No-Store - 2026-06-30 04:53 JST
 
 - Scope:
@@ -48,7 +82,7 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation, typecheck, scoped lint/prettier checks, and review of no-store/error semantics.
   - codex ACKed the lock, preserved the partner-visit-records files while committing `5b6a7994`, and was sent the same `PATCH_REVIEW_REQUEST`.
 - Remaining:
-  - Stage only explicit codex2-owned files plus ledgers and commit while preserving codex's patients-board WIP.
+  - Committed by codex2 as `0353f010 No-store partner visit record saves`; no remaining work for this slice.
 
 ### Pharmacist / Pharmacy-Site Japan Business-Day Windows - 2026-06-30 04:48 JST
 

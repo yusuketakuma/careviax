@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0500 JST
+
+- current task: make `GET /api/patients/board` use Japan business dates for omitted "today" semantics while preserving UTC midnight sentinels for `@db.Date` patient visit schedules.
+- files inspected: agmsg inbox/send for `phos/codex2`, `git status --short --untracked-files=all`, `git log --oneline -6`, `package.json`, `.github/workflows/ci.yml`, `src/lib/utils/date-boundary.ts`, `src/lib/date-key.ts`, `src/app/api/patients/board/route.ts`, `src/app/api/patients/board/route.test.ts`, and read-only findings from medical safety and test-architect subagents.
+- files changed: `src/app/api/patients/board/route.ts`, `src/app/api/patients/board/route.test.ts`, `package.json`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved codex2-owned MCS WIP under `src/app/api/patients/[id]/mcs*`.
+- bugs found: patient board "today" semantics used runtime-local `localDateKey(now)` both for the `visit_schedules.scheduled_date >= today` query lower bound and for `visit_today` card/chip classification. Under UTC or negative-offset runtimes during Japan early morning, the board could query from the previous `@db.Date` sentinel and fail to classify the Japan-business-day visit as today.
+- security risks found: reduced PHI-bearing patient-board misrouting risk by aligning the omitted "today" board, `visit_today` chip, and today visit counts to Japan civil days. Auth/RLS, no-store responses, response minimization, patient href encoding, contact/address omission, and UTC midnight `@db.Date` display via `formatUtcDateKey` were preserved. No schema migration, live DB mutation, external send, push, deploy, or secret handling changed.
+- performance issues found: no DB query shape, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The schedule-time TZ gate now includes one additional focused route test file.
+- validation commands: `TZ=UTC pnpm exec vitest run src/app/api/patients/board/route.test.ts --reporter=dot --testTimeout=30000`; same focused command under `TZ=Asia/Tokyo` and `TZ=America/Los_Angeles`; `pnpm exec vitest run src/app/api/patients/board/route.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint on the route/test files; scoped `git diff --check`; scoped Prettier check on package plus route/test files; `pnpm date-slices:check`; `TZ=UTC pnpm test:schedule-time:tz`; `TZ=Asia/Tokyo pnpm test:schedule-time:tz`; `TZ=America/Los_Angeles pnpm test:schedule-time:tz`; attempted `pnpm format:check`.
+- validation results: focused patients-board Vitest passed `1` file / `15` tests under `TZ=UTC`, `TZ=Asia/Tokyo`, and `TZ=America/Los_Angeles`, plus the default environment. Scoped ESLint, scoped `git diff --check`, scoped Prettier check, and `pnpm date-slices:check` passed. `pnpm test:schedule-time:tz` passed `30` files / `458` tests under all three timezones; stderr was limited to existing expected sanitized 500 route tests. `pnpm format:check` was blocked by codex2-owned in-progress `src/app/api/patients/[id]/mcs-sync/route.ts` formatting, so it is classified as peer-WIP blocked for this slice until that work lands.
+- remaining work: run full repo gates after the MCS WIP clears or classify them if still peer-blocked, then stage only explicit patients-board/package/ledger files, commit, and send agmsg FYI.
+- next action: monitor agmsg for MCS review requests, preserve MCS paths, and finalize the patients-board slice when full gates are safe.
+
 ### 20260630-0453 JST
 
 - current task: add sensitive no-store response headers to `POST /api/partner-visit-records` so interprofessional partner visit record draft save responses are not cacheable.
@@ -30,8 +43,8 @@ Backup directory:
 - performance issues found: no DB query, external request, dependency, retry loop, synchronous blocking, or unbounded work was added. The patch only sets fixed response headers on an existing route boundary.
 - validation commands: `pnpm exec prettier --write src/app/api/partner-visit-records/route.ts src/app/api/partner-visit-records/route.test.ts`; `pnpm exec vitest run src/app/api/partner-visit-records/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint --max-warnings=0 src/app/api/partner-visit-records/route.ts src/app/api/partner-visit-records/route.test.ts`; `git diff --check -- src/app/api/partner-visit-records/route.ts src/app/api/partner-visit-records/route.test.ts`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
 - validation results: Prettier passed. Focused partner-visit-records route Vitest passed `1` file / `13` tests. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. Ledger-inclusive Prettier and diff checks passed. Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation, typecheck, scoped lint/prettier checks, and review of no-store/error semantics. codex ACKed the lock, preserved the partner-visit-records files while committing `5b6a7994`, and was sent the same `PATCH_REVIEW_REQUEST`.
-- remaining work: stage only explicit codex2-owned files and commit this slice while preserving codex's patients-board/package WIP.
-- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+- remaining work: committed by codex2 as `0353f010 No-store partner visit record saves`; no remaining work for this slice.
+- next action: preserve the committed partner-visit-records files while continuing non-overlapping patients-board work and MCS review interrupts.
 
 ### 20260630-0448 JST
 

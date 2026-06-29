@@ -6,7 +6,7 @@ import { parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
-import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import { getProcessStepKeyForStatus } from '@/lib/prescription/cycle-workspace';
 import { careLevelLabels } from '@/lib/patient/home-visit-intake';
@@ -289,7 +289,7 @@ function isVisitPreparationDisplayReady(schedule: NextVisitSchedule): boolean {
 
 /** 1 患者 → 患者カード(状態語彙・危険タグ・工程・自然文)導出。 */
 function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCard {
-  const todayKey = localDateKey(now);
+  const todayKey = japanDateKey(now);
 
   const careCase = selectPrimaryCareTeamCase(patient.cases);
   const cycle = careCase?.medication_cycles[0] ?? null;
@@ -508,8 +508,8 @@ const authenticatedGET = withAuthContext(
     const foundationIssue = parsed.data.foundation_issue;
 
     const now = new Date();
-    const todayKey = localDateKey(now);
-    // scheduled_date(@db.Date)は UTC 深夜で保存されるため、ローカル日付キーの
+    const todayKey = japanDateKey(now);
+    // scheduled_date(@db.Date)は UTC 深夜で保存されるため、日本業務日キーの
     // UTC 深夜 Date で比較する(ローカル深夜 setHours(0,0,0,0) では JST で 1 日ずれる)
     const today = utcDateFromLocalKey(todayKey);
 
