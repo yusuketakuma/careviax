@@ -25,10 +25,32 @@ const shareCaseStatusSchema = z.enum([
   'ended',
   'declined',
 ]);
+const shareCaseStatuses = shareCaseStatusSchema.options;
 const viewContextSchema = z
   .enum(['pharmacy_cooperation_workflow', 'patient_share_cases_api'])
   .default('patient_share_cases_api');
 const dateOnlySchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）');
+
+type ShareCaseStatus = (typeof shareCaseStatuses)[number];
+type ShareCaseStatusCounts = Record<ShareCaseStatus, number>;
+
+function createEmptyShareCaseStatusCounts(): ShareCaseStatusCounts {
+  return Object.fromEntries(
+    shareCaseStatuses.map((status) => [status, 0]),
+  ) as ShareCaseStatusCounts;
+}
+
+function buildShareCaseStatusCounts(
+  rows: Array<{ status: string; _count: { _all: number } }>,
+): ShareCaseStatusCounts {
+  const counts = createEmptyShareCaseStatusCounts();
+  for (const row of rows) {
+    if (shareCaseStatuses.includes(row.status as ShareCaseStatus)) {
+      counts[row.status as ShareCaseStatus] = row._count._all;
+    }
+  }
+  return counts;
+}
 
 const createPatientShareCaseSchema = z
   .object({
@@ -221,14 +243,22 @@ export const GET = withAuthContext(
       );
     }
 
-    const rows = await withOrgContext(ctx.orgId, async (tx) => {
+    const shareCaseWhere = {
+      org_id: ctx.orgId,
+      ...(status ? { status: status.data } : {}),
+      ...(partnershipId ? { partnership_id: partnershipId } : {}),
+      ...(basePatientId ? { base_patient_id: basePatientId } : {}),
+    };
+    const shouldExposeExactCounts =
+      viewContext.data === 'pharmacy_cooperation_workflow' &&
+      !cursor &&
+      !status &&
+      !partnershipId &&
+      !basePatientId;
+
+    const result = await withOrgContext(ctx.orgId, async (tx) => {
       const result = await tx.patientShareCase.findMany({
-        where: {
-          org_id: ctx.orgId,
-          ...(status ? { status: status.data } : {}),
-          ...(partnershipId ? { partnership_id: partnershipId } : {}),
-          ...(basePatientId ? { base_patient_id: basePatientId } : {}),
-        },
+        where: shareCaseWhere,
         take: limit + 1,
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
@@ -255,7 +285,22 @@ export const GET = withAuthContext(
         },
       });
 
-      const visibleRows = result.slice(0, limit);
+      const page = buildCursorPage(result, limit, (row) => row.id);
+      const visibleRows = page.data;
+      const countSummary = shouldExposeExactCounts
+        ? await Promise.all([
+            tx.patientShareCase.count({ where: shareCaseWhere }),
+            tx.patientShareCase.groupBy({
+              by: ['status'],
+              where: shareCaseWhere,
+              _count: { _all: true },
+            }),
+          ]).then(([totalCount, statusRows]) => ({
+            totalCount,
+            hiddenCount: Math.max(totalCount - visibleRows.length, 0),
+            statusCounts: buildShareCaseStatusCounts(statusRows),
+          }))
+        : null;
       await createAuditLogEntry(tx, ctx, {
         action: 'patient_share_cases_viewed',
         targetType: 'PatientShareCase',
@@ -266,6 +311,20 @@ export const GET = withAuthContext(
           viewer_role: ctx.role,
           viewed_count: visibleRows.length,
           share_case_count: visibleRows.length,
+          visible_share_case_count: visibleRows.length,
+          visible_base_patient_count: new Set(visibleRows.map((row) => row.base_patient_id)).size,
+          visible_base_site_count: new Set(visibleRows.map((row) => row.partnership.base_site_id))
+            .size,
+          visible_partner_pharmacy_count: new Set(
+            visibleRows.map((row) => row.partnership.partner_pharmacy.id),
+          ).size,
+          ...(countSummary
+            ? {
+                total_share_case_count: countSummary.totalCount,
+                hidden_share_case_count: countSummary.hiddenCount,
+                share_case_status_counts: countSummary.statusCounts,
+              }
+            : {}),
           base_patient_count: new Set(visibleRows.map((row) => row.base_patient_id)).size,
           base_site_count: new Set(visibleRows.map((row) => row.partnership.base_site_id)).size,
           partner_pharmacy_count: new Set(
@@ -280,15 +339,25 @@ export const GET = withAuthContext(
         },
       });
 
-      return result;
+      return { page, countSummary };
     });
 
-    const page = buildCursorPage(rows, limit, (row) => row.id);
+    const payload = {
+      ...result.page,
+      data: result.page.data.map(toSafePatientShareCase),
+    };
     return withSensitiveNoStore(
-      success({
-        ...page,
-        data: page.data.map(toSafePatientShareCase),
-      }),
+      success(
+        result.countSummary
+          ? {
+              ...payload,
+              total_count: result.countSummary.totalCount,
+              visible_count: result.page.data.length,
+              hidden_count: result.countSummary.hiddenCount,
+              status_counts: result.countSummary.statusCounts,
+            }
+          : payload,
+      ),
     );
   },
   {

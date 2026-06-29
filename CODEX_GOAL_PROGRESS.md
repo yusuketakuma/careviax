@@ -19485,3 +19485,33 @@ Next loop:
   - `pnpm format:check`: passed.
 - Remaining:
   - Commit only the print hub file plus ledgers and send agmsg FYI.
+
+### Patient Share-Case Count Contract Slice — 2026-06-30 02:03 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration scope on the pharmacy cooperation workflow.
+  - Fixed the dashboard contract where `/api/patient-share-cases?limit=8&view_context=pharmacy_cooperation_workflow` returned only a cursor page while the UI displayed the visible row count as if it were the total.
+- Fixed:
+  - The patient-share-case GET route now returns `total_count`, `visible_count`, `hidden_count`, and `status_counts` only for the initial workflow summary request with no cursor and no filters.
+  - Cursor pages, patient-specific filters, partnership filters, status filters, and default API context keep the old cursor response shape and do not run exact count queries.
+  - Audit logs keep `share_case_count` as the backward-compatible visible count and add `total_share_case_count`, `hidden_share_case_count`, and `share_case_status_counts` only in the exact workflow summary scope.
+  - The workflow UI now uses API total/hidden counts for the share-case summary and uses status buckets for active/inactive total display instead of visible rows only.
+- Safety:
+  - No raw `share_scope`, snapshots, decline reasons, partner patient IDs, names, addresses, or hidden row IDs are added to responses or audits.
+  - Exact count inference for `base_patient_id` filters and cursor pages is prevented by tests that assert count/groupBy are not called and count metadata is omitted.
+- Review:
+  - `code_mapper` mapped the API/UI impact radius and confirmed workflow is the GET consumer.
+  - `api_contract_reviewer` found cursor hidden-count semantics and audit naming issues; both were fixed.
+  - `privacy_compliance_reviewer` found exact-count inference risk on patient filters; fixed by limiting exact counts to the no-filter workflow initial page. Residual low minimization concern on `status_counts` is accepted because the UI uses it for active/inactive totals and it is not emitted for filtered/cursor pages.
+  - codex returned `PATCH_REVIEW_RESULT: APPROVED` after applying and validating the status-bucket fix-forward in the same owned paths.
+  - Claude ACKed review ownership but did not return a blocker before the commit window; codex2 notified Claude that any later blocker will be handled as fix-forward.
+- Validation:
+  - `pnpm exec vitest run src/app/api/patient-share-cases/route.test.ts 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `2` files / `53` tests.
+  - Scoped ESLint, Prettier check, and `git diff --check` on the four owned code/test files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the four owned code/test files plus ledgers.
+  - Note: unrelated `docs/ui-ux-design-guidelines.md` and `src/app/api/pharmacy-drug-stocks/usage-mismatch/*` were committed separately by codex as `b8a430e5`.

@@ -69,6 +69,44 @@ type PatientShareCaseRow = {
   } | null;
 };
 
+const patientShareCaseStatuses = [
+  'draft',
+  'consent_pending',
+  'partner_confirmation_pending',
+  'active',
+  'suspended',
+  'revoked',
+  'ended',
+  'declined',
+] as const;
+type PatientShareCaseStatus = (typeof patientShareCaseStatuses)[number];
+type PatientShareCaseStatusCounts = Record<PatientShareCaseStatus, number>;
+
+type PatientShareCasePage = CursorPaginatedPage<PatientShareCaseRow> & {
+  total_count: number;
+  visible_count: number;
+  hidden_count: number;
+  status_counts: PatientShareCaseStatusCounts;
+};
+
+function createEmptyPatientShareCaseStatusCounts(): PatientShareCaseStatusCounts {
+  return Object.fromEntries(
+    patientShareCaseStatuses.map((status) => [status, 0]),
+  ) as PatientShareCaseStatusCounts;
+}
+
+function buildVisiblePatientShareCaseStatusCounts(
+  rows: PatientShareCaseRow[],
+): PatientShareCaseStatusCounts {
+  const counts = createEmptyPatientShareCaseStatusCounts();
+  for (const row of rows) {
+    if (patientShareCaseStatuses.includes(row.status as PatientShareCaseStatus)) {
+      counts[row.status as PatientShareCaseStatus] += 1;
+    }
+  }
+  return counts;
+}
+
 type LinkAcceptForm = {
   partnerPatientId: string;
   name: string;
@@ -408,7 +446,90 @@ const reportDraftResultSchema = z.object({
   }),
 });
 
-const patientShareCasePageSchema = cursorPaginatedPageSchema(patientShareCaseRowSchema);
+const patientShareCaseStatusCountsSchema = z.object({
+  draft: z.number().int().nonnegative(),
+  consent_pending: z.number().int().nonnegative(),
+  partner_confirmation_pending: z.number().int().nonnegative(),
+  active: z.number().int().nonnegative(),
+  suspended: z.number().int().nonnegative(),
+  revoked: z.number().int().nonnegative(),
+  ended: z.number().int().nonnegative(),
+  declined: z.number().int().nonnegative(),
+});
+
+const patientShareCasePageSchema: z.ZodType<PatientShareCasePage> = z
+  .object({
+    data: z.array(patientShareCaseRowSchema),
+    hasMore: z.boolean(),
+    nextCursor: z.string().trim().min(1).optional(),
+    total_count: z.number().int().nonnegative().optional(),
+    visible_count: z.number().int().nonnegative().optional(),
+    hidden_count: z.number().int().nonnegative().optional(),
+    status_counts: patientShareCaseStatusCountsSchema.optional(),
+  })
+  .superRefine((value, ctx) => {
+    const visibleCount = value.visible_count ?? value.data.length;
+    const totalCount = value.total_count ?? visibleCount;
+    const hiddenCount = value.hidden_count ?? Math.max(totalCount - visibleCount, 0);
+    const statusCountTotal = value.status_counts
+      ? patientShareCaseStatuses.reduce((sum, status) => sum + value.status_counts![status], 0)
+      : null;
+
+    if (value.hasMore && !value.nextCursor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['nextCursor'],
+        message: 'nextCursor is required when hasMore is true',
+      });
+    }
+    if (visibleCount !== value.data.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['visible_count'],
+        message: 'visible_count must match the returned data length',
+      });
+    }
+    if (totalCount < visibleCount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['total_count'],
+        message: 'total_count must be greater than or equal to visible_count',
+      });
+    }
+    if (hiddenCount !== totalCount - visibleCount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['hidden_count'],
+        message: 'hidden_count must equal total_count minus visible_count',
+      });
+    }
+    if (hiddenCount > 0 && !value.status_counts) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['status_counts'],
+        message: 'status_counts is required when hidden rows exist',
+      });
+    }
+    if (statusCountTotal !== null && statusCountTotal !== totalCount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['status_counts'],
+        message: 'status_counts must sum to total_count',
+      });
+    }
+  })
+  .transform(
+    ({ data, hasMore, nextCursor, total_count, visible_count, hidden_count, status_counts }) => ({
+      data,
+      hasMore,
+      ...(nextCursor !== undefined ? { nextCursor } : {}),
+      total_count: total_count ?? visible_count ?? data.length,
+      visible_count: visible_count ?? data.length,
+      hidden_count:
+        hidden_count ?? Math.max((total_count ?? visible_count ?? data.length) - data.length, 0),
+      status_counts: status_counts ?? buildVisiblePatientShareCaseStatusCounts(data),
+    }),
+  );
 const pharmacyVisitRequestPageSchema = cursorPaginatedPageSchema(pharmacyVisitRequestRowSchema);
 const partnerVisitRecordPageSchema = cursorPaginatedPageSchema(partnerVisitRecordRowSchema);
 const correctionRequestPageSchema = patientShareCorrectionRequestPageSchema;
@@ -497,7 +618,7 @@ async function fetchShareCases(orgId: string) {
       headers: { 'x-org-id': orgId },
     },
   );
-  return readApiJson<CursorPaginatedPage<PatientShareCaseRow>>(response, {
+  return readApiJson<PatientShareCasePage>(response, {
     fallbackMessage: '患者共有ケースの取得に失敗しました',
     schema: patientShareCasePageSchema,
   });
@@ -1625,6 +1746,7 @@ function VisitRequestsTable({
 
 function VisitRequestCreatePanel({
   activeShareCases,
+  activeShareCaseTotalCount,
   selectedShareCaseId,
   setSelectedShareCaseId,
   form,
@@ -1633,6 +1755,7 @@ function VisitRequestCreatePanel({
   onCreate,
 }: {
   activeShareCases: PatientShareCaseRow[];
+  activeShareCaseTotalCount: number;
   selectedShareCaseId: string;
   setSelectedShareCaseId: (id: string) => void;
   form: VisitRequestForm;
@@ -1669,6 +1792,9 @@ function VisitRequestCreatePanel({
               </option>
             ))}
           </NativeSelect>
+          {activeShareCases.length === 0 && activeShareCaseTotalCount > 0 ? (
+            <TinyMeta>共有中の患者共有ケースは未表示です</TinyMeta>
+          ) : null}
         </label>
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           <label className="flex flex-col gap-1">
@@ -2316,6 +2442,7 @@ function CorrectionRequestsPanel({
 
 function MessageThreadsPanel({
   activeShareCases,
+  activeShareCaseTotalCount,
   visitRequests,
   selectedShareCaseId,
   setSelectedShareCaseId,
@@ -2332,6 +2459,7 @@ function MessageThreadsPanel({
   onCreate,
 }: {
   activeShareCases: PatientShareCaseRow[];
+  activeShareCaseTotalCount: number;
   visitRequests: PharmacyVisitRequestRow[];
   selectedShareCaseId: string;
   setSelectedShareCaseId: Dispatch<SetStateAction<string>>;
@@ -2354,8 +2482,11 @@ function MessageThreadsPanel({
     activeShareCases.some((shareCase) => shareCase.id === selectedShareCaseId) &&
     form.body.trim().length > 0;
 
-  if (activeShareCases.length === 0) {
+  if (activeShareCaseTotalCount === 0) {
     return <EmptyState title="共有中の患者共有ケースがありません" />;
+  }
+  if (activeShareCases.length === 0) {
+    return <EmptyState title="共有中の患者共有ケースは未表示です" />;
   }
 
   return (
@@ -2517,6 +2648,17 @@ export function PharmacyCooperationWorkflowContent() {
   });
 
   const shareCases = shareCasesQuery.data?.data ?? [];
+  const shareCaseTotalCount = shareCasesQuery.data?.total_count ?? shareCases.length;
+  const shareCaseVisibleCount = shareCasesQuery.data?.visible_count ?? shareCases.length;
+  const shareCaseHiddenCount = shareCasesQuery.data?.hidden_count ?? 0;
+  const shareCaseStatusCounts =
+    shareCasesQuery.data?.status_counts ?? buildVisiblePatientShareCaseStatusCounts(shareCases);
+  const activeShareCaseTotalCount = shareCaseStatusCounts.active;
+  const inactiveShareCaseTotalCount = Math.max(shareCaseTotalCount - activeShareCaseTotalCount, 0);
+  const shareCaseCountLabel =
+    shareCaseHiddenCount > 0
+      ? `共有ケース ${shareCaseTotalCount} 件 / 表示 ${shareCaseVisibleCount} 件 / 他 ${shareCaseHiddenCount} 件`
+      : `共有ケース ${shareCaseTotalCount} 件`;
   const visitRequests = visitRequestsQuery.data?.data ?? [];
   const partnerVisitRecords = partnerVisitRecordsQuery.data?.data ?? [];
   const activeShareCases = shareCases.filter((shareCase) => shareCase.status === 'active');
@@ -3118,7 +3260,6 @@ export function PharmacyCooperationWorkflowContent() {
   const messageThreads = messageThreadsQuery.data?.data ?? [];
   const submittedRecords = partnerVisitRecords.filter((record) => record.status === 'submitted');
   const requestedVisits = visitRequests.filter((request) => request.status === 'requested');
-  const inactiveShareCases = shareCases.filter((shareCase) => shareCase.status !== 'active');
 
   return (
     <div
@@ -3131,9 +3272,9 @@ export function PharmacyCooperationWorkflowContent() {
             有効化待ち共有
           </p>
           <p className="mt-1 text-2xl leading-8 font-bold tabular-nums sm:text-[26px] sm:leading-9">
-            {inactiveShareCases.length}
+            {inactiveShareCaseTotalCount}
           </p>
-          <TinyMeta>共有ケース {shareCases.length} 件</TinyMeta>
+          <TinyMeta>{shareCaseCountLabel}</TinyMeta>
         </div>
         <div className="flex min-h-[96px] flex-col justify-center rounded-lg border border-border/70 bg-card p-3 sm:p-4">
           <p className="text-xs leading-tight font-semibold text-foreground sm:text-sm">
@@ -3285,6 +3426,7 @@ export function PharmacyCooperationWorkflowContent() {
       >
         <VisitRequestCreatePanel
           activeShareCases={activeShareCases}
+          activeShareCaseTotalCount={activeShareCaseTotalCount}
           selectedShareCaseId={effectiveVisitRequestShareCaseId}
           setSelectedShareCaseId={setSelectedVisitRequestShareCaseId}
           form={visitRequestForm}
@@ -3323,6 +3465,7 @@ export function PharmacyCooperationWorkflowContent() {
       >
         <MessageThreadsPanel
           activeShareCases={activeShareCases}
+          activeShareCaseTotalCount={activeShareCaseTotalCount}
           visitRequests={visitRequests}
           selectedShareCaseId={effectiveMessageShareCaseId}
           setSelectedShareCaseId={setSelectedMessageShareCaseId}

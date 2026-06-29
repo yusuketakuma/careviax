@@ -8,6 +8,8 @@ const {
   careCaseFindFirstMock,
   managementPlanFindFirstMock,
   patientShareCaseFindManyMock,
+  patientShareCaseCountMock,
+  patientShareCaseGroupByMock,
   patientShareCaseCreateMock,
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
@@ -17,6 +19,8 @@ const {
   careCaseFindFirstMock: vi.fn(),
   managementPlanFindFirstMock: vi.fn(),
   patientShareCaseFindManyMock: vi.fn(),
+  patientShareCaseCountMock: vi.fn(),
+  patientShareCaseGroupByMock: vi.fn(),
   patientShareCaseCreateMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
 }));
@@ -180,6 +184,10 @@ describe('/api/patient-share-cases', () => {
         },
       },
     ]);
+    patientShareCaseCountMock.mockResolvedValue(1);
+    patientShareCaseGroupByMock.mockResolvedValue([
+      { status: 'consent_pending', _count: { _all: 1 } },
+    ]);
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -197,6 +205,8 @@ describe('/api/patient-share-cases', () => {
         },
         patientShareCase: {
           findMany: patientShareCaseFindManyMock,
+          count: patientShareCaseCountMock,
+          groupBy: patientShareCaseGroupByMock,
           create: patientShareCaseCreateMock,
         },
       }),
@@ -212,6 +222,9 @@ describe('/api/patient-share-cases', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(patientShareCaseCountMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1' },
+    });
     expect(patientShareCaseFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         include: expect.objectContaining({
@@ -237,7 +250,19 @@ describe('/api/patient-share-cases', () => {
         }),
       }),
     );
-    const bodyText = JSON.stringify(await response.json());
+    const body = await response.json();
+    expect(body).toEqual(
+      expect.objectContaining({
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        status_counts: expect.objectContaining({
+          consent_pending: 1,
+          active: 0,
+        }),
+      }),
+    );
+    const bodyText = JSON.stringify(body);
     expect(bodyText).not.toContain('base_patient_snapshot');
     expect(bodyText).not.toContain('partner_patient_snapshot');
     expect(bodyText).not.toContain('別人でした');
@@ -265,9 +290,19 @@ describe('/api/patient-share-cases', () => {
           viewer_role: 'pharmacist',
           viewed_count: 1,
           share_case_count: 1,
+          total_share_case_count: 1,
+          visible_share_case_count: 1,
+          hidden_share_case_count: 0,
+          share_case_status_counts: expect.objectContaining({
+            consent_pending: 1,
+            active: 0,
+          }),
           base_patient_count: 1,
           base_site_count: 1,
           partner_pharmacy_count: 1,
+          visible_base_patient_count: 1,
+          visible_base_site_count: 1,
+          visible_partner_pharmacy_count: 1,
         }),
       }),
     );
@@ -275,6 +310,324 @@ describe('/api/patient-share-cases', () => {
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('東京都港区1-2-3');
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('patient_1');
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('partner_pharmacy_1');
+  });
+
+  it('returns workflow total, visible, hidden, and status counts without exposing hidden row details', async () => {
+    patientShareCaseFindManyMock.mockResolvedValue([
+      {
+        id: 'share_case_1',
+        status: 'active',
+        base_patient_id: 'patient_1',
+        share_scope: {
+          prescription_history: true,
+          medication_profile: true,
+          care_reports: true,
+          attachments: false,
+          print: false,
+          pdf_output: false,
+          download: false,
+          memo: 'hidden patient note',
+        },
+        partnership: {
+          base_site_id: 'site_1',
+          partner_pharmacy: { id: 'partner_pharmacy_1' },
+        },
+        patient_link: null,
+      },
+      {
+        id: 'share_case_2',
+        status: 'active',
+        base_patient_id: 'patient_2',
+        share_scope: {
+          prescription_history: true,
+          medication_profile: true,
+          care_reports: true,
+          attachments: false,
+          print: false,
+          pdf_output: false,
+          download: false,
+          memo: 'second hidden patient note',
+        },
+        partnership: {
+          base_site_id: 'site_1',
+          partner_pharmacy: { id: 'partner_pharmacy_2' },
+        },
+        patient_link: {
+          id: 'patient_link_2',
+          match_status: 'pending',
+          approved_by_base: null,
+          approved_by_partner: null,
+          accepted_at: null,
+          declined_at: null,
+          partner_patient_id: 'partner_patient_2',
+          base_patient_snapshot: { name: '患者 二郎' },
+          partner_patient_snapshot: { address: '東京都新宿区9-9-9' },
+          decline_reason: 'hidden decline reason',
+        },
+      },
+      {
+        id: 'share_case_hidden_cursor_probe',
+        status: 'consent_pending',
+        base_patient_id: 'patient_hidden',
+        share_scope: { memo: 'must not be serialized' },
+        partnership: {
+          base_site_id: 'site_2',
+          partner_pharmacy: { id: 'partner_pharmacy_hidden' },
+        },
+        patient_link: null,
+      },
+    ]);
+    patientShareCaseCountMock.mockResolvedValue(12);
+    patientShareCaseGroupByMock.mockResolvedValue([
+      { status: 'active', _count: { _all: 5 } },
+      { status: 'consent_pending', _count: { _all: 4 } },
+      { status: 'partner_confirmation_pending', _count: { _all: 3 } },
+    ]);
+
+    const response = await GET(
+      createGetRequest('?limit=2&view_context=pharmacy_cooperation_workflow'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(patientShareCaseCountMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1' },
+    });
+    expect(patientShareCaseGroupByMock).toHaveBeenCalledWith({
+      by: ['status'],
+      where: { org_id: 'org_1' },
+      _count: { _all: true },
+    });
+    const body = await response.json();
+    expect(body).toEqual(
+      expect.objectContaining({
+        hasMore: true,
+        nextCursor: 'share_case_2',
+        total_count: 12,
+        visible_count: 2,
+        hidden_count: 10,
+        status_counts: expect.objectContaining({
+          active: 5,
+          consent_pending: 4,
+          partner_confirmation_pending: 3,
+          suspended: 0,
+        }),
+      }),
+    );
+    expect(body.data).toHaveLength(2);
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('share_case_hidden_cursor_probe');
+    expect(bodyText).not.toContain('must not be serialized');
+    expect(bodyText).not.toContain('患者 二郎');
+    expect(bodyText).not.toContain('東京都新宿区9-9-9');
+    expect(bodyText).not.toContain('hidden decline reason');
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        patientId: undefined,
+        changes: expect.objectContaining({
+          viewed_count: 2,
+          share_case_count: 2,
+          total_share_case_count: 12,
+          visible_share_case_count: 2,
+          hidden_share_case_count: 10,
+          visible_base_patient_count: 2,
+          visible_base_site_count: 1,
+          visible_partner_pharmacy_count: 2,
+          share_case_status_counts: expect.objectContaining({
+            active: 5,
+            consent_pending: 4,
+            partner_confirmation_pending: 3,
+          }),
+        }),
+      }),
+    );
+    expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain(
+      'partner_pharmacy_hidden',
+    );
+  });
+
+  it('omits exact counts for patient-specific filters without exposing hidden row details', async () => {
+    patientShareCaseFindManyMock.mockResolvedValue([
+      {
+        id: 'share_case_1',
+        status: 'active',
+        base_patient_id: 'patient_1',
+        share_scope: {
+          prescription_history: true,
+          medication_profile: true,
+          care_reports: true,
+          attachments: false,
+          print: false,
+          pdf_output: false,
+          download: false,
+          memo: 'hidden patient note',
+        },
+        partnership: {
+          base_site_id: 'site_1',
+          partner_pharmacy: { id: 'partner_pharmacy_1' },
+        },
+        patient_link: null,
+      },
+      {
+        id: 'share_case_2',
+        status: 'active',
+        base_patient_id: 'patient_2',
+        share_scope: {
+          prescription_history: true,
+          medication_profile: true,
+          care_reports: true,
+          attachments: false,
+          print: false,
+          pdf_output: false,
+          download: false,
+          memo: 'second hidden patient note',
+        },
+        partnership: {
+          base_site_id: 'site_1',
+          partner_pharmacy: { id: 'partner_pharmacy_2' },
+        },
+        patient_link: {
+          id: 'patient_link_2',
+          match_status: 'pending',
+          approved_by_base: null,
+          approved_by_partner: null,
+          accepted_at: null,
+          declined_at: null,
+          partner_patient_id: 'partner_patient_2',
+          base_patient_snapshot: { name: '患者 二郎' },
+          partner_patient_snapshot: { address: '東京都新宿区9-9-9' },
+          decline_reason: 'hidden decline reason',
+        },
+      },
+      {
+        id: 'share_case_hidden_cursor_probe',
+        status: 'active',
+        base_patient_id: 'patient_hidden',
+        share_scope: { memo: 'must not be serialized' },
+        partnership: {
+          base_site_id: 'site_2',
+          partner_pharmacy: { id: 'partner_pharmacy_hidden' },
+        },
+        patient_link: null,
+      },
+    ]);
+    patientShareCaseCountMock.mockResolvedValue(12);
+
+    const response = await GET(
+      createGetRequest('?limit=2&status=active&base_patient_id=patient_1'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(patientShareCaseCountMock).not.toHaveBeenCalled();
+    expect(patientShareCaseGroupByMock).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body).toEqual(
+      expect.objectContaining({
+        hasMore: true,
+        nextCursor: 'share_case_2',
+      }),
+    );
+    expect(body).not.toHaveProperty('total_count');
+    expect(body).not.toHaveProperty('visible_count');
+    expect(body).not.toHaveProperty('hidden_count');
+    expect(body.data).toHaveLength(2);
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('share_case_hidden_cursor_probe');
+    expect(bodyText).not.toContain('must not be serialized');
+    expect(bodyText).not.toContain('患者 二郎');
+    expect(bodyText).not.toContain('東京都新宿区9-9-9');
+    expect(bodyText).not.toContain('hidden decline reason');
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        patientId: 'patient_1',
+        changes: expect.objectContaining({
+          viewed_count: 2,
+          share_case_count: 2,
+          visible_share_case_count: 2,
+        }),
+      }),
+    );
+    const auditChanges = createAuditLogEntryMock.mock.calls[0]?.[2]?.changes;
+    expect(auditChanges).not.toHaveProperty('total_share_case_count');
+    expect(auditChanges).not.toHaveProperty('hidden_share_case_count');
+    expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain(
+      'partner_pharmacy_hidden',
+    );
+  });
+
+  it('omits exact counts on cursor pages to avoid reporting previous rows as hidden', async () => {
+    patientShareCaseFindManyMock.mockResolvedValue([
+      {
+        id: 'share_case_page_2',
+        status: 'active',
+        base_patient_id: 'patient_1',
+        share_scope: {
+          prescription_history: true,
+          medication_profile: true,
+          care_reports: true,
+          attachments: false,
+          print: false,
+          pdf_output: false,
+          download: false,
+        },
+        partnership: {
+          base_site_id: 'site_1',
+          partner_pharmacy: { id: 'partner_pharmacy_1' },
+        },
+        patient_link: null,
+      },
+      {
+        id: 'share_case_page_3',
+        status: 'active',
+        base_patient_id: 'patient_2',
+        share_scope: {
+          prescription_history: true,
+          medication_profile: true,
+          care_reports: true,
+          attachments: false,
+          print: false,
+          pdf_output: false,
+          download: false,
+        },
+        partnership: {
+          base_site_id: 'site_1',
+          partner_pharmacy: { id: 'partner_pharmacy_2' },
+        },
+        patient_link: null,
+      },
+    ]);
+
+    const response = await GET(
+      createGetRequest('?limit=1&cursor=share_case_1&view_context=pharmacy_cooperation_workflow'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(patientShareCaseCountMock).not.toHaveBeenCalled();
+    expect(patientShareCaseGroupByMock).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body).toEqual(
+      expect.objectContaining({
+        hasMore: true,
+        nextCursor: 'share_case_page_2',
+      }),
+    );
+    expect(body).not.toHaveProperty('total_count');
+    expect(body).not.toHaveProperty('visible_count');
+    expect(body).not.toHaveProperty('hidden_count');
+    const auditChanges = createAuditLogEntryMock.mock.calls[0]?.[2]?.changes;
+    expect(auditChanges).toEqual(
+      expect.objectContaining({
+        target_screen: 'pharmacy_cooperation_workflow',
+        viewed_count: 1,
+        share_case_count: 1,
+        visible_share_case_count: 1,
+      }),
+    );
+    expect(auditChanges).not.toHaveProperty('total_share_case_count');
+    expect(auditChanges).not.toHaveProperty('hidden_share_case_count');
   });
 
   it('lists share cases without optional predicates when filters and view context are omitted', async () => {

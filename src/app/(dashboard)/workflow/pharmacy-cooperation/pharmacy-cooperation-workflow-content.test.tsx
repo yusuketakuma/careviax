@@ -161,6 +161,9 @@ describe('PharmacyCooperationWorkflowContent', () => {
                 },
               ],
               hasMore: false,
+              total_count: 4,
+              visible_count: 4,
+              hidden_count: 0,
             }),
             { status: 200 },
           );
@@ -667,9 +670,18 @@ describe('PharmacyCooperationWorkflowContent', () => {
           JSON.stringify({
             data: [{ id: 'share_case_1', partnership: null }],
             hasMore: false,
+            total_count: 1,
+            visible_count: 1,
+            hidden_count: 0,
           }),
           { status: 200 },
         );
+      }
+      if (
+        url === '/api/patient-share-cases/share_case_legacy/consents?limit=8' ||
+        url === '/api/patient-share-cases/share_case_legacy/correction-requests?limit=8'
+      ) {
+        return new Response(JSON.stringify({ data: [], hasMore: false }), { status: 200 });
       }
       return originalFetch!(input, init);
     });
@@ -708,6 +720,9 @@ describe('PharmacyCooperationWorkflowContent', () => {
                 patient_link: null,
               },
             ],
+            total_count: 1,
+            visible_count: 1,
+            hidden_count: 0,
           }),
           { status: 200 },
         );
@@ -854,6 +869,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(await screen.findByText('有効化待ち共有')).toBeTruthy();
     expect(screen.getByText('依頼中の訪問')).toBeTruthy();
     expect(screen.getByText('確認待ち記録')).toBeTruthy();
+    expect(await screen.findByText('共有ケース 4 件')).toBeTruthy();
     expect(await screen.findByText('share_case_1')).toBeTruthy();
     expect(await screen.findByText('share_case_active')).toBeTruthy();
     expect(await screen.findByText('visit_request_1')).toBeTruthy();
@@ -871,6 +887,150 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(screen.getAllByText('協力薬局').length).toBeGreaterThanOrEqual(1);
     expect(document.body.textContent).not.toContain('山田');
     expect(document.body.textContent).not.toContain('訪問本文');
+  });
+
+  it('shows total and hidden share-case counts from the API instead of only visible rows', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/patient-share-cases?limit=8&view_context=pharmacy_cooperation_workflow') {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'share_case_1',
+                status: 'consent_pending',
+                starts_at: '2026-06-01T00:00:00.000Z',
+                ends_at: null,
+                updated_at: '2026-06-18T00:00:00.000Z',
+                partnership: {
+                  id: 'partnership_1',
+                  status: 'active',
+                  partner_pharmacy: {
+                    id: 'partner_pharmacy_1',
+                    name: '協力薬局',
+                    status: 'active',
+                  },
+                },
+                patient_link: null,
+              },
+            ],
+            hasMore: true,
+            nextCursor: 'share_case_1',
+            total_count: 7,
+            visible_count: 1,
+            hidden_count: 6,
+            status_counts: {
+              draft: 0,
+              consent_pending: 6,
+              partner_confirmation_pending: 0,
+              active: 1,
+              suspended: 0,
+              revoked: 0,
+              ended: 0,
+              declined: 0,
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('共有ケース 7 件 / 表示 1 件 / 他 6 件')).toBeTruthy();
+    const pendingShareCard = screen.getByText('有効化待ち共有').closest('div');
+    expect(pendingShareCard).toBeTruthy();
+    expect(within(pendingShareCard as HTMLElement).getByText('6')).toBeTruthy();
+  });
+
+  it('keeps rendering legacy share-case cursor pages that do not include count metadata', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/patient-share-cases?limit=8&view_context=pharmacy_cooperation_workflow') {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'share_case_legacy',
+                status: 'active',
+                starts_at: '2026-06-01T00:00:00.000Z',
+                ends_at: null,
+                updated_at: '2026-06-18T00:00:00.000Z',
+                partnership: {
+                  id: 'partnership_1',
+                  status: 'active',
+                  partner_pharmacy: {
+                    id: 'partner_pharmacy_1',
+                    name: '協力薬局',
+                    status: 'active',
+                  },
+                },
+                patient_link: null,
+              },
+            ],
+            hasMore: false,
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('共有ケース 1 件')).toBeTruthy();
+    expect(await screen.findByText('share_case_legacy')).toBeTruthy();
+  });
+
+  it('fails closed when share-case count metadata is internally inconsistent', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/patient-share-cases?limit=8&view_context=pharmacy_cooperation_workflow') {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'share_case_bad_counts',
+                status: 'active',
+                starts_at: '2026-06-01T00:00:00.000Z',
+                ends_at: null,
+                updated_at: '2026-06-18T00:00:00.000Z',
+                partnership: {
+                  id: 'partnership_1',
+                  status: 'active',
+                  partner_pharmacy: {
+                    id: 'partner_pharmacy_1',
+                    name: '協力薬局',
+                    status: 'active',
+                  },
+                },
+                patient_link: null,
+              },
+            ],
+            hasMore: true,
+            nextCursor: 'share_case_bad_counts',
+            total_count: 7,
+            visible_count: 1,
+            hidden_count: 0,
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('薬局間協力ワークフローを表示できません')).toBeTruthy();
+    expect(screen.getByText('状態一覧の取得に失敗しました。再試行してください。')).toBeTruthy();
+    expect(screen.queryByText('share_case_bad_counts')).toBeNull();
   });
 
   it('posts a share case activation and accepts a visit request from row actions', async () => {
