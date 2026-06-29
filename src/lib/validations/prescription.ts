@@ -58,6 +58,7 @@ const optionalPrescriptionDocumentUrlSchema = z.preprocess(
 const corePrescriptionLineBaseSchema = z.object({
   line_number: z.number().int().min(1, '行番号は1以上です'),
   drug_name: requiredTrimmedStringSchema('薬剤名は必須です'),
+  drug_master_id: optionalTrimmedStringSchema,
   drug_code: optionalTrimmedStringSchema,
   dosage_form: optionalTrimmedStringSchema,
   dose: requiredTrimmedStringSchema('用量は必須です'),

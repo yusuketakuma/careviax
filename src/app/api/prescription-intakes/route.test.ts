@@ -1593,13 +1593,219 @@ describe('/api/prescription-intakes POST', () => {
     expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
+  it('allows QR draft imports to confirm review-required lines with a DrugMaster ID', async () => {
+    const qrDraftClaimMock = vi.fn().mockResolvedValue({ count: 1 });
+    const qrDraftUpdateMock = vi.fn().mockResolvedValue({});
+    const cycleFindFirstMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'cycle_qr',
+        patient_id: 'patient_qr',
+        overall_status: 'intake_received',
+        version: 1,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_qr',
+        patient_id: 'patient_qr',
+        overall_status: 'structuring',
+        version: 2,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_qr',
+        patient_id: 'patient_qr',
+        overall_status: 'ready_to_dispense',
+        version: 3,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_qr',
+        patient_id: 'patient_qr',
+        case_id: 'case_qr',
+      });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        qrScanDraft: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'draft_qr',
+            status: 'pending',
+            patient_id: 'patient_qr',
+            parsed_data: {
+              patientName: '山田 太郎',
+              patientNameKana: 'ヤマダ タロウ',
+              patientBirthdate: '1950-03-15',
+              patientGender: 'male',
+              lines: [
+                {
+                  drugName: 'アムロジピン錠5mg',
+                  drugCode: null,
+                  drugCodeResolutionStatus: 'review_required',
+                  drugCodeResolutionSource: 'drug_master_name_fallback',
+                  candidateDrugMasterId: 'drug_master_1',
+                  candidateDrugCode: '2149001',
+                  candidateDrugName: 'アムロジピン錠5mg',
+                  dose: '1錠',
+                  frequency: '1日1回朝食後',
+                  days: 14,
+                },
+              ],
+            },
+          }),
+          updateMany: qrDraftClaimMock,
+          update: qrDraftUpdateMock,
+        },
+        careCase: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'case_qr',
+            patient_id: 'patient_qr',
+            primary_pharmacist_id: 'user_1',
+          }),
+        },
+        medicationCycle: {
+          create: vi.fn().mockResolvedValue({
+            id: 'cycle_qr',
+            patient_id: 'patient_qr',
+            case_id: 'case_qr',
+            overall_status: 'intake_received',
+            version: 1,
+          }),
+          findFirst: cycleFindFirstMock,
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        prescriptionIntake: {
+          create: vi.fn().mockResolvedValue({ id: 'intake_qr' }),
+          update: vi.fn(),
+        },
+        drugMaster: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'drug_master_1',
+              yj_code: 'YJ_AMLO',
+              receipt_code: '2149001',
+              hot_code: null,
+            },
+          ]),
+        },
+        inquiryRecord: { count: vi.fn().mockResolvedValue(0) },
+        prescriberInstitution: { findFirst: vi.fn() },
+        prescriptionLine: { findMany: vi.fn() },
+        workflowException: { findFirst: vi.fn(), create: vi.fn() },
+        cycleTransitionLog: { create: vi.fn() },
+        communicationRequest: { create: vi.fn() },
+        communicationEvent: { create: vi.fn() },
+        dispenseTask: { findFirst: vi.fn(), create: vi.fn() },
+        task: { create: vi.fn(), updateMany: vi.fn(), upsert: vi.fn() },
+        jahisSupplementalRecord: {
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+          deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+          createMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
+        medicationIssue: {
+          findMany: vi.fn().mockResolvedValue([]),
+          createMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_qr',
+        patient_id: 'patient_qr',
+        qr_draft_id: 'draft_qr',
+        source_type: 'qr_scan',
+        prescribed_date: TODAY,
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            drug_master_id: 'drug_master_1',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(qrDraftClaimMock).toHaveBeenCalled();
+    expect(qrDraftUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'draft_qr' },
+      data: expect.objectContaining({
+        status: 'confirmed',
+        confirmed_intake_id: 'intake_qr',
+      }),
+    });
+  });
+
+  it('returns validation details when a QR draft import confirms an invalid DrugMaster ID', async () => {
+    drugMasterFindManyMock.mockResolvedValueOnce([]);
+    const { tx, qrDraftUpdateMock, intakeCreateMock } = createQrDraftSuccessfulTransaction({
+      patientName: '山田 太郎',
+      patientNameKana: 'ヤマダ タロウ',
+      patientBirthdate: '1950-03-15',
+      patientGender: 'male',
+      lines: [
+        {
+          drugName: 'アムロジピン錠5mg',
+          drugCode: null,
+          drugCodeResolutionStatus: 'review_required',
+          drugCodeResolutionSource: 'drug_master_name_fallback',
+          dose: '1錠',
+          frequency: '1日1回朝食後',
+          days: 14,
+        },
+      ],
+    });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(tx));
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_qr',
+        patient_id: 'patient_qr',
+        qr_draft_id: 'draft_qr',
+        source_type: 'qr_scan',
+        prescribed_date: TODAY,
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            drug_master_id: 'missing_master',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        drug_master_id: ['存在するYJコード付き医薬品マスターを選択してください'],
+      },
+    });
+    expect(intakeCreateMock).not.toHaveBeenCalled();
+    expect(qrDraftUpdateMock).not.toHaveBeenCalled();
+    expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+  });
+
   it.each([
-    ['missing status', { drugCode: '2149001' }],
-    ['invalid status', { drugCode: '2149001', drugCodeResolutionStatus: 'ambiguous' }],
-    ['resolved status without a code', { drugCodeResolutionStatus: 'resolved' }],
+    ['missing status', { drugCode: '2149001' }, undefined],
+    ['invalid status', { drugCode: '2149001', drugCodeResolutionStatus: 'ambiguous' }, undefined],
+    ['resolved status without a code', { drugCodeResolutionStatus: 'resolved' }, undefined],
+    [
+      'unresolved status even with a DrugMaster confirmation',
+      { drugCode: null, drugCodeResolutionStatus: 'unresolved' },
+      'drug_master_1',
+    ],
   ])(
     'rejects QR draft imports with non-canonical drug code resolution: %s',
-    async (_caseName, drugCodeFields) => {
+    async (_caseName, drugCodeFields, requestDrugMasterId) => {
       const { tx, qrDraftClaimMock, intakeCreateMock } = createQrDraftValidationTransaction({
         patientName: '山田 太郎',
         patientNameKana: 'ヤマダ タロウ',
@@ -1628,6 +1834,7 @@ describe('/api/prescription-intakes POST', () => {
             {
               line_number: 1,
               drug_name: 'アムロジピン錠5mg',
+              drug_master_id: requestDrugMasterId,
               dose: '1錠',
               frequency: '1日1回朝食後',
               days: 14,

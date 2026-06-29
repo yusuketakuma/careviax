@@ -51,6 +51,7 @@ type FacilityBatchErrorResult =
       patientName: string;
       blockedLines: Array<{ line_number: number; drug_name: string; reason: string }>;
     }
+  | { error: 'invalid_drug_master_id'; caseId: string; patientName: string }
   | { error: 'missing_facility_label'; caseId: string; patientName: string }
   | { error: 'mixed_facilities'; facilities: string[] }
   | { error: 'invalid_transition' }
@@ -312,6 +313,13 @@ async function authenticatedPOST(req: NextRequest) {
                   blockedLines: intakeResult.blockedLines,
                 });
               }
+              if (intakeResult.error === 'invalid_drug_master_id') {
+                throw new FacilityBatchIntakeRollback({
+                  error: 'invalid_drug_master_id' as const,
+                  caseId: entry.case_id,
+                  patientName: careCase.patient.name,
+                });
+              }
               if (intakeResult.error === 'invalid_transition') {
                 throw new FacilityBatchIntakeRollback({ error: 'invalid_transition' as const });
               }
@@ -407,6 +415,13 @@ async function authenticatedPOST(req: NextRequest) {
             blocked_lines: result.blockedLines,
           },
         );
+      }
+      if (result.error === 'invalid_drug_master_id') {
+        return validationError('施設まとめ処方に存在しない医薬品マスターが含まれています', {
+          case_id: result.caseId,
+          patient_name: result.patientName,
+          drug_master_id: ['存在するYJコード付き医薬品マスターを選択してください'],
+        });
       }
       if (result.error === 'missing_facility_label') {
         return validationError('施設まとめ処方の対象患者に施設住所または建物IDがありません', {

@@ -411,6 +411,222 @@ describe('createPrescriptionIntake', () => {
     });
   });
 
+  it('uses an explicit DrugMaster ID as the canonical PrescriptionLine identity', async () => {
+    const tx = createMockTx();
+    tx.medicationCycle.findFirst.mockResolvedValue({
+      id: 'cycle_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      overall_status: 'ready_to_dispense',
+      version: 1,
+      case_: {
+        primary_pharmacist_id: 'pharmacist_1',
+      },
+      prescription_intakes: [],
+      dispense_tasks: [],
+    });
+    tx.drugMaster.findMany.mockResolvedValue([
+      {
+        id: 'drug_master_selected',
+        yj_code: 'YJ_SELECTED',
+        receipt_code: 'RC_SELECTED',
+        hot_code: null,
+      },
+    ]);
+    tx.prescriptionIntake.create.mockResolvedValue({
+      id: 'intake_1',
+    });
+    tx.inquiryRecord.count.mockResolvedValue(0);
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        cycle_id: 'cycle_1',
+        source_type: 'paper',
+        prescribed_date: '2026-04-01',
+        lines: [
+          {
+            line_number: 1,
+            drug_name: '薬剤師確認薬',
+            drug_master_id: ' drug_master_selected ',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      },
+      'org_1',
+      'user_1',
+      { skipExpiryCheck: true },
+    );
+
+    expect(result.kind).toBe('intake');
+    if (result.kind !== 'intake') throw new Error('expected intake result');
+    expect(tx.drugMaster.findMany).toHaveBeenCalledWith({
+      where: {
+        OR: [{ id: { in: ['drug_master_selected'] } }],
+      },
+      select: {
+        id: true,
+        yj_code: true,
+        receipt_code: true,
+        hot_code: true,
+      },
+    });
+    expect(tx.prescriptionIntake.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        lines: {
+          create: [
+            expect.objectContaining({
+              drug_code: 'YJ_SELECTED',
+              drug_master_id: 'drug_master_selected',
+              source_drug_code: null,
+              source_drug_code_type: null,
+              drug_resolution_status: 'resolved',
+            }),
+          ],
+        },
+      }),
+    });
+    expect(result.intake.lines[0]).toMatchObject({
+      drug_code: 'YJ_SELECTED',
+      drug_master_id: 'drug_master_selected',
+      source_drug_code: null,
+      source_drug_code_type: null,
+      drug_resolution_status: 'resolved',
+    });
+  });
+
+  it('rejects explicit DrugMaster IDs that cannot be used for canonical YJ identity', async () => {
+    const tx = createMockTx();
+    tx.medicationCycle.findFirst.mockResolvedValue({
+      id: 'cycle_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      overall_status: 'ready_to_dispense',
+      version: 1,
+      case_: {
+        primary_pharmacist_id: 'pharmacist_1',
+      },
+      prescription_intakes: [],
+      dispense_tasks: [],
+    });
+    tx.drugMaster.findMany.mockResolvedValue([]);
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        cycle_id: 'cycle_1',
+        source_type: 'paper',
+        prescribed_date: '2026-04-01',
+        lines: [
+          {
+            line_number: 1,
+            drug_name: '不明マスター薬',
+            drug_master_id: 'missing_master',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      },
+      'org_1',
+      'user_1',
+      { skipStructuringCheck: true, skipExpiryCheck: true },
+    );
+
+    expect(result).toEqual({
+      kind: 'error',
+      error: 'invalid_drug_master_id',
+      drugMasterIds: ['missing_master'],
+    });
+    expect(tx.prescriptionIntake.create).not.toHaveBeenCalled();
+    expect(createDispenseDraftMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects explicit DrugMaster IDs when any submitted drug identity code resolves elsewhere', async () => {
+    const tx = createMockTx();
+    tx.medicationCycle.findFirst.mockResolvedValue({
+      id: 'cycle_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      overall_status: 'ready_to_dispense',
+      version: 1,
+      case_: {
+        primary_pharmacist_id: 'pharmacist_1',
+      },
+      prescription_intakes: [],
+      dispense_tasks: [],
+    });
+    tx.drugMaster.findMany.mockResolvedValue([
+      {
+        id: 'drug_master_selected',
+        yj_code: 'YJ_SELECTED',
+        receipt_code: 'RC_SELECTED',
+        hot_code: null,
+      },
+      {
+        id: 'drug_master_conflict',
+        yj_code: 'YJ_CONFLICT',
+        receipt_code: 'RC_CONFLICT',
+        hot_code: null,
+      },
+    ]);
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        cycle_id: 'cycle_1',
+        source_type: 'paper',
+        prescribed_date: '2026-04-01',
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'コード矛盾薬',
+            drug_master_id: 'drug_master_selected',
+            source_drug_code: 'RC_SELECTED',
+            source_drug_code_type: 'receipt',
+            drug_code: 'YJ_CONFLICT',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      },
+      'org_1',
+      'user_1',
+      { skipStructuringCheck: true, skipExpiryCheck: true },
+    );
+
+    expect(result).toEqual({
+      kind: 'error',
+      error: 'invalid_drug_master_id',
+      drugMasterIds: ['drug_master_selected'],
+    });
+    expect(tx.drugMaster.findMany).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          {
+            OR: [
+              { yj_code: { in: ['RC_SELECTED', 'YJ_CONFLICT'] } },
+              { receipt_code: { in: ['RC_SELECTED', 'YJ_CONFLICT'] } },
+              { hot_code: { in: ['RC_SELECTED', 'YJ_CONFLICT'] } },
+            ],
+          },
+          { id: { in: ['drug_master_selected'] } },
+        ],
+      },
+      select: {
+        id: true,
+        yj_code: true,
+        receipt_code: true,
+        hot_code: true,
+      },
+    });
+    expect(tx.prescriptionIntake.create).not.toHaveBeenCalled();
+    expect(createDispenseDraftMock).not.toHaveBeenCalled();
+  });
+
   it('keeps ambiguous receipt codes out of PrescriptionLine master identity', async () => {
     const tx = createMockTx();
     tx.medicationCycle.findFirst.mockResolvedValue({

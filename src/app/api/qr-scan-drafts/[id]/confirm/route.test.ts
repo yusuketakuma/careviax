@@ -474,14 +474,7 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
     expect(createPrescriptionIntakeInTxMock).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ['missing status and missing code', { drugCode: null }],
-    [
-      'invalid status and missing code',
-      { drugCode: null, drugCodeResolutionStatus: 'name_fallback' },
-    ],
-    ['explicit unresolved status', { drugCode: null, drugCodeResolutionStatus: 'unresolved' }],
-  ])('rejects %s before QR intake creation', async (_label, lineOverrides) => {
+  it('allows a review-required QR line when a DrugMaster ID is explicitly confirmed', async () => {
     withOrgContextMock.mockImplementationOnce(async (_orgId, callback) =>
       callback(
         createQrDraftTransaction({
@@ -493,10 +486,15 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
           lines: [
             {
               drugName: 'アムロジピン錠5mg',
+              drugCode: null,
+              drugCodeResolutionStatus: 'review_required',
+              drugCodeResolutionSource: 'drug_master_name_fallback',
+              candidateDrugMasterId: 'drug_master_1',
+              candidateDrugCode: '2149001',
+              candidateDrugName: 'アムロジピン錠5mg',
               dose: '1錠',
               frequency: '1日1回朝食後',
               days: 14,
-              ...lineOverrides,
             },
           ],
         }),
@@ -511,6 +509,141 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
         lines: [
           {
             drug_name: 'アムロジピン錠5mg',
+            drug_master_id: 'drug_master_1',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+      { params: Promise.resolve({ id: 'draft_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(createPrescriptionIntakeInTxMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        lines: [
+          expect.objectContaining({
+            drug_name: 'アムロジピン錠5mg',
+            drug_master_id: 'drug_master_1',
+            drug_code: undefined,
+          }),
+        ],
+      }),
+      'org_1',
+      'user_1',
+      expect.any(Object),
+    );
+  });
+
+  it('returns validation details when a confirmed DrugMaster ID is invalid', async () => {
+    createPrescriptionIntakeInTxMock.mockResolvedValueOnce({
+      kind: 'error',
+      error: 'invalid_drug_master_id',
+      drugMasterIds: ['missing_master'],
+    });
+    withOrgContextMock.mockImplementationOnce(async (_orgId, callback) =>
+      callback(
+        createQrDraftTransaction({
+          patientName: '山田 太郎',
+          patientNameKana: 'ヤマダ タロウ',
+          patientBirthdate: '1950-03-15',
+          patientGender: 'male',
+          lines: [
+            {
+              drugName: 'アムロジピン錠5mg',
+              drugCode: null,
+              drugCodeResolutionStatus: 'review_required',
+              drugCodeResolutionSource: 'drug_master_name_fallback',
+              dose: '1錠',
+              frequency: '1日1回朝食後',
+              days: 14,
+            },
+          ],
+        }),
+      ),
+    );
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        prescribed_date: VALID_PRESCRIBED_DATE,
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            drug_master_id: 'missing_master',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+      { params: Promise.resolve({ id: 'draft_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        drug_master_id: ['存在するYJコード付き医薬品マスターを選択してください'],
+      },
+    });
+    expect(qrScanDraftUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['missing status and missing code', { drugCode: null }],
+    [
+      'invalid status and missing code',
+      { drugCode: null, drugCodeResolutionStatus: 'name_fallback' },
+    ],
+    ['explicit unresolved status', { drugCode: null, drugCodeResolutionStatus: 'unresolved' }],
+    [
+      'explicit unresolved status even with a DrugMaster confirmation',
+      {
+        drugCode: null,
+        drugCodeResolutionStatus: 'unresolved',
+        requestDrugMasterId: 'drug_master_1',
+      },
+    ],
+  ])('rejects %s before QR intake creation', async (_label, lineOverrides) => {
+    const { requestDrugMasterId, ...draftLineOverrides } = lineOverrides as typeof lineOverrides & {
+      requestDrugMasterId?: string;
+    };
+    withOrgContextMock.mockImplementationOnce(async (_orgId, callback) =>
+      callback(
+        createQrDraftTransaction({
+          patientName: '山田 太郎',
+          patientNameKana: 'ヤマダ タロウ',
+          patientBirthdate: '1950-03-15',
+          patientGender: 'male',
+          prescriptionExpirationDate: '2026-06-12',
+          lines: [
+            {
+              drugName: 'アムロジピン錠5mg',
+              dose: '1錠',
+              frequency: '1日1回朝食後',
+              days: 14,
+              ...draftLineOverrides,
+            },
+          ],
+        }),
+      ),
+    );
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        prescribed_date: VALID_PRESCRIBED_DATE,
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            drug_master_id: requestDrugMasterId,
             dose: '1錠',
             frequency: '1日1回朝食後',
             days: 14,

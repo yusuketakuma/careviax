@@ -59,6 +59,22 @@ describe('createPrescriptionIntakeSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts explicit DrugMaster IDs on create lines', () => {
+    const result = createPrescriptionIntakeSchema.safeParse({
+      ...validIntake,
+      lines: [
+        {
+          ...validIntake.lines[0],
+          drug_master_id: ' drug_master_1 ',
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error('expected validation success');
+    expect(result.data.lines[0].drug_master_id).toBe('drug_master_1');
+  });
+
   it('rejects partial previous prescription source provenance on create lines', () => {
     const result = createPrescriptionIntakeSchema.safeParse({
       ...validIntake,

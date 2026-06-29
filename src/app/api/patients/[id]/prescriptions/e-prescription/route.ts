@@ -427,6 +427,11 @@ async function authenticatedPOST(
         blocked_lines: intakeResult.blockedLines,
       });
     }
+    if (intakeResult.error === 'invalid_drug_master_id') {
+      return validationError('存在するYJコード付き医薬品マスターを選択してください', {
+        drug_master_id: ['存在するYJコード付き医薬品マスターを選択してください'],
+      });
+    }
     if (intakeResult.error === 'expiry_exceeded') {
       return validationError('処方箋の有効期限が切れています（発行日から4日以内が有効です）');
     }

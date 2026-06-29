@@ -19010,3 +19010,29 @@ Next loop:
 - Remaining:
   - Commit the validated follow-up slice and notify Claude.
   - Resume durable PrescriptionLine medication-code identity work from a clean tree; do not apply backfills, NOT NULL constraints, or destructive DB changes without explicit approval.
+
+### QR/JAHIS DrugMaster Confirmation Backend Slice — 2026-06-29 19:13 JST
+
+- Scope:
+  - Prioritized Claude/agmsg first: Claude approved `af3bdd41` with a non-blocking test note; confirmed the requested anti-spoofing test already exists in HEAD and re-ran the focused route test.
+  - Implemented backend-only support for explicit `drug_master_id` confirmation during QR draft confirmation and QR draft import through `/api/prescription-intakes`.
+- Fixed:
+  - `CreateIntakeLineInput` and create-line validation now accept optional `drug_master_id`.
+  - Intake creation validates explicit DrugMaster IDs via a batched `DrugMaster.findMany`, derives canonical `drug_code` from `DrugMaster.yj_code`, writes `drug_master_id`, and marks the line `resolved`.
+  - QR `review_required` lines can proceed only when a pharmacist-selected `drug_master_id` is supplied; `unresolved`, missing, or invalid resolution states remain blocked even with `drug_master_id`.
+  - Service conflict detection now checks every deterministic submitted identity code (`source_drug_code` and `drug_code`) before accepting an explicit master, preventing a conflicting code from being overwritten by the selected master.
+  - Route error mapping returns validation details for invalid/YJ-less DrugMaster IDs across QR confirm, QR import, e-prescription, and facility-batch intake paths.
+- Review:
+  - `medical_safety_reviewer` found a High issue where only `source_drug_code ?? drug_code` was checked; fixed by validating all submitted identity codes and adding a conflict regression.
+  - `api_contract_reviewer` found a High issue where any non-resolved draft could bypass the gate with `drug_master_id`; fixed by requiring `status === 'review_required'` and adding regression tests.
+  - API reviewer also requested invalid-ID response shape coverage; added QR confirm and QR import route tests.
+- Validation:
+  - `pnpm vitest run src/server/services/prescription-intake-service.test.ts 'src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts' src/app/api/prescription-intakes/route.test.ts src/lib/validations/prescription.test.ts`: passed, `4` files / `140` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Commit this validated backend slice and notify Claude.
+  - Next backend candidate from data-integrity audit: make prescription triage duplicate signatures `drug_master_id` first.

@@ -41,6 +41,7 @@ import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals
 export interface CreateIntakeLineInput {
   line_number: number;
   drug_name: string;
+  drug_master_id?: string | null;
   drug_code?: string | null;
   source_drug_code?: string | null;
   source_drug_code_type?: string | null;
@@ -196,6 +197,7 @@ type TransactionResult =
       error: 'outpatient_injection_not_eligible';
       blockedLines: Array<{ line_number: number; drug_name: string; reason: string }>;
     }
+  | { kind: 'error'; error: 'invalid_drug_master_id'; drugMasterIds: string[] }
   | { kind: 'error'; error: 'expiry_exceeded' }
   | { kind: 'error'; error: 'future_prescribed_date' }
   | { kind: 'error'; error: 'invalid_source_prescription_line' }
@@ -248,6 +250,7 @@ export type CreateIntakeServiceResult =
       error: 'outpatient_injection_not_eligible';
       blockedLines: Array<{ line_number: number; drug_name: string; reason: string }>;
     }
+  | { ok: false; error: 'invalid_drug_master_id'; drugMasterIds: string[] }
   | { ok: false; error: 'expiry_exceeded' }
   | { ok: false; error: 'future_prescribed_date' }
   | { ok: false; error: 'prescriber_institution_not_found'; message: string }
@@ -594,27 +597,60 @@ function readPrescriptionLineSourceDrugCode(line: CreateIntakeLineInput) {
   return normalizePrescriptionDrugCode(line.source_drug_code ?? line.drug_code);
 }
 
+function readPrescriptionLineDrugIdentityCodes(line: CreateIntakeLineInput) {
+  const entries = [
+    normalizePrescriptionDrugCode(line.source_drug_code),
+    normalizePrescriptionDrugCode(line.drug_code),
+  ];
+  return Array.from(new Set(entries.filter((code): code is string => Boolean(code))));
+}
+
+function normalizePrescriptionLineDrugMasterId(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : null;
+}
+
+type ResolveCreateIntakeLineDrugIdentitiesResult =
+  | { ok: true; lines: ResolvedCreateIntakeLineInput[] }
+  | { ok: false; drugMasterIds: string[] };
+
 async function resolveCreateIntakeLineDrugIdentities(
   tx: Tx,
   lines: CreateIntakeLineInput[],
-): Promise<ResolvedCreateIntakeLineInput[]> {
+): Promise<ResolveCreateIntakeLineDrugIdentitiesResult> {
   const sourceCodes = Array.from(
     new Set(
       lines
-        .map((line) => readPrescriptionLineSourceDrugCode(line))
+        .flatMap((line) => readPrescriptionLineDrugIdentityCodes(line))
         .filter((code): code is string => Boolean(code)),
     ),
   );
+  const explicitDrugMasterIds = Array.from(
+    new Set(
+      lines
+        .map((line) => normalizePrescriptionLineDrugMasterId(line.drug_master_id))
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const masterFilters: Prisma.DrugMasterWhereInput[] = [];
+  if (sourceCodes.length > 0) {
+    masterFilters.push({
+      OR: [
+        { yj_code: { in: sourceCodes } },
+        { receipt_code: { in: sourceCodes } },
+        { hot_code: { in: sourceCodes } },
+      ],
+    });
+  }
+  if (explicitDrugMasterIds.length > 0) {
+    masterFilters.push({ id: { in: explicitDrugMasterIds } });
+  }
 
   const masters =
-    sourceCodes.length > 0
+    masterFilters.length > 0
       ? await tx.drugMaster.findMany({
           where: {
-            OR: [
-              { yj_code: { in: sourceCodes } },
-              { receipt_code: { in: sourceCodes } },
-              { hot_code: { in: sourceCodes } },
-            ],
+            OR: masterFilters,
           },
           select: {
             id: true,
@@ -624,14 +660,59 @@ async function resolveCreateIntakeLineDrugIdentities(
           },
         })
       : [];
-  const resolutions = buildDrugIdentityResolutionByCode(masters);
+  const masterById = new Map(masters.map((master) => [master.id, master]));
+  const invalidExplicitDrugMasterIds = explicitDrugMasterIds.filter((id) => {
+    const master = masterById.get(id);
+    return !master || !normalizeMedicationCode(master.yj_code);
+  });
+  if (invalidExplicitDrugMasterIds.length > 0) {
+    return { ok: false, drugMasterIds: invalidExplicitDrugMasterIds };
+  }
 
-  return lines.map((line) => {
+  const resolutions = buildDrugIdentityResolutionByCode(masters);
+  const conflictingExplicitDrugMasterIds = Array.from(
+    new Set(
+      lines.flatMap((line) => {
+        const explicitDrugMasterId = normalizePrescriptionLineDrugMasterId(line.drug_master_id);
+        if (!explicitDrugMasterId) return [];
+        return readPrescriptionLineDrugIdentityCodes(line).some((code) => {
+          const resolution = resolveMedicationCode(code, resolutions);
+          return resolution.status === 'resolved' && resolution.drug.id !== explicitDrugMasterId;
+        })
+          ? [explicitDrugMasterId]
+          : [];
+      }),
+    ),
+  );
+  if (conflictingExplicitDrugMasterIds.length > 0) {
+    return { ok: false, drugMasterIds: conflictingExplicitDrugMasterIds };
+  }
+
+  const resolvedLines: ResolvedCreateIntakeLineInput[] = lines.map((line) => {
     const sourceCode = readPrescriptionLineSourceDrugCode(line);
     const resolution = resolveMedicationCode(sourceCode, resolutions);
+    const explicitDrugMasterId = normalizePrescriptionLineDrugMasterId(line.drug_master_id);
+    const explicitDrugMaster = explicitDrugMasterId ? masterById.get(explicitDrugMasterId) : null;
     const explicitSourceCodeType = normalizePrescriptionLineSourceDrugCodeType(
       line.source_drug_code_type,
     );
+
+    if (explicitDrugMaster) {
+      const canonicalDrugCode =
+        normalizeMedicationCode(explicitDrugMaster.yj_code) ?? explicitDrugMaster.yj_code;
+      return {
+        ...line,
+        drug_code: canonicalDrugCode,
+        drug_master_id: explicitDrugMaster.id,
+        source_drug_code: sourceCode,
+        source_drug_code_type: sourceCode
+          ? resolution.status === 'resolved'
+            ? resolution.sourceCodeSystem
+            : explicitSourceCodeType
+          : null,
+        drug_resolution_status: 'resolved' as const,
+      };
+    }
 
     if (resolution.status === 'resolved') {
       return {
@@ -675,6 +756,8 @@ async function resolveCreateIntakeLineDrugIdentities(
       drug_resolution_status: 'missing_code',
     };
   });
+
+  return { ok: true, lines: resolvedLines };
 }
 
 async function createStructuringBlockExceptionIfNeeded(
@@ -921,7 +1004,15 @@ export async function createPrescriptionIntakeInTx(
   if (!sourceValidation.ok) {
     return { kind: 'error', error: sourceValidation.error };
   }
-  const resolvedLines = await resolveCreateIntakeLineDrugIdentities(tx, lines);
+  const drugIdentityResolution = await resolveCreateIntakeLineDrugIdentities(tx, lines);
+  if (!drugIdentityResolution.ok) {
+    return {
+      kind: 'error',
+      error: 'invalid_drug_master_id',
+      drugMasterIds: drugIdentityResolution.drugMasterIds,
+    };
+  }
+  const resolvedLines = drugIdentityResolution.lines;
 
   if (source_type === 'refill') {
     if (refill_remaining_count == null || refill_remaining_count <= 0) {
@@ -1223,6 +1314,13 @@ export async function createPrescriptionIntake(
         ok: false,
         error: 'outpatient_injection_not_eligible',
         blockedLines: txResult.blockedLines,
+      };
+    }
+    if (txResult.error === 'invalid_drug_master_id') {
+      return {
+        ok: false,
+        error: 'invalid_drug_master_id',
+        drugMasterIds: txResult.drugMasterIds,
       };
     }
     if (txResult.error === 'expiry_exceeded') {

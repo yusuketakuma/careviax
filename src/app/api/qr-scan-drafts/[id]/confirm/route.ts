@@ -91,6 +91,7 @@ const packagingInstructionTagSchema = z.enum(PACKAGING_TAG_VALUES);
 const confirmQrDraftLineSchema = z
   .object({
     drug_name: requiredTrimmedStringSchema,
+    drug_master_id: optionalTrimmedStringSchema,
     drug_code: optionalTrimmedStringSchema,
     dosage_form: optionalTrimmedStringSchema,
     dose: requiredTrimmedStringSchema,
@@ -175,6 +176,11 @@ function createIntakeErrorResponse(result: IntakeInTxErrorResult) {
   if (result.error === 'outpatient_injection_not_eligible') {
     return validationError('外来/在宅自己注射として調剤可否が未確認の注射剤があります', {
       blocked_lines: result.blockedLines,
+    });
+  }
+  if (result.error === 'invalid_drug_master_id') {
+    return validationError('存在するYJコード付き医薬品マスターを選択してください', {
+      drug_master_id: ['存在するYJコード付き医薬品マスターを選択してください'],
     });
   }
   if (result.error === 'invalid_refill_remaining_count') {
@@ -370,6 +376,7 @@ function findQrDraftLineMismatches(
 
 function collectDrugCodeResolutionReviewDetails(
   parsedData: Record<string, unknown> | null | undefined,
+  input: z.infer<typeof confirmQrDraftSchema>,
 ) {
   const draftLines = readDraftLines(parsedData);
   const details: Record<string, string[]> = {};
@@ -381,6 +388,7 @@ function collectDrugCodeResolutionReviewDetails(
     );
     const drugCode = readString(draftLine.drugCode);
     if (status === 'resolved' && drugCode) return;
+    if (status === 'review_required' && input.lines[index]?.drug_master_id) return;
 
     details[`line_${index + 1}_drug_code`] = ['薬剤コードを医薬品マスターコードで確認してください'];
   });
@@ -500,7 +508,10 @@ export const POST = withAuthContext(
           return { kind: 'line_mismatch' as const, mismatches: lineMismatches };
         }
 
-        const drugCodeResolutionDetails = collectDrugCodeResolutionReviewDetails(parsedData);
+        const drugCodeResolutionDetails = collectDrugCodeResolutionReviewDetails(
+          parsedData,
+          parsed.data,
+        );
         if (drugCodeResolutionDetails) {
           return {
             kind: 'line_validation_error' as const,
@@ -526,6 +537,7 @@ export const POST = withAuthContext(
               return {
                 line_number: index + 1,
                 drug_name: line.drug_name,
+                drug_master_id: line.drug_master_id,
                 drug_code: line.drug_code ?? readString(draftLine?.drugCode),
                 source_drug_code:
                   readString(draftLine?.sourceDrugCode) ??
