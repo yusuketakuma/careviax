@@ -57,6 +57,41 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Stage only explicit billing collection files plus this ledger and `.codex/ralph-state.md`, commit, and send agmsg FYI.
   - Continue next high-priority backend candidates from subagent findings, especially patient core write responses, patient billing/insurance/qualification routes, billing candidate item/close routes, and counted-list dashboard metadata gaps.
 
+### Billing Candidate Review PATCH No-Store / Sanitized Envelope - 2026-06-30 07:28 JST
+
+- Scope:
+  - Continued the billing mutation hardening sequence after the billing collection route.
+  - Focused only on `PATCH /api/billing-candidates/[id]`.
+  - Preserved Claude-owned document-delivery-rule-manager WIP and peer-owned patient medication bulk-export WIP.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `PATCH /api/billing-candidates/[id]` now delegates to `authenticatedPATCH`, and the exported handler wraps all returned responses with `withSensitiveNoStore`.
+  - Unexpected failures now use `unstable_rethrow` plus fixed no-store `internalError()`.
+  - Added no-store assertions for success, validation, closed/stale conflict, not-found, auth rejection, and unexpected 500 responses.
+  - Updated the unexpected service-error regression so raw patient/insurance-number-like text is not echoed and audit side effects remain skipped.
+  - Strengthened the closed-candidate conflict test to prove review and audit side effects are skipped before returning 409.
+- Safety:
+  - Reduces cache and raw-error disclosure risk for billing candidate status, exclusion/reopen actions, notes, candidate identifiers, patient-name-like text, and insurer-number-like raw service errors.
+  - Preserves auth/permission behavior, request validation, stale and closed conflict semantics, not-found behavior, review service calls, and audit success-only behavior.
+- Performance:
+  - No DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only wraps existing route responses, rethrows framework control-flow errors, and adds focused assertions.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/billing-candidates/[id]/route.ts' 'src/app/api/billing-candidates/[id]/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/billing-candidates/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `13` tests before and after the closed-conflict assertion follow-up.
+  - Scoped ESLint on the two billing candidate item files: passed before and after the closed-conflict assertion follow-up.
+  - Scoped `git diff --check` on the two billing candidate item files: passed before and after the closed-conflict assertion follow-up.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - Backend and privacy compliance subagents returned `APPROVED`.
+  - Test-architect subagent requested one closed-conflict side-effect assertion; the assertion was added and focused validation re-passed.
+- Remaining:
+  - Receive final test-architect re-review if available, stage only explicit billing candidate item files plus this ledger and `.codex/ralph-state.md`, commit, and send agmsg FYI.
+  - Continue next high-priority backend candidates from subagent findings.
+
 ### Patient MCS Sync Conflict Message Hardening - 2026-06-30 07:18 JST
 
 - Scope:

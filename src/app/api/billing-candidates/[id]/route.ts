@@ -1,10 +1,12 @@
-import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
+import { NextRequest, type NextResponse } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { reviewBillingCandidate } from '@/server/services/billing-evidence';
 import { z } from 'zod';
 
@@ -22,7 +24,10 @@ function isBillingCandidateStaleError(error: unknown) {
   return error instanceof Error && error.message === 'BILLING_CANDIDATE_STALE';
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedPATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<NextResponse> {
   const authResult = await requireAuthContext(req, {
     permission: 'canManageBilling',
     message: '請求候補の更新権限がありません',
@@ -113,4 +118,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   return success({ data: updated });
+}
+
+export async function PATCH(
+  req: NextRequest,
+  routeContext: { params: Promise<{ id: string }> },
+): Promise<Response> {
+  try {
+    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }

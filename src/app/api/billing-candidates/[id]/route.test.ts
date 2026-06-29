@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -31,6 +31,7 @@ import { PATCH } from './route';
 
 const CURRENT_UPDATED_AT = '2026-06-18T00:00:00.000Z';
 const STALE_UPDATED_AT = '2026-06-17T00:00:00.000Z';
+const SENSITIVE_NO_STORE = 'private, no-store, max-age=0';
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/billing-candidates/candidate_1', {
@@ -52,6 +53,11 @@ function createMalformedJsonRequest() {
       'x-org-id': 'org_1',
     },
   });
+}
+
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe(SENSITIVE_NO_STORE);
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/billing-candidates/[id] PATCH', () => {
@@ -96,6 +102,7 @@ describe('/api/billing-candidates/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(Object), {
       permission: 'canManageBilling',
       message: '請求候補の更新権限がありません',
@@ -137,6 +144,7 @@ describe('/api/billing-candidates/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(reviewBillingCandidateMock).toHaveBeenCalledWith(
       expect.any(Object),
       expect.objectContaining({
@@ -157,6 +165,7 @@ describe('/api/billing-candidates/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '請求候補IDが不正です',
     });
@@ -182,6 +191,9 @@ describe('/api/billing-candidates/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    expect(reviewBillingCandidateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('requires expected_updated_at before transaction or audit work', async () => {
@@ -191,6 +203,7 @@ describe('/api/billing-candidates/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '入力値が不正です',
@@ -214,6 +227,7 @@ describe('/api/billing-candidates/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '請求候補が他のユーザーによって更新されています。最新のデータを取得してください。',
     });
@@ -234,6 +248,7 @@ describe('/api/billing-candidates/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '請求候補が他のユーザーによって更新されています。最新のデータを取得してください。',
     });
@@ -251,6 +266,7 @@ describe('/api/billing-candidates/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(findFirstMock).not.toHaveBeenCalled();
     expect(reviewBillingCandidateMock).not.toHaveBeenCalled();
@@ -264,6 +280,7 @@ describe('/api/billing-candidates/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(findFirstMock).not.toHaveBeenCalled();
     expect(reviewBillingCandidateMock).not.toHaveBeenCalled();
@@ -277,6 +294,7 @@ describe('/api/billing-candidates/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -299,19 +317,50 @@ describe('/api/billing-candidates/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(reviewBillingCandidateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
-  it('does not write an audit record when the review service throws', async () => {
-    reviewBillingCandidateMock.mockRejectedValueOnce(new Error('review service failed'));
+  it('returns auth rejections with sensitive no-store headers', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json(
+        { code: 'AUTH_FORBIDDEN', message: '権限がありません' },
+        { status: 403 },
+      ),
+    });
 
-    await expect(
-      PATCH(createRequest({ action: 'confirm', expected_updated_at: CURRENT_UPDATED_AT }), {
+    const response = await PATCH(
+      createRequest({ action: 'confirm', expected_updated_at: CURRENT_UPDATED_AT }),
+      {
         params: Promise.resolve({ id: 'candidate_1' }),
-      }),
-    ).rejects.toThrow('review service failed');
+      },
+    );
 
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('returns sanitized no-store 500 responses and skips audit when the review service throws unexpectedly', async () => {
+    const rawErrorMessage =
+      'review service failed for 患者A 保険者番号=12345678 請求候補=candidate_1';
+    reviewBillingCandidateMock.mockRejectedValueOnce(new Error(rawErrorMessage));
+
+    const response = await PATCH(
+      createRequest({ action: 'confirm', expected_updated_at: CURRENT_UPDATED_AT }),
+      {
+        params: Promise.resolve({ id: 'candidate_1' }),
+      },
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain(rawErrorMessage);
+    expect(bodyText).not.toContain('患者A');
+    expect(bodyText).not.toContain('12345678');
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 });
