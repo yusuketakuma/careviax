@@ -62,6 +62,11 @@ function createMalformedGenerateFromVisitRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/care-reports/generate-from-visit', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -362,6 +367,26 @@ describe('/api/care-reports/generate-from-visit', () => {
       code: 'VALIDATION_ERROR',
       message: '報告書を生成する処方サイクルが見つかりません',
     });
+  });
+
+  it('returns a sanitized no-store 500 when report generation fails unexpectedly', async () => {
+    const rawError = '患者A 03-1111-2222 report generation renderer failure';
+    generateReportsFromVisitMock.mockRejectedValue(new Error(rawError));
+
+    const response = (await POST(
+      createGenerateFromVisitRequest({
+        visit_record_id: 'visit_1',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(JSON.stringify(body)).not.toContain('03-1111-2222');
   });
 
   it('rejects non-object generation payloads before calling the generator', async () => {

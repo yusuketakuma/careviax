@@ -1,7 +1,9 @@
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import {
   conflict,
   forbiddenResponse,
+  internalError,
   success,
   validationError,
   notFound,
@@ -122,5 +124,10 @@ const authenticatedPOST = withAuthContext(
 );
 
 export const POST: typeof authenticatedPOST = async (req, routeContext) => {
-  return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 };

@@ -20,6 +20,21 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0637 JST
+
+- current task: harden `POST /api/care-reports/generate-from-visit` unexpected failures so visit-derived report generation uses the repository's no-store sanitized envelope.
+- files inspected: agmsg inbox/history/send for `phos/codex2`, `git status --short --untracked-files=all`, local Next.js route-handler and `unstable_rethrow` docs, `src/app/api/care-reports/generate-from-visit/route.ts`, `src/app/api/care-reports/generate-from-visit/route.test.ts`, established no-store/sanitized route patterns, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved codex visit-schedule WIP and continued separate patient-PDF WIP after this review request.
+- files changed: `src/app/api/care-reports/generate-from-visit/route.ts`, `src/app/api/care-reports/generate-from-visit/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: the report-generation POST wrapper added no-store headers to returned responses, but unexpected generator/plumbing failures could still fall through to framework 500 behavior instead of a fixed no-store `INTERNAL_ERROR` envelope.
+- security risks found: reduced raw-error and PHI disclosure risk for visit-derived care-report generation failures containing patient names, phone numbers, visit text, or renderer details. Existing auth/permission checks, generator domain-error mappings, response statuses/bodies for validation/conflict/not-found paths, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only catches unexpected route exceptions and adds focused assertions.
+- validation commands: `pnpm exec prettier --write src/app/api/care-reports/generate-from-visit/route.ts src/app/api/care-reports/generate-from-visit/route.test.ts`; `pnpm exec vitest run src/app/api/care-reports/generate-from-visit/route.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint on the two generate-from-visit files; scoped `git diff --check` on the two generate-from-visit files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused generate-from-visit Vitest passed `1` file / `17` tests. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. Claude and codex both returned `PATCH_REVIEW_RESULT: APPROVED` after reviewing `unstable_rethrow` placement, no-store `INTERNAL_ERROR`, raw patient/phone non-leakage, and existing domain-error mapping preservation.
+- remaining work: explicit-path stage only this generate-from-visit slice plus the generate ledger hunks, commit, send agmsg FYI, then continue the separate patient PDF typed-not-found hardening WIP.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
+
+
 ### 20260630-0623 JST
 
 - current task: harden partner visit record submit/review responses so interprofessional visit workflow failures use no-store sanitized envelopes.

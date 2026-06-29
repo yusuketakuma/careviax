@@ -23,6 +23,40 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Care Reports Generate From Visit Sanitized Envelope - 2026-06-30 06:37 JST
+
+- Scope:
+  - Continued codex2's visit-time and report workflow objective on `POST /api/care-reports/generate-from-visit`.
+  - Focused only on unexpected-error envelope behavior for visit-derived care-report generation; existing generator domain-error mappings and response bodies were preserved.
+  - Preserved codex-owned visit-schedule WIP and kept the separate patient PDF typed-not-found hardening WIP out of this commit slice.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - The POST wrapper now uses the established `unstable_rethrow` + fixed no-store `internalError()` pattern around the authenticated handler.
+  - Unexpected generator/plumbing failures now return fixed no-store `INTERNAL_ERROR` responses instead of framework 500 behavior.
+- Safety:
+  - Reduces PHI/raw-error disclosure risk for visit-derived report generation failures containing patient names, phone numbers, visit text, or renderer details.
+  - Preserves auth/permission behavior, visit-record lookup, generator domain-error mapping, validation/conflict/not-found statuses, and normal success response shape.
+- Performance:
+  - No DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only catches unexpected route exceptions and adds focused tests.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/care-reports/generate-from-visit/route.ts src/app/api/care-reports/generate-from-visit/route.test.ts`: passed.
+  - `pnpm exec vitest run src/app/api/care-reports/generate-from-visit/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `17` tests.
+  - Scoped ESLint on the two generate-from-visit files: passed.
+  - Scoped `git diff --check` on the two generate-from-visit files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` was sent to Claude and codex with scope and validation evidence.
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after reviewing `unstable_rethrow` control flow, internal domain-error mapping preservation, and raw patient/phone non-leakage.
+  - codex returned `PATCH_REVIEW_RESULT: APPROVED`; its API-contract review found no blocker and confirmed no-store fixed `INTERNAL_ERROR` plus existing 400/403/404/409 mappings remain intact.
+- Remaining:
+  - Stage only explicit codex2-owned generate files plus the generate ledger hunks, commit, and send agmsg FYI.
+  - Continue the separate patient PDF typed-not-found hardening WIP after this slice lands.
+
+
 ### Partner Visit Submit/Review Sanitized Envelope - 2026-06-30 06:23 JST
 
 - Scope:
