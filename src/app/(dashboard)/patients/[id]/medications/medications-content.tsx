@@ -387,7 +387,9 @@ function AddMedicationDialog({ patientId, onClose }: { patientId: string; onClos
             />
           </div>
           {mutation.isError ? (
-            <p className="text-sm text-destructive">{String(mutation.error)}</p>
+            <p role="alert" aria-live="assertive" className="text-sm text-destructive">
+              {mutation.error instanceof Error ? mutation.error.message : '登録に失敗しました'}
+            </p>
           ) : null}
           <DialogFooter className="pt-2">
             <Button type="button" variant="outline" onClick={onClose}>

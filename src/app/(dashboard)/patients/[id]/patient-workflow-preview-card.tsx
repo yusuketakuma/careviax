@@ -76,7 +76,7 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
           </h2>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-destructive">
+          <p role="status" aria-live="polite" className="text-sm text-destructive">
             {previewQuery.error instanceof Error
               ? previewQuery.error.message
               : 'ワークフロープレビューの取得に失敗しました'}

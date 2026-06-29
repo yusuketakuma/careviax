@@ -70,7 +70,9 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
           <ReadinessHeading />
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-destructive">{readinessQuery.error.message}</p>
+          <p role="status" aria-live="polite" className="text-sm text-destructive">
+            {readinessQuery.error.message}
+          </p>
         </CardContent>
       </Card>
     );

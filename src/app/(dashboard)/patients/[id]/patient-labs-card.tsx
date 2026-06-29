@@ -415,7 +415,9 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
         {labsQuery.isLoading ? (
           <div className="h-32 animate-pulse rounded-lg bg-muted" />
         ) : labsQuery.error instanceof Error ? (
-          <p className="text-sm text-destructive">{labsQuery.error.message}</p>
+          <p role="status" aria-live="polite" className="text-sm text-destructive">
+            {labsQuery.error.message}
+          </p>
         ) : (
           <>
             {isCreateOpen ? (

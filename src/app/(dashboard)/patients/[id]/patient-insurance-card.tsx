@@ -726,7 +726,9 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
         {insuranceQuery.isLoading ? (
           <div className="h-32 animate-pulse rounded-lg bg-muted" />
         ) : insuranceQuery.error instanceof Error ? (
-          <p className="text-sm text-destructive">{insuranceQuery.error.message}</p>
+          <p role="status" aria-live="polite" className="text-sm text-destructive">
+            {insuranceQuery.error.message}
+          </p>
         ) : (
           <>
             {isCreateOpen ? (

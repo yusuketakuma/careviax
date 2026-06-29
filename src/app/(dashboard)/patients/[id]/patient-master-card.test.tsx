@@ -357,7 +357,13 @@ describe('PatientMasterCard', () => {
 
     render(<PatientMasterCard orgId="org_1" patient={buildPatientWith({})} />);
 
-    expect(screen.getByText('施設マスターの取得に失敗しました')).toBeTruthy();
+    // the error must sit in a polite live region so screen readers announce the load
+    // failure (WCAG 4.1.3) instead of leaving it silently rendered.
+    const liveRegion = screen
+      .getByText('施設マスターの取得に失敗しました')
+      .closest('[role="status"]');
+    expect(liveRegion).not.toBeNull();
+    expect(liveRegion?.getAttribute('aria-live')).toBe('polite');
     const retry = screen.getAllByRole('button', { name: '再試行' })[0];
     fireEvent.click(retry);
     expect(refetch).toHaveBeenCalledTimes(1);
@@ -369,7 +375,11 @@ describe('PatientMasterCard', () => {
 
     render(<PatientMasterCard orgId="org_1" patient={buildPatientWith({ facilityId: 'fac_1' })} />);
 
-    expect(screen.getByText('ユニット一覧の取得に失敗しました')).toBeTruthy();
+    const liveRegion = screen
+      .getByText('ユニット一覧の取得に失敗しました')
+      .closest('[role="status"]');
+    expect(liveRegion).not.toBeNull();
+    expect(liveRegion?.getAttribute('aria-live')).toBe('polite');
     const retry = screen.getAllByRole('button', { name: '再試行' })[0];
     fireEvent.click(retry);
     expect(refetch).toHaveBeenCalledTimes(1);

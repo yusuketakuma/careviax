@@ -359,7 +359,11 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                 </SelectContent>
               </Select>
               {facilitiesQuery.isError ? (
-                <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-sm text-destructive">
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className="mt-1.5 flex flex-wrap items-center gap-x-2 text-sm text-destructive"
+                >
                   <span>
                     {facilitiesQuery.error instanceof Error
                       ? facilitiesQuery.error.message
@@ -409,7 +413,11 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                 </SelectContent>
               </Select>
               {facilityUnitsQuery.isError ? (
-                <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-sm text-destructive">
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className="mt-1.5 flex flex-wrap items-center gap-x-2 text-sm text-destructive"
+                >
                   <span>
                     {facilityUnitsQuery.error instanceof Error
                       ? facilityUnitsQuery.error.message
