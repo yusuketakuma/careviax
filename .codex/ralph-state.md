@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260629-1643 JST
+
+- current task: commit all current dirty work and return the worktree to a clean state before resuming.
+- files inspected: agmsg inbox for `phos/codex`, `git status --short --untracked-files=all`, `src/app/api/prescription-intakes/route.ts`, `src/app/api/prescription-intakes/route.test.ts`, `src/app/api/qr-scan-drafts/[id]/confirm/route.ts`, `src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts`, `src/app/(dashboard)/schedules/schedule-team-board.tsx`, `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: committed QR prescription intake medication-identity hardening as `1c3ed969`; committed schedule-board mutation failure toasts as `bd41c2aa`; updated `CODEX_GOAL_PROGRESS.md` and this Ralph state entry as the final ledger slice.
+- bugs found: `/api/prescription-intakes` `qr_draft_id` path still accepted non-canonical drug-code resolution metadata, did not compare persisted QR safety fields, failed to fall back to parsed QR quantity, and passed raw request lines to post-create hooks. `ScheduleTeamBoard` mutation failures for visit schedule status, operational task status, and recommended vehicle assignment were previously silent to users.
+- security risks found: reduced medication data-integrity and patient-safety risk by requiring resolved QR drug-code identity before intake creation, rejecting request safety-field overrides, preserving canonical parsed quantity/line data through post-create hooks, and surfacing schedule mutation failures instead of allowing false success perception. No auth, RLS, PHI projection, schema, DB mutation, deploy, or permission surface was changed.
+- performance issues found: no new DB query, external request, dependency, unbounded loop, N+1 path, or expensive render path was added. The QR patch compares already-loaded parsed data and the UI patch only adds mutation `onError` handlers.
+- validation commands: `pnpm exec vitest run src/app/api/prescription-intakes/route.test.ts 'src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts' --reporter=dot --testTimeout=30000`; `pnpm exec vitest run 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=30000`; scoped ESLint for all six changed source/test files; scoped Prettier check for all six changed source/test files; focused `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: QR focused Vitest passed `2` files / `92` tests; schedule focused Vitest passed `1` file / `18` tests; scoped ESLint, scoped Prettier check, focused diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed after all code changes. A prior broad `pnpm test -- src/app/api/prescription-intakes/route.test.ts` run by a reviewer hit an unrelated existing workflow test failure and was not used as acceptance evidence.
+- remaining work: no uncommitted source/test work remains after this cleanup. Resume by draining agmsg, then continue the user-requested medication-code learning and code-first prescription flow hardening from the next highest-value backend candidate.
+- next action: commit this progress-ledger slice, send agmsg FYI with commit hashes and validation summary, verify `git status` is clean, then resume.
+
 ### 20260629-1610 JST
 
 - current task: prioritize Claude requests, review Claude's patient-care-team false-empty patch, then land the Claude-approved QR draft confirmation medication-identity hardening.

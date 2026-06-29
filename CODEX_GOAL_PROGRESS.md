@@ -23,6 +23,24 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Cleanup Commit Batch - 2026-06-29 16:43 JST
+
+- Scope:
+  - Honored the user request to commit all current dirty work and return the worktree to a clean state before resuming.
+  - Committed `/api/prescription-intakes` QR draft medication-identity hardening plus aligned QR confirm quantity parsing as `1c3ed969` (`Harden prescription intake QR medication identity`).
+  - Committed Claude's schedule-team-board mutation failure surfacing patch, with code comments normalized to English, as `bd41c2aa` (`Surface schedule board mutation failures`).
+- Fixed:
+  - `/api/prescription-intakes` `qr_draft_id` now fail-closes unless each parsed medication line has `drugCodeResolutionStatus === 'resolved'` and a `drugCode`.
+  - Request overrides of parsed QR safety fields (`dosage_form`, `quantity`, `unit`, `is_generic`, `start_date`, `end_date`) now produce line mismatches before claim/intake creation.
+  - Intake creation and post-create hooks now use canonical parsed QR line metadata, including numeric-string quantity fallback.
+  - Schedule board visit status, operational task status, and vehicle assignment mutations now surface `toast.error` on failure instead of failing silently.
+- Validation:
+  - `pnpm exec vitest run src/app/api/prescription-intakes/route.test.ts 'src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `92` tests.
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `18` tests.
+  - Scoped ESLint, scoped Prettier check, focused `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed after all source/test changes.
+- Remaining:
+  - Worktree cleanup is complete after the companion ledger commit. Resume with agmsg drain, then continue medication-code learning and code-first prescription flow hardening.
+
 ### QR Draft Confirm Medication Identity Commit - 2026-06-29 16:10 JST
 
 - Scope:
