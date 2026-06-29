@@ -14,6 +14,7 @@ const {
   medicationProfileCreateMock,
   medicationProfileUpdateMock,
   medicationProfileUpdateManyMock,
+  drugMasterFindManyMock,
   loggerErrorMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -23,6 +24,7 @@ const {
   medicationProfileCreateMock: vi.fn().mockResolvedValue({}),
   medicationProfileUpdateMock: vi.fn().mockResolvedValue({}),
   medicationProfileUpdateManyMock: vi.fn().mockResolvedValue({ count: 0 }),
+  drugMasterFindManyMock: vi.fn().mockResolvedValue([]),
   loggerErrorMock: vi.fn(),
 }));
 
@@ -44,6 +46,9 @@ vi.mock('@/lib/db/client', () => ({
       create: medicationProfileCreateMock,
       update: medicationProfileUpdateMock,
       updateMany: medicationProfileUpdateManyMock,
+    },
+    drugMaster: {
+      findMany: drugMasterFindManyMock,
     },
   },
 }));
@@ -139,6 +144,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
         role: 'admin',
       },
     });
+    drugMasterFindManyMock.mockResolvedValue([]);
   });
 
   it('returns no-store auth failures before reading facility batch payloads', async () => {
@@ -159,6 +165,24 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
   it('rejects mixed-facility bulk intake requests', async () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        drugMaster: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'drug_master_amlodipine',
+              yj_code: '2149001',
+              receipt_code: null,
+              hot_code: null,
+              outpatient_injection_eligible: false,
+            },
+            {
+              id: 'drug_master_loxoprofen',
+              yj_code: '1149019',
+              receipt_code: null,
+              hot_code: null,
+              outpatient_injection_eligible: false,
+            },
+          ]),
+        },
         careCase: {
           findMany: vi.fn().mockResolvedValue([
             {
@@ -249,6 +273,31 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
     const prescriptionIntakeCreateMock = vi.fn();
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        drugMaster: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'drug_master_amlodipine',
+              yj_code: '2149001',
+              receipt_code: null,
+              hot_code: null,
+              outpatient_injection_eligible: false,
+            },
+            {
+              id: 'drug_master_magmitt',
+              yj_code: '2344004',
+              receipt_code: null,
+              hot_code: null,
+              outpatient_injection_eligible: false,
+            },
+            {
+              id: 'drug_master_loxoprofen',
+              yj_code: '1149019',
+              receipt_code: null,
+              hot_code: null,
+              outpatient_injection_eligible: false,
+            },
+          ]),
+        },
         careCase: {
           findMany: vi.fn().mockResolvedValue([
             {
@@ -645,6 +694,14 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
           drugMaster: {
             findMany: vi.fn().mockResolvedValue([
               {
+                id: 'drug_master_amlodipine',
+                yj_code: '2149001',
+                receipt_code: null,
+                hot_code: null,
+                outpatient_injection_eligible: false,
+              },
+              {
+                id: 'drug_master_inj_blocked',
                 yj_code: 'INJ001',
                 receipt_code: null,
                 hot_code: null,
@@ -815,6 +872,31 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        drugMaster: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'drug_master_amlodipine',
+              yj_code: '2149001',
+              receipt_code: null,
+              hot_code: null,
+              outpatient_injection_eligible: false,
+            },
+            {
+              id: 'drug_master_magmitt',
+              yj_code: '2344004',
+              receipt_code: null,
+              hot_code: null,
+              outpatient_injection_eligible: false,
+            },
+            {
+              id: 'drug_master_loxoprofen',
+              yj_code: '1149019',
+              receipt_code: null,
+              hot_code: null,
+              outpatient_injection_eligible: false,
+            },
+          ]),
+        },
         careCase: {
           findMany: vi.fn().mockResolvedValue([
             {

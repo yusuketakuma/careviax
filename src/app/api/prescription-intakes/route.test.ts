@@ -149,13 +149,22 @@ function expectSensitiveNoStore(response: Response) {
   expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
+function withDrugMasterDelegate<T extends object>(tx: T) {
+  return {
+    drugMaster: {
+      findMany: drugMasterFindManyMock,
+    },
+    ...tx,
+  };
+}
+
 function createQrDraftValidationTransaction(parsedData: unknown) {
   const qrDraftClaimMock = vi.fn();
   const intakeCreateMock = vi.fn();
   return {
     qrDraftClaimMock,
     intakeCreateMock,
-    tx: {
+    tx: withDrugMasterDelegate({
       qrScanDraft: {
         findFirst: vi.fn().mockResolvedValue({
           id: 'draft_qr',
@@ -169,7 +178,7 @@ function createQrDraftValidationTransaction(parsedData: unknown) {
       prescriptionIntake: {
         create: intakeCreateMock,
       },
-    },
+    }),
   };
 }
 
@@ -220,7 +229,7 @@ function createQrDraftSuccessfulTransaction(parsedData: unknown) {
     qrDraftClaimMock,
     qrDraftUpdateMock,
     intakeCreateMock,
-    tx: {
+    tx: withDrugMasterDelegate({
       qrScanDraft: {
         findFirst: vi.fn().mockResolvedValue({
           id: 'draft_qr',
@@ -269,14 +278,27 @@ function createQrDraftSuccessfulTransaction(parsedData: unknown) {
         findFirst: vi.fn().mockResolvedValue(null),
         create: vi.fn().mockResolvedValue({ id: 'task_qr' }),
       },
-    },
+    }),
   };
 }
 
 describe('/api/prescription-intakes POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    drugMasterFindManyMock.mockResolvedValue([]);
+    drugMasterFindManyMock.mockResolvedValue([
+      {
+        id: 'drug_master_amlodipine',
+        yj_code: '2149001',
+        receipt_code: null,
+        hot_code: null,
+      },
+      {
+        id: 'drug_master_loxoprofen',
+        yj_code: '1149019',
+        receipt_code: null,
+        hot_code: null,
+      },
+    ]);
     medicationProfileFindManyMock.mockResolvedValue([]);
     medicationProfileCreateManyMock.mockResolvedValue({ count: 0 });
     medicationProfileUpdateManyMock.mockResolvedValue({ count: 0 });
@@ -293,6 +315,9 @@ describe('/api/prescription-intakes POST', () => {
   it('rejects refill intakes when the next dispense date is outside the allowed window', async () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        drugMaster: {
+          findMany: drugMasterFindManyMock,
+        },
         medicationCycle: {
           findFirst: vi.fn().mockResolvedValue({
             id: 'cycle_1',
@@ -380,6 +405,9 @@ describe('/api/prescription-intakes POST', () => {
   it('returns conflict when previous prescription source revision is stale', async () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        drugMaster: {
+          findMany: drugMasterFindManyMock,
+        },
         medicationCycle: {
           findFirst: vi.fn().mockResolvedValue({
             id: 'cycle_1',
@@ -559,6 +587,9 @@ describe('/api/prescription-intakes POST', () => {
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        drugMaster: {
+          findMany: drugMasterFindManyMock,
+        },
         medicationCycle: {
           findFirst: vi.fn().mockResolvedValue({
             id: 'cycle_1',
@@ -780,6 +811,9 @@ describe('/api/prescription-intakes POST', () => {
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        drugMaster: {
+          findMany: drugMasterFindManyMock,
+        },
         careCase: {
           findFirst: vi.fn().mockResolvedValue({
             id: 'case_1',
@@ -1027,6 +1061,9 @@ describe('/api/prescription-intakes POST', () => {
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        drugMaster: {
+          findMany: drugMasterFindManyMock,
+        },
         careCase: {
           findFirst: vi.fn().mockResolvedValue({
             id: 'case_2',
@@ -1219,6 +1256,9 @@ describe('/api/prescription-intakes POST', () => {
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        drugMaster: {
+          findMany: drugMasterFindManyMock,
+        },
         qrScanDraft: {
           findFirst: qrDraftFindFirstMock,
           updateMany: qrDraftClaimMock,
@@ -2337,6 +2377,9 @@ describe('/api/prescription-intakes POST', () => {
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        drugMaster: {
+          findMany: drugMasterFindManyMock,
+        },
         careCase: {
           findFirst: vi.fn().mockResolvedValue({
             id: 'case_3',
@@ -2412,6 +2455,9 @@ describe('/api/prescription-intakes POST', () => {
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        drugMaster: {
+          findMany: drugMasterFindManyMock,
+        },
         medicationCycle: {
           findFirst: vi.fn().mockResolvedValue({
             id: 'cycle_1',
@@ -2488,6 +2534,9 @@ describe('/api/prescription-intakes POST', () => {
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        drugMaster: {
+          findMany: drugMasterFindManyMock,
+        },
         medicationCycle: {
           findFirst: vi.fn().mockResolvedValue({
             id: 'cycle_emergency_1',

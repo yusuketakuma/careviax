@@ -98,7 +98,7 @@ function createMockTx() {
       create: vi.fn(),
     },
     drugMaster: {
-      findMany: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
     },
     task: {
       create: vi.fn(),

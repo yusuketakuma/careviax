@@ -1169,7 +1169,7 @@ export async function createPrescriptionIntake(
   userId: string,
   options: CreateIntakeOptions = {},
 ): Promise<CreateIntakeServiceResult> {
-  const { prescribed_date, lines } = input;
+  const { prescribed_date } = input;
 
   if (!options.skipExpiryCheck) {
     const dateWindow = validatePrescriptionDateWindow(prescribed_date);

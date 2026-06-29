@@ -18856,3 +18856,27 @@ Next loop:
 - Remaining:
   - Claude reported the false-empty campaign slice set is complete.
   - `.agent-loop/FEATURE_QUEUE.md` remains dirty from pre-existing shared work and was not staged in this QR commit.
+
+### PrescriptionLine Medication Identity Checkpoint + Validation Follow-Up — 2026-06-29 17:34 JST
+
+- Scope:
+  - User requested all current changes be committed and the tree cleaned before resuming.
+  - Created checkpoint commit `34b3df59` (`chore: checkpoint medication identity work`) with the broad WIP slice: nullable `PrescriptionLine` medication identity columns/migration, centralized intake service code resolution, QR source-code propagation, outside-med classifier/projection foundation, and related tests.
+  - After resuming, fixed validation fallout from the checkpoint instead of continuing on a broken HEAD.
+- Fixed:
+  - Removed unused `lines` destructuring from `createPrescriptionIntake`, restoring `pnpm typecheck:no-unused`.
+  - Updated prescription intake, facility batch, QR confirm, and service test fixtures to provide the new `drugMaster.findMany` delegate and canonical persisted-line metadata expected by the service-level resolver.
+  - Preserved the service boundary: client/draft input still does not supply trusted `drug_master_id`; the resolver derives code identity from `DrugMaster`.
+- Validation:
+  - `pnpm db:generate`: passed.
+  - `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+  - Focused medication identity/outside-med tests passed: `10` files / `281` tests.
+  - `pnpm exec vitest run src/components/features/visits/visit-medication-management-section.test.tsx --reporter=dot --testTimeout=30000`: passed, `1` file / `3` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Commit the validated follow-up slice and notify Claude.
+  - Resume durable PrescriptionLine medication-code identity work from a clean tree; do not apply backfills, NOT NULL constraints, or destructive DB changes without explicit approval.
