@@ -10555,3 +10555,16 @@ Backup directory:
 - validation results: focused tests passed `4` files / `140` tests. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and `git diff --check` passed. Medical/API review findings were addressed with extra regression tests before this ledger update.
 - remaining work: commit this validated slice and send agmsg FYI/PATCH_REVIEW_REQUEST. Continue with next drug-code backend slice, likely prescription triage duplicate signature master-firsting, from a clean tree.
 - next action: commit explicit QR/JAHIS DrugMaster confirmation backend slice, then drain agmsg before selecting the next task.
+
+### 20260629-1922 JST
+
+- current task: honor the user's request to commit all current changes and clean the tree after completing the prescription-intake triage duplicate master-first slice.
+- files inspected: agmsg inbox for `phos/codex`, `git status --short --untracked-files=all`, `git diff --stat`, `git diff --name-only`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/app/api/prescription-intakes/triage/route.ts`, `src/app/api/prescription-intakes/triage/route.test.ts`, `src/lib/prescription/medication-diff.ts`, focused prescription identity tests, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/prescription-intakes/triage/route.ts`, `src/app/api/prescription-intakes/triage/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this file.
+- bugs found: triage duplicate detection still effectively treated medication identity as a code/name signature and could miss same-master code drift, while a naive master-only key would miss mixed backfill states where only one side has `drug_master_id`.
+- security risks found: no auth/RLS/PHI boundary changed. Patient-safety/data-integrity risk is reduced by preventing false duplicate signals across different DrugMaster IDs and preserving duplicate warnings during migration/backfill.
+- performance issues found: no new database query. Duplicate candidate comparison changed from map signatures to bounded in-memory pair matching over the already loaded triage rows and lines.
+- validation commands: `pnpm exec prettier --write src/app/api/prescription-intakes/triage/route.ts src/app/api/prescription-intakes/triage/route.test.ts`; `pnpm vitest run src/app/api/prescription-intakes/triage/route.test.ts src/lib/prescription/medication-diff.test.ts src/lib/prescription/intake-validation.test.ts`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check && git diff --check`; subagent review by `medical_safety_reviewer`.
+- validation results: Prettier passed. Focused tests passed `3` files / `34` tests. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and `git diff --check` passed. Medical reviewer medium finding was addressed with pairwise master/code/name fallback logic and a mixed-resolution regression test.
+- remaining work: commit the current cleanly scoped slice, send agmsg FYI, then resume backend drug-code follow-up work from a clean tree.
+- next action: stage only the four owned paths, commit, notify via agmsg, confirm `git status --short --untracked-files=all` is clean, then resume.

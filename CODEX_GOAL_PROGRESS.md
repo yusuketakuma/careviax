@@ -19036,3 +19036,26 @@ Next loop:
 - Remaining:
   - Commit this validated backend slice and notify Claude.
   - Next backend candidate from data-integrity audit: make prescription triage duplicate signatures `drug_master_id` first.
+
+### Prescription Triage Duplicate Master-First Slice — 2026-06-29 19:22 JST
+
+- Scope:
+  - Updated prescription-intake triage duplicate detection so the workflow compares medication identity by `drug_master_id` first, then exact `drug_code`, then name only for fully unresolved legacy lines.
+  - Kept the triage API response shape unchanged.
+- Fixed:
+  - Same DrugMaster lines are now treated as duplicate candidates even if their YJ/JAN-adjacent code text drifted between intakes.
+  - Mixed migration/backfill states still match when one side has `drug_master_id` and both sides carry the same exact `drug_code`.
+  - Different DrugMaster IDs no longer fall through to same-code or same-name matching, reducing false duplicate warnings for distinct managed medicines.
+  - Duplicate line matching remains order-insensitive while preserving dose, days, and quantity checks.
+- Review:
+  - `medical_safety_reviewer` found a medium migration false-negative risk in the first master-key signature approach; replaced it with pairwise matching and added the mixed-resolution regression test.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/prescription-intakes/triage/route.ts src/app/api/prescription-intakes/triage/route.test.ts`: passed.
+  - `pnpm vitest run src/app/api/prescription-intakes/triage/route.test.ts src/lib/prescription/medication-diff.test.ts src/lib/prescription/intake-validation.test.ts`: passed, `3` files / `34` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check && git diff --check`: passed.
+- Remaining:
+  - Continue backend drug-code slices from a clean tree after this commit.
+  - Likely next candidates: residual prescription follow-up dedupe, MedicationProfile name fallback cleanup, and QR/DrugMaster candidate safety review.

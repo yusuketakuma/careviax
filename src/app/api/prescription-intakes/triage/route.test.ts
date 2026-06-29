@@ -59,6 +59,7 @@ type IntakeFixtureArgs = {
   documentUrl?: string | null;
   lines?: Array<{
     drug_name: string;
+    drug_master_id?: string | null;
     drug_code?: string | null;
     dose: string;
     days: number;
@@ -88,6 +89,7 @@ function buildIntake(args: IntakeFixtureArgs) {
     lines: args.lines ?? [
       {
         drug_name: 'アムロジピン 5mg',
+        drug_master_id: 'drug_master_amlodipine',
         drug_code: 'YJ001',
         dose: '1錠',
         days: 28,
@@ -291,6 +293,147 @@ describe('/api/prescription-intakes/triage', () => {
     expect(newRow.action).toBe('compare');
     expect(newRow.duplicate_of_date).toBe('6/9');
     expect(data.duplicate_notices).toHaveLength(1);
+  });
+
+  it('同一医薬品マスターなら医薬品コードが揺れても重複疑いにする', async () => {
+    intakeFindManyMock.mockResolvedValue([
+      buildIntake({
+        id: 'intake_new',
+        patientId: 'patient_master_same',
+        prescribedDate: new Date(2026, 5, 8),
+        createdAt: new Date(2026, 5, 11, 8, 55),
+        lines: [
+          {
+            drug_name: 'アムロジピンOD錠5mg',
+            drug_master_id: 'drug_master_amlodipine_5',
+            drug_code: 'YJ_NEW',
+            dose: '1錠',
+            days: 28,
+            quantity: null,
+          },
+        ],
+      }),
+      buildIntake({
+        id: 'intake_old',
+        patientId: 'patient_master_same',
+        prescribedDate: new Date(2026, 5, 8),
+        createdAt: new Date(2026, 5, 9, 10, 0),
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            drug_master_id: 'drug_master_amlodipine_5',
+            drug_code: 'YJ_OLD',
+            dose: '1錠',
+            days: 28,
+            quantity: null,
+          },
+        ],
+      }),
+    ]);
+
+    const res = await GET(createRequest(), { params: Promise.resolve({}) });
+    const body = await res.json();
+    const data = body.data;
+
+    const newRow = data.rows.find((row: { intake_id: string }) => row.intake_id === 'intake_new');
+    expect(newRow.status).toBe('duplicate_suspected');
+    expect(newRow.action).toBe('compare');
+    expect(newRow.duplicate_of_date).toBe('6/9');
+    expect(data.duplicate_notices).toHaveLength(1);
+  });
+
+  it('片方だけ医薬品マスター解決済みでも同一医薬品コードなら重複疑いにする', async () => {
+    intakeFindManyMock.mockResolvedValue([
+      buildIntake({
+        id: 'intake_new',
+        patientId: 'patient_mixed_resolution',
+        prescribedDate: new Date(2026, 5, 8),
+        createdAt: new Date(2026, 5, 11, 8, 55),
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            drug_master_id: 'drug_master_amlodipine_5',
+            drug_code: 'YJ001',
+            dose: '1錠',
+            days: 28,
+            quantity: null,
+          },
+        ],
+      }),
+      buildIntake({
+        id: 'intake_old',
+        patientId: 'patient_mixed_resolution',
+        prescribedDate: new Date(2026, 5, 8),
+        createdAt: new Date(2026, 5, 9, 10, 0),
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            drug_master_id: null,
+            drug_code: 'YJ001',
+            dose: '1錠',
+            days: 28,
+            quantity: null,
+          },
+        ],
+      }),
+    ]);
+
+    const res = await GET(createRequest(), { params: Promise.resolve({}) });
+    const body = await res.json();
+    const data = body.data;
+
+    const newRow = data.rows.find((row: { intake_id: string }) => row.intake_id === 'intake_new');
+    expect(newRow.status).toBe('duplicate_suspected');
+    expect(newRow.action).toBe('compare');
+    expect(newRow.duplicate_of_date).toBe('6/9');
+    expect(data.duplicate_notices).toHaveLength(1);
+  });
+
+  it('同一医薬品コードでも医薬品マスターが異なる処方は重複疑いにしない', async () => {
+    intakeFindManyMock.mockResolvedValue([
+      buildIntake({
+        id: 'intake_new',
+        patientId: 'patient_master_split',
+        prescribedDate: new Date(2026, 5, 8),
+        createdAt: new Date(2026, 5, 11, 8, 55),
+        lines: [
+          {
+            drug_name: '同一コード別マスター薬A',
+            drug_master_id: 'drug_master_a',
+            drug_code: 'YJ_SHARED',
+            dose: '1錠',
+            days: 28,
+            quantity: null,
+          },
+        ],
+      }),
+      buildIntake({
+        id: 'intake_old',
+        patientId: 'patient_master_split',
+        prescribedDate: new Date(2026, 5, 8),
+        createdAt: new Date(2026, 5, 9, 10, 0),
+        lines: [
+          {
+            drug_name: '同一コード別マスター薬B',
+            drug_master_id: 'drug_master_b',
+            drug_code: 'YJ_SHARED',
+            dose: '1錠',
+            days: 28,
+            quantity: null,
+          },
+        ],
+      }),
+    ]);
+
+    const res = await GET(createRequest(), { params: Promise.resolve({}) });
+    const body = await res.json();
+    const data = body.data;
+
+    const newRow = data.rows.find((row: { intake_id: string }) => row.intake_id === 'intake_new');
+    expect(newRow.status).toBe('entry_pending');
+    expect(newRow.action).toBe('send_to_entry');
+    expect(newRow.duplicate_of_date).toBeNull();
+    expect(data.duplicate_notices).toEqual([]);
   });
 
   it('根拠・記録(元FAX画像/読取モデルの版/破棄ログ)を集計する', async () => {

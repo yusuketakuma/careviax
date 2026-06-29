@@ -98,27 +98,66 @@ function toMonthDayLabel(value: Date): string {
   return `${value.getMonth() + 1}/${value.getDate()}`;
 }
 
-/** 発行日 + Rp 構成(医薬品コード優先 / 用量 / 日数 / 数量)の一致シグネチャ。 */
-function buildDuplicateSignature(args: {
+type DuplicateSignatureLine = {
+  drug_name: string;
+  drug_master_id: string | null;
+  drug_code: string | null;
+  dose: string;
+  days: number;
+  quantity: number | null;
+};
+
+type DuplicateSignatureInput = {
   patientId: string;
   prescribedDate: Date;
-  lines: Array<{
-    drug_name: string;
-    drug_code: string | null;
-    dose: string;
-    days: number;
-    quantity: number | null;
-  }>;
-}): string {
-  const lineKey = args.lines
-    .map((line) => {
-      const code = line.drug_code?.trim();
-      const identity = code ? `code:${code}` : `name:${line.drug_name.trim()}`;
-      return `${identity}|${line.dose}|${line.days}|${line.quantity ?? ''}`;
-    })
-    .sort()
-    .join('||');
-  return `${args.patientId}#${toDateKey(args.prescribedDate)}#${lineKey}`;
+  lines: DuplicateSignatureLine[];
+};
+
+function normalizeDuplicateText(value: string | null | undefined) {
+  return value?.trim() || '';
+}
+
+function duplicateLineMedicationIdentityMatches(
+  left: DuplicateSignatureLine,
+  right: DuplicateSignatureLine,
+) {
+  const leftMaster = normalizeDuplicateText(left.drug_master_id);
+  const rightMaster = normalizeDuplicateText(right.drug_master_id);
+  if (leftMaster && rightMaster) return leftMaster === rightMaster;
+
+  const leftCode = normalizeDuplicateText(left.drug_code);
+  const rightCode = normalizeDuplicateText(right.drug_code);
+  if (leftCode && rightCode) return leftCode === rightCode;
+
+  if (leftMaster || rightMaster || leftCode || rightCode) return false;
+  return normalizeDuplicateText(left.drug_name) === normalizeDuplicateText(right.drug_name);
+}
+
+function duplicateLineMatches(left: DuplicateSignatureLine, right: DuplicateSignatureLine) {
+  return (
+    duplicateLineMedicationIdentityMatches(left, right) &&
+    left.dose === right.dose &&
+    left.days === right.days &&
+    (left.quantity ?? null) === (right.quantity ?? null)
+  );
+}
+
+function duplicateSignatureMatches(left: DuplicateSignatureInput, right: DuplicateSignatureInput) {
+  if (left.patientId !== right.patientId) return false;
+  if (toDateKey(left.prescribedDate) !== toDateKey(right.prescribedDate)) return false;
+  if (left.lines.length !== right.lines.length) return false;
+
+  const matchedRightIndexes = new Set<number>();
+  for (const leftLine of left.lines) {
+    const rightIndex = right.lines.findIndex(
+      (rightLine, index) =>
+        !matchedRightIndexes.has(index) && duplicateLineMatches(leftLine, rightLine),
+    );
+    if (rightIndex < 0) return false;
+    matchedRightIndexes.add(rightIndex);
+  }
+
+  return true;
 }
 
 type QrConfidenceSource = {
@@ -183,7 +222,14 @@ const authenticatedGET = withAuthContext(
               },
             },
             lines: {
-              select: { drug_name: true, drug_code: true, dose: true, days: true, quantity: true },
+              select: {
+                drug_name: true,
+                drug_master_id: true,
+                drug_code: true,
+                dose: true,
+                days: true,
+                quantity: true,
+              },
             },
           },
         });
@@ -231,25 +277,25 @@ const authenticatedGET = withAuthContext(
     }
 
     // 重複検知: 同一患者 × 発行日 × Rp 構成の一致。新しい方を「重複の疑い」にする。
-    const earliestBySignature = new Map<string, { intakeId: string; createdAt: Date }>();
     const sortedOldFirst = [...intakes].sort(
       (left, right) => left.created_at.getTime() - right.created_at.getTime(),
     );
     const duplicateMatchedDate = new Map<string, string>();
+    const previousDuplicateCandidates: Array<DuplicateSignatureInput & { createdAt: Date }> = [];
     for (const intake of sortedOldFirst) {
-      const signature = buildDuplicateSignature({
+      const candidate = {
         patientId: intake.cycle.case_.patient.id,
         prescribedDate: intake.prescribed_date,
         lines: intake.lines,
-      });
-      const existing = earliestBySignature.get(signature);
+        createdAt: intake.created_at,
+      };
+      const existing = previousDuplicateCandidates.find((previous) =>
+        duplicateSignatureMatches(candidate, previous),
+      );
       if (existing) {
         duplicateMatchedDate.set(intake.id, toMonthDayLabel(existing.createdAt));
       } else {
-        earliestBySignature.set(signature, {
-          intakeId: intake.id,
-          createdAt: intake.created_at,
-        });
+        previousDuplicateCandidates.push(candidate);
       }
     }
 
