@@ -7,18 +7,23 @@ const {
   pharmacyVisitRequestUpdateManyMock,
   pharmacyVisitRequestFindUniqueOrThrowMock,
   createAuditLogEntryMock,
+  authContextFailureMock,
 } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
   pharmacyVisitRequestFindFirstMock: vi.fn(),
   pharmacyVisitRequestUpdateManyMock: vi.fn(),
   pharmacyVisitRequestFindUniqueOrThrowMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
+  authContextFailureMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => Promise<Response>) => {
-    return (req: NextRequest, routeContext?: unknown) =>
-      handler(
+    return (req: NextRequest, routeContext?: unknown) => {
+      const failure = authContextFailureMock();
+      if (failure) return Promise.reject(failure);
+
+      return handler(
         req,
         {
           orgId: 'org_1',
@@ -27,6 +32,7 @@ vi.mock('@/lib/auth/context', () => ({
         },
         routeContext,
       );
+    };
   },
 }));
 
@@ -50,11 +56,17 @@ function createRequest(body: unknown) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-19T00:00:00.000Z'));
     vi.clearAllMocks();
+    authContextFailureMock.mockReset();
     pharmacyVisitRequestFindFirstMock.mockResolvedValue({
       id: 'visit_request_1',
       status: 'requested',
@@ -93,6 +105,7 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
     );
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalledWith({
       where: {
         id: 'visit_request_1',
@@ -139,6 +152,7 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
     );
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -170,7 +184,66 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
     const response = await rawPOST(createRequest({ decision: 'accept' }), routeContext);
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store validation before loading the visit request when decline reason is missing', async () => {
+    const response = await rawPOST(createRequest({ decision: 'decline' }), routeContext);
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes unexpected decision failures and keeps sensitive responses no-store', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('raw visit_request_1 partner_pharmacy_1 山田花子 failure'),
+    );
+
+    const response = await rawPOST(createRequest({ decision: 'accept' }), routeContext);
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('visit_request_1');
+    expect(serialized).not.toContain('partner_pharmacy_1');
+    expect(serialized).not.toContain('山田花子');
+    expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes auth plumbing failures before loading the visit request', async () => {
+    authContextFailureMock.mockReturnValueOnce(
+      new Error('raw auth visit_request_1 partner_pharmacy_1 decision failure'),
+    );
+
+    const response = await rawPOST(createRequest({ decision: 'accept' }), routeContext);
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('visit_request_1');
+    expect(serialized).not.toContain('partner_pharmacy_1');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestFindFirstMock).not.toHaveBeenCalled();
   });
 });

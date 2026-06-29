@@ -1,9 +1,11 @@
 import { z } from 'zod';
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { resolvePharmacyVisitRequestTransition } from '@/server/services/pharmacy-partnerships';
 
@@ -66,7 +68,7 @@ function toSafeVisitRequest<T extends object>(row: T) {
   };
 }
 
-export const POST = withAuthContext<{ id: string }>(
+const authenticatedPOST = withAuthContext<{ id: string }>(
   async (req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -179,3 +181,12 @@ export const POST = withAuthContext<{ id: string }>(
     message: '訪問依頼の受諾・辞退権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
