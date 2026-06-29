@@ -2,12 +2,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
+  loggerErrorMock,
   patientFindFirstMock,
+  requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  withRoutePerformanceMock,
   medicationProfileFindManyMock,
   medicationProfileCreateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
+  loggerErrorMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
+  requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+  withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
   medicationProfileFindManyMock: vi.fn(),
   medicationProfileCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -23,16 +31,21 @@ const authContext = {
 };
 
 vi.mock('@/lib/auth/context', () => ({
-  withAuthContext: (
-    handler: (
-      req: NextRequest,
-      ctx: typeof authContext,
-      routeContext: typeof emptyRouteContext,
-    ) => Promise<Response>,
-  ) => {
-    return (req: NextRequest, routeContext = emptyRouteContext) =>
-      handler(req, authContext, routeContext);
+  requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
   },
+}));
+
+vi.mock('@/lib/utils/performance', () => ({
+  withRoutePerformance: withRoutePerformanceMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -75,6 +88,8 @@ function createMalformedJsonPostRequest() {
 describe('/api/medication-profiles', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    requireAuthContextMock.mockResolvedValue({ ctx: authContext });
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     medicationProfileFindManyMock.mockResolvedValue([
       { id: 'profile_1', patient_id: 'patient_1', drug_name: 'アムロジピン' },
@@ -101,6 +116,15 @@ describe('/api/medication-profiles', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: '薬剤プロファイルの閲覧権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
     expect(patientFindFirstMock).toHaveBeenCalledWith({
       where: expect.objectContaining({
         id: 'patient_1',
@@ -151,6 +175,20 @@ describe('/api/medication-profiles', () => {
     const bodyText = await response.text();
     expect(bodyText).toContain('INTERNAL_ERROR');
     expect(bodyText).not.toContain('raw medication profile secret');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'medication_profiles_get_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'medication_profiles_get_unhandled_error',
+        route: '/api/medication-profiles',
+        method: 'GET',
+        status: 500,
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(
+      'raw medication profile secret',
+    );
   });
 
   it.each([
@@ -218,6 +256,17 @@ describe('/api/medication-profiles', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: '薬剤プロファイルの作成権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
     expect(medicationProfileCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -232,6 +281,8 @@ describe('/api/medication-profiles', () => {
     const response = (await POST(createPostRequest(['patient_1']), emptyRouteContext))!;
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -246,6 +297,8 @@ describe('/api/medication-profiles', () => {
     const response = (await POST(createMalformedJsonPostRequest(), emptyRouteContext))!;
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -268,8 +321,43 @@ describe('/api/medication-profiles', () => {
     ))!;
 
     expect(response.status).toBe(404);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(medicationProfileCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when medication profile creation fails unexpectedly', async () => {
+    medicationProfileCreateMock.mockRejectedValueOnce(new Error('raw medication profile create'));
+
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        drug_name: 'アムロジピン',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw medication profile create');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'medication_profiles_post_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'medication_profiles_post_unhandled_error',
+        route: '/api/medication-profiles',
+        method: 'POST',
+        status: 500,
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(
+      'raw medication profile create',
+    );
   });
 });

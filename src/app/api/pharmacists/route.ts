@@ -1,5 +1,7 @@
 import { unstable_rethrow } from 'next/navigation';
-import { withAuthContext } from '@/lib/auth/context';
+import { NextRequest } from 'next/server';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { forbiddenResponse, internalError, success, validationError } from '@/lib/api/response';
@@ -16,11 +18,28 @@ import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import { createPharmacistSchema } from '@/lib/validations/pharmacist';
 import { deleteCognitoUser, inviteCognitoUser } from '@/server/services/cognito-admin';
 
+const ROUTE = '/api/pharmacists';
 const DEFAULT_PHARMACIST_LIST_LIMIT = 500;
 const MAX_PHARMACIST_LIST_LIMIT = 500;
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 function dedupePharmacistsByUserId<T extends { id: string }>(items: T[]) {
   const uniqueItems = new Map<string, T>();
@@ -32,8 +51,15 @@ function dedupePharmacistsByUserId<T extends { id: string }>(items: T[]) {
   return Array.from(uniqueItems.values());
 }
 
-const authenticatedGET = withAuthContext(
-  async (req, ctx) => {
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: '薬剤師一覧の閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const rawSiteId = searchParams.get('site_id');
     const siteId = rawSiteId?.trim() ?? null;
@@ -52,86 +78,97 @@ const authenticatedGET = withAuthContext(
     if (includeCollaborators && ctx.role !== 'owner' && ctx.role !== 'admin') {
       return forbiddenResponse('スタッフ管理一覧の閲覧権限がありません');
     }
-    // scheduled_date(@db.Date)比較用: ローカル今月の月初/翌月初を UTC 深夜で表す
     const [currentYear, currentMonth] = localDateKey().split('-').map(Number);
     const monthStart = utcDateFromLocalKey(
       `${currentYear}-${`${currentMonth}`.padStart(2, '0')}-01`,
     );
     const nextMonthStart = new Date(Date.UTC(currentYear, currentMonth, 1));
 
-    const pharmacists = await prisma.membership.findMany({
-      where: {
-        org_id: ctx.orgId,
-        ...(includeCollaborators ? {} : { is_active: true }),
-        role: {
-          in: includeCollaborators
-            ? ['owner', ...MANAGEABLE_MEMBER_ROLES]
-            : ['owner', 'admin', 'pharmacist', 'pharmacist_trainee'],
-        },
-        ...(siteId ? { site_id: siteId } : {}),
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            cognito_username: true,
-            name: true,
-            name_kana: true,
-            email: true,
-            phone: true,
-            is_active: true,
-            account_status: true,
-            invited_at: true,
-            last_invited_at: true,
-            activated_at: true,
-            deactivated_at: true,
-            deactivation_reason: true,
-            updated_at: true,
-            max_daily_visits: true,
-            max_weekly_visits: true,
-            max_travel_minutes: true,
-            can_accept_emergency: true,
-            visit_specialties: true,
-            coverage_area: true,
-            credentials: {
+    const { pharmacists, monthlyVisitCounts } = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const pharmacistMemberships = await tx.membership.findMany({
+          where: {
+            org_id: ctx.orgId,
+            ...(includeCollaborators ? {} : { is_active: true }),
+            role: {
+              in: includeCollaborators
+                ? ['owner', ...MANAGEABLE_MEMBER_ROLES]
+                : ['owner', 'admin', 'pharmacist', 'pharmacist_trainee'],
+            },
+            ...(siteId ? { site_id: siteId } : {}),
+          },
+          include: {
+            user: {
               select: {
-                certification_type: true,
+                id: true,
+                cognito_username: true,
+                name: true,
+                name_kana: true,
+                email: true,
+                phone: true,
+                is_active: true,
+                account_status: true,
+                invited_at: true,
+                last_invited_at: true,
+                activated_at: true,
+                deactivated_at: true,
+                deactivation_reason: true,
+                updated_at: true,
+                max_daily_visits: true,
+                max_weekly_visits: true,
+                max_travel_minutes: true,
+                can_accept_emergency: true,
+                visit_specialties: true,
+                coverage_area: true,
+                credentials: {
+                  select: {
+                    certification_type: true,
+                  },
+                },
+              },
+            },
+            site: {
+              select: {
+                id: true,
+                name: true,
               },
             },
           },
-        },
-        site: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
-      orderBy: [{ user: { name_kana: 'asc' } }],
-      take: limit,
-    });
+          orderBy: [{ user: { name_kana: 'asc' } }],
+          take: limit,
+        });
 
-    const pharmacistIds = pharmacists.map((membership) => membership.user.id);
-    const monthlyVisitCounts =
-      pharmacistIds.length === 0
-        ? []
-        : await prisma.visitSchedule.groupBy({
-            by: ['pharmacist_id'],
-            where: {
-              org_id: ctx.orgId,
-              pharmacist_id: { in: pharmacistIds },
-              scheduled_date: {
-                gte: monthStart,
-                lt: nextMonthStart,
-              },
-              schedule_status: {
-                not: 'cancelled',
-              },
-            },
-            _count: {
-              _all: true,
-            },
-          });
+        const pharmacistIds = pharmacistMemberships.map((membership) => membership.user.id);
+        const visitCounts =
+          pharmacistIds.length === 0
+            ? []
+            : await tx.visitSchedule.groupBy({
+                by: ['pharmacist_id'],
+                where: {
+                  org_id: ctx.orgId,
+                  pharmacist_id: { in: pharmacistIds },
+                  scheduled_date: {
+                    gte: monthStart,
+                    lt: nextMonthStart,
+                  },
+                  schedule_status: {
+                    not: 'cancelled',
+                  },
+                },
+                _count: {
+                  _all: true,
+                },
+              });
+
+        return {
+          pharmacists: pharmacistMemberships,
+          monthlyVisitCounts: visitCounts,
+        };
+      },
+      { requestContext: ctx },
+    );
+
     const monthlyVisitCountByUserId = new Map(
       monthlyVisitCounts
         .filter((item) => item.pharmacist_id)
@@ -179,24 +216,37 @@ const authenticatedGET = withAuthContext(
     return success({
       data: includeCollaborators ? dedupePharmacistsByUserId(data) : data,
     });
-  },
-  {
-    permission: 'canVisit',
-    message: '薬剤師一覧の閲覧権限がありません',
-  },
-);
+  });
+}
 
-export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-};
+export async function GET(req: NextRequest, routeContext?: unknown) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('pharmacists_get_unhandled_error', undefined, {
+        event: 'pharmacists_get_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
 
-export const POST = withAuthContext(
-  async (req, ctx) => {
+async function authenticatedPOST(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canAdmin',
+    message: '薬剤師登録の権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -244,54 +294,58 @@ export const POST = withAuthContext(
     const isOperational = isOperationalMemberRole(parsed.data.role);
 
     try {
-      const pharmacist = await withOrgContext(ctx.orgId, async (tx) => {
-        const user = await tx.user.create({
-          data: {
-            org_id: ctx.orgId,
-            cognito_sub: identity.sub,
-            cognito_username: identity.username,
-            email: parsed.data.email.toLowerCase(),
-            name: parsed.data.name,
-            name_kana: parsed.data.name_kana,
-            phone: parsed.data.phone ?? null,
-            max_daily_visits: isOperational ? (parsed.data.max_daily_visits ?? null) : null,
-            max_weekly_visits: isOperational ? (parsed.data.max_weekly_visits ?? null) : null,
-            max_travel_minutes: isOperational ? (parsed.data.max_travel_minutes ?? null) : null,
-            can_accept_emergency: isOperational ? parsed.data.can_accept_emergency : false,
-            visit_specialties: toPrismaJsonInput(
-              isOperational ? parsed.data.visit_specialties : [],
-            ),
-            coverage_area: toPrismaJsonInput(isOperational ? parsed.data.coverage_area : []),
-            account_status: 'invited',
-            invited_at: invitedAt,
-            invited_by: ctx.userId,
-            last_invited_at: invitedAt,
-          },
-        });
+      const pharmacist = await withOrgContext(
+        ctx.orgId,
+        async (tx) => {
+          const user = await tx.user.create({
+            data: {
+              org_id: ctx.orgId,
+              cognito_sub: identity.sub,
+              cognito_username: identity.username,
+              email: parsed.data.email.toLowerCase(),
+              name: parsed.data.name,
+              name_kana: parsed.data.name_kana,
+              phone: parsed.data.phone ?? null,
+              max_daily_visits: isOperational ? (parsed.data.max_daily_visits ?? null) : null,
+              max_weekly_visits: isOperational ? (parsed.data.max_weekly_visits ?? null) : null,
+              max_travel_minutes: isOperational ? (parsed.data.max_travel_minutes ?? null) : null,
+              can_accept_emergency: isOperational ? parsed.data.can_accept_emergency : false,
+              visit_specialties: toPrismaJsonInput(
+                isOperational ? parsed.data.visit_specialties : [],
+              ),
+              coverage_area: toPrismaJsonInput(isOperational ? parsed.data.coverage_area : []),
+              account_status: 'invited',
+              invited_at: invitedAt,
+              invited_by: ctx.userId,
+              last_invited_at: invitedAt,
+            },
+          });
 
-        await tx.membership.create({
-          data: {
-            org_id: ctx.orgId,
-            user_id: user.id,
-            site_id: parsed.data.site_id ?? null,
-            role: parsed.data.role,
-            ...membershipFlagsForRole(parsed.data.role),
-          },
-        });
+          await tx.membership.create({
+            data: {
+              org_id: ctx.orgId,
+              user_id: user.id,
+              site_id: parsed.data.site_id ?? null,
+              role: parsed.data.role,
+              ...membershipFlagsForRole(parsed.data.role),
+            },
+          });
 
-        await createAuditLogEntry(tx, ctx, {
-          action: 'pharmacist_invited',
-          targetType: 'User',
-          targetId: user.id,
-          changes: {
-            site_id: parsed.data.site_id,
-            role: parsed.data.role,
-            email: user.email,
-          },
-        });
+          await createAuditLogEntry(tx, ctx, {
+            action: 'pharmacist_invited',
+            targetType: 'User',
+            targetId: user.id,
+            changes: {
+              site_id: parsed.data.site_id,
+              role: parsed.data.role,
+              email: user.email,
+            },
+          });
 
-        return user;
-      });
+          return user;
+        },
+        { requestContext: ctx },
+      );
 
       return success(pharmacist, 201);
     } catch {
@@ -304,9 +358,24 @@ export const POST = withAuthContext(
       }
       return validationError('薬剤師情報の保存に失敗しました');
     }
-  },
-  {
-    permission: 'canAdmin',
-    message: '薬剤師登録の権限がありません',
-  },
-);
+  });
+}
+
+export async function POST(req: NextRequest, routeContext?: unknown) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('pharmacists_post_unhandled_error', undefined, {
+        event: 'pharmacists_post_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

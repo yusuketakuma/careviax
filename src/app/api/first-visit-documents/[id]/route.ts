@@ -1,10 +1,13 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { randomUUID } from 'crypto';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
+import { requireAuthContext, type AuthRouteContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { updateFirstVisitDocumentSchema } from '@/lib/validations/first-visit-document';
@@ -13,6 +16,24 @@ import { getPatientDocumentsData } from '@/server/services/patient-detail-docume
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import type { FirstVisitDocument } from '@prisma/client';
 import { toSafeFirstVisitDocumentMutationResponse } from '../response';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
+
+const ROUTE = '/api/first-visit-documents/[id]';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 type FirstVisitDocumentPatchResult =
   | { document: FirstVisitDocument }
@@ -63,8 +84,18 @@ function validateDocumentActionRequirements(args: {
   return details;
 }
 
-export const PATCH = withAuthContext<{ id: string }>(
-  async (req: NextRequest, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
+async function authenticatedPATCH(
+  req: NextRequest,
+  routeContext: AuthRouteContext<{ id: string }>,
+) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: '初回文書の更新権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { id: rawId } = await routeContext.params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('初回文書IDが不正です');
@@ -234,9 +265,23 @@ export const PATCH = withAuthContext<{ id: string }>(
     }
 
     return success({ data: toSafeFirstVisitDocumentMutationResponse(result.document) });
-  },
-  {
-    permission: 'canVisit',
-    message: '初回文書の更新権限がありません',
-  },
-);
+  });
+}
+
+export async function PATCH(req: NextRequest, routeContext: AuthRouteContext<{ id: string }>) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('first_visit_documents_id_patch_unhandled_error', undefined, {
+        event: 'first_visit_documents_id_patch_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

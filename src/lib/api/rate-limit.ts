@@ -496,6 +496,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/pharmacy-invoices',
   '/api/pharmacy-invoices/:id',
   '/api/pharmacy-invoices/:id/pdf',
+  '/api/pharmacy-operating-hours',
   '/api/billing-evidence/analytics',
   '/api/billing-evidence/check',
   '/api/billing-evidence/stats',

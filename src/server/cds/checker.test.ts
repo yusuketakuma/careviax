@@ -4,6 +4,7 @@ const {
   prescriptionLineFindManyMock,
   medicationProfileFindManyMock,
   drugInteractionFindFirstMock,
+  drugInteractionFindManyMock,
   drugMasterFindFirstMock,
   drugMasterFindManyMock,
   patientFindFirstMock,
@@ -16,6 +17,7 @@ const {
   prescriptionLineFindManyMock: vi.fn(),
   medicationProfileFindManyMock: vi.fn(),
   drugInteractionFindFirstMock: vi.fn(),
+  drugInteractionFindManyMock: vi.fn(),
   drugMasterFindFirstMock: vi.fn(),
   drugMasterFindManyMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
@@ -36,6 +38,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     drugInteraction: {
       findFirst: drugInteractionFindFirstMock,
+      findMany: drugInteractionFindManyMock,
     },
     drugMaster: {
       findFirst: drugMasterFindFirstMock,
@@ -69,6 +72,7 @@ describe('checkDispenseAlerts', () => {
     prescriptionLineFindManyMock.mockResolvedValue([]);
     medicationProfileFindManyMock.mockResolvedValue([]);
     drugInteractionFindFirstMock.mockResolvedValue(null);
+    drugInteractionFindManyMock.mockResolvedValue([]);
     drugMasterFindFirstMock.mockResolvedValue(null);
     drugMasterFindManyMock.mockImplementation(async () => []);
     patientFindFirstMock.mockResolvedValue(null);
@@ -191,6 +195,235 @@ describe('checkDispenseAlerts', () => {
             lasa_group_key: 'dobutamine_dopamine',
             source: 'drug_master_safety_flags',
           }),
+        }),
+      ]),
+    );
+  });
+
+  it('does not warn duplicate medication by name when the prescription line has a different resolved drug code', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_current_1',
+        drug_name: '同名薬',
+        drug_code: 'YJ_NEW',
+        dose: '1錠',
+        frequency: '1日1回',
+        days: 14,
+      },
+    ]);
+    medicationProfileFindManyMock.mockResolvedValue([
+      {
+        id: 'profile_existing',
+        drug_name: '同名薬',
+        drug_master_id: 'drug_old',
+      },
+    ]);
+    drugMasterFindManyMock.mockImplementation(async (args) => {
+      if (args?.where?.id) {
+        return [
+          {
+            id: 'drug_old',
+            yj_code: 'YJ_OLD',
+            drug_name: '同名薬',
+            therapeutic_category: null,
+          },
+        ];
+      }
+      if (args?.where?.yj_code) {
+        return [
+          {
+            id: 'drug_new',
+            yj_code: 'YJ_NEW',
+            drug_name: '同名薬',
+            therapeutic_category: null,
+            max_administration_days: null,
+            transitional_expiry_date: null,
+            is_narcotic: false,
+            is_psychotropic: false,
+            is_high_risk: false,
+            is_lasa_risk: false,
+            lasa_group_key: null,
+          },
+        ];
+      }
+      return [];
+    });
+
+    const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+
+    expect(alerts.find((alert) => alert.type === 'duplicate')).toBeUndefined();
+  });
+
+  it('warns duplicate medication when a prescription drug code matches a current medication master', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_current_1',
+        drug_name: 'コード一致薬',
+        drug_code: 'YJ_SHARED',
+        dose: '1錠',
+        frequency: '1日1回',
+        days: 14,
+      },
+    ]);
+    medicationProfileFindManyMock.mockResolvedValue([
+      {
+        id: 'profile_existing',
+        drug_name: '別表示名',
+        drug_master_id: 'drug_shared',
+      },
+    ]);
+    drugMasterFindManyMock.mockImplementation(async (args) => {
+      if (args?.where?.id) {
+        return [
+          {
+            id: 'drug_shared',
+            yj_code: 'YJ_SHARED',
+            drug_name: 'コード一致薬',
+            therapeutic_category: null,
+          },
+        ];
+      }
+      if (args?.where?.yj_code) {
+        return [
+          {
+            id: 'drug_shared',
+            yj_code: 'YJ_SHARED',
+            drug_name: 'コード一致薬',
+            therapeutic_category: null,
+            max_administration_days: null,
+            transitional_expiry_date: null,
+            is_narcotic: false,
+            is_psychotropic: false,
+            is_high_risk: false,
+            is_lasa_risk: false,
+            lasa_group_key: null,
+          },
+        ];
+      }
+      return [];
+    });
+
+    const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+
+    expect(alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'duplicate',
+          severity: 'warning',
+          message: '重複投薬: コード一致薬',
+        }),
+      ]),
+    );
+  });
+
+  it('does not warn duplicate medication by name when only the prescription side is code-resolved', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_current_1',
+        drug_name: '片側解決薬',
+        drug_code: 'YJ_RESOLVED',
+        dose: '1錠',
+        frequency: '1日1回',
+        days: 14,
+      },
+    ]);
+    medicationProfileFindManyMock.mockResolvedValue([
+      {
+        id: 'profile_existing',
+        drug_name: '片側解決薬',
+        drug_master_id: null,
+      },
+    ]);
+    drugMasterFindManyMock.mockImplementation(async (args) => {
+      if (args?.where?.yj_code) {
+        return [
+          {
+            id: 'drug_resolved',
+            yj_code: 'YJ_RESOLVED',
+            drug_name: '片側解決薬',
+            therapeutic_category: null,
+            max_administration_days: null,
+            transitional_expiry_date: null,
+            is_narcotic: false,
+            is_psychotropic: false,
+            is_high_risk: false,
+            is_lasa_risk: false,
+            lasa_group_key: null,
+          },
+        ];
+      }
+      return [];
+    });
+
+    const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+
+    expect(alerts.find((alert) => alert.type === 'duplicate')).toBeUndefined();
+  });
+
+  it('does not warn duplicate medication by name when only the current medication side is code-resolved', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_current_1',
+        drug_name: '片側解決薬',
+        drug_code: null,
+        dose: '1錠',
+        frequency: '1日1回',
+        days: 14,
+      },
+    ]);
+    medicationProfileFindManyMock.mockResolvedValue([
+      {
+        id: 'profile_existing',
+        drug_name: '片側解決薬',
+        drug_master_id: 'drug_resolved',
+      },
+    ]);
+    drugMasterFindManyMock.mockImplementation(async (args) => {
+      if (args?.where?.id) {
+        return [
+          {
+            id: 'drug_resolved',
+            yj_code: 'YJ_RESOLVED',
+            drug_name: '片側解決薬',
+            therapeutic_category: null,
+          },
+        ];
+      }
+      return [];
+    });
+
+    const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+
+    expect(alerts.find((alert) => alert.type === 'duplicate')).toBeUndefined();
+  });
+
+  it('keeps duplicate medication name fallback only when both sides are unresolved', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_current_1',
+        drug_name: '未解決薬',
+        drug_code: null,
+        dose: '1錠',
+        frequency: '1日1回',
+        days: 14,
+      },
+    ]);
+    medicationProfileFindManyMock.mockResolvedValue([
+      {
+        id: 'profile_existing',
+        drug_name: '未解決薬',
+        drug_master_id: null,
+      },
+    ]);
+
+    const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+
+    expect(alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'duplicate',
+          severity: 'warning',
+          message: '重複投薬: 未解決薬',
         }),
       ]),
     );
@@ -415,6 +648,162 @@ describe('checkDispenseAlerts', () => {
     ]);
   });
 
+  it('uses allergy drug_code as the exact allergy identity before drug-name matching', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_allergy_1',
+        drug_name: 'アムロジピン錠5mg',
+        drug_code: '2149001F1020',
+        dose: '1錠',
+        frequency: '1日1回',
+        days: 14,
+      },
+    ]);
+    patientFindFirstMock.mockResolvedValue({
+      birth_date: new Date('1940-01-01T00:00:00.000Z'),
+      allergy_info: [
+        {
+          drug_name: 'アムロジピン',
+          drug_code: '2149001F1020',
+          category: 'drug',
+          severity: 'moderate',
+        },
+      ],
+    });
+    drugMasterFindManyMock.mockResolvedValue([
+      {
+        id: 'drug_allergy_1',
+        yj_code: '2149001F1020',
+        drug_name: 'アムロジピン錠5mg',
+        tall_man_name: null,
+        therapeutic_category: '2149',
+        max_administration_days: null,
+        transitional_expiry_date: null,
+        is_narcotic: false,
+        is_psychotropic: false,
+        is_high_risk: false,
+        is_lasa_risk: false,
+        lasa_group_key: null,
+      },
+    ]);
+
+    const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+
+    expect(alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'allergy_cross',
+          severity: 'warning',
+          details: expect.objectContaining({
+            allergy_drug_code: '2149001F1020',
+            prescribed_drug_code: '2149001F1020',
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it('does not raise a direct name allergy alert when both allergy and prescription have different codes', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_allergy_1',
+        drug_name: '同名薬錠5mg',
+        drug_code: 'YJ0002B',
+        dose: '1錠',
+        frequency: '1日1回',
+        days: 14,
+      },
+    ]);
+    patientFindFirstMock.mockResolvedValue({
+      birth_date: new Date('1940-01-01T00:00:00.000Z'),
+      allergy_info: [
+        {
+          drug_name: '同名薬',
+          drug_code: 'YJ0001A',
+          category: 'drug',
+          severity: 'severe',
+        },
+      ],
+    });
+    drugMasterFindManyMock.mockResolvedValue([
+      {
+        id: 'drug_allergy_1',
+        yj_code: 'YJ0002B',
+        drug_name: '同名薬錠5mg',
+        tall_man_name: null,
+        therapeutic_category: '9999',
+        max_administration_days: null,
+        transitional_expiry_date: null,
+        is_narcotic: false,
+        is_psychotropic: false,
+        is_high_risk: false,
+        is_lasa_risk: false,
+        lasa_group_key: null,
+      },
+    ]);
+
+    const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+
+    expect(alerts.filter((alert) => alert.type === 'allergy_cross')).toEqual([]);
+  });
+
+  it('keeps direct allergy name alerts for same ingredient prefix even when full drug codes differ', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_allergy_1',
+        drug_name: 'アセトアミノフェン注',
+        drug_code: '1141001A1020',
+        dose: '1管',
+        frequency: '疼痛時',
+        days: 1,
+      },
+    ]);
+    patientFindFirstMock.mockResolvedValue({
+      birth_date: new Date('1940-01-01T00:00:00.000Z'),
+      allergy_info: [
+        {
+          drug_name: 'アセトアミノフェン',
+          drug_code: '1141001F1020',
+          category: 'drug',
+          severity: 'severe',
+        },
+      ],
+    });
+    drugMasterFindManyMock.mockResolvedValue([
+      {
+        id: 'drug_allergy_1',
+        yj_code: '1141001A1020',
+        drug_name: 'アセトアミノフェン注',
+        tall_man_name: null,
+        therapeutic_category: '1141',
+        max_administration_days: null,
+        transitional_expiry_date: null,
+        is_narcotic: false,
+        is_psychotropic: false,
+        is_high_risk: false,
+        is_lasa_risk: false,
+        lasa_group_key: null,
+      },
+    ]);
+
+    const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+
+    expect(alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'allergy_cross',
+          severity: 'critical',
+          details: expect.objectContaining({
+            allergy_drug: 'アセトアミノフェン',
+            allergy_drug_code: '1141001F1020',
+            prescribed_drug: 'アセトアミノフェン注',
+            prescribed_drug_code: '1141001A1020',
+          }),
+        }),
+      ]),
+    );
+  });
+
   it('does not warn when the previous intake is not identical', async () => {
     prescriptionLineFindManyMock.mockResolvedValue([
       {
@@ -452,6 +841,243 @@ describe('checkDispenseAlerts', () => {
             drug_code: '1140001',
             dose: '1錠',
             frequency: '1日2回',
+            days: 14,
+          },
+        ],
+      });
+
+    drugMasterFindManyMock.mockResolvedValue([
+      {
+        id: 'drug_1',
+        yj_code: '1140001',
+        drug_name: 'ロキソプロフェン錠60mg',
+        therapeutic_category: '1140',
+        is_narcotic: false,
+        is_psychotropic: false,
+      },
+    ]);
+
+    const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+
+    expect(alerts.find((alert) => alert.type === 'do_prescription')).toBeUndefined();
+  });
+
+  it('treats same drug code with display-name drift as the same prescription content', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_current_1',
+        drug_name: 'ロキソプロフェンNa錠60mg',
+        drug_code: '1140001',
+        dose: '1錠',
+        frequency: '1日3回',
+        days: 14,
+      },
+    ]);
+
+    prescriptionIntakeFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'intake_current',
+        prescribed_date: new Date('2026-03-28T00:00:00.000Z'),
+        lines: [
+          {
+            id: 'line_current_1',
+            drug_name: 'ロキソプロフェンNa錠60mg',
+            drug_code: '1140001',
+            dose: '1錠',
+            frequency: '1日3回',
+            days: 14,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        id: 'intake_previous',
+        prescribed_date: new Date('2026-03-14T00:00:00.000Z'),
+        lines: [
+          {
+            id: 'line_prev_1',
+            drug_name: 'ロキソプロフェン錠60mg',
+            drug_code: '1140001',
+            dose: '1錠',
+            frequency: '1日3回',
+            days: 14,
+          },
+        ],
+      });
+
+    drugMasterFindManyMock.mockResolvedValue([
+      {
+        id: 'drug_1',
+        yj_code: '1140001',
+        drug_name: 'ロキソプロフェン錠60mg',
+        therapeutic_category: '1140',
+        is_narcotic: false,
+        is_psychotropic: false,
+      },
+    ]);
+
+    const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+
+    expect(alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'do_prescription',
+          severity: 'warning',
+          message: expect.stringContaining('ロキソプロフェンNa錠60mg'),
+        }),
+      ]),
+    );
+  });
+
+  it('does not treat same-name different-code lines as the same prescription content', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_current_1',
+        drug_name: '同名リスク薬',
+        drug_code: '1140001A',
+        dose: '1錠',
+        frequency: '1日3回',
+        days: 14,
+      },
+    ]);
+
+    prescriptionIntakeFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'intake_current',
+        prescribed_date: new Date('2026-03-28T00:00:00.000Z'),
+        lines: [
+          {
+            id: 'line_current_1',
+            drug_name: '同名リスク薬',
+            drug_code: '1140001A',
+            dose: '1錠',
+            frequency: '1日3回',
+            days: 14,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        id: 'intake_previous',
+        prescribed_date: new Date('2026-03-14T00:00:00.000Z'),
+        lines: [
+          {
+            id: 'line_prev_1',
+            drug_name: '同名リスク薬',
+            drug_code: '1140001B',
+            dose: '1錠',
+            frequency: '1日3回',
+            days: 14,
+          },
+        ],
+      });
+
+    drugMasterFindManyMock.mockResolvedValue([
+      {
+        id: 'drug_1',
+        yj_code: '1140001A',
+        drug_name: '同名リスク薬',
+        therapeutic_category: '1140',
+        is_narcotic: false,
+        is_psychotropic: false,
+      },
+    ]);
+
+    const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+
+    expect(alerts.find((alert) => alert.type === 'do_prescription')).toBeUndefined();
+  });
+
+  it('keeps DO prescription fallback for identical uncoded drug names', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_current_1',
+        drug_name: 'ロキソプロフェン錠60mg',
+        drug_code: null,
+        dose: '1錠',
+        frequency: '1日3回',
+        days: 14,
+      },
+    ]);
+
+    prescriptionIntakeFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'intake_current',
+        prescribed_date: new Date('2026-03-28T00:00:00.000Z'),
+        lines: [
+          {
+            id: 'line_current_1',
+            drug_name: 'ロキソプロフェン錠60mg',
+            drug_code: null,
+            dose: '1錠',
+            frequency: '1日3回',
+            days: 14,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        id: 'intake_previous',
+        prescribed_date: new Date('2026-03-14T00:00:00.000Z'),
+        lines: [
+          {
+            id: 'line_prev_1',
+            drug_name: 'ロキソプロフェン錠60mg',
+            drug_code: null,
+            dose: '1錠',
+            frequency: '1日3回',
+            days: 14,
+          },
+        ],
+      });
+
+    const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+
+    expect(alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'do_prescription',
+          severity: 'warning',
+          message: expect.stringContaining('ロキソプロフェン錠60mg'),
+        }),
+      ]),
+    );
+  });
+
+  it('does not compare a coded line to an uncoded same-name previous line', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_current_1',
+        drug_name: 'ロキソプロフェン錠60mg',
+        drug_code: '1140001',
+        dose: '1錠',
+        frequency: '1日3回',
+        days: 14,
+      },
+    ]);
+
+    prescriptionIntakeFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'intake_current',
+        prescribed_date: new Date('2026-03-28T00:00:00.000Z'),
+        lines: [
+          {
+            id: 'line_current_1',
+            drug_name: 'ロキソプロフェン錠60mg',
+            drug_code: '1140001',
+            dose: '1錠',
+            frequency: '1日3回',
+            days: 14,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        id: 'intake_previous',
+        prescribed_date: new Date('2026-03-14T00:00:00.000Z'),
+        lines: [
+          {
+            id: 'line_prev_1',
+            drug_name: 'ロキソプロフェン錠60mg',
+            drug_code: null,
+            dose: '1錠',
+            frequency: '1日3回',
             days: 14,
           },
         ],

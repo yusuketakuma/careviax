@@ -14,6 +14,7 @@ const {
   userCreateMock,
   membershipCreateMock,
   auditLogCreateMock,
+  loggerErrorMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -27,6 +28,7 @@ const {
   userCreateMock: vi.fn(),
   membershipCreateMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -59,6 +61,12 @@ vi.mock('@/server/services/cognito-admin', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
 }));
 
 import { GET as rawGET, POST as rawPOST } from './route';
@@ -144,6 +152,16 @@ describe('/api/pharmacists GET', () => {
       },
     ]);
     visitScheduleGroupByMock.mockResolvedValue([]);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        membership: {
+          findMany: membershipFindManyMock,
+        },
+        visitSchedule: {
+          groupBy: visitScheduleGroupByMock,
+        },
+      }),
+    );
   });
 
   it('blocks collaborator mode for non-admin roles', async () => {
@@ -175,6 +193,20 @@ describe('/api/pharmacists GET', () => {
         take: expectedTake,
       }),
     );
+  });
+
+  it('uses explicit RLS request context for staff listing and monthly counts', async () => {
+    const response = await GET(createGetRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'admin_1',
+        role: 'admin',
+      }),
+    });
   });
 
   it.each(['?site_id=', '?site_id=%20%20'])(
@@ -369,6 +401,14 @@ describe('/api/pharmacists GET', () => {
     const bodyText = await response.text();
     expect(bodyText).toContain('INTERNAL_ERROR');
     expect(bodyText).not.toContain('raw pharmacist staff secret');
+    expect(loggerErrorMock).toHaveBeenCalledWith('pharmacists_get_unhandled_error', undefined, {
+      event: 'pharmacists_get_unhandled_error',
+      route: '/api/pharmacists',
+      method: 'GET',
+      status: 500,
+      error_name: 'Error',
+    });
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw pharmacist staff secret');
   });
 });
 
@@ -405,11 +445,26 @@ describe('/api/pharmacists POST', () => {
     );
   });
 
+  it('returns no-store auth failures before parsing body or inviting Cognito users', async () => {
+    authMock.mockResolvedValueOnce(null);
+
+    const response = await POST(createMalformedJsonRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(401);
+    expectNoStore(response);
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(inviteCognitoUserMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
   it('rejects non-object create payloads before reference checks or invites', async () => {
     const response = await POST(createRequest([]));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -425,6 +480,7 @@ describe('/api/pharmacists POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -448,6 +504,7 @@ describe('/api/pharmacists POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '入力値が不正です',
       details: {
@@ -473,8 +530,16 @@ describe('/api/pharmacists POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectNoStore(response);
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
       site_id: undefined,
+    });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'admin_1',
+        role: 'admin',
+      }),
     });
     expect(userCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({

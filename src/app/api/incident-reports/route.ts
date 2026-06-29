@@ -1,5 +1,7 @@
 import { unstable_rethrow } from 'next/navigation';
-import { withAuthContext } from '@/lib/auth/context';
+import { NextRequest } from 'next/server';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -8,9 +10,34 @@ import {
   createIncidentReportSchema,
   incidentStatusSchema,
 } from '@/lib/validations/incident-report';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 
-const authenticatedGET = withAuthContext(
-  async (req, ctx) => {
+const ROUTE = '/api/incident-reports';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
+
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canViewDashboard',
+    message: 'ヒヤリハット記録の閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const statusParam = searchParams.get('status');
     const status = statusParam ? incidentStatusSchema.safeParse(statusParam) : null;
@@ -22,39 +49,69 @@ const authenticatedGET = withAuthContext(
 
     const reports = await listIncidentReports(ctx, status?.data);
 
-    return success({ data: reports });
-  },
-  {
+    return withSensitiveNoStore(success({ data: reports }));
+  });
+}
+
+export async function GET(req: NextRequest, routeContext?: unknown) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('incident_reports_get_unhandled_error', undefined, {
+        event: 'incident_reports_get_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
+
+async function authenticatedPOST(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
     permission: 'canViewDashboard',
-    message: 'ヒヤリハット記録の閲覧権限がありません',
-  },
-);
+    message: 'ヒヤリハット記録の作成権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
 
-export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-};
-
-export const POST = withAuthContext(
-  async (req, ctx) => {
+  return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
+    if (!payload) return withSensitiveNoStore(validationError('リクエストボディが不正です'));
 
     const parsed = createIncidentReportSchema.safeParse(payload);
     if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+      return withSensitiveNoStore(
+        validationError('入力値が不正です', parsed.error.flatten().fieldErrors),
+      );
     }
 
     const report = await createIncidentReport(ctx, parsed.data);
 
-    return success({ data: report }, 201);
-  },
-  {
-    permission: 'canViewDashboard',
-    message: 'ヒヤリハット記録の作成権限がありません',
-  },
-);
+    return withSensitiveNoStore(success({ data: report }, 201));
+  });
+}
+
+export async function POST(req: NextRequest, routeContext?: unknown) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('incident_reports_post_unhandled_error', undefined, {
+        event: 'incident_reports_post_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

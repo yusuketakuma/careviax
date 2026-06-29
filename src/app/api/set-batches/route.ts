@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
-import { withAuthContext } from '@/lib/auth/context';
+import { requireAuthContext } from '@/lib/auth/context';
 import type { AuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { prisma } from '@/lib/db/client';
 import {
   buildSetBatchHistorySnapshot,
   createSetBatchChangeLog,
@@ -25,8 +25,26 @@ import {
   buildSetBatchAssignmentWhere,
   buildSetPlanAssignmentWhere,
 } from '@/server/services/prescription-access';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
+
+const ROUTE = '/api/set-batches';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 const createSetBatchSchema = z.object({
   plan_id: z.string().min(1, 'セットプランIDは必須です'),
@@ -92,8 +110,13 @@ async function withSerializableSetBatchCreateTransaction<T>(
   throw new SetBatchCreateRetryLimitError();
 }
 
-const authenticatedGET = withAuthContext<Record<string, string>>(
-  async (req: NextRequest, ctx: AuthContext) => {
+async function authenticatedGET(req: NextRequest) {
+  const auth = await requireAuthContext(req, { permission: 'canSet' });
+  if ('response' in auth) return auth.response;
+
+  const { ctx } = auth;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const planId = searchParams.get('plan_id');
 
@@ -102,48 +125,65 @@ const authenticatedGET = withAuthContext<Record<string, string>>(
     }
 
     const assignmentWhere = buildSetBatchAssignmentWhere(ctx);
-    const batches = await prisma.setBatch.findMany({
-      where: {
-        plan_id: planId,
-        org_id: ctx.orgId,
-        ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
-      },
-      orderBy: [{ day_number: 'asc' }, { slot: 'asc' }],
-      include: {
-        line: {
-          select: {
-            id: true,
-            drug_name: true,
-            drug_code: true,
-            dosage_form: true,
-            dose: true,
-            frequency: true,
-            unit: true,
-            packaging_method: true,
-            packaging_instructions: true,
-            packaging_instruction_tags: true,
-            notes: true,
+    const batches = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        tx.setBatch.findMany({
+          where: {
+            plan_id: planId,
+            org_id: ctx.orgId,
+            ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
           },
-        },
-      },
-    });
+          orderBy: [{ day_number: 'asc' }, { slot: 'asc' }],
+          include: {
+            line: {
+              select: {
+                id: true,
+                drug_name: true,
+                drug_code: true,
+                dosage_form: true,
+                dose: true,
+                frequency: true,
+                unit: true,
+                packaging_method: true,
+                packaging_instructions: true,
+                packaging_instruction_tags: true,
+                notes: true,
+              },
+            },
+          },
+        }),
+      { requestContext: ctx },
+    );
 
     return success({ data: batches });
-  },
-  { permission: 'canSet' },
-);
+  });
+}
 
-export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-};
+export async function GET(req: NextRequest) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('set_batches_get_unhandled_error', undefined, {
+        event: 'set_batches_get_unhandled_error',
+        route: ROUTE,
+        method: 'GET',
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
 
-export const POST = withAuthContext<Record<string, string>>(
-  async (req: NextRequest, ctx: AuthContext): Promise<NextResponse> => {
+async function authenticatedPOST(req: NextRequest): Promise<NextResponse> {
+  const auth = await requireAuthContext(req, { permission: 'canSet' });
+  if ('response' in auth) return auth.response;
+
+  const { ctx } = auth;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -507,6 +547,22 @@ export const POST = withAuthContext<Record<string, string>>(
     });
 
     return success({ data: result.batch }, 201);
-  },
-  { permission: 'canSet' },
-);
+  });
+}
+
+export async function POST(req: NextRequest) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('set_batches_post_unhandled_error', undefined, {
+        event: 'set_batches_post_unhandled_error',
+        route: ROUTE,
+        method: 'POST',
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

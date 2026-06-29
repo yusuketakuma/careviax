@@ -2,28 +2,39 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 
-const { authMock, prismaMock, withOrgContextMock, txMock, notifyWorkflowMutationMock } = vi.hoisted(
-  () => ({
-    authMock: vi.fn(),
-    prismaMock: {
-      membership: { findFirst: vi.fn() },
-      setBatch: { findMany: vi.fn() },
-    },
-    withOrgContextMock: vi.fn(),
-    notifyWorkflowMutationMock: vi.fn(),
-    txMock: {
-      setPlan: { findFirst: vi.fn(), updateMany: vi.fn() },
-      prescriptionIntake: { findFirst: vi.fn() },
-      prescriptionLine: { findFirst: vi.fn() },
-      drugMaster: { findMany: vi.fn() },
-      setBatch: { findFirst: vi.fn(), aggregate: vi.fn(), create: vi.fn() },
-      setBatchChangeLog: { create: vi.fn() },
-    },
-  }),
-);
+const {
+  loggerErrorMock,
+  authMock,
+  prismaMock,
+  withOrgContextMock,
+  txMock,
+  notifyWorkflowMutationMock,
+} = vi.hoisted(() => ({
+  loggerErrorMock: vi.fn(),
+  authMock: vi.fn(),
+  prismaMock: {
+    membership: { findFirst: vi.fn() },
+  },
+  withOrgContextMock: vi.fn(),
+  notifyWorkflowMutationMock: vi.fn(),
+  txMock: {
+    setPlan: { findFirst: vi.fn(), updateMany: vi.fn() },
+    prescriptionIntake: { findFirst: vi.fn() },
+    prescriptionLine: { findFirst: vi.fn() },
+    drugMaster: { findMany: vi.fn() },
+    setBatch: { findMany: vi.fn(), findFirst: vi.fn(), aggregate: vi.fn(), create: vi.fn() },
+    setBatchChangeLog: { create: vi.fn() },
+  },
+}));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -103,21 +114,16 @@ describe('set-batches POST', () => {
 
   it('returns an empty batch list for trainee users when the plan belongs to an unassigned case', async () => {
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'pharmacist_trainee' });
-    prismaMock.setBatch.findMany.mockResolvedValue([]);
+    txMock.setBatch.findMany.mockResolvedValue([]);
 
-    const response = await GET(
-      createGetRequest('http://localhost/api/set-batches?plan_id=plan_1'),
-      {
-        params: Promise.resolve({}),
-      },
-    );
+    const response = await GET(createGetRequest('http://localhost/api/set-batches?plan_id=plan_1'));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({ data: [] });
-    expect(prismaMock.setBatch.findMany).toHaveBeenCalledWith(
+    expect(txMock.setBatch.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           plan_id: 'plan_1',
@@ -125,12 +131,21 @@ describe('set-batches POST', () => {
         },
       }),
     );
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        requestContext: {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist_trainee',
+        },
+      }),
+    );
   });
 
   it('returns a no-store validation error when plan_id is missing', async () => {
-    const response = await GET(createGetRequest('http://localhost/api/set-batches'), {
-      params: Promise.resolve({}),
-    });
+    const response = await GET(createGetRequest('http://localhost/api/set-batches'));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -140,20 +155,15 @@ describe('set-batches POST', () => {
       code: 'VALIDATION_ERROR',
       message: 'plan_id は必須パラメータです',
     });
-    expect(prismaMock.setBatch.findMany).not.toHaveBeenCalled();
+    expect(txMock.setBatch.findMany).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when set-batch list lookup fails unexpectedly', async () => {
-    prismaMock.setBatch.findMany.mockRejectedValueOnce(
+    txMock.setBatch.findMany.mockRejectedValueOnce(
       new Error('患者 山田太郎 raw set batch list drug packaging instruction'),
     );
 
-    const response = await GET(
-      createGetRequest('http://localhost/api/set-batches?plan_id=plan_1'),
-      {
-        params: Promise.resolve({}),
-      },
-    );
+    const response = await GET(createGetRequest('http://localhost/api/set-batches?plan_id=plan_1'));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(500);
@@ -167,6 +177,15 @@ describe('set-batches POST', () => {
     expect(JSON.stringify(body)).not.toContain('山田太郎');
     expect(JSON.stringify(body)).not.toContain('raw set batch list');
     expect(JSON.stringify(body)).not.toContain('drug packaging instruction');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'set_batches_get_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        error_name: 'Error',
+        method: 'GET',
+        route: '/api/set-batches',
+      }),
+    );
   });
 
   it('rejects lines that do not belong to the plan cycle', async () => {
@@ -202,7 +221,6 @@ describe('set-batches POST', () => {
         quantity: 1,
         carry_type: 'carry',
       }),
-      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');
@@ -235,7 +253,6 @@ describe('set-batches POST', () => {
         quantity: 1,
         carry_type: 'carry',
       }),
-      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');
@@ -257,7 +274,7 @@ describe('set-batches POST', () => {
   });
 
   it('rejects non-object create payloads before transaction side effects', async () => {
-    const response = await POST(createRequest([]), { params: Promise.resolve({}) });
+    const response = await POST(createRequest([]));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -271,7 +288,7 @@ describe('set-batches POST', () => {
   });
 
   it('rejects malformed JSON before transaction side effects', async () => {
-    const response = await POST(createMalformedPostRequest(), { params: Promise.resolve({}) });
+    const response = await POST(createMalformedPostRequest());
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -287,6 +304,63 @@ describe('set-batches POST', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('rejects unauthenticated malformed JSON before parsing or transaction side effects', async () => {
+    authMock.mockResolvedValueOnce(null);
+
+    const response = await POST(createMalformedPostRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(401);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.setPlan.findFirst).not.toHaveBeenCalled();
+    expect(txMock.prescriptionLine.findFirst).not.toHaveBeenCalled();
+    expect(txMock.setBatch.findFirst).not.toHaveBeenCalled();
+    expect(txMock.setBatch.create).not.toHaveBeenCalled();
+    expect(txMock.setBatchChangeLog.create).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when batch creation fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 raw set batch create drug packaging instruction'),
+    );
+
+    const response = await POST(
+      createRequest({
+        plan_id: 'plan_1',
+        line_id: 'line_1',
+        slot: 'morning',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('raw set batch create');
+    expect(JSON.stringify(body)).not.toContain('drug packaging instruction');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'set_batches_post_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        error_name: 'Error',
+        method: 'POST',
+        route: '/api/set-batches',
+      }),
+    );
+  });
+
   it('returns 404 for unassigned pharmacist batch creation before line lookup or writes', async () => {
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'pharmacist' });
     txMock.setPlan.findFirst.mockResolvedValue(null);
@@ -300,7 +374,6 @@ describe('set-batches POST', () => {
         quantity: 1,
         carry_type: 'carry',
       }),
-      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');
@@ -329,7 +402,6 @@ describe('set-batches POST', () => {
         quantity: 1,
         carry_type: 'carry',
       }),
-      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');
@@ -371,7 +443,6 @@ describe('set-batches POST', () => {
         quantity: 1,
         carry_type: 'carry',
       }),
-      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');
@@ -412,7 +483,6 @@ describe('set-batches POST', () => {
         quantity: 1,
         carry_type: 'carry',
       }),
-      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');
@@ -466,7 +536,6 @@ describe('set-batches POST', () => {
         quantity: 1,
         carry_type: 'carry',
       }),
-      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');
@@ -535,11 +604,12 @@ describe('set-batches POST', () => {
         quantity: 1,
         carry_type: 'carry',
       }),
-      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(withOrgContextMock).toHaveBeenCalledTimes(2);
     expect(withOrgContextMock).toHaveBeenNthCalledWith(
       1,
@@ -547,6 +617,11 @@ describe('set-batches POST', () => {
       expect.any(Function),
       expect.objectContaining({
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        requestContext: {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'admin',
+        },
       }),
     );
     expect(txMock.setPlan.updateMany).toHaveBeenCalledWith(
@@ -605,7 +680,6 @@ describe('set-batches POST', () => {
         quantity: 1,
         carry_type: 'carry',
       }),
-      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');
@@ -695,7 +769,6 @@ describe('set-batches POST', () => {
         quantity: 1,
         carry_type: 'carry',
       }),
-      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');
@@ -772,7 +845,6 @@ describe('set-batches POST', () => {
         quantity: 1,
         carry_type: 'carry',
       }),
-      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');
@@ -829,7 +901,6 @@ describe('set-batches POST', () => {
         quantity: 1,
         carry_type: 'carry',
       }),
-      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');
@@ -882,7 +953,6 @@ describe('set-batches POST', () => {
         quantity: 1,
         carry_type: 'carry',
       }),
-      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');

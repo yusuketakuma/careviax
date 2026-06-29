@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 
 const {
+  loggerErrorMock,
   authMock,
   membershipFindFirstMock,
   setPlanFindManyMock,
@@ -15,6 +16,7 @@ const {
   withOrgContextMock,
   notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
+  loggerErrorMock: vi.fn(),
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   setPlanFindManyMock: vi.fn(),
@@ -30,6 +32,12 @@ const {
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -53,9 +61,8 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 
 import { GET as rawGET, POST as rawPOST } from './route';
 
-const emptyRouteContext = { params: Promise.resolve({}) };
-const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
-const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
+const GET = (req: NextRequest) => rawGET(req);
+const POST = (req: NextRequest) => rawPOST(req);
 
 function createRequest(url: string, body?: unknown) {
   return new NextRequest(url, {
@@ -124,6 +131,7 @@ describe('/api/set-plans', () => {
           findFirst: packagingMethodFindFirstMock,
         },
         setPlan: {
+          findMany: setPlanFindManyMock,
           findFirst: setPlanTxFindFirstMock,
           create: setPlanCreateMock,
         },
@@ -138,6 +146,17 @@ describe('/api/set-plans', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        requestContext: expect.objectContaining({
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'admin',
+        }),
+      }),
+    );
     expect(setPlanFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -244,7 +263,19 @@ describe('/api/set-plans', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({ replayed: false });
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        requestContext: expect.objectContaining({
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        }),
+      }),
+    );
     expect(setPlanTxFindFirstMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -354,6 +385,86 @@ describe('/api/set-plans', () => {
     expect(setPlanCreateMock).not.toHaveBeenCalled();
     expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
     expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unauthenticated malformed JSON before parsing or writes', async () => {
+    authMock.mockResolvedValueOnce(null);
+
+    const response = (await POST(createMalformedPostRequest()))!;
+
+    expect(response.status).toBe(401);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(packagingMethodFindFirstMock).not.toHaveBeenCalled();
+    expect(setPlanCreateMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when set-plan listing fails unexpectedly', async () => {
+    setPlanFindManyMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 raw set plan list medication notes'),
+    );
+
+    const response = (await GET(createRequest('http://localhost/api/set-plans?cycle_id=cycle_1')))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('raw set plan list');
+    expect(JSON.stringify(body)).not.toContain('medication notes');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'set_plans_get_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'set_plans_get_unhandled_error',
+        route: '/api/set-plans',
+        method: 'GET',
+        error_name: 'Error',
+      }),
+    );
+  });
+
+  it('returns a sanitized no-store 500 when set-plan creation fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 raw set plan create medication notes'),
+    );
+
+    const response = (await POST(
+      createRequest('http://localhost/api/set-plans', {
+        cycle_id: 'cycle_1',
+        target_period_start: '2026-04-01',
+        target_period_end: '2026-04-07',
+        set_method: 'custom',
+      }),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('raw set plan create');
+    expect(JSON.stringify(body)).not.toContain('medication notes');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'set_plans_post_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'set_plans_post_unhandled_error',
+        route: '/api/set-plans',
+        method: 'POST',
+        error_name: 'Error',
+      }),
+    );
   });
 
   it('rejects pharmacist set-plan creation when the cycle is not found in-org before writes or cycle transition', async () => {

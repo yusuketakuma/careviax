@@ -2,6 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { NextRequest } from 'next/server';
 
 const {
+  authMock,
+  membershipFindFirstMock,
   pcaPumpFindFirstMock,
   prescriberInstitutionFindFirstMock,
   pcaPumpRentalFindManyMock,
@@ -10,7 +12,10 @@ const {
   pcaPumpUpdateManyMock,
   auditLogCreateMock,
   withOrgContextMock,
+  loggerErrorMock,
 } = vi.hoisted(() => ({
+  authMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
   pcaPumpFindFirstMock: vi.fn(),
   prescriberInstitutionFindFirstMock: vi.fn(),
   pcaPumpRentalFindManyMock: vi.fn(),
@@ -19,26 +24,21 @@ const {
   pcaPumpUpdateManyMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/context', () => ({
-  withAuthContext:
-    (
-      handler: (
-        req: NextRequest,
-        ctx: { orgId: string; userId: string; role: string },
-      ) => Promise<Response>,
-    ) =>
-    (req: NextRequest) =>
-      handler(req, {
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'admin',
-      }),
+vi.mock('@/lib/auth/config', () => ({
+  auth: authMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
+    membership: {
+      findFirst: membershipFindFirstMock,
+    },
+    pharmacySite: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
     pcaPump: {
       findFirst: pcaPumpFindFirstMock,
     },
@@ -55,18 +55,33 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
+}));
+
 import { GET as rawGET, POST as rawPOST } from './route';
 
-const emptyRouteContext = { params: Promise.resolve({}) };
-
-const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
-const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
+const GET = (req: NextRequest) => rawGET(req);
+const POST = (req: NextRequest) => rawPOST(req);
 
 function createRequest(url: string, body?: unknown) {
   return new NextRequest(url, {
     method: body === undefined ? 'GET' : 'POST',
-    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    headers:
+      body === undefined
+        ? { 'x-org-id': 'org_1' }
+        : { 'content-type': 'application/json', 'x-org-id': 'org_1' },
     body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/pca-pump-rentals', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-org-id': 'org_1' },
+    body: '{',
   });
 }
 
@@ -123,6 +138,8 @@ describe('/api/pca-pump-rentals', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin', site_id: null });
     pcaPumpFindFirstMock.mockResolvedValue({ id: 'pump_1', status: 'available' });
     prescriberInstitutionFindFirstMock.mockResolvedValue({ id: 'institution_1' });
     pcaPumpRentalFindManyMock.mockResolvedValue([rentalRecord]);
@@ -286,6 +303,29 @@ describe('/api/pca-pump-rentals', () => {
       code: 'INTERNAL_ERROR',
     });
     expect(JSON.stringify(body)).not.toContain('contact phone serial secret');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'route_handler_unhandled_error',
+        route: '/api/pca-pump-rentals',
+        method: 'GET',
+      }),
+      expect.any(Error),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('contact phone serial secret');
+  });
+
+  it('returns no-store auth failure before parsing POST body or reading PCA references', async () => {
+    authMock.mockResolvedValueOnce(null);
+
+    const response = await POST(createMalformedJsonRequest());
+
+    expect(response.status).toBe(401);
+    expectNoStore(response);
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pcaPumpFindFirstMock).not.toHaveBeenCalled();
+    expect(prescriberInstitutionFindFirstMock).not.toHaveBeenCalled();
+    expect(pcaPumpRentalCreateMock).not.toHaveBeenCalled();
   });
 
   it('creates a rental and marks the pump as rented in the same org transaction', async () => {
@@ -483,6 +523,36 @@ describe('/api/pca-pump-rentals', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: 'このPCAポンプには未完了の貸出があるため登録できません',
     });
+  });
+
+  it('returns a sanitized no-store 500 when PCA pump rental creation fails unexpectedly', async () => {
+    pcaPumpRentalCreateMock.mockRejectedValueOnce(
+      new Error('raw PCA rental creation contact phone serial secret'),
+    );
+
+    const response = await POST(
+      createRequest('http://localhost/api/pca-pump-rentals', {
+        pump_id: 'pump_1',
+        institution_id: 'institution_1',
+        rented_at: '2026-06-10',
+        due_at: '2026-06-20',
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain('contact phone serial secret');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'route_handler_unhandled_error',
+        route: '/api/pca-pump-rentals',
+        method: 'POST',
+      }),
+      expect.any(Error),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('contact phone serial secret');
   });
 
   it('rejects already rented pumps before creating a rental', async () => {

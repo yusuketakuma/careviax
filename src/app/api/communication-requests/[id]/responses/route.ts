@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { withAuthContext } from '@/lib/auth/context';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import {
   success,
@@ -32,6 +33,26 @@ import {
   findCommunicationResponseByIntent,
   upsertCommunicationResponseByIntent,
 } from '@/server/services/communication-response-upsert';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
+
+const ROUTE = '/api/communication-requests/[id]/responses';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
+
+type RouteContext = { params: Promise<{ id: string }> };
 
 const createResponseSchema = z.object({
   expected_updated_at: z.string().datetime('版情報が不正です'),
@@ -40,8 +61,15 @@ const createResponseSchema = z.object({
   responded_at: z.preprocess(trimStringOrUndefined, z.string().datetime('日付形式が不正です')),
 });
 
-const authenticatedGET = withAuthContext(
-  async (_req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
+async function authenticatedGET(req: NextRequest, { params }: RouteContext) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canReport',
+    message: '連携依頼の閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('連携依頼IDが不正です');
@@ -81,24 +109,36 @@ const authenticatedGET = withAuthContext(
     });
 
     return success({ data: responses, request_updated_at: request.updated_at.toISOString() });
-  },
-  {
+  });
+}
+
+export async function GET(req: NextRequest, routeContext: RouteContext) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('communication_request_responses_get_unhandled_error', undefined, {
+        event: 'communication_request_responses_get_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
+
+async function authenticatedPOST(req: NextRequest, { params }: RouteContext) {
+  const authResult = await requireAuthContext(req, {
     permission: 'canReport',
-    message: '連携依頼の閲覧権限がありません',
-  },
-);
+    message: '連携依頼の更新権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
 
-export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-};
-
-export const POST = withAuthContext(
-  async (req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
+  return runWithRequestAuthContext(ctx, async () => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('連携依頼IDが不正です');
@@ -269,9 +309,23 @@ export const POST = withAuthContext(
       },
       result.created ? 201 : 200,
     );
-  },
-  {
-    permission: 'canReport',
-    message: '連携依頼の更新権限がありません',
-  },
-);
+  });
+}
+
+export async function POST(req: NextRequest, routeContext: RouteContext) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('communication_request_responses_post_unhandled_error', undefined, {
+        event: 'communication_request_responses_post_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

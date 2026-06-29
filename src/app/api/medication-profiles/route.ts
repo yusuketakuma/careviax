@@ -1,5 +1,7 @@
 import { unstable_rethrow } from 'next/navigation';
-import { withAuthContext } from '@/lib/auth/context';
+import { NextRequest } from 'next/server';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -9,7 +11,25 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
 import { buildPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { canAccessPatient } from '@/server/services/patient-access';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import type { Prisma } from '@prisma/client';
+
+const ROUTE = '/api/medication-profiles';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 function readStrictOptionalPatientFilter(searchParams: URLSearchParams) {
   const values = searchParams.getAll('patient_id');
@@ -88,8 +108,15 @@ function parseMedicationProfileListFilters(searchParams: URLSearchParams) {
   };
 }
 
-const authenticatedGET = withAuthContext(
-  async (req, ctx) => {
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: '薬剤プロファイルの閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
     const filters = parseMedicationProfileListFilters(searchParams);
@@ -142,24 +169,37 @@ const authenticatedGET = withAuthContext(
     });
 
     return withSensitiveNoStore(success(buildCursorPage(profiles, limit, (profile) => profile.id)));
-  },
-  {
+  });
+}
+
+export async function GET(req: NextRequest, routeContext?: unknown) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('medication_profiles_get_unhandled_error', undefined, {
+        event: 'medication_profiles_get_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
+
+async function authenticatedPOST(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
-    message: '薬剤プロファイルの閲覧権限がありません',
-  },
-);
+    message: '薬剤プロファイルの作成権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
 
-export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-};
-
-export const POST = withAuthContext(
-  async (req, ctx) => {
+  return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -194,9 +234,24 @@ export const POST = withAuthContext(
     });
 
     return success({ data: profile }, 201);
-  },
-  {
-    permission: 'canVisit',
-    message: '薬剤プロファイルの作成権限がありません',
-  },
-);
+  });
+}
+
+export async function POST(req: NextRequest, routeContext?: unknown) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('medication_profiles_post_unhandled_error', undefined, {
+        event: 'medication_profiles_post_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

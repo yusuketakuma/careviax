@@ -1,6 +1,7 @@
 import { formatDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
+import { medicationIdentityKey } from '@/lib/prescription/medication-diff';
 import { Prisma, type LabAnalyteCode } from '@prisma/client';
 import { differenceInYears } from 'date-fns';
 
@@ -54,6 +55,7 @@ type DrugMasterForCds = {
 
 type AllergyEntry = {
   drug_name?: string;
+  drug_code?: string;
   therapeutic_category?: string;
   substance?: string;
   category?: 'drug' | 'food' | 'other';
@@ -65,6 +67,20 @@ function allergyAlertSeverity(severity?: string): CdsAlert['severity'] {
   if (severity === 'moderate') return 'warning';
   if (severity === 'mild') return 'info';
   return 'critical'; // unknown or undefined → safe default
+}
+
+function yjIngredientPrefix(code: string | null | undefined): string | null {
+  const normalized = code?.replace(/[^A-Za-z0-9]/g, '').toUpperCase() ?? '';
+  return normalized.length >= 7 ? normalized.slice(0, 7) : null;
+}
+
+function hasSameYjIngredientPrefix(
+  left: string | null | undefined,
+  right: string | null | undefined,
+) {
+  const leftPrefix = yjIngredientPrefix(left);
+  const rightPrefix = yjIngredientPrefix(right);
+  return Boolean(leftPrefix && rightPrefix && leftPrefix === rightPrefix);
 }
 
 type RenalDoseEntry = {
@@ -363,9 +379,7 @@ async function resolveManagedAlertTypeStates(orgId: string) {
 function buildComparableLineKey(
   line: Pick<PrescriptionLine, 'drug_name' | 'drug_code' | 'dose' | 'frequency' | 'days'>,
 ) {
-  return [line.drug_code ?? '', line.drug_name, line.dose, line.frequency, String(line.days)].join(
-    '::',
-  );
+  return [medicationIdentityKey(line), line.dose, line.frequency, String(line.days)].join('::');
 }
 
 function isSamePrescriptionContent(
@@ -516,9 +530,15 @@ async function checkDuplicates(
         });
         continue;
       }
+
+      // Code-resolved prescription lines must not fall back to drug-name matching.
+      // Same display names can represent different strengths/products.
+      continue;
     }
 
-    const dupByName = currentMeds.find((m) => m.drug_name === line.drug_name);
+    const dupByName = currentMeds.find(
+      (m) => !masterByMedId.has(m.id) && m.drug_name === line.drug_name,
+    );
     if (dupByName) {
       alerts.push({
         type: 'duplicate',
@@ -815,15 +835,34 @@ async function checkAllergyReactions(
 
     // Check against allergy entries
     for (const allergy of allergyEntries) {
-      // Direct drug name match
-      if (allergy.drug_name && line.drug_name.includes(allergy.drug_name)) {
+      const allergyDrugCode = allergy.drug_code?.trim();
+      if (allergyDrugCode && allergyDrugCode === line.drug_code) {
+        alerts.push({
+          type: 'allergy_cross',
+          severity: allergyAlertSeverity(allergy.severity),
+          message: `アレルギー交差反応: ${line.drug_name}（患者アレルギー: ${allergy.drug_name ?? allergyDrugCode}）`,
+          details: {
+            allergy_drug: allergy.drug_name,
+            allergy_drug_code: allergyDrugCode,
+            prescribed_drug: line.drug_name,
+            prescribed_drug_code: line.drug_code,
+            allergy_severity: allergy.severity,
+          },
+        });
+      } else if (
+        allergy.drug_name &&
+        line.drug_name.includes(allergy.drug_name) &&
+        (!allergyDrugCode || hasSameYjIngredientPrefix(allergyDrugCode, line.drug_code))
+      ) {
         alerts.push({
           type: 'allergy_cross',
           severity: allergyAlertSeverity(allergy.severity),
           message: `アレルギー交差反応: ${line.drug_name}（患者アレルギー: ${allergy.drug_name}）`,
           details: {
             allergy_drug: allergy.drug_name,
+            ...(allergyDrugCode ? { allergy_drug_code: allergyDrugCode } : {}),
             prescribed_drug: line.drug_name,
+            ...(line.drug_code ? { prescribed_drug_code: line.drug_code } : {}),
             allergy_severity: allergy.severity,
           },
         });

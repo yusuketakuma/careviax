@@ -1,7 +1,10 @@
-import { withAuthContext, type AuthContext } from '@/lib/auth/context';
+import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
+import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { conflict, forbidden, success, validationError } from '@/lib/api/response';
+import { conflict, forbidden, internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { parseOptionalBoundedIntegerParam, parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
@@ -17,6 +20,24 @@ import {
   getCareReportAccessScope,
 } from '@/server/services/care-report-access';
 import { canOutputCareReport } from '@/server/services/care-report-output-policy';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
+
+const ROUTE = '/api/care-reports';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 function trimStringOrUndefined(value: unknown) {
   if (value === null || value === undefined) return undefined;
@@ -460,8 +481,15 @@ async function validateCareReportSource(args: {
   return { caseId: resolvedCaseId };
 }
 
-export const GET = withAuthContext(
-  async (req, ctx) => {
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canReport',
+    message: '報告書の閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
 
@@ -830,15 +858,36 @@ export const GET = withAuthContext(
       : buildDeliverySummary(filteredData);
 
     return withSensitiveNoStore(success({ data, hasMore, nextCursor, deliverySummary }));
-  },
-  {
-    permission: 'canReport',
-    message: '報告書の閲覧権限がありません',
-  },
-);
+  });
+}
 
-export const POST = withAuthContext(
-  async (req, ctx) => {
+export async function GET(req: NextRequest) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('care_reports_get_unhandled_error', undefined, {
+        event: 'care_reports_get_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
+
+async function authenticatedPOST(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canAuthorReport',
+    message: '報告書の作成権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -977,9 +1026,23 @@ export const POST = withAuthContext(
     }
 
     return success({ data: report }, 201);
-  },
-  {
-    permission: 'canAuthorReport',
-    message: '報告書の作成権限がありません',
-  },
-);
+  });
+}
+
+export async function POST(req: NextRequest) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('care_reports_post_unhandled_error', undefined, {
+        event: 'care_reports_post_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

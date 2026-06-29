@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 const {
   authMock,
   getRequestAuthContextMock,
+  loggerErrorMock,
   membershipFindFirstMock,
   patientFindFirstMock,
   queryRawMock,
@@ -45,9 +46,11 @@ const {
   taskUpsertMock,
   billingEvidenceUpsertMock,
   listBillingEvidenceBlockersMock,
+  buildPatientStateSnapshotMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   getRequestAuthContextMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   queryRawMock: vi.fn(),
@@ -88,6 +91,7 @@ const {
   taskUpsertMock: vi.fn(),
   billingEvidenceUpsertMock: vi.fn(),
   listBillingEvidenceBlockersMock: vi.fn(),
+  buildPatientStateSnapshotMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -128,11 +132,20 @@ vi.mock('@/server/services/visit-handoff', () => ({
   VisitHandoffStaleRecordError: class VisitHandoffStaleRecordError extends Error {},
 }));
 
+vi.mock('@/server/services/patient-state-snapshot', () => ({
+  buildPatientStateSnapshot: buildPatientStateSnapshotMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
+}));
+
 import { GET as rawGET, POST as rawPOST } from './route';
 
-const emptyRouteContext = { params: Promise.resolve({}) };
-const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
-const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
+const GET = (req: NextRequest) => rawGET(req);
+const POST = (req: NextRequest) => rawPOST(req);
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/visit-records', {
@@ -154,6 +167,11 @@ function createMalformedJsonRequest(headers?: Record<string, string>) {
       ...headers,
     },
   });
+}
+
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function createUniqueConstraintError() {
@@ -252,6 +270,7 @@ describe('/api/visit-records GET', () => {
         prescriber_name: '佐藤医師',
         prescription_count: BigInt(1),
         drug_names: ['アムロジピン錠5mg'],
+        medications: [{ drug_name: 'アムロジピン錠5mg', drug_code: '2149001F1020' }],
       },
     ]);
     queryRawMock.mockResolvedValueOnce([
@@ -291,6 +310,37 @@ describe('/api/visit-records GET', () => {
       });
     },
   );
+
+  it('returns a sanitized no-store 500 without raw logging when visit record listing fails unexpectedly', async () => {
+    visitRecordFindManyMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 raw visit record listing secret'),
+    );
+
+    const response = await GET(createGetRequest('http://localhost/api/visit-records'));
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('raw visit record');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'visit_records_get_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'visit_records_get_unhandled_error',
+        route: '/api/visit-records',
+        method: 'GET',
+        status: 500,
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw visit record');
+  });
 
   it.each([
     ['patient_id=patient_1&patient_id=', 'patient_id'],
@@ -479,7 +529,12 @@ describe('/api/visit-records GET', () => {
         prescribed_date: new Date('2026-04-18T00:00:00.000Z'),
         prescriber_name: '佐藤医師',
         prescription_count: BigInt(1),
-        drug_names: ['アムロジピン錠5mg'],
+        drug_names: ['アムロジピン錠5mg', '同名薬', '同名薬'],
+        medications: [
+          { drug_name: 'アムロジピン錠5mg', drug_code: '2149001F1020' },
+          { drug_name: '同名薬', drug_code: '9999001F1020' },
+          { drug_name: '同名薬', drug_code: null },
+        ],
       },
     ]);
     queryRawMock.mockResolvedValueOnce([
@@ -534,7 +589,12 @@ describe('/api/visit-records GET', () => {
             latest_prescription: {
               id: 'intake_1',
               prescriber_name: '佐藤医師',
-              drug_names: ['アムロジピン錠5mg'],
+              drug_names: ['アムロジピン錠5mg', '同名薬', '同名薬'],
+              medications: [
+                { drug_name: 'アムロジピン錠5mg', drug_code: '2149001F1020' },
+                { drug_name: '同名薬', drug_code: '9999001F1020' },
+                { drug_name: '同名薬', drug_code: null },
+              ],
             },
             previous_visit: {
               id: 'visit_1',
@@ -839,6 +899,10 @@ describe('/api/visit-records POST', () => {
     });
     visitRecordFindManyMock.mockResolvedValue([{ id: 'record_1' }]);
     listBillingEvidenceBlockersMock.mockResolvedValue([]);
+    buildPatientStateSnapshotMock.mockResolvedValue({
+      source: 'visit_record',
+      patient: { id: 'patient_1', name: '患者A' },
+    });
     visitRecordCreateMock.mockResolvedValue({ id: 'record_1', version: 1 });
     visitRecordFindFirstMock.mockResolvedValue(null);
     visitRecordUpdateManyMock.mockResolvedValue({ count: 1 });
@@ -1128,6 +1192,59 @@ describe('/api/visit-records POST', () => {
         }),
       }),
     );
+  });
+
+  it('logs only sanitized patient-state snapshot failure metadata and still saves the visit record', async () => {
+    const rawError = new Error('患者 山田太郎 medication=アムロジピン raw snapshot secret');
+    buildPatientStateSnapshotMock.mockRejectedValueOnce(rawError);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      const response = await POST(
+        createRequest(
+          {
+            schedule_id: 'schedule_1',
+            patient_id: 'patient_1',
+            visit_date: '2026-03-26',
+            outcome_status: 'completed',
+            structured_soap: completedVisitStructuredSoap,
+          },
+          { 'x-org-id': 'org_1' },
+        ),
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(201);
+      expect(visitRecordCreateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            patient_state_snapshot: undefined,
+          }),
+        }),
+      );
+      expect(loggerErrorMock).toHaveBeenCalledWith(
+        'visit_records_patient_state_snapshot_build_failed',
+        undefined,
+        expect.objectContaining({
+          event: 'visit_records_patient_state_snapshot_build_failed',
+          route: '/api/visit-records',
+          operation: 'build_patient_state_snapshot',
+          error_name: 'Error',
+        }),
+      );
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        '[visit-records] patient_state_snapshot build failed',
+        rawError,
+      );
+      expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
+      expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('アムロジピン');
+      expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw snapshot secret');
+      expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('山田太郎');
+      expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('アムロジピン');
+      expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('raw snapshot secret');
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it.each(['ready', null] as const)(
@@ -1542,6 +1659,50 @@ describe('/api/visit-records POST', () => {
     expect(processHandoffExtractionMock).not.toHaveBeenCalled();
   });
 
+  it('returns a sanitized no-store 500 without raw logging when visit record creation fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 raw visit record create secret'),
+    );
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          structured_soap: completedVisitStructuredSoap,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('raw visit record');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'visit_records_post_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'visit_records_post_unhandled_error',
+        route: '/api/visit-records',
+        method: 'POST',
+        status: 500,
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw visit record');
+    expect(processHandoffExtractionMock).not.toHaveBeenCalled();
+  });
+
   it.each(['pharmacist', 'pharmacist_trainee'] as const)(
     'allows a %s with org-wide access to create a record on a schedule assigned to another user',
     async (role) => {
@@ -1801,9 +1962,16 @@ describe('/api/visit-records POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expect(medicationIssueFindFirstMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        title: 'アムロジピン錠5mg（2149001） の残薬調整',
+      }),
+      select: { id: true },
+    });
     expect(medicationIssueCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        title: 'アムロジピン錠5mg の残薬調整',
+        title: 'アムロジピン錠5mg（2149001） の残薬調整',
+        description: expect.stringContaining('アムロジピン錠5mg（2149001）'),
         category: 'adherence',
       }),
       select: { id: true },
@@ -1827,6 +1995,7 @@ describe('/api/visit-records POST', () => {
     expect(workflowExceptionCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         exception_type: 'reduction_prohibited_drug',
+        description: expect.stringContaining('オキシコドン徐放錠（8114001）'),
         severity: 'critical',
       }),
     });
@@ -1834,6 +2003,13 @@ describe('/api/visit-records POST', () => {
       expect.objectContaining({
         create: expect.objectContaining({
           task_type: 'tracing_report_followup',
+          title: 'アムロジピン錠5mg（2149001） の残薬調整を確認',
+          dedupe_key: 'tracing-report-followup:record_1:code:2149001',
+          metadata: expect.objectContaining({
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            drug_identity_key: 'code:2149001',
+          }),
         }),
       }),
     );
@@ -1841,6 +2017,16 @@ describe('/api/visit-records POST', () => {
       expect.objectContaining({
         create: expect.objectContaining({
           task_type: 'residual_reduction_review',
+          description: expect.stringContaining('オキシコドン徐放錠（8114001）'),
+          metadata: expect.objectContaining({
+            drugs: [
+              expect.objectContaining({
+                drug_name: 'オキシコドン徐放錠',
+                drug_code: '8114001',
+                drug_identity_key: 'code:8114001',
+              }),
+            ],
+          }),
         }),
       }),
     );

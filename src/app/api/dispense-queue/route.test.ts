@@ -1,10 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { authMock, membershipFindFirstMock, dispenseTaskFindManyMock } = vi.hoisted(() => ({
+const {
+  authMock,
+  membershipFindFirstMock,
+  dispenseTaskFindManyMock,
+  withOrgContextMock,
+  loggerErrorMock,
+} = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   dispenseTaskFindManyMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -16,10 +24,15 @@ vi.mock('@/lib/db/client', () => ({
     membership: {
       findFirst: membershipFindFirstMock,
     },
-    dispenseTask: {
-      findMany: dispenseTaskFindManyMock,
-    },
   },
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock },
 }));
 
 import { GET } from './route';
@@ -39,6 +52,13 @@ describe('/api/dispense-queue', () => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findMany: dispenseTaskFindManyMock,
+        },
+      }),
+    );
     dispenseTaskFindManyMock.mockResolvedValue([
       {
         id: 'task_1',
@@ -100,6 +120,15 @@ describe('/api/dispense-queue', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+      maxWaitMs: 10_000,
+      timeoutMs: 20_000,
+    });
     await expect(response.json()).resolves.toMatchObject({
       data: [
         expect.objectContaining({
@@ -126,9 +155,11 @@ describe('/api/dispense-queue', () => {
   });
 
   it('returns a sanitized no-store 500 when queue lookup fails unexpectedly', async () => {
-    dispenseTaskFindManyMock.mockRejectedValueOnce(
-      new Error('患者 山田花子 東京都千代田区1-1-1 raw dispense queue drug inquiry'),
+    const unsafeError = new Error(
+      '患者 山田花子 東京都千代田区1-1-1 raw dispense queue drug inquiry',
     );
+    unsafeError.name = 'DispenseQueuePatientSecretError';
+    dispenseTaskFindManyMock.mockRejectedValueOnce(unsafeError);
 
     const response = (await GET(createRequest(), emptyRouteContext))!;
 
@@ -143,5 +174,18 @@ describe('/api/dispense-queue', () => {
     expect(JSON.stringify(body)).not.toContain('山田花子');
     expect(JSON.stringify(body)).not.toContain('東京都千代田区1-1-1');
     expect(JSON.stringify(body)).not.toContain('raw dispense queue drug inquiry');
+    expect(loggerErrorMock).toHaveBeenCalledWith('dispense_queue_get_unhandled_error', undefined, {
+      event: 'dispense_queue_get_unhandled_error',
+      route: '/api/dispense-queue',
+      method: 'GET',
+      status: 500,
+      error_name: 'Error',
+    });
+    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
+    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
+    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(logged).not.toContain('山田花子');
+    expect(logged).not.toContain('東京都千代田区1-1-1');
+    expect(logged).not.toContain('DispenseQueuePatientSecretError');
   });
 });

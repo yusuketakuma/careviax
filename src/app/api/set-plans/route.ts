@@ -1,11 +1,12 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { Prisma } from '@prisma/client';
-import { withAuthContext, type AuthContext } from '@/lib/auth/context';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError, conflict } from '@/lib/api/response';
+import { success, validationError, conflict, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { prisma } from '@/lib/db/client';
 import { buildSetPlanPackagingSummary } from '@/lib/dispensing/set-plan-packaging';
 import {
   transitionCycleStatus,
@@ -19,7 +20,25 @@ import {
 } from '@/server/services/prescription-access';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { MAX_SET_PLAN_DAY_COUNT, isSetPlanPeriodWithinLimit } from '@/lib/set-plan-period';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import { z } from 'zod';
+
+const ROUTE = '/api/set-plans';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 const createSetPlanSchema = z
   .object({
@@ -108,8 +127,16 @@ function isUniqueConstraintError(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
-const authenticatedGET = withAuthContext(
-  async (req: NextRequest, ctx: AuthContext) => {
+async function authenticatedGET(req: NextRequest) {
+  const auth = await requireAuthContext(req, {
+    permission: 'canSet',
+    message: 'セット計画の閲覧権限がありません',
+  });
+  if ('response' in auth) return auth.response;
+
+  const { ctx } = auth;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const query = parseSetPlanListQuery(searchParams);
     if (!query.ok) return query.response;
@@ -123,67 +150,90 @@ const authenticatedGET = withAuthContext(
       ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
     };
 
-    const plans = await prisma.setPlan.findMany({
-      where,
-      orderBy: { created_at: 'desc' },
-      select: {
-        id: true,
-        org_id: true,
-        cycle_id: true,
-        target_period_start: true,
-        target_period_end: true,
-        set_method: true,
-        packaging_method_id: true,
-        packaging_summary_snapshot: true,
-        notes: true,
-        created_at: true,
-        updated_at: true,
-        packaging_method_ref: {
+    const plans = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        tx.setPlan.findMany({
+          where,
+          orderBy: { created_at: 'desc' },
           select: {
             id: true,
-            name: true,
-            description: true,
-          },
-        },
-        cycle: {
-          select: {
-            id: true,
-            overall_status: true,
-            patient_id: true,
-            case_: {
+            org_id: true,
+            cycle_id: true,
+            target_period_start: true,
+            target_period_end: true,
+            set_method: true,
+            packaging_method_id: true,
+            packaging_summary_snapshot: true,
+            notes: true,
+            created_at: true,
+            updated_at: true,
+            packaging_method_ref: {
               select: {
-                patient: {
-                  select: { id: true, name: true, name_kana: true },
+                id: true,
+                name: true,
+                description: true,
+              },
+            },
+            cycle: {
+              select: {
+                id: true,
+                overall_status: true,
+                patient_id: true,
+                case_: {
+                  select: {
+                    patient: {
+                      select: { id: true, name: true, name_kana: true },
+                    },
+                  },
                 },
               },
             },
+            audits: {
+              orderBy: { audited_at: 'desc' },
+              take: 1,
+              select: {
+                id: true,
+                result: true,
+                audited_at: true,
+              },
+            },
           },
-        },
-        audits: {
-          orderBy: { audited_at: 'desc' },
-          take: 1,
-          select: {
-            id: true,
-            result: true,
-            audited_at: true,
-          },
-        },
-      },
-    });
+        }),
+      { requestContext: ctx },
+    );
 
     return success({ data: plans });
-  },
-  {
+  });
+}
+
+export async function GET(req: NextRequest) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('set_plans_get_unhandled_error', undefined, {
+        event: 'set_plans_get_unhandled_error',
+        route: ROUTE,
+        method: 'GET',
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
+
+async function authenticatedPOST(req: NextRequest) {
+  const auth = await requireAuthContext(req, {
     permission: 'canSet',
-    message: 'セット計画の閲覧権限がありません',
-  },
-);
+    message: 'セット計画の作成権限がありません',
+  });
+  if ('response' in auth) return auth.response;
 
-export const GET: typeof authenticatedGET = async (req, routeContext) =>
-  withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  const { ctx } = auth;
 
-export const POST = withAuthContext(
-  async (req: NextRequest, ctx: AuthContext) => {
+  return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -201,118 +251,51 @@ export const POST = withAuthContext(
       notes,
     } = parsed.data;
 
-    const result = await withOrgContext(ctx.orgId, async (tx) => {
-      const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
-      const cycle = await tx.medicationCycle.findFirst({
-        where: {
-          id: cycle_id,
-          org_id: ctx.orgId,
-          ...(cycleAssignmentWhere ? { AND: [cycleAssignmentWhere] } : {}),
-        },
-        select: {
-          id: true,
-          overall_status: true,
-          patient_id: true,
-          case_: {
-            select: {
-              patient: {
-                select: {
-                  packaging_profile: {
-                    select: {
-                      default_packaging_method: true,
-                      medication_box_color: true,
-                      notes: true,
-                      box_config: true,
-                      special_instructions: true,
-                      cognitive_note: true,
+    const result = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
+        const cycle = await tx.medicationCycle.findFirst({
+          where: {
+            id: cycle_id,
+            org_id: ctx.orgId,
+            ...(cycleAssignmentWhere ? { AND: [cycleAssignmentWhere] } : {}),
+          },
+          select: {
+            id: true,
+            overall_status: true,
+            patient_id: true,
+            case_: {
+              select: {
+                patient: {
+                  select: {
+                    packaging_profile: {
+                      select: {
+                        default_packaging_method: true,
+                        medication_box_color: true,
+                        notes: true,
+                        box_config: true,
+                        special_instructions: true,
+                        cognitive_note: true,
+                      },
                     },
                   },
                 },
               },
             },
           },
-        },
-      });
-
-      if (!cycle) {
-        return {
-          kind: 'error' as const,
-          message: '指定されたサイクルが見つかりません',
-        };
-      }
-
-      const targetPeriodStart = new Date(target_period_start);
-      const targetPeriodEnd = new Date(target_period_end);
-      const existingPlan = await tx.setPlan.findFirst({
-        where: {
-          org_id: ctx.orgId,
-          cycle_id,
-          target_period_start: targetPeriodStart,
-          target_period_end: targetPeriodEnd,
-          set_method,
-        },
-      });
-      if (existingPlan) {
-        return {
-          kind: 'success' as const,
-          data: existingPlan,
-          replayed: true,
-        };
-      }
-
-      // B5: State guard — SetPlan can only be created when cycle is audited
-      if (cycle.overall_status !== 'audited') {
-        return {
-          kind: 'error' as const,
-          message: `セットプランを作成できるのは鑑査済み状態のみです（現在: ${cycle.overall_status}）`,
-        };
-      }
-
-      const packagingMethod = packaging_method_id
-        ? await tx.packagingMethodMaster.findFirst({
-            where: {
-              id: packaging_method_id,
-              org_id: ctx.orgId,
-              is_active: true,
-            },
-            select: {
-              id: true,
-              name: true,
-              description: true,
-            },
-          })
-        : null;
-
-      if (packaging_method_id && !packagingMethod) {
-        return {
-          kind: 'error' as const,
-          message: '指定された配薬方法マスタが見つかりません',
-        };
-      }
-
-      const packagingSummary = buildSetPlanPackagingSummary({
-        setMethod: set_method,
-        packagingMethod,
-        patientPackagingProfile: cycle.case_?.patient.packaging_profile ?? null,
-      });
-
-      let plan;
-      try {
-        plan = await tx.setPlan.create({
-          data: {
-            org_id: ctx.orgId,
-            cycle_id,
-            target_period_start: targetPeriodStart,
-            target_period_end: targetPeriodEnd,
-            set_method,
-            packaging_method_id: packagingMethod?.id ?? null,
-            packaging_summary_snapshot: packagingSummary,
-            notes: notes ?? null,
-          },
         });
-      } catch (err) {
-        if (!isUniqueConstraintError(err)) throw err;
-        const existingAfterRace = await tx.setPlan.findFirst({
+
+        if (!cycle) {
+          return {
+            kind: 'error' as const,
+            message: '指定されたサイクルが見つかりません',
+          };
+        }
+
+        const targetPeriodStart = new Date(target_period_start);
+        const targetPeriodEnd = new Date(target_period_end);
+        const existingPlan = await tx.setPlan.findFirst({
           where: {
             org_id: ctx.orgId,
             cycle_id,
@@ -321,36 +304,107 @@ export const POST = withAuthContext(
             set_method,
           },
         });
-        if (!existingAfterRace) throw err;
+        if (existingPlan) {
+          return {
+            kind: 'success' as const,
+            data: existingPlan,
+            replayed: true,
+          };
+        }
+
+        // B5: State guard — SetPlan can only be created when cycle is audited
+        if (cycle.overall_status !== 'audited') {
+          return {
+            kind: 'error' as const,
+            message: `セットプランを作成できるのは鑑査済み状態のみです（現在: ${cycle.overall_status}）`,
+          };
+        }
+
+        const packagingMethod = packaging_method_id
+          ? await tx.packagingMethodMaster.findFirst({
+              where: {
+                id: packaging_method_id,
+                org_id: ctx.orgId,
+                is_active: true,
+              },
+              select: {
+                id: true,
+                name: true,
+                description: true,
+              },
+            })
+          : null;
+
+        if (packaging_method_id && !packagingMethod) {
+          return {
+            kind: 'error' as const,
+            message: '指定された配薬方法マスタが見つかりません',
+          };
+        }
+
+        const packagingSummary = buildSetPlanPackagingSummary({
+          setMethod: set_method,
+          packagingMethod,
+          patientPackagingProfile: cycle.case_?.patient.packaging_profile ?? null,
+        });
+
+        let plan;
+        try {
+          plan = await tx.setPlan.create({
+            data: {
+              org_id: ctx.orgId,
+              cycle_id,
+              target_period_start: targetPeriodStart,
+              target_period_end: targetPeriodEnd,
+              set_method,
+              packaging_method_id: packagingMethod?.id ?? null,
+              packaging_summary_snapshot: packagingSummary,
+              notes: notes ?? null,
+            },
+          });
+        } catch (err) {
+          if (!isUniqueConstraintError(err)) throw err;
+          const existingAfterRace = await tx.setPlan.findFirst({
+            where: {
+              org_id: ctx.orgId,
+              cycle_id,
+              target_period_start: targetPeriodStart,
+              target_period_end: targetPeriodEnd,
+              set_method,
+            },
+          });
+          if (!existingAfterRace) throw err;
+          return {
+            kind: 'success' as const,
+            data: existingAfterRace,
+            replayed: true,
+          };
+        }
+
+        // Advance cycle status to setting only for a newly-created plan.
+        try {
+          await transitionCycleStatus(tx, cycle_id, ctx.orgId, 'setting', ctx.userId);
+        } catch (err) {
+          if (err instanceof InvalidTransitionError) {
+            throw new SetPlanRollback({
+              kind: 'error' as const,
+              message: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}`,
+            });
+          }
+          if (err instanceof VersionConflictError) {
+            throw new SetPlanRollback({ kind: 'conflict' as const, message: err.message });
+          }
+          throw err;
+        }
+
         return {
           kind: 'success' as const,
-          data: existingAfterRace,
-          replayed: true,
+          data: plan,
+          replayed: false,
         };
-      }
-
-      // Advance cycle status to setting only for a newly-created plan.
-      try {
-        await transitionCycleStatus(tx, cycle_id, ctx.orgId, 'setting', ctx.userId);
-      } catch (err) {
-        if (err instanceof InvalidTransitionError) {
-          throw new SetPlanRollback({
-            kind: 'error' as const,
-            message: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}`,
-          });
-        }
-        if (err instanceof VersionConflictError) {
-          throw new SetPlanRollback({ kind: 'conflict' as const, message: err.message });
-        }
-        throw err;
-      }
-
-      return {
-        kind: 'success' as const,
-        data: plan,
-        replayed: false,
-      };
-    }).catch((err: unknown) => {
+      },
+      { requestContext: ctx },
+    ).catch((err: unknown) => {
       if (err instanceof SetPlanRollback) return err.result;
       throw err;
     });
@@ -371,9 +425,22 @@ export const POST = withAuthContext(
     }
 
     return success({ data: result.data, replayed: result.replayed }, result.replayed ? 200 : 201);
-  },
-  {
-    permission: 'canSet',
-    message: 'セット計画の作成権限がありません',
-  },
-);
+  });
+}
+
+export async function POST(req: NextRequest) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('set_plans_post_unhandled_error', undefined, {
+        event: 'set_plans_post_unhandled_error',
+        route: ROUTE,
+        method: 'POST',
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

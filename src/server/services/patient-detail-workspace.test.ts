@@ -391,6 +391,7 @@ describe('buildPatientWorkspace', () => {
       {
         change_type: 'dose_changed',
         drug_name: 'アムロジピン錠',
+        drug_code: 'drug_1',
         frequency: '朝',
         days: 14,
       },
@@ -399,6 +400,101 @@ describe('buildPatientWorkspace', () => {
       start: previousLine.start_date,
       end: previousLine.end_date,
     });
+  });
+
+  it('keeps medication change current fields tied to drug_code when same-name lines have different codes', async () => {
+    const currentChangedLine = {
+      id: 'line_current_changed',
+      drug_name: '同名薬',
+      drug_code: 'YJ_B',
+      dose: '2錠',
+      frequency: '夕食後',
+      days: 14,
+      quantity: 14,
+      unit: '錠',
+      start_date: new Date(2026, 5, 12),
+      end_date: new Date(2026, 5, 25),
+      dispensing_method: null,
+      packaging_instruction_tags: [],
+    };
+    const currentUnchangedLine = {
+      id: 'line_current_unchanged',
+      drug_name: '同名薬',
+      drug_code: 'YJ_A',
+      dose: '1錠',
+      frequency: '朝食後',
+      days: 7,
+      quantity: 7,
+      unit: '錠',
+      start_date: new Date(2026, 5, 12),
+      end_date: new Date(2026, 5, 18),
+      dispensing_method: null,
+      packaging_instruction_tags: [],
+    };
+    const previousChangedLine = {
+      ...currentChangedLine,
+      id: 'line_previous_changed',
+      dose: '1錠',
+      start_date: new Date(2026, 5, 5),
+      end_date: new Date(2026, 5, 18),
+    };
+    const previousUnchangedLine = {
+      ...currentUnchangedLine,
+      id: 'line_previous_unchanged',
+      start_date: new Date(2026, 5, 5),
+      end_date: new Date(2026, 5, 11),
+    };
+    const currentIntake = {
+      id: 'intake_current',
+      prescribed_date: new Date(2026, 5, 12),
+      original_document_url: null,
+      prescription_category: 'regular',
+      prescriber_institution: '在宅クリニック',
+      created_at: new Date(2026, 5, 12, 7, 0),
+      // The unchanged same-name line is last. A drug_name keyed map would pick this row.
+      lines: [currentChangedLine, currentUnchangedLine],
+    };
+    const cycle = {
+      id: 'cycle_current',
+      case_id: 'case_1',
+      overall_status: 'dispensed',
+      exception_status: null,
+      prescription_intakes: [currentIntake],
+      set_plans: [],
+      workflow_exceptions: [],
+      transition_logs: [],
+      inquiries: [],
+      dispense_tasks: [],
+    };
+    const db = buildDb(cycle);
+    db.prescriptionIntake.findFirst.mockResolvedValue({
+      id: 'intake_previous_cycle',
+      prescribed_date: new Date(2026, 5, 5),
+      created_at: new Date(2026, 5, 5, 7, 0),
+      lines: [previousChangedLine, previousUnchangedLine],
+    });
+
+    const result = await buildPatientWorkspace(
+      db as unknown as Parameters<typeof buildPatientWorkspace>[0],
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        caseIds: ['case_1'],
+        allergyInfo: null,
+        conditions: [],
+        swallowingRoute: null,
+      },
+    );
+
+    expect(result?.medication_changes).toEqual([
+      {
+        change_type: 'dose_changed',
+        drug_name: '同名薬',
+        drug_code: 'YJ_B',
+        frequency: '夕食後',
+        days: 14,
+      },
+    ]);
   });
 
   it('keeps building the workspace when actor-name resolution fails (fail-soft, no 500)', async () => {

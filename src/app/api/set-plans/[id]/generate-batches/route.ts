@@ -1,11 +1,13 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { Prisma } from '@prisma/client';
-import { withAuthContext } from '@/lib/auth/context';
+import { requireAuthContext } from '@/lib/auth/context';
 import type { AuthContext, AuthRouteContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readOptionalJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError, notFound, conflict } from '@/lib/api/response';
-import { prisma } from '@/lib/db/client';
+import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import {
   buildSetBatchHistorySnapshot,
   collectChangedLineIds,
@@ -26,7 +28,26 @@ import {
 import { parseFrequencyToSlots } from '@/lib/dispensing/packaging-group';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { buildSetPlanAssignmentWhere } from '@/server/services/prescription-access';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import { z } from 'zod';
+
+const ROUTE = '/api/set-plans/[id]/generate-batches';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+  'SetBatchGenerateRetryLimitError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 const generateBatchesSchema = z.object({
   force: z.boolean().optional().default(false),
@@ -142,10 +163,13 @@ async function findLatestSetInputUpdatedAt(
     orgId: string;
     cycleId: string;
     lineIds: string[];
+    latestPlanUpdatedAt: Date | null;
     latestIntakeUpdatedAt: Date | null;
   },
 ) {
-  if (input.lineIds.length === 0) return input.latestIntakeUpdatedAt;
+  if (input.lineIds.length === 0) {
+    return latestDate(input.latestPlanUpdatedAt, input.latestIntakeUpdatedAt);
+  }
 
   const latestApprovedResult = await tx.dispenseResult.findFirst({
     where: {
@@ -186,6 +210,7 @@ async function findLatestSetInputUpdatedAt(
   });
 
   return latestDate(
+    input.latestPlanUpdatedAt,
     input.latestIntakeUpdatedAt,
     latestApprovedResult?.updated_at,
     latestDecisionByUpdatedAt?.updated_at,
@@ -215,8 +240,16 @@ function staleSetBatchReuseResult() {
   };
 }
 
-export const POST = withAuthContext<{ id: string }>(
-  async (req: NextRequest, ctx: AuthContext, routeContext: AuthRouteContext<{ id: string }>) => {
+async function authenticatedPOST(
+  req: NextRequest,
+  routeContext: AuthRouteContext<{ id: string }>,
+): Promise<NextResponse> {
+  const auth = await requireAuthContext(req, { permission: 'canSet' });
+  if ('response' in auth) return auth.response;
+
+  const { ctx } = auth;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { id } = await routeContext.params;
 
     const payload = await readOptionalJsonObjectRequestBody(req);
@@ -234,42 +267,47 @@ export const POST = withAuthContext<{ id: string }>(
       return validationError('強制再生成にはセットプランの版情報(expected_updated_at)が必要です');
     }
 
-    const plan = await prisma.setPlan.findFirst({
-      where: {
-        id,
-        org_id: ctx.orgId,
-        ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
-      },
-      select: {
-        id: true,
-        cycle_id: true,
-        target_period_start: true,
-        target_period_end: true,
-        set_method: true,
-        packaging_method_id: true,
-        updated_at: true,
-        packaging_method_ref: {
+    let result;
+    try {
+      result = await withSerializableSetBatchGenerateTransaction(ctx.orgId, ctx, async (tx) => {
+        const plan = await tx.setPlan.findFirst({
+          where: {
+            id,
+            org_id: ctx.orgId,
+            ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+          },
           select: {
             id: true,
-            name: true,
-            description: true,
-          },
-        },
-        cycle: {
-          select: {
-            overall_status: true,
-            case_: {
+            cycle_id: true,
+            target_period_start: true,
+            target_period_end: true,
+            set_method: true,
+            packaging_method_id: true,
+            updated_at: true,
+            packaging_method_ref: {
               select: {
-                patient: {
+                id: true,
+                name: true,
+                description: true,
+              },
+            },
+            cycle: {
+              select: {
+                overall_status: true,
+                case_: {
                   select: {
-                    packaging_profile: {
+                    patient: {
                       select: {
-                        default_packaging_method: true,
-                        medication_box_color: true,
-                        notes: true,
-                        box_config: true,
-                        special_instructions: true,
-                        cognitive_note: true,
+                        packaging_profile: {
+                          select: {
+                            default_packaging_method: true,
+                            medication_box_color: true,
+                            notes: true,
+                            box_config: true,
+                            special_instructions: true,
+                            cognitive_note: true,
+                          },
+                        },
                       },
                     },
                   },
@@ -277,123 +315,126 @@ export const POST = withAuthContext<{ id: string }>(
               },
             },
           },
-        },
-      },
-    });
+        });
 
-    if (!plan) return notFound('セットプランが見つかりません');
+        if (!plan) return { kind: 'not_found' as const };
 
-    if (expectedUpdatedAt && plan.updated_at.toISOString() !== expectedUpdatedAt) {
-      return conflict(
-        'セットプランが他のユーザーによって更新されています。再読み込みしてください',
-        {
-          current_updated_at: plan.updated_at.toISOString(),
-          expected_updated_at: expectedUpdatedAt,
-        },
-      );
-    }
+        if (expectedUpdatedAt && plan.updated_at.toISOString() !== expectedUpdatedAt) {
+          return {
+            kind: 'conflict' as const,
+            message: 'セットプランが他のユーザーによって更新されています。再読み込みしてください',
+            details: {
+              current_updated_at: plan.updated_at.toISOString(),
+              expected_updated_at: expectedUpdatedAt,
+            },
+          };
+        }
 
-    const intakes = await prisma.prescriptionIntake.findMany({
-      where: { cycle_id: plan.cycle_id, org_id: ctx.orgId },
-      orderBy: { created_at: 'desc' },
-      take: 1,
-      select: {
-        updated_at: true,
-        lines: {
+        if (!['audited', 'setting', 'set_audited'].includes(plan.cycle.overall_status)) {
+          return { kind: 'error' as const, message: '鑑査未承認のサイクルはセットできません' };
+        }
+        if (force && plan.cycle.overall_status === 'set_audited') {
+          return {
+            kind: 'error' as const,
+            message:
+              'セット監査後の再生成は訪問持参物と不整合になるため実行できません。差戻し後に再生成してください',
+          };
+        }
+
+        const intakes = await tx.prescriptionIntake.findMany({
+          where: { cycle_id: plan.cycle_id, org_id: ctx.orgId },
+          orderBy: { created_at: 'desc' },
+          take: 1,
           select: {
-            id: true,
-            drug_name: true,
-            drug_code: true,
-            frequency: true,
-            quantity: true,
-            unit: true,
-            packaging_group_id: true,
-            packaging_method: true,
-            packaging_instructions: true,
-            packaging_instruction_tags: true,
-            notes: true,
-            dispensing_decisions: {
-              where: {
-                org_id: ctx.orgId,
-                task: { cycle_id: plan.cycle_id },
-              },
-              orderBy: { decided_at: 'desc' },
-              take: 1,
+            updated_at: true,
+            lines: {
               select: {
+                id: true,
+                drug_name: true,
+                drug_code: true,
+                frequency: true,
+                quantity: true,
+                unit: true,
+                packaging_group_id: true,
                 packaging_method: true,
                 packaging_instructions: true,
                 packaging_instruction_tags: true,
-                packaging_group_id: true,
-                carry_type_override: true,
-                decided_at: true,
-                updated_at: true,
-              },
-            },
-            dispense_results: {
-              where: {
-                org_id: ctx.orgId,
-                task: {
-                  cycle_id: plan.cycle_id,
-                  audits: {
-                    some: {
-                      org_id: ctx.orgId,
-                      result: { in: ['approved', 'emergency_approved'] },
+                notes: true,
+                dispensing_decisions: {
+                  where: {
+                    org_id: ctx.orgId,
+                    task: { cycle_id: plan.cycle_id },
+                  },
+                  orderBy: { decided_at: 'desc' },
+                  take: 1,
+                  select: {
+                    packaging_method: true,
+                    packaging_instructions: true,
+                    packaging_instruction_tags: true,
+                    packaging_group_id: true,
+                    carry_type_override: true,
+                    decided_at: true,
+                    updated_at: true,
+                  },
+                },
+                dispense_results: {
+                  where: {
+                    org_id: ctx.orgId,
+                    task: {
+                      cycle_id: plan.cycle_id,
+                      audits: {
+                        some: {
+                          org_id: ctx.orgId,
+                          result: { in: ['approved', 'emergency_approved'] },
+                        },
+                      },
                     },
+                  },
+                  orderBy: { dispensed_at: 'desc' },
+                  take: 1,
+                  select: {
+                    id: true,
+                    actual_drug_code: true,
+                    actual_quantity: true,
+                    actual_unit: true,
+                    updated_at: true,
                   },
                 },
               },
-              orderBy: { dispensed_at: 'desc' },
-              take: 1,
-              select: {
-                id: true,
-                actual_drug_code: true,
-                actual_quantity: true,
-                actual_unit: true,
-                updated_at: true,
-              },
             },
           },
-        },
-      },
-    });
+        });
 
-    const latestIntake = intakes[0] ?? null;
-    const allLines = latestIntake?.lines ?? [];
-    const latestIntakeUpdatedAt = latestIntake?.updated_at ?? null;
-    const lineIds = allLines.map((line) => line.id);
+        const latestIntake = intakes[0] ?? null;
+        const allLines = latestIntake?.lines ?? [];
+        const latestIntakeUpdatedAt = latestIntake?.updated_at ?? null;
+        const lineIds = allLines.map((line) => line.id);
 
-    if (allLines.length === 0) {
-      return validationError('処方ラインが存在しません。処方を先に登録してください');
-    }
+        if (allLines.length === 0) {
+          return {
+            kind: 'error' as const,
+            message: '処方ラインが存在しません。処方を先に登録してください',
+          };
+        }
 
-    if (!['audited', 'setting', 'set_audited'].includes(plan.cycle.overall_status)) {
-      return validationError('鑑査未承認のサイクルはセットできません');
-    }
-    if (force && plan.cycle.overall_status === 'set_audited') {
-      return validationError(
-        'セット監査後の再生成は訪問持参物と不整合になるため実行できません。差戻し後に再生成してください',
-      );
-    }
+        const lineWithoutFrequency = allLines.find((line) => line.frequency.trim().length === 0);
+        if (lineWithoutFrequency) {
+          return { kind: 'error' as const, message: '投与タイミング未定義の処方があります' };
+        }
 
-    const lineWithoutFrequency = allLines.find((line) => line.frequency.trim().length === 0);
-    if (lineWithoutFrequency) {
-      return validationError(
-        `投与タイミング未定義の処方があります: ${lineWithoutFrequency.drug_name}`,
-      );
-    }
+        const totalDays = diffInDays(plan.target_period_start, plan.target_period_end);
+        if (totalDays <= 0) {
+          return {
+            kind: 'error' as const,
+            message: '対象期間が不正です（終了日が開始日より前です）',
+          };
+        }
 
-    const totalDays = diffInDays(plan.target_period_start, plan.target_period_end);
-    if (totalDays <= 0) {
-      return validationError('対象期間が不正です（終了日が開始日より前です）');
-    }
-
-    let result;
-    try {
-      result = await withSerializableSetBatchGenerateTransaction(ctx.orgId, ctx, async (tx) => {
         const latestSetInputUpdatedAt = await findLatestSetInputUpdatedAt(tx, {
           orgId: ctx.orgId,
           cycleId: plan.cycle_id,
           lineIds,
+          latestPlanUpdatedAt: plan.updated_at,
           latestIntakeUpdatedAt,
         });
         const existingCount = await tx.setBatch.count({
@@ -431,6 +472,7 @@ export const POST = withAuthContext<{ id: string }>(
             id,
             org_id: ctx.orgId,
             ...(expectedUpdatedAt ? { updated_at: new Date(expectedUpdatedAt) } : {}),
+            ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
           },
           data: {
             packaging_summary_snapshot: packagingSummary,
@@ -509,7 +551,7 @@ export const POST = withAuthContext<{ id: string }>(
           if (!auditedResult) {
             return {
               kind: 'error' as const,
-              message: `監査済み調剤結果がない処方があります: ${line.drug_name}`,
+              message: '監査済み調剤結果がない処方があります',
             } as const;
           }
           const packagingMethod = decision?.packaging_method ?? line.packaging_method ?? undefined;
@@ -532,7 +574,7 @@ export const POST = withAuthContext<{ id: string }>(
           if (quantityPerSlot == null) {
             return {
               kind: 'error' as const,
-              message: `セット数量を計算できない処方があります: ${line.drug_name}`,
+              message: 'セット数量を計算できない処方があります',
             } as const;
           }
           const carryType =
@@ -629,6 +671,9 @@ export const POST = withAuthContext<{ id: string }>(
       throw cause;
     }
 
+    if ('kind' in result && result.kind === 'not_found') {
+      return notFound('セットプランが見つかりません');
+    }
     if ('kind' in result && result.kind === 'error') {
       return validationError(result.message);
     }
@@ -644,6 +689,22 @@ export const POST = withAuthContext<{ id: string }>(
     }
 
     return success({ data: result }, result.reused ? 200 : 201);
-  },
-  { permission: 'canSet' },
-);
+  });
+}
+
+export async function POST(req: NextRequest, routeContext: AuthRouteContext<{ id: string }>) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('set_plan_generate_batches_post_unhandled_error', undefined, {
+        event: 'set_plan_generate_batches_post_unhandled_error',
+        route: ROUTE,
+        method: 'POST',
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

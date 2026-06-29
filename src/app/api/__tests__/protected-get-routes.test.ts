@@ -286,6 +286,7 @@ import { GET as pharmacyVisitRequestsGet } from '../pharmacy-visit-requests/rout
 import { GET as pharmacyInvoicePdfGet } from '../pharmacy-invoices/[id]/pdf/route';
 import { GET as pharmacyOperatingHoursGet } from '../pharmacy-operating-hours/route';
 import { GET as pharmacySitesGet } from '../pharmacy-sites/route';
+import { GET as pcaPumpsGet } from '../pca-pumps/route';
 import { GET as pcaPumpRentalsGet } from '../pca-pump-rentals/route';
 import { GET as prescriberInstitutionsGet } from '../prescriber-institutions/route';
 import { GET as prescriptionIntakesGet } from '../prescription-intakes/route';
@@ -533,10 +534,7 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
   {
     name: 'care-reports GET',
     handler: () =>
-      careReportsGet(
-        createRequest('http://localhost/api/care-reports', { 'x-org-id': 'org_1' }),
-        emptyRouteContext,
-      ),
+      careReportsGet(createRequest('http://localhost/api/care-reports', { 'x-org-id': 'org_1' })),
   },
   {
     name: 'care-reports/[id] GET',
@@ -653,7 +651,6 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
         createRequest('http://localhost/api/comments?entity_type=dispense_task&entity_id=task_1', {
           'x-org-id': 'org_1',
         }),
-        emptyRouteContext,
       ),
   },
   {
@@ -723,7 +720,6 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
         createRequest('http://localhost/api/consent-records?patient_id=patient_1', {
           'x-org-id': 'org_1',
         }),
-        emptyRouteContext,
       ),
   },
   {
@@ -846,7 +842,6 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     handler: () =>
       dispenseAuditsGet(
         createRequest('http://localhost/api/dispense-audits', { 'x-org-id': 'org_1' }),
-        emptyRouteContext,
       ),
   },
   {
@@ -1041,7 +1036,6 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     handler: () =>
       firstVisitDocumentsGet(
         createRequest('http://localhost/api/first-visit-documents', { 'x-org-id': 'org_1' }),
-        emptyRouteContext,
       ),
   },
   {
@@ -1119,7 +1113,6 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     handler: () =>
       medicationIssuesGet(
         createRequest('http://localhost/api/medication-issues', { 'x-org-id': 'org_1' }),
-        emptyRouteContext,
       ),
   },
   {
@@ -1449,11 +1442,15 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'pca-pumps GET',
+    handler: () =>
+      pcaPumpsGet(createRequest('http://localhost/api/pca-pumps', { 'x-org-id': 'org_1' })),
+  },
+  {
     name: 'pca-pump-rentals GET',
     handler: () =>
       pcaPumpRentalsGet(
         createRequest('http://localhost/api/pca-pump-rentals', { 'x-org-id': 'org_1' }),
-        emptyRouteContext,
       ),
   },
   {
@@ -1539,26 +1536,21 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
   {
     name: 'set-audits GET',
     handler: () =>
-      setAuditsGet(
-        createRequest('http://localhost/api/set-audits', { 'x-org-id': 'org_1' }),
-        emptyRouteContext,
-      ),
+      setAuditsGet(createRequest('http://localhost/api/set-audits', { 'x-org-id': 'org_1' })),
   },
   {
     name: 'set-batches GET',
     handler: () =>
       setBatchesGet(
-        createRequest('http://localhost/api/set-batches?plan_id=plan_1', { 'x-org-id': 'org_1' }),
-        emptyRouteContext,
+        createRequest('http://localhost/api/set-batches?plan_id=plan_1', {
+          'x-org-id': 'org_1',
+        }),
       ),
   },
   {
     name: 'set-plans GET',
     handler: () =>
-      setPlansGet(
-        createRequest('http://localhost/api/set-plans', { 'x-org-id': 'org_1' }),
-        emptyRouteContext,
-      ),
+      setPlansGet(createRequest('http://localhost/api/set-plans', { 'x-org-id': 'org_1' })),
   },
   {
     name: 'set-batches/[id] GET',
@@ -1591,6 +1583,7 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
         target_period_start: new Date('2026-04-01T00:00:00.000Z'),
         target_period_end: new Date('2026-04-07T00:00:00.000Z'),
         set_method: 'custom',
+        updated_at: new Date('2026-04-01T09:00:00.000Z'),
         cycle: {
           id: 'cycle_1',
           overall_status: 'setting',
@@ -1625,10 +1618,7 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
   {
     name: 'visit-records GET',
     handler: () =>
-      visitRecordsGet(
-        createRequest('http://localhost/api/visit-records', { 'x-org-id': 'org_1' }),
-        emptyRouteContext,
-      ),
+      visitRecordsGet(createRequest('http://localhost/api/visit-records', { 'x-org-id': 'org_1' })),
   },
   {
     name: 'visit-records/[id] GET',
@@ -1984,6 +1974,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'prescription-intakes/triage GET' ||
         route.name === 'qr-scan-drafts GET' ||
         route.name === 'qr-scan-drafts/[id] GET' ||
+        route.name === 'inquiry-records GET' ||
+        route.name === 'residual-medications GET' ||
         route.name === 'medication-cycles GET' ||
         route.name === 'medication-issues GET' ||
         route.name === 'medication-sets/workspace GET' ||
@@ -2033,6 +2025,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patient-self-reports GET' ||
         route.name === 'patient-self-reports/[id] GET' ||
         route.name === 'partner-visit-records GET' ||
+        route.name === 'visit-records GET' ||
+        route.name === 'pca-pumps GET' ||
         route.name === 'pharmacists GET' ||
         route.name === 'pharmacist-shifts GET' ||
         route.name === 'pharmacist-shifts/available GET' ||
@@ -2044,6 +2038,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'prescriber-institutions GET' ||
         route.name === 'first-visit-documents GET' ||
         route.name === 'incident-reports GET' ||
+        route.name === 'care-reports GET' ||
         route.name === 'care-reports/[id] GET' ||
         route.name === 'care-reports/[id]/pdf GET' ||
         route.name === 'care-reports/analytics GET' ||
@@ -2114,6 +2109,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'prescription-intakes/triage GET' ||
         route.name === 'qr-scan-drafts GET' ||
         route.name === 'qr-scan-drafts/[id] GET' ||
+        route.name === 'inquiry-records GET' ||
+        route.name === 'residual-medications GET' ||
         route.name === 'medication-cycles GET' ||
         route.name === 'medication-issues GET' ||
         route.name === 'medication-sets/workspace GET' ||
@@ -2163,6 +2160,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patient-self-reports GET' ||
         route.name === 'patient-self-reports/[id] GET' ||
         route.name === 'partner-visit-records GET' ||
+        route.name === 'visit-records GET' ||
+        route.name === 'pca-pumps GET' ||
         route.name === 'pharmacists GET' ||
         route.name === 'pharmacist-shifts GET' ||
         route.name === 'pharmacist-shifts/available GET' ||
@@ -2174,6 +2173,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'prescriber-institutions GET' ||
         route.name === 'first-visit-documents GET' ||
         route.name === 'incident-reports GET' ||
+        route.name === 'care-reports GET' ||
         route.name === 'care-reports/[id] GET' ||
         route.name === 'care-reports/[id]/pdf GET' ||
         route.name === 'care-reports/analytics GET' ||
@@ -2269,9 +2269,12 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'contact-profiles GET' ||
         route.name === 'notifications GET' ||
         route.name === 'handoff-board GET' ||
+        route.name === 'inquiry-records GET' ||
         route.name === 'medication-issues GET' ||
         route.name === 'medication-profiles GET' ||
+        route.name === 'residual-medications GET' ||
         route.name === 'incident-reports GET' ||
+        route.name === 'care-reports GET' ||
         route.name === 'care-reports/[id]/pdf GET' ||
         route.name === 'cases/[id] GET' ||
         route.name === 'dispense-queue GET' ||
@@ -2286,6 +2289,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'facilities/[id]/contacts GET' ||
         route.name === 'facilities/[id]/patients GET' ||
         route.name === 'partner-visit-records GET' ||
+        route.name === 'visit-records GET' ||
+        route.name === 'pca-pumps GET' ||
         route.name === 'pharmacists GET' ||
         route.name === 'pharmacist-shifts GET' ||
         route.name === 'pharmacist-shifts/available GET' ||

@@ -454,9 +454,11 @@ CREATE POLICY tenant_isolation ON "VisitScheduleProposalBatch"
   USING (org_id = public.app_enforced_org_id())
   WITH CHECK (org_id = public.app_enforced_org_id());
 
--- ─── Drug Domain (org-scoped only) ─────────────────────────────────────────
--- Note: DrugMaster, DrugPackageInsert, DrugInteraction, DrugAlertRule,
--- GenericDrugMapping, DrugMasterImportLog are global (no org_id) = NO RLS
+-- ─── Drug Domain (org-scoped and hybrid tables) ────────────────────────────
+-- Note: DrugMaster, DrugPackageInsert, DrugInteraction, GenericDrugMapping,
+-- DrugMasterImportLog are global (no org_id) = NO RLS.
+-- DrugAlertRule is hybrid: org_id NULL stores global baseline rules, while
+-- org-specific rows are protected by the RLS policy above.
 
 ALTER TABLE "PharmacyDrugStock" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON "PharmacyDrugStock"

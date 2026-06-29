@@ -62,6 +62,11 @@ type IntakeLineSummary = {
   end_date: Date | null;
 };
 
+type MedicationIdentitySummary = {
+  drug_name: string;
+  drug_code: string | null;
+};
+
 type PreviousStructuredVisitReuse = {
   source_visit_record_id: string;
   source_visit_record_version: number | null;
@@ -303,8 +308,16 @@ function summarizePrescriptionChanges(
   previousLines: IntakeLineSummary[],
 ) {
   const added: string[] = [];
-  const changed: Array<{ drug_name: string; reasons: string[] }> = [];
+  const added_medications: MedicationIdentitySummary[] = [];
+  const changed: Array<{
+    drug_name: string;
+    drug_code: string | null;
+    previous_drug_name: string;
+    previous_drug_code: string | null;
+    reasons: string[];
+  }> = [];
   const removed: string[] = [];
+  const removed_medications: MedicationIdentitySummary[] = [];
 
   for (const match of matchMedicationDiffLines(currentLines, previousLines)) {
     const line = match.current;
@@ -312,11 +325,13 @@ function summarizePrescriptionChanges(
 
     if (line && !previous) {
       added.push(line.drug_name);
+      added_medications.push({ drug_name: line.drug_name, drug_code: line.drug_code });
       continue;
     }
 
     if (!line && previous) {
       removed.push(previous.drug_name);
+      removed_medications.push({ drug_name: previous.drug_name, drug_code: previous.drug_code });
       continue;
     }
 
@@ -332,6 +347,9 @@ function summarizePrescriptionChanges(
     if (reasons.length > 0) {
       changed.push({
         drug_name: line.drug_name,
+        drug_code: line.drug_code,
+        previous_drug_name: previous.drug_name,
+        previous_drug_code: previous.drug_code,
         reasons,
       });
     }
@@ -339,8 +357,10 @@ function summarizePrescriptionChanges(
 
   return {
     added,
+    added_medications,
     changed,
     removed,
+    removed_medications,
   };
 }
 
@@ -1212,8 +1232,13 @@ async function authenticatedGET(
             previous_prescribed_date: null,
             source_type: latestIntake.source_type,
             added: latestIntake.lines.map((line) => line.drug_name),
+            added_medications: latestIntake.lines.map((line) => ({
+              drug_name: line.drug_name,
+              drug_code: line.drug_code,
+            })),
             changed: [],
             removed: [],
+            removed_medications: [],
           }
         : null;
   const medicationPeriod = {

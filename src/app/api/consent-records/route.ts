@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { unstable_rethrow } from 'next/navigation';
-import { withAuthContext } from '@/lib/auth/context';
+import { NextRequest } from 'next/server';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -19,6 +21,24 @@ import {
   recordConsentRecordCreatedAudit,
   recordConsentRecordsViewedAudit,
 } from '@/server/services/consent-record-audit';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
+
+const ROUTE = '/api/consent-records';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 function optionalTrimmedString(value: unknown) {
   if (value === null || value === undefined) return value;
@@ -122,8 +142,15 @@ function resolveConsentDocumentUrlInput(args: {
   return { ok: true as const, documentUrl: normalizedUrl };
 }
 
-const authenticatedGET = withAuthContext(
-  async (req, ctx) => {
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: '同意記録の閲覧には訪問権限が必要です',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const searchParams = req.nextUrl.searchParams;
     const patientId = searchParams.get('patient_id');
     if (!patientId) {
@@ -200,24 +227,36 @@ const authenticatedGET = withAuthContext(
     });
 
     return success({ data, nextCursor, hasMore, totalCount });
-  },
-  {
+  });
+}
+
+export async function GET(req: NextRequest) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('consent_records_get_unhandled_error', undefined, {
+        event: 'consent_records_get_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
+
+async function authenticatedPOST(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
-    message: '同意記録の閲覧には訪問権限が必要です',
-  },
-);
+    message: '同意記録の作成には訪問権限が必要です',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
 
-export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-};
-
-export const POST = withAuthContext(
-  async (req, ctx) => {
+  return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -346,9 +385,23 @@ export const POST = withAuthContext(
     });
 
     return success(serializeConsentRecordDocumentUrl(record), 201);
-  },
-  {
-    permission: 'canVisit',
-    message: '同意記録の作成には訪問権限が必要です',
-  },
-);
+  });
+}
+
+export async function POST(req: NextRequest) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('consent_records_post_unhandled_error', undefined, {
+        event: 'consent_records_post_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

@@ -1,15 +1,35 @@
-import { withAuthContext } from '@/lib/auth/context';
+import { unstable_rethrow } from 'next/navigation';
+import { NextRequest } from 'next/server';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { internalError, success, validationError, notFound } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { buildVisitRecordScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 
+const ROUTE = '/api/residual-medications';
 const MAX_RESIDUAL_MEDICATION_LIMIT = 200;
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 const residualMedicationQuerySchema = z.object({
   limit: optionalBoundedIntegerSearchParam('limit', 1, MAX_RESIDUAL_MEDICATION_LIMIT),
@@ -81,8 +101,15 @@ function parseResidualMedicationFilters(searchParams: URLSearchParams) {
   };
 }
 
-export const GET = withAuthContext(
-  async (req, ctx) => {
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: '残薬情報の閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const filters = parseResidualMedicationFilters(searchParams);
     if (!filters.ok) return filters.response;
@@ -158,12 +185,27 @@ export const GET = withAuthContext(
     });
 
     return withSensitiveNoStore(success({ data: records }));
-  },
-  {
-    permission: 'canVisit',
-    message: '残薬情報の閲覧権限がありません',
-  },
-);
+  });
+}
+
+export async function GET(req: NextRequest, routeContext?: unknown) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('residual_medications_get_unhandled_error', undefined, {
+        event: 'residual_medications_get_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
 
 const createResidualMedicationSchema = z.object({
   visit_record_id: z.string().min(1, '訪問記録IDは必須です'),
@@ -181,8 +223,15 @@ const createResidualMedicationSchema = z.object({
     .min(1, '薬剤情報は1件以上必要です'),
 });
 
-export const POST = withAuthContext(
-  async (req, ctx) => {
+async function authenticatedPOST(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: '残薬情報の作成権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -237,9 +286,24 @@ export const POST = withAuthContext(
     });
 
     return success(result, 201);
-  },
-  {
-    permission: 'canVisit',
-    message: '残薬情報の作成権限がありません',
-  },
-);
+  });
+}
+
+export async function POST(req: NextRequest, routeContext?: unknown) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('residual_medications_post_unhandled_error', undefined, {
+        event: 'residual_medications_post_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

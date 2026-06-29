@@ -1,8 +1,11 @@
+import { unstable_rethrow } from 'next/navigation';
+import { NextRequest } from 'next/server';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { withAuthContext } from '@/lib/auth/context';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { parseBoundedInteger } from '@/lib/api/pagination';
-import { success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createInquiryRecordSchema } from '@/lib/validations/prescription';
@@ -11,9 +14,26 @@ import { toPrismaJsonInput } from '@/lib/db/json';
 import type { Prisma } from '@prisma/client';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 
+const ROUTE = '/api/inquiry-records';
 const DEFAULT_INQUIRY_RECORD_LIMIT = 500;
 const MAX_INQUIRY_RECORD_LIMIT = 500;
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 function readOptionalSearchParam(searchParams: URLSearchParams, fieldName: string) {
   if (!searchParams.has(fieldName)) return { value: undefined as string | undefined };
@@ -29,8 +49,15 @@ function readOptionalSearchParam(searchParams: URLSearchParams, fieldName: strin
   return { value };
 }
 
-export const GET = withAuthContext(
-  async (req, ctx) => {
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: '問い合わせ記録の閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const cycleIdParam = readOptionalSearchParam(searchParams, 'cycle_id');
     if (cycleIdParam.error) {
@@ -126,15 +153,37 @@ export const GET = withAuthContext(
         ...(shouldLimit ? { meta: { limit, has_more: hasMore } } : {}),
       }),
     );
-  },
-  {
-    permission: 'canVisit',
-    message: '問い合わせ記録の閲覧権限がありません',
-  },
-);
+  });
+}
 
-export const POST = withAuthContext(
-  async (req, ctx) => {
+export async function GET(req: NextRequest, routeContext?: unknown) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('inquiry_records_get_unhandled_error', undefined, {
+        event: 'inquiry_records_get_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
+
+async function authenticatedPOST(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: '問い合わせ記録の作成権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -342,10 +391,25 @@ export const POST = withAuthContext(
       }
     }
 
-    return success({ data: result }, 201);
-  },
-  {
-    permission: 'canVisit',
-    message: '問い合わせ記録の作成権限がありません',
-  },
-);
+    return withSensitiveNoStore(success({ data: result }, 201));
+  });
+}
+
+export async function POST(req: NextRequest, routeContext?: unknown) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('inquiry_records_post_unhandled_error', undefined, {
+        event: 'inquiry_records_post_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

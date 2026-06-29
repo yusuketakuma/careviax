@@ -10,10 +10,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
-import {
-  detectMedicationChanges,
-  matchMedicationDiffLines,
-} from '@/lib/prescription/medication-diff';
+import { matchMedicationDiffLines } from '@/lib/prescription/medication-diff';
 import {
   buildWorkbenchAllergyLabel,
   buildWorkbenchRenalLabel,
@@ -53,6 +50,25 @@ function doseFrequencyLabel(line: { dose: string; frequency: string }): string {
   return [line.dose, line.frequency].filter((part) => part.trim().length > 0).join(' ');
 }
 
+type ComparisonChangeType =
+  | 'added'
+  | 'removed'
+  | 'dose_changed'
+  | 'frequency_changed'
+  | 'days_changed'
+  | null;
+
+function resolveComparisonChangeType(
+  line: { dose: string; frequency: string; days?: number | null },
+  previousLine: { dose: string; frequency: string; days?: number | null } | null,
+): ComparisonChangeType {
+  if (!previousLine) return 'added';
+  if (previousLine.dose !== line.dose) return 'dose_changed';
+  if (previousLine.frequency !== line.frequency) return 'frequency_changed';
+  if ((previousLine.days ?? null) !== (line.days ?? null)) return 'days_changed';
+  return null;
+}
+
 // ── GET: ワークベンチ projection ──
 
 const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
@@ -87,6 +103,7 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
           id: true,
           line_id: true,
           actual_drug_name: true,
+          actual_drug_code: true,
           actual_quantity: true,
           actual_unit: true,
           discrepancy_reason: true,
@@ -305,13 +322,6 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
   };
 
   // ── 処方比較(前回 / 今回 / 差)──
-  const changes = detectMedicationChanges(currentLines, previousLines);
-  const changeQueuesByName = new Map<string, typeof changes>();
-  for (const change of changes) {
-    const queue = changeQueuesByName.get(change.drug_name) ?? [];
-    queue.push(change);
-    changeQueuesByName.set(change.drug_name, queue);
-  }
   const resolvedChangeInquiries = task.cycle.inquiries.filter(
     (inquiry) => inquiry.result === 'changed',
   );
@@ -327,6 +337,8 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
   type ComparisonRow = {
     key: string;
     drug_name: string;
+    current_drug_code: string | null;
+    previous_drug_code: string | null;
     previous_label: string | null;
     current_label: string | null;
     change_type: 'added' | 'removed' | 'dose_changed' | 'frequency_changed' | 'days_changed' | null;
@@ -340,31 +352,15 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
     const line = match.current;
     const previousLine = match.previous;
     if (line) {
-      const changeQueue = changeQueuesByName.get(line.drug_name) ?? [];
-      const change =
-        changeQueue.find((item) =>
-          previousLine
-            ? item.previous === doseFrequencyLabel(previousLine) &&
-              item.current === doseFrequencyLabel(line)
-            : item.current === doseFrequencyLabel(line),
-        ) ??
-        changeQueue.shift() ??
-        null;
-      if (change) {
-        const nextQueue = changeQueue.filter((item) => item !== change);
-        if (nextQueue.length > 0) {
-          changeQueuesByName.set(line.drug_name, nextQueue);
-        } else {
-          changeQueuesByName.delete(line.drug_name);
-        }
-      }
       const previousLabel = previousLine ? doseFrequencyLabel(previousLine) : null;
       const currentLabel = doseFrequencyLabel(line);
-      const changeType = change?.change_type ?? null;
+      const changeType = resolveComparisonChangeType(line, previousLine);
       return [
         {
           key: line.id,
           drug_name: line.drug_name,
+          current_drug_code: line.drug_code,
+          previous_drug_code: previousLine?.drug_code ?? null,
           previous_label: previousLabel,
           current_label: currentLabel,
           change_type: changeType,
@@ -384,6 +380,8 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
       {
         key: `removed-${previousLine.id}`,
         drug_name: previousLine.drug_name,
+        current_drug_code: null,
+        previous_drug_code: previousLine.drug_code,
         previous_label: doseFrequencyLabel(previousLine),
         current_label: null,
         change_type: 'removed' as const,
@@ -407,6 +405,11 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
       result_id: result?.id ?? null,
       line_number: line.line_number,
       drug_name: result?.actual_drug_name ?? line.drug_name,
+      drug_code: line.drug_code,
+      prescribed_drug_name: line.drug_name,
+      prescribed_drug_code: line.drug_code,
+      actual_drug_name: result?.actual_drug_name ?? null,
+      actual_drug_code: result?.actual_drug_code ?? null,
       dose: line.dose,
       frequency: line.frequency,
       route: line.route,

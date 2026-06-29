@@ -1,30 +1,48 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { withAuthMock, withOrgContextMock, inquiryRecordFindManyMock, upsertOperationalTaskMock } =
-  vi.hoisted(() => ({
-    withAuthMock: vi.fn(
-      (
-        handler: (
-          req: NextRequest,
-          ctx: { orgId: string; userId: string; role: 'pharmacist' },
-        ) => Promise<Response>,
-      ) => {
-        return (req: NextRequest) =>
-          handler(req, {
-            orgId: 'org_1',
-            userId: 'user_1',
-            role: 'pharmacist',
-          });
-      },
-    ),
-    withOrgContextMock: vi.fn(),
-    inquiryRecordFindManyMock: vi.fn(),
-    upsertOperationalTaskMock: vi.fn(),
-  }));
+const {
+  loggerErrorMock,
+  requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  withRoutePerformanceMock,
+  withOrgContextMock,
+  inquiryRecordFindManyMock,
+  upsertOperationalTaskMock,
+} = vi.hoisted(() => ({
+  loggerErrorMock: vi.fn(),
+  requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+  withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
+  withOrgContextMock: vi.fn(),
+  inquiryRecordFindManyMock: vi.fn(),
+  upsertOperationalTaskMock: vi.fn(),
+}));
+
+const authContext = {
+  orgId: 'org_1',
+  userId: 'user_1',
+  role: 'pharmacist' as const,
+  ipAddress: '127.0.0.1',
+  userAgent: 'vitest',
+};
 
 vi.mock('@/lib/auth/context', () => ({
-  withAuthContext: withAuthMock,
+  requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
+}));
+
+vi.mock('@/lib/utils/performance', () => ({
+  withRoutePerformance: withRoutePerformanceMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -72,9 +90,17 @@ function createMalformedPostRequest() {
   } satisfies NextRequestInit);
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/inquiry-records GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    requireAuthContextMock.mockResolvedValue({ ctx: authContext });
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
     inquiryRecordFindManyMock.mockResolvedValue([]);
   });
 
@@ -85,6 +111,15 @@ describe('/api/inquiry-records GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: '問い合わせ記録の閲覧権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
     expect(inquiryRecordFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -127,8 +162,34 @@ describe('/api/inquiry-records GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expectSensitiveNoStore(response);
+  });
+
+  it('returns a sanitized no-store 500 without raw logging when inquiry listing fails', async () => {
+    inquiryRecordFindManyMock.mockRejectedValueOnce(new Error('raw patient inquiry list secret'));
+
+    const response = await GET(createRequest('http://localhost/api/inquiry-records'));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw patient inquiry list secret');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'inquiry_records_get_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'inquiry_records_get_unhandled_error',
+        route: '/api/inquiry-records',
+        method: 'GET',
+        status: 500,
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(
+      'raw patient inquiry list secret',
+    );
   });
 
   it.each([
@@ -142,8 +203,7 @@ describe('/api/inquiry-records GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '検索条件が不正です',
       details: {
@@ -235,8 +295,7 @@ describe('/api/inquiry-records GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '検索条件が不正です',
       details: {
@@ -250,6 +309,9 @@ describe('/api/inquiry-records GET', () => {
 describe('/api/inquiry-records POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    requireAuthContextMock.mockResolvedValue({ ctx: authContext });
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
     upsertOperationalTaskMock.mockResolvedValue({ id: 'operational_task_1' });
   });
 
@@ -258,6 +320,7 @@ describe('/api/inquiry-records POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -270,6 +333,7 @@ describe('/api/inquiry-records POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -320,6 +384,7 @@ describe('/api/inquiry-records POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(medicationCycleFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'cycle_unassigned',
@@ -386,6 +451,7 @@ describe('/api/inquiry-records POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(prescriptionLineFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'line_foreign',
@@ -461,6 +527,16 @@ describe('/api/inquiry-records POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: '問い合わせ記録の作成権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
     expect(communicationRequestCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -513,5 +589,41 @@ describe('/api/inquiry-records POST', () => {
         }),
       }),
     });
+  });
+
+  it('returns a sanitized no-store 500 without raw logging when inquiry creation fails', async () => {
+    withOrgContextMock.mockRejectedValueOnce(new Error('raw patient inquiry create secret'));
+
+    const response = await POST(
+      createPostRequest({
+        cycle_id: 'cycle_1',
+        reason: '用量疑義',
+        inquiry_to_physician: '在宅医',
+        inquiry_content: '用量をご確認ください',
+        inquired_at: '2026-03-29',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw patient inquiry create secret');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'inquiry_records_post_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'inquiry_records_post_unhandled_error',
+        route: '/api/inquiry-records',
+        method: 'POST',
+        status: 500,
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(
+      'raw patient inquiry create secret',
+    );
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 });

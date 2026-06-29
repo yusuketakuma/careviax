@@ -276,6 +276,12 @@ vi.mock('@/lib/db/client', () => ({
       findFirst: pharmacistShiftFindFirstMock,
       findMany: pharmacistShiftFindManyMock,
     },
+    pharmacyOperatingHours: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    businessHoliday: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
     visitSchedule: {
       findFirst: prismaVisitScheduleFindFirstMock,
       findMany: prismaVisitScheduleFindManyMock,
@@ -815,6 +821,12 @@ function buildTx(state: TestState) {
       findMany: vi.fn(async () => state.dispenseResults),
     },
     drugMaster: {
+      findMany: vi.fn(async () => []),
+    },
+    pharmacyOperatingHours: {
+      findMany: vi.fn(async () => []),
+    },
+    businessHoliday: {
       findMany: vi.fn(async () => []),
     },
     membership: {
@@ -1376,7 +1388,6 @@ describe('workflow full-cycle integration', () => {
           },
         ],
       }),
-      emptyRouteContext,
     );
 
     expect(dispenseResponse?.status).toBe(201);
@@ -1390,7 +1401,6 @@ describe('workflow full-cycle integration', () => {
         result: 'approved',
         expected_version: state.cycle.version,
       }),
-      emptyRouteContext,
     );
 
     expect(auditResponse?.status).toBe(201);
@@ -1408,7 +1418,6 @@ describe('workflow full-cycle integration', () => {
         },
         { 'x-org-id': 'org_1' },
       ),
-      emptyRouteContext,
     );
 
     expect(visitResponse?.status).toBe(201);
@@ -1606,7 +1615,6 @@ describe('workflow full-cycle integration', () => {
         },
         { 'x-org-id': 'org_1' },
       ),
-      emptyRouteContext,
     );
 
     expect(visitResponse?.status).toBe(201);

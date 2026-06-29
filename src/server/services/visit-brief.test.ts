@@ -476,13 +476,24 @@ describe('getPatientVisitBrief', () => {
       expect.arrayContaining([
         expect.objectContaining({
           drug_name: 'アムロジピン錠',
+          drug_code: '123',
           change_type: 'dose_changed',
         }),
         expect.objectContaining({
           drug_name: '睡眠薬A',
+          drug_code: '789',
           change_type: 'removed',
         }),
       ]),
+    );
+    expect(generateVisitBriefAiSummaryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        medicationChanges: expect.arrayContaining([
+          'アムロジピン錠 [123] / dose_changed / 2.5mg 1錠 / 1日1回朝食後',
+          '睡眠薬A [789] / removed / 中止',
+        ]),
+        fallbackBullets: expect.arrayContaining([expect.stringContaining('アムロジピン錠 [123]')]),
+      }),
     );
     expect(result.drug_cautions).toHaveLength(7);
     expect(result.drug_cautions).toEqual(

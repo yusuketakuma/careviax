@@ -1,34 +1,43 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { pharmacistShiftFindManyMock, businessHolidayFindManyMock } = vi.hoisted(() => ({
+const {
+  pharmacistShiftFindManyMock,
+  businessHolidayFindManyMock,
+  requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  withOrgContextMock,
+  withRoutePerformanceMock,
+  loggerErrorMock,
+} = vi.hoisted(() => ({
   pharmacistShiftFindManyMock: vi.fn(),
   businessHolidayFindManyMock: vi.fn(),
+  requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+  withRoutePerformanceMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  withAuthContext: (handler: (...args: unknown[]) => Promise<Response>) => {
-    return (req: NextRequest, routeContext?: unknown) =>
-      handler(
-        req,
-        {
-          orgId: 'org_1',
-          userId: 'user_1',
-          role: 'pharmacist',
-        },
-        routeContext,
-      );
-  },
+  requireAuthContext: requireAuthContextMock,
 }));
 
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    pharmacistShift: {
-      findMany: pharmacistShiftFindManyMock,
-    },
-    businessHoliday: {
-      findMany: businessHolidayFindManyMock,
-    },
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/utils/performance', () => ({
+  withRoutePerformance: withRoutePerformanceMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
   },
 }));
 
@@ -61,6 +70,30 @@ function expectSensitiveNoStore(response: Response) {
 describe('/api/pharmacist-shifts/available GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    const ctx = {
+      orgId: 'org_1',
+      userId: 'user_1',
+      role: 'pharmacist',
+      ipAddress: '203.0.113.10',
+      userAgent: 'vitest',
+    };
+    requireAuthContextMock.mockResolvedValue({ ctx });
+    runWithRequestAuthContextMock.mockImplementation(
+      (_ctx: typeof ctx, fn: () => Promise<Response>) => fn(),
+    );
+    withRoutePerformanceMock.mockImplementation((_req: NextRequest, fn: () => Promise<Response>) =>
+      fn(),
+    );
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        businessHoliday: {
+          findMany: businessHolidayFindManyMock,
+        },
+        pharmacistShift: {
+          findMany: pharmacistShiftFindManyMock,
+        },
+      }),
+    );
     pharmacistShiftFindManyMock.mockResolvedValue([
       {
         id: 'shift_1',
@@ -77,6 +110,33 @@ describe('/api/pharmacist-shifts/available GET', () => {
         site_id: 'site_2',
       },
     ]);
+  });
+
+  it('uses route-local auth, route performance, and explicit RLS request context', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/pharmacist-shifts/available?date=2026-04-20'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: 'シフト空き状況の閲覧権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      expect.any(Function),
+    );
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+    });
   });
 
   it('returns only shifts not blocked by site closures with normalized time bounds', async () => {
@@ -314,6 +374,23 @@ describe('/api/pharmacist-shifts/available GET', () => {
     expect(businessHolidayFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('returns no-store auth failures before validation or DB reads', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response('forbidden', { status: 403 }),
+    });
+
+    const response = (await GET(
+      createRequest('http://localhost/api/pharmacist-shifts/available?date=2026-04-20'),
+    ))!;
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(businessHolidayFindManyMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('returns a no-store fixed error without leaking raw availability failures', async () => {
     businessHolidayFindManyMock.mockRejectedValueOnce(
       new Error('raw availability lookup failure for site_1'),
@@ -328,5 +405,19 @@ describe('/api/pharmacist-shifts/available GET', () => {
     const body = await response.text();
     expect(body).toContain('INTERNAL_ERROR');
     expect(body).not.toContain('raw availability lookup failure for site_1');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'pharmacist_shifts_available_get_unhandled_error',
+      undefined,
+      {
+        event: 'pharmacist_shifts_available_get_unhandled_error',
+        route: '/api/pharmacist-shifts/available',
+        method: 'GET',
+        status: 500,
+        error_name: 'Error',
+      },
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(
+      'raw availability lookup failure for site_1',
+    );
   });
 });

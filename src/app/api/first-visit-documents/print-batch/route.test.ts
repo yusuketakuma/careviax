@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
-  authMock,
-  membershipFindFirstMock,
+  loggerErrorMock,
+  requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  withRoutePerformanceMock,
   careCaseFindFirstMock,
   firstVisitDocumentFindManyMock,
   firstVisitDocumentUpdateManyMock,
@@ -12,8 +14,10 @@ const {
   getPatientDocumentsDataMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  membershipFindFirstMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
+  requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+  withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
   careCaseFindFirstMock: vi.fn(),
   firstVisitDocumentFindManyMock: vi.fn(),
   firstVisitDocumentUpdateManyMock: vi.fn(),
@@ -23,16 +27,26 @@ const {
   withOrgContextMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/config', () => ({
-  auth: authMock,
+vi.mock('@/lib/auth/context', () => ({
+  requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
+}));
+
+vi.mock('@/lib/utils/performance', () => ({
+  withRoutePerformance: withRoutePerformanceMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    membership: {
-      findFirst: membershipFindFirstMock,
-    },
-  },
+  prisma: {},
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -45,7 +59,7 @@ vi.mock('@/server/services/patient-detail-documents', () => ({
 
 import { POST as rawPOST } from './route';
 
-const POST = (req: NextRequest) => rawPOST(req, { params: Promise.resolve({}) });
+const POST = (req: NextRequest) => rawPOST(req);
 
 function createPostRequest(body: unknown) {
   return new NextRequest('http://localhost/api/first-visit-documents/print-batch', {
@@ -59,13 +73,29 @@ function createPostRequest(body: unknown) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
+function buildAuthContext(req: NextRequest & { role?: string }) {
+  return {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: req.role ?? 'pharmacist',
+    ipAddress: '127.0.0.1',
+    userAgent: 'vitest',
+  };
+}
+
 describe('/api/first-visit-documents/print-batch', () => {
   const updatedAt = new Date('2026-06-16T00:00:00.000Z');
 
   beforeEach(() => {
     vi.clearAllMocks();
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    requireAuthContextMock.mockImplementation(async (req) => ({ ctx: buildAuthContext(req) }));
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
     firstVisitDocumentFindManyMock.mockResolvedValue([
       {
@@ -151,6 +181,19 @@ describe('/api/first-visit-documents/print-batch', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: '初回文書の印刷権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      expect.any(Function),
+    );
     const body = await response.json();
     expect(body.data).toMatchObject({
       printed_document_ids: ['doc_1', 'doc_2'],
@@ -225,6 +268,7 @@ describe('/api/first-visit-documents/print-batch', () => {
     ))!;
 
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(firstVisitDocumentUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
@@ -258,6 +302,7 @@ describe('/api/first-visit-documents/print-batch', () => {
     ))!;
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: '初回文書の印刷前チェックで必須項目が未完了です。不足: 介護保険情報',
@@ -278,6 +323,7 @@ describe('/api/first-visit-documents/print-batch', () => {
     ))!;
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
@@ -290,6 +336,46 @@ describe('/api/first-visit-documents/print-batch', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 without raw logging when the print batch transaction fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 raw first visit print batch secret'),
+    );
+
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        document_ids: ['doc_1', 'doc_2'],
+        save_copy: true,
+      }),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('raw first visit');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'first_visit_documents_print_batch_post_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'first_visit_documents_print_batch_post_unhandled_error',
+        route: '/api/first-visit-documents/print-batch',
+        method: 'POST',
+        status: 500,
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw first visit');
+    expect(firstVisitDocumentUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 });

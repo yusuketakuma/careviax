@@ -1,23 +1,48 @@
 import { unstable_rethrow } from 'next/navigation';
-import { withAuthContext } from '@/lib/auth/context';
+import { NextRequest } from 'next/server';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
-import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import {
   createPharmacistShiftSchema,
   pharmacistShiftQuerySchema,
   toShiftTimeValue,
 } from '@/lib/validations/pharmacist-shift';
 
+const ROUTE = '/api/pharmacist-shifts';
 const DEFAULT_PHARMACIST_SHIFT_LIMIT = 400;
 const MAX_PHARMACIST_SHIFT_LIMIT = 500;
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
 
-const authenticatedGET = withAuthContext(
-  async (req, ctx) => {
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
+
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: 'シフト情報の閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const month = searchParams.get('month');
     const dateFrom = searchParams.get('date_from');
@@ -58,27 +83,32 @@ const authenticatedGET = withAuthContext(
         ? new Date(parsed.data.date_to)
         : null;
 
-    const shifts = await prisma.pharmacistShift.findMany({
-      where: {
-        org_id: ctx.orgId,
-        ...(resolvedDateFrom || resolvedDateTo
-          ? {
-              date: {
-                ...(resolvedDateFrom ? { gte: resolvedDateFrom } : {}),
-                ...(resolvedDateTo ? { lte: resolvedDateTo } : {}),
-              },
-            }
-          : {}),
-        ...(parsed.data.user_id ? { user_id: parsed.data.user_id } : {}),
-        ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
-      },
-      orderBy: [{ date: 'asc' }, { available_from: 'asc' }],
-      ...(limit === undefined ? {} : { take: limit + 1 }),
-      include: {
-        user: { select: { id: true, name: true, name_kana: true } },
-        site: { select: { id: true, name: true } },
-      },
-    });
+    const shifts = await withOrgContext(
+      ctx.orgId,
+      async (tx) =>
+        tx.pharmacistShift.findMany({
+          where: {
+            org_id: ctx.orgId,
+            ...(resolvedDateFrom || resolvedDateTo
+              ? {
+                  date: {
+                    ...(resolvedDateFrom ? { gte: resolvedDateFrom } : {}),
+                    ...(resolvedDateTo ? { lte: resolvedDateTo } : {}),
+                  },
+                }
+              : {}),
+            ...(parsed.data.user_id ? { user_id: parsed.data.user_id } : {}),
+            ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
+          },
+          orderBy: [{ date: 'asc' }, { available_from: 'asc' }],
+          ...(limit === undefined ? {} : { take: limit + 1 }),
+          include: {
+            user: { select: { id: true, name: true, name_kana: true } },
+            site: { select: { id: true, name: true } },
+          },
+        }),
+      { requestContext: ctx },
+    );
 
     const hasMore = limit === undefined ? false : shifts.length > limit;
     const data = limit === undefined ? shifts : shifts.slice(0, limit);
@@ -87,24 +117,37 @@ const authenticatedGET = withAuthContext(
       data,
       ...(limit === undefined ? {} : { meta: { limit, has_more: hasMore } }),
     });
-  },
-  {
+  });
+}
+
+export async function GET(req: NextRequest, routeContext?: unknown) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('pharmacist_shifts_get_unhandled_error', undefined, {
+        event: 'pharmacist_shifts_get_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
+
+async function authenticatedPOST(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
-    message: 'シフト情報の閲覧権限がありません',
-  },
-);
+    message: 'シフト情報の作成権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
 
-export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-};
-
-export const POST = withAuthContext(
-  async (req, ctx) => {
+  return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -123,30 +166,49 @@ export const POST = withAuthContext(
     });
     if (!refResult.ok) return refResult.response;
 
-    const shift = await withOrgContext(ctx.orgId, async (tx) => {
-      return tx.pharmacistShift.upsert({
-        where: { user_id_date: { user_id: rest.user_id, date: new Date(date) } },
-        create: {
-          org_id: ctx.orgId,
-          date: new Date(date),
-          ...(availableFromValue !== undefined ? { available_from: availableFromValue } : {}),
-          ...(availableToValue !== undefined ? { available_to: availableToValue } : {}),
-          ...rest,
-        },
-        update: {
-          site_id: rest.site_id,
-          ...(availableFromValue !== undefined ? { available_from: availableFromValue } : {}),
-          ...(availableToValue !== undefined ? { available_to: availableToValue } : {}),
-          available: rest.available,
-          note: rest.note,
-        },
-      });
-    });
+    const shift = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        return tx.pharmacistShift.upsert({
+          where: { user_id_date: { user_id: rest.user_id, date: new Date(date) } },
+          create: {
+            org_id: ctx.orgId,
+            date: new Date(date),
+            ...(availableFromValue !== undefined ? { available_from: availableFromValue } : {}),
+            ...(availableToValue !== undefined ? { available_to: availableToValue } : {}),
+            ...rest,
+          },
+          update: {
+            site_id: rest.site_id,
+            ...(availableFromValue !== undefined ? { available_from: availableFromValue } : {}),
+            ...(availableToValue !== undefined ? { available_to: availableToValue } : {}),
+            available: rest.available,
+            note: rest.note,
+          },
+        });
+      },
+      { requestContext: ctx },
+    );
 
     return success(shift, 201);
-  },
-  {
-    permission: 'canVisit',
-    message: 'シフト情報の作成権限がありません',
-  },
-);
+  });
+}
+
+export async function POST(req: NextRequest, routeContext?: unknown) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('pharmacist_shifts_post_unhandled_error', undefined, {
+        event: 'pharmacist_shifts_post_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

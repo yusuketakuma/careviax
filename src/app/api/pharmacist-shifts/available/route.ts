@@ -1,21 +1,47 @@
 import type { Prisma } from '@prisma/client';
 
 import { unstable_rethrow } from 'next/navigation';
-import { withAuthContext } from '@/lib/auth/context';
+import { NextRequest } from 'next/server';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { parseBoundedInteger } from '@/lib/api/pagination';
-import { prisma } from '@/lib/db/client';
+import { withOrgContext } from '@/lib/db/rls';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import {
   availablePharmacistShiftQuerySchema,
   toShiftTimeValue,
 } from '@/lib/validations/pharmacist-shift';
 
+const ROUTE = '/api/pharmacist-shifts/available';
 const DEFAULT_AVAILABLE_SHIFT_LIMIT = 500;
 const MAX_AVAILABLE_SHIFT_LIMIT = 500;
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
 
-const authenticatedGET = withAuthContext(
-  async (req, ctx) => {
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
+
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: 'シフト空き状況の閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const date = searchParams.get('date');
 
@@ -58,58 +84,86 @@ const authenticatedGET = withAuthContext(
       }
     }
 
-    const holidays = await prisma.businessHoliday.findMany({
-      where: {
-        org_id: ctx.orgId,
-        date: targetDate,
-        is_closed: true,
+    const availability = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const holidays = await tx.businessHoliday.findMany({
+          where: {
+            org_id: ctx.orgId,
+            date: targetDate,
+            is_closed: true,
+          },
+          select: {
+            site_id: true,
+          },
+        });
+
+        const hasOrgWideClosure = holidays.some((holiday) => holiday.site_id == null);
+        if (hasOrgWideClosure) {
+          return {
+            hasOrgWideClosure,
+            shifts: [],
+          };
+        }
+
+        const blockedSiteIds = [
+          ...new Set(
+            holidays
+              .map((holiday) => holiday.site_id)
+              .filter((siteId): siteId is string => siteId != null),
+          ),
+        ];
+
+        const shifts = await tx.pharmacistShift.findMany({
+          where: {
+            org_id: ctx.orgId,
+            date: targetDate,
+            available: true,
+            ...(blockedSiteIds.length > 0 ? { site_id: { notIn: blockedSiteIds } } : {}),
+            ...(timeWindowFilters.length > 0 ? { AND: timeWindowFilters } : {}),
+          },
+          include: {
+            user: { select: { id: true, name: true, name_kana: true } },
+          },
+          orderBy: { user: { name_kana: 'asc' } },
+          take: limit + 1,
+        });
+
+        return {
+          hasOrgWideClosure,
+          shifts,
+        };
       },
-      select: {
-        site_id: true,
-      },
-    });
-    const hasOrgWideClosure = holidays.some((holiday) => holiday.site_id == null);
+      { requestContext: ctx },
+    );
+
+    const { hasOrgWideClosure, shifts } = availability;
     if (hasOrgWideClosure) {
       return success({ data: [], meta: { limit, has_more: false } });
     }
-    const blockedSiteIds = [
-      ...new Set(
-        holidays
-          .map((holiday) => holiday.site_id)
-          .filter((siteId): siteId is string => siteId != null),
-      ),
-    ];
 
-    const shifts = await prisma.pharmacistShift.findMany({
-      where: {
-        org_id: ctx.orgId,
-        date: targetDate,
-        available: true,
-        ...(blockedSiteIds.length > 0 ? { site_id: { notIn: blockedSiteIds } } : {}),
-        ...(timeWindowFilters.length > 0 ? { AND: timeWindowFilters } : {}),
-      },
-      include: {
-        user: { select: { id: true, name: true, name_kana: true } },
-      },
-      orderBy: { user: { name_kana: 'asc' } },
-      take: limit + 1,
-    });
     const hasMore = shifts.length > limit;
     const availableShifts = shifts.slice(0, limit);
 
     return success({ data: availableShifts, meta: { limit, has_more: hasMore } });
-  },
-  {
-    permission: 'canVisit',
-    message: 'シフト空き状況の閲覧権限がありません',
-  },
-);
+  });
+}
 
-export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-};
+export async function GET(req: NextRequest, routeContext?: unknown) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('pharmacist_shifts_available_get_unhandled_error', undefined, {
+        event: 'pharmacist_shifts_available_get_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

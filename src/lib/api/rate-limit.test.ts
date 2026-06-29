@@ -243,6 +243,9 @@ describe('rate-limit', () => {
     expect(canonicalizeRateLimitPath('/api/pharmacy-drug-stock-templates/template_1/apply')).toBe(
       '/api/pharmacy-drug-stock-templates/:id/apply',
     );
+    expect(canonicalizeRateLimitPath('/api/pharmacy-operating-hours')).toBe(
+      '/api/pharmacy-operating-hours',
+    );
     expect(canonicalizeRateLimitPath('/api/drug-masters/drug_1/generic-recommendations')).toBe(
       '/api/drug-masters/:id/generic-recommendations',
     );

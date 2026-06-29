@@ -394,6 +394,7 @@ function detectMedicationChanges(
   const rawChanges = detectChangesShared(currentLines, previousLines);
   return rawChanges.map((c) => ({
     drug_name: c.drug_name,
+    drug_code: c.drug_code,
     change_type: c.change_type as VisitBriefChangeType,
     previous: c.previous,
     current: c.current ?? '中止',
@@ -938,7 +939,7 @@ function buildRuleBullets(args: {
   if (args.medicationChanges.length > 0) {
     const top = args.medicationChanges
       .slice(0, 2)
-      .map((item) => `${item.drug_name}: ${item.current}`)
+      .map((item) => `${formatMedicationChangeLabel(item)}: ${item.current}`)
       .join(' / ');
     bullets.push(`処方変更: ${top}`);
   }
@@ -957,6 +958,12 @@ function buildRuleBullets(args: {
   }
 
   return bullets.slice(0, 3);
+}
+
+function formatMedicationChangeLabel(
+  item: Pick<VisitBriefMedicationChange, 'drug_name' | 'drug_code'>,
+) {
+  return item.drug_code ? `${item.drug_name} [${item.drug_code}]` : item.drug_name;
 }
 
 function sourceRefs(args: {
@@ -1064,7 +1071,9 @@ async function buildAiSummary(args: {
     context: args.context,
     medicationChanges: args.medicationChanges
       .slice(0, 5)
-      .map((item) => `${item.drug_name} / ${item.change_type} / ${item.current}`),
+      .map(
+        (item) => `${formatMedicationChangeLabel(item)} / ${item.change_type} / ${item.current}`,
+      ),
     dispensing: args.dispensingItems.slice(0, 5).map((item) => item.note),
     multidisciplinary: [
       ...args.communicationItems.slice(0, 5).map((item) => `${item.title} / ${item.summary}`),

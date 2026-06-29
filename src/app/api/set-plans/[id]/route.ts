@@ -1,11 +1,11 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
-import { withAuthContext } from '@/lib/auth/context';
-import type { AuthContext, AuthRouteContext } from '@/lib/auth/context';
+import { requireAuthContext } from '@/lib/auth/context';
+import type { AuthRouteContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
-import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { formatDateKey } from '@/lib/date-key';
 import { dateKeySchema } from '@/lib/validations/date-key';
@@ -13,8 +13,26 @@ import { buildSetPlanPackagingSummary } from '@/lib/dispensing/set-plan-packagin
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { buildSetPlanAssignmentWhere } from '@/server/services/prescription-access';
 import { MAX_SET_PLAN_DAY_COUNT, isSetPlanPeriodWithinLimit } from '@/lib/set-plan-period';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
+
+const ROUTE = '/api/set-plans/[id]';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 const updateSetPlanSchema = z.object({
   expected_updated_at: z.string().datetime('セットプランの版情報が不正です'),
@@ -147,19 +165,32 @@ const setPlanSelect = {
   },
 } satisfies Prisma.SetPlanSelect;
 
-const authenticatedGET = withAuthContext<{ id: string }>(
-  async (_req: NextRequest, ctx: AuthContext, routeContext: AuthRouteContext<{ id: string }>) => {
+async function authenticatedGET(
+  req: NextRequest,
+  routeContext: AuthRouteContext<{ id: string }>,
+): Promise<NextResponse> {
+  const auth = await requireAuthContext(req, { permission: 'canSet' });
+  if ('response' in auth) return auth.response;
+
+  const { ctx } = auth;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { id } = await routeContext.params;
     const assignmentWhere = buildSetPlanAssignmentWhere(ctx);
 
-    const plan = await prisma.setPlan.findFirst({
-      where: {
-        id,
-        org_id: ctx.orgId,
-        ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
-      },
-      select: setPlanSelect,
-    });
+    const plan = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        tx.setPlan.findFirst({
+          where: {
+            id,
+            org_id: ctx.orgId,
+            ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+          },
+          select: setPlanSelect,
+        }),
+      { requestContext: ctx },
+    );
 
     if (!plan) {
       return notFound('セットプランが見つかりません');
@@ -185,21 +216,36 @@ const authenticatedGET = withAuthContext<{ id: string }>(
         stale_line_ids: staleLineIds,
       },
     });
-  },
-  { permission: 'canSet' },
-);
+  });
+}
 
-export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-};
+export async function GET(req: NextRequest, routeContext: AuthRouteContext<{ id: string }>) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('set_plans_detail_get_unhandled_error', undefined, {
+        event: 'set_plans_detail_get_unhandled_error',
+        route: ROUTE,
+        method: 'GET',
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
 
-export const PATCH = withAuthContext<{ id: string }>(
-  async (req: NextRequest, ctx: AuthContext, routeContext: AuthRouteContext<{ id: string }>) => {
+async function authenticatedPATCH(
+  req: NextRequest,
+  routeContext: AuthRouteContext<{ id: string }>,
+): Promise<NextResponse> {
+  const auth = await requireAuthContext(req, { permission: 'canSet' });
+  if ('response' in auth) return auth.response;
+
+  const { ctx } = auth;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { id } = await routeContext.params;
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -214,36 +260,39 @@ export const PATCH = withAuthContext<{ id: string }>(
       return validationError('更新項目がありません');
     }
 
-    const result = await withOrgContext(ctx.orgId, async (tx) => {
-      const assignmentWhere = buildSetPlanAssignmentWhere(ctx);
-      const existing = await tx.setPlan.findFirst({
-        where: {
-          id,
-          org_id: ctx.orgId,
-          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
-        },
-        select: {
-          id: true,
-          target_period_start: true,
-          target_period_end: true,
-          set_method: true,
-          notes: true,
-          packaging_method_id: true,
-          updated_at: true,
-          cycle: {
-            select: {
-              case_: {
-                select: {
-                  patient: {
-                    select: {
-                      packaging_profile: {
-                        select: {
-                          default_packaging_method: true,
-                          medication_box_color: true,
-                          notes: true,
-                          box_config: true,
-                          special_instructions: true,
-                          cognitive_note: true,
+    const result = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const assignmentWhere = buildSetPlanAssignmentWhere(ctx);
+        const existing = await tx.setPlan.findFirst({
+          where: {
+            id,
+            org_id: ctx.orgId,
+            ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+          },
+          select: {
+            id: true,
+            target_period_start: true,
+            target_period_end: true,
+            set_method: true,
+            notes: true,
+            packaging_method_id: true,
+            updated_at: true,
+            cycle: {
+              select: {
+                case_: {
+                  select: {
+                    patient: {
+                      select: {
+                        packaging_profile: {
+                          select: {
+                            default_packaging_method: true,
+                            medication_box_color: true,
+                            notes: true,
+                            box_config: true,
+                            special_instructions: true,
+                            cognitive_note: true,
+                          },
                         },
                       },
                     },
@@ -252,141 +301,159 @@ export const PATCH = withAuthContext<{ id: string }>(
               },
             },
           },
-        },
-      });
+        });
 
-      if (!existing) {
-        return null;
-      }
+        if (!existing) {
+          return null;
+        }
 
-      if (existing.updated_at.toISOString() !== expected_updated_at) {
-        return {
-          kind: 'conflict' as const,
-          message: 'セットプランが他のユーザーによって更新されています。再読み込みしてください',
-          details: {
-            current: { updated_at: existing.updated_at.toISOString() },
-            expected_updated_at,
+        if (existing.updated_at.toISOString() !== expected_updated_at) {
+          return {
+            kind: 'conflict' as const,
+            message: 'セットプランが他のユーザーによって更新されています。再読み込みしてください',
+            details: {
+              current: { updated_at: existing.updated_at.toISOString() },
+              expected_updated_at,
+            },
+          };
+        }
+
+        const packagingMethod =
+          updates.packaging_method_id === undefined
+            ? existing.packaging_method_id
+              ? await tx.packagingMethodMaster.findFirst({
+                  where: {
+                    id: existing.packaging_method_id,
+                    org_id: ctx.orgId,
+                    is_active: true,
+                  },
+                  select: {
+                    id: true,
+                    name: true,
+                    description: true,
+                  },
+                })
+              : null
+            : updates.packaging_method_id
+              ? await tx.packagingMethodMaster.findFirst({
+                  where: {
+                    id: updates.packaging_method_id,
+                    org_id: ctx.orgId,
+                    is_active: true,
+                  },
+                  select: {
+                    id: true,
+                    name: true,
+                    description: true,
+                  },
+                })
+              : null;
+
+        if (
+          updates.packaging_method_id === undefined &&
+          existing.packaging_method_id &&
+          !packagingMethod
+        ) {
+          return {
+            kind: 'error' as const,
+            message: '現在の配薬方法マスタは無効です。配薬方法を選び直してください',
+          };
+        }
+
+        if (updates.packaging_method_id && !packagingMethod) {
+          return {
+            kind: 'error' as const,
+            message: '指定された配薬方法マスタが見つかりません',
+          };
+        }
+
+        const resolvedPeriodStart =
+          updates.target_period_start ?? formatDateKey(existing.target_period_start);
+        const resolvedPeriodEnd =
+          updates.target_period_end ?? formatDateKey(existing.target_period_end);
+        if (resolvedPeriodEnd < resolvedPeriodStart) {
+          return {
+            kind: 'error' as const,
+            message: '終了日は開始日以降を指定してください',
+          };
+        }
+        if (!isSetPlanPeriodWithinLimit(resolvedPeriodStart, resolvedPeriodEnd)) {
+          return {
+            kind: 'error' as const,
+            message: `セット対象期間は${MAX_SET_PLAN_DAY_COUNT}日以内で指定してください`,
+          };
+        }
+
+        const resolvedSetMethod = updates.set_method ?? existing.set_method;
+        const resolvedNotes = updates.notes !== undefined ? updates.notes || null : existing.notes;
+        const packagingSummary = buildSetPlanPackagingSummary({
+          setMethod: resolvedSetMethod,
+          packagingMethod,
+          patientPackagingProfile: existing.cycle.case_?.patient.packaging_profile ?? null,
+        });
+
+        const writeData = {
+          ...(updates.target_period_start
+            ? { target_period_start: new Date(updates.target_period_start) }
+            : {}),
+          ...(updates.target_period_end
+            ? { target_period_end: new Date(updates.target_period_end) }
+            : {}),
+          ...(updates.set_method ? { set_method: updates.set_method } : {}),
+          ...(updates.packaging_method_id !== undefined
+            ? { packaging_method_id: updates.packaging_method_id || null }
+            : {}),
+          packaging_summary_snapshot: packagingSummary,
+          notes: resolvedNotes,
+        };
+
+        const writeClaim = await tx.setPlan.updateMany({
+          where: {
+            id,
+            org_id: ctx.orgId,
+            updated_at: new Date(expected_updated_at),
+            ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
           },
-        };
-      }
+          data: writeData,
+        });
+        if (writeClaim.count === 0) {
+          const current = await tx.setPlan.findFirst({
+            where: {
+              id,
+              org_id: ctx.orgId,
+              ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+            },
+            select: { updated_at: true },
+          });
+          return {
+            kind: 'conflict' as const,
+            message: 'セットプランが他のユーザーによって更新されています。再読み込みしてください',
+            details: {
+              current: current ? { updated_at: current.updated_at.toISOString() } : null,
+              expected_updated_at,
+            },
+          };
+        }
 
-      const packagingMethod =
-        updates.packaging_method_id === undefined
-          ? existing.packaging_method_id
-            ? await tx.packagingMethodMaster.findFirst({
-                where: {
-                  id: existing.packaging_method_id,
-                  org_id: ctx.orgId,
-                },
-                select: {
-                  id: true,
-                  name: true,
-                  description: true,
-                },
-              })
-            : null
-          : updates.packaging_method_id
-            ? await tx.packagingMethodMaster.findFirst({
-                where: {
-                  id: updates.packaging_method_id,
-                  org_id: ctx.orgId,
-                  is_active: true,
-                },
-                select: {
-                  id: true,
-                  name: true,
-                  description: true,
-                },
-              })
-            : null;
-
-      if (updates.packaging_method_id && !packagingMethod) {
-        return {
-          kind: 'error' as const,
-          message: '指定された配薬方法マスタが見つかりません',
-        };
-      }
-
-      const resolvedPeriodStart =
-        updates.target_period_start ?? formatDateKey(existing.target_period_start);
-      const resolvedPeriodEnd =
-        updates.target_period_end ?? formatDateKey(existing.target_period_end);
-      if (resolvedPeriodEnd < resolvedPeriodStart) {
-        return {
-          kind: 'error' as const,
-          message: '終了日は開始日以降を指定してください',
-        };
-      }
-      if (!isSetPlanPeriodWithinLimit(resolvedPeriodStart, resolvedPeriodEnd)) {
-        return {
-          kind: 'error' as const,
-          message: `セット対象期間は${MAX_SET_PLAN_DAY_COUNT}日以内で指定してください`,
-        };
-      }
-
-      const resolvedSetMethod = updates.set_method ?? existing.set_method;
-      const resolvedNotes = updates.notes !== undefined ? updates.notes || null : existing.notes;
-      const packagingSummary = buildSetPlanPackagingSummary({
-        setMethod: resolvedSetMethod,
-        packagingMethod,
-        patientPackagingProfile: existing.cycle.case_?.patient.packaging_profile ?? null,
-      });
-
-      const writeData = {
-        ...(updates.target_period_start
-          ? { target_period_start: new Date(updates.target_period_start) }
-          : {}),
-        ...(updates.target_period_end
-          ? { target_period_end: new Date(updates.target_period_end) }
-          : {}),
-        ...(updates.set_method ? { set_method: updates.set_method } : {}),
-        ...(updates.packaging_method_id !== undefined
-          ? { packaging_method_id: updates.packaging_method_id || null }
-          : {}),
-        packaging_summary_snapshot: packagingSummary,
-        notes: resolvedNotes,
-      };
-
-      const writeClaim = await tx.setPlan.updateMany({
-        where: {
-          id,
-          org_id: ctx.orgId,
-          updated_at: new Date(expected_updated_at),
-        },
-        data: writeData,
-      });
-      if (writeClaim.count === 0) {
-        const current = await tx.setPlan.findFirst({
+        const updated = await tx.setPlan.findFirst({
           where: {
             id,
             org_id: ctx.orgId,
             ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
           },
-          select: { updated_at: true },
+          select: setPlanSelect,
         });
+        if (!updated) {
+          return null;
+        }
+
         return {
-          kind: 'conflict' as const,
-          message: 'セットプランが他のユーザーによって更新されています。再読み込みしてください',
-          details: {
-            current: current ? { updated_at: current.updated_at.toISOString() } : null,
-            expected_updated_at,
-          },
+          kind: 'success' as const,
+          data: updated,
         };
-      }
-
-      const updated = await tx.setPlan.findFirst({
-        where: { id, org_id: ctx.orgId },
-        select: setPlanSelect,
-      });
-      if (!updated) {
-        return null;
-      }
-
-      return {
-        kind: 'success' as const,
-        data: updated,
-      };
-    });
+      },
+      { requestContext: ctx },
+    );
 
     if (!result) {
       return notFound('セットプランが見つかりません');
@@ -405,6 +472,22 @@ export const PATCH = withAuthContext<{ id: string }>(
     });
 
     return success({ data: result.data });
-  },
-  { permission: 'canSet' },
-);
+  });
+}
+
+export async function PATCH(req: NextRequest, routeContext: AuthRouteContext<{ id: string }>) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('set_plans_detail_patch_unhandled_error', undefined, {
+        event: 'set_plans_detail_patch_unhandled_error',
+        route: ROUTE,
+        method: 'PATCH',
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

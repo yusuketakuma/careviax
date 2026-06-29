@@ -53,6 +53,7 @@ const {
   withAuthMock,
   withAuthContextMock,
   requireAuthContextMock,
+  runWithRequestAuthContextMock,
   withOrgContextMock,
   dispatchNotificationEventMock,
   validateOrgReferencesMock,
@@ -103,6 +104,7 @@ const {
     },
   ),
   requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
   withOrgContextMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
@@ -137,6 +139,14 @@ vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
   withAuthContext: withAuthContextMock,
 }));
+
+vi.mock('@/lib/auth/request-context', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/auth/request-context')>();
+  return {
+    ...actual,
+    runWithRequestAuthContext: runWithRequestAuthContextMock,
+  };
+});
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
@@ -207,6 +217,32 @@ vi.mock('@/lib/prescriptions/prescriber-institutions', () => ({
 }));
 
 vi.mock('@/lib/dispensing/packaging', () => ({
+  PACKAGING_METHOD_OPTIONS: [
+    { value: 'none', label: '指定なし' },
+    { value: 'unit_dose', label: '一包化' },
+    { value: 'morning_evening_unit_dose', label: '朝夕別一包化' },
+    { value: 'medication_box', label: 'お薬BOX' },
+    { value: 'calendar_pack', label: 'カレンダーセット' },
+    { value: 'blister_pack', label: 'ブリスター管理' },
+    { value: 'crush_and_pack', label: '粉砕・混合' },
+    { value: 'other', label: 'その他' },
+  ],
+  PACKAGING_INSTRUCTION_TAG_OPTIONS: [
+    { value: 'cold_storage', label: '冷所保管' },
+    { value: 'narcotic', label: '麻薬' },
+    { value: 'half_tablet', label: '半錠・分割' },
+    { value: 'crush_prohibited', label: '粉砕禁止' },
+    { value: 'separate_pack', label: '別包' },
+    { value: 'unit_dose', label: '一包化' },
+    { value: 'staple_required', label: 'ホッチキス止め' },
+    { value: 'label_required', label: '名前ラベル' },
+    { value: 'ptp', label: 'PTP・ヒート' },
+    { value: 'mixing', label: '混合' },
+    { value: 'excipient', label: '賦形' },
+    { value: 'decapsulation', label: '脱カプセル' },
+    { value: 'no_unit_dose', label: '一包化しない' },
+    { value: 'manual_ptp', label: '手撒きPTP' },
+  ],
   extractPackagingInstructionTags: vi.fn().mockReturnValue([]),
   parsePackagingMethod: vi.fn().mockReturnValue({ method: null }),
 }));
@@ -282,6 +318,14 @@ describe('Workflow: prescription intake to care report', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-10T09:00:00.000Z'));
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: IDS.org,
+        userId: IDS.user,
+        role: 'pharmacist',
+      },
+    });
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
     prismaMembershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
     evaluateVisitWorkflowGateMock.mockResolvedValue({ ok: true, issues: [] });
@@ -579,7 +623,6 @@ describe('Workflow: prescription intake to care report', () => {
         result: 'approved',
         expected_version: 1,
       }),
-      emptyRouteContext,
     );
 
     expect(response).toBeDefined();
@@ -797,7 +840,6 @@ describe('Workflow: prescription intake to care report', () => {
         soap_plan: '現処方継続。次回訪問時に血液検査結果確認。',
         structured_soap: completedVisitStructuredSoap,
       }),
-      emptyRouteContext,
     );
 
     expect(response).toBeDefined();
@@ -859,7 +901,6 @@ describe('Workflow: prescription intake to care report', () => {
           role: 'pharmacist',
         },
       ),
-      emptyRouteContext,
     );
 
     expect(response).toBeDefined();

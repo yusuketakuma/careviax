@@ -215,16 +215,13 @@ export async function buildPatientWorkspace(db: DbClient, args: BuildPatientWork
     currentIntake && previousIntake
       ? detectMedicationChanges(currentIntake.lines, previousIntake.lines)
       : [];
-  const currentLineByName = new Map(
-    (currentIntake?.lines ?? []).map((line) => [line.drug_name, line]),
-  );
   const medicationChanges = rawChanges.map((change) => {
-    const currentLine = currentLineByName.get(change.drug_name) ?? null;
     return {
       change_type: change.change_type,
       drug_name: change.drug_name,
-      frequency: change.change_type === 'removed' ? null : (currentLine?.frequency ?? null),
-      days: change.change_type === 'removed' ? null : (currentLine?.days ?? null),
+      drug_code: change.drug_code,
+      frequency: change.current_frequency,
+      days: change.current_days,
     };
   });
 

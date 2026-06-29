@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
-  authMock,
-  membershipFindFirstMock,
+  loggerErrorMock,
+  requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  withRoutePerformanceMock,
   careCaseFindFirstMock,
   careCaseFindManyMock,
   auditLogCreateMock,
@@ -14,8 +16,10 @@ const {
   requireWritablePatientMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  membershipFindFirstMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
+  requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+  withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
   careCaseFindFirstMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
@@ -27,15 +31,26 @@ const {
   withOrgContextMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/config', () => ({
-  auth: authMock,
+vi.mock('@/lib/auth/context', () => ({
+  requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
+}));
+
+vi.mock('@/lib/utils/performance', () => ({
+  withRoutePerformance: withRoutePerformanceMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
-    membership: {
-      findFirst: membershipFindFirstMock,
-    },
     careCase: {
       findFirst: careCaseFindFirstMock,
       findMany: careCaseFindManyMock,
@@ -62,9 +77,8 @@ vi.mock('@/server/services/patient-write-guard', () => ({
 
 import { GET as rawGET, POST as rawPOST } from './route';
 
-const emptyRouteContext = { params: Promise.resolve({}) };
-const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
-const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
+const GET = (req: NextRequest) => rawGET(req);
+const POST = (req: NextRequest) => rawPOST(req);
 
 function createRequest(url: string, body?: unknown) {
   return new NextRequest(url, {
@@ -82,11 +96,22 @@ function expectSensitiveNoStore(response: Response) {
   expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
+function buildAuthContext(req: NextRequest & { role?: string }) {
+  return {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: req.role ?? 'pharmacist',
+    ipAddress: '127.0.0.1',
+    userAgent: 'vitest',
+  };
+}
+
 describe('/api/first-visit-documents', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    requireAuthContextMock.mockImplementation(async (req) => ({ ctx: buildAuthContext(req) }));
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
     requireWritablePatientMock.mockResolvedValue({
       patient: { id: 'patient_1', archived_at: null },
     });
@@ -155,6 +180,18 @@ describe('/api/first-visit-documents', () => {
 
       expect(response.status).toBe(200);
       expectSensitiveNoStore(response);
+      expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+        expect.any(NextRequest),
+        expect.any(Function),
+      );
+      expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+        permission: 'canVisit',
+        message: '初回文書の閲覧権限がありません',
+      });
+      expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
+        expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+        expect.any(Function),
+      );
       // org-wide ロール(pharmacist)は担当割当をバイパスするため、
       // アクセス可能ケースの絞り込み(careCase.findMany)は行われず、
       // 取得 where には case_id フィルタが付かない(org + patient のみ)。
@@ -246,6 +283,39 @@ describe('/api/first-visit-documents', () => {
         expect(firstVisitDocumentFindManyMock).not.toHaveBeenCalled();
       },
     );
+
+    it('returns a sanitized no-store 500 without raw logging when document listing fails unexpectedly', async () => {
+      firstVisitDocumentFindManyMock.mockRejectedValueOnce(
+        new Error('患者 山田太郎 raw first visit document secret'),
+      );
+
+      const response = (await GET(
+        createRequest('http://localhost/api/first-visit-documents?patient_id=patient_1'),
+      ))!;
+
+      expect(response.status).toBe(500);
+      expectSensitiveNoStore(response);
+      const body = await response.json();
+      expect(body).toMatchObject({
+        code: 'INTERNAL_ERROR',
+        message: 'サーバー内部でエラーが発生しました',
+      });
+      expect(JSON.stringify(body)).not.toContain('山田太郎');
+      expect(JSON.stringify(body)).not.toContain('raw first visit');
+      expect(loggerErrorMock).toHaveBeenCalledWith(
+        'first_visit_documents_get_unhandled_error',
+        undefined,
+        expect.objectContaining({
+          event: 'first_visit_documents_get_unhandled_error',
+          route: '/api/first-visit-documents',
+          method: 'GET',
+          status: 500,
+          error_name: 'Error',
+        }),
+      );
+      expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
+      expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw first visit');
+    });
   });
 
   describe('POST', () => {
@@ -255,6 +325,7 @@ describe('/api/first-visit-documents', () => {
       ))!;
 
       expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
         message: 'リクエストボディが不正です',
@@ -275,6 +346,7 @@ describe('/api/first-visit-documents', () => {
       ))!;
 
       expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
         message: '入力値が不正です',
@@ -300,6 +372,19 @@ describe('/api/first-visit-documents', () => {
       ))!;
 
       expect(response.status).toBe(201);
+      expectSensitiveNoStore(response);
+      expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+        expect.any(NextRequest),
+        expect.any(Function),
+      );
+      expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+        permission: 'canVisit',
+        message: '初回文書の作成権限がありません',
+      });
+      expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
+        expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+        expect.any(Function),
+      );
       expect(careCaseFindFirstMock).toHaveBeenCalledWith({
         where: {
           id: 'case_1',
@@ -373,6 +458,7 @@ describe('/api/first-visit-documents', () => {
       ))!;
 
       expect(response.status).toBe(409);
+      expectSensitiveNoStore(response);
       expect(contactPartyFindManyMock).not.toHaveBeenCalled();
       expect(templateFindFirstMock).not.toHaveBeenCalled();
       expect(withOrgContextMock).not.toHaveBeenCalled();
@@ -390,6 +476,7 @@ describe('/api/first-visit-documents', () => {
       ))!;
 
       expect(response.status).toBe(201);
+      expectSensitiveNoStore(response);
       expect(contactPartyFindManyMock).toHaveBeenCalledWith({
         where: {
           org_id: 'org_1',
@@ -442,6 +529,7 @@ describe('/api/first-visit-documents', () => {
       ))!;
 
       expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
         details: {
@@ -464,6 +552,7 @@ describe('/api/first-visit-documents', () => {
       ))!;
 
       expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
         details: {
@@ -489,6 +578,7 @@ describe('/api/first-visit-documents', () => {
       ))!;
 
       expect(response.status).toBe(201);
+      expectSensitiveNoStore(response);
       expect(firstVisitDocumentCreateMock).toHaveBeenCalledWith({
         data: expect.objectContaining({
           document_url: 'https://files.example.test/contracts/doc_1.pdf',
@@ -516,6 +606,7 @@ describe('/api/first-visit-documents', () => {
       ))!;
 
       expect(response.status).toBe(201);
+      expectSensitiveNoStore(response);
       expect(templateFindFirstMock).toHaveBeenCalledWith({
         where: {
           id: 'template_1',
@@ -561,6 +652,7 @@ describe('/api/first-visit-documents', () => {
       ))!;
 
       expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
         details: {
@@ -585,6 +677,7 @@ describe('/api/first-visit-documents', () => {
       ))!;
 
       expect(response.status).toBe(404);
+      expectSensitiveNoStore(response);
       expect(withOrgContextMock).not.toHaveBeenCalled();
     });
 
@@ -596,6 +689,49 @@ describe('/api/first-visit-documents', () => {
       ))!;
 
       expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
+    });
+
+    it('returns a sanitized no-store 500 without raw logging when document creation fails unexpectedly', async () => {
+      withOrgContextMock.mockRejectedValueOnce(
+        new Error('患者 山田太郎 raw first visit document create secret'),
+      );
+
+      const response = (await POST(
+        createRequest('http://localhost/api/first-visit-documents', {
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          document_url: '/api/visit-records/record_1/pdf',
+          emergency_contacts: [
+            { name: '山田太郎', relationship: '配偶者', phone: '090-1234-5678' },
+          ],
+        }),
+      ))!;
+
+      expect(response.status).toBe(500);
+      expectSensitiveNoStore(response);
+      const body = await response.json();
+      expect(body).toMatchObject({
+        code: 'INTERNAL_ERROR',
+        message: 'サーバー内部でエラーが発生しました',
+      });
+      expect(JSON.stringify(body)).not.toContain('山田太郎');
+      expect(JSON.stringify(body)).not.toContain('raw first visit');
+      expect(loggerErrorMock).toHaveBeenCalledWith(
+        'first_visit_documents_post_unhandled_error',
+        undefined,
+        expect.objectContaining({
+          event: 'first_visit_documents_post_unhandled_error',
+          route: '/api/first-visit-documents',
+          method: 'POST',
+          status: 500,
+          error_name: 'Error',
+        }),
+      );
+      expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
+      expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw first visit');
+      expect(firstVisitDocumentCreateMock).not.toHaveBeenCalled();
+      expect(auditLogCreateMock).not.toHaveBeenCalled();
     });
   });
 });

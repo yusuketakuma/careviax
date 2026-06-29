@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
-  authMock,
-  membershipFindFirstMock,
+  loggerErrorMock,
+  requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  withRoutePerformanceMock,
   consentRecordFindManyMock,
   consentRecordCountMock,
   consentRecordFindFirstMock,
@@ -17,8 +19,10 @@ const {
   recordConsentRecordsViewedAuditMock,
   recordConsentRecordCreatedAuditMock,
 } = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  membershipFindFirstMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
+  requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+  withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
   consentRecordFindManyMock: vi.fn(),
   consentRecordCountMock: vi.fn(),
   consentRecordFindFirstMock: vi.fn(),
@@ -33,15 +37,26 @@ const {
   recordConsentRecordCreatedAuditMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/config', () => ({
-  auth: authMock,
+vi.mock('@/lib/auth/context', () => ({
+  requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
+}));
+
+vi.mock('@/lib/utils/performance', () => ({
+  withRoutePerformance: withRoutePerformanceMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
-    membership: {
-      findFirst: membershipFindFirstMock,
-    },
     consentRecord: {
       findMany: consentRecordFindManyMock,
       count: consentRecordCountMock,
@@ -77,9 +92,8 @@ vi.mock('@/server/services/consent-record-audit', () => ({
 
 import { GET as rawGET, POST as rawPOST } from './route';
 
-const emptyRouteContext = { params: Promise.resolve({}) };
-const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
-const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
+const GET = (req: NextRequest) => rawGET(req);
+const POST = (req: NextRequest) => rawPOST(req);
 
 function expectNoStore(response: Response) {
   expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
@@ -108,11 +122,22 @@ function createMalformedPostRequest(url: string) {
   });
 }
 
+function buildAuthContext(req: NextRequest & { role?: string }) {
+  return {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: req.role ?? 'pharmacist',
+    ipAddress: '127.0.0.1',
+    userAgent: 'vitest',
+  };
+}
+
 describe('/api/consent-records', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    requireAuthContextMock.mockImplementation(async (req) => ({ ctx: buildAuthContext(req) }));
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
     consentRecordFindManyMock.mockResolvedValue([
       {
         id: 'consent_1',
@@ -155,6 +180,18 @@ describe('/api/consent-records', () => {
 
     expect(response.status).toBe(200);
     expectNoStore(response);
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: '同意記録の閲覧には訪問権限が必要です',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      expect.any(Function),
+    );
     expect(patientFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'patient_1', org_id: 'org_1' },
       select: { id: true },
@@ -216,7 +253,7 @@ describe('/api/consent-records', () => {
       new Error('audit unavailable for raw consent document https://files.example.test/leak.pdf'),
     );
 
-    // 監査記録に失敗したら成功扱いにせず fail closed。withAuthContext が想定外 throw を
+    // 監査記録に失敗したら成功扱いにせず fail closed。route-local boundary が想定外 throw を
     // 標準 500 エンベロープに変換するため、200 ではなく 500/INTERNAL_ERROR を返す。
     const response = (await GET(
       createRequest('http://localhost/api/consent-records?patient_id=patient_1'),
@@ -229,6 +266,18 @@ describe('/api/consent-records', () => {
     expect(JSON.stringify(body)).not.toContain('leak.pdf');
     // 監査未記録のまま同意レコードを漏らさない
     expect(body.data).toBeUndefined();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'consent_records_get_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'consent_records_get_unhandled_error',
+        route: '/api/consent-records',
+        method: 'GET',
+        status: 500,
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('leak.pdf');
   });
 
   it('returns no-store validation errors for missing patient ids', async () => {
@@ -268,6 +317,19 @@ describe('/api/consent-records', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectNoStore(response);
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: '同意記録の作成には訪問権限が必要です',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      expect.any(Function),
+    );
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
       patient_id: 'patient_1',
     });
@@ -327,6 +389,7 @@ describe('/api/consent-records', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectNoStore(response);
     expect(fileAssetFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'file_1',
@@ -364,6 +427,7 @@ describe('/api/consent-records', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     expect(validateOrgReferencesMock).not.toHaveBeenCalled();
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(consentRecordCreateMock).not.toHaveBeenCalled();
@@ -382,6 +446,7 @@ describe('/api/consent-records', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     expect(validateOrgReferencesMock).not.toHaveBeenCalled();
     expect(consentRecordCreateMock).not.toHaveBeenCalled();
     expect(recordConsentRecordCreatedAuditMock).not.toHaveBeenCalled();
@@ -400,6 +465,7 @@ describe('/api/consent-records', () => {
     ))!;
 
     expect(response.status).toBe(404);
+    expectNoStore(response);
     expect(consentRecordFindFirstMock).not.toHaveBeenCalled();
     expect(templateFindFirstMock).not.toHaveBeenCalled();
     expect(consentRecordCreateMock).not.toHaveBeenCalled();
@@ -407,9 +473,11 @@ describe('/api/consent-records', () => {
   });
 
   it('fails closed when consent create audit cannot be recorded', async () => {
-    recordConsentRecordCreatedAuditMock.mockRejectedValueOnce(new Error('audit unavailable'));
+    recordConsentRecordCreatedAuditMock.mockRejectedValueOnce(
+      new Error('audit unavailable for raw consent document https://files.example.test/leak.pdf'),
+    );
 
-    // 監査記録に失敗したら成功(2xx)を返さず fail closed。withAuthContext が想定外 throw を
+    // 監査記録に失敗したら成功(2xx)を返さず fail closed。route-local boundary が想定外 throw を
     // 標準 500 エンベロープに変換するため、クライアントには 500/INTERNAL_ERROR を返す。
     const response = (await POST(
       createRequest('http://localhost/api/consent-records', {
@@ -421,8 +489,22 @@ describe('/api/consent-records', () => {
     ))!;
 
     expect(response.status).toBe(500);
+    expectNoStore(response);
     const body = (await response.json()) as { code?: string };
     expect(body.code).toBe('INTERNAL_ERROR');
+    expect(JSON.stringify(body)).not.toContain('leak.pdf');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'consent_records_post_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'consent_records_post_unhandled_error',
+        route: '/api/consent-records',
+        method: 'POST',
+        status: 500,
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('leak.pdf');
     expect(consentRecordCreateMock).toHaveBeenCalled();
   });
 
@@ -432,6 +514,7 @@ describe('/api/consent-records', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     expect(validateOrgReferencesMock).not.toHaveBeenCalled();
     expect(consentRecordFindFirstMock).not.toHaveBeenCalled();
     expect(templateFindFirstMock).not.toHaveBeenCalled();
@@ -445,6 +528,7 @@ describe('/api/consent-records', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -469,5 +553,6 @@ describe('/api/consent-records', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
   });
 });

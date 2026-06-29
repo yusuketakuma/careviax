@@ -1,12 +1,33 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { withAuthContext } from '@/lib/auth/context';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { notFound, success, validationError } from '@/lib/api/response';
+import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import { updateVisitVehicleResourceSchema } from '@/lib/validations/visit-vehicle-resource';
+
+const ROUTE = '/api/visit-vehicle-resources/[id]';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 /**
  * 次回点検期限(next_inspection_date / @db.Date)用の任意フィールド。
@@ -19,9 +40,16 @@ const nextInspectionDateSchema = z
   )
   .optional();
 
-export const PATCH = withAuthContext<{ id: string }>(
-  async (req: NextRequest, ctx, routeContext) => {
-    const { id: rawId } = await routeContext.params;
+async function authenticatedPATCH(req: NextRequest, params: Promise<{ id: string }>) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canAdmin',
+    message: '車両リソースの更新権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
+    const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('車両IDが不正です');
 
@@ -62,42 +90,60 @@ export const PATCH = withAuthContext<{ id: string }>(
         : {}),
     };
 
-    const updated = await withOrgContext(ctx.orgId, async (tx) => {
-      const existing = await tx.visitVehicleResource.findFirst({
-        where: { id, org_id: ctx.orgId },
-        select: { id: true },
-      });
-      if (!existing) return null;
+    const updated = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const existing = await tx.visitVehicleResource.findFirst({
+          where: { id, org_id: ctx.orgId },
+          select: { id: true },
+        });
+        if (!existing) return null;
 
-      const resource = await tx.visitVehicleResource.update({
-        where: { id },
-        data,
-        include: {
-          site: {
-            select: {
-              id: true,
-              name: true,
+        const resource = await tx.visitVehicleResource.update({
+          where: { id },
+          data,
+          include: {
+            site: {
+              select: {
+                id: true,
+                name: true,
+              },
             },
           },
-        },
-      });
+        });
 
-      await createAuditLogEntry(tx, ctx, {
-        action: 'visit_vehicle_resource_updated',
-        targetType: 'VisitVehicleResource',
-        targetId: id,
-        changes: data,
-      });
+        await createAuditLogEntry(tx, ctx, {
+          action: 'visit_vehicle_resource_updated',
+          targetType: 'VisitVehicleResource',
+          targetId: id,
+          changes: data,
+        });
 
-      return resource;
-    });
+        return resource;
+      },
+      { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
+    );
 
     if (!updated) return notFound('車両リソースが見つかりません');
 
     return success({ data: updated });
-  },
-  {
-    permission: 'canAdmin',
-    message: '車両リソースの更新権限がありません',
-  },
-);
+  });
+}
+
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPATCH(req, params));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('visit_vehicle_resources_id_patch_unhandled_error', undefined, {
+        event: 'visit_vehicle_resources_id_patch_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

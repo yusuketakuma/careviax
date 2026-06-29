@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
-  authMock,
-  membershipFindFirstMock,
+  loggerErrorMock,
+  requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  withRoutePerformanceMock,
   patientFindFirstMock,
   patientFindManyMock,
   careCaseFindFirstMock,
@@ -12,8 +14,10 @@ const {
   medicationIssueCreateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  membershipFindFirstMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
+  requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+  withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
   patientFindFirstMock: vi.fn(),
   patientFindManyMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
@@ -23,15 +27,26 @@ const {
   withOrgContextMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/config', () => ({
-  auth: authMock,
+vi.mock('@/lib/auth/context', () => ({
+  requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
+}));
+
+vi.mock('@/lib/utils/performance', () => ({
+  withRoutePerformance: withRoutePerformanceMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
-    membership: {
-      findFirst: membershipFindFirstMock,
-    },
     patient: {
       findFirst: patientFindFirstMock,
       findMany: patientFindManyMock,
@@ -52,9 +67,8 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { GET as rawGET, POST as rawPOST } from './route';
 
-const emptyRouteContext = { params: Promise.resolve({}) };
-const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
-const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
+const GET = (req: NextRequest) => rawGET(req);
+const POST = (req: NextRequest) => rawPOST(req);
 
 function createRequest(url: string, body?: unknown) {
   return new NextRequest(url, {
@@ -78,11 +92,27 @@ function createMalformedJsonPostRequest() {
   });
 }
 
+function buildAuthContext(req: NextRequest & { role?: string }) {
+  return {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: req.role ?? 'pharmacist',
+    ipAddress: '127.0.0.1',
+    userAgent: 'vitest',
+  };
+}
+
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/medication-issues', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    requireAuthContextMock.mockImplementation(async (req) => ({ ctx: buildAuthContext(req) }));
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     patientFindManyMock.mockResolvedValue([{ id: 'patient_1' }]);
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1', patient_id: 'patient_1' });
@@ -114,8 +144,19 @@ describe('/api/medication-issues', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expectSensitiveNoStore(response);
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: '服薬課題の閲覧権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      expect.any(Function),
+    );
     expect(medicationIssueFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -135,8 +176,7 @@ describe('/api/medication-issues', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [],
       hasMore: false,
@@ -152,11 +192,22 @@ describe('/api/medication-issues', () => {
     const response = (await GET(createRequest('http://localhost/api/medication-issues')))!;
 
     expect(response.status).toBe(500);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expectSensitiveNoStore(response);
     const bodyText = await response.text();
     expect(bodyText).toContain('INTERNAL_ERROR');
     expect(bodyText).not.toContain('raw medication issue secret');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'medication_issues_get_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'medication_issues_get_unhandled_error',
+        route: '/api/medication-issues',
+        method: 'GET',
+        status: 500,
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw medication issue secret');
   });
 
   it.each([
@@ -174,8 +225,7 @@ describe('/api/medication-issues', () => {
       ))!;
 
       expect(response.status).toBe(400);
-      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-      expect(response.headers.get('Pragma')).toBe('no-cache');
+      expectSensitiveNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
         message: '検索条件が不正です',
@@ -203,8 +253,7 @@ describe('/api/medication-issues', () => {
       ))!;
 
       expect(response.status).toBe(400);
-      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-      expect(response.headers.get('Pragma')).toBe('no-cache');
+      expectSensitiveNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
         message: '検索条件が不正です',
@@ -226,8 +275,7 @@ describe('/api/medication-issues', () => {
     ))!;
 
     expect(response.status).toBe(400);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
@@ -251,6 +299,19 @@ describe('/api/medication-issues', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: '服薬課題の作成権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      expect.any(Function),
+    );
     expect(medicationIssueCreateMock).toHaveBeenCalledWith({
       data: {
         org_id: 'org_1',
@@ -268,6 +329,7 @@ describe('/api/medication-issues', () => {
     const response = (await POST(createRequest('http://localhost/api/medication-issues', [])))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -281,6 +343,7 @@ describe('/api/medication-issues', () => {
     const response = (await POST(createMalformedJsonPostRequest()))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -303,6 +366,7 @@ describe('/api/medication-issues', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(medicationIssueCreateMock).not.toHaveBeenCalled();
   });
@@ -319,7 +383,46 @@ describe('/api/medication-issues', () => {
     ))!;
 
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationIssueCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 without raw logging when medication issue creation fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 raw medication issue create secret'),
+    );
+
+    const response = (await POST(
+      createRequest('http://localhost/api/medication-issues', {
+        patient_id: 'patient_1',
+        title: '飲み忘れ',
+        description: '夕食後を服用していない',
+      }),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('raw medication issue');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'medication_issues_post_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'medication_issues_post_unhandled_error',
+        route: '/api/medication-issues',
+        method: 'POST',
+        status: 500,
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw medication issue');
     expect(medicationIssueCreateMock).not.toHaveBeenCalled();
   });
 });

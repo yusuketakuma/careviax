@@ -1,5 +1,7 @@
 import { unstable_rethrow } from 'next/navigation';
-import { withAuthContext } from '@/lib/auth/context';
+import { NextRequest } from 'next/server';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
@@ -20,7 +22,10 @@ import {
 } from '@/server/services/collaboration-access';
 import { z } from 'zod';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 
+const ROUTE = '/api/comments';
 const COMMENT_THREAD_LIMIT = 100;
 const COMMENT_MENTION_LIMIT = 20;
 const COMMENT_MENTION_ID_LIMIT = 100;
@@ -30,6 +35,20 @@ const COMMENT_MENTION_RECIPIENT_ROLES = [
   'pharmacist',
   'pharmacist_trainee',
 ] as const satisfies readonly MemberRole[];
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 const createCommentSchema = z.object({
   // 担当外の臨床エンティティ(care_report/visit_record 等)への越境コメントを防ぐため、
@@ -93,8 +112,17 @@ async function buildCommentMentionLink(
   }
 }
 
-const authenticatedGET = withAuthContext(
-  async (req, ctx) => {
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    // コメント閲覧はカード参加（多職種連携）であり、特権的な操作ではない。
+    // 事務（clerk）も参加者として表示・参加するため、組織メンバーレベルの canViewDashboard でゲートする。
+    permission: 'canViewDashboard',
+    message: 'コメントの閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const parsedRef = collaborationEntityRefSchema.safeParse({
       entity_type: searchParams.get('entity_type'),
@@ -136,26 +164,37 @@ const authenticatedGET = withAuthContext(
     }));
 
     return success({ data });
-  },
-  {
-    // コメント閲覧はカード参加（多職種連携）であり、特権的な操作ではない。
-    // 事務（clerk）も参加者として表示・参加するため、組織メンバーレベルの canViewDashboard でゲートする。
+  });
+}
+
+export async function GET(req: NextRequest) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('comments_get_unhandled_error', undefined, {
+        event: 'comments_get_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
+
+async function authenticatedPOST(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    // コメント投稿も多職種連携の参加であり、組織メンバーレベルの canViewDashboard でゲートする。
     permission: 'canViewDashboard',
-    message: 'コメントの閲覧権限がありません',
-  },
-);
+    message: 'コメントの投稿権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
 
-export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-};
-
-export const POST = withAuthContext(
-  async (req, ctx) => {
+  return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -220,10 +259,23 @@ export const POST = withAuthContext(
     });
 
     return success({ data: created }, 201);
-  },
-  {
-    // コメント投稿も多職種連携の参加であり、組織メンバーレベルの canViewDashboard でゲートする。
-    permission: 'canViewDashboard',
-    message: 'コメントの投稿権限がありません',
-  },
-);
+  });
+}
+
+export async function POST(req: NextRequest) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('comments_post_unhandled_error', undefined, {
+        event: 'comments_post_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

@@ -1,7 +1,10 @@
-import { withAuthContext } from '@/lib/auth/context';
+import { unstable_rethrow } from 'next/navigation';
+import { NextRequest } from 'next/server';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -19,7 +22,10 @@ import {
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import type { Prisma } from '@prisma/client';
 import { toSafeFirstVisitDocumentMutationResponse } from './response';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 
+const ROUTE = '/api/first-visit-documents';
 const FIRST_VISIT_TEMPLATE_TYPES = [
   'contract_document',
   'important_matters',
@@ -36,6 +42,20 @@ const FIRST_VISIT_TEMPLATE_DOCUMENT_TYPES: Record<
   privacy_consent: 'privacy_consent',
   consent_form: 'consent',
 };
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 function relationLabelForDocument(relation: string) {
   const labels: Record<string, string> = {
@@ -145,8 +165,15 @@ async function buildFirstVisitDocumentAssignmentWhere(args: {
   return { case_id: { in: caseIds } };
 }
 
-const authenticatedGET = withAuthContext(
-  async (req, ctx) => {
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: '初回文書の閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
 
@@ -187,21 +214,36 @@ const authenticatedGET = withAuthContext(
     });
 
     return success(buildCursorPage(docs, limit, (doc) => doc.id));
-  },
-  {
+  });
+}
+
+export async function GET(req: NextRequest) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('first_visit_documents_get_unhandled_error', undefined, {
+        event: 'first_visit_documents_get_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
+
+async function authenticatedPOST(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
-    message: '初回文書の閲覧権限がありません',
-  },
-);
+    message: '初回文書の作成権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
 
-export const GET: typeof authenticatedGET = Object.assign(
-  async (...args: Parameters<typeof authenticatedGET>) =>
-    withSensitiveNoStore(await authenticatedGET(...args)),
-  authenticatedGET,
-);
-
-export const POST = withAuthContext(
-  async (req, ctx) => {
+  return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -355,9 +397,23 @@ export const POST = withAuthContext(
     });
 
     return success({ data: toSafeFirstVisitDocumentMutationResponse(doc) }, 201);
-  },
-  {
-    permission: 'canVisit',
-    message: '初回文書の作成権限がありません',
-  },
-);
+  });
+}
+
+export async function POST(req: NextRequest) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('first_visit_documents_post_unhandled_error', undefined, {
+        event: 'first_visit_documents_post_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

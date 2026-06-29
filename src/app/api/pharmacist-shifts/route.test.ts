@@ -6,34 +6,41 @@ const {
   validateOrgReferencesMock,
   withOrgContextMock,
   pharmacistShiftUpsertMock,
+  requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  withRoutePerformanceMock,
+  loggerErrorMock,
 } = vi.hoisted(() => ({
   pharmacistShiftFindManyMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   pharmacistShiftUpsertMock: vi.fn(),
+  requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn(),
+  withRoutePerformanceMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  withAuthContext: (handler: (...args: unknown[]) => Promise<Response>) => {
-    return (req: NextRequest, routeContext?: unknown) =>
-      handler(
-        req,
-        {
-          orgId: 'org_1',
-          userId: 'user_1',
-          role: 'pharmacist',
-        },
-        routeContext,
-      );
+  requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
+}));
+
+vi.mock('@/lib/utils/performance', () => ({
+  withRoutePerformance: withRoutePerformanceMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
   },
 }));
 
 vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    pharmacistShift: {
-      findMany: pharmacistShiftFindManyMock,
-    },
-  },
+  prisma: {},
 }));
 
 vi.mock('@/lib/api/org-reference', () => ({
@@ -66,12 +73,27 @@ function expectSensitiveNoStore(response: Response) {
 describe('/api/pharmacist-shifts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    const ctx = {
+      orgId: 'org_1',
+      userId: 'user_1',
+      role: 'pharmacist',
+      ipAddress: '203.0.113.10',
+      userAgent: 'vitest',
+    };
+    requireAuthContextMock.mockResolvedValue({ ctx });
+    runWithRequestAuthContextMock.mockImplementation(
+      (_ctx: typeof ctx, fn: () => Promise<Response>) => fn(),
+    );
+    withRoutePerformanceMock.mockImplementation((_req: NextRequest, fn: () => Promise<Response>) =>
+      fn(),
+    );
     pharmacistShiftFindManyMock.mockResolvedValue([]);
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
     pharmacistShiftUpsertMock.mockResolvedValue({ id: 'shift_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         pharmacistShift: {
+          findMany: pharmacistShiftFindManyMock,
           upsert: pharmacistShiftUpsertMock,
         },
       }),
@@ -104,6 +126,33 @@ describe('/api/pharmacist-shifts', () => {
       },
     });
     await expect(response.json()).resolves.not.toHaveProperty('meta');
+  });
+
+  it('uses route-local auth, route performance, and explicit RLS request context for GET', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/pharmacist-shifts?month=2026-04-01'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: 'シフト情報の閲覧権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      expect.any(Function),
+    );
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+    });
   });
 
   it('honors explicit limit queries with overflow metadata', async () => {
@@ -220,6 +269,41 @@ describe('/api/pharmacist-shifts', () => {
     const body = await response.text();
     expect(body).toContain('INTERNAL_ERROR');
     expect(body).not.toContain('raw pharmacist shift failure for user_2');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'pharmacist_shifts_get_unhandled_error',
+      undefined,
+      {
+        event: 'pharmacist_shifts_get_unhandled_error',
+        route: '/api/pharmacist-shifts',
+        method: 'GET',
+        status: 500,
+        error_name: 'Error',
+      },
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(
+      'raw pharmacist shift failure for user_2',
+    );
+  });
+
+  it('returns no-store POST auth failures before parsing body or validating references', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response('forbidden', { status: 403 }),
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/pharmacist-shifts', {
+        site_id: 'site_2',
+        user_id: 'user_2',
+        date: '2026-04-15',
+      }),
+    ))!;
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftUpsertMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object shift payloads before reference checks or upsert', async () => {
@@ -248,9 +332,17 @@ describe('/api/pharmacist-shifts', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
       site_id: 'site_2',
       pharmacist_id: 'user_2',
+    });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
     });
     expect(pharmacistShiftUpsertMock).toHaveBeenCalledWith({
       where: {

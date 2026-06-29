@@ -146,7 +146,8 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
         {
           id: 'result_1',
           line_id: 'line_1',
-          actual_drug_name: 'アムロジピン 5mg',
+          actual_drug_name: 'アムロジピンOD 5mg',
+          actual_drug_code: 'yj_actual_1',
           actual_quantity: 28,
           actual_unit: '錠',
           dispensed_by: 'user_2',
@@ -272,6 +273,12 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
         {
           line_id: 'line_1',
           line_number: 1,
+          drug_name: 'アムロジピンOD 5mg',
+          drug_code: 'yj_1',
+          prescribed_drug_name: 'アムロジピン 5mg',
+          prescribed_drug_code: 'yj_1',
+          actual_drug_name: 'アムロジピンOD 5mg',
+          actual_drug_code: 'yj_actual_1',
           dose: '1回1錠',
           days: 14,
           start_date: '2026-06-10',
@@ -287,6 +294,11 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
           line_id: 'line_2',
           line_number: 2,
           drug_name: '酸化マグネシウム 250mg',
+          drug_code: 'yj_2',
+          prescribed_drug_name: '酸化マグネシウム 250mg',
+          prescribed_drug_code: 'yj_2',
+          actual_drug_name: null,
+          actual_drug_code: null,
           days: 7,
           start_date: '2026-06-17',
           end_date: '2026-06-23',
@@ -451,6 +463,8 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
         {
           key: 'line_current',
           drug_name: 'アムロジピン 5mg',
+          current_drug_code: 'yj_1',
+          previous_drug_code: 'yj_1',
           previous_label: '1回1錠 朝食後',
           current_label: '1回0.5錠 朝食後',
           change_type: 'dose_changed',
@@ -476,6 +490,150 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
         }),
       }),
     );
+  });
+
+  it('keeps same-name different-code comparison changes attached to the matched drug code', async () => {
+    const currentPrescribedDate = new Date('2026-06-10T00:00:00.000Z');
+    const currentCreatedAt = new Date('2026-06-10T01:00:00.000Z');
+    dispenseTaskFindFirstMock.mockResolvedValue({
+      id: 'task_1',
+      status: 'pending',
+      priority: 'normal',
+      due_date: null,
+      results: [],
+      cycle: {
+        id: 'cycle_current',
+        overall_status: 'ready_to_dispense',
+        version: 1,
+        case_id: 'case_1',
+        case_: {
+          id: 'case_1',
+          patient: {
+            id: 'patient_1',
+            name: '山田 太郎',
+            allergy_info: null,
+            scheduling_preference: null,
+            conditions: [],
+          },
+        },
+        inquiries: [],
+        prescription_intakes: [
+          {
+            id: 'intake_current',
+            prescribed_date: currentPrescribedDate,
+            created_at: currentCreatedAt,
+            prescriber_institution: '青葉クリニック',
+            prescriber_name: '佐藤 一郎',
+            lines: [
+              {
+                id: 'line_current_a',
+                line_number: 1,
+                drug_name: '同名薬',
+                drug_code: 'yj_a',
+                is_generic: false,
+                dose: '1回1錠',
+                frequency: '朝食後',
+                start_date: null,
+                end_date: null,
+                days: 14,
+                quantity: 14,
+                unit: '錠',
+                route: 'internal',
+                dispensing_method: null,
+                packaging_method: null,
+                packaging_instructions: null,
+                packaging_instruction_tags: [],
+                packaging_group_id: null,
+                updated_at: new Date('2026-06-10T02:00:00.000Z'),
+                dispensing_decisions: [],
+              },
+              {
+                id: 'line_current_b',
+                line_number: 2,
+                drug_name: '同名薬',
+                drug_code: 'yj_b',
+                is_generic: false,
+                dose: '1回2錠',
+                frequency: '夕食後',
+                start_date: null,
+                end_date: null,
+                days: 14,
+                quantity: 28,
+                unit: '錠',
+                route: 'internal',
+                dispensing_method: null,
+                packaging_method: null,
+                packaging_instructions: null,
+                packaging_instruction_tags: [],
+                packaging_group_id: null,
+                updated_at: new Date('2026-06-10T02:00:00.000Z'),
+                dispensing_decisions: [],
+              },
+            ],
+          },
+        ],
+      },
+    });
+    prescriptionIntakeFindFirstMock.mockResolvedValue({
+      id: 'intake_previous_cycle',
+      prescribed_date: new Date('2026-05-27T00:00:00.000Z'),
+      created_at: new Date('2026-05-27T01:00:00.000Z'),
+      lines: [
+        {
+          id: 'line_previous_a',
+          drug_name: '同名薬',
+          drug_code: 'yj_a',
+          dose: '1回1錠',
+          frequency: '朝食後',
+          days: 14,
+          start_date: null,
+          end_date: null,
+        },
+        {
+          id: 'line_previous_b',
+          drug_name: '同名薬',
+          drug_code: 'yj_b',
+          dose: '1回1錠',
+          frequency: '夕食後',
+          days: 14,
+          start_date: null,
+          end_date: null,
+        },
+      ],
+    });
+    patientLabObservationFindFirstMock.mockResolvedValue(null);
+    visitScheduleFindFirstMock.mockResolvedValue(null);
+    drugMasterFindManyMock.mockResolvedValue([]);
+    batchResolveNamesMock.mockResolvedValue(new Map());
+    dispenseTaskCountMock.mockResolvedValue(0);
+    pharmacyDrugStockFindFirstMock.mockResolvedValue(null);
+
+    const response = await GET(createGetRequest(), { params: Promise.resolve({ id: 'task_1' }) });
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      comparison: [
+        {
+          key: 'line_current_a',
+          drug_name: '同名薬',
+          current_drug_code: 'yj_a',
+          previous_drug_code: 'yj_a',
+          previous_label: '1回1錠 朝食後',
+          current_label: '1回1錠 朝食後',
+          change_type: null,
+        },
+        {
+          key: 'line_current_b',
+          drug_name: '同名薬',
+          current_drug_code: 'yj_b',
+          previous_drug_code: 'yj_b',
+          previous_label: '1回1錠 夕食後',
+          current_label: '1回2錠 夕食後',
+          change_type: 'dose_changed',
+        },
+      ],
+    });
   });
 
   it('returns 403 when the role lacks dispense permission', async () => {

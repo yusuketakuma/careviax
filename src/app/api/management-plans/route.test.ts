@@ -101,6 +101,29 @@ describe('/api/management-plans', () => {
   });
 
   it('lists management plans filtered by case id', async () => {
+    const updatedAt = new Date('2026-06-29T00:00:00.000Z');
+    const approvedAt = new Date('2026-06-28T00:00:00.000Z');
+    managementPlanFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'plan_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        title: '訪問薬剤管理指導計画書',
+        status: 'approved',
+        version: 2,
+        summary: 'list では返さない要約',
+        content: { privateGoal: 'list では返さない内容' },
+        created_by: 'creator_user',
+        approved_by: 'approver_user',
+        reviewed_by: 'reviewer_user',
+        source_plan_id: 'source_plan_1',
+        effective_from: null,
+        next_review_date: null,
+        approved_at: approvedAt,
+        updated_at: updatedAt,
+      },
+    ]);
+
     const response = (await GET(
       createGetRequest('http://localhost/api/management-plans?case_id=%20case_1%20'),
     ))!;
@@ -120,7 +143,40 @@ describe('/api/management-plans', () => {
         case_id: 'case_1',
       },
       orderBy: [{ updated_at: 'desc' }],
+      select: {
+        id: true,
+        case_id: true,
+        title: true,
+        status: true,
+        version: true,
+        effective_from: true,
+        next_review_date: true,
+        approved_at: true,
+        updated_at: true,
+      },
     });
+    const payload = await response.json();
+    expect(payload).toEqual({
+      data: [
+        {
+          id: 'plan_1',
+          case_id: 'case_1',
+          title: '訪問薬剤管理指導計画書',
+          status: 'approved',
+          version: 2,
+          effective_from: null,
+          next_review_date: null,
+          approved_at: approvedAt.toISOString(),
+          updated_at: updatedAt.toISOString(),
+        },
+      ],
+    });
+    expect(JSON.stringify(payload)).not.toContain('privateGoal');
+    expect(JSON.stringify(payload)).not.toContain('list では返さない要約');
+    expect(JSON.stringify(payload)).not.toContain('creator_user');
+    expect(JSON.stringify(payload)).not.toContain('approver_user');
+    expect(JSON.stringify(payload)).not.toContain('reviewer_user');
+    expect(JSON.stringify(payload)).not.toContain('source_plan_1');
   });
 
   it('rejects blank case filters before listing management plans', async () => {

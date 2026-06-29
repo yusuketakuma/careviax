@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
-  authMock,
-  membershipFindFirstMock,
+  loggerErrorMock,
+  requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  withRoutePerformanceMock,
   careCaseFindFirstMock,
   firstVisitDocumentFindFirstMock,
   firstVisitDocumentFindUniqueMock,
@@ -13,8 +15,10 @@ const {
   getPatientDocumentsDataMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  membershipFindFirstMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
+  requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+  withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
   careCaseFindFirstMock: vi.fn(),
   firstVisitDocumentFindFirstMock: vi.fn(),
   firstVisitDocumentFindUniqueMock: vi.fn(),
@@ -25,15 +29,26 @@ const {
   withOrgContextMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/config', () => ({
-  auth: authMock,
+vi.mock('@/lib/auth/context', () => ({
+  requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
+}));
+
+vi.mock('@/lib/utils/performance', () => ({
+  withRoutePerformance: withRoutePerformanceMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
-    membership: {
-      findFirst: membershipFindFirstMock,
-    },
     careCase: {
       findFirst: careCaseFindFirstMock,
     },
@@ -71,13 +86,29 @@ function createPatchRequest(body: unknown) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
+function buildAuthContext(req: NextRequest & { role?: string }) {
+  return {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: req.role ?? 'pharmacist',
+    ipAddress: '127.0.0.1',
+    userAgent: 'vitest',
+  };
+}
+
 describe('/api/first-visit-documents/[id]', () => {
   const updatedAt = new Date('2026-06-01T00:00:00.000Z');
 
   beforeEach(() => {
     vi.clearAllMocks();
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    requireAuthContextMock.mockImplementation(async (req) => ({ ctx: buildAuthContext(req) }));
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
     requireWritablePatientMock.mockResolvedValue({
       patient: { id: 'patient_1', archived_at: null },
     });
@@ -143,6 +174,7 @@ describe('/api/first-visit-documents/[id]', () => {
     const response = (await PATCH(createPatchRequest({ delivered_to: '山田太郎' }), ''))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(firstVisitDocumentFindFirstMock).not.toHaveBeenCalled();
   });
 
@@ -150,6 +182,7 @@ describe('/api/first-visit-documents/[id]', () => {
     const response = (await PATCH(createPatchRequest({ document_url: 'javascript:alert(1)' })))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
@@ -167,6 +200,7 @@ describe('/api/first-visit-documents/[id]', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
@@ -192,6 +226,7 @@ describe('/api/first-visit-documents/[id]', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
@@ -223,6 +258,7 @@ describe('/api/first-visit-documents/[id]', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
@@ -248,6 +284,7 @@ describe('/api/first-visit-documents/[id]', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
@@ -263,6 +300,19 @@ describe('/api/first-visit-documents/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: '初回文書の更新権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      expect.any(Function),
+    );
     expect(firstVisitDocumentUpdateManyMock).toHaveBeenCalledWith({
       where: {
         id: 'doc_1',
@@ -285,6 +335,7 @@ describe('/api/first-visit-documents/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(careCaseFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'case_1',
@@ -333,6 +384,7 @@ describe('/api/first-visit-documents/[id]', () => {
     ))!;
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(firstVisitDocumentUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
@@ -363,6 +415,7 @@ describe('/api/first-visit-documents/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -408,6 +461,7 @@ describe('/api/first-visit-documents/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(firstVisitDocumentUpdateManyMock).not.toHaveBeenCalled();
     expect(getPatientDocumentsDataMock).toHaveBeenCalledWith(expect.any(Object), {
       orgId: 'org_1',
@@ -450,6 +504,7 @@ describe('/api/first-visit-documents/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const body = await response.json();
     expect(body).toEqual({
       data: {
@@ -484,6 +539,7 @@ describe('/api/first-visit-documents/[id]', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '入力値が不正です',
@@ -505,6 +561,7 @@ describe('/api/first-visit-documents/[id]', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '入力値が不正です',
@@ -546,6 +603,7 @@ describe('/api/first-visit-documents/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(getPatientDocumentsDataMock).toHaveBeenCalled();
     expect(firstVisitDocumentUpdateManyMock).toHaveBeenCalledWith({
       where: {
@@ -616,6 +674,7 @@ describe('/api/first-visit-documents/[id]', () => {
     ))!;
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message:
@@ -631,6 +690,7 @@ describe('/api/first-visit-documents/[id]', () => {
     const response = (await PATCH(createPatchRequest({ delivered_to: '山田太郎' })))!;
 
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
@@ -640,9 +700,43 @@ describe('/api/first-visit-documents/[id]', () => {
     const response = (await PATCH(createPatchRequest({ delivered_to: '山田太郎' })))!;
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: '初回文書が他のユーザーによって更新されています。最新のデータを取得してください。',
     });
+  });
+
+  it('returns a sanitized no-store 500 without raw logging when document lookup fails unexpectedly', async () => {
+    firstVisitDocumentFindFirstMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 raw first visit document patch secret'),
+    );
+
+    const response = (await PATCH(createPatchRequest({ delivered_to: '山田太郎' })))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('raw first visit');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'first_visit_documents_id_patch_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'first_visit_documents_id_patch_unhandled_error',
+        route: '/api/first-visit-documents/[id]',
+        method: 'PATCH',
+        status: 500,
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw first visit');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 });

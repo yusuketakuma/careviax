@@ -7,12 +7,14 @@ const {
   inquiryRecordFindFirstMock,
   prescriptionLineFindFirstMock,
   resolveOperationalTasksMock,
+  loggerErrorMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   inquiryRecordFindFirstMock: vi.fn(),
   prescriptionLineFindFirstMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -38,6 +40,10 @@ vi.mock('@/server/services/operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock },
+}));
+
 import { PATCH } from './route';
 
 function createRequest(body: unknown) {
@@ -58,6 +64,11 @@ function createMalformedJsonRequest() {
     },
     body: '{"result":',
   });
+}
+
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/inquiry-records/[id] PATCH', () => {
@@ -83,6 +94,24 @@ describe('/api/inquiry-records/[id] PATCH', () => {
     });
   });
 
+  it('wraps authentication failures with no-store headers', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: Response.json({ code: 'AUTH_UNAUTHENTICATED' }, { status: 401 }),
+    });
+
+    const response = await PATCH(
+      createRequest({
+        result: 'unchanged',
+      }),
+      { params: Promise.resolve({ id: 'inquiry_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(401);
+    expectNoStore(response);
+    expect(inquiryRecordFindFirstMock).not.toHaveBeenCalled();
+  });
+
   it('rejects non-object patch payloads before loading the inquiry record', async () => {
     const response = await PATCH(createRequest([]), {
       params: Promise.resolve({ id: 'inquiry_1' }),
@@ -90,6 +119,7 @@ describe('/api/inquiry-records/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -106,6 +136,7 @@ describe('/api/inquiry-records/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -125,6 +156,7 @@ describe('/api/inquiry-records/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '疑義照会記録IDが不正です',
@@ -168,6 +200,42 @@ describe('/api/inquiry-records/[id] PATCH', () => {
     });
     expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a fixed no-store 500 when inquiry lookup fails unexpectedly', async () => {
+    const unsafeError = new Error('raw patient inquiry secret');
+    unsafeError.name = 'InquiryPatientSecretError';
+    inquiryRecordFindFirstMock.mockRejectedValueOnce(unsafeError);
+
+    const response = await PATCH(
+      createRequest({
+        result: 'unchanged',
+      }),
+      { params: Promise.resolve({ id: 'inquiry_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw patient inquiry secret');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'inquiry_record_patch_unhandled_error',
+      undefined,
+      {
+        event: 'inquiry_record_patch_unhandled_error',
+        route: '/api/inquiry-records/[id]',
+        method: 'PATCH',
+        status: 500,
+        error_name: 'Error',
+      },
+    );
+    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
+    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
+    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(logged).not.toContain('raw patient inquiry secret');
+    expect(logged).not.toContain('InquiryPatientSecretError');
   });
 
   it('updates the linked prescription line when confirming a changed inquiry', async () => {
@@ -249,6 +317,18 @@ describe('/api/inquiry-records/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        requestContext: expect.objectContaining({
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        }),
+      }),
+    );
     expect(txLineFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'line_1',

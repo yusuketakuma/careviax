@@ -25,6 +25,44 @@ function findInvalidManagementPlanListQueryParams(searchParams: URLSearchParams)
   return { case_id: ['case_id は1つだけ指定してください'] };
 }
 
+const managementPlanListSelect = {
+  id: true,
+  case_id: true,
+  title: true,
+  status: true,
+  version: true,
+  effective_from: true,
+  next_review_date: true,
+  approved_at: true,
+  updated_at: true,
+} as const;
+
+type ManagementPlanListRecord = {
+  id: string;
+  case_id: string;
+  title: string;
+  status: string;
+  version: number;
+  effective_from: Date | string | null;
+  next_review_date: Date | string | null;
+  approved_at: Date | string | null;
+  updated_at: Date | string;
+};
+
+function toManagementPlanListItem(plan: ManagementPlanListRecord) {
+  return {
+    id: plan.id,
+    case_id: plan.case_id,
+    title: plan.title,
+    status: plan.status,
+    version: plan.version,
+    effective_from: plan.effective_from,
+    next_review_date: plan.next_review_date,
+    approved_at: plan.approved_at,
+    updated_at: plan.updated_at,
+  };
+}
+
 async function authenticatedGET(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
@@ -54,11 +92,12 @@ async function authenticatedGET(req: NextRequest) {
           ...(assignmentWhere ? { case_: assignmentWhere } : {}),
         },
         orderBy: [{ updated_at: 'desc' }],
+        select: managementPlanListSelect,
       }),
     { requestContext: ctx },
   );
 
-  return success({ data: plans });
+  return success({ data: plans.map(toManagementPlanListItem) });
 }
 
 export async function GET(req: NextRequest) {

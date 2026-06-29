@@ -3,7 +3,10 @@ import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 
 const {
-  withAuthContextMock,
+  loggerErrorMock,
+  requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  withRoutePerformanceMock,
   withOrgContextMock,
   careReportCreateMock,
   careReportFindFirstMock,
@@ -17,7 +20,10 @@ const {
   patientFindManyMock,
   visitRecordFindFirstMock,
 } = vi.hoisted(() => ({
-  withAuthContextMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
+  requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+  withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
   withOrgContextMock: vi.fn(),
   careReportCreateMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
@@ -38,28 +44,22 @@ type AuthenticatedTestRequest = NextRequest & {
   role?: string;
 };
 
-const emptyRouteContext = { params: Promise.resolve({}) };
-
 vi.mock('@/lib/auth/context', () => ({
-  withAuthContext: (
-    handler: (
-      req: NextRequest,
-      ctx: { orgId: string; userId: string; role: 'pharmacist' },
-      routeContext: typeof emptyRouteContext,
-    ) => Promise<Response>,
-  ) => {
-    withAuthContextMock.mockImplementation(handler);
-    return (req: AuthenticatedTestRequest, routeContext = emptyRouteContext) =>
-      handler(
-        req,
-        {
-          orgId: req.orgId,
-          userId: req.userId,
-          role: (req.role ?? 'pharmacist') as 'pharmacist',
-        },
-        routeContext,
-      );
+  requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
   },
+}));
+
+vi.mock('@/lib/utils/performance', () => ({
+  withRoutePerformance: withRoutePerformanceMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -111,16 +111,34 @@ function createAuthenticatedRequest(
 }
 
 function getCareReports(req: AuthenticatedTestRequest) {
-  return GET(req, emptyRouteContext);
+  return GET(req);
 }
 
 function createCareReport(req: AuthenticatedTestRequest) {
-  return POST(req, emptyRouteContext);
+  return POST(req);
+}
+
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
+function setupAuthMocks() {
+  requireAuthContextMock.mockImplementation(async (req: AuthenticatedTestRequest) => ({
+    ctx: {
+      orgId: req.orgId,
+      userId: req.userId,
+      role: (req.role ?? 'pharmacist') as 'pharmacist',
+    },
+  }));
+  runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+  withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
 }
 
 describe('/api/care-reports GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setupAuthMocks();
     careReportFindFirstMock.mockResolvedValue(null);
     careReportFindManyMock.mockResolvedValue([
       {
@@ -294,6 +312,37 @@ describe('/api/care-reports GET', () => {
       failed_delivery_count: 1,
       by_status: { response_waiting: 1 },
     });
+  });
+
+  it('returns a sanitized no-store 500 without raw logging when report listing fails unexpectedly', async () => {
+    careReportFindManyMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 raw care report listing secret'),
+    );
+
+    const response = await getCareReports(createAuthenticatedRequest());
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('raw care report');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'care_reports_get_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'care_reports_get_unhandled_error',
+        route: '/api/care-reports',
+        method: 'GET',
+        status: 500,
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw care report');
   });
 
   it('returns a bounded minimal projection for palette report search', async () => {
@@ -950,6 +999,7 @@ describe('/api/care-reports GET', () => {
 describe('/api/care-reports POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setupAuthMocks();
     careReportFindFirstMock.mockResolvedValue(null);
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
@@ -1022,6 +1072,7 @@ describe('/api/care-reports POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(patientFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'patient_1', org_id: 'org_1' },
       select: { id: true },
@@ -1140,6 +1191,7 @@ describe('/api/care-reports POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: 'この訪問記録の同一種別の報告書は既に存在します',
@@ -1185,6 +1237,7 @@ describe('/api/care-reports POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: 'この訪問記録の同一種別の報告書は既に存在します',
@@ -1365,6 +1418,46 @@ describe('/api/care-reports POST', () => {
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 without raw logging when report creation fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 raw care report create secret'),
+    );
+
+    const response = await createCareReport(
+      createPostRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        visit_record_id: 'visit_1',
+        report_type: 'physician_report',
+        content: { summary: '服薬状況は安定' },
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('raw care report');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'care_reports_post_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'care_reports_post_unhandled_error',
+        route: '/api/care-reports',
+        method: 'POST',
+        status: 500,
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw care report');
     expect(careReportCreateMock).not.toHaveBeenCalled();
   });
 

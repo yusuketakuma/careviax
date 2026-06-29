@@ -14,6 +14,10 @@ import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescript
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import {
+  dispensingLineMetadataSchema,
+  validatePackagingInstructionConsistency,
+} from '@/lib/validations/dispensing-line';
+import {
   PACKAGING_INSTRUCTION_TAG_OPTIONS,
   PACKAGING_METHOD_OPTIONS,
   type PackagingInstructionTagValue,
@@ -77,15 +81,7 @@ const lineUpdateItemSchema = z
       value.packaging_instruction_tags !== undefined,
     { message: '更新する項目を指定してください' },
   )
-  .refine(
-    (value) =>
-      value.packaging_instruction_tags === undefined ||
-      new Set(value.packaging_instruction_tags).size === value.packaging_instruction_tags.length,
-    {
-      message: '包装タグが重複しています',
-      path: ['packaging_instruction_tags'],
-    },
-  );
+  .superRefine(validatePackagingInstructionConsistency);
 
 const patchSchema = z.object({
   client_action_id: z.string().trim().min(1).max(100).optional(),
@@ -120,6 +116,27 @@ function duplicateIds(ids: string[]) {
     seen.add(id);
     return false;
   });
+}
+
+function toValidationDetails(error: z.ZodError): Record<string, string[]> {
+  const fieldErrors = error.flatten().fieldErrors as Record<string, string[] | undefined>;
+  return Object.fromEntries(
+    Object.entries(fieldErrors).flatMap(([key, value]) =>
+      value && value.length > 0 ? [[key, value]] : [],
+    ),
+  );
+}
+
+function assertEffectivePackagingMetadata(value: {
+  dispensing_method?: string | null;
+  packaging_method?: string | null;
+  packaging_instructions?: string | null;
+  packaging_instruction_tags?: string[] | null;
+}) {
+  const parsed = dispensingLineMetadataSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new PrescriptionLineBatchValidationError(toValidationDetails(parsed.error));
+  }
 }
 
 export const PATCH = withAuthContext(async (req, ctx, { params }) => {
@@ -212,6 +229,19 @@ export const PATCH = withAuthContext(async (req, ctx, { params }) => {
               end_date: ['終了日は開始日以降にしてください'],
             });
           }
+
+          assertEffectivePackagingMetadata({
+            dispensing_method:
+              'dispensing_method' in line ? line.dispensing_method : before.dispensing_method,
+            packaging_method:
+              'packaging_method' in line ? line.packaging_method : before.packaging_method,
+            packaging_instructions:
+              'packaging_instructions' in line
+                ? line.packaging_instructions
+                : before.packaging_instructions,
+            packaging_instruction_tags:
+              line.packaging_instruction_tags ?? before.packaging_instruction_tags,
+          });
 
           const data: {
             start_date?: Date | null;

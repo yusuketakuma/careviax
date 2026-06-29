@@ -1,19 +1,47 @@
-import { withAuthContext } from '@/lib/auth/context';
+import { unstable_rethrow } from 'next/navigation';
+import { NextRequest } from 'next/server';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import {
   createVisitVehicleResourceSchema,
   visitVehicleResourceQuerySchema,
 } from '@/lib/validations/visit-vehicle-resource';
 
+const ROUTE = '/api/visit-vehicle-resources';
 const DEFAULT_VISIT_VEHICLE_RESOURCE_LIMIT = 100;
 const MAX_VISIT_VEHICLE_RESOURCE_LIMIT = 200;
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
 
-export const GET = withAuthContext(
-  async (req, ctx) => {
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
+
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: '車両リソースの閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const parsed = visitVehicleResourceQuerySchema.safeParse({
       ...(searchParams.has('site_id') ? { site_id: searchParams.get('site_id') } : {}),
@@ -34,36 +62,61 @@ export const GET = withAuthContext(
       if (!refResult.ok) return refResult.response;
     }
 
-    const resources = await withOrgContext(ctx.orgId, (tx) =>
-      tx.visitVehicleResource.findMany({
-        where: {
-          org_id: ctx.orgId,
-          ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
-          ...(parsed.data.available !== undefined ? { available: parsed.data.available } : {}),
-        },
-        orderBy: [{ site_id: 'asc' }, { label: 'asc' }],
-        take: limit,
-        include: {
-          site: {
-            select: {
-              id: true,
-              name: true,
+    const resources = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        tx.visitVehicleResource.findMany({
+          where: {
+            org_id: ctx.orgId,
+            ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
+            ...(parsed.data.available !== undefined ? { available: parsed.data.available } : {}),
+          },
+          orderBy: [{ site_id: 'asc' }, { label: 'asc' }],
+          take: limit,
+          include: {
+            site: {
+              select: {
+                id: true,
+                name: true,
+              },
             },
           },
-        },
-      }),
+        }),
+      { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
 
     return success({ data: resources });
-  },
-  {
-    permission: 'canVisit',
-    message: '車両リソースの閲覧権限がありません',
-  },
-);
+  });
+}
 
-export const POST = withAuthContext(
-  async (req, ctx) => {
+export async function GET(req: NextRequest, routeContext?: unknown) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('visit_vehicle_resources_get_unhandled_error', undefined, {
+        event: 'visit_vehicle_resources_get_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
+
+async function authenticatedPOST(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canAdmin',
+    message: '車両リソースの作成権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -75,34 +128,52 @@ export const POST = withAuthContext(
     const refResult = await validateOrgReferences(ctx.orgId, { site_id: parsed.data.site_id });
     if (!refResult.ok) return refResult.response;
 
-    const resource = await withOrgContext(ctx.orgId, (tx) =>
-      tx.visitVehicleResource.create({
-        data: {
-          org_id: ctx.orgId,
-          site_id: parsed.data.site_id,
-          label: parsed.data.label,
-          vehicle_code: parsed.data.vehicle_code ?? null,
-          travel_mode: parsed.data.travel_mode,
-          max_stops: parsed.data.max_stops,
-          max_route_duration_minutes: parsed.data.max_route_duration_minutes ?? null,
-          available: parsed.data.available,
-          notes: parsed.data.notes ?? null,
-        },
-        include: {
-          site: {
-            select: {
-              id: true,
-              name: true,
+    const resource = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        tx.visitVehicleResource.create({
+          data: {
+            org_id: ctx.orgId,
+            site_id: parsed.data.site_id,
+            label: parsed.data.label,
+            vehicle_code: parsed.data.vehicle_code ?? null,
+            travel_mode: parsed.data.travel_mode,
+            max_stops: parsed.data.max_stops,
+            max_route_duration_minutes: parsed.data.max_route_duration_minutes ?? null,
+            available: parsed.data.available,
+            notes: parsed.data.notes ?? null,
+          },
+          include: {
+            site: {
+              select: {
+                id: true,
+                name: true,
+              },
             },
           },
-        },
-      }),
+        }),
+      { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
 
     return success({ data: resource }, 201);
-  },
-  {
-    permission: 'canAdmin',
-    message: '車両リソースの作成権限がありません',
-  },
-);
+  });
+}
+
+export async function POST(req: NextRequest, routeContext?: unknown) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('visit_vehicle_resources_post_unhandled_error', undefined, {
+        event: 'visit_vehicle_resources_post_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

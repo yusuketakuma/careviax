@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
+  loggerErrorMock,
+  requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  withRoutePerformanceMock,
   patientSelfReportFindManyMock,
   patientFindManyMock,
   patientFindFirstMock,
@@ -10,6 +14,10 @@ const {
   withOrgContextMock,
   authRoleMock,
 } = vi.hoisted(() => ({
+  loggerErrorMock: vi.fn(),
+  requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+  withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
   patientSelfReportFindManyMock: vi.fn(),
   patientFindManyMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
@@ -19,11 +27,32 @@ const {
   authRoleMock: vi.fn(),
 }));
 
+function buildAuthContext() {
+  return {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: authRoleMock(),
+    ipAddress: '127.0.0.1',
+    userAgent: 'vitest',
+  };
+}
+
 vi.mock('@/lib/auth/context', () => ({
-  withAuthContext: (handler: (...args: unknown[]) => unknown) => {
-    return (req: NextRequest) =>
-      handler(req, { orgId: 'org_1', userId: 'user_1', role: authRoleMock() });
+  requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
   },
+}));
+
+vi.mock('@/lib/utils/performance', () => ({
+  withRoutePerformance: withRoutePerformanceMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -86,6 +115,9 @@ describe('/api/patient-self-reports', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authRoleMock.mockReturnValue('pharmacist');
+    requireAuthContextMock.mockImplementation(async () => ({ ctx: buildAuthContext() }));
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
     patientSelfReportFindManyMock.mockResolvedValue([
       {
         id: 'report_1',
@@ -150,6 +182,18 @@ describe('/api/patient-self-reports', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canReport',
+      message: '患者自己申告の閲覧権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      expect.any(Function),
+    );
     await expect(response.json()).resolves.toMatchObject({
       data: [
         expect.objectContaining({
@@ -230,6 +274,18 @@ describe('/api/patient-self-reports', () => {
     const bodyText = await response.text();
     expect(bodyText).toContain('INTERNAL_ERROR');
     expect(bodyText).not.toContain('raw self report secret');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'patient_self_reports_get_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'patient_self_reports_get_unhandled_error',
+        route: '/api/patient-self-reports',
+        method: 'GET',
+        status: 500,
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw self report secret');
   });
 
   it.each([
@@ -289,6 +345,18 @@ describe('/api/patient-self-reports', () => {
 
     expect(response.status).toBe(201);
     expectSensitiveNoStore(response);
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canReport',
+      message: '患者自己申告の登録権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      expect.any(Function),
+    );
     expect(patientFindFirstMock).toHaveBeenCalledWith({
       where: expect.objectContaining({
         id: 'patient_1',
@@ -332,8 +400,8 @@ describe('/api/patient-self-reports', () => {
           relation_provided: false,
           preferred_contact_time_provided: false,
         },
-        ip_address: undefined,
-        user_agent: undefined,
+        ip_address: '127.0.0.1',
+        user_agent: 'vitest',
       },
     });
     expectNoRawSelfReportAuditFields(
@@ -460,6 +528,42 @@ describe('/api/patient-self-reports', () => {
     expect(response.status).toBe(404);
     expectSensitiveNoStore(response);
     expect(patientSelfReportCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 without raw logging when self report creation fails', async () => {
+    withOrgContextMock.mockRejectedValueOnce(new Error('raw self report create secret'));
+
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        reported_by_name: '家族B',
+        category: 'adherence',
+        subject: '飲み忘れ',
+        content: '朝食後を飲み忘れ',
+      }),
+      { params: Promise.resolve({}) },
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw self report create secret');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'patient_self_reports_post_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'patient_self_reports_post_unhandled_error',
+        route: '/api/patient-self-reports',
+        method: 'POST',
+        status: 500,
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(
+      'raw self report create secret',
+    );
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 });

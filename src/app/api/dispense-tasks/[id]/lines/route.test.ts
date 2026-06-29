@@ -256,7 +256,7 @@ describe('/api/dispense-tasks/[id]/lines PATCH', () => {
       dispensing_method: 'standard',
       packaging_method: 'blister_pack',
       packaging_instructions: 'PTPで別管理 / 粉砕不可',
-      packaging_instruction_tags: ['separate_pack', 'crush_prohibited'],
+      packaging_instruction_tags: ['ptp', 'manual_ptp', 'no_unit_dose'],
       updated_at: new Date('2026-06-18T01:00:00.000Z'),
     });
 
@@ -272,7 +272,7 @@ describe('/api/dispense-tasks/[id]/lines PATCH', () => {
             dispensing_method: 'standard',
             packaging_method: 'blister_pack',
             packaging_instructions: ' PTPで別管理 / 粉砕不可 ',
-            packaging_instruction_tags: ['separate_pack', 'crush_prohibited'],
+            packaging_instruction_tags: ['ptp', 'manual_ptp', 'no_unit_dose'],
           },
         ],
       }),
@@ -290,7 +290,7 @@ describe('/api/dispense-tasks/[id]/lines PATCH', () => {
             dispensing_method: 'standard',
             packaging_method: 'blister_pack',
             packaging_instructions: 'PTPで別管理 / 粉砕不可',
-            packaging_instruction_tags: ['separate_pack', 'crush_prohibited'],
+            packaging_instruction_tags: ['ptp', 'manual_ptp', 'no_unit_dose'],
             updated_at: '2026-06-18T01:00:00.000Z',
           },
         ],
@@ -308,7 +308,7 @@ describe('/api/dispense-tasks/[id]/lines PATCH', () => {
           dispensing_method: 'standard',
           packaging_method: 'blister_pack',
           packaging_instructions: 'PTPで別管理 / 粉砕不可',
-          packaging_instruction_tags: ['separate_pack', 'crush_prohibited'],
+          packaging_instruction_tags: ['ptp', 'manual_ptp', 'no_unit_dose'],
         }),
       }),
     );
@@ -326,7 +326,7 @@ describe('/api/dispense-tasks/[id]/lines PATCH', () => {
           after: expect.objectContaining({
             route: 'external',
             packaging_method: 'blister_pack',
-            packaging_instruction_tags: ['separate_pack', 'crush_prohibited'],
+            packaging_instruction_tags: ['ptp', 'manual_ptp', 'no_unit_dose'],
           }),
         }),
       }),
@@ -350,6 +350,223 @@ describe('/api/dispense-tasks/[id]/lines PATCH', () => {
     expect(response.status).toBe(400);
     expect(prescriptionLineRootFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects contradictory no-unit-dose packaging metadata before writes', async () => {
+    const response = await PATCH(
+      createPatchRequest({
+        lines: [
+          {
+            line_id: 'line_1',
+            expected_updated_at: '2026-06-18T00:00:00.000Z',
+            packaging_method: 'unit_dose',
+            packaging_instruction_tags: ['no_unit_dose'],
+            dispensing_method: 'unit_dose',
+          },
+        ],
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(400);
+    expect(prescriptionLineRootFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects no-unit-dose instruction text that contradicts unit-dose metadata before writes', async () => {
+    const response = await PATCH(
+      createPatchRequest({
+        lines: [
+          {
+            line_id: 'line_1',
+            expected_updated_at: '2026-06-18T00:00:00.000Z',
+            packaging_method: 'unit_dose',
+            packaging_instructions: '一包化不可',
+            dispensing_method: 'unit_dose',
+          },
+        ],
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(400);
+    expect(prescriptionLineRootFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects partial no-unit-dose tag updates against existing unit-dose metadata', async () => {
+    prescriptionLineRootFindManyMock.mockResolvedValue([
+      {
+        id: 'line_1',
+        intake_id: 'intake_1',
+        start_date: null,
+        end_date: null,
+        days: 14,
+        dosage_form: '錠剤',
+        route: 'internal',
+        dispensing_method: 'unit_dose',
+        packaging_method: 'unit_dose',
+        packaging_instructions: '一包化',
+        packaging_instruction_tags: ['unit_dose'],
+        updated_at: new Date('2026-06-18T00:00:00.000Z'),
+      },
+    ]);
+
+    const response = await PATCH(
+      createPatchRequest({
+        lines: [
+          {
+            line_id: 'line_1',
+            expected_updated_at: '2026-06-18T00:00:00.000Z',
+            packaging_instruction_tags: ['no_unit_dose'],
+          },
+        ],
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        packaging_method: ['一包化しない指示と一包化包装方法は同時に指定できません'],
+        dispensing_method: ['一包化しない指示と一包化調剤方法は同時に指定できません'],
+      },
+    });
+    expect(prescriptionLineUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects partial no-unit-dose instruction updates against existing unit-dose metadata', async () => {
+    prescriptionLineRootFindManyMock.mockResolvedValue([
+      {
+        id: 'line_1',
+        intake_id: 'intake_1',
+        start_date: null,
+        end_date: null,
+        days: 14,
+        dosage_form: '錠剤',
+        route: 'internal',
+        dispensing_method: 'unit_dose',
+        packaging_method: 'unit_dose',
+        packaging_instructions: '一包化',
+        packaging_instruction_tags: ['unit_dose'],
+        updated_at: new Date('2026-06-18T00:00:00.000Z'),
+      },
+    ]);
+
+    const response = await PATCH(
+      createPatchRequest({
+        lines: [
+          {
+            line_id: 'line_1',
+            expected_updated_at: '2026-06-18T00:00:00.000Z',
+            packaging_instructions: '一包化不可',
+          },
+        ],
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        packaging_instruction_tags: ['一包化しない指示と一包化タグは同時に指定できません'],
+        packaging_method: ['一包化しない指示と一包化包装方法は同時に指定できません'],
+        dispensing_method: ['一包化しない指示と一包化調剤方法は同時に指定できません'],
+      },
+    });
+    expect(prescriptionLineUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects partial unit-dose packaging method updates against existing no-unit-dose tags', async () => {
+    prescriptionLineRootFindManyMock.mockResolvedValue([
+      {
+        id: 'line_1',
+        intake_id: 'intake_1',
+        start_date: null,
+        end_date: null,
+        days: 14,
+        dosage_form: '錠剤',
+        route: 'internal',
+        dispensing_method: 'standard',
+        packaging_method: 'blister_pack',
+        packaging_instructions: '一包化しない',
+        packaging_instruction_tags: ['no_unit_dose'],
+        updated_at: new Date('2026-06-18T00:00:00.000Z'),
+      },
+    ]);
+
+    const response = await PATCH(
+      createPatchRequest({
+        lines: [
+          {
+            line_id: 'line_1',
+            expected_updated_at: '2026-06-18T00:00:00.000Z',
+            packaging_method: 'unit_dose',
+          },
+        ],
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        packaging_method: ['一包化しない指示と一包化包装方法は同時に指定できません'],
+      },
+    });
+    expect(prescriptionLineUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects partial unit-dose dispensing method updates against existing no-unit-dose tags', async () => {
+    prescriptionLineRootFindManyMock.mockResolvedValue([
+      {
+        id: 'line_1',
+        intake_id: 'intake_1',
+        start_date: null,
+        end_date: null,
+        days: 14,
+        dosage_form: '錠剤',
+        route: 'internal',
+        dispensing_method: 'standard',
+        packaging_method: 'blister_pack',
+        packaging_instructions: '一包化しない',
+        packaging_instruction_tags: ['no_unit_dose'],
+        updated_at: new Date('2026-06-18T00:00:00.000Z'),
+      },
+    ]);
+
+    const response = await PATCH(
+      createPatchRequest({
+        lines: [
+          {
+            line_id: 'line_1',
+            expected_updated_at: '2026-06-18T00:00:00.000Z',
+            dispensing_method: 'unit_dose',
+          },
+        ],
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        dispensing_method: ['一包化しない指示と一包化調剤方法は同時に指定できません'],
+      },
+    });
+    expect(prescriptionLineUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('returns 409 before writes when any line has a stale expected_updated_at', async () => {

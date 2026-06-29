@@ -1,7 +1,15 @@
 import { addDays, differenceInCalendarDays } from 'date-fns';
-import { withAuthContext, type AuthContext } from '@/lib/auth/context';
+import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
+import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { conflict, forbiddenResponse, success, validationError } from '@/lib/api/response';
+import {
+  conflict,
+  forbiddenResponse,
+  internalError,
+  success,
+  validationError,
+} from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { parsePaginationParams } from '@/lib/api/pagination';
@@ -15,7 +23,7 @@ import {
 import { prisma } from '@/lib/db/client';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { getRequestAuthContext } from '@/lib/auth/request-context';
+import { getRequestAuthContext, runWithRequestAuthContext } from '@/lib/auth/request-context';
 import {
   buildVisitRecordScheduleAssignmentWhere,
   canAccessVisitScheduleAssignment,
@@ -45,6 +53,24 @@ import {
 } from '@/server/services/visit-record-derived-data';
 import { validatePreviousVisitReuseSource } from '@/server/services/visit-record-source-validation';
 import { z } from 'zod';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
+
+const ROUTE = '/api/visit-records';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 const scheduleStatusByOutcome: Record<
   CreateVisitRecordInput['outcome_status'],
@@ -331,6 +357,24 @@ type ResidualReductionCandidate = {
   is_prohibited_reduction: boolean;
 };
 
+function normalizeDrugIdentityCode(code: string | null | undefined) {
+  return code?.replace(/\s/g, '').trim() || null;
+}
+
+function residualReductionDrugLabel(
+  candidate: Pick<ResidualReductionCandidate, 'drug_name' | 'drug_code'>,
+) {
+  const drugCode = normalizeDrugIdentityCode(candidate.drug_code);
+  return drugCode ? `${candidate.drug_name}（${drugCode}）` : candidate.drug_name;
+}
+
+function residualReductionIdentityKey(
+  candidate: Pick<ResidualReductionCandidate, 'drug_name' | 'drug_code'>,
+) {
+  const drugCode = normalizeDrugIdentityCode(candidate.drug_code);
+  return drugCode ? `code:${drugCode}` : `name:${candidate.drug_name.trim()}`;
+}
+
 function collectResidualReductionCandidates(
   residualMedications: CreateVisitRecordInput['residual_medications'],
 ): ResidualReductionCandidate[] {
@@ -590,6 +634,7 @@ type LatestPrescriptionHistoryRow = {
   prescriber_name: string | null;
   prescription_count: bigint | number | string;
   drug_names: string[] | null;
+  medications: Prisma.JsonValue | null;
 };
 
 type PreviousVisitHistoryRow = {
@@ -606,6 +651,23 @@ function toCount(value: bigint | number | string | null | undefined) {
   if (typeof value === 'number') return value;
   if (typeof value === 'string') return Number(value);
   return 0;
+}
+
+function normalizeLatestPrescriptionMedications(value: Prisma.JsonValue | null | undefined) {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((entry) => {
+    const drug = readJsonObject(entry);
+    if (!drug || typeof drug.drug_name !== 'string') return [];
+
+    return [
+      {
+        drug_name: drug.drug_name,
+        drug_code:
+          typeof drug.drug_code === 'string' ? normalizeDrugIdentityCode(drug.drug_code) : null,
+      },
+    ];
+  });
 }
 
 async function buildVisitRecordPatientHistorySummaries(
@@ -628,7 +690,17 @@ async function buildVisitRecordPatientHistorySummaries(
           array_agg(line.drug_name ORDER BY line.line_number)
             FILTER (WHERE line.drug_name IS NOT NULL),
           ARRAY[]::text[]
-        ) AS drug_names
+        ) AS drug_names,
+        COALESCE(
+          jsonb_agg(
+            jsonb_build_object(
+              'drug_name', line.drug_name,
+              'drug_code', line.drug_code
+            )
+            ORDER BY line.line_number
+          ) FILTER (WHERE line.drug_name IS NOT NULL),
+          '[]'::jsonb
+        ) AS medications
       FROM (
         SELECT
           cycle.patient_id,
@@ -648,7 +720,7 @@ async function buildVisitRecordPatientHistorySummaries(
           AND cycle.patient_id = ANY(${patientIds}::text[])
       ) ranked
       LEFT JOIN LATERAL (
-        SELECT drug_name, line_number
+        SELECT drug_name, drug_code, line_number
         FROM "PrescriptionLine"
         WHERE org_id = ${orgId}
           AND intake_id = ranked.id
@@ -730,6 +802,7 @@ async function buildVisitRecordPatientHistorySummaries(
             prescribed_date: latestPrescription.prescribed_date,
             prescriber_name: latestPrescription.prescriber_name,
             drug_names: latestPrescription.drug_names ?? [],
+            medications: normalizeLatestPrescriptionMedications(latestPrescription.medications),
           }
         : null,
       previous_visit: previousVisit?.previous_visit_id
@@ -746,8 +819,15 @@ async function buildVisitRecordPatientHistorySummaries(
   return summaries;
 }
 
-export const GET = withAuthContext(
-  async (req, ctx) => {
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: '訪問記録の閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
     const keysetCursor = decodeKeysetCursor(VISIT_RECORD_CURSOR_KEYS, cursor);
@@ -873,12 +953,26 @@ export const GET = withAuthContext(
           : undefined,
       }),
     );
-  },
-  {
-    permission: 'canVisit',
-    message: '訪問記録の閲覧権限がありません',
-  },
-);
+  });
+}
+
+export async function GET(req: NextRequest) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('visit_records_get_unhandled_error', undefined, {
+        event: 'visit_records_get_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
 
 async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) {
   const {
@@ -1114,7 +1208,12 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
         source: 'visit_record',
       });
     } catch (snapshotError) {
-      console.warn('[visit-records] patient_state_snapshot build failed', snapshotError);
+      logger.error('visit_records_patient_state_snapshot_build_failed', undefined, {
+        event: 'visit_records_patient_state_snapshot_build_failed',
+        route: ROUTE,
+        operation: 'build_patient_state_snapshot',
+        error_name: safeErrorName(snapshotError),
+      });
     }
 
     let record;
@@ -1220,12 +1319,14 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
       );
 
       for (const candidate of allowedCandidates) {
+        const drugLabel = residualReductionDrugLabel(candidate);
+        const drugIdentityKey = residualReductionIdentityKey(candidate);
         const existingIssue = await tx.medicationIssue.findFirst({
           where: {
             org_id: ctx.orgId,
             patient_id: careCase.patient_id,
             case_id: schedule.case_id,
-            title: `${candidate.drug_name} の残薬調整`,
+            title: `${drugLabel} の残薬調整`,
             status: {
               in: ['open', 'in_progress'],
             },
@@ -1240,8 +1341,8 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
               org_id: ctx.orgId,
               patient_id: careCase.patient_id,
               case_id: schedule.case_id,
-              title: `${candidate.drug_name} の残薬調整`,
-              description: `${candidate.drug_name} に残薬超過（約${candidate.excess_days}日分）があります。処方医への報告と減数調剤可否の確認が必要です。`,
+              title: `${drugLabel} の残薬調整`,
+              description: `${drugLabel} に残薬超過（約${candidate.excess_days}日分）があります。処方医への報告と減数調剤可否の確認が必要です。`,
               status: 'open',
               priority: candidate.excess_days >= 14 ? 'high' : 'medium',
               category: 'adherence',
@@ -1308,8 +1409,8 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
               related_entity_type: 'tracing_report',
               related_entity_id: tracingReport.id,
               status: 'draft',
-              subject: `${candidate.drug_name} の服薬情報提供書`,
-              content: `${candidate.drug_name} の残薬調整について処方医へ共有します。`,
+              subject: `${drugLabel} の服薬情報提供書`,
+              content: `${drugLabel} の残薬調整について処方医へ共有します。`,
               requested_by: ctx.userId,
               due_date: null,
             },
@@ -1319,7 +1420,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
         await upsertOperationalTask(tx, {
           orgId: ctx.orgId,
           taskType: 'tracing_report_followup',
-          title: `${candidate.drug_name} の残薬調整を確認`,
+          title: `${drugLabel} の残薬調整を確認`,
           description: '残薬調整の処方医報告と tracing report 起票を確認してください。',
           priority: candidate.excess_days >= 14 ? 'high' : 'normal',
           assignedTo: ctx.userId,
@@ -1327,13 +1428,15 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
           slaDueAt: visitRecordedAt,
           relatedEntityType: 'visit_record',
           relatedEntityId: record.id,
-          dedupeKey: `tracing-report-followup:${record.id}:${candidate.drug_code ?? candidate.drug_name}`,
+          dedupeKey: `tracing-report-followup:${record.id}:${drugIdentityKey}`,
           metadata: {
             patient_id: careCase.patient_id,
             case_id: schedule.case_id,
             issue_id: issue.id,
             tracing_report_id: tracingReport.id,
             drug_name: candidate.drug_name,
+            drug_code: normalizeDrugIdentityCode(candidate.drug_code),
+            drug_identity_key: drugIdentityKey,
             excess_days: candidate.excess_days,
           } satisfies Prisma.InputJsonValue,
         });
@@ -1342,7 +1445,10 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
       if (prohibitedCandidates.length > 0) {
         if (schedule.cycle_id) {
           const description = `減数調剤禁止薬剤が残薬調整候補です: ${prohibitedCandidates
-            .map((candidate) => `${candidate.drug_name}（約${candidate.excess_days}日分）`)
+            .map(
+              (candidate) =>
+                `${residualReductionDrugLabel(candidate)}（約${candidate.excess_days}日分）`,
+            )
             .join(' / ')}`;
 
           const existingException = await tx.workflowException.findFirst({
@@ -1377,7 +1483,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
           description: prohibitedCandidates
             .map(
               (candidate) =>
-                `${candidate.drug_name} は減数調剤禁止です。処方医へ通常報告のみ行ってください。`,
+                `${residualReductionDrugLabel(candidate)} は減数調剤禁止です。処方医へ通常報告のみ行ってください。`,
             )
             .join(' / '),
           priority: 'high',
@@ -1392,6 +1498,8 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
             case_id: schedule.case_id,
             drugs: prohibitedCandidates.map((candidate) => ({
               drug_name: candidate.drug_name,
+              drug_code: normalizeDrugIdentityCode(candidate.drug_code),
+              drug_identity_key: residualReductionIdentityKey(candidate),
               excess_days: candidate.excess_days,
             })),
           } satisfies Prisma.InputJsonValue,
@@ -1556,8 +1664,15 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
   });
 }
 
-export const POST = withAuthContext(
-  async (req, ctx) => {
+async function authenticatedPOST(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: '訪問記録の作成権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -1650,9 +1765,23 @@ export const POST = withAuthContext(
       conflictResolved: result.conflictResolved,
     };
     return success(responsePayload, result.conflictResolved ? 200 : 201);
-  },
-  {
-    permission: 'canVisit',
-    message: '訪問記録の作成権限がありません',
-  },
-);
+  });
+}
+
+export async function POST(req: NextRequest) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('visit_records_post_unhandled_error', undefined, {
+        event: 'visit_records_post_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

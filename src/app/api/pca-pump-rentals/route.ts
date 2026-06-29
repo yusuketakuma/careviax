@@ -1,15 +1,20 @@
 import { unstable_rethrow } from 'next/navigation';
+import { NextRequest } from 'next/server';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { withAuthContext } from '@/lib/auth/context';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import { createPcaPumpRentalSchema } from '@/lib/validations/pca-pump-rental';
 import { createDefaultPcaRentalAccessories } from '@/server/services/pca-rental-accessories';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { serializePcaPumpRental, toDateKey } from '@/server/services/pca-pump-rental-serialization';
 
+const ROUTE = '/api/pca-pump-rentals';
 const rentalStatuses = ['scheduled', 'active', 'overdue', 'returned', 'cancelled'] as const;
 const openRentalStatuses = ['scheduled', 'active', 'overdue'] as const;
 const returnInspectionStatuses = ['pending', 'passed', 'needs_maintenance'] as const;
@@ -52,8 +57,15 @@ function parseInstitutionIdFilter(searchParams: URLSearchParams) {
   return { ok: true as const, institutionId };
 }
 
-const authenticatedGET = withAuthContext(
-  async (req, ctx) => {
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canReport',
+    message: 'PCAポンプレンタルの閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const statusParam = req.nextUrl.searchParams.get('status')?.trim();
     const parsedStatus = parseRentalStatusParam(statusParam);
     if (!parsedStatus.ok) return validationError('PCAポンプレンタル状態の指定が不正です');
@@ -112,24 +124,37 @@ const authenticatedGET = withAuthContext(
     );
 
     return success({ data: rentals.map(serializePcaPumpRental) });
-  },
-  {
-    permission: 'canReport',
-    message: 'PCAポンプレンタルの閲覧権限がありません',
-  },
-);
+  });
+}
 
-export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
+export const GET = async (req: NextRequest) => {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error(
+        {
+          event: 'route_handler_unhandled_error',
+          route: ROUTE,
+          method: 'GET',
+        },
+        err,
+      );
+      return withSensitiveNoStore(internalError());
+    }
+  });
 };
 
-export const POST = withAuthContext(
-  async (req, ctx) => {
+async function authenticatedPOST(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canAdmin',
+    message: 'PCAポンプレンタルの更新権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -240,9 +265,24 @@ export const POST = withAuthContext(
     }
 
     return success({ data: serializePcaPumpRental(created.rental) }, 201);
-  },
-  {
-    permission: 'canAdmin',
-    message: 'PCAポンプレンタルの更新権限がありません',
-  },
-);
+  });
+}
+
+export const POST = async (req: NextRequest) => {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error(
+        {
+          event: 'route_handler_unhandled_error',
+          route: ROUTE,
+          method: 'POST',
+        },
+        err,
+      );
+      return withSensitiveNoStore(internalError());
+    }
+  });
+};

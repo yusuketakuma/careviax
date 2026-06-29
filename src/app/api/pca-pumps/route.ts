@@ -1,12 +1,19 @@
+import { unstable_rethrow } from 'next/navigation';
+import { NextRequest } from 'next/server';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { withAuthContext } from '@/lib/auth/context';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import { createPcaPumpSchema } from '@/lib/validations/pca-pump-rental';
 import { serializePcaPump, toPcaPumpDateKey } from '@/server/services/pca-pump-serialization';
 
+const ROUTE = '/api/pca-pumps';
 const pumpStatuses = ['available', 'rented', 'maintenance', 'retired'] as const;
 type PumpStatus = (typeof pumpStatuses)[number];
 const DEFAULT_PCA_PUMP_SEARCH_LIMIT = 500;
@@ -20,8 +27,15 @@ function parsePumpStatusParam(value: string | undefined) {
   return { ok: false as const };
 }
 
-export const GET = withAuthContext(
-  async (req, ctx) => {
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canReport',
+    message: 'PCAポンプ台帳の閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const queryParam = req.nextUrl.searchParams.get('q')?.trim();
     const query = queryParam && queryParam.length > 0 ? queryParam : undefined;
     const limit = parseBoundedInteger(
@@ -89,15 +103,37 @@ export const GET = withAuthContext(
       data: pumps.slice(0, limit).map(serializePcaPump),
       meta: { limit, has_more: pumps.length > limit },
     });
-  },
-  {
-    permission: 'canReport',
-    message: 'PCAポンプ台帳の閲覧権限がありません',
-  },
-);
+  });
+}
 
-export const POST = withAuthContext(
-  async (req, ctx) => {
+export const GET = async (req: NextRequest) => {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error(
+        {
+          event: 'route_handler_unhandled_error',
+          route: ROUTE,
+          method: 'GET',
+        },
+        err,
+      );
+      return withSensitiveNoStore(internalError());
+    }
+  });
+};
+
+async function authenticatedPOST(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canAdmin',
+    message: 'PCAポンプ台帳の更新権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -141,9 +177,24 @@ export const POST = withAuthContext(
     );
 
     return success({ data: serializePcaPump(created) }, 201);
-  },
-  {
-    permission: 'canAdmin',
-    message: 'PCAポンプ台帳の更新権限がありません',
-  },
-);
+  });
+}
+
+export const POST = async (req: NextRequest) => {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error(
+        {
+          event: 'route_handler_unhandled_error',
+          route: ROUTE,
+          method: 'POST',
+        },
+        err,
+      );
+      return withSensitiveNoStore(internalError());
+    }
+  });
+};

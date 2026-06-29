@@ -847,12 +847,16 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
           },
           prescription_changes: {
             added: ['アムロジピンOD錠5mg'],
+            added_medications: [{ drug_name: 'アムロジピンOD錠5mg', drug_code: '111' }],
             changed: [
               expect.objectContaining({
                 drug_name: 'ロキソプロフェン錠60mg',
+                drug_code: '222',
+                previous_drug_code: '222',
               }),
             ],
             removed: ['マグミット錠330mg'],
+            removed_medications: [{ drug_name: 'マグミット錠330mg', drug_code: '333' }],
           },
           visit_brief: {
             context: 'schedule',
@@ -1132,10 +1136,67 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
             changed: [
               expect.objectContaining({
                 drug_name: 'ロキソプロフェン錠60mg',
+                drug_code: '222',
+                previous_drug_name: 'ロキソプロフェン錠60mg',
+                previous_drug_code: '222',
                 reasons: ['用量 1回1錠 → 1回2錠'],
               }),
             ],
             removed: ['ロキソプロフェン錠60mg'],
+            removed_medications: [{ drug_name: 'ロキソプロフェン錠60mg', drug_code: '222' }],
+          },
+        },
+      },
+    });
+  });
+
+  it('returns medication identities for initial prescription preparation summaries', async () => {
+    prescriptionIntakeFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'intake_initial',
+        source_type: 'paper',
+        prescribed_date: new Date('2026-03-26T00:00:00Z'),
+        lines: [
+          {
+            drug_name: '同名薬',
+            drug_code: 'YJ001',
+            dose: '1回1錠',
+            frequency: '朝食後',
+            days: 7,
+            start_date: new Date('2026-03-27T00:00:00Z'),
+            end_date: new Date('2026-04-02T00:00:00Z'),
+          },
+          {
+            drug_name: '同名薬',
+            drug_code: null,
+            dose: '1回1錠',
+            frequency: '夕食後',
+            days: 7,
+            start_date: new Date('2026-03-27T00:00:00Z'),
+            end_date: new Date('2026-04-02T00:00:00Z'),
+          },
+        ],
+      },
+    ]);
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        pack: {
+          prescription_changes: {
+            added: ['同名薬', '同名薬'],
+            added_medications: [
+              { drug_name: '同名薬', drug_code: 'YJ001' },
+              { drug_name: '同名薬', drug_code: null },
+            ],
+            changed: [],
+            removed: [],
+            removed_medications: [],
           },
         },
       },

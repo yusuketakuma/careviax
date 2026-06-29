@@ -2,28 +2,20 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { NextRequest } from 'next/server';
 
 const {
-  withAuthMock,
+  loggerErrorMock,
+  requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  withRoutePerformanceMock,
   withOrgContextMock,
   dispatchNotificationEventMock,
   notifyWorkflowMutationMock,
   dispenseTaskFindManyMock,
   dispenseTaskCountMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(
-    (
-      handler: (
-        req: NextRequest,
-        ctx: { orgId: string; userId: string; role: 'pharmacist' },
-      ) => Promise<Response>,
-    ) => {
-      return (req: NextRequest) =>
-        handler(req, {
-          orgId: 'org_1',
-          userId: 'user_1',
-          role: 'pharmacist',
-        });
-    },
-  ),
+  loggerErrorMock: vi.fn(),
+  requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+  withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
   withOrgContextMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
@@ -32,20 +24,25 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  withAuthContext: withAuthMock,
+  requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
+}));
+
+vi.mock('@/lib/utils/performance', () => ({
+  withRoutePerformance: withRoutePerformanceMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
-}));
-
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    dispenseTask: {
-      findMany: dispenseTaskFindManyMock,
-      count: dispenseTaskCountMock,
-    },
-  },
 }));
 
 vi.mock('@/server/services/notifications', () => ({
@@ -58,10 +55,8 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 
 import { GET as rawGET, POST as rawPOST } from './route';
 
-const emptyRouteContext = { params: Promise.resolve({}) };
-
-const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
-const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
+const GET = (req: NextRequest) => rawGET(req);
+const POST = (req: NextRequest) => rawPOST(req);
 
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
 
@@ -105,6 +100,18 @@ function createGetRequest(search = '') {
 function expectSensitiveNoStore(response: Response) {
   expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
   expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
+function setupAuthMocks() {
+  requireAuthContextMock.mockResolvedValue({
+    ctx: {
+      orgId: 'org_1',
+      userId: 'user_1',
+      role: 'pharmacist' as const,
+    },
+  });
+  runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+  withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
 }
 
 function doubleCountResultRow(
@@ -218,6 +225,15 @@ function setupApprovedDoubleCountAuditTx(args: {
 describe('/api/dispense-audits GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setupAuthMocks();
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          count: dispenseTaskCountMock,
+          findMany: dispenseTaskFindManyMock,
+        },
+      }),
+    );
     dispenseTaskCountMock.mockResolvedValue(2);
     dispenseTaskFindManyMock.mockResolvedValue([
       {
@@ -338,6 +354,17 @@ describe('/api/dispense-audits GET', () => {
         },
       }),
     );
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        requestContext: expect.objectContaining({
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        }),
+      }),
+    );
   });
 
   it('returns only the visible audit count for nav badges', async () => {
@@ -358,6 +385,17 @@ describe('/api/dispense-audits GET', () => {
         },
       },
     });
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        requestContext: expect.objectContaining({
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        }),
+      }),
+    );
     expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
   });
 
@@ -378,6 +416,19 @@ describe('/api/dispense-audits GET', () => {
     });
     expect(bodyText).not.toContain('佐藤');
     expect(bodyText).not.toContain('98765432');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'dispense_audits_get_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'dispense_audits_get_unhandled_error',
+        route: '/api/dispense-audits',
+        method: 'GET',
+        status: 500,
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('佐藤');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('98765432');
   });
 });
 
@@ -394,6 +445,7 @@ describe('/api/dispense-audits POST', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    setupAuthMocks();
   });
 
   it('rejects non-object audit payloads before transaction or notification side effects', async () => {
@@ -401,6 +453,7 @@ describe('/api/dispense-audits POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
@@ -411,8 +464,30 @@ describe('/api/dispense-audits POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('short-circuits auth failures before parsing malformed JSON or audit side effects', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: Response.json(
+        { code: 'AUTH_FORBIDDEN', message: '調剤鑑査の作成権限がありません' },
+        { status: 403 },
+      ),
+    });
+
+    const response = await POST(createMalformedJsonRequest());
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '調剤鑑査の作成権限がありません',
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
@@ -429,7 +504,46 @@ describe('/api/dispense-audits POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 without raw logging when audit transaction fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 raw dispense audit transaction secret'),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_1',
+        result: 'approved',
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('raw dispense audit');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'dispense_audits_post_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'dispense_audits_post_unhandled_error',
+        route: '/api/dispense-audits',
+        method: 'POST',
+        status: 500,
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw dispense audit');
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
@@ -512,6 +626,18 @@ describe('/api/dispense-audits POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        requestContext: expect.objectContaining({
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        }),
+      }),
+    );
     expect(cycleUpdateManyMock).toHaveBeenCalledWith({
       where: { id: 'cycle_1', org_id: 'org_1', version: 1 },
       data: { overall_status: 'dispensing', version: { increment: 1 } },
