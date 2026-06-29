@@ -1635,7 +1635,10 @@ export async function GET(req: NextRequest, routeContext: { params: Promise<{ id
   }
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedPATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<Response> {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者情報の更新権限がありません',
@@ -2515,5 +2518,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return validationError(error.message);
     }
     throw error;
+  }
+}
+
+export async function PATCH(
+  req: NextRequest,
+  routeContext: { params: Promise<{ id: string }> },
+): Promise<Response> {
+  try {
+    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
   }
 }

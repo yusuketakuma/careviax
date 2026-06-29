@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0739 JST
+
+- current task: harden `PATCH /api/patients/[id]` so patient core write responses consistently use sensitive no-store headers and sanitized unexpected-error envelopes.
+- files inspected: agmsg inbox for `phos/codex`, `git status --short --untracked-files=all`, local Next.js route handler and `unstable_rethrow` docs, `src/app/api/patients/[id]/route.ts`, `src/app/api/patients/[id]/route.test.ts`, `src/lib/api/sensitive-response.ts`, `src/lib/api/response.ts`, subagent P1 finding for patient core writes, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/patients/[id]/route.ts`, `src/app/api/patients/[id]/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved Claude-owned document-delivery-rule-manager WIP.
+- bugs found: patient core PATCH returned success, auth rejection, validation, not-found, archived conflict, duplicate conflict, controlled validation, and PHI-bearing patient update responses without the route's sensitive no-store envelope. Unexpected patient update failures could fall through to framework 500 behavior instead of a fixed no-store `INTERNAL_ERROR` envelope.
+- security risks found: reduced cache and raw-error disclosure risk for patient names, phone numbers, addresses, medical/care insurance numbers, conditions, ADL/care information, duplicate candidate metadata, and patient core update errors. Auth/permission checks, request validation, scoped patient lookup, archived conflict behavior, duplicate detection/acknowledgement semantics, facility/reference validation, transaction side effects, field revisions, task creation, response success/domain-error body shapes, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only wraps existing route responses, rethrows framework control-flow errors, and adds focused assertions.
+- validation commands: `pnpm exec prettier --write 'src/app/api/patients/[id]/route.ts' 'src/app/api/patients/[id]/route.test.ts'`; `pnpm exec vitest run 'src/app/api/patients/[id]/route.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint on the two patient detail files; scoped `git diff --check` on the two patient detail files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused patient detail Vitest passed `1` file / `41` tests. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. Backend, privacy compliance, and test-architect subagents returned `APPROVED` after reviewing route-handler typing, auth/validation/not-found/conflict/success behavior preservation, PHI no-store coverage, raw-error non-leakage, and test adequacy.
+- remaining work: explicit-path stage only this patient core PATCH slice plus the patient detail ledger hunks, commit, send agmsg FYI, then continue with remaining patient billing/insurance/qualification and prescription/QR intake write-path candidates or incoming review interrupts.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
 ### 20260630-0727 JST
 
 - current task: harden medication-history bulk PDF export queue POST responses so report-export queue responses use sensitive no-store envelopes and sanitized unexpected-error bodies.

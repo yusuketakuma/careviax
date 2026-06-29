@@ -23,6 +23,40 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Patient Core PATCH No-Store / Sanitized Envelope - 2026-06-30 07:39 JST
+
+- Scope:
+  - Continued P1 backend hardening from security subagent findings on patient core write responses.
+  - Focused only on `PATCH /api/patients/[id]`.
+  - Preserved Claude-owned document-delivery-rule-manager WIP.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `PATCH /api/patients/[id]` now delegates to `authenticatedPATCH`, and the exported handler wraps all returned responses with `withSensitiveNoStore`.
+  - Unexpected PATCH failures now use the existing `unstable_rethrow` + fixed no-store `internalError()` pattern already used by the patient detail GET handler.
+  - Added no-store coverage for representative success, auth rejection, validation, not-found, archived conflict, duplicate conflict, acknowledged duplicate success, and controlled org-reference validation responses.
+  - Added raw-error coverage proving patient-name, insurance-number-like, and phone-number-like text is not echoed from unexpected PATCH failures.
+- Safety:
+  - Reduces cache and raw-error disclosure risk for patient names, phone numbers, addresses, medical/care insurance numbers, conditions, ADL/care information, duplicate candidate metadata, and patient core update errors.
+  - Preserves auth/permission behavior, request validation, scoped patient lookup, archived conflict behavior, duplicate detection/acknowledgement semantics, facility/reference validation, transaction side effects, field revisions, task creation, and existing response body/status shapes for handled branches.
+- Performance:
+  - No DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only wraps existing route responses, rethrows framework control-flow errors, and adds focused assertions.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/patients/[id]/route.ts' 'src/app/api/patients/[id]/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/patients/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `41` tests.
+  - Scoped ESLint on the two patient detail files: passed.
+  - Scoped `git diff --check` on the two patient detail files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - Backend, privacy compliance, and test-architect subagents returned `APPROVED`.
+  - Review coverage included route-handler typing, auth/validation/not-found/conflict/success behavior preservation, PHI no-store coverage, raw-error non-leakage, and test adequacy.
+- Remaining:
+  - Stage only explicit patient detail files plus this ledger and `.codex/ralph-state.md`, commit, and send agmsg FYI.
+  - Continue next high-priority backend candidates from subagent findings, especially patient billing/insurance/qualification and prescription/QR intake write paths.
+
 ### Medication Bulk-Export POST No-Store / Sanitized Envelope - 2026-06-30 07:27 JST
 
 - Scope:

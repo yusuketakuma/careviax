@@ -237,6 +237,8 @@ vi.mock('@/lib/patient/facility-reference', () => ({
 
 import { GET, PATCH } from './route';
 
+const SENSITIVE_NO_STORE = 'private, no-store, max-age=0';
+
 function createRequest(body?: unknown, headers?: Record<string, string>) {
   if (body === undefined) {
     return new NextRequest('http://localhost/api/patients/patient_1', { headers });
@@ -260,6 +262,11 @@ function createMalformedJsonPatchRequest(headers?: Record<string, string>) {
       ...headers,
     },
   });
+}
+
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe(SENSITIVE_NO_STORE);
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/patients/[id]', () => {
@@ -629,6 +636,7 @@ describe('/api/patients/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '患者IDが不正です',
     });
@@ -646,6 +654,7 @@ describe('/api/patients/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -664,6 +673,7 @@ describe('/api/patients/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -697,11 +707,71 @@ describe('/api/patients/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientUpdateMock).not.toHaveBeenCalled();
     expect(patientSchedulePreferenceUpsertMock).not.toHaveBeenCalled();
     expect(careCaseUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns auth rejections with sensitive no-store headers before reading PATCH inputs', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: Response.json(
+        { code: 'AUTH_FORBIDDEN', message: '患者情報の更新権限がありません' },
+        { status: 403 },
+      ),
+    });
+
+    const response = await PATCH(
+      createMalformedJsonPatchRequest({ 'x-org-id': 'corg1234567890123456789012' }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns PATCH not-found responses with sensitive no-store headers before update work', async () => {
+    patientFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await PATCH(
+      createRequest({ phone: '080-1111-2222' }, { 'x-org-id': 'corg1234567890123456789012' }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者が見つかりません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns sanitized no-store 500 responses for unexpected PATCH failures without leaking raw patient context', async () => {
+    const rawErrorMessage =
+      'patient update lookup failed for 山田花子 insurance=1234567890 phone=090-0000-0000';
+    patientFindFirstMock.mockRejectedValueOnce(new Error(rawErrorMessage));
+
+    const response = await PATCH(
+      createRequest({ phone: '080-1111-2222' }, { 'x-org-id': 'corg1234567890123456789012' }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain(rawErrorMessage);
+    expect(bodyText).not.toContain('山田花子');
+    expect(bodyText).not.toContain('1234567890');
+    expect(bodyText).not.toContain('090-0000-0000');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientUpdateMock).not.toHaveBeenCalled();
   });
 
   it('masks insurance and address details for external viewers in the response payload', async () => {
@@ -925,6 +995,7 @@ describe('/api/patients/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(patientUpdateMock).toHaveBeenCalledWith({
       where: { id: 'patient_1' },
       data: expect.objectContaining({
@@ -1035,6 +1106,7 @@ describe('/api/patients/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(patientUpdateMock).not.toHaveBeenCalled();
   });
 
@@ -1105,6 +1177,7 @@ describe('/api/patients/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'アーカイブ中の患者は復元するまで更新できません',
     });
@@ -1232,6 +1305,7 @@ describe('/api/patients/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       details: {
         duplicate_type: 'patient_identity',
@@ -1275,6 +1349,7 @@ describe('/api/patients/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       warnings: [
         {
