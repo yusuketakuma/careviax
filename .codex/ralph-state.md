@@ -13352,3 +13352,16 @@ Backup directory:
 - validation results: focused external-professionals API and patient care-team panel suite passed `2` files / `28` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint` passed.
 - remaining work: the broad master-management/patient-information goal remains open. Continue scanning capped admin master APIs and patient-linked selectors for count metadata, stale preconditions, audit-near-action gaps, and false-empty states.
 - next action: commit the six owned files only, then continue the next bounded master-management/patient-information slice after rechecking dirty ownership.
+
+### 20260630-1926 JST
+
+- current task: continue patient-information and billing workflow hardening by focusing billing-evidence blocker action links on the scoped patient instead of the aggregate patient list.
+- files inspected: `git status --branch --short --untracked-files=all`, `git log --oneline -n 14`, `CODEX_GOAL_PROGRESS.md`, `.codex/ralph-state.md`, relevant memory entries for CareViaX false-empty/count/path helper work, `src/server/services/billing-evidence/core.ts`, `src/server/services/billing-evidence/core.test.ts`, and `src/lib/patient/navigation.ts`.
+- files changed: `src/server/services/billing-evidence/core.ts`, `src/server/services/billing-evidence/core.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: patient-scoped billing blocker actions still pointed at the aggregate `/patients` list, so care-certification/readiness follow-up from a filtered patient billing context could drop the operator out of the exact patient record.
+- security risks found: reduced wrong-patient navigation risk while exposing no new PHI. Hostile patient ids are routed through the shared `buildPatientHref` encoder, and unscoped blocker calls keep the aggregate fallback. Existing billing evidence predicates, claimability logic, and same-month blocker semantics remain intact. No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation changed.
+- performance issues found: no new database query, dependency, background job, broad scan, unbounded loop, network call, or render-heavy path was added.
+- validation commands: `pnpm exec vitest run src/server/services/billing-evidence/core.test.ts src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=60000`; scoped `pnpm exec eslint --max-warnings=0`; scoped `pnpm exec prettier --check`; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`.
+- validation results: focused billing-evidence/patient-navigation suite passed `2` files / `73` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint` passed.
+- remaining work: the broad master-management/patient-information goal remains open. Continue scanning capped admin master APIs and patient-linked selector APIs for count metadata, stale preconditions, audit-near-action gaps, and false-empty states.
+- next action: commit the four owned files only, then recheck dirty ownership and continue the next bounded notification/master-management slice.

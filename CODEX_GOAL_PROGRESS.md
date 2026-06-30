@@ -25746,3 +25746,29 @@ Next loop:
 - Remaining:
   - The broad master-management/patient-information goal remains open.
   - Continue scanning escalation rules/webhooks, shifts/templates, contact profiles, and other patient-linked selector APIs for count metadata, stale preconditions, audit-near-action gaps, and false-empty states.
+
+### Billing Evidence Patient Action Links - 2026-06-30 19:26 JST
+
+- Scope:
+  - Continued patient-information and billing workflow hardening for the blocker actions returned by billing evidence services.
+  - Focused on patient-scoped blocker links that previously fell back to the aggregate patient list.
+- Fixed:
+  - `describeBillingEvidenceBlockers` now accepts the scoped patient id and rewrites patient-action blockers from `/patients` to the exact encoded patient detail path.
+  - `listBillingEvidenceBlockers` passes its `patientId` filter through to blocker description generation, so patient-filtered billing blockers keep the action on the same patient.
+  - Added regression coverage for hostile patient ids containing `/`, query text, and fragments.
+- Safety:
+  - Reduces wrong-patient navigation risk when billing/readiness blockers ask the operator to confirm care certification or similar patient facts.
+  - Hidden patient data, PHI, billing notes, raw internals, and secrets are not exposed; only the existing action URL is focused to the already-scoped patient id.
+  - Existing billing evidence query predicates, claimability rules, same-month blocker semantics, and aggregate `/patients` fallback for unscoped calls remain intact.
+  - No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - No new database query, dependency, background job, broad scan, unbounded loop, network call, or render-heavy path was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/billing-evidence/core.test.ts src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `73` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` on billing-evidence/patient navigation files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - The broad master-management/patient-information goal remains open.
+  - Continue scanning capped admin master APIs such as notification rules, webhooks, shift templates, vehicle resources, business holidays, and packaging methods for count metadata, stale preconditions, audit-near-action gaps, and false-empty states.
