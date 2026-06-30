@@ -49,8 +49,12 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - No new dependency, external call, background job, render path, broad scan, or unbounded loop was added.
 - Validation:
   - Planner focused Vitest passed `1` file / `44` tests.
+  - Proposal API + planner Vitest passed `2` files / `133` tests with the expected sanitized-500 route log.
   - Scoped ESLint, scoped Prettier check, and diff-check on planner files: passed.
   - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
   - `git diff --check`: passed.
 - Remaining:
   - Broad master-management, patient-information, report, schedule, and multi-professional cooperation objective remains open.
