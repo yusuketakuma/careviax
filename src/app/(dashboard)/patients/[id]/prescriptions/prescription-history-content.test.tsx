@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
@@ -46,6 +46,58 @@ vi.mock('sonner', () => ({
     success: vi.fn(),
     error: vi.fn(),
   },
+}));
+
+vi.mock('@/components/features/pharmacy/drug-suggest', () => ({
+  DrugSuggest: ({
+    value,
+    ariaLabel,
+    onTextChange,
+    onSelect,
+  }: {
+    value: string;
+    ariaLabel?: string;
+    onTextChange: (text: string) => void;
+    onSelect: (drug: {
+      drug_master_id: string;
+      drug_name: string;
+      drug_code: string;
+      dosage_form: string | null;
+      unit: string | null;
+      is_generic: boolean;
+      is_narcotic: boolean;
+      is_psychotropic: boolean;
+      max_administration_days: number | null;
+      drug_price: number | null;
+    }) => void;
+  }) => (
+    <div data-testid="history-drug-suggest">
+      <input
+        aria-label={ariaLabel ?? '医薬品マスター候補'}
+        value={value}
+        onChange={(event) => onTextChange(event.currentTarget.value)}
+      />
+      <button
+        type="button"
+        onClick={() =>
+          onSelect({
+            drug_master_id: 'drug_master_selected',
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2171013F1024',
+            dosage_form: '錠',
+            unit: '錠',
+            is_generic: false,
+            is_narcotic: false,
+            is_psychotropic: false,
+            max_administration_days: null,
+            drug_price: 12.3,
+          })
+        }
+      >
+        履歴薬剤候補を選択
+      </button>
+    </div>
+  ),
 }));
 
 import { PrescriptionHistoryContent } from './prescription-history-content';
@@ -1123,6 +1175,118 @@ describe('PrescriptionHistoryContent', () => {
     expect(screen.getByText('その他（1剤）')).toBeTruthy();
     expect(screen.getByText('薬剤未解決')).toBeTruthy();
     expect(screen.getByText('元コード: receipt RC001')).toBeTruthy();
+  });
+
+  it('resolves an unlinked prescription line through the DrugMaster confirmation contract', async () => {
+    const invalidateQueries = vi.fn();
+    useOrgIdMock.mockReturnValue('org_1');
+    useParamsMock.mockReturnValue({ id: 'patient_1' });
+    useQueryClientMock.mockReturnValue({ invalidateQueries });
+    useMutationMock.mockImplementation(
+      (config: {
+        mutationFn: (input: unknown) => Promise<unknown> | unknown;
+        onSuccess?: () => Promise<void> | void;
+      }) => ({
+        mutate: vi.fn(async (input: unknown) => {
+          await config.mutationFn(input);
+          await config.onSuccess?.();
+        }),
+        isPending: false,
+      }),
+    );
+
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: string[] }) => {
+      if (queryKey[0] === 'drug-masters-batch') {
+        return { data: {}, isLoading: false };
+      }
+      return {
+        data: {
+          patient: { id: 'patient_1', name: '山田花子', name_kana: 'ヤマダハナコ' },
+          data: [
+            {
+              id: 'intake_unresolved',
+              cycle_id: 'cycle_unresolved',
+              source_type: 'manual',
+              prescribed_date: '2026-06-01',
+              prescriber_name: '佐藤医師',
+              prescriber_institution: '青空クリニック',
+              prescription_expiry_date: null,
+              original_document_url: null,
+              original_collected_at: null,
+              original_collected_by: null,
+              refill_remaining_count: null,
+              refill_next_dispense_date: null,
+              split_dispense_total: null,
+              split_dispense_current: null,
+              split_next_dispense_date: null,
+              created_at: '2026-06-01T00:00:00.000Z',
+              cycle: { overall_status: 'active' },
+              lines: [
+                {
+                  id: 'line_unresolved',
+                  line_number: 1,
+                  updated_at: '2026-06-01T09:00:00.000Z',
+                  drug_name: '未確認薬',
+                  drug_master_id: null,
+                  drug_code: null,
+                  source_drug_code: 'RC001',
+                  source_drug_code_type: 'receipt',
+                  drug_resolution_status: 'review_required',
+                  dosage_form: '錠',
+                  dose: '1錠',
+                  frequency: '夕食後',
+                  days: 28,
+                  quantity: 28,
+                  unit: '錠',
+                  is_generic: false,
+                  packaging_instructions: null,
+                  notes: null,
+                  route: 'other',
+                  dispensing_method: null,
+                  start_date: null,
+                  end_date: null,
+                },
+              ],
+            },
+          ],
+        },
+        isLoading: false,
+      };
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { id: 'line_unresolved' } }),
+    } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PrescriptionHistoryContent />);
+
+      fireEvent.click(screen.getByRole('button', { name: '履歴薬剤候補を選択' }));
+      fireEvent.click(screen.getByRole('button', { name: '医薬品マスターへ確定' }));
+
+      await waitFor(() =>
+        expect(fetchMock).toHaveBeenCalledWith(
+          '/api/prescription-lines/line_unresolved',
+          expect.any(Object),
+        ),
+      );
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(init.method).toBe('PATCH');
+      expect(init.headers).toEqual({ 'Content-Type': 'application/json', 'x-org-id': 'org_1' });
+      expect(JSON.parse(String(init.body))).toEqual({
+        expected_updated_at: '2026-06-01T09:00:00.000Z',
+        drug_master_id: 'drug_master_selected',
+      });
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: ['patient-prescriptions', 'org_1', 'patient_1'],
+      });
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: ['drug-masters-batch', 'org_1'],
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('renders the 後発 (generic) badge without state color (classification value)', () => {

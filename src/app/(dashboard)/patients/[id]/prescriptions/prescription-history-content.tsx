@@ -50,12 +50,15 @@ import { medicationIdentityKey, prescriptionLineKey } from '@/lib/prescription/m
 import { Loading } from '@/components/ui/loading';
 import { ErrorState } from '@/components/ui/error-state';
 import { toast } from 'sonner';
+import { DrugSuggest, type DrugSelection } from '@/components/features/pharmacy/drug-suggest';
+import { buildPrescriptionLineApiPath } from '@/lib/dispensing/api-paths';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 type PrescriptionLine = {
   id: string;
   line_number: number;
+  updated_at: string;
   drug_name: string;
   drug_master_id?: string | null;
   drug_code: string | null;
@@ -180,6 +183,12 @@ type DispensingOverviewItem = {
   routeLabel: string;
   note: string;
   hasWarning: boolean;
+};
+
+type ResolveDrugMasterInput = {
+  lineId: string;
+  expectedUpdatedAt: string;
+  drugMasterId: string;
 };
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -581,6 +590,60 @@ function buildDispensingOverview(intake: PrescriptionIntake | null): DispensingO
 
 // ─── Line Row ───────────────────────────────────────────────────────────────
 
+function DrugMasterResolutionControl({
+  line,
+  isPending,
+  onResolve,
+}: {
+  line: PrescriptionLine;
+  isPending: boolean;
+  onResolve: (input: ResolveDrugMasterInput) => void;
+}) {
+  const [query, setQuery] = useState(line.drug_name);
+  const [selectedDrug, setSelectedDrug] = useState<DrugSelection | null>(null);
+
+  return (
+    <div className="mt-2 grid gap-2 rounded-md border border-state-confirm/30 bg-state-confirm/5 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+      <div className="min-w-0 space-y-1">
+        <DrugSuggest
+          value={query}
+          ariaLabel={`${line.drug_name} の医薬品マスター候補`}
+          onTextChange={(text) => {
+            setQuery(text);
+            setSelectedDrug(null);
+          }}
+          onSelect={(drug) => {
+            setQuery(drug.drug_name);
+            setSelectedDrug(drug);
+          }}
+        />
+        {selectedDrug ? (
+          <p className="text-xs text-muted-foreground">
+            選択中: {selectedDrug.drug_name} / YJ {selectedDrug.drug_code}
+          </p>
+        ) : null}
+      </div>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="w-full sm:w-auto"
+        disabled={!selectedDrug || isPending}
+        onClick={() => {
+          if (!selectedDrug) return;
+          onResolve({
+            lineId: line.id,
+            expectedUpdatedAt: line.updated_at,
+            drugMasterId: selectedDrug.drug_master_id,
+          });
+        }}
+      >
+        {isPending ? '確定中...' : '医薬品マスターへ確定'}
+      </Button>
+    </div>
+  );
+}
+
 function DrugLineRow({
   line,
   prescribedDate,
@@ -588,6 +651,8 @@ function DrugLineRow({
   hasOverlap,
   masterInfo,
   masterLookupComplete,
+  onResolveDrugMaster,
+  resolvingLineId,
 }: {
   line: PrescriptionLine;
   prescribedDate: string;
@@ -595,6 +660,8 @@ function DrugLineRow({
   hasOverlap: boolean;
   masterInfo?: DrugMasterInfo;
   masterLookupComplete: boolean;
+  onResolveDrugMaster: (input: ResolveDrugMasterInput) => void;
+  resolvingLineId: string | null;
 }) {
   const method = inferMethod(line);
   const methodCfg = method ? (METHOD_CONFIG[method] ?? null) : null;
@@ -611,6 +678,7 @@ function DrugLineRow({
     masterLookupComplete,
   );
   const sourceCodeLabel = sourceDrugCodeLabel(line);
+  const canResolveDrugMaster = medicationResolutionIncomplete && !canonicalDrugMasterId(line);
 
   return (
     <div
@@ -700,6 +768,14 @@ function DrugLineRow({
         {medicationResolutionIncomplete && sourceCodeLabel && (
           <p className="text-xs font-medium text-state-confirm">{sourceCodeLabel}</p>
         )}
+        {canResolveDrugMaster ? (
+          <DrugMasterResolutionControl
+            key={`${line.id}-${line.updated_at}`}
+            line={line}
+            isPending={resolvingLineId === line.id}
+            onResolve={onResolveDrugMaster}
+          />
+        ) : null}
         {masterInfo?.lasa_group_key && (
           <p className="text-xs font-medium text-tag-hazard">
             類似薬剤名グループ: {masterInfo.lasa_group_key}
@@ -778,6 +854,8 @@ function RpGroupBlock({
   overlapSet,
   masterMap,
   masterLookupComplete,
+  onResolveDrugMaster,
+  resolvingLineId,
 }: {
   group: RpGroup;
   rpIndex: number;
@@ -786,6 +864,8 @@ function RpGroupBlock({
   overlapSet: Set<string>;
   masterMap: DrugMasterBatchResponse;
   masterLookupComplete: boolean;
+  onResolveDrugMaster: (input: ResolveDrugMasterInput) => void;
+  resolvingLineId: string | null;
 }) {
   const routeCfg = ROUTE_CONFIG[group.route] ?? ROUTE_CONFIG.other;
   const RouteIcon = routeCfg.icon;
@@ -816,6 +896,8 @@ function RpGroupBlock({
           hasOverlap={overlapSet.has(line.id)}
           masterInfo={getDrugMasterInfo(line, masterMap)}
           masterLookupComplete={masterLookupComplete}
+          onResolveDrugMaster={onResolveDrugMaster}
+          resolvingLineId={resolvingLineId}
         />
       ))}
     </div>
@@ -833,6 +915,8 @@ function RouteSection({
   overlapSet,
   masterMap,
   masterLookupComplete,
+  onResolveDrugMaster,
+  resolvingLineId,
 }: {
   routeKey: string;
   groups: RpGroup[];
@@ -842,6 +926,8 @@ function RouteSection({
   overlapSet: Set<string>;
   masterMap: DrugMasterBatchResponse;
   masterLookupComplete: boolean;
+  onResolveDrugMaster: (input: ResolveDrugMasterInput) => void;
+  resolvingLineId: string | null;
 }) {
   const cfg = ROUTE_CONFIG[routeKey] ?? ROUTE_CONFIG.other;
   const totalDrugs = groups.reduce((sum, g) => sum + g.lines.length, 0);
@@ -870,6 +956,8 @@ function RouteSection({
           overlapSet={overlapSet}
           masterMap={masterMap}
           masterLookupComplete={masterLookupComplete}
+          onResolveDrugMaster={onResolveDrugMaster}
+          resolvingLineId={resolvingLineId}
         />
       ))}
     </section>
@@ -886,6 +974,8 @@ function PrescriptionIntakeCard({
   masterLookupComplete,
   onMarkOriginalCollected,
   isMarkingOriginalCollected,
+  onResolveDrugMaster,
+  resolvingLineId,
 }: {
   intake: PrescriptionIntake;
   prevIntake: PrescriptionIntake | null;
@@ -894,6 +984,8 @@ function PrescriptionIntakeCard({
   masterLookupComplete: boolean;
   onMarkOriginalCollected: (intakeId: string) => void;
   isMarkingOriginalCollected: boolean;
+  onResolveDrugMaster: (input: ResolveDrugMasterInput) => void;
+  resolvingLineId: string | null;
 }) {
   const [expanded, setExpanded] = useState(true);
   const statusCfg = STATUS_LABELS[intake.cycle.overall_status];
@@ -1098,6 +1190,8 @@ function PrescriptionIntakeCard({
                 overlapSet={overlapSet}
                 masterMap={masterMap}
                 masterLookupComplete={masterLookupComplete}
+                onResolveDrugMaster={onResolveDrugMaster}
+                resolvingLineId={resolvingLineId}
               />
             );
           })}
@@ -1394,6 +1488,41 @@ export function PrescriptionHistoryContent() {
     },
   });
 
+  const resolveDrugMasterMutation = useMutation({
+    mutationFn: async (input: ResolveDrugMasterInput) => {
+      const response = await fetch(buildPrescriptionLineApiPath(input.lineId), {
+        method: 'PATCH',
+        headers: buildOrgJsonHeaders(orgId),
+        body: JSON.stringify({
+          expected_updated_at: input.expectedUpdatedAt,
+          drug_master_id: input.drugMasterId,
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message ?? '医薬品マスター確定に失敗しました');
+      }
+      return response.json();
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['patient-prescriptions', orgId, patientId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['drug-masters-batch', orgId],
+        }),
+      ]);
+      toast.success('医薬品マスターを確定しました');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+  const resolvingLineId = resolveDrugMasterMutation.isPending
+    ? (resolveDrugMasterMutation.variables?.lineId ?? null)
+    : null;
+
   const filteredIntakes = useMemo(() => {
     if (!data?.data) return [];
     if (!routeFilter && !methodFilter) return data.data;
@@ -1644,6 +1773,8 @@ export function PrescriptionHistoryContent() {
                     markOriginalCollectedMutation.mutate(intakeId)
                   }
                   isMarkingOriginalCollected={markOriginalCollectedMutation.isPending}
+                  onResolveDrugMaster={resolveDrugMasterMutation.mutate}
+                  resolvingLineId={resolvingLineId}
                 />
               </div>
             );
@@ -1751,6 +1882,8 @@ export function PrescriptionHistoryContent() {
                   markOriginalCollectedMutation.mutate(intakeId)
                 }
                 isMarkingOriginalCollected={markOriginalCollectedMutation.isPending}
+                onResolveDrugMaster={resolveDrugMasterMutation.mutate}
+                resolvingLineId={resolvingLineId}
               />
             </div>
 
@@ -1771,6 +1904,8 @@ export function PrescriptionHistoryContent() {
                   markOriginalCollectedMutation.mutate(intakeId)
                 }
                 isMarkingOriginalCollected={markOriginalCollectedMutation.isPending}
+                onResolveDrugMaster={resolveDrugMasterMutation.mutate}
+                resolvingLineId={resolvingLineId}
               />
             </div>
           </div>

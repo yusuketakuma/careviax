@@ -18,4 +18,14 @@ describe('qr draft page helpers', () => {
       { href: '/workflow', label: 'ワークフロー' },
     ]);
   });
+
+  it('uses the shared patient href helper for hostile patient ids', () => {
+    expect(buildQrDraftShortcutLinks('patient/a b?x=y#z')).toEqual([
+      { href: '/prescriptions', label: '処方受付一覧' },
+      { href: `/patients/${encodeURIComponent('patient/a b?x=y#z')}`, label: '患者詳細' },
+      { href: '/workflow', label: 'ワークフロー' },
+    ]);
+
+    expect(() => buildQrDraftShortcutLinks('.')).toThrow(RangeError);
+  });
 });

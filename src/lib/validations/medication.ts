@@ -1,7 +1,15 @@
 import { z } from 'zod';
 import { dateKeySchema } from '@/lib/validations/date-key';
 
+function blankStringToUndefined(value: unknown) {
+  return typeof value === 'string' && value.trim().length === 0 ? undefined : value;
+}
+
 const optionalDateStringSchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional();
+const optionalTrimmedStringSchema = z.preprocess(
+  blankStringToUndefined,
+  z.string().trim().optional(),
+);
 
 // ────────────────────────────────────────────────────────────────────────────
 // MedicationProfile
@@ -9,7 +17,7 @@ const optionalDateStringSchema = dateKeySchema('日付形式が不正です（YY
 
 export const createMedicationProfileSchema = z.object({
   patient_id: z.string().min(1, '患者IDは必須です'),
-  drug_master_id: z.string().optional(),
+  drug_master_id: optionalTrimmedStringSchema,
   drug_name: z.string().min(1, '薬剤名は必須です'),
   dose: z.string().optional(),
   frequency: z.string().optional(),

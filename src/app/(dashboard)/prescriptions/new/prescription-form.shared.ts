@@ -1,3 +1,5 @@
+import { buildOrgHeaders } from '@/lib/api/org-headers';
+
 export const SOURCE_CONFIG = [
   { value: 'paper', label: '紙処方箋' },
   { value: 'fax', label: 'FAX' },
@@ -8,7 +10,7 @@ export const SOURCE_CONFIG = [
 ] as const;
 
 export const SOURCE_LABELS: Record<string, string> = Object.fromEntries(
-  SOURCE_CONFIG.map(({ value, label }) => [value, label])
+  SOURCE_CONFIG.map(({ value, label }) => [value, label]),
 );
 
 export const ROUTE_OPTIONS = [
@@ -44,13 +46,9 @@ export function emptyLine() {
   };
 }
 
-export async function fetchOrgJson<T>(args: {
-  url: string;
-  orgId: string;
-  errorMessage: string;
-}) {
+export async function fetchOrgJson<T>(args: { url: string; orgId: string; errorMessage: string }) {
   const response = await fetch(args.url, {
-    headers: { 'x-org-id': args.orgId },
+    headers: buildOrgHeaders(args.orgId),
   });
   if (!response.ok) {
     throw new Error(args.errorMessage);

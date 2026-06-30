@@ -597,11 +597,14 @@ function findDrugNameFallbackCandidate(candidates: DrugMaster[], drugName: strin
   const normalizedDrugName = drugName.trim();
   if (!normalizedDrugName) return null;
 
-  return (
-    candidates.find((candidate) => candidate.drug_name === normalizedDrugName) ??
-    candidates.find((candidate) => candidate.drug_name.includes(normalizedDrugName)) ??
-    null
+  const exactMatches = candidates.filter((candidate) => candidate.drug_name === normalizedDrugName);
+  if (exactMatches.length === 1) return exactMatches[0] ?? null;
+  if (exactMatches.length > 1) return null;
+
+  const partialMatches = candidates.filter((candidate) =>
+    candidate.drug_name.includes(normalizedDrugName),
   );
+  return partialMatches.length === 1 ? (partialMatches[0] ?? null) : null;
 }
 
 function inferPrescriptionLineSourceDrugCodeType(

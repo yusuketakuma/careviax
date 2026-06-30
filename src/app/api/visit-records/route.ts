@@ -51,6 +51,7 @@ import { buildPatientStateSnapshot } from '@/server/services/patient-state-snaps
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 import {
+  findMissingResidualMedicationDrugMasterIds,
   replaceVisitRecordResidualMedications,
   syncVisitRecordLabObservations,
 } from '@/server/services/visit-record-derived-data';
@@ -255,6 +256,7 @@ type VisitRecordConflictDetail = {
   soap_plan: string | null;
   next_visit_suggestion_date: string | null;
   residual_medications: Array<{
+    drug_master_id: string | null;
     drug_name: string;
     drug_code: string | null;
     prescribed_quantity: number | null;
@@ -327,6 +329,7 @@ async function loadExistingVisitRecordConflict(
       visit_record_id: existing.id,
     },
     select: {
+      drug_master_id: true,
       drug_name: true,
       drug_code: true,
       prescribed_quantity: true,
@@ -355,6 +358,7 @@ async function loadExistingVisitRecordConflict(
 }
 
 type ResidualReductionCandidate = {
+  drug_master_id?: string;
   drug_name: string;
   drug_code?: string;
   remaining_quantity: number;
@@ -375,8 +379,10 @@ function residualReductionDrugLabel(
 }
 
 function residualReductionIdentityKey(
-  candidate: Pick<ResidualReductionCandidate, 'drug_name' | 'drug_code'>,
+  candidate: Pick<ResidualReductionCandidate, 'drug_master_id' | 'drug_name' | 'drug_code'>,
 ) {
+  const drugMasterId = candidate.drug_master_id?.trim();
+  if (drugMasterId) return `master:${drugMasterId}`;
   const drugCode = normalizeDrugIdentityCode(candidate.drug_code);
   return drugCode ? `code:${drugCode}` : `name:${candidate.drug_name.trim()}`;
 }
@@ -407,6 +413,7 @@ function collectResidualReductionCandidates(
 
     candidates.push({
       drug_name: medication.drug_name,
+      drug_master_id: medication.drug_master_id ?? undefined,
       drug_code: medication.drug_code ?? undefined,
       remaining_quantity: medication.remaining_quantity,
       prescribed_daily_dose: prescribedDailyDose,
@@ -1094,6 +1101,16 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
       return { error: 'patient_mismatch' as const };
     }
 
+    const missingResidualMedicationDrugMasterIds = await findMissingResidualMedicationDrugMasterIds(
+      tx,
+      residual_medications,
+    );
+    if (missingResidualMedicationDrugMasterIds.length > 0) {
+      return {
+        error: 'invalid_residual_medication_drug_master_id' as const,
+      };
+    }
+
     const previousVisitReuseValidation = await validatePreviousVisitReuseSource({
       tx,
       orgId: ctx.orgId,
@@ -1400,6 +1417,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
               status: 'draft',
               content: {
                 category: 'residual_reduction',
+                drug_master_id: candidate.drug_master_id ?? null,
                 drug_name: candidate.drug_name,
                 drug_code: candidate.drug_code ?? null,
                 remaining_quantity: candidate.remaining_quantity,
@@ -1461,6 +1479,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
             issue_id: issue.id,
             tracing_report_id: tracingReport.id,
             drug_name: candidate.drug_name,
+            drug_master_id: candidate.drug_master_id ?? null,
             drug_code: normalizeDrugIdentityCode(candidate.drug_code),
             drug_identity_key: drugIdentityKey,
             excess_days: candidate.excess_days,
@@ -1524,6 +1543,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
             case_id: schedule.case_id,
             drugs: prohibitedCandidates.map((candidate) => ({
               drug_name: candidate.drug_name,
+              drug_master_id: candidate.drug_master_id ?? null,
               drug_code: normalizeDrugIdentityCode(candidate.drug_code),
               drug_identity_key: residualReductionIdentityKey(candidate),
               excess_days: candidate.excess_days,
@@ -1721,6 +1741,11 @@ async function authenticatedPOST(req: NextRequest) {
       }
       if (result.error === 'patient_mismatch') {
         return validationError('訪問予定に紐づく患者と記録対象患者が一致しません');
+      }
+      if (result.error === 'invalid_residual_medication_drug_master_id') {
+        return validationError('入力値が不正です', {
+          drug_master_id: ['存在する医薬品マスターを選択してください'],
+        });
       }
       if (result.error === 'carry_items_blocked') {
         return validationError(

@@ -61,6 +61,8 @@ export type AdverseEvents = {
 };
 
 export type ResidualMedicationEntry = {
+  drug_master_id?: string | null;
+  drug_code?: string | null;
   drug_name: string;
   remaining_quantity: number;
   excess_days: number;

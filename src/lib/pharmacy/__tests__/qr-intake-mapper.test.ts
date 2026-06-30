@@ -773,6 +773,48 @@ describe('mapJahisToIntake', () => {
       });
     });
 
+    it('does not suggest an arbitrary DrugMaster when exact name fallback is ambiguous', async () => {
+      const firstExactNameCandidate = {
+        ...mockDrugMaster,
+        id: 'drug_exact_1',
+        yj_code: '111111111111',
+        drug_name: '同名薬',
+      };
+      const secondExactNameCandidate = {
+        ...mockDrugMaster,
+        id: 'drug_exact_2',
+        yj_code: '222222222222',
+        drug_name: '同名薬',
+      };
+      prismaMock.drugMaster.findMany.mockResolvedValueOnce([
+        firstExactNameCandidate,
+        secondExactNameCandidate,
+      ]);
+      prismaMock.pharmacyDrugStock.findMany.mockResolvedValueOnce([]);
+
+      const qrData = makeQrData({
+        medications: [makeMed({ drugCode: undefined, drugName: '同名薬', dose: '1', unit: '錠' })],
+      });
+
+      const result = await mapJahisToIntake(qrData, baseInput);
+
+      expect(result.lines[0]).toMatchObject({
+        drug_code: null,
+        drug_code_resolution_status: 'unresolved',
+        drug_code_resolution_source: 'none',
+        candidate_drug_master_id: null,
+        candidate_drug_code: null,
+        candidate_drug_name: null,
+      });
+      expect(result.unmatchedDrugs[0]).toMatchObject({
+        reason: 'no_code_provided',
+        requiresReview: true,
+        suggestedDrugMasterId: null,
+        suggestedDrugCode: null,
+        suggestedDrugName: null,
+      });
+    });
+
     it('does not resolve a bad code by name fallback even when the drug name matches', async () => {
       prismaMock.drugMaster.findFirst.mockResolvedValueOnce(mockDrugMaster);
       prismaMock.pharmacyDrugStock.findFirst.mockResolvedValueOnce(null);

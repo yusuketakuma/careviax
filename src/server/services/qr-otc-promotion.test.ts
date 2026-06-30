@@ -153,15 +153,21 @@ describe('promoteResolvedQrOtcIssueToMedicationProfile', () => {
     });
   });
 
-  it('links OTC MedicationProfile to DrugMaster by JAN code when available', async () => {
+  it('links OTC MedicationProfile to DrugMaster through DrugPackage JAN when available', async () => {
     const medicationProfileCreate = vi.fn().mockResolvedValue({});
     const medicationProfileFindFirst = vi.fn().mockResolvedValue(null);
-    const drugMasterFindFirst = vi.fn().mockResolvedValue({ id: 'drug_master_otc' });
+    const drugPackageFindMany = vi
+      .fn()
+      .mockResolvedValue([{ drug_master: { id: 'drug_master_otc' } }]);
+    const drugMasterFindFirst = vi.fn();
 
     const result = await promoteResolvedQrOtcIssueToMedicationProfile(
       {
         patient: {
           findFirst: vi.fn().mockResolvedValue({ id: 'patient_1' }),
+        },
+        drugPackage: {
+          findMany: drugPackageFindMany,
         },
         drugMaster: {
           findFirst: drugMasterFindFirst,
@@ -189,10 +195,23 @@ describe('promoteResolvedQrOtcIssueToMedicationProfile', () => {
       promoted: true,
       candidate: expect.objectContaining({ jan_code: '4900000000000' }),
     });
-    expect(drugMasterFindFirst).toHaveBeenCalledWith({
-      where: { jan_code: '4900000000000' },
-      select: { id: true },
+    expect(drugPackageFindMany).toHaveBeenCalledWith({
+      where: {
+        is_active: true,
+        OR: [
+          { gtin: '4900000000000' },
+          { jan_code: '4900000000000' },
+          { gtin: '04900000000000' },
+          { jan_code: '04900000000000' },
+        ],
+      },
+      select: {
+        drug_master: {
+          select: { id: true },
+        },
+      },
     });
+    expect(drugMasterFindFirst).not.toHaveBeenCalled();
     expect(medicationProfileFindFirst).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -210,6 +229,115 @@ describe('promoteResolvedQrOtcIssueToMedicationProfile', () => {
       data: expect.objectContaining({
         drug_name: 'バファリンA',
         drug_master_id: 'drug_master_otc',
+      }),
+    });
+  });
+
+  it('keeps legacy DrugMaster JAN fallback when no DrugPackage row exists', async () => {
+    const medicationProfileCreate = vi.fn().mockResolvedValue({});
+    const medicationProfileFindFirst = vi.fn().mockResolvedValue(null);
+    const drugPackageFindMany = vi.fn().mockResolvedValue([]);
+    const drugMasterFindFirst = vi.fn().mockResolvedValue({ id: 'drug_master_legacy' });
+
+    const result = await promoteResolvedQrOtcIssueToMedicationProfile(
+      {
+        patient: {
+          findFirst: vi.fn().mockResolvedValue({ id: 'patient_1' }),
+        },
+        drugPackage: {
+          findMany: drugPackageFindMany,
+        },
+        drugMaster: {
+          findFirst: drugMasterFindFirst,
+        },
+        medicationProfile: {
+          findFirst: medicationProfileFindFirst,
+          create: medicationProfileCreate,
+        },
+      },
+      {
+        orgId: 'org_1',
+        confirmedAt: new Date('2026-06-08T12:00:00.000Z'),
+        issue: {
+          id: 'issue_1',
+          patient_id: 'patient_1',
+          category: 'other',
+          title: 'QR由来のOTC・一般用薬確認候補: 要指導医薬品・一般用医薬品服用',
+          description:
+            '[qr_supplemental:intake_1:3:3]\n薬品名称: バファリンA\nJANコード: 4900000000000\n服用開始年月日: 20260601',
+        },
+      },
+    );
+
+    expect(result).toMatchObject({ promoted: true });
+    expect(drugMasterFindFirst).toHaveBeenCalledWith({
+      where: { jan_code: '4900000000000' },
+      select: { id: true },
+    });
+    expect(medicationProfileCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        drug_master_id: 'drug_master_legacy',
+      }),
+    });
+  });
+
+  it('does not use legacy DrugMaster JAN fallback when DrugPackage JAN is ambiguous', async () => {
+    const medicationProfileCreate = vi.fn().mockResolvedValue({});
+    const medicationProfileFindFirst = vi.fn().mockResolvedValue(null);
+    const drugPackageFindMany = vi
+      .fn()
+      .mockResolvedValue([
+        { drug_master: { id: 'drug_master_a' } },
+        { drug_master: { id: 'drug_master_b' } },
+      ]);
+    const drugMasterFindFirst = vi.fn().mockResolvedValue({ id: 'drug_master_legacy' });
+
+    const result = await promoteResolvedQrOtcIssueToMedicationProfile(
+      {
+        patient: {
+          findFirst: vi.fn().mockResolvedValue({ id: 'patient_1' }),
+        },
+        drugPackage: {
+          findMany: drugPackageFindMany,
+        },
+        drugMaster: {
+          findFirst: drugMasterFindFirst,
+        },
+        medicationProfile: {
+          findFirst: medicationProfileFindFirst,
+          create: medicationProfileCreate,
+        },
+      },
+      {
+        orgId: 'org_1',
+        confirmedAt: new Date('2026-06-08T12:00:00.000Z'),
+        issue: {
+          id: 'issue_1',
+          patient_id: 'patient_1',
+          category: 'other',
+          title: 'QR由来のOTC・一般用薬確認候補: 要指導医薬品・一般用医薬品服用',
+          description:
+            '[qr_supplemental:intake_1:3:3]\n薬品名称: バファリンA\nJANコード: 4900000000000\n服用開始年月日: 20260601',
+        },
+      },
+    );
+
+    expect(result).toMatchObject({ promoted: true });
+    expect(drugMasterFindFirst).not.toHaveBeenCalled();
+    expect(medicationProfileFindFirst).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        is_current: true,
+        source: 'otc_qr',
+        OR: [{ drug_master_id: null, drug_name: 'バファリンA' }],
+      },
+      select: { id: true },
+    });
+    expect(medicationProfileCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        drug_name: 'バファリンA',
+        drug_master_id: null,
       }),
     });
   });

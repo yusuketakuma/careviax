@@ -1,7 +1,8 @@
 # Operational Scripts
 
 - `backup-recovery-check.ts` : バックアップ / 復旧手順の前提確認
-- `backfill-prescription-line-drug-master-ids.ts` : PrescriptionLine drug_master_id dry-run analyzer for safe resolver-backed backfill planning
+- `backfill-drug-packages-from-drug-master-jan.ts` : DrugPackage JAN dry-run analyzer for migrating legacy DrugMaster.jan_code into package-level GTIN/JAN rows; supports `--json-output` and `--markdown-output` review artifacts
+- `backfill-prescription-line-drug-master-ids.ts` : PrescriptionLine drug_master_id dry-run analyzer for safe resolver-backed backfill planning; supports `--json-output` and `--markdown-output` review artifacts
 - `backfill-webhook-registration-secrets.ts` : WebhookRegistration signing-secret encrypted-field dry-run/backfill helper
 - `check-care-report-duplicates.ts` : CareReport unique-index migration precheck
 - `check-visit-route-order-conflicts.ts` : VisitSchedule / VisitScheduleProposal route-order conflict precheck

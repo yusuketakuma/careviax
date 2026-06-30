@@ -208,7 +208,7 @@ async function authenticatedPOST(req: NextRequest) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const { patient_id, start_date, end_date, ...rest } = parsed.data;
+    const { patient_id, start_date, end_date, drug_master_id, ...rest } = parsed.data;
 
     if (
       !(await canAccessPatient({
@@ -221,19 +221,37 @@ async function authenticatedPOST(req: NextRequest) {
       return notFound('患者が見つかりません');
     }
 
-    const profile = await withOrgContext(ctx.orgId, async (tx) => {
-      return tx.medicationProfile.create({
+    const result = await withOrgContext(ctx.orgId, async (tx) => {
+      if (drug_master_id) {
+        const drugMaster = await tx.drugMaster.findFirst({
+          where: { id: drug_master_id },
+          select: { id: true },
+        });
+        if (!drugMaster) {
+          return {
+            ok: false as const,
+            response: validationError('入力値が不正です', {
+              drug_master_id: ['存在するYJコード付き医薬品マスターを選択してください'],
+            }),
+          };
+        }
+      }
+
+      const profile = await tx.medicationProfile.create({
         data: {
           org_id: ctx.orgId,
           patient_id,
+          ...(drug_master_id ? { drug_master_id } : {}),
           ...(start_date ? { start_date: new Date(start_date) } : {}),
           ...(end_date ? { end_date: new Date(end_date) } : {}),
           ...rest,
         },
       });
+      return { ok: true as const, profile };
     });
 
-    return success({ data: profile }, 201);
+    if (!result.ok) return result.response;
+    return success({ data: result.profile }, 201);
   });
 }
 

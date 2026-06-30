@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { buildDrugMastersApiPath } from '@/lib/drug-masters/api-paths';
 
 export const drugMasterSuggestionSchema = z.object({
   id: z.string(),
@@ -36,8 +38,8 @@ export async function fetchDrugMasterSuggestions(args: {
     includeTotal: 'false',
   });
   const fetchImpl = args.fetchImpl ?? fetch;
-  const response = await fetchImpl(`/api/drug-masters?${params}`, {
-    headers: { 'x-org-id': args.orgId },
+  const response = await fetchImpl(buildDrugMastersApiPath(params), {
+    headers: buildOrgHeaders(args.orgId),
   });
   if (!response.ok) return [];
 

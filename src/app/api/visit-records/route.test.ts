@@ -36,6 +36,7 @@ const {
   residualMedicationFindManyMock,
   residualMedicationDeleteManyMock,
   residualMedicationCreateMock,
+  drugMasterFindManyMock,
   patientLabObservationDeleteManyMock,
   patientLabObservationCreateManyMock,
   contactPartyFindManyMock,
@@ -82,6 +83,7 @@ const {
   residualMedicationFindManyMock: vi.fn(),
   residualMedicationDeleteManyMock: vi.fn(),
   residualMedicationCreateMock: vi.fn(),
+  drugMasterFindManyMock: vi.fn(),
   patientLabObservationDeleteManyMock: vi.fn(),
   patientLabObservationCreateManyMock: vi.fn(),
   contactPartyFindManyMock: vi.fn(),
@@ -917,6 +919,7 @@ describe('/api/visit-records POST', () => {
     residualMedicationFindManyMock.mockResolvedValue([]);
     residualMedicationDeleteManyMock.mockResolvedValue({ count: 0 });
     residualMedicationCreateMock.mockResolvedValue({ id: 'residual_1' });
+    drugMasterFindManyMock.mockResolvedValue([]);
     patientLabObservationDeleteManyMock.mockResolvedValue({ count: 0 });
     patientLabObservationCreateManyMock.mockResolvedValue({ count: 1 });
     contactPartyFindManyMock.mockResolvedValue([]);
@@ -979,6 +982,9 @@ describe('/api/visit-records POST', () => {
           findMany: residualMedicationFindManyMock,
           deleteMany: residualMedicationDeleteManyMock,
           create: residualMedicationCreateMock,
+        },
+        drugMaster: {
+          findMany: drugMasterFindManyMock,
         },
         patientLabObservation: {
           deleteMany: patientLabObservationDeleteManyMock,
@@ -2092,6 +2098,111 @@ describe('/api/visit-records POST', () => {
         }),
       }),
     );
+  });
+
+  it('uses residual medication DrugMaster IDs before drug_code for persistence and task identity', async () => {
+    drugMasterFindManyMock.mockResolvedValue([{ id: 'drug_master_amlodipine' }]);
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          soap_subjective: '服薬状況問題なし',
+          structured_soap: completedVisitStructuredSoap,
+          residual_medications: [
+            {
+              drug_name: 'アムロジピン錠5mg',
+              drug_master_id: ' drug_master_amlodipine ',
+              drug_code: '2149001',
+              remaining_quantity: 30,
+              prescribed_daily_dose: 2,
+              is_prohibited_reduction: false,
+            },
+          ],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(drugMasterFindManyMock).toHaveBeenCalledWith({
+      where: { id: { in: ['drug_master_amlodipine'] } },
+      select: { id: true },
+    });
+    expect(residualMedicationCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          drug_master_id: 'drug_master_amlodipine',
+          drug_code: '2149001',
+        }),
+      }),
+    );
+    expect(tracingReportCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        content: expect.objectContaining({
+          drug_master_id: 'drug_master_amlodipine',
+          drug_code: '2149001',
+        }),
+      }),
+      select: { id: true },
+    });
+    expect(taskUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          task_type: 'tracing_report_followup',
+          dedupe_key: 'tracing-report-followup:record_1:master:drug_master_amlodipine',
+          metadata: expect.objectContaining({
+            drug_master_id: 'drug_master_amlodipine',
+            drug_code: '2149001',
+            drug_identity_key: 'master:drug_master_amlodipine',
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('rejects unknown residual medication DrugMaster IDs before creating visit-derived rows', async () => {
+    drugMasterFindManyMock.mockResolvedValue([]);
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          soap_subjective: '服薬状況問題なし',
+          structured_soap: completedVisitStructuredSoap,
+          residual_medications: [
+            {
+              drug_name: 'アムロジピン錠5mg',
+              drug_master_id: 'missing_master',
+              remaining_quantity: 30,
+              prescribed_daily_dose: 2,
+              is_prohibited_reduction: false,
+            },
+          ],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        drug_master_id: ['存在する医薬品マスターを選択してください'],
+      },
+    });
+    expect(visitRecordCreateMock).not.toHaveBeenCalled();
+    expect(residualMedicationDeleteManyMock).not.toHaveBeenCalled();
+    expect(residualMedicationCreateMock).not.toHaveBeenCalled();
+    expect(taskUpsertMock).not.toHaveBeenCalled();
   });
 
   it('reuses residual reduction issues by drug_code when the medication name changes', async () => {

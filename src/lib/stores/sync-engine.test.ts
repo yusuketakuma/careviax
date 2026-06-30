@@ -566,6 +566,79 @@ describe('sync-engine PHI persistence', () => {
     );
   });
 
+  it('preserves residual medication DrugMaster IDs in server conflict snapshots', async () => {
+    dbMocks.toArray.mockResolvedValue([
+      {
+        id: 15,
+        entityType: 'visit_record',
+        payload: 'encv1:valid-sync-payload',
+        scope_id: 'schedule-1',
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+        retryCount: 0,
+      },
+    ]);
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:valid-sync-payload') {
+          return JSON.stringify({ schedule_id: 'schedule-1', soap_subjective: '眠気あり' });
+        }
+        return value ?? null;
+      },
+    );
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          details: {
+            existing_record: {
+              id: 'visit-record-1',
+              version: 2,
+              patient_id: 'patient-1',
+              visit_date: '2026-04-01',
+              outcome_status: 'completed',
+              soap_subjective: null,
+              soap_objective: null,
+              soap_assessment: null,
+              soap_plan: null,
+              next_visit_suggestion_date: null,
+              residual_medications: [
+                {
+                  drug_master_id: 'drug_master_amlodipine',
+                  drug_name: 'アムロジピン錠5mg',
+                  drug_code: null,
+                  prescribed_quantity: null,
+                  prescribed_daily_dose: null,
+                  remaining_quantity: 8,
+                  is_prohibited_reduction: false,
+                },
+              ],
+            },
+          },
+        }),
+        { status: 409, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    await expect(processSyncQueue({ orgId: 'org-1', endpoints: {} })).resolves.toEqual({
+      synced: 0,
+      failed: 1,
+    });
+
+    const conflictEncryptCall = cryptoMocks.encryptOfflinePayloadRequired.mock.calls.find(
+      ([, context]) => context === 'sync queue conflict payload',
+    );
+    expect(conflictEncryptCall).toBeDefined();
+    expect(JSON.parse(conflictEncryptCall![0] as string)).toMatchObject({
+      server: {
+        residual_medications: [
+          {
+            drug_master_id: 'drug_master_amlodipine',
+            drug_name: 'アムロジピン錠5mg',
+          },
+        ],
+      },
+    });
+  });
+
   it('does not overwrite when the stored conflict server snapshot is malformed', async () => {
     dbMocks.get.mockResolvedValue({
       id: 11,

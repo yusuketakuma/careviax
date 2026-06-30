@@ -18,6 +18,7 @@ import type {
 } from '@/lib/visit-location';
 
 export type SoapDraftResidualMedication = {
+  drug_master_id?: string;
   drug_name: string;
   drug_code?: string;
   prescribed_quantity?: number;
@@ -163,6 +164,7 @@ function readResidualMedication(value: unknown): SoapDraftResidualMedication | n
   if (typeof object.is_prohibited_reduction !== 'boolean') return null;
 
   return {
+    drug_master_id: readOptionalString(object.drug_master_id),
     drug_name: object.drug_name,
     drug_code: readOptionalString(object.drug_code),
     prescribed_quantity: readOptionalNumber(object.prescribed_quantity),

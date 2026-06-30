@@ -333,7 +333,9 @@ describe('useSoapDraft PHI persistence', () => {
           return JSON.stringify([
             ['unexpected'],
             {
+              drug_master_id: 'drug_master_residual',
               drug_name: '高血圧薬A',
+              drug_code: '2149001',
               remaining_quantity: 8,
               is_prohibited_reduction: false,
             },
@@ -365,8 +367,9 @@ describe('useSoapDraft PHI persistence', () => {
     expect(draft?.structuredSoap.subjective.free_text).toBe(plaintextPhi.subjective);
     expect(draft?.residualMedications).toEqual([
       {
+        drug_master_id: 'drug_master_residual',
         drug_name: '高血圧薬A',
-        drug_code: undefined,
+        drug_code: '2149001',
         prescribed_quantity: undefined,
         prescribed_daily_dose: undefined,
         remaining_quantity: 8,

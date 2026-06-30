@@ -9,6 +9,7 @@ const {
   withRoutePerformanceMock,
   medicationProfileFindManyMock,
   medicationProfileCreateMock,
+  drugMasterFindFirstMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
@@ -18,6 +19,7 @@ const {
   withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
   medicationProfileFindManyMock: vi.fn(),
   medicationProfileCreateMock: vi.fn(),
+  drugMasterFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -98,8 +100,14 @@ describe('/api/medication-profiles', () => {
       id: 'profile_2',
       patient_id: 'patient_1',
     });
+    drugMasterFindFirstMock.mockResolvedValue({
+      id: 'drug_master_1',
+    });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        drugMaster: {
+          findFirst: drugMasterFindFirstMock,
+        },
         medicationProfile: {
           create: medicationProfileCreateMock,
         },
@@ -273,6 +281,77 @@ describe('/api/medication-profiles', () => {
         patient_id: 'patient_1',
         drug_name: 'アムロジピン',
         start_date: new Date('2026-03-29'),
+      }),
+    });
+    expect(drugMasterFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('validates and stores a selected DrugMaster id for manual medication profiles', async () => {
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        drug_master_id: ' drug_master_1 ',
+        drug_name: 'アムロジピン',
+        start_date: '2026-03-29',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(drugMasterFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'drug_master_1' },
+      select: { id: true },
+    });
+    expect(medicationProfileCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        drug_master_id: 'drug_master_1',
+        drug_name: 'アムロジピン',
+      }),
+    });
+  });
+
+  it('rejects an unknown DrugMaster id before creating a manual medication profile', async () => {
+    drugMasterFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        drug_master_id: 'missing_master',
+        drug_name: 'アムロジピン',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        drug_master_id: ['存在するYJコード付き医薬品マスターを選択してください'],
+      },
+    });
+    expect(medicationProfileCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('treats a blank DrugMaster id as unspecified instead of persisting it', async () => {
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        drug_master_id: '   ',
+        drug_name: 'アムロジピン',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(drugMasterFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationProfileCreateMock).toHaveBeenCalledWith({
+      data: expect.not.objectContaining({
+        drug_master_id: expect.anything(),
       }),
     });
   });

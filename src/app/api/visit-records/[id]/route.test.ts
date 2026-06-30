@@ -10,6 +10,7 @@ const {
   medicationCycleFindManyMock,
   residualMedicationDeleteManyMock,
   residualMedicationCreateMock,
+  drugMasterFindManyMock,
   patientLabObservationDeleteManyMock,
   patientLabObservationCreateManyMock,
   auditLogFindFirstMock,
@@ -29,6 +30,7 @@ const {
   medicationCycleFindManyMock: vi.fn(),
   residualMedicationDeleteManyMock: vi.fn(),
   residualMedicationCreateMock: vi.fn(),
+  drugMasterFindManyMock: vi.fn(),
   patientLabObservationDeleteManyMock: vi.fn(),
   patientLabObservationCreateManyMock: vi.fn(),
   auditLogFindFirstMock: vi.fn(),
@@ -132,6 +134,7 @@ describe('/api/visit-records/[id]', () => {
     medicationCycleFindManyMock.mockResolvedValue([{ id: 'cycle_1' }]);
     residualMedicationDeleteManyMock.mockResolvedValue({ count: 1 });
     residualMedicationCreateMock.mockResolvedValue({ id: 'residual_1' });
+    drugMasterFindManyMock.mockResolvedValue([]);
     patientLabObservationDeleteManyMock.mockResolvedValue({ count: 1 });
     patientLabObservationCreateManyMock.mockResolvedValue({ count: 1 });
     listBillingEvidenceBlockersMock.mockResolvedValue([]);
@@ -197,6 +200,9 @@ describe('/api/visit-records/[id]', () => {
           count: vi.fn().mockResolvedValue(0),
           deleteMany: residualMedicationDeleteManyMock,
           create: residualMedicationCreateMock,
+        },
+        drugMaster: {
+          findMany: drugMasterFindManyMock,
         },
         patientLabObservation: {
           deleteMany: patientLabObservationDeleteManyMock,
@@ -811,6 +817,8 @@ describe('/api/visit-records/[id]', () => {
   });
 
   it('resyncs derived labs and residual medications when structured visit data is patched', async () => {
+    drugMasterFindManyMock.mockResolvedValue([{ id: 'drug_master_amlodipine' }]);
+
     const response = await PATCH(
       createRequest({
         version: 1,
@@ -826,6 +834,7 @@ describe('/api/visit-records/[id]', () => {
         residual_medications: [
           {
             drug_name: 'アムロジピン錠5mg',
+            drug_master_id: ' drug_master_amlodipine ',
             drug_code: 'drug_amlodipine',
             prescribed_quantity: 28,
             prescribed_daily_dose: 1,
@@ -849,6 +858,7 @@ describe('/api/visit-records/[id]', () => {
         data: expect.objectContaining({
           org_id: 'org_1',
           visit_record_id: 'visit_1',
+          drug_master_id: 'drug_master_amlodipine',
           drug_name: 'アムロジピン錠5mg',
           excess_days: 10,
           is_reduction_target: true,
@@ -875,6 +885,39 @@ describe('/api/visit-records/[id]', () => {
       ]),
     });
     expect(patientLabObservationCreateManyMock.mock.calls[0][0].data).toHaveLength(2);
+  });
+
+  it('rejects unknown residual medication DrugMaster IDs before patching or replacing rows', async () => {
+    drugMasterFindManyMock.mockResolvedValue([]);
+
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        residual_medications: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            drug_master_id: 'missing_master',
+            remaining_quantity: 10,
+            is_prohibited_reduction: false,
+          },
+        ],
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        drug_master_id: ['存在する医薬品マスターを選択してください'],
+      },
+    });
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(residualMedicationDeleteManyMock).not.toHaveBeenCalled();
+    expect(residualMedicationCreateMock).not.toHaveBeenCalled();
   });
 
   it('preserves server-owned handoff metadata when ordinary structured SOAP is patched', async () => {

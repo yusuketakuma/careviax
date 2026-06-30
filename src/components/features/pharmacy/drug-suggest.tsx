@@ -14,6 +14,7 @@ import {
 const DRUG_SUGGEST_DEBOUNCE_MS = 250;
 
 export type DrugSelection = {
+  drug_master_id: string;
   drug_name: string;
   drug_code: string;
   dosage_form: string | null;
@@ -78,7 +79,9 @@ export function DrugSuggest({
 
   const handleSelect = useCallback(
     (drug: DrugMasterSuggestion) => {
+      onTextChange(drug.drug_name);
       onSelect({
+        drug_master_id: drug.id,
         drug_name: drug.drug_name,
         drug_code: drug.yj_code,
         dosage_form: drug.dosage_form,
@@ -89,7 +92,6 @@ export function DrugSuggest({
         max_administration_days: drug.max_administration_days,
         drug_price: drug.drug_price,
       });
-      onTextChange(drug.drug_name);
       setOpen(false);
       setFocusedIdx(-1);
     },

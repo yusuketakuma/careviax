@@ -11,6 +11,7 @@ import { prisma } from '@/lib/db/client';
 import { buildVisitRecordScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
+import { findMissingResidualMedicationDrugMasterIds } from '@/server/services/visit-record-derived-data';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 
@@ -30,6 +31,15 @@ function safeErrorName(err: unknown): string {
   if (!(err instanceof Error)) return 'Error';
   return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
 }
+
+function blankStringToUndefined(value: unknown) {
+  return typeof value === 'string' && value.trim().length === 0 ? undefined : value;
+}
+
+const optionalTrimmedStringSchema = z.preprocess(
+  blankStringToUndefined,
+  z.string().trim().optional(),
+);
 
 const residualMedicationQuerySchema = z.object({
   limit: optionalBoundedIntegerSearchParam('limit', 1, MAX_RESIDUAL_MEDICATION_LIMIT),
@@ -213,7 +223,8 @@ const createResidualMedicationSchema = z.object({
     .array(
       z.object({
         drug_name: z.string().min(1, '薬剤名は必須です'),
-        drug_code: z.string().optional(),
+        drug_master_id: optionalTrimmedStringSchema,
+        drug_code: optionalTrimmedStringSchema,
         prescribed_quantity: z.number().positive().optional(),
         prescribed_daily_dose: z.number().positive().optional(),
         remaining_quantity: z.number().min(0, '残数は0以上で入力してください'),
@@ -254,6 +265,16 @@ async function authenticatedPOST(req: NextRequest) {
     if (!visitRecord) return notFound('指定された訪問記録が見つかりません');
 
     const result = await withOrgContext(ctx.orgId, async (tx) => {
+      const missingDrugMasterIds = await findMissingResidualMedicationDrugMasterIds(
+        tx,
+        medications,
+      );
+      if (missingDrugMasterIds.length > 0) {
+        return {
+          error: 'invalid_drug_master_id' as const,
+        };
+      }
+
       const created = await Promise.all(
         medications.map((med) => {
           // Calculate excess days: remaining_quantity / prescribed_daily_dose
@@ -270,6 +291,7 @@ async function authenticatedPOST(req: NextRequest) {
             data: {
               org_id: ctx.orgId,
               visit_record_id,
+              drug_master_id: med.drug_master_id ?? null,
               drug_name: med.drug_name,
               drug_code: med.drug_code,
               prescribed_quantity: med.prescribed_quantity,
@@ -284,6 +306,12 @@ async function authenticatedPOST(req: NextRequest) {
 
       return created;
     });
+
+    if ('error' in result && result.error === 'invalid_drug_master_id') {
+      return validationError('入力値が不正です', {
+        drug_master_id: ['存在する医薬品マスターを選択してください'],
+      });
+    }
 
     return success(result, 201);
   });

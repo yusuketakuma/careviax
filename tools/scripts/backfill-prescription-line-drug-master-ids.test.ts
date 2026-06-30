@@ -3,6 +3,7 @@ import {
   classifyPrescriptionLineDrugMasterBackfillRows,
   parsePrescriptionLineDrugMasterBackfillArgs,
   runPrescriptionLineDrugMasterBackfill,
+  renderPrescriptionLineDrugMasterBackfillMarkdown,
   summarizePrescriptionLineDrugMasterBackfillFindings,
   type DrugMasterBackfillRow,
   type PrescriptionLineDrugIdentityBackfillRow,
@@ -69,6 +70,8 @@ describe('backfill-prescription-line-drug-master-ids', () => {
       maxRows: 5000,
       sampleLimit: 20,
       orgId: null,
+      jsonOutputPath: null,
+      markdownOutputPath: null,
     });
     expect(
       parsePrescriptionLineDrugMasterBackfillArgs([
@@ -79,12 +82,18 @@ describe('backfill-prescription-line-drug-master-ids', () => {
         '3',
         '--org-id',
         'org_1',
+        '--json-output',
+        'tmp/backfill.json',
+        '--markdown-output',
+        'tmp/backfill.md',
       ]),
     ).toEqual({
       mode: 'dry-run',
       maxRows: 25,
       sampleLimit: 3,
       orgId: 'org_1',
+      jsonOutputPath: 'tmp/backfill.json',
+      markdownOutputPath: 'tmp/backfill.md',
     });
     expect(() => parsePrescriptionLineDrugMasterBackfillArgs(['--apply'])).toThrow(
       /Apply mode is not implemented/,
@@ -215,6 +224,8 @@ describe('backfill-prescription-line-drug-master-ids', () => {
       maxRows: 10,
       sampleLimit: 1,
       orgId: 'org_1',
+      jsonOutputPath: null,
+      markdownOutputPath: null,
     });
 
     expect(summary).toMatchObject({
@@ -239,6 +250,36 @@ describe('backfill-prescription-line-drug-master-ids', () => {
     expect(summary.samples.backfillable).toHaveLength(1);
     expect(summary.samples.code_not_found).toHaveLength(1);
     expect(summary.samples.missing_code).toHaveLength(1);
+  });
+
+  it('renders a reviewable markdown report without enabling apply mode', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-29T09:15:00.000Z'));
+    const findings = classifyPrescriptionLineDrugMasterBackfillRows(
+      [
+        line({ id: 'line_yj', drugName: '薬剤|A', drugCode: 'YJ001' }),
+        line({ id: 'line_unknown', drugCode: 'YJ_UNKNOWN' }),
+      ],
+      masters,
+    );
+    const summary = summarizePrescriptionLineDrugMasterBackfillFindings(findings, {
+      mode: 'dry-run',
+      maxRows: 10,
+      sampleLimit: 2,
+      orgId: null,
+      jsonOutputPath: null,
+      markdownOutputPath: null,
+    });
+
+    const markdown = renderPrescriptionLineDrugMasterBackfillMarkdown(summary);
+
+    expect(markdown).toContain('# PrescriptionLine DrugMaster Backfill Dry-Run Review');
+    expect(markdown).toContain('Apply mode is intentionally disabled');
+    expect(markdown).toContain('| backfillable | 1 |');
+    expect(markdown).toContain('| code_not_found | 1 |');
+    expect(markdown).toContain('- 1 prescription lines have codes not found in DrugMaster');
+    expect(markdown).toContain('薬剤\\|A');
+    expect(markdown).toContain('| line_yj | org_1 | patient_1 | intake_1 | 1 |');
   });
 
   it('runs dry-run without issuing PrescriptionLine mutation queries', async () => {
@@ -272,6 +313,8 @@ describe('backfill-prescription-line-drug-master-ids', () => {
         maxRows: 2,
         sampleLimit: 5,
         orgId: 'org_1',
+        jsonOutputPath: null,
+        markdownOutputPath: null,
       },
     );
 

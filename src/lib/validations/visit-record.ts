@@ -4,6 +4,15 @@ import { structuredSoapInputSchema } from '@/lib/validations/structured-soap';
 
 const localDateTimeMinutePattern = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/;
 
+function blankStringToUndefined(value: unknown) {
+  return typeof value === 'string' && value.trim().length === 0 ? undefined : value;
+}
+
+const optionalTrimmedStringSchema = z.preprocess(
+  blankStringToUndefined,
+  z.string().trim().optional(),
+);
+
 function isValidLocalDateTimeMinute(value: string) {
   const match = localDateTimeMinutePattern.exec(value);
   if (!match) return false;
@@ -71,7 +80,8 @@ export const visitRecordBaseSchema = z.object({
     .array(
       z.object({
         drug_name: z.string().min(1, '薬剤名は必須です'),
-        drug_code: z.string().optional(),
+        drug_master_id: optionalTrimmedStringSchema,
+        drug_code: optionalTrimmedStringSchema,
         prescribed_quantity: z.number().positive().optional(),
         prescribed_daily_dose: z.number().positive().optional(),
         remaining_quantity: z.number().min(0, '残数は0以上で入力してください'),

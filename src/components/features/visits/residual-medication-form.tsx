@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 export type ResidualMedicationEntry = {
+  drug_master_id?: string;
   drug_name: string;
   drug_code?: string;
   prescribed_quantity?: number;
@@ -44,6 +45,7 @@ export function ResidualMedicationForm() {
 
   function handleAddMedication() {
     append({
+      drug_master_id: '',
       drug_name: '',
       drug_code: '',
       prescribed_quantity: undefined,

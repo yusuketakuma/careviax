@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactElement, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -105,6 +105,7 @@ import QrDraftReviewPage from './page';
 setupDomTestEnv();
 
 type QueryConfig = { queryKey: unknown[]; queryFn?: () => Promise<unknown> };
+type MutationConfig = { mutationFn?: () => Promise<unknown> };
 
 const baseDraft = {
   id: 'draft_1',
@@ -126,6 +127,13 @@ const baseDraft = {
       {
         drugName: 'アムロジピン錠5mg',
         drugCode: '2171013F1028',
+        sourceDrugCode: null as string | null,
+        sourceDrugCodeType: null as string | null,
+        drugCodeResolutionStatus: 'resolved' as 'resolved' | 'review_required' | 'unresolved',
+        drugCodeResolutionSource: 'drug_master_code' as string | null,
+        candidateDrugMasterId: null as string | null,
+        candidateDrugCode: null as string | null,
+        candidateDrugName: null as string | null,
         dose: '1錠',
         frequency: '1日1回朝食後',
         days: 14,
@@ -140,6 +148,7 @@ const baseDraft = {
 };
 
 let draft = baseDraft;
+let mutationConfigs: MutationConfig[];
 let casesQueryResult: {
   data?: { data: Array<{ id: string; status: string }> };
   isError?: boolean;
@@ -149,8 +158,12 @@ let casesQueryResult: {
 beforeEach(() => {
   vi.clearAllMocks();
   draft = baseDraft;
+  mutationConfigs = [];
   useOrgIdMock.mockReturnValue('org_1');
-  useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+  useMutationMock.mockImplementation((config: MutationConfig) => {
+    mutationConfigs.push(config);
+    return { mutate: vi.fn(), isPending: false };
+  });
   casesQueryResult = { data: undefined, isError: true, isLoading: false };
   useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
     switch (queryKey[0]) {
@@ -255,5 +268,80 @@ describe('QrDraftReviewPage case lookup error handling', () => {
     expect(registrationUrl.searchParams.get('qr_draft_id')).toBe('draft&evil=1');
     expect(registrationUrl.searchParams.get('patient_id')).toBe('pt&case_id=case_other');
     expect(registrationUrl.searchParams.get('case_id')).toBe('case&safe=1');
+  });
+
+  it('requires adopting a review-required DrugMaster candidate before QR confirmation', async () => {
+    draft = {
+      ...baseDraft,
+      parsed_data: {
+        ...baseDraft.parsed_data,
+        lines: [
+          {
+            ...baseDraft.parsed_data.lines[0],
+            drugCode: '',
+            sourceDrugCode: 'receipt_123',
+            sourceDrugCodeType: 'receipt',
+            drugCodeResolutionStatus: 'review_required',
+            drugCodeResolutionSource: 'drug_master_name_fallback',
+            candidateDrugMasterId: 'drug_master_1',
+            candidateDrugCode: '2171013F1028',
+            candidateDrugName: 'アムロジピン錠5mg',
+          },
+        ],
+      },
+    };
+    casesQueryResult = {
+      data: { data: [{ id: 'case_1', status: 'active' }] },
+      isError: false,
+      isLoading: false,
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ intake: { id: 'intake_1' }, cycle: { id: 'cycle_1' } }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<QrDraftReviewPage />);
+
+    expect(screen.getByText('医薬品マスター確認')).toBeTruthy();
+    expect(screen.getByText(/候補:/)).toBeTruthy();
+    expect((screen.getByRole('button', { name: '確定' }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: '処方明細1件目の医薬品マスター候補を採用' }),
+    );
+
+    expect(screen.getByText('候補採用済み')).toBeTruthy();
+    expect((screen.getByRole('button', { name: '確定' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    await waitFor(() => expect(mutationConfigs.length).toBeGreaterThan(2));
+
+    const confirmMutation = mutationConfigs[mutationConfigs.length - 2];
+    if (!confirmMutation?.mutationFn) {
+      throw new Error('confirm mutationFn was not registered');
+    }
+    await act(async () => {
+      await confirmMutation.mutationFn?.();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/qr-scan-drafts/draft_1/confirm',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': 'org_1' },
+      }),
+    );
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body.lines[0]).toEqual(
+      expect.objectContaining({
+        drug_name: 'アムロジピン錠5mg',
+        drug_master_id: 'drug_master_1',
+        dose: '1錠',
+        frequency: '1日1回朝食後',
+        days: 14,
+      }),
+    );
+    expect(body.lines[0]).not.toHaveProperty('drug_code');
   });
 });

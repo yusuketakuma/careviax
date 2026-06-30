@@ -138,6 +138,42 @@ describe('DrugSuggest', () => {
     );
   });
 
+  it('returns the selected DrugMaster id with the YJ code', () => {
+    const onSelect = vi.fn();
+    const onTextChange = vi.fn();
+    useQueryMock.mockReturnValue({
+      data: [
+        {
+          id: 'drug_1',
+          drug_name: 'アムロジピン錠',
+          yj_code: '2171013F1024',
+          dosage_form: '錠剤',
+          unit: '錠',
+          manufacturer: 'テスト製薬',
+          is_generic: false,
+          is_narcotic: false,
+          is_psychotropic: false,
+          max_administration_days: null,
+          drug_price: 12.3,
+        },
+      ],
+    });
+
+    render(<DrugSuggest value="アム" onTextChange={onTextChange} onSelect={onSelect} />);
+
+    fireEvent.focus(screen.getByRole('combobox'));
+    fireEvent.click(screen.getByRole('option', { name: /アムロジピン錠/ }));
+
+    expect(onTextChange).toHaveBeenCalledWith('アムロジピン錠');
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        drug_master_id: 'drug_1',
+        drug_code: '2171013F1024',
+        drug_name: 'アムロジピン錠',
+      }),
+    );
+  });
+
   it('surfaces a retryable error instead of a silent empty list when the search fails', async () => {
     vi.useFakeTimers();
     const refetch = vi.fn();

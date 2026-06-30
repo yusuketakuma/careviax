@@ -1,4 +1,6 @@
 import process from 'node:process';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { inspect } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { Client, type QueryResultRow } from 'pg';
@@ -18,6 +20,8 @@ export type PrescriptionLineDrugMasterBackfillOptions = {
   maxRows: number;
   sampleLimit: number;
   orgId: string | null;
+  jsonOutputPath: string | null;
+  markdownOutputPath: string | null;
 };
 
 type PgClientLike = {
@@ -106,7 +110,7 @@ export type PrescriptionLineDrugMasterBackfillResult = {
 const DEFAULT_MAX_ROWS = 5_000;
 const DEFAULT_SAMPLE_LIMIT = 20;
 const USAGE = [
-  'Usage: pnpm db:prescription-line-drug-master:backfill [--dry-run] [--max-rows N] [--sample-limit N] [--org-id ORG]',
+  'Usage: pnpm db:prescription-line-drug-master:backfill [--dry-run] [--max-rows N] [--sample-limit N] [--org-id ORG] [--json-output PATH] [--markdown-output PATH]',
   'Default mode is --dry-run. This helper is intentionally read-only; --apply is not implemented.',
 ].join('\n');
 
@@ -148,6 +152,8 @@ export function parsePrescriptionLineDrugMasterBackfillArgs(
       DEFAULT_SAMPLE_LIMIT,
     ),
     orgId: readValue(argv, '--org-id'),
+    jsonOutputPath: readValue(argv, '--json-output'),
+    markdownOutputPath: readValue(argv, '--markdown-output'),
   };
 }
 
@@ -377,6 +383,118 @@ export function summarizePrescriptionLineDrugMasterBackfillFindings(
   };
 }
 
+function markdownTableCell(value: unknown) {
+  if (value === null || value === undefined || value === '') return '-';
+  return String(value).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+
+const BACKFILL_CLASSIFICATION_ORDER: PrescriptionLineDrugMasterBackfillClassification[] = [
+  'backfillable',
+  'conflict',
+  'ambiguous_code',
+  'code_not_found',
+  'missing_code',
+  'already_resolved',
+];
+
+export function renderPrescriptionLineDrugMasterBackfillMarkdown(
+  result: PrescriptionLineDrugMasterBackfillResult,
+) {
+  const lines: string[] = [
+    '# PrescriptionLine DrugMaster Backfill Dry-Run Review',
+    '',
+    '## Summary',
+    '',
+    `- generated_at: ${result.generatedAt}`,
+    `- resolver_version: ${result.resolverVersion}`,
+    `- org_id: ${result.orgId ?? 'all'}`,
+    `- scanned_rows: ${result.scannedRows}`,
+    `- max_rows: ${result.maxRows}`,
+    `- truncated: ${result.truncated ? 'yes' : 'no'}`,
+    `- ok: ${result.ok ? 'yes' : 'no'}`,
+    `- apply_ready: ${result.applyReady ? 'yes' : 'no'}`,
+    '',
+    'Apply mode is intentionally disabled. Use this report to review safe candidates and blockers before any separately approved migration or manual correction.',
+    '',
+    '## Counts',
+    '',
+    '| classification | count |',
+    '| --- | ---: |',
+  ];
+
+  for (const classification of BACKFILL_CLASSIFICATION_ORDER) {
+    lines.push(`| ${classification} | ${result.counts[classification]} |`);
+  }
+  lines.push(`| scannedRows | ${result.counts.scannedRows} |`, '');
+
+  lines.push('## Blocking Issues', '');
+  if (result.blockingIssues.length === 0) {
+    lines.push('- None', '');
+  } else {
+    for (const issue of result.blockingIssues) {
+      lines.push(`- ${issue}`);
+    }
+    lines.push('');
+  }
+
+  lines.push('## Samples', '');
+  for (const classification of BACKFILL_CLASSIFICATION_ORDER) {
+    const samples = result.samples[classification];
+    if (samples.length === 0) continue;
+    lines.push(`### ${classification}`, '');
+    lines.push(
+      '| line_id | org_id | patient_id | intake_id | line | drug_name | source_code | drug_code | existing_master | resolved_master | resolved_yj | reason | would_update |',
+    );
+    lines.push('| --- | --- | --- | --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- |');
+    for (const sample of samples) {
+      lines.push(
+        [
+          sample.lineId,
+          sample.orgId,
+          sample.patientId,
+          sample.intakeId,
+          sample.lineNumber,
+          sample.drugName,
+          sample.sourceDrugCode,
+          sample.drugCode,
+          sample.existingDrugMasterId,
+          sample.resolvedDrugMasterId,
+          sample.resolvedDrugCode,
+          sample.reason,
+          sample.wouldUpdate ? 'yes' : 'no',
+        ]
+          .map(markdownTableCell)
+          .join(' | ')
+          .replace(/^/, '| ')
+          .replace(/$/, ' |'),
+      );
+    }
+    lines.push('');
+  }
+
+  return `${lines.join('\n').trimEnd()}\n`;
+}
+
+async function writeTextArtifact(filePath: string, content: string) {
+  await mkdir(dirname(filePath), { recursive: true });
+  await writeFile(filePath, content, 'utf8');
+}
+
+async function writePrescriptionLineDrugMasterBackfillArtifacts(
+  result: PrescriptionLineDrugMasterBackfillResult,
+  options: PrescriptionLineDrugMasterBackfillOptions,
+) {
+  if (options.jsonOutputPath) {
+    await writeTextArtifact(options.jsonOutputPath, `${JSON.stringify(result, null, 2)}\n`);
+  }
+  if (options.markdownOutputPath) {
+    await writeTextArtifact(
+      options.markdownOutputPath,
+      renderPrescriptionLineDrugMasterBackfillMarkdown(result),
+    );
+  }
+}
+
 async function readPrescriptionLineCandidates(
   client: PgClientLike,
   options: PrescriptionLineDrugMasterBackfillOptions,
@@ -489,6 +607,7 @@ async function main() {
   await client.connect();
   try {
     const result = await runPrescriptionLineDrugMasterBackfill(client, options);
+    await writePrescriptionLineDrugMasterBackfillArtifacts(result, options);
     console.log(JSON.stringify(result, null, 2));
     if (!result.ok) process.exitCode = 1;
   } finally {

@@ -25,6 +25,8 @@ import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { usePrescriptionDraft } from '@/lib/hooks/use-prescription-draft';
 import { isOfflineEncryptionUnavailableError } from '@/lib/offline/crypto';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildDrugMastersApiPath } from '@/lib/drug-masters/api-paths';
 import { PatientMcsSummarySection } from '@/components/patient-mcs/patient-mcs-summary-section';
 import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
 import { Badge } from '@/components/ui/badge';
@@ -69,6 +71,7 @@ const PRESCRIPTION_TYPEAHEAD_DEBOUNCE_MS = 250;
 type PrescriptionLineInput = {
   line_number: number;
   drug_name: string;
+  drug_master_id?: string;
   dose: string;
   frequency: string;
   days: number;
@@ -211,8 +214,8 @@ function GenericCandidatePanel({
         limit: '5',
         includeTotal: 'false',
       });
-      const res = await fetch(`/api/drug-masters?${params}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildDrugMastersApiPath(params), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('後発候補の取得に失敗しました');
       return res.json() as Promise<{ data: GenericCandidate[] }>;
@@ -808,7 +811,7 @@ export function PrescriptionIntakeForm() {
       const numberedLines = lines.map((l, i) => ({ ...l, line_number: i + 1 }));
       const res = await fetch('/api/prescription-intakes', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           case_id: selectedCaseId,
           patient_id: selectedPatientId,
@@ -857,7 +860,7 @@ export function PrescriptionIntakeForm() {
     mutationFn: async () => {
       const res = await fetch('/api/prescription-intakes/facility-batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           source_type: 'facility_batch',
           prescribed_date: prescribedDate,
@@ -906,7 +909,7 @@ export function PrescriptionIntakeForm() {
 
     const presignResponse = await fetch('/api/files/presigned-upload', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+      headers: buildOrgJsonHeaders(orgId),
       body: JSON.stringify({
         purpose: 'prescription',
         patient_id: selectedPatientId,
@@ -932,7 +935,7 @@ export function PrescriptionIntakeForm() {
 
     const completeResponse = await fetch('/api/files/complete', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+      headers: buildOrgJsonHeaders(orgId),
       body: JSON.stringify({
         file_id: presignJson.data.id,
         etag: uploadResponse.headers.get('etag') ?? undefined,
@@ -2378,7 +2381,20 @@ export function PrescriptionIntakeForm() {
                 <DrugSuggest
                   value={line.drug_name}
                   ariaLabel={`明細行 ${index + 1} の薬剤名`}
-                  onTextChange={(text) => updateLine(index, 'drug_name', text)}
+                  onTextChange={(text) => {
+                    setLines((prev) =>
+                      prev.map((currentLine, currentIndex) =>
+                        currentIndex === index
+                          ? {
+                              ...currentLine,
+                              drug_name: text,
+                              drug_master_id: undefined,
+                              drug_code: undefined,
+                            }
+                          : currentLine,
+                      ),
+                    );
+                  }}
                   onSelect={(drug: DrugSelection) => {
                     setLines((prev) =>
                       prev.map((l, i) =>
@@ -2386,6 +2402,7 @@ export function PrescriptionIntakeForm() {
                           ? ({
                               ...l,
                               drug_name: drug.drug_name,
+                              drug_master_id: drug.drug_master_id,
                               drug_code: drug.drug_code,
                               dosage_form: drug.dosage_form ?? l.dosage_form,
                               is_generic: drug.is_generic,
@@ -2534,6 +2551,7 @@ export function PrescriptionIntakeForm() {
                         ? {
                             ...currentLine,
                             drug_name: candidate.drug_name,
+                            drug_master_id: candidate.id,
                             drug_code: candidate.yj_code,
                             dosage_form: candidate.dosage_form ?? currentLine.dosage_form,
                             is_generic: true,

@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { cn } from '@/lib/utils';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildQrDraftShortcutLinks, QR_DRAFT_CONFIRM_SUCCESS_HREF } from './page.helpers';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
@@ -56,6 +57,13 @@ import {
 interface JahisQRLine {
   drugName?: string;
   drugCode?: string;
+  sourceDrugCode?: string | null;
+  sourceDrugCodeType?: string | null;
+  drugCodeResolutionStatus?: 'resolved' | 'review_required' | 'unresolved' | string | null;
+  drugCodeResolutionSource?: string | null;
+  candidateDrugMasterId?: string | null;
+  candidateDrugCode?: string | null;
+  candidateDrugName?: string | null;
   dosageForm?: string;
   dose?: string;
   frequency?: string;
@@ -130,7 +138,15 @@ interface QrScanDraft {
 
 interface DraftLine {
   drug_name: string;
+  drug_master_id: string;
   drug_code: string;
+  source_drug_code: string;
+  source_drug_code_type: string;
+  drug_code_resolution_status: 'resolved' | 'review_required' | 'unresolved' | '';
+  drug_code_resolution_source: string;
+  candidate_drug_master_id: string;
+  candidate_drug_code: string;
+  candidate_drug_name: string;
   dosage_form: string;
   dose: string;
   frequency: string;
@@ -198,7 +214,20 @@ function buildInitialLines(
 
     return {
       drug_name: line.drugName ?? '',
+      drug_master_id: '',
       drug_code: line.drugCode ?? '',
+      source_drug_code: line.sourceDrugCode ?? '',
+      source_drug_code_type: line.sourceDrugCodeType ?? '',
+      drug_code_resolution_status:
+        line.drugCodeResolutionStatus === 'resolved' ||
+        line.drugCodeResolutionStatus === 'review_required' ||
+        line.drugCodeResolutionStatus === 'unresolved'
+          ? line.drugCodeResolutionStatus
+          : '',
+      drug_code_resolution_source: line.drugCodeResolutionSource ?? '',
+      candidate_drug_master_id: line.candidateDrugMasterId ?? '',
+      candidate_drug_code: line.candidateDrugCode ?? '',
+      candidate_drug_name: line.candidateDrugName ?? '',
       dosage_form: line.dosageForm ?? '',
       dose: line.dose ?? '',
       frequency: line.frequency ?? '',
@@ -249,6 +278,21 @@ function RequiredMarker() {
   );
 }
 
+function isDrugMasterCandidateLine(line: DraftLine) {
+  return (
+    line.drug_code_resolution_status === 'review_required' &&
+    line.candidate_drug_master_id.trim().length > 0
+  );
+}
+
+function isDrugIdentityReadyForConfirm(line: DraftLine) {
+  if (line.drug_code_resolution_status === 'resolved') return line.drug_code.trim().length > 0;
+  if (line.drug_code_resolution_status === 'review_required') {
+    return line.drug_master_id.trim().length > 0;
+  }
+  return false;
+}
+
 // ── Main Page ──
 
 export default function QrDraftReviewPage() {
@@ -271,7 +315,7 @@ export default function QrDraftReviewPage() {
     queryKey: ['qr-scan-draft', id, orgId],
     queryFn: async () => {
       const res = await fetch(`/api/qr-scan-drafts/${id}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('下書きの取得に失敗しました');
       return res.json() as Promise<QrScanDraft>;
@@ -294,7 +338,7 @@ export default function QrDraftReviewPage() {
         limit: '20',
       });
       const res = await fetch(`/api/cases?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('ケースの取得に失敗しました');
       return res.json() as Promise<{ data: CaseOption[] }>;
@@ -339,7 +383,7 @@ export default function QrDraftReviewPage() {
       setConfirmError(null);
       const res = await fetch(`/api/qr-scan-drafts/${id}/confirm`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           patient_id: draft!.patient_id,
           case_id: effectiveCaseId,
@@ -349,6 +393,7 @@ export default function QrDraftReviewPage() {
           prescriber_institution: prescriberInstitution || undefined,
           lines: lines.map((l) => ({
             drug_name: l.drug_name,
+            drug_master_id: l.drug_master_id || undefined,
             drug_code: l.drug_code || undefined,
             dosage_form: l.dosage_form || undefined,
             dose: l.dose,
@@ -389,7 +434,7 @@ export default function QrDraftReviewPage() {
     mutationFn: async () => {
       const res = await fetch(`/api/qr-scan-drafts/${id}`, {
         method: 'DELETE',
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('破棄に失敗しました');
     },
@@ -404,11 +449,15 @@ export default function QrDraftReviewPage() {
 
   // Validation
   const allDaysFilled = lines.every((l) => l.days !== '' && l.days !== null && Number(l.days) > 0);
+  const unresolvedDrugIdentityLineNumbers = lines.flatMap((line, index) =>
+    isDrugIdentityReadyForConfirm(line) ? [] : [index + 1],
+  );
   const allRequiredFilled =
     allDaysFilled &&
     lines.every(
       (l) => l.drug_name.trim() !== '' && l.dose.trim() !== '' && l.frequency.trim() !== '',
     ) &&
+    unresolvedDrugIdentityLineNumbers.length === 0 &&
     !isCaseSelectionUnavailable &&
     !!effectiveCaseId &&
     !!draft?.patient_id &&
@@ -800,13 +849,25 @@ export default function QrDraftReviewPage() {
                 const isDrugMissing = line.drug_name.trim() === '';
                 const isDoseMissing = line.dose.trim() === '';
                 const isFreqMissing = line.frequency.trim() === '';
+                const hasDrugMasterCandidate = isDrugMasterCandidateLine(line);
+                const isDrugMasterCandidateConfirmed =
+                  hasDrugMasterCandidate && line.drug_master_id === line.candidate_drug_master_id;
+                const isDrugIdentityUnresolved = !isDrugIdentityReadyForConfirm(line);
+                const shouldShowDrugIdentityStatus =
+                  line.drug_code_resolution_status !== 'resolved' ||
+                  hasDrugMasterCandidate ||
+                  line.source_drug_code.trim().length > 0;
 
                 return (
                   <div
                     key={idx}
                     className={cn(
                       'rounded-lg border p-4 space-y-3',
-                      line._parseError ? 'border-destructive/40 bg-destructive/5' : 'border-border',
+                      line._parseError
+                        ? 'border-destructive/40 bg-destructive/5'
+                        : isDrugIdentityUnresolved
+                          ? 'border-state-confirm/50 bg-state-confirm/5'
+                          : 'border-border',
                     )}
                   >
                     <div className="flex items-center gap-2">
@@ -854,6 +915,70 @@ export default function QrDraftReviewPage() {
                           placeholder="例: 2171013F1028"
                         />
                       </div>
+
+                      {shouldShowDrugIdentityStatus ? (
+                        <div className="space-y-2 rounded-md border border-border/70 bg-muted/20 p-3 lg:col-span-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {line.drug_code_resolution_status === 'resolved' ? (
+                              <Badge
+                                variant="outline"
+                                className="border-transparent bg-state-done/10 text-state-done"
+                              >
+                                コード解決済み
+                              </Badge>
+                            ) : hasDrugMasterCandidate ? (
+                              <Badge
+                                variant="outline"
+                                className="border-transparent bg-state-confirm/10 text-state-confirm"
+                              >
+                                医薬品マスター確認
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="border-transparent bg-state-blocked/10 text-state-blocked"
+                              >
+                                薬剤コード未解決
+                              </Badge>
+                            )}
+                            {line.source_drug_code ? (
+                              <span className="text-xs text-muted-foreground">
+                                取込元: {line.source_drug_code_type || 'unknown'} /{' '}
+                                {line.source_drug_code}
+                              </span>
+                            ) : null}
+                          </div>
+
+                          {hasDrugMasterCandidate ? (
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="text-xs text-muted-foreground">
+                                <span className="font-medium text-foreground">候補: </span>
+                                {line.candidate_drug_name || '名称未設定'}
+                                {line.candidate_drug_code
+                                  ? ` / YJ ${line.candidate_drug_code}`
+                                  : ''}
+                              </div>
+                              <Button
+                                type="button"
+                                variant={isDrugMasterCandidateConfirmed ? 'secondary' : 'outline'}
+                                size="sm"
+                                className={cn('w-full sm:w-auto', mobileDenseButtonClassName)}
+                                disabled={isDrugMasterCandidateConfirmed}
+                                aria-label={`処方明細${idx + 1}件目の医薬品マスター候補を採用`}
+                                onClick={() =>
+                                  updateLine(idx, 'drug_master_id', line.candidate_drug_master_id)
+                                }
+                              >
+                                {isDrugMasterCandidateConfirmed ? '候補採用済み' : '候補を採用'}
+                              </Button>
+                            </div>
+                          ) : line.drug_code_resolution_status !== 'resolved' ? (
+                            <p className="text-xs text-state-confirm">
+                              医薬品マスター候補がないため、この画面では確定できません。処方登録画面で薬剤コードを確認してください。
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
 
                       {/* Dose */}
                       <div className="space-y-1">
@@ -1059,6 +1184,9 @@ export default function QrDraftReviewPage() {
             {lines.some((l) => l.dose.trim() === '') && <li>用量（すべての行）</li>}
             {lines.some((l) => l.frequency.trim() === '') && <li>用法（すべての行）</li>}
             {!allDaysFilled && <li>日数（すべての行）</li>}
+            {unresolvedDrugIdentityLineNumbers.length > 0 && (
+              <li>医薬品マスター確認（{unresolvedDrugIdentityLineNumbers.join('、')}行目）</li>
+            )}
           </ul>
         </div>
       )}

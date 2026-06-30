@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
 const { useQueryMock, useMutationMock, useOrgIdMock, searchParamsGet } = vi.hoisted(() => ({
@@ -52,7 +52,55 @@ vi.mock('@/components/features/prescriptions/jahis-supplemental-records-card', (
   JahisSupplementalRecordsCard: () => <div data-testid="jahis-records" />,
 }));
 vi.mock('@/components/features/pharmacy/drug-suggest', () => ({
-  DrugSuggest: () => <div data-testid="drug-suggest" />,
+  DrugSuggest: ({
+    value,
+    ariaLabel,
+    onTextChange,
+    onSelect,
+  }: {
+    value: string;
+    ariaLabel?: string;
+    onTextChange: (text: string) => void;
+    onSelect: (drug: {
+      drug_master_id: string;
+      drug_name: string;
+      drug_code: string;
+      dosage_form: string | null;
+      unit: string | null;
+      is_generic: boolean;
+      is_narcotic: boolean;
+      is_psychotropic: boolean;
+      max_administration_days: number | null;
+      drug_price: number | null;
+    }) => void;
+  }) => (
+    <div data-testid="drug-suggest">
+      <input
+        aria-label={ariaLabel ?? '薬剤名'}
+        value={value}
+        onChange={(event) => onTextChange(event.currentTarget.value)}
+      />
+      <button
+        type="button"
+        onClick={() =>
+          onSelect({
+            drug_master_id: 'drug_master_selected',
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2171013F1024',
+            dosage_form: '錠',
+            unit: '錠',
+            is_generic: false,
+            is_narcotic: false,
+            is_psychotropic: false,
+            max_administration_days: null,
+            drug_price: 12.3,
+          })
+        }
+      >
+        薬剤候補を選択
+      </button>
+    </div>
+  ),
 }));
 vi.mock('./prescription-period-review', () => ({
   PrescriptionPeriodReview: () => <div data-testid="period-review" />,
@@ -145,5 +193,56 @@ describe('PrescriptionIntakeForm secondary-lookup fetch-error handling', () => {
     expect(screen.getByText(/前回処方を取得できませんでした/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
     expect(refetchSpies['patient-prescriptions']).toHaveBeenCalled();
+  });
+
+  it('keeps the selected drug master id in the prescription submit payload', async () => {
+    searchParamsGet.mockImplementation((key: string) =>
+      key === 'patient_id' ? 'patient_1' : key === 'case_id' ? 'case_1' : '',
+    );
+    setupQueries({
+      'patient-cases': { data: { data: [{ id: 'case_1', status: 'active' }] } },
+      'patient-prescriptions': { data: { data: [] } },
+    });
+    useMutationMock.mockImplementation(
+      (config: { mutationFn: () => Promise<unknown> | unknown }) => ({
+        mutate: vi.fn(),
+        mutateAsync: () => config.mutationFn(),
+        isPending: false,
+      }),
+    );
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { id: 'intake_1' } }),
+    } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PrescriptionIntakeForm />);
+
+      fireEvent.click(screen.getByRole('button', { name: '薬剤候補を選択' }));
+      fireEvent.change(screen.getByLabelText('明細行 1 の用量'), { target: { value: '1錠' } });
+      fireEvent.change(screen.getByLabelText('明細行 1 の用法'), {
+        target: { value: '1日1回朝食後' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: '処方受付を登録' }));
+
+      await waitFor(() =>
+        expect(fetchMock).toHaveBeenCalledWith('/api/prescription-intakes', expect.any(Object)),
+      );
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(init.headers).toEqual({ 'Content-Type': 'application/json', 'x-org-id': 'org_1' });
+      const body = JSON.parse(String(init.body));
+      expect(body.lines[0]).toEqual(
+        expect.objectContaining({
+          drug_name: 'アムロジピン錠5mg',
+          drug_master_id: 'drug_master_selected',
+          drug_code: '2171013F1024',
+          dose: '1錠',
+          frequency: '1日1回朝食後',
+        }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

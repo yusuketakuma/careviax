@@ -27,6 +27,7 @@ const LAB_ANALYTE_CODES = new Set([
 ]);
 
 export type VisitRecordResidualMedicationInput = {
+  drug_master_id?: string;
   drug_name: string;
   drug_code?: string;
   prescribed_quantity?: number;
@@ -34,6 +35,32 @@ export type VisitRecordResidualMedicationInput = {
   remaining_quantity: number;
   is_prohibited_reduction: boolean;
 };
+
+export function collectResidualMedicationDrugMasterIds(
+  residualMedications: VisitRecordResidualMedicationInput[] | undefined,
+) {
+  const ids = new Set<string>();
+  for (const medication of residualMedications ?? []) {
+    const id = medication.drug_master_id?.trim();
+    if (id) ids.add(id);
+  }
+  return Array.from(ids);
+}
+
+export async function findMissingResidualMedicationDrugMasterIds(
+  tx: Prisma.TransactionClient,
+  residualMedications: VisitRecordResidualMedicationInput[] | undefined,
+) {
+  const ids = collectResidualMedicationDrugMasterIds(residualMedications);
+  if (ids.length === 0) return [];
+
+  const existing = await tx.drugMaster.findMany({
+    where: { id: { in: ids } },
+    select: { id: true },
+  });
+  const existingIds = new Set(existing.map((item) => item.id));
+  return ids.filter((id) => !existingIds.has(id));
+}
 
 export async function syncVisitRecordLabObservations(
   tx: Prisma.TransactionClient,
@@ -99,6 +126,7 @@ export async function replaceVisitRecordResidualMedications(
         data: {
           org_id: orgId,
           visit_record_id: visitRecordId,
+          drug_master_id: medication.drug_master_id ?? null,
           drug_name: medication.drug_name,
           drug_code: medication.drug_code,
           prescribed_quantity: medication.prescribed_quantity,

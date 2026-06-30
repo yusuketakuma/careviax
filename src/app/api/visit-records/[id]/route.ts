@@ -34,6 +34,7 @@ import {
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
 import {
+  findMissingResidualMedicationDrugMasterIds,
   replaceVisitRecordResidualMedications,
   syncVisitRecordLabObservations,
 } from '@/server/services/visit-record-derived-data';
@@ -289,6 +290,15 @@ async function authenticatedPATCH(
       }
       const schedule = existing.schedule;
       if (existing.version !== version) return 'conflict' as const;
+
+      const missingResidualMedicationDrugMasterIds =
+        await findMissingResidualMedicationDrugMasterIds(tx, residual_medications);
+      if (missingResidualMedicationDrugMasterIds.length > 0) {
+        return {
+          error: 'invalid_residual_medication_drug_master_id' as const,
+        };
+      }
+
       const normalizedStructuredSoap =
         rest.structured_soap !== undefined
           ? normalizeStructuredSoapForVisitRecordSave(
@@ -449,6 +459,11 @@ async function authenticatedPATCH(
   }
   if ('error' in updated && updated.error === 'attachment_validation') {
     return validationError(updated.message);
+  }
+  if ('error' in updated && updated.error === 'invalid_residual_medication_drug_master_id') {
+    return validationError('入力値が不正です', {
+      drug_master_id: ['存在する医薬品マスターを選択してください'],
+    });
   }
   if ('error' in updated && updated.error === 'home_visit_2026_readiness_incomplete') {
     return validationError('訪問完了には訪問薬剤管理の必須確認が必要です', {

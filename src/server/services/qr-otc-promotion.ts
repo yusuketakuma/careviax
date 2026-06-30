@@ -1,4 +1,5 @@
 import { formatUtcDateKey } from '@/lib/date-key';
+import { buildPackageLookupOr } from '@/lib/pharmacy/package-code';
 
 type MedicationIssueForQrOtc = {
   id: string;
@@ -11,6 +12,9 @@ type MedicationIssueForQrOtc = {
 type Tx = {
   patient: {
     findFirst(args: unknown): Promise<{ id: string } | null>;
+  };
+  drugPackage?: {
+    findMany(args: unknown): Promise<unknown[]>;
   };
   drugMaster?: {
     findFirst(args: unknown): Promise<{ id: string } | null>;
@@ -141,6 +145,40 @@ export function buildQrOtcMedicationProfileFromIssue(args: {
   return extractQrOtcCandidate(args.issue.description);
 }
 
+function readDrugPackageMasterId(value: unknown) {
+  if (!value || typeof value !== 'object') return null;
+  const drugMaster = (value as { drug_master?: unknown }).drug_master;
+  if (!drugMaster || typeof drugMaster !== 'object') return null;
+  const id = (drugMaster as { id?: unknown }).id;
+  return typeof id === 'string' && id ? id : null;
+}
+
+async function resolveQrOtcJanDrugMasterId(tx: Tx, janCode: string) {
+  if (tx.drugPackage) {
+    const packageMatches = await tx.drugPackage.findMany({
+      where: {
+        is_active: true,
+        OR: buildPackageLookupOr(janCode),
+      },
+      select: {
+        drug_master: {
+          select: { id: true },
+        },
+      },
+    });
+    if (packageMatches.length > 0) {
+      const masterIds = new Set(packageMatches.map(readDrugPackageMasterId).filter(Boolean));
+      return masterIds.size === 1 ? [...masterIds][0] : null;
+    }
+  }
+
+  const drugMaster = await tx.drugMaster?.findFirst({
+    where: { jan_code: janCode },
+    select: { id: true },
+  });
+  return drugMaster?.id ?? null;
+}
+
 export async function promoteResolvedQrOtcIssueToMedicationProfile(
   tx: Tx,
   args: {
@@ -164,13 +202,9 @@ export async function promoteResolvedQrOtcIssueToMedicationProfile(
   });
   if (!patient) return { promoted: false as const, reason: 'patient_not_found' as const };
 
-  const drugMaster = candidate.jan_code
-    ? ((await tx.drugMaster?.findFirst({
-        where: { jan_code: candidate.jan_code },
-        select: { id: true },
-      })) ?? null)
+  const drugMasterId = candidate.jan_code
+    ? await resolveQrOtcJanDrugMasterId(tx, candidate.jan_code)
     : null;
-  const drugMasterId = drugMaster?.id ?? null;
   const duplicateWhere = [
     ...(drugMasterId ? [{ drug_master_id: drugMasterId }] : []),
     { drug_master_id: null, drug_name: candidate.drug_name },

@@ -108,6 +108,8 @@ const planSchema = z
 
 const residualMedicationSchema = z
   .object({
+    drug_master_id: z.string().trim().nullable().optional(),
+    drug_code: z.string().trim().nullable().optional(),
     drug_name: z.string(),
     remaining_quantity: numberFieldSchema,
     excess_days: numberFieldSchema,

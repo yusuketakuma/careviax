@@ -59,22 +59,26 @@ model MedicationProfile {
 }
 
 model ResidualMedication {
-  id                      String   @id @default(cuid())
+  id                      String      @id @default(cuid())
   org_id                  String
   visit_record_id         String
+  drug_master_id          String?
+  drug_master             DrugMaster? @relation(fields: [drug_master_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
   drug_name               String
   drug_code               String?
   prescribed_quantity     Float?
   remaining_quantity      Float
   remaining_days          Int?
   excess_days             Int? // 余剰日数
-  is_reduction_target     Boolean  @default(false) // 減数調剤対象
-  is_prohibited_reduction Boolean  @default(false) // 減数調剤禁止（麻薬/抗がん剤）
-  created_at              DateTime @default(now())
-  updated_at              DateTime @updatedAt
+  is_reduction_target     Boolean     @default(false) // 減数調剤対象
+  is_prohibited_reduction Boolean     @default(false) // 減数調剤禁止（麻薬/抗がん剤）
+  created_at              DateTime    @default(now())
+  updated_at              DateTime    @updatedAt
 
   @@index([org_id])
   @@index([visit_record_id])
+  @@index([drug_master_id])
+  @@index([org_id, drug_master_id])
 }
 
 model MedicationIssue {

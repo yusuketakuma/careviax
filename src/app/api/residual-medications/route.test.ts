@@ -10,6 +10,7 @@ const {
   visitRecordFindFirstMock,
   residualMedicationFindManyMock,
   residualMedicationCreateMock,
+  drugMasterFindManyMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
@@ -20,6 +21,7 @@ const {
   visitRecordFindFirstMock: vi.fn(),
   residualMedicationFindManyMock: vi.fn(),
   residualMedicationCreateMock: vi.fn(),
+  drugMasterFindManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -95,8 +97,12 @@ describe('/api/residual-medications', () => {
       id: 'residual_1',
       visit_record_id: 'visit_1',
     });
+    drugMasterFindManyMock.mockResolvedValue([]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        drugMaster: {
+          findMany: drugMasterFindManyMock,
+        },
         residualMedication: {
           create: residualMedicationCreateMock,
         },
@@ -371,6 +377,67 @@ describe('/api/residual-medications', () => {
         is_reduction_target: true,
       }),
     });
+  });
+
+  it('persists validated DrugMaster identity when creating residual medications', async () => {
+    drugMasterFindManyMock.mockResolvedValue([{ id: 'drug_master_amlodipine' }]);
+
+    const response = await POST(
+      createRequest('http://localhost/api/residual-medications', {
+        visit_record_id: 'visit_1',
+        medications: [
+          {
+            drug_name: 'アムロジピン',
+            drug_master_id: ' drug_master_amlodipine ',
+            drug_code: ' 2149001 ',
+            prescribed_daily_dose: 1,
+            remaining_quantity: 10,
+          },
+        ],
+      }),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(drugMasterFindManyMock).toHaveBeenCalledWith({
+      where: { id: { in: ['drug_master_amlodipine'] } },
+      select: { id: true },
+    });
+    expect(residualMedicationCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        drug_master_id: 'drug_master_amlodipine',
+        drug_code: '2149001',
+      }),
+    });
+  });
+
+  it('rejects unknown residual medication DrugMaster IDs before writing', async () => {
+    drugMasterFindManyMock.mockResolvedValue([]);
+
+    const response = await POST(
+      createRequest('http://localhost/api/residual-medications', {
+        visit_record_id: 'visit_1',
+        medications: [
+          {
+            drug_name: 'アムロジピン',
+            drug_master_id: 'missing_master',
+            remaining_quantity: 10,
+          },
+        ],
+      }),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        drug_master_id: ['存在する医薬品マスターを選択してください'],
+      },
+    });
+    expect(residualMedicationCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object create payloads before visit record lookup or writes', async () => {

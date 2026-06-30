@@ -44,6 +44,7 @@ type VisitRecordConflictSnapshot = {
     soap_plan?: string | null;
     next_visit_suggestion_date?: string | null;
     residual_medications?: Array<{
+      drug_master_id?: string | null;
       drug_name: string;
       drug_code?: string | null;
       prescribed_quantity?: number | null;
@@ -85,6 +86,7 @@ function normalizeResidualMedication(value: unknown) {
 
   const drugName = readString(object.drug_name);
   const remainingQuantity = readFiniteNumber(object.remaining_quantity);
+  const drugMasterId = readOptionalString(object.drug_master_id);
   const drugCode = readOptionalString(object.drug_code);
   const prescribedQuantity = readOptionalFiniteNumber(object.prescribed_quantity);
   const prescribedDailyDose = readOptionalFiniteNumber(object.prescribed_daily_dose);
@@ -92,6 +94,7 @@ function normalizeResidualMedication(value: unknown) {
     !drugName ||
     remainingQuantity === null ||
     typeof object.is_prohibited_reduction !== 'boolean' ||
+    drugMasterId === undefined ||
     drugCode === undefined ||
     prescribedQuantity === undefined ||
     prescribedDailyDose === undefined
@@ -100,6 +103,7 @@ function normalizeResidualMedication(value: unknown) {
   }
 
   return {
+    ...(drugMasterId !== undefined ? { drug_master_id: drugMasterId } : {}),
     drug_name: drugName,
     ...(drugCode !== undefined ? { drug_code: drugCode } : {}),
     ...(prescribedQuantity !== undefined ? { prescribed_quantity: prescribedQuantity } : {}),
