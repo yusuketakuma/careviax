@@ -14016,6 +14016,19 @@ Backup directory:
 - remaining work: broad visit/report/collaboration objective remains open. Continue preserving unrelated API WIP and scanning remaining communication/schedule surfaces.
 - next action: commit the external-professional timeline link slice and notify `phos`.
 
+### 20260630-2310 JST
+
+- current task: make day-board override approval tasks open the exact reschedule proposal without exposing raw task metadata.
+- files inspected: `git status --short --branch --untracked-files=all`, memory/gbrain recall for route/schedule stale confirmation patterns, `docs/ui-ux-design-guidelines.md`, local Next route-handler docs, `src/app/api/visit-schedules/day-board/route.ts`, `src/app/api/visit-schedules/day-board/route.test.ts`, `src/app/(dashboard)/schedules/schedule-team-board.tsx`, `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`, `src/app/api/visit-schedules/[id]/reschedule/route.ts`, `src/types/schedule-day-board.ts`, and existing operational-task presentation WIP.
+- files changed: `src/app/api/visit-schedules/day-board/route.ts`, `src/app/api/visit-schedules/day-board/route.test.ts`, `src/app/(dashboard)/schedules/schedule-team-board.tsx`, and `src/app/(dashboard)/schedules/schedule-team-board.test.tsx` in commit `f4f43bd6`. This Ralph state file and `CODEX_GOAL_PROGRESS.md` are being updated as the ledger slice.
+- bugs found: day-board task serialization always returned `metadata: null`, so `visit_schedule_override_approval` tasks lost their reschedule `proposal_ids`; ScheduleTeamBoard therefore opened a generic reschedule queue instead of the exact approval target.
+- security risks found: preserved no-hidden-PHI behavior by selecting task metadata only server-side, returning a whitelist of `proposal_ids` and `source_schedule_id` for override approval tasks, and continuing to strip phone numbers and free-text notes. Focused links encode hostile proposal ids before placing them in `detail=`.
+- performance issues found: no additional query or broad scan; the change adds one selected JSON column to the existing bounded `take: 24` operational-task query and local whitelist/link construction.
+- validation commands: focused `pnpm vitest run src/app/api/visit-schedules/day-board/route.test.ts --reporter=dot --testTimeout=60000`; focused `pnpm vitest run 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=60000`; combined focused `pnpm vitest run src/app/api/visit-schedules/day-board/route.test.ts 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=60000`; scoped `pnpm exec eslint`; scoped `pnpm exec prettier --check`; scoped/full `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: day-board focused suite passed `1` file / `22` tests; ScheduleTeamBoard focused suite passed `1` file / `22` tests; combined focused suite passed `2` files / `44` tests. Scoped ESLint, scoped Prettier check, scoped/full diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed.
+- remaining work: broad schedule/prescription/route objective remains open. Continue scanning live schedule surfaces where API state context exists but the current UI still opens generic queues or lacks current-state preconditions.
+- next action: inspect remaining `/schedules` operational links and route mutation callers for generic navigation or stale-state gaps.
+
 ### 20260630-2302 JST
 
 - current task: keep tracing-report follow-up operational-task links request-type scoped.
@@ -14028,3 +14041,16 @@ Backup directory:
 - validation results: operational-task focused suite passed `1` file / `39` tests; `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `git diff --check` passed.
 - remaining work: broad visit/report/collaboration objective remains open. Continue scanning focused communication links and avoid unrelated API WIP.
 - next action: commit the tracing-report operational-task link slice and notify `phos`.
+
+### 20260630-2311 JST
+
+- current task: reject duplicate patient/report share reply request creation at the API boundary.
+- files inspected: `src/app/api/communication-requests/route.ts`, `src/app/api/communication-requests/route.test.ts`, patient/report share request helpers, current diff/stat, and validation output.
+- files changed: `src/app/api/communication-requests/route.ts` and `src/app/api/communication-requests/route.test.ts` in commit `a6bf48a7`.
+- bugs found: patient/report share reply requests had UI-side duplicate checks, but direct `POST /api/communication-requests` could still create another open `patient_share_reply_request` or `care_report_reply_request` for the same related entity and audience role.
+- security risks found: reduced duplicate/wrong-request follow-up risk by returning 409 before write side effects for already open share reply requests. Existing auth, org/RLS scope, patient/care-report access checks, write guard, no-store responses, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: adds one bounded duplicate lookup only for guarded reply request types with a related entity; generic communication requests are not broadly blocked.
+- validation commands: focused communication request Vitest; combined communication/reschedule approval Vitest; scoped ESLint and Prettier checks; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; `git diff --check`.
+- validation results: communication request focused suite passed `1` file / `39` tests; communication/reschedule API suite passed `2` files / `53` tests. Scoped ESLint, scoped Prettier, `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm format:check`, `pnpm lint`, and `git diff --check` passed.
+- remaining work: broad master/patient/schedule/collaboration objective remains open. Continue scanning direct mutation endpoints for UI-only preconditions.
+- next action: commit ledger slice and notify `phos`.

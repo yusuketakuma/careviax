@@ -27230,6 +27230,38 @@ Next loop:
   - Broad visit/report/collaboration objective remains open.
   - Concurrent communication-request and reschedule-approve API WIP remains unstaged and owner-separated.
 
+### Day Board Override Approval Focus Links - 2026-06-30 23:10 JST
+
+- Scope:
+  - Continued schedule-board hardening for reschedule approval tasks.
+  - Focused on keeping the dashboard action beside the exact reschedule proposal evidence instead of opening a generic queue.
+- Fixed:
+  - `/api/visit-schedules/day-board` now returns whitelisted operational-task metadata for `visit_schedule_override_approval`: `proposal_ids` and `source_schedule_id` only.
+  - Raw task metadata such as phone numbers or free-text notes remains stripped from the day-board response.
+  - `ScheduleTeamBoard` now routes override approval tasks to `/schedules/proposals?workspace=dashboard&status=reschedule_pending&preset=reschedule&detail=<proposal_id>` when a safe proposal id is present.
+  - Proposal ids are URL-encoded before being placed in the detail query parameter.
+- Safety:
+  - Reduces wrong-approval / wrong-queue navigation from the main schedule board while preserving the no-hidden-PHI metadata contract.
+  - Existing auth, org scope, task assignment filtering, visible-row caps, hidden task count behavior, live DB safety, migration boundaries, external sends, push/deploy, and secret handling remain unchanged.
+- Performance:
+  - Adds one selected JSON column to the existing bounded `take: 24` operational-task query and local whitelist/link construction only.
+- Validation:
+  - Day-board focused Vitest passed `1` file / `22` tests.
+  - ScheduleTeamBoard focused Vitest passed `1` file / `22` tests.
+  - Combined focused suite passed `2` files / `44` tests.
+  - Scoped ESLint: passed.
+  - Scoped Prettier check: passed.
+  - Scoped/full `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Commit:
+  - `f4f43bd6 fix(schedules): focus override approval tasks`
+- Remaining:
+  - Broad schedule/prescription/route objective remains open.
+  - Continue scanning live schedule surfaces where API state context exists but the UI still opens generic queues or lacks current-state preconditions.
+
 ### Tracing Follow-Up Task Link Scope - 2026-06-30 23:02 JST
 
 - Scope:
@@ -27251,3 +27283,35 @@ Next loop:
 - Remaining:
   - Broad visit/report/collaboration objective remains open.
   - Continue scanning focused communication links and avoid unrelated API WIP.
+
+### Share Reply / Reschedule Stale-State Guards - 2026-06-30 23:10 JST
+
+- Scope:
+  - Continued patient/share communication and schedule mutation hardening.
+  - Focused on duplicate reply-request creation, stale reschedule approval, and dashboard task links for override approvals.
+- Fixed:
+  - `a6bf48a7 fix(communications): reject duplicate share reply requests`
+    - `POST /api/communication-requests` now rejects open duplicates for `patient_share_reply_request` and `care_report_reply_request` before creating another request.
+  - `8ecad854 fix(schedules): guard reschedule approvals`
+    - Direct reschedule approval accepts `expected_override_id`, rejects blank/malformed payloads before DB work, and returns 409 when the pending override differs.
+  - `f4f43bd6 fix(schedules): focus override approval tasks`
+    - Day-board operational tasks expose only safe override metadata and schedule-team-board links override approval tasks to the focused reschedule proposal.
+- Safety:
+  - Reduces duplicate/wrong-request follow-up, stale approval, and wrong-list navigation risks.
+  - Day-board metadata preserves proposal/source schedule ids only and strips phone numbers/free-text notes from operational task metadata.
+  - Existing auth, org/RLS scope, permission checks, no-store responses, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- Performance:
+  - Adds one bounded duplicate lookup only for guarded reply request types and reuses existing override/task rows.
+- Validation:
+  - Communication/reschedule API Vitest passed `2` files / `53` tests.
+  - Day-board/team-board Vitest passed `2` files / `44` tests.
+  - Scoped ESLint: passed.
+  - Scoped Prettier check: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master/patient/schedule/collaboration objective remains open.
+  - Continue scanning direct mutation endpoints and dashboard/task links for stale-state or wrong-target drift.
