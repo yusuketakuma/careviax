@@ -30,6 +30,64 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### CareReport Family Contact Send Source - 2026-07-01 08:09 JST
+
+- Scope:
+  - Continued report send and multi-professional/family cooperation hardening for `POST /api/care-reports/[id]/send`.
+  - Focused on `family_share` direct/manual send validation against seed-backed patient contacts.
+- Fixed:
+  - Known-source validation now also reads the target patient's `ContactParty` rows.
+  - Patient contacts are matched through the same `SHARE_AUDIENCES` relation mapping used by the report share UI.
+  - Family-share sends can now validate spouse/child/parent/sibling contacts when recipient name and channel-specific contact match.
+  - A route test locks the family-share path using a `child` contact and verifies the response keeps `recipient_role: family`.
+- Safety:
+  - Keeps strict validation: recipient role must map to the report type, contact relation must match the role's audience, recipient name must match the contact name/organization, and contact value must match the chosen channel.
+  - Preserves existing permission checks, stale report/version checks, source freshness gates, idempotency behavior, delivery audit, RLS write transaction, live DB data, migrations, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds one patient-scoped `contactParty.findMany` during known-source validation.
+  - The query is bounded by `org_id` and `patient_id`, and runs in the existing parallel source lookup group.
+- Validation:
+  - `pnpm exec vitest run src/app/api/care-reports/'[id]'/send/route.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `64` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on care-report send files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit-time, report, and multi-professional cooperation objective remains open.
+  - Report-scoped external access grant send wiring remains blocked on OTP delivery/security product decision.
+
+### Patient Conditions Optimistic Revision Boundary - 2026-07-01 08:10 JST
+
+- Scope:
+  - Continued patient-information management hardening for `/api/patients/[id]/conditions`.
+  - Focused on condition replacement safety, stale-write prevention, and patient-visible field revision evidence.
+- Fixed:
+  - GET now returns `metadata.expected_updated_at` from `patient.updated_at` so callers have a concrete version token for condition replacement.
+  - PUT now requires `expected_updated_at`, claims the patient row by matching `updated_at`, and returns a no-store `409` when another operation already changed the patient condition basis.
+  - Condition replacement now writes patient field revision evidence for `conditions` and records a redacted `patient_conditions_replaced` audit event inside the org/RLS transaction.
+  - Audit changes capture counts, type counts, active/primary counts, and boolean metadata while omitting condition names and note body text.
+  - Tests lock no-store response coverage, stale-version behavior, redacted audit payloads, revision writer delegation, and sanitized unexpected-error responses.
+- Safety:
+  - Reduces lost-update risk for patient condition edits and adds operator-visible revision provenance without leaking free-text condition details into audit changes.
+  - Preserves existing canVisit permission, assignment checks, archived-patient guard, response shape for condition rows, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds one conditional patient-row update and bounded before/after condition reads inside the existing replacement transaction.
+  - Adds no dependency, polling, background job, external call, broad scan, render fan-out, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/patients/'[id]'/conditions/route.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `14` tests.
+  - `pnpm exec vitest run src/app/api/patients/'[id]'/conditions/route.test.ts src/app/api/care-reports/'[id]'/send/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `80` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on patient-condition and care-report send files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master-management and patient-information objective remains open.
+  - Frontend callers should continue using the returned version token when condition editing UI is expanded beyond the current route contract.
+
 ### Patient Form Helper Boundary - 2026-07-01 08:02 JST
 
 - Scope:
