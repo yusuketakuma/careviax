@@ -30,6 +30,36 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Report Resend Deep Link - 2026-07-01 08:24 JST
+
+- Scope:
+  - Continued report and multi-professional cooperation hardening for the report workspace retry path.
+  - Focused on failed/response-waiting delivery actions in `GET /api/care-reports/today-workspace`, `/reports`, and `/reports/[id]`.
+- Fixed:
+  - Added `buildReportSendHref()` so send/resend query params are built outside the encoded report id path segment.
+  - Response-waiting delivery actions now link to `/reports/{id}?action=resend&delivery_id={delivery}` instead of only the report detail top.
+  - Failed delivery summaries and open issues now reuse the same resend deep link.
+  - Report detail reads the resend query and opens the existing safety-checked resend dialog.
+  - When the referenced delivery record is present in the authorized report detail payload, the dialog pre-fills channel, recipient name, contact, and inferred recipient role.
+- Safety:
+  - Keeps all actual send behavior inside the existing `/api/care-reports/[id]/send` path with permission, known-source, stale-version, safety acknowledgement, idempotency, audit, delivery-record retry, and failure-sanitization gates.
+  - The query delivery id is used only to select an already loaded delivery record from the report detail response; it does not authorize access or bypass validation.
+  - Preserves existing auth/RLS policy, schema, migrations, external-send implementation, live DB data, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds only URL construction, query-param parsing, and client-side form derivation from already loaded delivery records.
+  - Adds no DB query, dependency, polling, background job, broad scan, render fan-out, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/reports/navigation.test.ts src/app/api/care-reports/today-workspace/route.test.ts src/app/'(dashboard)'/reports/'[id]'/page.test.tsx src/app/'(dashboard)'/reports/report-share-workspace.test.tsx --reporter=dot --testTimeout=60000`: passed, `4` files / `85` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on report resend deep-link files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit-time, report, and multi-professional cooperation objective remains open.
+  - Report-scoped external access grant send wiring remains blocked on OTP delivery/security product decision.
+
 ### PCA Pump Master Helper Boundary - 2026-07-01 08:23 JST
 
 - Scope:
