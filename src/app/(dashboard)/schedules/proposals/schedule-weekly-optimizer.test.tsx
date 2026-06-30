@@ -398,7 +398,15 @@ describe('ScheduleWeeklyOptimizer', () => {
       }
       if (queryKey[0] === 'visit-schedule-proposals') {
         return {
-          data: { data: [buildWeeklyProposal()] },
+          data: {
+            data: [
+              buildWeeklyProposal({
+                medication_end_date: '2026-04-08',
+                visit_deadline_date: '2026-04-09',
+                proposal_reason: 'アムロジピン増量 / 処方詳細 変更 / 患者条件 09:00-12:00',
+              }),
+            ],
+          },
           isLoading: false,
           connected: true,
         };
@@ -425,6 +433,10 @@ describe('ScheduleWeeklyOptimizer', () => {
     expect(within(dialog).getByText('佐藤太郎')).toBeTruthy();
     expect(within(dialog).getByText('#2 → #1')).toBeTruthy();
     expect(within(dialog).getByText('#1 → #2')).toBeTruthy();
+    expect(within(dialog).getByText(/薬剤判断: 服薬最終日 2026\/04\/08/)).toBeTruthy();
+    expect(within(dialog).getByText(/開始日前配薬 2026\/04\/09までの候補/)).toBeTruthy();
+    expect(within(dialog).getByText(/薬剤根拠 候補理由に根拠あり/)).toBeTruthy();
+    expect(within(dialog).getByText(/患者希望枠で順路 1/)).toBeTruthy();
     expect(dialog.textContent ?? '').not.toContain('東京都渋谷区3-3-3');
     expect(dialog.textContent ?? '').not.toContain('090-1111-2222');
     expect(dialog.textContent ?? '').not.toContain('アムロジピン');

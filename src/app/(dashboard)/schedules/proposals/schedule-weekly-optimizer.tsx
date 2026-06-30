@@ -51,6 +51,7 @@ import { useRouteOrderDraft } from '../route-order-draft';
 import { mergeScheduleProposalSearchParams } from './proposal-query-state';
 import {
   AUTO_VEHICLE_RESOURCE_VALUE,
+  buildSafeMedicationConfirmationFacts,
   formatNullableTimeOfDay,
   formatNullableTimeRange,
   formatShortEntityIdentifier,
@@ -156,6 +157,11 @@ type MixedRouteItem = {
   timeWindowStart: string | null;
   timeWindowEnd: string | null;
   routeOrder: number | null;
+  medicationEndDate: string | null;
+  proposedDate: string | null;
+  proposalReason: string | null;
+  visitDeadlineDate: string | null;
+  priority: VisitPriority | null;
 };
 
 type ProposalGenerationDiagnostics = ProposalGenerationDiagnosticsCardData;
@@ -346,6 +352,11 @@ function buildMixedRouteItems(args: {
       timeWindowStart: schedule.time_window_start,
       timeWindowEnd: schedule.time_window_end,
       routeOrder: schedule.route_order,
+      medicationEndDate: null,
+      proposedDate: null,
+      proposalReason: null,
+      visitDeadlineDate: null,
+      priority: null,
     })),
     ...args.proposals.map((proposal) => ({
       routeId: `proposal:${proposal.id}`,
@@ -355,6 +366,11 @@ function buildMixedRouteItems(args: {
       timeWindowStart: proposal.time_window_start,
       timeWindowEnd: proposal.time_window_end,
       routeOrder: proposal.route_order,
+      medicationEndDate: proposal.medication_end_date,
+      proposedDate: proposal.proposed_date,
+      proposalReason: proposal.proposal_reason,
+      visitDeadlineDate: proposal.visit_deadline_date,
+      priority: proposal.priority,
     })),
   ].sort(compareMixedRouteItems);
 }
@@ -772,6 +788,19 @@ export function ScheduleWeeklyOptimizer({
           return {
             ...item,
             currentOrder: currentIndex >= 0 ? currentIndex + 1 : null,
+            medicationSummary:
+              item.itemType === 'proposal' && item.priority && item.proposedDate
+                ? buildSafeMedicationConfirmationFacts({
+                    medication_end_date: item.medicationEndDate,
+                    priority: item.priority,
+                    proposal_reason: item.proposalReason ?? '',
+                    proposed_date: item.proposedDate,
+                    route_order: index + 1,
+                    visit_deadline_date: item.visitDeadlineDate,
+                  })
+                    .map((fact) => `${fact.label} ${fact.value}`)
+                    .join(' / ')
+                : null,
             nextOrder: index + 1,
           };
         })
@@ -1828,6 +1857,11 @@ export function ScheduleWeeklyOptimizer({
                       {formatNullableTimeRange(row.timeWindowStart, row.timeWindowEnd)} / ID{' '}
                       {formatShortEntityIdentifier(row.itemId)}
                     </p>
+                    {row.medicationSummary ? (
+                      <p className="mt-1 text-xs text-state-confirm">
+                        薬剤判断: {row.medicationSummary}
+                      </p>
+                    ) : null}
                   </div>
                   <p className="text-sm font-medium text-foreground">
                     #{row.currentOrder ?? '-'} → #{row.nextOrder}
@@ -1837,7 +1871,7 @@ export function ScheduleWeeklyOptimizer({
             </div>
 
             <p className="text-xs leading-5 text-muted-foreground">
-              住所、電話番号、薬剤名、処方の細部はこの確認画面には表示しません。対象セルと順路が一致している場合のみ反映してください。
+              住所、電話番号、薬剤名、処方の細部はこの確認画面には表示しません。対象セル、順路、候補の薬剤判断サマリーが一致している場合のみ反映してください。
             </p>
           </div>
 
