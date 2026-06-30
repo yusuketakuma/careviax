@@ -313,6 +313,7 @@ describe('buildPatientWorkspace', () => {
       expect.objectContaining({
         id: 'visit-visit_1',
         time_label: '13:30',
+        href: '/schedules?focus=schedule&schedule_id=visit_1',
       }),
     ]);
     expect(result?.recent_activities).toHaveLength(4);

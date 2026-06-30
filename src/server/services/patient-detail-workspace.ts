@@ -15,6 +15,7 @@ import {
 import { findPreviousPrescriptionIntakeForMedicationDiff } from '@/server/services/prescription-intake-pair';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
 
@@ -330,7 +331,7 @@ export async function buildPatientWorkspace(db: DbClient, args: BuildPatientWork
         ? (timeDateToString(visit.time_window_start) ?? '時間未定')
         : '時間未定',
       label: '訪問',
-      href: '/schedules',
+      href: buildScheduleFocusHref(visit.id),
       action_label: '訪問へ',
       due_time: null,
     })),
