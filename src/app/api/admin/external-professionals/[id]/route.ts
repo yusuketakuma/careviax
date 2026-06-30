@@ -1,6 +1,6 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
-import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -155,9 +155,22 @@ const authenticatedDELETE = withAuthContext<{ id: string }>(
 
     const existing = await prisma.externalProfessional.findFirst({
       where: { id, org_id: ctx.orgId },
-      select: { id: true },
+      select: {
+        id: true,
+        _count: {
+          select: {
+            care_team_links: true,
+          },
+        },
+      },
     });
     if (!existing) return notFound('他職種が見つかりません');
+    const linkedPatients = existing._count?.care_team_links ?? 0;
+    if (linkedPatients > 0) {
+      return conflict('担当患者に紐づく他職種マスターは削除できません', {
+        linked_patient_count: linkedPatients,
+      });
+    }
 
     await withOrgContext(ctx.orgId, async (tx) => {
       await tx.externalProfessional.delete({ where: { id } });

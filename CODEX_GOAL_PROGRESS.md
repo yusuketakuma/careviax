@@ -29173,9 +29173,41 @@ Next loop:
 - Validation:
   - `pnpm exec vitest run src/server/services/visit-route-engine.test.ts src/server/services/visit-route-engine.locked.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `19` tests.
   - Related suite `pnpm exec vitest run src/server/services/visit-route-engine.test.ts src/server/services/visit-route-engine.locked.test.ts src/app/api/visit-routes/route.test.ts src/app/api/visit-routes/route.locked.test.ts 'src/app/api/visit-preparations/[scheduleId]/route.test.ts' 'src/app/api/visit-schedule-proposals/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `6` files / `153` tests.
-  - Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm lint`, and full `git diff --check`: passed.
-  - `pnpm typecheck` and `pnpm typecheck:no-unused`: failed only in unowned `src/app/(dashboard)/admin/external-professionals/external-professionals-content.tsx` where `facility_id: string | null` is returned into `FormState.facility_id: string`.
-  - `pnpm format:check`: failed only on the same unowned external-professionals file.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check: passed.
+  - `pnpm typecheck --pretty false`: passed after the external-professionals validation blocker was claimed and fixed separately.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
 - Remaining:
   - Broad schedule/prescription/route-management objective remains open.
-  - Full gates are currently blocked by unowned external-professionals WIP; preserve those files outside this route slice.
+  - Further follow-ups include route feasibility scoring and route-application audit hardening.
+
+### External Professionals Real Master Editor - 2026-07-01 06:12 JST
+
+- Scope:
+  - Continued multidisciplinary collaboration implementation.
+  - Focused on `/admin/external-professionals`, which is the master source for patient care teams, report recipients, and contact-profile reuse.
+- Fixed:
+  - Replaced the fabricated sample `MasterEditorView` page with a real `ExternalProfessionalsContent` screen backed by existing external-professional APIs.
+  - Added real list/search/count display, facility-option loading, create/update sheet, delete confirmation, PH-OS 44px touch targets, and fetch-error vs empty-state separation.
+  - Added external-professional API path helpers that encode ids and reject exact dot segments.
+  - The UI prevents delete when `patient_count > 0`, and `DELETE /api/admin/external-professionals/[id]` now returns `409` before side effects when linked care-team rows exist.
+  - Fixed the Base UI Select nullability mismatch by normalizing empty facility selection to the existing `NONE_VALUE` sentinel before writing `FormState.facility_id`.
+- Safety:
+  - Reduces false-operational master risk and protects patient care-team references from accidental master deletion.
+  - Preserves existing canVisit/canAdmin permissions, org/RLS scoping, create/update validation, sensitive no-store responses, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds bounded React Query reads for external-professionals and facility options plus local filtering only.
+  - No backend query shape expansion beyond the delete route `_count` precheck, no new dependency, external call, polling, broad fan-out, background job, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/external-professionals/external-professionals-content.test.tsx' src/lib/external-professionals/api-paths.test.ts src/app/api/admin/external-professionals/route.test.ts 'src/app/api/admin/external-professionals/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `4` files / `44` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on external-professionals and route-engine files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit/report/collaboration objective remains open.
+  - External-professional patient-link management and report-send recipient selection from the master remain follow-ups.

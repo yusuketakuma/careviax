@@ -304,6 +304,11 @@ describe('/api/admin/external-professionals/[id]', () => {
   });
 
   it('deletes an external professional row', async () => {
+    externalProfessionalFindFirstMock.mockResolvedValueOnce({
+      id: 'external_1',
+      _count: { care_team_links: 0 },
+    });
+
     const response = (await DELETE(createDeleteRequest(), {
       params: Promise.resolve({ id: 'external_1' }),
     }))!;
@@ -313,6 +318,27 @@ describe('/api/admin/external-professionals/[id]', () => {
     expect(externalProfessionalDeleteMock).toHaveBeenCalledWith({
       where: { id: 'external_1' },
     });
+  });
+
+  it('returns 409 before deleting an external professional linked to patients', async () => {
+    externalProfessionalFindFirstMock.mockResolvedValueOnce({
+      id: 'external_1',
+      _count: { care_team_links: 2 },
+    });
+
+    const response = (await DELETE(createDeleteRequest(), {
+      params: Promise.resolve({ id: 'external_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '担当患者に紐づく他職種マスターは削除できません',
+      details: { linked_patient_count: 2 },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(externalProfessionalDeleteMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when deletes fail unexpectedly', async () => {
