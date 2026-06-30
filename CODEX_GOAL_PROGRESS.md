@@ -30,6 +30,30 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Report Workspace Visit Action Focus Links - 2026-06-30 19:15 JST
+
+- Scope:
+  - Continued report-feature and visit-time navigation cleanup in `/api/care-reports/today-workspace`.
+  - Read local Next.js Route Handler docs before editing the `app/api` route. No UI layout, schema migration, live DB operation, auth/RLS change, external send, push/deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Report draft rows for scheduled or unfinished visits now route `→ 訪問へ` to `buildVisitRecordHref(schedule.id)` instead of generic `/visits`.
+  - Regression coverage asserts hostile schedule-id encoding and unfinished-visit-record rows preserving the concrete schedule record route.
+- Safety:
+  - Reduces wrong-schedule / wrong-patient navigation risk when staff move from the report workspace into the visit record before drafting or completing reports.
+  - Uses the shared visit navigation helper instead of local path construction.
+- Performance:
+  - Reuses already-loaded `schedule.id`; link construction is in-memory only.
+  - No new query, dependency, network call, background job, payload expansion, render loop, or broad scan was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/care-reports/today-workspace/route.test.ts src/lib/visits/navigation.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `31` tests.
+  - Scoped ESLint on care-reports today-workspace and visit-navigation files: passed.
+  - Scoped Prettier write/check on care-reports today-workspace and visit-navigation files: passed.
+  - Scoped `git diff --check` on care-reports today-workspace files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Continue scanning visit-time/report/collaboration and patient-information surfaces for generic action links or missing relation filters.
+
 ### Escalation Rule Counted Metadata - 2026-06-30 19:09 JST
 
 - Scope:
@@ -80,6 +104,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm typecheck:no-unused`: passed.
 - Remaining:
   - Continue scanning visit-time/report/collaboration and patient-information surfaces for generic action links, missing relation filters, false-empty states, and hidden truncated master data.
+
+### Patient Home-Care Schedule Feature Focus Links - 2026-06-30 19:08 JST
+
+- Scope:
+  - Continued visit-time feature summary cleanup for patient-specific home-care schedule features.
+  - No UI layout, schema migration, live DB operation, auth/RLS change, external send, push/deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Patient home-care `previsit_preparation_pack`, `carry_item_fallback`, and `mobile_visit_mode` features now focus the exact schedule row when their evidence set contains exactly one schedule.
+  - Multi-schedule cases keep the existing aggregate schedule action, avoiding a misleading single-row jump.
+  - Regression coverage asserts hostile schedule-id encoding for the three single-schedule actions.
+- Safety:
+  - Reduces wrong-schedule / wrong-patient navigation risk when staff follow patient home-care feature summaries during visit preparation.
+  - Uses the shared schedule navigation helper instead of local query-string construction.
+- Performance:
+  - Reuses already-loaded bounded `upcomingSchedules`; link construction is in-memory only.
+  - No new query, dependency, network call, background job, payload expansion, render loop, or broad scan was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/home-care-ops.test.ts src/lib/schedules/navigation.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `15` tests.
+  - Scoped ESLint on home-care and schedule navigation files: passed.
+  - Scoped Prettier check on home-care and schedule navigation files: passed.
+  - Scoped `git diff --check` on home-care files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: blocked by unrelated dirty `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx` WIP with unused `escalationLoading` / `escalationListSummary`; Codex was notified via agmsg.
+- Remaining:
+  - Continue scanning visit-time/report/collaboration and patient-information surfaces for generic action links or missing relation filters.
+  - Preserve unrelated dirty admin notification/escalation files.
 
 ### Patient Workspace Visit Schedule Focus Links - 2026-06-30 18:42 JST
 

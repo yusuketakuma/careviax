@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-1915 JST
+
+- current task: focus report today-workspace pre-report visit actions on the exact visit-record entry route.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox for `phos/codex2`, `gbrain search "CareViaX visit report collaboration generic action link schedule report patient" --limit 8`, local Next.js Route Handler docs, generic action-link search results, `src/app/api/care-reports/today-workspace/route.ts`, `src/app/api/care-reports/today-workspace/route.test.ts`, `src/lib/visits/navigation.ts`, `src/lib/visits/navigation.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/care-reports/today-workspace/route.ts`, `src/app/api/care-reports/today-workspace/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: report draft rows for scheduled or unfinished visits had a concrete `schedule.id` but linked the row action to generic `/visits`, dropping the exact visit-entry context before report drafting.
+- security risks found: reduced wrong-schedule / wrong-patient navigation risk by routing pre-report visit actions through `buildVisitRecordHref(schedule.id)` with encoded path segments. No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- performance issues found: link construction over already-loaded schedule ids only; no query, dependency, network call, background job, payload expansion, broad scan, or render loop changed.
+- validation commands: focused care-reports today-workspace/visit-navigation Vitest; scoped ESLint; scoped Prettier write/check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused Vitest passed `2` files / `31` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- remaining work: commit the two owned care-reports files and ledger files, send agmsg FYI, then continue scanning visit/report/collaboration surfaces for generic action links or missing relation filters.
+- next action: commit `Focus report workspace visit actions`, send agmsg FYI, and continue the next clean slice.
+
 ### 20260630-1909 JST
 
 - current task: continue master-management hardening by adding counted-list metadata to escalation-rule masters and surfacing hidden-row state in notification settings.
@@ -32,6 +45,19 @@ Backup directory:
 - validation results: focused escalation API/UI suite passed `2` files / `18` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
 - remaining work: commit only the four owned escalation API/UI files and the escalation ledger hunks, then continue scanning notification rules, webhooks, shift templates, vehicle resources, and other master/patient selectors.
 - next action: commit `Count escalation rule list metadata`, then recheck dirty ownership before selecting the next slice.
+
+### 20260630-1908 JST
+
+- current task: focus patient home-care schedule preparation feature actions on the exact schedule when only one schedule is implicated.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox for `phos/codex2`, `src/server/services/home-care-ops.ts`, `src/server/services/home-care-ops.test.ts`, `src/lib/schedules/navigation.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/server/services/home-care-ops.ts`, `src/server/services/home-care-ops.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Unrelated dirty admin notification/escalation files were preserved.
+- bugs found: patient home-care features for visit preparation, carry-item fallback, and mobile sync had the implicated patient schedule ids loaded, but still inherited generic schedule actions when exactly one schedule needed attention.
+- security risks found: reduced wrong-schedule / wrong-patient navigation risk by routing only single-schedule feature actions through `buildScheduleFocusHref(schedule.id)`; multi-schedule cases keep the aggregate list action. No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- performance issues found: link construction over already-loaded bounded schedule rows only; no new query, dependency, network call, background job, payload expansion, broad scan, or loop changed.
+- validation commands: focused home-care/schedule-navigation Vitest; scoped ESLint; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused Vitest passed `2` files / `15` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, and `pnpm typecheck` passed. `pnpm typecheck:no-unused` failed only on unrelated dirty notification/escalation WIP: unused `escalationLoading` and `escalationListSummary` in `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`; Codex was notified via agmsg and this slice did not touch those files.
+- remaining work: commit only the two owned home-care files and ledger files, then continue scanning visit/report/collaboration and patient-information surfaces for generic action links or missing relation filters.
+- next action: commit `Focus home care schedule feature links`, send agmsg FYI, and continue the next clean slice.
 
 ### 20260630-1858 JST
 
