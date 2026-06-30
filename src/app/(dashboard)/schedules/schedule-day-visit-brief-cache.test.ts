@@ -251,6 +251,11 @@ describe('schedule day visit brief cache helpers', () => {
     const fetchBatch = vi.fn(async () => ({
       data: {
         schedule_missing_late: {
+          archive: {
+            status: 'archived',
+            archived: true,
+            archived_at: '2026-06-30T09:00:00.000Z',
+          },
           ai_summary: {
             headline: 'Late visit',
             must_check_today: ['Bring medication'],
@@ -328,6 +333,11 @@ describe('schedule day visit brief cache helpers', () => {
       isFallback: true,
     });
     expect(cards[1]).toMatchObject({
+      patientArchive: {
+        status: 'archived',
+        archived: true,
+        archived_at: '2026-06-30T09:00:00.000Z',
+      },
       facilityLabel: 'Facility A',
       siteName: 'Site A',
       headline: 'Late visit',

@@ -306,6 +306,28 @@ describe('ScheduleDayOfflinePanel', () => {
     expect(screen.getByText('- eGFR 38 mL/min/1.73m2 / 測定日 2026-04-01 / 異常 L')).toBeTruthy();
   });
 
+  it('marks archived patients in cached offline visit briefs', () => {
+    render(
+      <ScheduleDayOfflinePanel
+        {...panelProps({
+          cachedVisitBriefs: [
+            {
+              ...cachedBrief,
+              patientArchive: {
+                status: 'archived',
+                archived: true,
+                archived_at: '2026-06-30T09:00:00.000Z',
+              },
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: '患者A' })).toBeTruthy();
+    expect(screen.getByText('アーカイブ中')).toBeTruthy();
+  });
+
   it('marks generated cached briefs with no must-check items explicitly', () => {
     render(
       <ScheduleDayOfflinePanel

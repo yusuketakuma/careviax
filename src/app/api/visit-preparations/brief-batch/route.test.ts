@@ -224,6 +224,62 @@ describe('/api/visit-preparations/brief-batch POST', () => {
     expect(serialized).not.toContain('duration_ms');
   });
 
+  it('returns patient archive state without exposing patient identity in batch summaries', async () => {
+    visitScheduleFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        pharmacist_id: 'user_1',
+        case_: {
+          patient_id: 'patient_archived',
+          primary_pharmacist_id: 'user_1',
+          backup_pharmacist_id: null,
+        },
+      },
+    ]);
+    scheduleVisitBriefsForSchedulesMock.mockResolvedValueOnce(
+      new Map([
+        [
+          'schedule_1',
+          {
+            ...brief,
+            patient: {
+              id: 'patient_archived',
+              name: '患者アーカイブ',
+              archive: {
+                status: 'archived',
+                archived: true,
+                archived_at: '2026-06-30T09:00:00.000Z',
+              },
+            },
+          },
+        ],
+        ['schedule_2', brief],
+      ]),
+    );
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_ids: ['schedule_1'],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body.data.schedule_1.archive).toEqual({
+      status: 'archived',
+      archived: true,
+      archived_at: '2026-06-30T09:00:00.000Z',
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('patient_archived');
+    expect(serialized).not.toContain('患者アーカイブ');
+  });
+
   it('returns forbidden when any requested schedule is outside assignment scope', async () => {
     canAccessVisitScheduleAssignmentMock.mockReturnValueOnce(true).mockReturnValueOnce(false);
 
