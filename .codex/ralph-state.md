@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0059 JST
+
+- current task: guard communication follow-up resolution against stale linked tracing-report acknowledgment.
+- files inspected: `git status --short --branch --untracked-files=all`, agmsg inbox, `src/app/api/communication-requests/[id]/resolve-followup/route.ts`, `src/app/api/communication-requests/[id]/resolve-followup/route.test.ts`, `src/app/api/communication-requests/[id]/route.ts`, `src/app/api/tracing-reports/[id]/route.ts`, `prisma/schema/communication.prisma`, verifier output, and validation output.
+- files changed: `src/app/api/communication-requests/[id]/resolve-followup/route.ts`, `src/app/api/communication-requests/[id]/resolve-followup/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: follow-up resolution closed the communication request and then acknowledged a linked tracing report with an id-only update, so a concurrently changed tracing report could receive stale acknowledgment metadata or cause mixed response/task/audit side effects.
+- security risks found: reduced stale interprofessional response and tracing-report acknowledgment risk by claiming the linked tracing report with `org_id`, `patient_id`, `case_id`, `status`, `sent_at`, and `acknowledged_at` predicates before response, task, and audit side effects. Existing auth, care-report communication permission, patient/archive writability checks, follow-up digest audit minimization, no-store wrappers, PHI/error sanitization, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: adds one narrow conditional `updateMany` claim for already-loaded linked tracing reports. No new broad scans, external calls, dependencies, background jobs, render paths, or unbounded loops were added.
+- validation commands: `pnpm vitest run 'src/app/api/communication-requests/[id]/resolve-followup/route.test.ts' --reporter=dot --testTimeout=60000`; `pnpm exec eslint --max-warnings=0 'src/app/api/communication-requests/[id]/resolve-followup/route.ts' 'src/app/api/communication-requests/[id]/resolve-followup/route.test.ts'`; verifier focused Vitest and `git diff --check`; `pnpm typecheck --pretty false`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`; `git diff --check`.
+- validation results: focused Vitest passed `1` file / `10` tests; scoped ESLint passed; verifier found no blockers and reran focused Vitest / diff-check successfully; `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and `git diff --check` passed. A raw scoped Prettier check including the large progress ledger hit Node heap OOM, then `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check ...` passed. Verifier noted the unit mock does not itself prove real DB rollback, but `withOrgContext` uses Prisma `$transaction`.
+- remaining work: broad visit/report/interprofessional collaboration objective remains open. Unrelated patient archive WIP is present in `src/lib/patient/archive-summary.ts`, `src/lib/visits/visit-brief-cache.ts`, `src/types/schedule-day-board.ts`, and `src/types/visit-brief.ts`; preserve it outside this commit.
+- next action: commit only the communication follow-up tracing-report claim guard plus ledgers, send agmsg FYI, then continue the next bounded visit/report/collaboration gap.
+
 ### 20260701-0051 JST
 
 - current task: guard visit-record creation against stale visit-schedule status claims.

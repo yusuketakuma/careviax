@@ -9,7 +9,7 @@ const {
   communicationResponseFindFirstMock,
   communicationResponseCreateMock,
   tracingReportFindFirstMock,
-  tracingReportUpdateMock,
+  tracingReportUpdateManyMock,
   taskUpsertMock,
   auditLogCreateMock,
   careCaseFindFirstMock,
@@ -23,7 +23,7 @@ const {
   communicationResponseFindFirstMock: vi.fn(),
   communicationResponseCreateMock: vi.fn(),
   tracingReportFindFirstMock: vi.fn(),
-  tracingReportUpdateMock: vi.fn(),
+  tracingReportUpdateManyMock: vi.fn(),
   taskUpsertMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
@@ -114,7 +114,7 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
     communicationResponseCreateMock.mockResolvedValue({ id: 'response_1' });
     taskUpsertMock.mockResolvedValue({ id: 'task_1' });
     tracingReportFindFirstMock.mockResolvedValue(null);
-    tracingReportUpdateMock.mockResolvedValue({ id: 'tracing_1' });
+    tracingReportUpdateManyMock.mockResolvedValue({ count: 1 });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1', archived_at: null });
@@ -129,7 +129,7 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
           create: communicationResponseCreateMock,
         },
         tracingReport: {
-          update: tracingReportUpdateMock,
+          updateMany: tracingReportUpdateManyMock,
         },
         task: {
           upsert: taskUpsertMock,
@@ -400,8 +400,16 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    expect(tracingReportUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'tracing_1' },
+    expect(tracingReportUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'tracing_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        status: 'received',
+        sent_at: new Date('2026-06-17T00:00:00.000Z'),
+        acknowledged_at: null,
+      },
       data: expect.objectContaining({
         status: 'acknowledged',
         sent_to_physician: '在宅主治医',
@@ -449,6 +457,53 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
     for (const call of auditLogCreateMock.mock.calls) {
       expect(JSON.stringify(call[0]?.data.changes)).not.toContain('トレーシング返信を確認');
     }
+  });
+
+  it('returns conflict before response, task, or audit side effects when the linked tracing report changes concurrently', async () => {
+    communicationRequestFindFirstMock.mockResolvedValue({
+      id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'responded',
+      updated_at: CURRENT_UPDATED_AT_DATE,
+      subject: '服薬情報提供書の確認',
+      recipient_name: '在宅主治医',
+      related_entity_type: 'tracing_report',
+      related_entity_id: 'tracing_1',
+    });
+    tracingReportFindFirstMock.mockResolvedValue({
+      id: 'tracing_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'received',
+      sent_at: new Date('2026-06-17T00:00:00.000Z'),
+      acknowledged_at: null,
+    });
+    tracingReportUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await POST(
+      createRequest({
+        expected_updated_at: CURRENT_UPDATED_AT,
+        response: {
+          responder_name: '在宅主治医',
+          content: '現行処方で継続',
+          responded_at: '2026-06-18T00:02:00.000Z',
+        },
+        followup: 'トレーシング返信を確認',
+      }),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '連携依頼が同時に更新されました。再読み込みしてください',
+    });
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
+    expect(taskUpsertMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('encodes only the linked tracing report pdf_url and keeps follow-up identity fields raw', async () => {
@@ -508,8 +563,16 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
         acknowledged_at: true,
       },
     });
-    expect(tracingReportUpdateMock).toHaveBeenCalledWith({
-      where: { id: HOSTILE_TRACING_REPORT_ID },
+    expect(tracingReportUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: HOSTILE_TRACING_REPORT_ID,
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        status: 'received',
+        sent_at: new Date('2026-06-17T00:00:00.000Z'),
+        acknowledged_at: null,
+      },
       data: expect.objectContaining({
         status: 'acknowledged',
         sent_to_physician: '在宅主治医',

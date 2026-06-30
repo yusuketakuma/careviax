@@ -124,6 +124,13 @@ function buildFollowupAuditChanges(requestId: string, followup: string | undefin
   };
 }
 
+class ResolveFollowupRollback extends Error {
+  constructor(readonly result: { error: 'state_changed' }) {
+    super('communication request follow-up transaction rolled back');
+    this.name = 'ResolveFollowupRollback';
+  }
+}
+
 type ResolveFollowupRouteContext = { params: Promise<{ id: string }> };
 
 async function authenticatedPOST(req: NextRequest, { params }: ResolveFollowupRouteContext) {
@@ -267,6 +274,31 @@ async function authenticatedPOST(req: NextRequest, { params }: ResolveFollowupRo
         return { error: 'state_changed' as const };
       }
 
+      const tracingReportStatusChanged =
+        linkedTracingReport != null && linkedTracingReport.status !== 'acknowledged';
+      if (linkedTracingReport) {
+        const tracingClaim = await tx.tracingReport.updateMany({
+          where: {
+            id: linkedTracingReport.id,
+            org_id: ctx.orgId,
+            patient_id: linkedTracingReport.patient_id,
+            case_id: linkedTracingReport.case_id,
+            status: linkedTracingReport.status,
+            sent_at: linkedTracingReport.sent_at,
+            acknowledged_at: linkedTracingReport.acknowledged_at,
+          },
+          data: {
+            status: 'acknowledged',
+            sent_to_physician: existing.recipient_name,
+            pdf_url: buildTracingReportPdfPath(linkedTracingReport.id),
+            ...(!linkedTracingReport.acknowledged_at ? { acknowledged_at: new Date() } : {}),
+          },
+        });
+        if (tracingClaim.count !== 1) {
+          throw new ResolveFollowupRollback({ error: 'state_changed' });
+        }
+      }
+
       let responseRecord: unknown = null;
       if (response) {
         const respondedAt = response.responded_at ? new Date(response.responded_at) : new Date();
@@ -353,17 +385,7 @@ async function authenticatedPOST(req: NextRequest, { params }: ResolveFollowupRo
       });
 
       if (linkedTracingReport) {
-        await tx.tracingReport.update({
-          where: { id: linkedTracingReport.id },
-          data: {
-            status: 'acknowledged',
-            sent_to_physician: updated.recipient_name,
-            pdf_url: buildTracingReportPdfPath(linkedTracingReport.id),
-            ...(!linkedTracingReport.acknowledged_at ? { acknowledged_at: new Date() } : {}),
-          },
-        });
-
-        if (linkedTracingReport.status !== 'acknowledged') {
+        if (tracingReportStatusChanged) {
           await createAuditLogEntry(tx, ctx, {
             action: 'tracing_report_status_changed',
             targetType: 'tracing_report',
@@ -382,7 +404,12 @@ async function authenticatedPOST(req: NextRequest, { params }: ResolveFollowupRo
       return { request: updated, response: responseRecord, task: taskRecord };
     },
     { requestContext: ctx },
-  );
+  ).catch((cause: unknown) => {
+    if (cause instanceof ResolveFollowupRollback) {
+      return cause.result;
+    }
+    throw cause;
+  });
 
   if ('error' in result) {
     return conflict('連携依頼が同時に更新されました。再読み込みしてください');
