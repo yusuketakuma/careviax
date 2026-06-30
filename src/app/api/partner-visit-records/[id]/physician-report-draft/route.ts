@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
-import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
@@ -51,7 +52,7 @@ function draftErrorResponse(error: PartnerVisitPhysicianReportDraftError) {
   }
 }
 
-export const POST = withAuthContext<{ id: string }>(
+const authenticatedPOST = withAuthContext<{ id: string }>(
   async (_req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -90,3 +91,12 @@ export const POST = withAuthContext<{ id: string }>(
     message: '医師向け報告書の作成権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (error) {
+    unstable_rethrow(error);
+    return withSensitiveNoStore(internalError());
+  }
+};

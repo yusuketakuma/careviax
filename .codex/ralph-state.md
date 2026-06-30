@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0908 JST
+
+- current task: harden `POST /api/partner-visit-records/[id]/physician-report-draft` so physician-report draft creation failures use fixed no-store sanitized envelopes.
+- files inspected: agmsg inbox/send for `phos/codex2`, `git status --short --untracked-files=all`, local Next.js route-handler and `unstable_rethrow` docs, `src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts`, `src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts`, `src/server/services/partner-visit-report-drafts.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Also read-only reviewed codex's `4f1495ab` requestContext slice while waiting for ledger release.
+- files changed: `src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts`, `src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved codex-owned billing-profile/prescription-intakes WIP until it landed as `4f1495ab`.
+- bugs found: physician-report-draft POST was exported directly from `withAuthContext`; expected responses were manually wrapped with sensitive no-store headers, but unexpected handler failures could be converted by the auth wrapper to `internalError()` without the route's no-store envelope, and auth/plumbing failures before handler execution could escape the exported handler.
+- security risks found: reduced raw-error and PHI/clinical-content disclosure risk for physician-report draft failures containing patient names, SOAP text, token-like diagnostics, or physician-report draft identifiers. Auth/permission checks, route-param validation, serializable transaction behavior, draft idempotency, typed workflow error mapping/sanitization, response success/domain-error shapes, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only wraps the existing POST response boundary and adds focused assertions.
+- validation commands: `pnpm exec prettier --write 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts' 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts'`; `pnpm exec vitest run 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint on the two physician-report-draft files; scoped `git diff --check` on the two files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`; full `git diff --check`.
+- validation results: Prettier passed. Focused physician-report-draft Vitest passed `1` file / `7` tests. Scoped ESLint, scoped `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and full `git diff --check` passed. While waiting on codex ledger release, independently re-ran codex's focused billing-profile/prescription-intakes Vitest `34`/`34`, scoped ESLint, and scoped diff-check; all passed and an approval was sent.
+- remaining work: stage only the two physician-report-draft files plus ledger hunks, commit, send agmsg FYI, and continue remaining visit/report/interprofessional candidates or incoming review interrupts. Claude returned `APPROVED` after independent focused Vitest and review of both catch origins, raw PHI/token/SOAP non-leakage, side-effect assertions, and domain logic preservation.
+- next action: explicit-path stage and commit this validated interprofessional/report response-boundary slice.
+
 ### 20260630-0904 JST
 
 - current task: propagate manual-auth request context into RLS transactions and harden `PATCH /api/prescription-intakes/[id]` with the established sensitive no-store / fixed-error boundary.

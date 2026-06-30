@@ -23,6 +23,41 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Partner Visit Physician Report Draft POST No-Store / Sanitized Envelope - 2026-06-30 09:08 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration and report-feature objective on `POST /api/partner-visit-records/[id]/physician-report-draft`.
+  - Focused only on the exported POST response boundary for physician-report draft creation from confirmed partner visit records.
+  - Coordinated with codex's concurrent `4f1495ab` requestContext slice and waited for ledger release before recording this work.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Existing handler logic now remains unchanged as `authenticatedPOST`, while the exported `POST` applies the established `withSensitiveNoStore` + `unstable_rethrow` + fixed `internalError()` fallback pattern.
+  - Added a sanitized 500 regression for unexpected physician-report draft creation failures containing physician-report draft identifiers, patient name text, token-like text, and SOAP/clinical note text.
+  - Added an auth/plumbing failure regression that throws before route-param handling and proves no RLS transaction or draft service side effect occurs.
+  - Existing no-store assertions now also check `Pragma: no-cache` through a shared test helper.
+- Safety:
+  - Reduces raw-error and PHI/clinical-content disclosure risk for physician-report draft failures.
+  - Preserves auth/permission behavior, route-param validation, serializable transaction behavior, draft idempotency, typed workflow error mapping/sanitization, and existing success/domain-error response body shapes.
+- Performance:
+  - No DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only wraps the existing POST response boundary and adds focused assertions.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts' 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests.
+  - Scoped ESLint on the two physician-report-draft files: passed.
+  - Scoped `git diff --check` on the two physician-report-draft files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` sent to Claude and codex with scope and validation.
+  - Claude returned `APPROVED` after independently re-running focused Vitest and checking the refactor preserved handler logic, both catch origins, raw patient/token/SOAP non-leakage, and no side effects on auth-plumbing failure.
+  - While waiting on codex ledger release, codex2 independently reviewed codex's `4f1495ab` slice and re-ran focused billing-profile/prescription-intakes Vitest `34`/`34`, scoped ESLint, and scoped diff-check; all passed and approval was sent.
+- Remaining:
+  - Stage only explicit physician-report-draft files plus this ledger and `.codex/ralph-state.md`, commit, send agmsg FYI, then continue remaining visit/report/interprofessional API candidates.
+
 ### Manual Auth RLS Request Context + Prescription Intake PATCH Boundary - 2026-06-30 09:04 JST
 
 - Scope:

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
+  authPlumbingFailureRef,
   withOrgContextMock,
   createPartnerVisitPhysicianReportDraftMock,
   MockPartnerVisitPhysicianReportDraftError,
@@ -17,6 +18,7 @@ const {
     }
   }
   return {
+    authPlumbingFailureRef: { current: null as Error | null },
     withOrgContextMock: vi.fn(),
     createPartnerVisitPhysicianReportDraftMock: vi.fn(),
     MockPartnerVisitPhysicianReportDraftError,
@@ -25,8 +27,11 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => Promise<Response>) => {
-    return (req: NextRequest, routeContext?: unknown) =>
-      handler(
+    return (req: NextRequest, routeContext?: unknown) => {
+      if (authPlumbingFailureRef.current) {
+        throw authPlumbingFailureRef.current;
+      }
+      return handler(
         req,
         {
           orgId: 'org_1',
@@ -35,6 +40,7 @@ vi.mock('@/lib/auth/context', () => ({
         },
         routeContext,
       );
+    };
   },
 }));
 
@@ -60,9 +66,15 @@ function createRequest() {
   );
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/partner-visit-records/[id]/physician-report-draft POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authPlumbingFailureRef.current = null;
     createPartnerVisitPhysicianReportDraftMock.mockResolvedValue({
       reused: false,
       report: {
@@ -84,7 +96,7 @@ describe('/api/partner-visit-records/[id]/physician-report-draft POST', () => {
     const response = await rawPOST(createRequest(), routeContext());
 
     expect(response.status).toBe(201);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).toHaveBeenCalledWith(
       'org_1',
       expect.any(Function),
@@ -136,7 +148,7 @@ describe('/api/partner-visit-records/[id]/physician-report-draft POST', () => {
     const response = await rawPOST(createRequest(), routeContext('   '));
 
     expect(response.status).toBe(400);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(createPartnerVisitPhysicianReportDraftMock).not.toHaveBeenCalled();
   });
@@ -153,7 +165,7 @@ describe('/api/partner-visit-records/[id]/physician-report-draft POST', () => {
     const response = await rawPOST(createRequest(), routeContext());
 
     expect(response.status).toBe(409);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: '確認済みの協力訪問記録のみ医師向け報告書を作成できます',
@@ -177,7 +189,7 @@ describe('/api/partner-visit-records/[id]/physician-report-draft POST', () => {
     const payload = await response.json();
 
     expect(response.status).toBe(409);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expectSensitiveNoStore(response);
     expect(payload).toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: '有効な患者共有ケースと確認済み協力訪問のみ医師向け報告書を作成できます',
@@ -190,5 +202,49 @@ describe('/api/partner-visit-records/[id]/physician-report-draft POST', () => {
     expect(serializedPayload).not.toContain('token=secret');
     expect(serializedPayload).not.toContain('raw_message');
     expect(serializedPayload).not.toContain('visit_request_status');
+  });
+
+  it('returns a sanitized no-store 500 when physician report draft creation fails unexpectedly', async () => {
+    createPartnerVisitPhysicianReportDraftMock.mockRejectedValueOnce(
+      new Error('raw physician_report_draft patient 山田太郎 token secret SOAP note'),
+    );
+
+    const response = await rawPOST(createRequest(), routeContext());
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serializedBody = JSON.stringify(body);
+    expect(serializedBody).not.toContain('physician_report_draft');
+    expect(serializedBody).not.toContain('山田太郎');
+    expect(serializedBody).not.toContain('token secret');
+    expect(serializedBody).not.toContain('SOAP note');
+  });
+
+  it('returns a sanitized no-store 500 when auth plumbing fails before resolving route params', async () => {
+    authPlumbingFailureRef.current = new Error(
+      'raw auth physician_report_draft patient 山田太郎 token secret',
+    );
+
+    const response = await rawPOST(createRequest(), routeContext('   '));
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serializedBody = JSON.stringify(body);
+    expect(serializedBody).not.toContain('raw auth');
+    expect(serializedBody).not.toContain('physician_report_draft');
+    expect(serializedBody).not.toContain('山田太郎');
+    expect(serializedBody).not.toContain('token secret');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createPartnerVisitPhysicianReportDraftMock).not.toHaveBeenCalled();
   });
 });
