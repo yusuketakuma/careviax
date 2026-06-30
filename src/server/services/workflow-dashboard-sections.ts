@@ -2,6 +2,11 @@ import { isoOrNull } from '@/lib/utils/date';
 import { formatDateKey } from '@/lib/date-key';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+import { buildExternalHref, buildReportsHref } from '@/lib/dashboard/home-link-builders';
+import {
+  buildScheduleFocusHref,
+  buildScheduleProposalDetailHref,
+} from '@/lib/schedules/navigation';
 import { WORKBENCH_MAX_ITEMS } from '@/lib/constants/workflow';
 import { readJsonObject } from '@/lib/db/json';
 import {
@@ -462,7 +467,7 @@ export function buildUnifiedWorkbench(
         : '自動提案された候補の承認または架電対応が必要です。'),
     priority: normalizeVisitPriority(proposal.priority),
     due_at: isoOrNull(proposal.visit_deadline_date ?? proposal.proposed_date),
-    action_href: '/schedules',
+    action_href: buildScheduleProposalDetailHref(proposal.id),
     action_label:
       proposal.proposal_status === 'patient_contact_pending' ? '架電を記録' : '候補を確認',
     owner_name: userNameById.get(proposal.proposed_pharmacist_id) ?? null,
@@ -512,7 +517,7 @@ export function buildUnifiedWorkbench(
         summary: reasons.join(' / '),
         priority: (schedule.priority === 'emergency' ? 'urgent' : 'high') as QueuePriority,
         due_at: isoOrNull(schedule.scheduled_date),
-        action_href: '/schedules',
+        action_href: buildScheduleFocusHref(schedule.id),
         action_label: '訪問予定を確認',
         owner_name: userNameById.get(schedule.pharmacist_id) ?? null,
         patient_name: schedule.case_.patient.name,
@@ -528,7 +533,7 @@ export function buildUnifiedWorkbench(
     summary: `${report.subject} / ${report.reported_by_name}${report.relation ? ` (${report.relation})` : ''}`,
     priority: (report.requested_callback ? 'urgent' : 'high') as QueuePriority,
     due_at: report.created_at.toISOString(),
-    action_href: '/workflow',
+    action_href: buildExternalHref({ focus: 'self_reports' }),
     action_label: 'triage を進める',
     owner_name: null,
     patient_name: patientNameById.get(report.patient_id) ?? null,
@@ -586,7 +591,10 @@ export function buildUnifiedWorkbench(
             summary: `${awaitingReports}件の訪問サイクルが報告送信待ちです。`,
             priority: 'normal' as const,
             due_at: null,
-            action_href: '/workflow',
+            action_href: buildReportsHref({
+              focus: 'delivery',
+              deliveryStatus: 'response_waiting',
+            }),
             action_label: '報告待ちを確認',
             owner_name: null,
             patient_name: null,
@@ -662,7 +670,10 @@ export function buildExceptionCommandCenter(
             description: `${awaitingReports}件が訪問後報告の送信待ちです。`,
             patient_name: null,
             created_at: null,
-            action_href: '/workflow',
+            action_href: buildReportsHref({
+              focus: 'delivery',
+              deliveryStatus: 'response_waiting',
+            }),
             action_label: '報告待ちを確認',
           },
         ]
@@ -677,7 +688,7 @@ export function buildExceptionCommandCenter(
             description: `${triageSelfReportsCount}件が triage 待ちです。`,
             patient_name: null,
             created_at: null,
-            action_href: '/workflow',
+            action_href: buildExternalHref({ focus: 'self_reports' }),
             action_label: 'セルフレポートを確認',
           },
         ]

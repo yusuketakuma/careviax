@@ -25027,3 +25027,32 @@ Next loop:
 - Remaining:
   - The broad visit/report/interprofessional collaboration goal remains open.
   - Mapper identified additional high-value focused-link gaps in `workflow-dashboard-sections`, `operational-task-presentation`, `visits-today`, and conferences. Prefer currently clean, server/helper-only slices first.
+
+### Workflow Dashboard Focused Collaboration Links - 2026-06-30 17:58 JST
+
+- Scope:
+  - Continued visit/report/interprofessional collaboration hardening on the workflow dashboard workbench and exception command center.
+  - Focused on workbench rows that already carried proposal IDs, schedule IDs, self-report context, or report backlog counts but still sent users to broad hubs.
+- Fixed:
+  - Visit proposal workbench actions now route to `buildScheduleProposalDetailHref(proposal.id)`.
+  - Visit preparation workbench actions now route to `buildScheduleFocusHref(schedule.id)`.
+  - Self-report workbench actions and exception command-center aggregate actions now route to `buildExternalHref({ focus: 'self_reports' })`.
+  - Awaiting-report workbench and exception command-center aggregate actions now route to `buildReportsHref({ focus: 'delivery', deliveryStatus: 'response_waiting' })`.
+  - Added regression coverage for hostile proposal/schedule IDs, self-report queue focus, and report delivery backlog focus.
+- Safety:
+  - Reduces wrong-patient/wrong-work-queue navigation risk across visit proposals, visit preparation, report delivery follow-up, and patient/family self-report triage.
+  - Preserves existing task metadata override behavior, communication request follow-up links, queue sorting, and workbench item shape.
+  - Uses existing shared navigation helpers for query encoding; no raw hostile IDs are interpolated into hrefs.
+  - No auth/RLS policy, permission, PHI export, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - No new query, network call, dependency, background job, broad scan, unbounded loop, or render-heavy path was added.
+- Validation:
+  - `pnpm exec prettier --write src/server/services/workflow-dashboard-sections.ts src/server/services/workflow-dashboard-sections.test.ts`: passed with no changes.
+  - `pnpm exec vitest run src/server/services/workflow-dashboard-sections.test.ts src/lib/schedules/navigation.test.ts src/lib/dashboard/home-link-builders.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `20` tests.
+  - Scoped ESLint on workflow dashboard sections plus schedule/home link helpers: passed.
+  - Scoped Prettier check and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - The broad visit/report/interprofessional collaboration goal remains open.
+  - Remaining clean candidates include operational-task-presentation schedule/proposal routing and conferences single-draft CTA; avoid dirty operating-hours/patient/visit-route files.

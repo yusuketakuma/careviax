@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAfterHoursReadiness,
+  buildExceptionCommandCenter,
   buildFacilityVisibility,
   buildRemediationGuidance,
   buildUnifiedWorkbench,
@@ -393,6 +394,143 @@ describe('workflow-dashboard-sections', () => {
           id: 'aggregate:communication_reply_waiting',
           action_href: '/communications/requests?status=sent',
           action_label: '返信待ちを確認',
+        }),
+      ]),
+    );
+  });
+
+  it('focuses proposal and visit workbench actions on concrete schedule targets', () => {
+    const proposalId = 'proposal/unsafe ?#';
+    const scheduleId = 'schedule/unsafe ?#';
+    const pendingProposals: WorkflowCoreData['pendingProposals'] = [
+      {
+        id: proposalId,
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'pending',
+        priority: 'high',
+        proposed_date: new Date('2026-04-01T00:00:00.000Z'),
+        visit_deadline_date: null,
+        proposed_pharmacist_id: 'user_1',
+        proposal_reason: null,
+        reschedule_source_schedule_id: null,
+        case_: { patient: { id: 'patient_1', name: '患者A' } },
+      },
+    ];
+    const upcomingSchedules: WorkflowCoreData['upcomingSchedules'] = [
+      {
+        id: scheduleId,
+        case_id: 'case_1',
+        scheduled_date: new Date('2026-04-01T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        confirmed_at: null,
+        schedule_status: 'planned',
+        priority: 'normal',
+        pharmacist_id: 'user_1',
+        assignment_mode: 'primary',
+        carry_items_status: null,
+        route_order: 1,
+        escalation_reason: null,
+        preparation: {
+          medication_changes_reviewed: false,
+          carry_items_confirmed: false,
+          previous_issues_reviewed: false,
+          route_confirmed: false,
+          offline_synced: false,
+          prepared_at: null,
+        },
+        override_request: null,
+        applied_override: null,
+        case_: {
+          patient: {
+            id: 'patient_1',
+            name: '患者A',
+            residences: [{ address: '東京都港区1-1-1', building_id: null }],
+          },
+        },
+        site: null,
+        cadence_preview: null,
+      },
+    ];
+
+    const result = buildUnifiedWorkbench(
+      [],
+      pendingProposals,
+      upcomingSchedules,
+      [],
+      0,
+      [],
+      emptyCommunicationQueue(),
+      new Map([['user_1', '薬剤師A']]),
+      new Map([['patient_1', '患者A']]),
+    );
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: `proposal:${proposalId}`,
+          action_href: `/schedules/proposals?detail=${encodeURIComponent(proposalId)}`,
+        }),
+        expect.objectContaining({
+          id: `visit:${scheduleId}`,
+          action_href: `/schedules?focus=schedule&schedule_id=${encodeURIComponent(scheduleId)}`,
+        }),
+      ]),
+    );
+  });
+
+  it('focuses self reports and awaiting report aggregates on their collaboration queues', () => {
+    const result = buildUnifiedWorkbench(
+      [],
+      [],
+      [],
+      [
+        {
+          id: 'self_report_1',
+          patient_id: 'patient_1',
+          reported_by_name: '家族A',
+          relation: '長女',
+          category: 'symptom',
+          subject: '眠気',
+          requested_callback: true,
+          preferred_contact_time: null,
+          status: 'new',
+          created_at: new Date('2026-04-01T09:00:00.000Z'),
+        },
+      ],
+      2,
+      [],
+      emptyCommunicationQueue(),
+      new Map(),
+      new Map([['patient_1', '患者A']]),
+    );
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'self-report:self_report_1',
+          action_href: '/external?focus=self_reports',
+        }),
+        expect.objectContaining({
+          id: 'aggregate:awaiting_reports',
+          action_href: '/reports?focus=delivery&delivery_status=response_waiting',
+        }),
+      ]),
+    );
+  });
+
+  it('focuses exception command center report and self-report aggregates', () => {
+    const result = buildExceptionCommandCenter([], 0, 3, 2);
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'aggregate:awaiting_reports',
+          action_href: '/reports?focus=delivery&delivery_status=response_waiting',
+        }),
+        expect.objectContaining({
+          id: 'aggregate:self_report_triage',
+          action_href: '/external?focus=self_reports',
         }),
       ]),
     );
