@@ -21424,3 +21424,35 @@ Next loop:
 - Remaining:
   - Commit only the two patient-share route/test files plus these ledger updates.
   - Continue the next non-overlapping visit/report/interprofessional candidate.
+
+### Visit Schedule Reorder Response Boundary Slice — 2026-06-30 10:27 JST
+
+- Scope:
+  - Continued schedule-management implementation in `visit-schedules/reorder` and `visit-schedule-proposals/reorder`.
+  - Kept existing validation, route-order conflict checks, serializable retry behavior, guarded writes, audit entries, workflow notifications, and response payload shape unchanged.
+- Fixed:
+  - Split both reorder handlers into `authenticatedPATCH` plus an exported wrapper.
+  - Wrapped exported PATCH responses in `withSensitiveNoStore`.
+  - Converted exported-route auth/plumbing failures to fixed `INTERNAL_ERROR` responses after `unstable_rethrow`.
+  - Added no-store assertions for success, validation, and conflict responses.
+  - Added sanitized no-store 500 tests for auth failures before body parsing and unexpected route transaction failures.
+- Safety:
+  - Reduces cache leakage risk for route-order changes, vehicle assignment adoption, proposal reordering, and schedule-management conflict responses.
+  - Unexpected 500 bodies do not expose seeded patient names, token text, or raw thrown messages.
+  - No database migration, live data operation, external send, authorization change, audit payload expansion, transaction rewrite, or workflow notification change was run.
+- Review:
+  - Sent agmsg `PATCH_REVIEW_REQUEST` to codex with scope and validation details.
+  - codex returned `APPROVED` after rerunning focused Vitest `2` files / `45` tests, scoped ESLint, scoped Prettier check, and scoped diff-check.
+  - codex confirmed PHI/raw-error seeds did not leak in response bodies and transaction/audit/notify behavior was preserved.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-schedules/reorder/route.test.ts src/app/api/visit-schedule-proposals/reorder/route.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `45` tests; forced 500 tests emitted expected structured `route_handler_unhandled_error` stderr.
+  - Scoped ESLint on the four owned route/test files: passed.
+  - Scoped Prettier check on the four owned route/test files: passed.
+  - Scoped `git diff --check` on the four owned route/test files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the four reorder route/test files plus these ledger updates.
+  - Continue the next schedule-management candidate.

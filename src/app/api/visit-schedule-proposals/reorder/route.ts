@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildVisitScheduleProposalAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { dateKeySchema } from '@/lib/validations/date-key';
@@ -97,7 +99,7 @@ async function withSerializableProposalRouteReorderTransaction<T>(
   throw new ProposalRouteReorderRetryLimitError();
 }
 
-export const PATCH = withAuthContext(
+const authenticatedPATCH = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -310,3 +312,12 @@ export const PATCH = withAuthContext(
     message: '訪問候補の更新権限がありません',
   },
 );
+
+export const PATCH: typeof authenticatedPATCH = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

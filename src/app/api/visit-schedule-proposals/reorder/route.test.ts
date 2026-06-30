@@ -90,6 +90,11 @@ function buildProposalFixture(overrides?: Record<string, unknown>) {
   };
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/visit-schedule-proposals/reorder PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -131,6 +136,7 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
@@ -173,6 +179,7 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
     const response = (await PATCH(createRequest([])))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(proposalFindManyMock).not.toHaveBeenCalled();
     expect(proposalUpdateManyMock).not.toHaveBeenCalled();
@@ -391,11 +398,63 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
     ))!;
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: 'route_order の反映対象が同時に更新されました。再読み込みしてください',
     });
     expect(withOrgContextMock).toHaveBeenCalledTimes(3);
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when auth plumbing fails before body parsing', async () => {
+    authMock.mockRejectedValueOnce(
+      new Error('raw auth proposal reorder patient 山田 花子 token secret'),
+    );
+
+    const response = (await PATCH(createRequest([])))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw auth');
+    expect(bodyText).not.toContain('山田 花子');
+    expect(bodyText).not.toContain('token secret');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when route transaction fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('raw proposal reorder transaction patient 山田 花子 token secret route memo'),
+    );
+
+    const response = (await PATCH(
+      createRequest({
+        route_order_updates: [{ proposal_id: 'proposal_1', route_order: 1 }],
+      }),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw proposal');
+    expect(bodyText).not.toContain('山田 花子');
+    expect(bodyText).not.toContain('token secret');
     expect(proposalUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
