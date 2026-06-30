@@ -21,28 +21,34 @@ export const GET = withAuthContext(
       MAX_PHARMACIST_CREDENTIAL_LIMIT,
     );
 
-    const credentials = await prisma.pharmacistCredential.findMany({
-      where: {
-        org_id: ctx.orgId,
-      },
-      select: {
-        id: true,
-        certification_type: true,
-        certification_number: true,
-        issued_date: true,
-        expiry_date: true,
-        tenure_years: true,
-        weekly_work_hours: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
+    const where = {
+      org_id: ctx.orgId,
+    };
+    const [totalCount, credentials] = await Promise.all([
+      prisma.pharmacistCredential.count({ where }),
+      prisma.pharmacistCredential.findMany({
+        where,
+        select: {
+          id: true,
+          certification_type: true,
+          certification_number: true,
+          issued_date: true,
+          expiry_date: true,
+          tenure_years: true,
+          weekly_work_hours: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+            },
           },
         },
-      },
-      orderBy: [{ expiry_date: 'asc' }, { created_at: 'desc' }],
-      take: limit,
-    });
+        orderBy: [{ expiry_date: 'asc' }, { created_at: 'desc' }],
+        take: limit,
+      }),
+    ]);
+    const visibleCount = credentials.length;
+    const hiddenCount = Math.max(totalCount - visibleCount, 0);
 
     const pharmacistIds = credentials.map((item) => item.user.id);
     const assignedPatients =
@@ -106,6 +112,13 @@ export const GET = withAuthContext(
         weekly_work_hours: item.weekly_work_hours,
         consented_patients: consentedPatientsByPharmacist.get(item.user.id) ?? [],
       })),
+      total_count: totalCount,
+      visible_count: visibleCount,
+      hidden_count: hiddenCount,
+      truncated: hiddenCount > 0,
+      count_basis: 'pharmacist_credentials',
+      filters_applied: {},
+      limit,
     });
   },
   {

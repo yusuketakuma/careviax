@@ -5,6 +5,7 @@ const {
   authMock,
   membershipFindFirstMock,
   pharmacistCredentialFindManyMock,
+  pharmacistCredentialCountMock,
   pharmacistCredentialCreateMock,
   visitScheduleFindManyMock,
   validateOrgReferencesMock,
@@ -14,6 +15,7 @@ const {
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   pharmacistCredentialFindManyMock: vi.fn(),
+  pharmacistCredentialCountMock: vi.fn(),
   pharmacistCredentialCreateMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
@@ -32,6 +34,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     pharmacistCredential: {
       findMany: pharmacistCredentialFindManyMock,
+      count: pharmacistCredentialCountMock,
       create: pharmacistCredentialCreateMock,
     },
     visitSchedule: {
@@ -90,6 +93,7 @@ describe('/api/admin/pharmacist-credentials GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
+    pharmacistCredentialCountMock.mockResolvedValue(0);
     pharmacistCredentialCreateMock.mockResolvedValue({
       id: 'cred_2',
       certification_type: '研修認定',
@@ -147,6 +151,7 @@ describe('/api/admin/pharmacist-credentials GET', () => {
         },
       },
     ]);
+    pharmacistCredentialCountMock.mockResolvedValue(1);
     visitScheduleFindManyMock.mockResolvedValue([
       {
         pharmacist_id: 'user_2',
@@ -184,6 +189,11 @@ describe('/api/admin/pharmacist-credentials GET', () => {
       },
       orderBy: [{ expiry_date: 'asc' }, { created_at: 'desc' }],
       take: 5,
+    });
+    expect(pharmacistCredentialCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+      },
     });
     expect(visitScheduleFindManyMock).toHaveBeenCalledWith({
       where: {
@@ -226,6 +236,58 @@ describe('/api/admin/pharmacist-credentials GET', () => {
           consented_patients: [{ id: 'patient_1', name: '田中 花子' }],
         }),
       ],
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'pharmacist_credentials',
+      filters_applied: {},
+      limit: 5,
+    });
+  });
+
+  it('returns counted metadata for truncated credential lists without exposing hidden rows', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    pharmacistCredentialFindManyMock.mockResolvedValue([
+      {
+        id: 'cred_1',
+        certification_type: 'かかりつけ薬剤師研修認定',
+        certification_number: 'R-001',
+        issued_date: new Date('2025-04-01T00:00:00Z'),
+        expiry_date: new Date('2027-03-31T00:00:00Z'),
+        tenure_years: 4.5,
+        weekly_work_hours: 32,
+        user: {
+          id: 'user_2',
+          name: '鈴木 一郎',
+        },
+      },
+    ]);
+    pharmacistCredentialCountMock.mockResolvedValue(3);
+    visitScheduleFindManyMock.mockResolvedValue([]);
+
+    const response = await GET(createGetRequest('?limit=1', { 'x-org-id': 'org_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(pharmacistCredentialFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+        },
+        take: 1,
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: [expect.objectContaining({ id: 'cred_1' })],
+      total_count: 3,
+      visible_count: 1,
+      hidden_count: 2,
+      truncated: true,
+      count_basis: 'pharmacist_credentials',
+      filters_applied: {},
+      limit: 1,
     });
   });
 
@@ -255,6 +317,13 @@ describe('/api/admin/pharmacist-credentials GET', () => {
     expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       data: [],
+      total_count: 0,
+      visible_count: 0,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'pharmacist_credentials',
+      filters_applied: {},
+      limit: expectedTake,
     });
   });
 

@@ -58,6 +58,17 @@ type PharmacistOption = {
   role: string;
 };
 
+type PharmacistCredentialListResponse = {
+  data: PharmacistCredential[];
+  total_count?: number;
+  visible_count?: number;
+  hidden_count?: number;
+  truncated?: boolean;
+  count_basis?: 'pharmacist_credentials';
+  filters_applied?: Record<string, never>;
+  limit?: number;
+};
+
 type CredentialForm = {
   user_id: string;
   certification_type: string;
@@ -225,7 +236,7 @@ export function PharmacistCredentialsContent() {
         headers: { 'x-org-id': orgId },
       });
       if (!response.ok) throw new Error('薬剤師認定情報の取得に失敗しました');
-      return response.json() as Promise<{ data: PharmacistCredential[] }>;
+      return response.json() as Promise<PharmacistCredentialListResponse>;
     },
     enabled: !!orgId,
   });
@@ -243,6 +254,14 @@ export function PharmacistCredentialsContent() {
   });
 
   const credentials = data?.data ?? [];
+  const totalCredentialCount = data?.total_count ?? credentials.length;
+  const visibleCredentialCount = data?.visible_count ?? credentials.length;
+  const hiddenCredentialCount =
+    data?.hidden_count ?? Math.max(totalCredentialCount - credentials.length, 0);
+  const credentialsListSummary =
+    hiddenCredentialCount > 0 || data?.truncated
+      ? `先頭${visibleCredentialCount.toLocaleString()}件を表示 / 他${hiddenCredentialCount.toLocaleString()}件`
+      : `登録${totalCredentialCount.toLocaleString()}件`;
   const pharmacistOptions = pharmacistsQuery.data?.data ?? [];
   const formErrors = getCredentialFormErrors(form);
   const saveBlocker = getCredentialSaveBlocker(form, formErrors);
@@ -455,12 +474,17 @@ export function PharmacistCredentialsContent() {
               className="m-4"
             />
           ) : (
-            <DataTable
-              columns={columns}
-              data={credentials}
-              isLoading={isLoading}
-              caption="薬剤師研修認定一覧"
-            />
+            <>
+              <div className="border-b px-4 py-3 text-xs text-muted-foreground">
+                {credentialsListSummary}
+              </div>
+              <DataTable
+                columns={columns}
+                data={credentials}
+                isLoading={isLoading}
+                caption="薬剤師研修認定一覧"
+              />
+            </>
           )}
         </CardContent>
       </Card>

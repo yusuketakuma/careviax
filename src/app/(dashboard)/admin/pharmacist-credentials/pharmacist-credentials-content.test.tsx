@@ -72,6 +72,11 @@ function defaultUseQueryImpl({ queryKey }: { queryKey: readonly unknown[] }) {
     return {
       data: {
         data: [credentialFixture()],
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'pharmacist_credentials',
       },
       isLoading: false,
       isError: false,
@@ -281,6 +286,31 @@ describe('PharmacistCredentialsContent', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows hidden credential counts when the API returns a truncated list', () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
+      if (queryKey[0] === 'pharmacist-credentials') {
+        return {
+          data: {
+            data: [credentialFixture()],
+            total_count: 3,
+            visible_count: 1,
+            hidden_count: 2,
+            truncated: true,
+            count_basis: 'pharmacist_credentials',
+          },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      return defaultUseQueryImpl({ queryKey });
+    });
+
+    render(<PharmacistCredentialsContent />);
+
+    expect(screen.getByText('先頭1件を表示 / 他2件')).toBeTruthy();
   });
 
   it('list query uses the centralized collection API path', async () => {
