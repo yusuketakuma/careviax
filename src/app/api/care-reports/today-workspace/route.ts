@@ -19,6 +19,7 @@ import { sanitizeDeliveryFailureReason } from '@/lib/reports/delivery-failure-re
 import { buildReportHref } from '@/lib/reports/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+import { buildVisitRecordHref } from '@/lib/visits/navigation';
 import {
   BILLING_VALIDATION_LAYER_KEYS,
   readBillingValidationLayers,
@@ -735,7 +736,7 @@ const authenticatedGET = withAuthContext(
                 }
               : canGenerateDraft
                 ? null
-                : { label: '→ 訪問へ', href: '/visits' },
+                : { label: '→ 訪問へ', href: buildVisitRecordHref(schedule.id) },
           });
         }
 

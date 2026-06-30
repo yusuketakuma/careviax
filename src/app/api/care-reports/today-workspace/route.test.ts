@@ -6,6 +6,7 @@ const HOSTILE_WAITING_REPORT_ID = 'report/waiting?tab=x#frag';
 const HOSTILE_SENT_REPORT_ID = 'report/sent?tab=x#frag';
 const HOSTILE_DRAFT_REPORT_ID = 'report/draft?tab=x#frag';
 const HOSTILE_FAILED_REPORT_ID = 'report/failed?tab=x#frag';
+const HOSTILE_DRAFT_SCHEDULE_ID = 'sched/1?tab=x#frag';
 
 const { authMock, membershipFindFirstMock, withOrgContextMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
@@ -219,7 +220,7 @@ describe('/api/care-reports/today-workspace', () => {
     mockTx({
       schedules: [
         {
-          id: 'sched_1',
+          id: HOSTILE_DRAFT_SCHEDULE_ID,
           schedule_status: 'planned',
           time_window_start: new Date('2026-06-11T01:30:00.000Z'),
           facility_batch_id: null,
@@ -290,7 +291,11 @@ describe('/api/care-reports/today-workspace', () => {
     expect(first.visit_record_id).toBeNull();
     expect(first.note).toBeNull();
     expect(first.generation_targets).toEqual([]);
-    expect(first.action).toEqual({ label: '→ 訪問へ', href: '/visits' });
+    expect(first.action).toEqual({
+      label: '→ 訪問へ',
+      href: `/visits/${encodeURIComponent(HOSTILE_DRAFT_SCHEDULE_ID)}/record`,
+    });
+    expect(first.action?.href).not.toBe(`/visits/${HOSTILE_DRAFT_SCHEDULE_ID}/record`);
 
     expect(second.recipient_label).toBe('医師(山本先生)+ケアマネ');
     // 危険区分メモは隠さない
@@ -373,7 +378,7 @@ describe('/api/care-reports/today-workspace', () => {
       status: 'before_visit',
       visit_record_id: 'visit_record_1',
       generation_targets: [],
-      action: { label: '→ 訪問へ', href: '/visits' },
+      action: { label: '→ 訪問へ', href: '/visits/sched_in_progress/record' },
     });
   });
 
