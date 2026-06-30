@@ -62,6 +62,11 @@ const READY_PREPARATION_SUMMARY = {
   status: 'ready' as const,
   incomplete_labels: [],
 };
+const ARCHIVED_PATIENT_ARCHIVE = {
+  status: 'archived',
+  archived: true,
+  archived_at: '2026-06-30T09:00:00.000Z',
+} as const;
 
 function dateKeyOf(date: Date) {
   return `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')}`;
@@ -502,6 +507,25 @@ describe('buildStaffLane', () => {
     expect(lane.visitMinutes).toBe(180);
     expect(lane.travelMinutes).toBe(90);
     expect(lane.estimatedVisitSlots).toBe(Math.floor(lane.idleMinutes / 60));
+  });
+
+  it('preserves patient archive state on individual visit blocks', () => {
+    const pharmacist = buildPharmacist();
+    const lane = buildStaffLane({
+      staff: {
+        ...pharmacist,
+        visits: [
+          {
+            ...pharmacist.visits[0],
+            patient_archive: ARCHIVED_PATIENT_ARCHIVE,
+          },
+        ],
+      },
+    });
+
+    expect(lane.blocks.find((block) => block.id === 'visit:visit_1')?.patientArchive).toEqual(
+      ARCHIVED_PATIENT_ARCHIVE,
+    );
   });
 
   it('aggregates facility visits with full-ready blockers as departure blockers', () => {
@@ -972,6 +996,29 @@ describe('ScheduleTeamBoard', () => {
 
     // 主操作(青)が 1 つだけ: 次にやることのリンク以外の主ボタンは存在しない
     expect(screen.getByRole('link', { name: '予定を作る' })).toBeTruthy();
+  });
+
+  it('surfaces archived patient badges on visits and pending proposals', () => {
+    const board = buildBoardFixture();
+    const firstStaff = board.staff[0];
+    firstStaff.visits[0] = {
+      ...firstStaff.visits[0],
+      patient_archive: ARCHIVED_PATIENT_ARCHIVE,
+    };
+    board.pending_proposals[0] = {
+      ...board.pending_proposals[0],
+      patient_archive: ARCHIVED_PATIENT_ARCHIVE,
+    };
+    mockQueries({ board });
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    expect(screen.getAllByText('アーカイブ中').length).toBeGreaterThanOrEqual(2);
+    expect(
+      within(screen.getByTestId('schedule-route-preview')).getByText('アーカイブ中'),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId('schedule-pending-proposals')).getByText('アーカイブ中'),
+    ).toBeTruthy();
   });
 
   it('renders total pending proposal count while keeping only visible proposal rows', () => {
