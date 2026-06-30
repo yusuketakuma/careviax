@@ -30,6 +30,56 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Conference Note Report Generation RLS Lock - 2026-07-01 02:54 JST
+
+- Scope:
+  - Continued patient-information / interprofessional collaboration hardening on `POST /api/conference-notes/[id]/generate-report`.
+  - Focused on report generation from conference notes while the note can be concurrently edited.
+- Fixed:
+  - Report generation now runs the conference-note load, type validation, report draft creation, delivery draft queueing, note update, and audit creation inside one `withOrgContext` transaction.
+  - The route locks the target `ConferenceNote` row with `FOR UPDATE` before reading the note and validating the requested report type.
+  - The transaction result is typed explicitly so the authenticated route handler always returns `NextResponse`.
+- Safety:
+  - Reduces stale conference-note report generation and RLS-context drift risk across draft/report/delivery/audit side effects.
+  - Preserves existing auth permission, route param/body validation before DB work, no-store wrappers, not-found/validation envelopes, PHI-safe unexpected failure body, idempotent delivery-intent behavior, migrations, live data, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds one row-level lock query for the target note and removes the previous separate global-Prisma note read.
+  - No broad scan, dependency, background job, external call, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/conference-notes/[id]/generate-report/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `13` tests.
+  - Scoped ESLint on route/test: passed.
+  - Scoped Prettier check on route/test: passed.
+  - Scoped `git diff --check`: passed.
+  - `pnpm typecheck --pretty false`: failed once on an inferred `undefined` route return, fixed by typing the transaction result, then passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+- Remaining:
+  - Broad master-management / patient-information objective remains open.
+  - Concurrent unrelated dirty changes appeared in `src/server/services/visit-route-engine.ts` and `src/server/services/visit-route-engine.test.ts`; they were inspected, preserved, and excluded from this conference-note slice.
+
+### Visit Route Heuristic Hard Priority Bands - 2026-07-01 02:58 JST
+
+- Scope:
+  - Continued schedule / route-decision hardening on the shared visit route engine.
+  - Focused on fallback heuristic ordering when priority or locked-route constraints keep the route off Google waypoint optimization.
+- Fixed:
+  - Replaced the soft emergency/urgent seconds bonus with explicit priority ranks.
+  - The heuristic now chooses from the highest-priority remaining band first (`emergency`, then `urgent`, then normal) and only then minimizes duration/distance.
+  - Updated regression coverage so a 120-minute emergency visit is still ordered before a 45-minute urgent visit and a 2-minute normal visit.
+  - User-facing heuristic note now says priority is being prioritized instead of describing a soft correction.
+- Safety:
+  - Reduces urgent/emergency visit de-prioritization risk in fallback route planning.
+  - Preserves locked-schedule input-order behavior, missing-geocode fail-closed handling, fallback return-to-origin totals, Google no-priority path, PHI-minimized Google request payload, migrations, live data, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds only a tiny priority-rank filter inside the existing waypoint loop.
+  - No DB query, dependency, external call, background job, broad scan, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/visit-route-engine.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `11` tests.
+  - Related route suite passed `4` files / `37` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, verifier focused Vitest/diff-check, `pnpm typecheck --pretty false`, `pnpm lint`, `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`, `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`, and full `git diff --check`: passed.
+- Remaining:
+  - Broad schedule-management / prescription-to-schedule / route-decision objective remains open.
+  - Mapper identified `/api/visit-schedules` list date-range helper convergence as the next bounded schedule-display fix.
+
 ### Today Workspace Facility Packet Link - 2026-07-01 02:45 JST
 
 - Scope:

@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
+import { Prisma } from '@prisma/client';
 import { unstable_rethrow } from 'next/navigation';
+import type { NextResponse } from 'next/server';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withAuthContext } from '@/lib/auth/context';
 import { readOptionalJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -7,7 +9,6 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { internalError, success, validationError, notFound } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
-import { prisma } from '@/lib/db/client';
 import { ConferenceSyncService } from '@/server/services/conference-sync';
 import {
   generateConferenceReportSchema,
@@ -31,6 +32,15 @@ function deliveryIntentKey(
   return stableHashId('conf_delivery', [orgId, reportId, channel, recipientContact]);
 }
 
+type GenerateReportTransactionResult =
+  | {
+      data: {
+        report_draft_count: number;
+        queued_recipient_count: number;
+      };
+    }
+  | { error: NextResponse };
+
 const authenticatedPOST = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
     const { id: rawId } = await routeContext.params;
@@ -45,47 +55,51 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const note = await prisma.conferenceNote.findFirst({
-      where: {
-        id,
-        org_id: ctx.orgId,
-      },
-      select: {
-        id: true,
-        case_id: true,
-        patient_id: true,
-        note_type: true,
-        title: true,
-        content: true,
-        conference_date: true,
-        participants: true,
-        structured_content: true,
-        metadata: true,
-        generated_report_id: true,
-        action_items: true,
-      },
-    });
+    const result = await withOrgContext<GenerateReportTransactionResult>(ctx.orgId, async (tx) => {
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "ConferenceNote" WHERE "id" = ${id} AND "org_id" = ${ctx.orgId} FOR UPDATE`,
+      );
 
-    if (!note) {
-      return notFound('カンファレンス記録が見つかりません');
-    }
+      const note = await tx.conferenceNote.findFirst({
+        where: {
+          id,
+          org_id: ctx.orgId,
+        },
+        select: {
+          id: true,
+          case_id: true,
+          patient_id: true,
+          note_type: true,
+          title: true,
+          content: true,
+          conference_date: true,
+          participants: true,
+          structured_content: true,
+          metadata: true,
+          generated_report_id: true,
+          action_items: true,
+        },
+      });
 
-    const defaultReportTypes =
-      note.note_type === 'pre_discharge'
-        ? ['physician_report']
-        : note.note_type === 'service_manager'
-          ? ['care_manager_report']
-          : note.note_type === 'death_conference' || note.note_type === 'care_team'
-            ? ['internal_record']
-            : note.note_type === 'emergency'
-              ? ['physician_report', 'internal_record']
-              : ['internal_record'];
+      if (!note) {
+        return { error: notFound('カンファレンス記録が見つかりません') };
+      }
 
-    if (parsed.data.report_type && !defaultReportTypes.includes(parsed.data.report_type)) {
-      return validationError('この会議種別では指定された報告書種別を生成できません');
-    }
+      const defaultReportTypes =
+        note.note_type === 'pre_discharge'
+          ? ['physician_report']
+          : note.note_type === 'service_manager'
+            ? ['care_manager_report']
+            : note.note_type === 'death_conference' || note.note_type === 'care_team'
+              ? ['internal_record']
+              : note.note_type === 'emergency'
+                ? ['physician_report', 'internal_record']
+                : ['internal_record'];
 
-    const result = await withOrgContext(ctx.orgId, async (tx) => {
+      if (parsed.data.report_type && !defaultReportTypes.includes(parsed.data.report_type)) {
+        return { error: validationError('この会議種別では指定された報告書種別を生成できません') };
+      }
+
       const careCase = note.case_id
         ? await tx.careCase.findFirst({
             where: {
@@ -224,12 +238,16 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
       }
 
       return {
-        report_draft_count: reportDraftIds.length,
-        queued_recipient_count: queuedRecipientCount,
+        data: {
+          report_draft_count: reportDraftIds.length,
+          queued_recipient_count: queuedRecipientCount,
+        },
       };
     });
 
-    return success({ data: result }, 201);
+    if ('error' in result) return result.error;
+
+    return success({ data: result.data }, 201);
   },
   {
     permission: 'canAuthorReport',

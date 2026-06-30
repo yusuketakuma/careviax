@@ -20,6 +20,32 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0254 JST
+
+- current task: harden conference-note report generation with an RLS-scoped row lock.
+- files inspected: `git status --short --branch --untracked-files=all`, local Next route-handler docs, `src/app/api/conference-notes/[id]/generate-report/route.ts`, `src/app/api/conference-notes/[id]/generate-report/route.test.ts`, nearby conference-note task lock tests, concurrent dirty `src/server/services/visit-route-engine.ts` / `visit-route-engine.test.ts` diffs, validation output, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/conference-notes/[id]/generate-report/route.ts`, `src/app/api/conference-notes/[id]/generate-report/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: report generation loaded the target conference note through global Prisma before entering the RLS transaction that created report drafts, delivery drafts, note updates, and audit logs. It also did not claim a stable note row before validating the report type, leaving stale-note generation possible under concurrent edits.
+- security risks found: reduced RLS-context drift and stale conference-note report generation risk by moving the note load and report-type validation into the `withOrgContext` transaction and locking the target `ConferenceNote` row with `FOR UPDATE` before side effects. Existing auth permission, route param/body validation before DB work, no-store wrappers, not-found/validation envelopes, PHI-safe unexpected failure body, idempotent delivery-intent behavior, migrations, live data, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: adds one target-row lock query and removes the previous separate global-Prisma note read. No broad scan, dependency, background job, external call, or unbounded loop was added.
+- validation commands: `pnpm exec vitest run src/app/api/conference-notes/[id]/generate-report/route.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck --pretty false`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`.
+- validation results: focused generate-report Vitest passed `1` file / `13` tests; scoped ESLint passed; scoped Prettier passed; scoped diff-check passed; `pnpm typecheck --pretty false` failed once because the transaction result union allowed an inferred `undefined` route return, then passed after adding an explicit transaction result type; no-unused passed.
+- remaining work: broad master-management / patient-information objective remains open. Concurrent unrelated dirty changes appeared in `src/server/services/visit-route-engine.ts` and `src/server/services/visit-route-engine.test.ts`; they were inspected, preserved, and must remain outside this conference-note commit.
+- next action: final scoped check with ledgers, commit this conference-note RLS/lock group, then re-check status and continue the next patient/master gap.
+
+### 20260701-0258 JST
+
+- current task: make visit-route heuristic priority ordering fail closed by urgency band.
+- files inspected: `git status --short --branch --untracked-files=all`, `docs/schedule-route-build-plan.md` P6 route-engine findings, `src/types/visit-route.ts`, `src/server/services/visit-route-engine.ts`, `src/server/services/visit-route-engine.test.ts`, `src/app/api/visit-routes/route.ts`, mapper date-boundary output, verifier output, and validation output.
+- files changed: `src/server/services/visit-route-engine.ts`, `src/server/services/visit-route-engine.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: route heuristic ordering used a soft seconds bonus for `emergency` / `urgent`, so a sufficiently close normal visit could still be ordered before a farther emergency visit in fallback routing.
+- security risks found: reduced urgent/emergency visit de-prioritization risk in route planning by selecting the highest-priority remaining band first (`emergency` before `urgent` before normal) and only then minimizing travel duration/distance. Existing locked-schedule input-order behavior, missing-geocode fail-closed handling, Google no-priority path, no-store API callers, PHI-minimized Google request body, migrations, live data, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: replaces a scalar score subtraction with a small priority-rank pass over the existing remaining waypoints. No new DB query, dependency, external call, broad scan, background job, or unbounded loop was added.
+- validation commands: `pnpm exec vitest run src/server/services/visit-route-engine.test.ts --reporter=dot --testTimeout=60000`; `pnpm vitest run src/server/services/visit-route-engine.test.ts src/server/services/visit-route-engine.locked.test.ts src/app/api/visit-routes/route.test.ts src/app/api/visit-routes/route.locked.test.ts --reporter=dot --testTimeout=60000`; scoped ESLint; scoped Prettier check; scoped `git diff --check`; verifier focused Vitest/diff-check; `pnpm typecheck --pretty false`; `pnpm lint`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: focused route-engine Vitest passed `1` file / `11` tests; related route suite passed `4` files / `37` tests with the expected sanitized-500 test log; scoped ESLint, scoped Prettier, scoped diff-check, verifier review, typecheck, lint, no-unused, format check, and full diff-check passed.
+- remaining work: broad schedule-management / prescription-to-schedule / route-decision objective remains open. Mapper identified `/api/visit-schedules` list date-range helper convergence as the next bounded schedule-display fix. Concurrent unrelated conference-note generate-report files and ledger hunks remain preserved outside this route-engine commit.
+- next action: stage only the route-engine code and this route-engine ledger hunk, commit, send agmsg FYI, then re-check status and continue the visit-schedule list date-boundary fix.
+
 ### 20260701-0245 JST
 
 - current task: validate and group the care-report today-workspace facility-packet link slice.

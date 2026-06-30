@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 const {
   conferenceNoteFindFirstMock,
   conferenceNoteUpdateMock,
+  conferenceNoteQueryRawMock,
   careCaseFindFirstMock,
   careReportFindManyMock,
   careReportCreateManyMock,
@@ -15,6 +16,7 @@ const {
 } = vi.hoisted(() => ({
   conferenceNoteFindFirstMock: vi.fn(),
   conferenceNoteUpdateMock: vi.fn(),
+  conferenceNoteQueryRawMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   careReportFindManyMock: vi.fn(),
   careReportCreateManyMock: vi.fn(),
@@ -119,9 +121,12 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
       id: 'note_1',
       generated_report_id: 'report_cm_1',
     });
+    conferenceNoteQueryRawMock.mockResolvedValue([]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        $queryRaw: conferenceNoteQueryRawMock,
         conferenceNote: {
+          findFirst: conferenceNoteFindFirstMock,
           update: conferenceNoteUpdateMock,
         },
         careCase: {
@@ -157,6 +162,7 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
     expect(response.status).toBe(201);
     expectSensitiveNoStore(response);
     expect(careReportCreateManyMock).toHaveBeenCalledTimes(1);
+    expect(conferenceNoteQueryRawMock).toHaveBeenCalledTimes(1);
     expect(deliveryRecordCreateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.arrayContaining([
@@ -282,7 +288,59 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: 'カンファレンス記録が見つかりません',
     });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
+    expect(conferenceNoteQueryRawMock).toHaveBeenCalledTimes(1);
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
+    expect(deliveryRecordCreateManyMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('validates report type against the locked current note before generating drafts', async () => {
+    conferenceNoteFindFirstMock.mockResolvedValueOnce({
+      id: 'note_1',
+      case_id: 'case_1',
+      patient_id: 'patient_1',
+      note_type: 'care_team',
+      title: '薬剤師間カンファレンス',
+      content: '本文サマリー',
+      conference_date: new Date('2026-03-30T10:00:00.000Z'),
+      participants: [
+        {
+          name: '佐藤CM',
+          role: 'care_manager',
+          attended: true,
+          is_report_recipient: true,
+          email: 'cm@example.com',
+        },
+      ],
+      structured_content: {
+        template: 'care_team',
+        sections: [{ key: 'case_review', label: '症例検討', body: '服薬状況の確認' }],
+      },
+      metadata: null,
+      generated_report_id: null,
+      action_items: [],
+    });
+
+    const response = await POST(
+      createRequest({
+        report_type: 'care_manager_report',
+        auto_send: true,
+      }),
+      {
+        params: Promise.resolve({ id: 'note_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'この会議種別では指定された報告書種別を生成できません',
+    });
+    expect(conferenceNoteQueryRawMock).toHaveBeenCalledTimes(1);
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(careReportCreateManyMock).not.toHaveBeenCalled();
     expect(deliveryRecordCreateManyMock).not.toHaveBeenCalled();
     expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
