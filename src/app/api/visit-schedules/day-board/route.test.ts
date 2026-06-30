@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 
 const {
   authContextMock,
+  withOrgContextMock,
   membershipFindManyMock,
   visitScheduleFindManyMock,
   dispenseTaskGroupByMock,
@@ -23,6 +24,7 @@ const {
   billingEvidenceFindManyMock,
 } = vi.hoisted(() => ({
   authContextMock: { orgId: 'org_1', userId: 'user_1', role: 'admin' },
+  withOrgContextMock: vi.fn(),
   membershipFindManyMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   dispenseTaskGroupByMock: vi.fn(),
@@ -68,6 +70,10 @@ vi.mock('@/lib/db/client', () => ({
     managementPlan: { findMany: managementPlanFindManyMock },
     billingEvidence: { findMany: billingEvidenceFindManyMock },
   },
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
 }));
 
 import { GET } from './route';
@@ -117,6 +123,31 @@ describe('/api/visit-schedules/day-board', () => {
     firstVisitDocumentFindManyMock.mockResolvedValue([]);
     managementPlanFindManyMock.mockResolvedValue([]);
     billingEvidenceFindManyMock.mockResolvedValue([]);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        billingEvidence: { findMany: billingEvidenceFindManyMock },
+        careCase: { findMany: careCaseFindManyMock },
+        consentRecord: { findMany: consentRecordFindManyMock },
+        dispenseTask: { groupBy: dispenseTaskGroupByMock },
+        facility: { findMany: facilityFindManyMock },
+        firstVisitDocument: { findMany: firstVisitDocumentFindManyMock },
+        managementPlan: { findMany: managementPlanFindManyMock },
+        membership: { findMany: membershipFindManyMock },
+        pharmacistShift: { findMany: pharmacistShiftFindManyMock },
+        task: {
+          groupBy: taskGroupByMock,
+          findMany: taskFindManyMock,
+          count: taskCountMock,
+        },
+        visitSchedule: { findMany: visitScheduleFindManyMock },
+        visitScheduleContactLog: { findMany: contactLogFindManyMock },
+        visitScheduleProposal: {
+          findMany: proposalFindManyMock,
+          count: proposalCountMock,
+        },
+        visitVehicleResource: { findMany: visitVehicleResourceFindManyMock },
+      }),
+    );
   });
 
   afterEach(() => {
@@ -127,6 +158,13 @@ describe('/api/visit-schedules/day-board', () => {
     const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'admin',
+      }),
+    });
 
     const where = visitScheduleFindManyMock.mock.calls.at(0)?.[0]?.where;
     const proposalWhere = proposalFindManyMock.mock.calls.at(0)?.[0]?.where;

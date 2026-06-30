@@ -1,12 +1,13 @@
 import { z } from 'zod';
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { withAuthContext } from '@/lib/auth/context';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { formatUtcDateKey } from '@/lib/date-key';
-import { prisma } from '@/lib/db/client';
+import { withOrgContext } from '@/lib/db/rls';
 import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import { addUtcDays, japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { timeDateToMinutes } from '@/lib/visits/time-of-day';
@@ -101,6 +102,24 @@ type DayBoardManagementPlan = {
   version: number;
   approved_at: Date | null;
 };
+
+type DayBoardDb = Pick<
+  Prisma.TransactionClient,
+  | 'billingEvidence'
+  | 'careCase'
+  | 'consentRecord'
+  | 'dispenseTask'
+  | 'facility'
+  | 'firstVisitDocument'
+  | 'managementPlan'
+  | 'membership'
+  | 'pharmacistShift'
+  | 'task'
+  | 'visitSchedule'
+  | 'visitScheduleContactLog'
+  | 'visitScheduleProposal'
+  | 'visitVehicleResource'
+>;
 
 const dayBoardQuerySchema = z.object({
   date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
@@ -246,6 +265,7 @@ function buildReadyBlockerSummary(args: {
 }
 
 async function buildReadyBlockerSummaries(
+  db: DayBoardDb,
   orgId: string,
   schedules: DayBoardScheduleReadySource[],
 ): Promise<Map<string, DayBoardVisitReadyBlockerSummary>> {
@@ -272,7 +292,7 @@ async function buildReadyBlockerSummaries(
   const [consents, firstVisitDocuments, managementPlans, billingEvidence] = await Promise.all([
     patientIds.length === 0
       ? Promise.resolve([])
-      : prisma.consentRecord.findMany({
+      : db.consentRecord.findMany({
           where: {
             org_id: orgId,
             patient_id: { in: patientIds },
@@ -285,14 +305,14 @@ async function buildReadyBlockerSummaries(
         }),
     caseIds.length === 0
       ? Promise.resolve([])
-      : prisma.firstVisitDocument.findMany({
+      : db.firstVisitDocument.findMany({
           where: { org_id: orgId, case_id: { in: caseIds } },
           orderBy: [{ case_id: 'asc' }, { created_at: 'desc' }],
           select: { case_id: true, delivered_at: true, created_at: true },
         }),
     caseIds.length === 0
       ? Promise.resolve([])
-      : prisma.managementPlan.findMany({
+      : db.managementPlan.findMany({
           where: {
             org_id: orgId,
             case_id: { in: caseIds },
@@ -311,7 +331,7 @@ async function buildReadyBlockerSummaries(
         }),
     visitRecordIds.length === 0 && cycleIds.length === 0
       ? Promise.resolve([])
-      : prisma.billingEvidence.findMany({
+      : db.billingEvidence.findMany({
           where: {
             org_id: orgId,
             claimable: false,
@@ -496,531 +516,557 @@ const authenticatedGET = withAuthContext(
       proposed_date: { gte: dayStart, lt: dayEnd },
     };
 
-    const [
-      memberships,
-      schedules,
-      openTaskGroups,
-      pharmacistShifts,
-      vehicleResources,
-      proposals,
-      pendingProposalTotalCount,
-    ] = await Promise.all([
-      prisma.membership.findMany({
-        where: {
-          org_id: ctx.orgId,
-          is_active: true,
-          role: { in: [...BOARD_MEMBER_ROLES] },
-        },
-        orderBy: [{ user: { name_kana: 'asc' } }],
-        select: {
-          role: true,
-          user: { select: { id: true, name: true } },
-        },
-      }),
-      prisma.visitSchedule.findMany({
-        where: {
-          org_id: ctx.orgId,
-          scheduled_date: { gte: dayStart, lt: dayEnd },
-          schedule_status: { notIn: ['cancelled', 'rescheduled'] },
-        },
-        orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
-        select: {
-          id: true,
-          case_id: true,
-          cycle_id: true,
-          pharmacist_id: true,
-          visit_type: true,
-          schedule_status: true,
-          scheduled_date: true,
-          carry_items_status: true,
-          priority: true,
-          site_id: true,
-          route_order: true,
-          vehicle_resource_id: true,
-          vehicle_resource: {
+    const responseData = await withOrgContext(
+      ctx.orgId,
+      async (db) => {
+        const [
+          memberships,
+          schedules,
+          openTaskGroups,
+          pharmacistShifts,
+          vehicleResources,
+          proposals,
+          pendingProposalTotalCount,
+        ] = await Promise.all([
+          db.membership.findMany({
+            where: {
+              org_id: ctx.orgId,
+              is_active: true,
+              role: { in: [...BOARD_MEMBER_ROLES] },
+            },
+            orderBy: [{ user: { name_kana: 'asc' } }],
+            select: {
+              role: true,
+              user: { select: { id: true, name: true } },
+            },
+          }),
+          db.visitSchedule.findMany({
+            where: {
+              org_id: ctx.orgId,
+              scheduled_date: { gte: dayStart, lt: dayEnd },
+              schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+            },
+            orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
             select: {
               id: true,
-              label: true,
-              travel_mode: true,
-            },
-          },
-          time_window_start: true,
-          time_window_end: true,
-          confirmed_at: true,
-          cycle: { select: { overall_status: true } },
-          preparation: {
-            select: {
-              org_id: true,
-              prepared_at: true,
-              medication_changes_reviewed: true,
-              carry_items_confirmed: true,
-              previous_issues_reviewed: true,
-              route_confirmed: true,
-              offline_synced: true,
-            },
-          },
-          facility_batch_id: true,
-          facility_batch: { select: { id: true, facility_id: true } },
-          visit_record: { select: { id: true } },
-          case_: {
-            select: {
-              patient: {
+              case_id: true,
+              cycle_id: true,
+              pharmacist_id: true,
+              visit_type: true,
+              schedule_status: true,
+              scheduled_date: true,
+              carry_items_status: true,
+              priority: true,
+              site_id: true,
+              route_order: true,
+              vehicle_resource_id: true,
+              vehicle_resource: {
                 select: {
                   id: true,
-                  name: true,
-                  contacts: {
-                    where: { org_id: ctx.orgId, is_emergency_contact: true },
-                    select: { id: true },
+                  label: true,
+                  travel_mode: true,
+                },
+              },
+              time_window_start: true,
+              time_window_end: true,
+              confirmed_at: true,
+              cycle: { select: { overall_status: true } },
+              preparation: {
+                select: {
+                  org_id: true,
+                  prepared_at: true,
+                  medication_changes_reviewed: true,
+                  carry_items_confirmed: true,
+                  previous_issues_reviewed: true,
+                  route_confirmed: true,
+                  offline_synced: true,
+                },
+              },
+              facility_batch_id: true,
+              facility_batch: { select: { id: true, facility_id: true } },
+              visit_record: { select: { id: true } },
+              case_: {
+                select: {
+                  patient: {
+                    select: {
+                      id: true,
+                      name: true,
+                      contacts: {
+                        where: { org_id: ctx.orgId, is_emergency_contact: true },
+                        select: { id: true },
+                      },
+                    },
+                  },
+                  care_team_links: {
+                    where: { org_id: ctx.orgId },
+                    select: { role: true },
                   },
                 },
               },
-              care_team_links: {
-                where: { org_id: ctx.orgId },
-                select: { role: true },
-              },
             },
-          },
-        },
-      }),
-      prisma.task.groupBy({
-        by: ['assigned_to'],
-        where: { org_id: ctx.orgId, status: { in: ['pending', 'in_progress'] } },
-        _count: { id: true },
-      }),
-      prisma.pharmacistShift.findMany({
-        where: {
-          org_id: ctx.orgId,
-          date: { gte: dayStart, lt: dayEnd },
-        },
-        select: {
-          user_id: true,
-          available: true,
-          available_from: true,
-          available_to: true,
-        },
-      }),
-      prisma.visitVehicleResource.findMany({
-        where: {
-          org_id: ctx.orgId,
-        },
-        orderBy: [{ available: 'desc' }, { label: 'asc' }],
-        select: {
-          id: true,
-          label: true,
-          site_id: true,
-          vehicle_code: true,
-          travel_mode: true,
-          max_stops: true,
-          available: true,
-        },
-      }),
-      prisma.visitScheduleProposal.findMany({
-        where: pendingProposalWhere,
-        orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
-        take: PENDING_PROPOSAL_LIMIT,
-        select: {
-          id: true,
-          visit_type: true,
-          proposal_status: true,
-          patient_contact_status: true,
-          proposed_date: true,
-          time_window_start: true,
-          time_window_end: true,
-          proposed_pharmacist_id: true,
-          case_: { select: { patient: { select: { name: true } } } },
-        },
-      }),
-      prisma.visitScheduleProposal.count({
-        where: pendingProposalWhere,
-      }),
-    ]);
-    const dayCycleIds = Array.from(
-      new Set(schedules.map((schedule) => schedule.cycle_id).filter(isStringId)),
-    );
-    const auditTaskGroups =
-      dayCycleIds.length === 0
-        ? []
-        : await prisma.dispenseTask.groupBy({
+          }),
+          db.task.groupBy({
             by: ['assigned_to'],
-            where: { org_id: ctx.orgId, status: 'completed', cycle_id: { in: dayCycleIds } },
+            where: { org_id: ctx.orgId, status: { in: ['pending', 'in_progress'] } },
             _count: { id: true },
-          });
-    const reportPendingCount = schedules.filter(
-      (schedule) => schedule.cycle?.overall_status === 'visit_completed',
-    ).length;
-
-    // 施設名(facility_batch.facility_id → Facility.name)
-    const facilityIds = Array.from(
-      new Set(
-        schedules
-          .map((schedule) => schedule.facility_batch?.facility_id)
-          .filter((id): id is string => Boolean(id)),
-      ),
-    );
-    const facilities =
-      facilityIds.length === 0
-        ? []
-        : await prisma.facility.findMany({
-            where: { org_id: ctx.orgId, id: { in: facilityIds } },
-            select: { id: true, name: true },
-          });
-    const facilityNameById = new Map(facilities.map((facility) => [facility.id, facility.name]));
-    const batchPatientCounts = new Map<string, number>();
-    for (const schedule of schedules) {
-      if (!schedule.facility_batch_id) continue;
-      batchPatientCounts.set(
-        schedule.facility_batch_id,
-        (batchPatientCounts.get(schedule.facility_batch_id) ?? 0) + 1,
-      );
-    }
-
-    const auditCountByUser = new Map(
-      auditTaskGroups
-        .filter((group) => group.assigned_to)
-        .map((group) => [group.assigned_to as string, group._count.id]),
-    );
-    const unassignedAuditCount =
-      auditTaskGroups.find((group) => group.assigned_to == null)?._count.id ?? 0;
-    const openTaskCountByUser = new Map(
-      openTaskGroups
-        .filter((group) => group.assigned_to)
-        .map((group) => [group.assigned_to as string, group._count.id]),
-    );
-
-    const schedulesByPharmacist = new Map<string, typeof schedules>();
-    for (const schedule of schedules) {
-      const list = schedulesByPharmacist.get(schedule.pharmacist_id) ?? [];
-      list.push(schedule);
-      schedulesByPharmacist.set(schedule.pharmacist_id, list);
-    }
-    const readyBlockerSummaryByScheduleId = await buildReadyBlockerSummaries(ctx.orgId, schedules);
-
-    const toBoardVisit = (schedule: (typeof schedules)[number]): DayBoardVisit => ({
-      id: schedule.id,
-      patient_name: schedule.case_.patient.name,
-      visit_type: schedule.visit_type,
-      schedule_status: schedule.schedule_status,
-      priority: schedule.priority,
-      site_id: schedule.site_id,
-      route_order: schedule.route_order,
-      time_start: schedule.time_window_start?.toISOString() ?? null,
-      time_end: schedule.time_window_end?.toISOString() ?? null,
-      vehicle_resource_id: schedule.vehicle_resource_id,
-      vehicle_label: schedule.vehicle_resource?.label ?? null,
-      vehicle_travel_mode: schedule.vehicle_resource?.travel_mode ?? null,
-      confirmed: schedule.confirmed_at != null,
-      facility_label: schedule.facility_batch
-        ? (facilityNameById.get(schedule.facility_batch.facility_id) ?? '施設')
-        : null,
-      facility_batch_id: schedule.facility_batch_id,
-      facility_patient_count: schedule.facility_batch_id
-        ? (batchPatientCounts.get(schedule.facility_batch_id) ?? 1)
-        : 1,
-      preparation_summary: buildPreparationSummary({
-        ...schedule,
-        ready_blocker_summary: readyBlockerSummaryByScheduleId.get(schedule.id),
-      }),
-    });
-
-    // 同一ユーザーの重複 membership を除去しつつ、訪問のある担当者を優先して行数を絞る。
-    // 当日シフトで不在(available=false)のメンバーはボードに出さない(デザイン 03: 休みはレーン非表示)
-    const shiftByUserId = new Map(pharmacistShifts.map((shift) => [shift.user_id, shift]));
-    const unavailableUserIds = new Set(
-      pharmacistShifts.filter((shift) => !shift.available).map((shift) => shift.user_id),
-    );
-    const seenUserIds = new Set<string>();
-    const staffAll: DayBoardStaff[] = [];
-    for (const membership of memberships) {
-      if (seenUserIds.has(membership.user.id)) continue;
-      if (unavailableUserIds.has(membership.user.id)) continue;
-      seenUserIds.add(membership.user.id);
-      staffAll.push({
-        id: membership.user.id,
-        name: membership.user.name,
-        role: membership.role,
-        role_kind: membership.role === 'clerk' ? 'clerk' : 'pharmacist',
-        visits: (schedulesByPharmacist.get(membership.user.id) ?? []).map(toBoardVisit),
-        open_task_count: openTaskCountByUser.get(membership.user.id) ?? 0,
-        audit_task_count: auditCountByUser.get(membership.user.id) ?? 0,
-      });
-    }
-    const staff = [...staffAll]
-      .sort((left, right) => {
-        if (left.role_kind !== right.role_kind) return left.role_kind === 'pharmacist' ? -1 : 1;
-        if (left.visits.length !== right.visits.length) {
-          return right.visits.length - left.visits.length;
-        }
-        return left.name.localeCompare(right.name, 'ja');
-      })
-      .slice(0, STAFF_ROW_LIMIT);
-
-    // 担当未割当の監査待ちは先頭の薬剤師行に仮配分(デスク作業ブロックの仮置き)
-    const firstPharmacist = staff.find((member) => member.role_kind === 'pharmacist');
-    if (firstPharmacist && unassignedAuditCount > 0) {
-      firstPharmacist.audit_task_count += unassignedAuditCount;
-    }
-
-    // 未確定候補: 確定した場合の担当余白(分)の変化を試算
-    const pharmacistNameById = new Map(staffAll.map((member) => [member.id, member.name]));
-    // proposed_date(@db.Date)は UTC midnight 保存なのでそのまま範囲端に使う
-    const proposalImpactPairs = proposals.map((proposal) => ({
-      pharmacistId: proposal.proposed_pharmacist_id,
-      dayStart: proposal.proposed_date,
-    }));
-    const impactSchedules =
-      proposalImpactPairs.length === 0
-        ? []
-        : await prisma.visitSchedule.findMany({
+          }),
+          db.pharmacistShift.findMany({
             where: {
               org_id: ctx.orgId,
-              schedule_status: { notIn: ['cancelled', 'rescheduled'] },
-              OR: proposalImpactPairs.map((pair) => ({
-                pharmacist_id: pair.pharmacistId,
-                scheduled_date: { gte: pair.dayStart, lt: addUtcDays(pair.dayStart, 1) },
-              })),
+              date: { gte: dayStart, lt: dayEnd },
             },
             select: {
-              pharmacist_id: true,
-              scheduled_date: true,
-              time_window_start: true,
-              time_window_end: true,
+              user_id: true,
+              available: true,
+              available_from: true,
+              available_to: true,
             },
-          });
-
-    const proposalIds = proposals.map((proposal) => proposal.id);
-    const pendingProposalEffectiveTotalCount = Math.max(
-      pendingProposalTotalCount,
-      proposals.length,
-    );
-    const hiddenProposalCount = Math.max(0, pendingProposalEffectiveTotalCount - proposals.length);
-    const hiddenProposalIds =
-      hiddenProposalCount === 0
-        ? []
-        : (
-            await prisma.visitScheduleProposal.findMany({
-              where: pendingProposalWhere,
-              orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
-              skip: PENDING_PROPOSAL_LIMIT,
-              select: { id: true },
-            })
-          ).map((proposal) => proposal.id);
-    const proposalContactLogs =
-      proposalIds.length === 0
-        ? []
-        : await prisma.visitScheduleContactLog.findMany({
-            where: { org_id: ctx.orgId, proposal_id: { in: proposalIds } },
-            orderBy: [{ proposal_id: 'asc' }, { called_at: 'desc' }],
-            select: { proposal_id: true, callback_due_at: true },
-          });
-    const latestContactLogByProposalId = new Map<string, (typeof proposalContactLogs)[number]>();
-    for (const contactLog of proposalContactLogs) {
-      if (contactLog.proposal_id && !latestContactLogByProposalId.has(contactLog.proposal_id)) {
-        latestContactLogByProposalId.set(contactLog.proposal_id, contactLog);
-      }
-    }
-
-    const pendingProposals: DayBoardPendingProposal[] = proposals.map((proposal) => {
-      const proposedDateTime = proposal.proposed_date.getTime();
-      // @db.Date is stored at UTC midnight, so use the canonical UTC date key.
-      const proposedDateKey = formatUtcDateKey(proposal.proposed_date);
-      const sameDayVisits = impactSchedules.filter(
-        (schedule) =>
-          schedule.pharmacist_id === proposal.proposed_pharmacist_id &&
-          schedule.scheduled_date.getTime() === proposedDateTime,
-      );
-      const occupied = sameDayVisits.reduce(
-        (sum, schedule) =>
-          sum +
-          visitOccupiedMinutes(schedule.time_window_start, schedule.time_window_end) +
-          TRAVEL_MINUTES_PER_VISIT,
-        0,
-      );
-      const shiftMinutes = shiftAvailableMinutes(
-        shiftByUserId.get(proposal.proposed_pharmacist_id),
-      );
-      const idleBefore = Math.max(0, shiftMinutes - occupied);
-      const proposalMinutes =
-        visitOccupiedMinutes(proposal.time_window_start, proposal.time_window_end) +
-        TRAVEL_MINUTES_PER_VISIT;
-      const idleAfter = Math.max(0, idleBefore - proposalMinutes);
-
-      const latestContactLog = latestContactLogByProposalId.get(proposal.id);
-
-      return {
-        id: proposal.id,
-        patient_name: proposal.case_.patient.name,
-        pharmacist_name: pharmacistNameById.get(proposal.proposed_pharmacist_id) ?? null,
-        patient_contact_status: proposal.patient_contact_status,
-        proposed_date: proposedDateKey,
-        time_start: proposal.time_window_start?.toISOString() ?? null,
-        badge_label:
-          proposal.patient_contact_status === 'change_requested'
-            ? '変更希望'
-            : proposal.proposal_status === 'reschedule_pending'
-              ? '再調整'
-              : proposal.visit_type === 'initial'
-                ? '受入判断'
-                : '確定待ち',
-        response_due_at: latestContactLog?.callback_due_at?.toISOString() ?? null,
-        idle_before_minutes: idleBefore,
-        idle_after_minutes: idleAfter,
-      } satisfies DayBoardPendingProposal;
-    });
-    const visibleVisitIds = staff.flatMap((member) => member.visits).map((visit) => visit.id);
-    const operationalTaskEntityFilters = [
-      ...(visibleVisitIds.length > 0
-        ? [{ related_entity_type: 'visit_schedule', related_entity_id: { in: visibleVisitIds } }]
-        : []),
-      ...(pendingProposals.length > 0
-        ? [
-            {
-              related_entity_type: 'visit_schedule_proposal',
-              related_entity_id: { in: pendingProposals.map((proposal) => proposal.id) },
-            },
-          ]
-        : []),
-    ];
-    const hiddenProposalTaskFilter =
-      hiddenProposalIds.length === 0
-        ? null
-        : {
-            related_entity_type: 'visit_schedule_proposal',
-            related_entity_id: { in: hiddenProposalIds },
-          };
-    const assignmentScope =
-      operationalTaskEntityFilters.length === 0 && !hiddenProposalTaskFilter
-        ? null
-        : await resolveDashboardAssignmentScope({
-            db: prisma,
-            orgId: ctx.orgId,
-            accessContext: ctx,
-          });
-    const operationalTasks =
-      operationalTaskEntityFilters.length === 0 || !assignmentScope
-        ? []
-        : await prisma.task.findMany({
+          }),
+          db.visitVehicleResource.findMany({
             where: {
               org_id: ctx.orgId,
-              task_type: { in: [...SCHEDULE_BOARD_TASK_TYPES] },
-              status: { in: [...OPEN_OPERATIONAL_TASK_STATUSES] },
-              AND: [
-                buildDashboardTaskAssignmentWhere(assignmentScope),
-                { OR: operationalTaskEntityFilters },
-              ],
             },
-            orderBy: [
-              { sla_due_at: 'asc' },
-              { due_date: 'asc' },
-              { created_at: 'desc' },
-              { id: 'desc' },
-            ],
-            take: OPERATIONAL_TASK_LIMIT,
+            orderBy: [{ available: 'desc' }, { label: 'asc' }],
             select: {
               id: true,
-              task_type: true,
-              title: true,
-              description: true,
-              status: true,
-              priority: true,
-              assigned_to: true,
-              due_date: true,
-              sla_due_at: true,
-              related_entity_type: true,
-              related_entity_id: true,
-              created_at: true,
+              label: true,
+              site_id: true,
+              vehicle_code: true,
+              travel_mode: true,
+              max_stops: true,
+              available: true,
             },
-          });
-    const hiddenOperationalTaskCount =
-      !hiddenProposalTaskFilter || !assignmentScope
-        ? 0
-        : await prisma.task.count({
-            where: {
-              org_id: ctx.orgId,
-              task_type: { in: [...SCHEDULE_BOARD_TASK_TYPES] },
-              status: { in: [...OPEN_OPERATIONAL_TASK_STATUSES] },
-              AND: [buildDashboardTaskAssignmentWhere(assignmentScope), hiddenProposalTaskFilter],
+          }),
+          db.visitScheduleProposal.findMany({
+            where: pendingProposalWhere,
+            orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
+            take: PENDING_PROPOSAL_LIMIT,
+            select: {
+              id: true,
+              visit_type: true,
+              proposal_status: true,
+              patient_contact_status: true,
+              proposed_date: true,
+              time_window_start: true,
+              time_window_end: true,
+              proposed_pharmacist_id: true,
+              case_: { select: { patient: { select: { name: true } } } },
             },
+          }),
+          db.visitScheduleProposal.count({
+            where: pendingProposalWhere,
+          }),
+        ]);
+        const dayCycleIds = Array.from(
+          new Set(schedules.map((schedule) => schedule.cycle_id).filter(isStringId)),
+        );
+        const auditTaskGroups =
+          dayCycleIds.length === 0
+            ? []
+            : await db.dispenseTask.groupBy({
+                by: ['assigned_to'],
+                where: { org_id: ctx.orgId, status: 'completed', cycle_id: { in: dayCycleIds } },
+                _count: { id: true },
+              });
+        const reportPendingCount = schedules.filter(
+          (schedule) => schedule.cycle?.overall_status === 'visit_completed',
+        ).length;
+
+        // 施設名(facility_batch.facility_id → Facility.name)
+        const facilityIds = Array.from(
+          new Set(
+            schedules
+              .map((schedule) => schedule.facility_batch?.facility_id)
+              .filter((id): id is string => Boolean(id)),
+          ),
+        );
+        const facilities =
+          facilityIds.length === 0
+            ? []
+            : await db.facility.findMany({
+                where: { org_id: ctx.orgId, id: { in: facilityIds } },
+                select: { id: true, name: true },
+              });
+        const facilityNameById = new Map(
+          facilities.map((facility) => [facility.id, facility.name]),
+        );
+        const batchPatientCounts = new Map<string, number>();
+        for (const schedule of schedules) {
+          if (!schedule.facility_batch_id) continue;
+          batchPatientCounts.set(
+            schedule.facility_batch_id,
+            (batchPatientCounts.get(schedule.facility_batch_id) ?? 0) + 1,
+          );
+        }
+
+        const auditCountByUser = new Map(
+          auditTaskGroups
+            .filter((group) => group.assigned_to)
+            .map((group) => [group.assigned_to as string, group._count.id]),
+        );
+        const unassignedAuditCount =
+          auditTaskGroups.find((group) => group.assigned_to == null)?._count.id ?? 0;
+        const openTaskCountByUser = new Map(
+          openTaskGroups
+            .filter((group) => group.assigned_to)
+            .map((group) => [group.assigned_to as string, group._count.id]),
+        );
+
+        const schedulesByPharmacist = new Map<string, typeof schedules>();
+        for (const schedule of schedules) {
+          const list = schedulesByPharmacist.get(schedule.pharmacist_id) ?? [];
+          list.push(schedule);
+          schedulesByPharmacist.set(schedule.pharmacist_id, list);
+        }
+        const readyBlockerSummaryByScheduleId = await buildReadyBlockerSummaries(
+          db,
+          ctx.orgId,
+          schedules,
+        );
+
+        const toBoardVisit = (schedule: (typeof schedules)[number]): DayBoardVisit => ({
+          id: schedule.id,
+          patient_name: schedule.case_.patient.name,
+          visit_type: schedule.visit_type,
+          schedule_status: schedule.schedule_status,
+          priority: schedule.priority,
+          site_id: schedule.site_id,
+          route_order: schedule.route_order,
+          time_start: schedule.time_window_start?.toISOString() ?? null,
+          time_end: schedule.time_window_end?.toISOString() ?? null,
+          vehicle_resource_id: schedule.vehicle_resource_id,
+          vehicle_label: schedule.vehicle_resource?.label ?? null,
+          vehicle_travel_mode: schedule.vehicle_resource?.travel_mode ?? null,
+          confirmed: schedule.confirmed_at != null,
+          facility_label: schedule.facility_batch
+            ? (facilityNameById.get(schedule.facility_batch.facility_id) ?? '施設')
+            : null,
+          facility_batch_id: schedule.facility_batch_id,
+          facility_patient_count: schedule.facility_batch_id
+            ? (batchPatientCounts.get(schedule.facility_batch_id) ?? 1)
+            : 1,
+          preparation_summary: buildPreparationSummary({
+            ...schedule,
+            ready_blocker_summary: readyBlockerSummaryByScheduleId.get(schedule.id),
+          }),
+        });
+
+        // 同一ユーザーの重複 membership を除去しつつ、訪問のある担当者を優先して行数を絞る。
+        // 当日シフトで不在(available=false)のメンバーはボードに出さない(デザイン 03: 休みはレーン非表示)
+        const shiftByUserId = new Map(pharmacistShifts.map((shift) => [shift.user_id, shift]));
+        const unavailableUserIds = new Set(
+          pharmacistShifts.filter((shift) => !shift.available).map((shift) => shift.user_id),
+        );
+        const seenUserIds = new Set<string>();
+        const staffAll: DayBoardStaff[] = [];
+        for (const membership of memberships) {
+          if (seenUserIds.has(membership.user.id)) continue;
+          if (unavailableUserIds.has(membership.user.id)) continue;
+          seenUserIds.add(membership.user.id);
+          staffAll.push({
+            id: membership.user.id,
+            name: membership.user.name,
+            role: membership.role,
+            role_kind: membership.role === 'clerk' ? 'clerk' : 'pharmacist',
+            visits: (schedulesByPharmacist.get(membership.user.id) ?? []).map(toBoardVisit),
+            open_task_count: openTaskCountByUser.get(membership.user.id) ?? 0,
+            audit_task_count: auditCountByUser.get(membership.user.id) ?? 0,
           });
+        }
+        const staff = [...staffAll]
+          .sort((left, right) => {
+            if (left.role_kind !== right.role_kind) return left.role_kind === 'pharmacist' ? -1 : 1;
+            if (left.visits.length !== right.visits.length) {
+              return right.visits.length - left.visits.length;
+            }
+            return left.name.localeCompare(right.name, 'ja');
+          })
+          .slice(0, STAFF_ROW_LIMIT);
 
-    const auditPendingCount = auditTaskGroups.reduce((sum, group) => sum + group._count.id, 0);
-    const assignedVehicleCounts = new Map<string, number>();
-    const unassignedAssignableVisitCountsBySite = new Map<string, number>();
-    for (const schedule of schedules) {
-      if (schedule.vehicle_resource_id) {
-        assignedVehicleCounts.set(
-          schedule.vehicle_resource_id,
-          (assignedVehicleCounts.get(schedule.vehicle_resource_id) ?? 0) + 1,
-        );
-      } else if (VEHICLE_ASSIGNABLE_STATUSES.has(schedule.schedule_status)) {
-        const siteKey = schedule.site_id ?? '';
-        unassignedAssignableVisitCountsBySite.set(
-          siteKey,
-          (unassignedAssignableVisitCountsBySite.get(siteKey) ?? 0) + 1,
-        );
-      }
-    }
-    const vehicleSummaries = vehicleResources.map((vehicle) => {
-      const assignedVisitCount = assignedVehicleCounts.get(vehicle.id) ?? 0;
-      const remainingStops = Math.max(0, vehicle.max_stops - assignedVisitCount);
-      const matchingUnassignedVisitCount =
-        unassignedAssignableVisitCountsBySite.get(vehicle.site_id ?? '') ?? 0;
-      return {
-        id: vehicle.id,
-        label: vehicle.label,
-        site_id: vehicle.site_id,
-        vehicle_code: vehicle.vehicle_code,
-        travel_mode: vehicle.travel_mode,
-        available: vehicle.available,
-        max_stops: vehicle.max_stops,
-        assigned_visit_count: assignedVisitCount,
-        remaining_stops: remainingStops,
-        matching_unassigned_visit_count: matchingUnassignedVisitCount,
-        recommended: false,
-        recommendation_reason: vehicle.available
-          ? remainingStops > 0
-            ? `空き ${remainingStops}件`
-            : '本日の上限に到達'
-          : '停止中',
-      };
-    });
-    const recommendedVehicle = vehicleSummaries
-      .filter((vehicle) => vehicle.available && vehicle.remaining_stops > 0)
-      .sort(
-        (left, right) =>
-          Math.min(right.remaining_stops, right.matching_unassigned_visit_count) -
-            Math.min(left.remaining_stops, left.matching_unassigned_visit_count) ||
-          right.remaining_stops - left.remaining_stops ||
-          left.assigned_visit_count - right.assigned_visit_count ||
-          left.label.localeCompare(right.label, 'ja'),
-      )[0];
-    if (recommendedVehicle) {
-      recommendedVehicle.recommended = true;
-      recommendedVehicle.recommendation_reason =
-        recommendedVehicle.matching_unassigned_visit_count > 0
-          ? `同一拠点の未割当 ${Math.min(
-              recommendedVehicle.remaining_stops,
-              recommendedVehicle.matching_unassigned_visit_count,
-            )}件を受けられます`
-          : `予備枠 ${recommendedVehicle.remaining_stops}件`;
-    }
+        // 担当未割当の監査待ちは先頭の薬剤師行に仮配分(デスク作業ブロックの仮置き)
+        const firstPharmacist = staff.find((member) => member.role_kind === 'pharmacist');
+        if (firstPharmacist && unassignedAuditCount > 0) {
+          firstPharmacist.audit_task_count += unassignedAuditCount;
+        }
 
-    const responseData: ScheduleDayBoardResponse = {
-      generated_at: now.toISOString(),
-      date: dateKey,
-      staff,
-      audit_pending_count: auditPendingCount,
-      report_pending_count: reportPendingCount,
-      vehicle_resources: vehicleSummaries,
-      pending_proposals: pendingProposals,
-      pending_proposal_counts: {
-        total_count: pendingProposalEffectiveTotalCount,
-        visible_count: pendingProposals.length,
-        hidden_count: hiddenProposalCount,
-        limit: PENDING_PROPOSAL_LIMIT,
-        hidden_operational_task_count: hiddenOperationalTaskCount,
+        // 未確定候補: 確定した場合の担当余白(分)の変化を試算
+        const pharmacistNameById = new Map(staffAll.map((member) => [member.id, member.name]));
+        // proposed_date(@db.Date)は UTC midnight 保存なのでそのまま範囲端に使う
+        const proposalImpactPairs = proposals.map((proposal) => ({
+          pharmacistId: proposal.proposed_pharmacist_id,
+          dayStart: proposal.proposed_date,
+        }));
+        const impactSchedules =
+          proposalImpactPairs.length === 0
+            ? []
+            : await db.visitSchedule.findMany({
+                where: {
+                  org_id: ctx.orgId,
+                  schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+                  OR: proposalImpactPairs.map((pair) => ({
+                    pharmacist_id: pair.pharmacistId,
+                    scheduled_date: { gte: pair.dayStart, lt: addUtcDays(pair.dayStart, 1) },
+                  })),
+                },
+                select: {
+                  pharmacist_id: true,
+                  scheduled_date: true,
+                  time_window_start: true,
+                  time_window_end: true,
+                },
+              });
+
+        const proposalIds = proposals.map((proposal) => proposal.id);
+        const pendingProposalEffectiveTotalCount = Math.max(
+          pendingProposalTotalCount,
+          proposals.length,
+        );
+        const hiddenProposalCount = Math.max(
+          0,
+          pendingProposalEffectiveTotalCount - proposals.length,
+        );
+        const hiddenProposalIds =
+          hiddenProposalCount === 0
+            ? []
+            : (
+                await db.visitScheduleProposal.findMany({
+                  where: pendingProposalWhere,
+                  orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
+                  skip: PENDING_PROPOSAL_LIMIT,
+                  select: { id: true },
+                })
+              ).map((proposal) => proposal.id);
+        const proposalContactLogs =
+          proposalIds.length === 0
+            ? []
+            : await db.visitScheduleContactLog.findMany({
+                where: { org_id: ctx.orgId, proposal_id: { in: proposalIds } },
+                orderBy: [{ proposal_id: 'asc' }, { called_at: 'desc' }],
+                select: { proposal_id: true, callback_due_at: true },
+              });
+        const latestContactLogByProposalId = new Map<
+          string,
+          (typeof proposalContactLogs)[number]
+        >();
+        for (const contactLog of proposalContactLogs) {
+          if (contactLog.proposal_id && !latestContactLogByProposalId.has(contactLog.proposal_id)) {
+            latestContactLogByProposalId.set(contactLog.proposal_id, contactLog);
+          }
+        }
+
+        const pendingProposals: DayBoardPendingProposal[] = proposals.map((proposal) => {
+          const proposedDateTime = proposal.proposed_date.getTime();
+          // @db.Date is stored at UTC midnight, so use the canonical UTC date key.
+          const proposedDateKey = formatUtcDateKey(proposal.proposed_date);
+          const sameDayVisits = impactSchedules.filter(
+            (schedule) =>
+              schedule.pharmacist_id === proposal.proposed_pharmacist_id &&
+              schedule.scheduled_date.getTime() === proposedDateTime,
+          );
+          const occupied = sameDayVisits.reduce(
+            (sum, schedule) =>
+              sum +
+              visitOccupiedMinutes(schedule.time_window_start, schedule.time_window_end) +
+              TRAVEL_MINUTES_PER_VISIT,
+            0,
+          );
+          const shiftMinutes = shiftAvailableMinutes(
+            shiftByUserId.get(proposal.proposed_pharmacist_id),
+          );
+          const idleBefore = Math.max(0, shiftMinutes - occupied);
+          const proposalMinutes =
+            visitOccupiedMinutes(proposal.time_window_start, proposal.time_window_end) +
+            TRAVEL_MINUTES_PER_VISIT;
+          const idleAfter = Math.max(0, idleBefore - proposalMinutes);
+
+          const latestContactLog = latestContactLogByProposalId.get(proposal.id);
+
+          return {
+            id: proposal.id,
+            patient_name: proposal.case_.patient.name,
+            pharmacist_name: pharmacistNameById.get(proposal.proposed_pharmacist_id) ?? null,
+            patient_contact_status: proposal.patient_contact_status,
+            proposed_date: proposedDateKey,
+            time_start: proposal.time_window_start?.toISOString() ?? null,
+            badge_label:
+              proposal.patient_contact_status === 'change_requested'
+                ? '変更希望'
+                : proposal.proposal_status === 'reschedule_pending'
+                  ? '再調整'
+                  : proposal.visit_type === 'initial'
+                    ? '受入判断'
+                    : '確定待ち',
+            response_due_at: latestContactLog?.callback_due_at?.toISOString() ?? null,
+            idle_before_minutes: idleBefore,
+            idle_after_minutes: idleAfter,
+          } satisfies DayBoardPendingProposal;
+        });
+        const visibleVisitIds = staff.flatMap((member) => member.visits).map((visit) => visit.id);
+        const operationalTaskEntityFilters = [
+          ...(visibleVisitIds.length > 0
+            ? [
+                {
+                  related_entity_type: 'visit_schedule',
+                  related_entity_id: { in: visibleVisitIds },
+                },
+              ]
+            : []),
+          ...(pendingProposals.length > 0
+            ? [
+                {
+                  related_entity_type: 'visit_schedule_proposal',
+                  related_entity_id: { in: pendingProposals.map((proposal) => proposal.id) },
+                },
+              ]
+            : []),
+        ];
+        const hiddenProposalTaskFilter =
+          hiddenProposalIds.length === 0
+            ? null
+            : {
+                related_entity_type: 'visit_schedule_proposal',
+                related_entity_id: { in: hiddenProposalIds },
+              };
+        const assignmentScope =
+          operationalTaskEntityFilters.length === 0 && !hiddenProposalTaskFilter
+            ? null
+            : await resolveDashboardAssignmentScope({
+                db,
+                orgId: ctx.orgId,
+                accessContext: ctx,
+              });
+        const operationalTasks =
+          operationalTaskEntityFilters.length === 0 || !assignmentScope
+            ? []
+            : await db.task.findMany({
+                where: {
+                  org_id: ctx.orgId,
+                  task_type: { in: [...SCHEDULE_BOARD_TASK_TYPES] },
+                  status: { in: [...OPEN_OPERATIONAL_TASK_STATUSES] },
+                  AND: [
+                    buildDashboardTaskAssignmentWhere(assignmentScope),
+                    { OR: operationalTaskEntityFilters },
+                  ],
+                },
+                orderBy: [
+                  { sla_due_at: 'asc' },
+                  { due_date: 'asc' },
+                  { created_at: 'desc' },
+                  { id: 'desc' },
+                ],
+                take: OPERATIONAL_TASK_LIMIT,
+                select: {
+                  id: true,
+                  task_type: true,
+                  title: true,
+                  description: true,
+                  status: true,
+                  priority: true,
+                  assigned_to: true,
+                  due_date: true,
+                  sla_due_at: true,
+                  related_entity_type: true,
+                  related_entity_id: true,
+                  created_at: true,
+                },
+              });
+        const hiddenOperationalTaskCount =
+          !hiddenProposalTaskFilter || !assignmentScope
+            ? 0
+            : await db.task.count({
+                where: {
+                  org_id: ctx.orgId,
+                  task_type: { in: [...SCHEDULE_BOARD_TASK_TYPES] },
+                  status: { in: [...OPEN_OPERATIONAL_TASK_STATUSES] },
+                  AND: [
+                    buildDashboardTaskAssignmentWhere(assignmentScope),
+                    hiddenProposalTaskFilter,
+                  ],
+                },
+              });
+
+        const auditPendingCount = auditTaskGroups.reduce((sum, group) => sum + group._count.id, 0);
+        const assignedVehicleCounts = new Map<string, number>();
+        const unassignedAssignableVisitCountsBySite = new Map<string, number>();
+        for (const schedule of schedules) {
+          if (schedule.vehicle_resource_id) {
+            assignedVehicleCounts.set(
+              schedule.vehicle_resource_id,
+              (assignedVehicleCounts.get(schedule.vehicle_resource_id) ?? 0) + 1,
+            );
+          } else if (VEHICLE_ASSIGNABLE_STATUSES.has(schedule.schedule_status)) {
+            const siteKey = schedule.site_id ?? '';
+            unassignedAssignableVisitCountsBySite.set(
+              siteKey,
+              (unassignedAssignableVisitCountsBySite.get(siteKey) ?? 0) + 1,
+            );
+          }
+        }
+        const vehicleSummaries = vehicleResources.map((vehicle) => {
+          const assignedVisitCount = assignedVehicleCounts.get(vehicle.id) ?? 0;
+          const remainingStops = Math.max(0, vehicle.max_stops - assignedVisitCount);
+          const matchingUnassignedVisitCount =
+            unassignedAssignableVisitCountsBySite.get(vehicle.site_id ?? '') ?? 0;
+          return {
+            id: vehicle.id,
+            label: vehicle.label,
+            site_id: vehicle.site_id,
+            vehicle_code: vehicle.vehicle_code,
+            travel_mode: vehicle.travel_mode,
+            available: vehicle.available,
+            max_stops: vehicle.max_stops,
+            assigned_visit_count: assignedVisitCount,
+            remaining_stops: remainingStops,
+            matching_unassigned_visit_count: matchingUnassignedVisitCount,
+            recommended: false,
+            recommendation_reason: vehicle.available
+              ? remainingStops > 0
+                ? `空き ${remainingStops}件`
+                : '本日の上限に到達'
+              : '停止中',
+          };
+        });
+        const recommendedVehicle = vehicleSummaries
+          .filter((vehicle) => vehicle.available && vehicle.remaining_stops > 0)
+          .sort(
+            (left, right) =>
+              Math.min(right.remaining_stops, right.matching_unassigned_visit_count) -
+                Math.min(left.remaining_stops, left.matching_unassigned_visit_count) ||
+              right.remaining_stops - left.remaining_stops ||
+              left.assigned_visit_count - right.assigned_visit_count ||
+              left.label.localeCompare(right.label, 'ja'),
+          )[0];
+        if (recommendedVehicle) {
+          recommendedVehicle.recommended = true;
+          recommendedVehicle.recommendation_reason =
+            recommendedVehicle.matching_unassigned_visit_count > 0
+              ? `同一拠点の未割当 ${Math.min(
+                  recommendedVehicle.remaining_stops,
+                  recommendedVehicle.matching_unassigned_visit_count,
+                )}件を受けられます`
+              : `予備枠 ${recommendedVehicle.remaining_stops}件`;
+        }
+
+        return {
+          generated_at: now.toISOString(),
+          date: dateKey,
+          staff,
+          audit_pending_count: auditPendingCount,
+          report_pending_count: reportPendingCount,
+          vehicle_resources: vehicleSummaries,
+          pending_proposals: pendingProposals,
+          pending_proposal_counts: {
+            total_count: pendingProposalEffectiveTotalCount,
+            visible_count: pendingProposals.length,
+            hidden_count: hiddenProposalCount,
+            limit: PENDING_PROPOSAL_LIMIT,
+            hidden_operational_task_count: hiddenOperationalTaskCount,
+          },
+          operational_tasks: operationalTasks.map(serializeOperationalTask),
+        } satisfies ScheduleDayBoardResponse;
       },
-      operational_tasks: operationalTasks.map(serializeOperationalTask),
-    };
+      { requestContext: ctx },
+    );
 
     return success({ data: responseData });
   },
