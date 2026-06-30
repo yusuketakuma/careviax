@@ -1,10 +1,12 @@
+import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { conflict, forbidden, success, validationError } from '@/lib/api/response';
+import { conflict, forbidden, success, validationError, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { serializeFacilityPacketMemo } from '@/lib/visits/facility-packet';
 import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { formatDateKey } from '@/lib/date-key';
@@ -93,7 +95,7 @@ function hasDuplicateValue(values: string[]) {
   return new Set(values).size !== values.length;
 }
 
-export const POST = withAuthContext(
+const authenticatedPOST = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -510,3 +512,12 @@ export const POST = withAuthContext(
     message: '施設一括訪問の更新権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

@@ -59,6 +59,11 @@ function createMalformedRequest() {
   } satisfies NextRequestInit);
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/facility-visit-batches POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -315,6 +320,7 @@ describe('/api/facility-visit-batches POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       batch_id: 'batch_1',
       facility_label: 'facility_a',
@@ -351,6 +357,32 @@ describe('/api/facility-visit-batches POST', () => {
       },
     });
     expect(preparationUpsertMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns a sanitized no-store 500 when facility batch transaction fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 090-1234-5678 raw facility batch transaction detail'),
+    );
+
+    const response = await POST(
+      createRequest({
+        schedule_ids: ['schedule_1', 'schedule_2'],
+        ordered_schedule_ids: ['schedule_2', 'schedule_1'],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('raw facility batch transaction detail');
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects facility batch route orders that conflict with an existing schedule', async () => {
