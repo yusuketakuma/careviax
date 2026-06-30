@@ -23,6 +23,9 @@ const DEFAULT_SHIFT_START = '09:00';
 const DEFAULT_SHIFT_END = '18:00';
 const MAX_SEARCH_DAYS = 21;
 const OVERDUE_ASAP_SEARCH_DAYS = 3;
+const SPECIALTY_MISMATCH_BASE_PENALTY = 20;
+const SPECIALTY_MISMATCH_PER_REQUIREMENT_PENALTY = 20;
+const MAX_SPECIALTY_MISMATCH_PENALTY = 60;
 
 type GenerateProposalParams = {
   orgId: string;
@@ -96,6 +99,126 @@ type CandidateScoreBreakdown = {
   lockPenalty: number;
   cadencePenalty: number;
   vehiclePenalty: number;
+  specialtyPenalty: number;
+};
+
+type SpecialtyCoverageMatchStatus = 'not_required' | 'matched' | 'unmatched' | 'unknown';
+
+export type SpecialtyCoverageDiagnostic = {
+  required_labels: string[];
+  missing_labels: string[];
+  unknown_procedure_count: number;
+  match_status: SpecialtyCoverageMatchStatus;
+  source: 'user_visit_specialties_free_text';
+};
+
+type SpecialtyRequirement = {
+  label: string;
+  patterns: readonly RegExp[];
+};
+
+const UNKNOWN_SPECIALTY_REQUIREMENT: SpecialtyRequirement = {
+  label: '未定義手技',
+  patterns: [],
+};
+
+const SPECIALTY_REQUIREMENTS_BY_PROCEDURE: Record<string, SpecialtyRequirement> = {
+  aseptic_preparation: {
+    label: '無菌調剤',
+    patterns: [/無菌/i, /混注/i, /aseptic/i, /sterile/i],
+  },
+  tpn: {
+    label: 'TPN',
+    patterns: [/tpn/i, /高カロリー/i, /中心静脈栄養/i, /輸液/i],
+  },
+  cv_port: {
+    label: 'CVポート',
+    patterns: [/cv\s*ポート/i, /cvport/i, /中心静脈/i, /ポート/i],
+  },
+  cv: {
+    label: '中心静脈',
+    patterns: [/中心静脈/i, /cv/i, /cvc/i],
+  },
+  picc: {
+    label: 'PICC',
+    patterns: [/picc/i, /中心静脈/i, /カテーテル/i],
+  },
+  central_venous: {
+    label: '中心静脈',
+    patterns: [/中心静脈/i, /cvc/i, /tpn/i],
+  },
+  infusion: {
+    label: '点滴',
+    patterns: [/点滴/i, /輸液/i, /infusion/i],
+  },
+  narcotics: {
+    label: '麻薬管理',
+    patterns: [/麻薬/i, /疼痛/i, /緩和/i, /narcotic/i, /palliative/i],
+  },
+  narcotics_injection: {
+    label: '医療用麻薬持続注射',
+    patterns: [/(麻薬.*(持続|注射|pca)|(持続|注射|pca).*麻薬)/i, /pca/i],
+  },
+  terminal_pain: {
+    label: '末期疼痛管理',
+    patterns: [/疼痛/i, /緩和/i, /終末期/i, /terminal/i, /palliative/i],
+  },
+  home_oxygen: {
+    label: '在宅酸素',
+    patterns: [/酸素/i, /呼吸/i, /hot/i],
+  },
+  ventilator: {
+    label: '人工呼吸器',
+    patterns: [/人工呼吸/i, /呼吸器/i, /ventilator/i],
+  },
+  tracheostomy_suction: {
+    label: '気管切開・吸引',
+    patterns: [/気管切開/i, /吸引/i],
+  },
+  enteral_nutrition: {
+    label: '経管栄養',
+    patterns: [/経管/i, /胃ろう/i, /胃瘻/i, /peg/i],
+  },
+  enteral_route: {
+    label: '経管投与',
+    patterns: [/経管/i, /胃ろう/i, /胃瘻/i, /peg/i],
+  },
+  enteral: {
+    label: '経管栄養',
+    patterns: [/経管/i, /胃ろう/i, /胃瘻/i, /peg/i],
+  },
+  tube_feeding: {
+    label: '経管栄養',
+    patterns: [/経管/i, /胃ろう/i, /胃瘻/i, /peg/i],
+  },
+  gastrostomy: {
+    label: '胃ろう',
+    patterns: [/胃ろう/i, /胃瘻/i, /peg/i],
+  },
+  peg: {
+    label: 'PEG',
+    patterns: [/peg/i, /胃ろう/i, /胃瘻/i],
+  },
+  catheter: {
+    label: 'カテーテル',
+    patterns: [/カテーテル/i, /catheter/i],
+  },
+  foley_arrangement: {
+    label: 'フーリー手配',
+    patterns: [/フーリー/i, /バルーン/i, /カテーテル/i],
+  },
+  dialysis: {
+    label: '透析',
+    patterns: [/透析/i, /dialysis/i],
+  },
+  pressure_ulcer: {
+    label: '褥瘡処置',
+    patterns: [/褥瘡/i, /創傷/i],
+  },
+  stoma: {
+    label: 'ストーマ処置',
+    patterns: [/ストーマ/i, /stoma/i],
+  },
 };
 
 export type ProposalCandidateRejectionCode =
@@ -146,6 +269,7 @@ export type AcceptedProposalDiagnostic = {
   care_relationship: 'primary' | 'backup' | 'fallback';
   score: number;
   score_breakdown: CandidateScoreBreakdown;
+  specialty_coverage: SpecialtyCoverageDiagnostic;
   time_window_start: Date;
   time_window_end: Date;
 };
@@ -292,6 +416,83 @@ function intersectWindows(...windows: Array<PreferenceWindow | null | undefined>
   }
 
   return { from, to };
+}
+
+function normalizeVisitSpecialties(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function resolveSpecialtyRequirementsForProcedures(procedureCodes: string[]) {
+  const requirements = new Map<string, SpecialtyRequirement>();
+  let unknownProcedureCount = 0;
+  for (const rawCode of procedureCodes) {
+    const code = rawCode.trim();
+    if (!code) continue;
+    const requirement = SPECIALTY_REQUIREMENTS_BY_PROCEDURE[code];
+    if (requirement) {
+      requirements.set(requirement.label, requirement);
+    } else {
+      unknownProcedureCount += 1;
+      requirements.set(UNKNOWN_SPECIALTY_REQUIREMENT.label, UNKNOWN_SPECIALTY_REQUIREMENT);
+    }
+  }
+  return {
+    requirements: [...requirements.values()],
+    unknownProcedureCount,
+  };
+}
+
+function specialtyRequirementMatches(requirement: SpecialtyRequirement, specialties: string[]) {
+  return specialties.some((specialty) =>
+    requirement.patterns.some((pattern) => pattern.test(specialty)),
+  );
+}
+
+function assessSpecialtyCoverage(args: { specialProcedures: string[]; visitSpecialties: unknown }) {
+  const { requirements, unknownProcedureCount } = resolveSpecialtyRequirementsForProcedures(
+    args.specialProcedures,
+  );
+  const specialties = normalizeVisitSpecialties(args.visitSpecialties);
+  const missingLabels = requirements
+    .filter((requirement) => !specialtyRequirementMatches(requirement, specialties))
+    .map((requirement) => requirement.label);
+  const penalty =
+    missingLabels.length === 0
+      ? 0
+      : Math.min(
+          MAX_SPECIALTY_MISMATCH_PENALTY,
+          SPECIALTY_MISMATCH_BASE_PENALTY +
+            missingLabels.length * SPECIALTY_MISMATCH_PER_REQUIREMENT_PENALTY,
+        );
+
+  return {
+    requiredLabels: requirements.map((requirement) => requirement.label),
+    missingLabels,
+    unknownProcedureCount,
+    matchStatus:
+      requirements.length === 0
+        ? 'not_required'
+        : unknownProcedureCount > 0
+          ? 'unknown'
+          : missingLabels.length > 0
+            ? 'unmatched'
+            : 'matched',
+    penalty,
+  };
+}
+
+function specialtyCoverageDiagnostic(coverage: ReturnType<typeof assessSpecialtyCoverage>) {
+  return {
+    required_labels: coverage.requiredLabels,
+    missing_labels: coverage.missingLabels,
+    unknown_procedure_count: coverage.unknownProcedureCount,
+    match_status: coverage.matchStatus,
+    source: 'user_visit_specialties_free_text',
+  } satisfies SpecialtyCoverageDiagnostic;
 }
 
 function haversineKm(a: SchedulePoint, b: SchedulePoint) {
@@ -1625,6 +1826,11 @@ export async function generateVisitScheduleProposalDrafts(
         const vehiclePenalty = vehicleRouteSelection.vehicleResource
           ? vehicleRouteSelection.vehicleLoad * 3
           : 0;
+        const specialtyCoverage = assessSpecialtyCoverage({
+          specialProcedures,
+          visitSpecialties: shift.user.visit_specialties,
+        });
+        const specialtyPenalty = specialtyCoverage.penalty;
         const scoreBreakdown: CandidateScoreBreakdown = {
           geocodePenalty,
           facilityBonus,
@@ -1633,6 +1839,7 @@ export async function generateVisitScheduleProposalDrafts(
           lockPenalty,
           cadencePenalty,
           vehiclePenalty,
+          specialtyPenalty,
         };
         const score =
           routeInsertion.travelScore +
@@ -1646,6 +1853,7 @@ export async function generateVisitScheduleProposalDrafts(
           scoreBreakdown.lockPenalty +
           scoreBreakdown.cadencePenalty +
           scoreBreakdown.vehiclePenalty +
+          scoreBreakdown.specialtyPenalty +
           priorityBonus +
           preferredPharmacistBonus;
 
@@ -1664,6 +1872,7 @@ export async function generateVisitScheduleProposalDrafts(
           remainingSlackMinutes,
           visitWindow: shiftVisitWindow,
           operatingWindowApplied,
+          specialtyCoverage,
           vehicleResource: vehicleRouteSelection.vehicleResource,
           vehicleLoad: vehicleRouteSelection.vehicleLoad,
           priorityAwareRouteOrder: resolvePriorityAwareRouteOrder({
@@ -1756,6 +1965,17 @@ export async function generateVisitScheduleProposalDrafts(
         ...(candidate.scoreBreakdown.cadencePenalty > 0
           ? ['算定間隔・回数制限に近いため後方候補として評価']
           : ['算定間隔・回数上は提案可能日']),
+        ...(candidate.specialtyCoverage.unknownProcedureCount > 0
+          ? ['専門対応 未定義手技は要確認のため後方評価']
+          : candidate.specialtyCoverage.missingLabels.length > 0
+            ? [
+                `登録上の専門対応候補 ${candidate.specialtyCoverage.missingLabels.join('・')} は未一致のため後方評価`,
+              ]
+            : candidate.specialtyCoverage.requiredLabels.length > 0
+              ? [
+                  `登録上の専門対応候補 ${candidate.specialtyCoverage.requiredLabels.join('・')} と照合`,
+                ]
+              : []),
         ...(candidate.lockedSchedules > 0
           ? [`確定済み・進行中予定 ${candidate.lockedSchedules} 件を固定したまま提案`]
           : ['未確定枠が中心のため再配置余地あり']),
@@ -1799,6 +2019,7 @@ export async function generateVisitScheduleProposalDrafts(
       care_relationship: candidate.careRelationship,
       score: candidate.score,
       score_breakdown: candidate.scoreBreakdown,
+      specialty_coverage: specialtyCoverageDiagnostic(candidate.specialtyCoverage),
       time_window_start: candidate.slot.start,
       time_window_end: candidate.slot.end,
     }),

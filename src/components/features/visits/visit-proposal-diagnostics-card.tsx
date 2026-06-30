@@ -61,6 +61,7 @@ const SCORE_BREAKDOWN_LABELS: Record<string, string> = {
   lockPenalty: '固定予定',
   cadencePenalty: '算定制約',
   vehiclePenalty: '車両負荷',
+  specialtyPenalty: '専門対応',
 };
 
 function formatSignedNumber(value: number) {

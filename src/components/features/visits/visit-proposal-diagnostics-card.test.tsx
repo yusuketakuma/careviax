@@ -31,6 +31,7 @@ describe('VisitProposalDiagnosticsCard', () => {
                 facilityBonus: -8,
                 cadencePenalty: 12,
                 vehiclePenalty: 3,
+                specialtyPenalty: 40,
               },
               time_window_start: '2026-04-09T09:00:00.000Z',
               time_window_end: '2026-04-09T10:00:00.000Z',
@@ -69,6 +70,7 @@ describe('VisitProposalDiagnosticsCard', () => {
     expect(screen.getByText('施設集約 -8')).toBeTruthy();
     expect(screen.getByText('算定制約 +12')).toBeTruthy();
     expect(screen.getByText('車両負荷 +3')).toBeTruthy();
+    expect(screen.getByText('専門対応 +40')).toBeTruthy();
     expect(screen.getByText('車両 社用車A')).toBeTruthy();
     expect(screen.getByText('社用車 社用車A / 当日同車両 2 件目')).toBeTruthy();
     expect(screen.getAllByText('移動上限超過 2')[0]).toBeTruthy();

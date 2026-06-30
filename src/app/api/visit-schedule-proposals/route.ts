@@ -972,6 +972,13 @@ const authenticatedPOST = withAuthContext(
             care_relationship: string;
             score: number;
             score_breakdown: Record<string, number>;
+            specialty_coverage?: {
+              required_labels: string[];
+              missing_labels: string[];
+              unknown_procedure_count: number;
+              match_status: 'not_required' | 'matched' | 'unmatched' | 'unknown';
+              source: 'user_visit_specialties_free_text';
+            };
             time_window_start: Date;
             time_window_end: Date;
           }>;

@@ -185,6 +185,196 @@ describe('generateVisitScheduleProposalDrafts', () => {
     expect(result.diagnostics.accepted[0]?.pharmacist_id).toBe('pharmacist_primary');
   });
 
+  it('prioritizes pharmacists whose visit specialties match required special procedures', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      id: 'case_1',
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'pharmacist_primary',
+      backup_pharmacist_id: 'pharmacist_backup',
+      required_visit_support: {
+        home_visit_intake: {
+          special_medical_procedures: ['tpn'],
+        },
+      },
+      patient: {
+        scheduling_preference: null,
+        residences: [
+          {
+            address: '東京都港区1-1-1',
+            lat: 35.0,
+            lng: 139.0,
+            building_id: 'facility_a',
+          },
+        ],
+      },
+    });
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        date: new Date('2026-03-28T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_primary',
+          name: '主担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: ['在宅一般'],
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+      {
+        date: new Date('2026-03-28T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_backup',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_backup',
+          name: '副担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: ['TPN・中心静脈栄養'],
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(result.drafts).toHaveLength(1);
+    expect(result.drafts[0]).toMatchObject({
+      proposed_pharmacist_id: 'pharmacist_backup',
+      assignment_mode: 'fallback',
+    });
+    expect(result.drafts[0]!.proposal_reason).toContain('登録上の専門対応候補 TPN と照合');
+    expect(result.diagnostics.accepted[0]).toMatchObject({
+      pharmacist_id: 'pharmacist_backup',
+      score_breakdown: expect.objectContaining({
+        specialtyPenalty: 0,
+      }),
+      specialty_coverage: {
+        required_labels: ['TPN'],
+        missing_labels: [],
+        unknown_procedure_count: 0,
+        match_status: 'matched',
+        source: 'user_visit_specialties_free_text',
+      },
+    });
+    expect(result.diagnostics.rejected).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          pharmacist_id: 'pharmacist_primary',
+          reason_code: 'not_selected',
+        }),
+      ]),
+    );
+  });
+
+  it('keeps malformed visit specialties as a soft specialty mismatch penalty', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      id: 'case_1',
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'pharmacist_primary',
+      backup_pharmacist_id: null,
+      required_visit_support: {
+        home_visit_intake: {
+          special_medical_procedures: ['tpn'],
+        },
+      },
+      patient: {
+        scheduling_preference: null,
+        residences: [
+          {
+            address: '東京都港区1-1-1',
+            lat: 35.0,
+            lng: 139.0,
+            building_id: 'facility_a',
+          },
+        ],
+      },
+    });
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        date: new Date('2026-03-28T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_primary',
+          name: '主担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: 'TPN',
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(result.drafts).toHaveLength(1);
+    expect(result.drafts[0]?.proposed_pharmacist_id).toBe('pharmacist_primary');
+    expect(result.drafts[0]?.proposal_reason).toContain(
+      '登録上の専門対応候補 TPN は未一致のため後方評価',
+    );
+    expect(result.diagnostics.accepted[0]?.score_breakdown).toEqual(
+      expect.objectContaining({
+        specialtyPenalty: 40,
+      }),
+    );
+    expect(result.diagnostics.accepted[0]?.specialty_coverage).toEqual({
+      required_labels: ['TPN'],
+      missing_labels: ['TPN'],
+      unknown_procedure_count: 0,
+      match_status: 'unmatched',
+      source: 'user_visit_specialties_free_text',
+    });
+  });
+
   it('keeps route orders scoped to each pharmacist and day cell', async () => {
     const result = await generateVisitScheduleProposalDrafts({
       orgId: 'org_1',

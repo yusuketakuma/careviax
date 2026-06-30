@@ -30,6 +30,30 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Visit Proposal Specialty Match Scoring - 2026-07-01 04:20 JST
+
+- Scope:
+  - Continued visit-time scheduling hardening in `generateVisitScheduleProposalDrafts`.
+  - Focused on matching required home-visit special medical procedures to pharmacist `visit_specialties`.
+- Fixed:
+  - Special medical procedures such as TPN, CV port, narcotics, oxygen, ventilator, enteral route, dialysis, pressure ulcer, and stoma now map to specialty requirements.
+  - Candidate scoring now applies a bounded soft penalty when a pharmacist lacks matching specialties, while keeping the candidate available rather than hard-rejecting.
+  - Proposal reasons and accepted diagnostics now expose whether required specialty coverage matched or was a mismatch.
+  - Regression coverage proves specialty-matched pharmacists can outrank the primary pharmacist and malformed `visit_specialties` is treated as a soft mismatch.
+- Safety:
+  - Reduces unsafe assignment risk for complex home-visit procedures by preferring pharmacists with matching specialty declarations.
+  - Preserves emergency capability checks, primary/backup relationship scoring, route/vehicle scoring, capacity limits, operating-hour guards, workflow gate, auth/RLS callers, migrations, live data, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds only in-memory pattern matching over a small fixed procedure map per candidate.
+  - No new DB query, dependency, external call, background job, broad scan, render-heavy path, or unbounded loop was added.
+- Validation:
+  - Focused planner/patient-selector Vitest passed `3` files / `45` tests.
+  - Related visit proposal API + planner suite passed `2` files / `125` tests with the expected sanitized-500 route log.
+  - Scoped ESLint, scoped Prettier check, scoped diff-check, full typecheck, no-unused, full lint, full format check, and full diff-check passed.
+- Remaining:
+  - Broad visit-time, report, and multi-professional cooperation objective remains open.
+  - Planner still has deeper route optimization follow-ups such as full time-window feasibility, 2-opt, and shared planner/engine insertion scoring.
+
 ### Patient Linked Selector Archive And Count Contract - 2026-07-01 04:18 JST
 
 - Scope:
