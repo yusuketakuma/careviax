@@ -1,4 +1,5 @@
 import { buildAuditTaskHref } from '@/lib/audit/navigation';
+import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
@@ -177,7 +178,13 @@ export function describeOperationalTask(
       };
     case 'communication_request_followup':
       return {
-        actionHref: '/communications/requests',
+        actionHref: buildCommunicationRequestsHref({
+          status: 'sent',
+          patientId:
+            task.related_entity_type === 'patient' && task.related_entity_id
+              ? task.related_entity_id
+              : null,
+        }),
         actionLabel: '連携依頼を確認',
         queueLabel: '連携返信待ち',
       };

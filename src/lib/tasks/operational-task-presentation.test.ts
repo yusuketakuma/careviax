@@ -49,7 +49,7 @@ describe('describeOperationalTask', () => {
     ).toBe(`/audit?taskId=${encodeURIComponent(taskId)}`);
   });
 
-  it('links generic communication follow-up tasks back to communication requests', () => {
+  it('links generic communication follow-up tasks back to patient reply-waiting requests', () => {
     expect(
       describeOperationalTask({
         task_type: 'communication_request_followup',
@@ -57,10 +57,24 @@ describe('describeOperationalTask', () => {
         related_entity_id: 'patient_1',
       }),
     ).toMatchObject({
-      actionHref: '/communications/requests',
+      actionHref: '/communications/requests?status=sent&patient_id=patient_1',
       actionLabel: '連携依頼を確認',
       queueLabel: '連携返信待ち',
     });
+  });
+
+  it('keeps communication follow-up task patient ids URL-encoded', () => {
+    const patientId = '../patient with space?x=1#frag';
+
+    expect(
+      describeOperationalTask({
+        task_type: 'communication_request_followup',
+        related_entity_type: 'patient',
+        related_entity_id: patientId,
+      }).actionHref,
+    ).toBe(
+      `/communications/requests?${new URLSearchParams({ status: 'sent', patient_id: patientId }).toString()}`,
+    );
   });
 
   it.each(['intake_1', '../settings?x=1#frag'])(
