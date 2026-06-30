@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { feedbackFindManyMock, feedbackCreateMock } = vi.hoisted(() => ({
-  feedbackFindManyMock: vi.fn(),
-  feedbackCreateMock: vi.fn(),
-}));
+const { feedbackFindManyMock, feedbackCreateMock, withOrgContextMock, createAuditLogEntryMock } =
+  vi.hoisted(() => ({
+    feedbackFindManyMock: vi.fn(),
+    feedbackCreateMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+    createAuditLogEntryMock: vi.fn(),
+  }));
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 type UatFeedbackRow = {
@@ -68,6 +71,14 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
+}));
+
 import { GET, POST } from './route';
 
 function createAuthRequest(init?: ConstructorParameters<typeof NextRequest>[1]) {
@@ -97,6 +108,17 @@ function createMalformedJsonAuthRequest() {
 describe('/api/admin/uat-feedback', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        uatFeedback: {
+          create: feedbackCreateMock,
+        },
+        auditLog: {
+          create: vi.fn(),
+        },
+      }),
+    );
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     feedbackFindManyMock.mockResolvedValue([buildFeedbackRow()]);
     feedbackCreateMock.mockResolvedValue({
       id: 'feedback_2',
@@ -122,6 +144,7 @@ describe('/api/admin/uat-feedback', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(feedbackFindManyMock).toHaveBeenCalledWith({
       where: { org_id: 'org_1' },
       orderBy: [{ created_at: 'desc' }],
@@ -161,6 +184,18 @@ describe('/api/admin/uat-feedback', () => {
     expect(payload.meta).toEqual({ limit: 100, has_more: true });
   });
 
+  it('returns a sensitive no-store internal error without leaking raw list failures', async () => {
+    const rawErrorMessage = 'raw uat feedback list failure';
+    feedbackFindManyMock.mockRejectedValueOnce(new Error(rawErrorMessage));
+
+    const response = await GET(createAuthRequest(), emptyRouteContext);
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    await expect(response.text()).resolves.not.toContain(rawErrorMessage);
+  });
+
   it('stores feedback with checklist state', async () => {
     const response = await POST(
       createJsonAuthRequest({
@@ -174,6 +209,8 @@ describe('/api/admin/uat-feedback', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
     expect(feedbackCreateMock).toHaveBeenCalledWith({
       data: {
         org_id: 'org_1',
@@ -190,6 +227,30 @@ describe('/api/admin/uat-feedback', () => {
         resolved_at: null,
       },
     });
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uatFeedback: expect.any(Object),
+      }),
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+      }),
+      expect.objectContaining({
+        action: 'uat_feedback_created',
+        targetType: 'UatFeedback',
+        targetId: 'feedback_2',
+        changes: expect.objectContaining({
+          priority: 'medium',
+          status: 'open',
+          source: 'pilot_pharmacy',
+          checklist_progress: '5/7',
+          checked_items_count: 1,
+        }),
+      }),
+    );
+    expect(JSON.stringify(createAuditLogEntryMock.mock.calls[0]?.[2])).not.toContain(
+      '帳票の余白が広い',
+    );
   });
 
   it('rejects non-object POST payloads before feedback creation', async () => {
@@ -197,11 +258,13 @@ describe('/api/admin/uat-feedback', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
     });
     expect(feedbackCreateMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON POST payloads before feedback creation', async () => {
@@ -209,10 +272,30 @@ describe('/api/admin/uat-feedback', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
     });
     expect(feedbackCreateMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sensitive no-store internal error without leaking raw create failures', async () => {
+    const rawErrorMessage = 'raw uat feedback create failure';
+    withOrgContextMock.mockRejectedValueOnce(new Error(rawErrorMessage));
+
+    const response = await POST(
+      createJsonAuthRequest({
+        priority: 'medium',
+        feedback: '帳票の余白が広い',
+      }),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    await expect(response.text()).resolves.not.toContain(rawErrorMessage);
   });
 });

@@ -205,6 +205,36 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Broad master-management and patient-information objective remains open.
   - `.codex/ralph-state.md` update is deferred until the concurrent report-share ledger hunk is committed or released by its owner, to avoid staging another agent's progress entry.
 
+### UAT Feedback API Sensitive Boundary - 2026-07-01 07:52 JST
+
+- Scope:
+  - Continued admin/patient-information hardening for `/api/admin/uat-feedback`.
+  - Focused on persisted UAT feedback reads and triage mutations, which can include free-text operational feedback.
+- Fixed:
+  - UAT feedback `GET`, `POST`, and detail `PATCH` responses now carry sensitive no-store headers.
+  - UAT feedback create/update writes now run inside `withOrgContext`.
+  - UAT feedback create/update writes now create same-transaction audit entries.
+  - Audit payloads intentionally exclude the free-text `feedback` body and record only triage metadata such as priority, status, source, checklist count, owner, work item, due date, and resolved timestamp.
+  - Unexpected route errors are returned through sanitized `INTERNAL_ERROR` envelopes.
+  - Tests lock no-store headers, RLS transaction delegation, audit metadata redaction, owner-org validation, and validation fail-fast behavior before DB work.
+- Safety:
+  - Reduces free-text feedback cache risk, audit gaps, and tenant-boundary drift for admin UAT triage data.
+  - Preserves existing canAdmin permissions, feedback response shape, owner org validation, status/resolved_at semantics, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds no polling, dependency, background job, broad scan, or unbounded loop.
+  - Mutation paths move existing writes into one RLS transaction and add one audit write per successful mutation.
+- Validation:
+  - `pnpm exec vitest run src/app/api/admin/uat-feedback/route.test.ts src/app/api/admin/uat-feedback/'[id]'/route.test.ts src/app/api/admin/uat-feedback/summary/route.test.ts src/lib/audit/audit-entry.test.ts --reporter=dot --testTimeout=60000`: passed, `4` files / `13` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` on UAT feedback API files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master-management and patient-information objective remains open.
+  - Further patient-detail stale-write preconditions remain a separate follow-up.
+
 ### Workflow Emergency Draft Idempotency - 2026-07-01 06:57 JST
 
 - Scope:
