@@ -402,6 +402,168 @@ describe('generateVisitScheduleProposalDrafts', () => {
     );
   });
 
+  it('intersects weekly operating hours with patient visit windows before placing slots', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      id: 'case_1',
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'pharmacist_primary',
+      backup_pharmacist_id: null,
+      patient: {
+        scheduling_preference: {
+          preferred_weekdays: [],
+          preferred_time_from: new Date(Date.UTC(1970, 0, 1, 11, 0, 0, 0)),
+          preferred_time_to: new Date(Date.UTC(1970, 0, 1, 17, 0, 0, 0)),
+          facility_time_from: null,
+          facility_time_to: null,
+          family_presence_required: false,
+          visit_buffer_minutes: null,
+        },
+        residences: [
+          {
+            address: '東京都港区1-1-1',
+            lat: 35.0,
+            lng: 139.0,
+            building_id: 'facility_a',
+          },
+        ],
+      },
+    });
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        date: new Date('2026-03-28T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_primary',
+          name: '主担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: [],
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+    pharmacyOperatingHoursFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'hours_sat_short',
+        site_id: 'site_1',
+        weekday: 6,
+        is_open: true,
+        open_time: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        close_time: new Date(Date.UTC(1970, 0, 1, 13, 0, 0, 0)),
+        note: null,
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(result.drafts).toHaveLength(1);
+    expect(format(result.drafts[0]!.time_window_start!, 'HH:mm')).toBe('11:00');
+    expect(format(result.drafts[0]!.time_window_end!, 'HH:mm')).toBe('12:00');
+    expect(result.drafts[0]!.proposal_reason).toContain('訪問可能時間 11:00-13:00 内で配置');
+    expect(result.drafts[0]!.proposal_reason).toContain('薬局営業時間を反映');
+  });
+
+  it('does not place proposal slots after weekly operating hours close', async () => {
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        date: new Date('2026-03-28T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_primary',
+          name: '主担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: [],
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+    pharmacyOperatingHoursFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'hours_sat_short',
+        site_id: 'site_1',
+        weekday: 6,
+        is_open: true,
+        open_time: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        close_time: new Date(Date.UTC(1970, 0, 1, 13, 0, 0, 0)),
+        note: null,
+      },
+    ]);
+    visitScheduleFindManyMock.mockResolvedValueOnce([
+      {
+        pharmacist_id: 'pharmacist_primary',
+        route_order: 1,
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        time_window_start: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        time_window_end: new Date(Date.UTC(1970, 0, 1, 13, 0, 0, 0)),
+        schedule_status: 'planned',
+        confirmed_at: null,
+        case_: {
+          patient: {
+            id: 'other',
+            residences: [{ address: '東京都港区3-3-3', lat: 35.02, lng: 139.02 }],
+          },
+        },
+        site: {
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(result.drafts).toHaveLength(0);
+    expect(result.diagnostics.rejected).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          pharmacist_id: 'pharmacist_primary',
+          reason_code: 'no_slot',
+          detail: '希望時間帯内に 60 分の空き枠を確保できません',
+        }),
+      ]),
+    );
+  });
+
   it('rejects only matching-site candidates on a site-specific business holiday', async () => {
     pharmacistShiftFindManyMock.mockResolvedValueOnce([
       {

@@ -30,6 +30,36 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Visit Proposal Operating Hours Window Guard - 2026-07-01 04:01 JST
+
+- Scope:
+  - Continued schedule-management and route-decision hardening in `generateVisitScheduleProposalDrafts`.
+  - Focused on P5 constraints-1: pharmacy site operating open/close time-of-day, not just the open-day flag.
+- Fixed:
+  - Candidate slot placement now intersects `resolveOperatingState(...).from/to` with the already-merged patient/facility visit window.
+  - If the combined window leaves no 60-minute slot, the candidate is rejected instead of falling back to the full pharmacist shift.
+  - Proposal reasons now show the effective visit window and note when pharmacy operating hours were applied.
+  - Added regression coverage for shortened weekly hours intersecting a patient window and for preventing after-close fallback when the open window is fully occupied.
+- Safety:
+  - Reduces unsafe proposal generation where a pharmacy is open only part of the day but the planner could still place visits after close.
+  - Preserves existing closed-day override behavior, workflow gate, auth/RLS callers, patient/facility conflict handling, capacity checks, billing cadence checks, route/vehicle scoring, migrations, live data, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds only candidate-local window intersection and small accepted-candidate metadata.
+  - No new DB query, dependency, external call, background job, broad scan, render path, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `34` tests.
+  - Related proposal API + planner suite passed `2` files / `123` tests with the expected sanitized-500 route log.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - Full `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: failed on unrelated concurrent dirty partner/workflow files; planner files passed scoped Prettier.
+- Remaining:
+  - Broad master/patient/schedule objective remains open.
+  - P6 still needs full time-window feasibility, 2-opt, and shared planner/engine insertion scoring.
+  - Concurrent dirty pharmacy-cooperation and partner-visit-record OCC files remain preserved outside this commit.
+
 ### External Professional Communication History Counts - 2026-07-01 03:53 JST
 
 - Scope:

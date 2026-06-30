@@ -1387,6 +1387,24 @@ export async function generateVisitScheduleProposalDrafts(
           }),
         };
       }
+      const shiftVisitWindow = operatingState.open
+        ? intersectWindows(mergedVisitWindow, {
+            from: operatingState.from ?? undefined,
+            to: operatingState.to ?? undefined,
+          })
+        : mergedVisitWindow;
+      if (shiftVisitWindow == null) {
+        return {
+          kind: 'rejected' as const,
+          diagnostic: buildRejectedDiagnostic({
+            shift,
+            reasonCode: 'no_slot',
+            detail: '薬局営業時間と訪問可能時間帯が重ならないため候補外です',
+          }),
+        };
+      }
+      const operatingWindowApplied =
+        operatingState.open && Boolean(operatingState.from || operatingState.to);
 
       try {
         const shiftDateKey = toDateKey(shift.date);
@@ -1455,8 +1473,8 @@ export async function generateVisitScheduleProposalDrafts(
           baseDate: shift.date,
           shiftStart,
           shiftEnd,
-          preferredTimeFrom: mergedVisitWindow?.from,
-          preferredTimeTo: mergedVisitWindow?.to,
+          preferredTimeFrom: shiftVisitWindow.from,
+          preferredTimeTo: shiftVisitWindow.to,
           visitBufferMinutes,
           existingSchedules: schedulesForShift,
         });
@@ -1644,6 +1662,8 @@ export async function generateVisitScheduleProposalDrafts(
           existingDailyVisits: schedulesForShift.length,
           lockedSchedules,
           remainingSlackMinutes,
+          visitWindow: shiftVisitWindow,
+          operatingWindowApplied,
           vehicleResource: vehicleRouteSelection.vehicleResource,
           vehicleLoad: vehicleRouteSelection.vehicleLoad,
           priorityAwareRouteOrder: resolvePriorityAwareRouteOrder({
@@ -1724,11 +1744,12 @@ export async function generateVisitScheduleProposalDrafts(
       travelSummary: candidate.routeInsertion.travelSummary,
       constraintSummary: [
         ...(deadlineOverdue ? ['服薬期限超過のため最短候補として評価'] : []),
-        ...(mergedVisitWindow?.from || mergedVisitWindow?.to
+        ...(candidate.visitWindow.from || candidate.visitWindow.to
           ? [
-              `患者条件 ${mergedVisitWindow?.from ?? '09:00'}-${mergedVisitWindow?.to ?? '18:00'} 内で配置`,
+              `訪問可能時間 ${candidate.visitWindow.from ?? '09:00'}-${candidate.visitWindow.to ?? '18:00'} 内で配置`,
             ]
           : []),
+        ...(candidate.operatingWindowApplied ? ['薬局営業時間を反映'] : []),
         ...(candidate.scoreBreakdown.geocodePenalty > 0
           ? ['住所座標未整備のため補正スコアを適用']
           : []),
