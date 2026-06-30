@@ -30,6 +30,39 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Route Compare Engine-Only Detail Cleanup - 2026-06-30 17:22 JST
+
+- Scope:
+  - Continued schedule-management implementation with Codex/Codex2 only and no Claude gates.
+  - Focused on the remaining P10 cleanup: route-compare still had a legacy fixed-value synthetic scenario builder in the production module even though the page now uses `/api/visit-routes`.
+  - Preserved unrelated drug-master, patient, visit-record, visit-brief, docs, schema/migration, and mixed ledger dirty paths.
+- Fixed:
+  - Removed the exported legacy `buildRouteScenarios()` synthetic/fixed-minute route scenario builder from `route-scenarios.ts`.
+  - Removed `synthetic` from the public route scenario status union.
+  - Kept ordering helpers used to build `/api/visit-routes` request strategies, but removed production exposure of fixed travel-minute scenario models.
+  - `buildRecommendedRouteDetail()` now requires engine-backed scenarios and returns `null` unless at least one scenario is adoptable (`!applyDisabledReason` and `travelMinutes != null`).
+  - Route-compare UI now has a regression test proving the recommended route detail is hidden when every `/api/visit-routes` scenario fails.
+- Safety:
+  - Reduces clinical UX risk where an approximate fallback order could be shown as a recommended route detail when no usable route-engine result exists.
+  - Confirmed-visit adoption guards remain covered by existing route-scenario and route-compare tests.
+  - No auth/RLS weakening, schema migration, live DB operation, external send, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Removed unused fixed-value route calculation surface from production code.
+  - No new network call, dependency, query, render loop, background job, or response payload was added.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/route-compare/route-scenarios.test.ts' 'src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `2` files / `29` tests.
+  - Scoped ESLint on the four owned route-compare files: passed.
+  - Scoped Prettier check on the four owned route-compare files: passed.
+  - Scoped `git diff --check` on the four owned route-compare files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm test:schedule-time:tz`: passed, `30` files / `522` tests.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: failed only on unrelated dirty `docs/ssot-first-visit-document.md` and `docs/ssot-home-visit-intake.md`; scoped Prettier for owned files passed.
+- Remaining:
+  - Commit only the four owned route-compare files because the progress ledgers and unrelated docs have mixed dirty work.
+  - Continue schedule-management gap scan and keep coordinating with Codex2 only.
+
 ### MHLW Price List Dry-Run Preview - 2026-06-30 15:54 JST
 
 - Scope:
