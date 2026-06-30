@@ -27405,3 +27405,32 @@ Next loop:
 - Remaining:
   - Broad master/patient/schedule/collaboration objective remains open.
   - Continue scanning schedule mutation callers for missing expected-state payloads.
+
+### Grouped Master/Schedule Version Guards - 2026-06-30 23:43 JST
+
+- Scope:
+  - Committed all current changes by coherent groups after the latest master-hub and schedule/proposal hardening pass.
+- Commits:
+  - `37b4af47 fix(admin): route master hub actions to editors`
+  - `d13ea246 test(admin): tighten master hub route test`
+  - `658a60d6 fix(schedules): guard vehicle assignment status`
+  - `94ff8bb5 fix(schedules): guard proposal action versions`
+- Fixed:
+  - Master-hub facility/staff/vehicle actions now point at the relevant admin editor surfaces and route responses remain no-store on success/error.
+  - Recommended vehicle assignment now carries reviewed schedule statuses and rejects stale rows before vehicle lookup, write, audit, or workflow notification side effects.
+  - Schedule proposal approve/confirm/reject/contact flows now carry `expected_updated_at`; the API rejects stale proposal actions with 409 and current version details.
+  - Proposal fixtures now include `updated_at`, and the protected PATCH/DELETE auth matrix fixture includes the visit-schedule shape required for a no-op PATCH smoke.
+- Safety:
+  - Reduces wrong-admin-link, stale vehicle assignment, and stale proposal mutation risks without changing auth, org/RLS scope, migrations, external sends, push/deploy, secret handling, or destructive-operation boundaries.
+- Performance:
+  - Uses already-loaded schedule/proposal rows and scalar precondition checks only; no new broad scans, dependencies, jobs, or unbounded loops.
+- Validation:
+  - Master-hub focused Vitest passed `2` files / `11` tests.
+  - Schedule route focused/related Vitest passed `9` files / `144` tests.
+  - Proposal API/UI/protected-route Vitest passed `3` files / `176` tests.
+  - Additional proposal fixture Vitest passed `6` files / `54` tests.
+  - Scoped ESLint, scoped Prettier checks, and `git diff --check` passed.
+  - Full `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed.
+- Remaining:
+  - Broad master/patient/schedule/collaboration objective remains open.
+  - No push was performed; code/test changes were committed locally in the groups above.
