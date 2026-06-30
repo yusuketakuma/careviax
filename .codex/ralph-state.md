@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-2013 JST
+
+- current task: focus workflow dashboard role-inbox and exception actions on existing workflow focus targets.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox for `phos/codex2`, `gbrain search "CareViaX workflow dashboard generic action link focus exceptions workbench" --limit 8`, remaining generic action-link search results, `src/server/services/workflow-dashboard-sections.ts`, `src/server/services/workflow-dashboard-sections.test.ts`, `src/lib/dashboard/home-link-builders.ts`, `src/lib/dashboard/home-link-builders.test.ts`, and `src/app/(dashboard)/workflow/workflow-query-state.ts`. Unrelated dirty `src/app/api/packaging-methods/route.ts` and `.test.ts` were preserved.
+- files changed: `src/server/services/workflow-dashboard-sections.ts`, `src/server/services/workflow-dashboard-sections.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: pharmacist role-inbox actions still opened generic `/workflow` even though the item count belongs to the unified workbench, and workflow exception / overdue-visit command-center items opened generic `/workflow` instead of the existing exceptions-focused dashboard state.
+- security risks found: reduced wrong-workspace navigation drift for visit/workflow exceptions without exposing additional PHI or changing auth, RLS, API response shape, live DB operations, external sends, migrations, push/deploy, secret handling, or destructive operations.
+- performance issues found: URL construction only via the existing dashboard link builder; no query, dependency, network call, background job, unbounded loop, or render-heavy path was added.
+- validation commands: focused workflow dashboard / home-link-builder / workflow-query-state Vitest; scoped ESLint; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused Vitest passed `3` files / `18` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- remaining work: broad visit/report/collaboration objective remains open; continue scanning remaining aggregate `/workflow`, `/external`, `/reports`, and patient/readiness destinations after preserving unrelated packaging-methods WIP.
+- next action: commit only the workflow focus link slice, send agmsg FYI, then choose the next non-overlapping visit/report/collaboration gap.
+
 ### 20260630-2003 JST
 
 - current task: focus workflow readiness remediation actions on the exact follow-up workspace.

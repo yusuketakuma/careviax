@@ -6,6 +6,7 @@ import {
   buildExternalHref,
   buildReportsHref,
   buildTasksHref,
+  buildWorkflowHref,
 } from '@/lib/dashboard/home-link-builders';
 import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import {
@@ -400,7 +401,7 @@ export function buildRoleInboxes(
           .length + communicationQueue.summary.callback_followups,
       communication_items:
         communicationQueue.summary.self_reports + communicationQueue.summary.callback_followups,
-      action_href: '/workflow',
+      action_href: buildWorkflowHref({ focus: 'workbench' }),
     },
     {
       role: 'clerk',
@@ -662,7 +663,7 @@ export function buildExceptionCommandCenter(
       description: exception.description,
       patient_name: exception.cycle?.case_?.patient.name ?? null,
       created_at: exception.created_at.toISOString(),
-      action_href: '/workflow',
+      action_href: buildWorkflowHref({ focus: 'exceptions' }),
       action_label: '例外を確認',
     })),
     ...(overdueVisits > 0
@@ -675,7 +676,7 @@ export function buildExceptionCommandCenter(
             description: `${overdueVisits}件の訪問が期限を超えています。`,
             patient_name: null,
             created_at: null,
-            action_href: '/workflow',
+            action_href: buildWorkflowHref({ focus: 'exceptions' }),
             action_label: '期限超過を確認',
           },
         ]

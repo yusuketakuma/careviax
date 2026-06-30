@@ -5,6 +5,7 @@ import {
   buildFacilityVisibility,
   buildIntakeLinkage,
   buildRemediationGuidance,
+  buildRoleInboxes,
   buildUnifiedWorkbench,
 } from './workflow-dashboard-sections';
 import type { WorkflowCoreData } from './workflow-dashboard-queries';
@@ -250,6 +251,29 @@ describe('workflow-dashboard-sections', () => {
         action_href: '/external?focus=self_reports',
       }),
     ]);
+  });
+
+  it('focuses pharmacist role inbox actions on the unified workflow workbench', () => {
+    const result = buildRoleInboxes(
+      { visit_demand: 1 },
+      0,
+      [],
+      emptyCommunicationQueue(),
+      0,
+      { pending_override_requests: 0 },
+      [],
+      { blocked: 0 },
+      'pharmacist',
+    );
+
+    expect(result.buckets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: 'pharmacist',
+          action_href: '/workflow?focus=workbench',
+        }),
+      ]),
+    );
   });
 
   it('includes cadence summary in visit workbench items when preview is available', () => {
@@ -570,11 +594,36 @@ describe('workflow-dashboard-sections', () => {
     ]);
   });
 
-  it('focuses exception command center report and self-report aggregates', () => {
-    const result = buildExceptionCommandCenter([], 0, 3, 2);
+  it('focuses exception command center actions on the matching workflow/report queues', () => {
+    const result = buildExceptionCommandCenter(
+      [
+        {
+          id: 'exception_1',
+          exception_type: 'visit_preparation_blocked',
+          description: '訪問準備が止まっています',
+          severity: 'high',
+          created_at: new Date('2026-04-01T00:00:00.000Z'),
+          cycle: {
+            case_id: 'case_1',
+            case_: { patient: { id: 'patient_1', name: '患者A' } },
+          },
+        },
+      ],
+      2,
+      3,
+      2,
+    );
 
     expect(result).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          id: 'exception_1',
+          action_href: '/workflow?focus=exceptions',
+        }),
+        expect.objectContaining({
+          id: 'aggregate:overdue_visits',
+          action_href: '/workflow?focus=exceptions',
+        }),
         expect.objectContaining({
           id: 'aggregate:awaiting_reports',
           action_href: '/reports?focus=delivery&delivery_status=response_waiting',

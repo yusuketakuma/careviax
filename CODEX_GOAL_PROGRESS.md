@@ -116,6 +116,28 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Remaining:
   - Continue refining schedule operational surfaces where aggregate counts and focused action links prevent operator drift.
 
+### Workflow Dashboard Focus Links - 2026-06-30 20:13 JST
+
+- Scope:
+  - Continued cross-role workflow navigation hardening after the readiness action-link fix.
+  - Focused on existing workflow query-state targets only; no new UI state, route, DB query, or API field was introduced.
+- Fixed:
+  - Pharmacist role-inbox actions now open `/workflow?focus=workbench` instead of the generic workflow top.
+  - Workflow exception rows and overdue-visit aggregates now open `/workflow?focus=exceptions` instead of the generic workflow top.
+- Safety:
+  - Reduces wrong-workspace drift when staff follow visit/workflow exception links from the multidisciplinary workflow dashboard.
+  - Does not expose additional PHI or change auth/RLS boundaries.
+- Performance:
+  - URL construction only through the existing dashboard link builder.
+- Validation:
+  - `pnpm exec vitest run src/server/services/workflow-dashboard-sections.test.ts src/lib/dashboard/home-link-builders.test.ts src/app/'(dashboard)'/workflow/workflow-query-state.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `18` tests.
+  - Scoped ESLint on workflow dashboard files: passed.
+  - Scoped Prettier check and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Continue scanning remaining aggregate workflow/report/collaboration destinations.
+
 ### Workflow Readiness Action Focus - 2026-06-30 20:03 JST
 
 - Scope:
