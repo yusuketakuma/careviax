@@ -29747,3 +29747,27 @@ Next loop:
 - Remaining:
   - Broad visit/report/collaboration objective remains open.
   - Full DB-level open-issue totals remain a follow-up because the route currently derives open issues from bounded report and billing issue windows.
+
+### Report Share Workspace Extracted Issue Count Labels - 2026-07-01 07:49 JST
+
+- Scope:
+  - Follow-up to report workspace count metadata.
+  - Focused on the `/reports` header meta and section count labels where open issues use `count_basis: "derived_visible_window"`.
+- Fixed:
+  - `buildHeaderMeta` now accepts `count_metadata` and marks non-database-total open-issue counts as `抽出内`.
+  - `formatWorkspaceCountLabel` prefixes non-database/full-result section labels with `抽出内`, so bounded extraction counts are not presented as all-workspace totals.
+  - Added a helper test proving database-total open issue counts remain unprefixed.
+- Safety:
+  - Reduces false-operational report/collaboration risk by distinguishing extracted issue windows from complete DB totals.
+  - No PHI fields, auth, org/RLS scope, mutations, external sends, migrations, push/deploy, secret handling, or destructive-operation boundaries were changed.
+- Performance:
+  - Display-only change.
+  - No DB query, network request, polling, dependency, background job, broad scan, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' --reporter=dot --testTimeout=60000`: passed, `1` file / `19` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `pnpm typecheck:no-unused --pretty false`: failed on concurrent `codex`-owned UAT feedback dirty work, `src/app/api/admin/uat-feedback/route.ts(3,1): error TS6133: 'NextRequest' is declared but its value is never read`.
+- Remaining:
+  - Broad visit/report/collaboration objective remains open.
+  - Current dirty `src/app/api/admin/uat-feedback/*` files are owned by `codex` and preserved outside this report UI slice.
