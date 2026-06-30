@@ -45,6 +45,11 @@ describe('clockStringToTimeDate', () => {
 });
 
 describe('formatTimeOfDay', () => {
+  it('keeps direct HH:mm clock strings without local timezone re-interpretation', () => {
+    expect(formatTimeOfDay('09:05')).toBe('09:05');
+    expect(formatTimeOfDay('23:59:58')).toBe('23:59');
+  });
+
   it('formats ISO timestamps as local HH:mm labels', () => {
     const date = new Date();
     date.setHours(9, 5, 0, 0);

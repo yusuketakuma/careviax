@@ -29327,3 +29327,32 @@ Next loop:
   - Broad master/patient objective remains open.
   - `/admin/staff` still uses the fabricated `MasterEditorView` and remains a high-value master-management follow-up.
   - Concurrent dirty route-compare and external-professionals slices were observed and preserved outside this vehicle commit.
+
+### Direct HH:mm Time Labels - 2026-07-01 06:43 JST
+
+- Scope:
+  - Continued schedule/display hardening.
+  - Focused on shared `formatTimeOfDay` callers that receive dashboard BFF visit times as direct `"HH:MM"` wall-clock strings.
+- Fixed:
+  - `formatTimeOfDay` now preserves direct `HH:mm` / `HH:mm:ss` strings before falling back to local timestamp formatting.
+  - This keeps absolute timestamp labels such as deadlines/generated-at local-time based, while avoiding `"—訪問"` when `today_visits.time_start` is already the wall-clock string returned by `/api/dashboard/cockpit`.
+  - Updated daily-ops rail and operational-policy fixtures to use the real BFF contract (`"14:00"`) instead of ISO timestamps.
+- Safety:
+  - Reduces visit-time display ambiguity in right-rail next-action text.
+  - Existing auth, org/RLS scope, visit scheduling writes, route ordering, report output, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- Performance:
+  - Adds one constant-time regex check in a shared formatter.
+  - No DB query, network request, dependency, polling, background job, render fan-out, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/lib/datetime/time-of-day.test.ts src/lib/workspace/daily-ops-rail.test.ts 'src/app/(dashboard)/settings/operational-policy-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `3` files / `23` tests.
+  - Scoped ESLint on datetime/daily-ops/settings test files: passed.
+  - Scoped Prettier check on datetime/daily-ops/settings test files: passed.
+  - Scoped `git diff --check` on datetime/daily-ops/settings test files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad schedule/prescription/route/master/patient/report/cooperation objective remains open.
+  - Deeper time-window feasibility and route planner/engine scoring convergence remain follow-ups.

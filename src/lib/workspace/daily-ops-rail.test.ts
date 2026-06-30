@@ -38,8 +38,8 @@ function buildCockpitFixture(): DashboardCockpitResponse {
         patient_name: '田中 一郎',
         visit_type: 'regular',
         schedule_status: 'planned',
-        time_start: localIso(14, 0),
-        time_end: localIso(15, 0),
+        time_start: '14:00',
+        time_end: '15:00',
         facility_batch_id: null,
       },
     ],
@@ -138,6 +138,7 @@ describe('buildDailyOpsBlockedReasons', () => {
 describe('formatDailyOpsAgeLabel / familyNameOf', () => {
   it('shared time formatter keeps HH:mm padding and invalid timestamp fallback', () => {
     expect(formatDailyOpsTime(localIso(9, 5))).toBe('09:05');
+    expect(formatDailyOpsTime('09:05')).toBe('09:05');
     expect(formatDailyOpsTime('not-a-date')).toBe('—');
   });
 

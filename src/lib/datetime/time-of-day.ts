@@ -39,6 +39,11 @@ export function clockStringToTimeDate(value: string): Date {
 }
 
 export function formatTimeOfDay(value: string | Date): string {
+  if (typeof value === 'string') {
+    const direct = /^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d(?:\.\d{1,3})?)?$/.exec(value);
+    if (direct) return `${direct[1]}:${direct[2]}`;
+  }
+
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
 
