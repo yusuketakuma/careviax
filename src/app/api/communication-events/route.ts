@@ -350,7 +350,7 @@ export const GET: typeof authenticatedGET = async (req, routeContext) => {
   }
 };
 
-export const POST = withAuthContext(
+const authenticatedPOST = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -362,50 +362,57 @@ export const POST = withAuthContext(
 
     const { attachments, occurred_at, ...rest } = parsed.data;
 
-    if (
-      !(await canAccessCommunicationRequestRecord({
-        db: prisma,
-        orgId: ctx.orgId,
-        patientId: rest.patient_id,
-        caseId: rest.case_id,
-        accessContext: ctx,
-      }))
-    ) {
-      return validationError('患者またはケースの割当権限がありません');
-    }
+    const eventResult = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        if (
+          !(await canAccessCommunicationRequestRecord({
+            db: tx,
+            orgId: ctx.orgId,
+            patientId: rest.patient_id,
+            caseId: rest.case_id,
+            accessContext: ctx,
+          }))
+        ) {
+          return {
+            ok: false as const,
+            response: validationError('患者またはケースの割当権限がありません'),
+          };
+        }
 
-    const eventResult = await withOrgContext(ctx.orgId, async (tx) => {
-      const attachmentResult = await resolveCommunicationEventAttachments({
-        tx,
-        orgId: ctx.orgId,
-        patientId: rest.patient_id,
-        caseId: rest.case_id,
-        refs: attachments ?? [],
-      });
-      if (!attachmentResult.ok) {
-        return { ok: false as const, response: attachmentResult.response };
-      }
+        const attachmentResult = await resolveCommunicationEventAttachments({
+          tx,
+          orgId: ctx.orgId,
+          patientId: rest.patient_id,
+          caseId: rest.case_id,
+          refs: attachments ?? [],
+        });
+        if (!attachmentResult.ok) {
+          return { ok: false as const, response: attachmentResult.response };
+        }
 
-      const created = await tx.communicationEvent.create({
-        data: {
-          org_id: ctx.orgId,
-          ...(occurred_at ? { occurred_at: new Date(occurred_at) } : {}),
-          ...(attachments ? { attachments: attachmentResult.attachments } : {}),
-          ...rest,
-        },
-      });
+        const created = await tx.communicationEvent.create({
+          data: {
+            org_id: ctx.orgId,
+            ...(occurred_at ? { occurred_at: new Date(occurred_at) } : {}),
+            ...(attachments ? { attachments: attachmentResult.attachments } : {}),
+            ...rest,
+          },
+        });
 
-      await learnContactProfileFromCommunication(tx, {
-        orgId: ctx.orgId,
-        counterpartName: created.counterpart_name,
-        counterpartContact: created.counterpart_contact,
-        channel: created.channel,
-        occurredAt: created.occurred_at,
-        markSuccess: created.direction === 'outbound',
-      });
+        await learnContactProfileFromCommunication(tx, {
+          orgId: ctx.orgId,
+          counterpartName: created.counterpart_name,
+          counterpartContact: created.counterpart_contact,
+          channel: created.channel,
+          occurredAt: created.occurred_at,
+          markSuccess: created.direction === 'outbound',
+        });
 
-      return { ok: true as const, event: created };
-    });
+        return { ok: true as const, event: created };
+      },
+      { requestContext: ctx },
+    );
 
     if (!eventResult.ok) return eventResult.response;
 
@@ -416,3 +423,12 @@ export const POST = withAuthContext(
     message: '連携イベントの作成権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

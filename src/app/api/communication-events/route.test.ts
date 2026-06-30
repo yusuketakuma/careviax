@@ -249,6 +249,10 @@ describe('/api/communication-events', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+    });
     expect(communicationEventCreateMock).toHaveBeenCalled();
     expect(learnContactProfileFromCommunicationMock).toHaveBeenCalled();
   });
@@ -257,6 +261,7 @@ describe('/api/communication-events', () => {
     const response = (await POST(createPostRequest(['unexpected'])))!;
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
@@ -267,6 +272,7 @@ describe('/api/communication-events', () => {
     const response = (await POST(createMalformedJsonPostRequest()))!;
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -287,6 +293,7 @@ describe('/api/communication-events', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectNoStore(response);
     expect(communicationEventCreateMock).toHaveBeenCalled();
     expect(learnContactProfileFromCommunicationMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'org_1',
@@ -296,6 +303,37 @@ describe('/api/communication-events', () => {
       occurredAt: expect.anything(),
       markSuccess: true,
     });
+  });
+
+  it('returns a sanitized no-store 500 when communication event creation fails unexpectedly', async () => {
+    communicationEventCreateMock.mockRejectedValueOnce(
+      new Error('田中 花子 ケアマネ raw communication event create failure'),
+    );
+
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        event_type: 'fax',
+        channel: 'fax',
+        direction: 'outbound',
+        subject: '患者宅の状況共有',
+        content: '田中 花子さんの服薬状況を相談',
+      }),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('田中 花子');
+    expect(bodyText).not.toContain('ケアマネ');
+    expect(bodyText).not.toContain('raw communication event create failure');
+    expect(bodyText).not.toContain('患者宅');
+    expect(learnContactProfileFromCommunicationMock).not.toHaveBeenCalled();
   });
 
   it('creates a communication event with validated patient-scoped attachments', async () => {
