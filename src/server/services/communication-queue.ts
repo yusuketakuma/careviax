@@ -880,8 +880,12 @@ export async function listCommunicationQueue(
       summary: `${report.sent_to_physician ?? '送付先未設定'} / ${report.status}`,
       status: report.status,
       occurred_at: report.acknowledged_at ?? report.sent_at ?? report.updated_at,
-      action_href: '/communications/requests',
-      action_label: 'tracing を確認',
+      action_href: buildCommunicationRequestsHref({
+        patientId: report.patient_id,
+        relatedEntityType: 'tracing_report',
+        relatedEntityId: report.id,
+      }),
+      action_label: '関連依頼を確認',
     })),
     ...openRequests.map((request) => ({
       id: `communication_request:${request.id}`,

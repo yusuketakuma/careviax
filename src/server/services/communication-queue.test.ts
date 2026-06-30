@@ -152,6 +152,36 @@ describe('listCommunicationQueue', () => {
     ]);
   });
 
+  it('links tracing report timeline entries to related communication requests', async () => {
+    emptyDbMocks();
+    tracingReportFindManyMock.mockResolvedValue([
+      {
+        id: 'tracing/1?x=y#frag',
+        patient_id: 'patient 1/../x?y=#frag',
+        status: 'sent',
+        sent_to_physician: '在宅主治医',
+        sent_at: new Date('2026-04-02T10:00:00Z'),
+        acknowledged_at: null,
+        updated_at: new Date('2026-04-02T11:00:00Z'),
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient 1/../x?y=#frag', name: '佐藤花子' }]);
+
+    const result = await listCommunicationQueue(makeDb(), {
+      orgId: 'org-1',
+    });
+
+    expect(result.timeline).toEqual([
+      expect.objectContaining({
+        source_type: 'tracing_report',
+        patient_name: '佐藤花子',
+        action_href:
+          '/communications/requests?patient_id=patient+1%2F..%2Fx%3Fy%3D%23frag&related_entity_type=tracing_report&related_entity_id=tracing%2F1%3Fx%3Dy%23frag',
+        action_label: '関連依頼を確認',
+      }),
+    ]);
+  });
+
   it('scopes case-backed communication records when caseIds are provided', async () => {
     emptyDbMocks();
     patientFindFirstMock.mockResolvedValue({

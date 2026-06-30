@@ -534,6 +534,14 @@ export function WorkflowDashboardView({
                         ) : null}
                       </div>
                       <p className="mt-2 text-xs leading-5 text-muted-foreground">{item.summary}</p>
+                      <div className="mt-3 flex justify-end">
+                        <Link
+                          href={item.action_href}
+                          className="inline-flex min-h-11 items-center text-xs font-medium text-primary underline-offset-4 hover:underline"
+                        >
+                          {item.action_label}
+                        </Link>
+                      </div>
                     </div>
                   ))
                 )}

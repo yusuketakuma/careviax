@@ -395,4 +395,42 @@ describe('WorkflowDashboardContent', () => {
     expect(screen.getByText('青葉医師 / 主治医緊急連絡')).toBeTruthy();
     expect(screen.queryByText(/emergency_physician/)).toBeNull();
   });
+
+  it('renders communication timeline action links beside the timeline evidence', () => {
+    const base = buildWorkflowData();
+    useRealtimeQueryMock.mockReturnValue({
+      data: {
+        data: {
+          ...base,
+          communication_queue: {
+            ...base.communication_queue,
+            timeline: [
+              {
+                id: 'tracing_report:tracing_1',
+                source_type: 'tracing_report',
+                patient_name: '佐藤花子',
+                title: '服薬情報提供書',
+                summary: '在宅主治医 / sent',
+                status: 'sent',
+                occurred_at: '2026-04-02T10:00:00.000Z',
+                action_href:
+                  '/communications/requests?patient_id=patient_1&related_entity_type=tracing_report&related_entity_id=tracing_1',
+                action_label: '関連依頼を確認',
+              },
+            ],
+          },
+        },
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    render(<WorkflowDashboardContent initialFocus="communication" />);
+
+    expect(screen.getByText('在宅主治医 / sent')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '関連依頼を確認' }).getAttribute('href')).toBe(
+      '/communications/requests?patient_id=patient_1&related_entity_type=tracing_report&related_entity_id=tracing_1',
+    );
+  });
 });
