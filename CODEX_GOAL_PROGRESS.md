@@ -27454,3 +27454,60 @@ Next loop:
 - Remaining:
   - Broad master/patient objective remains open.
   - Concurrent dirty facility-visit-batch files were observed and intentionally left unstaged/untouched.
+
+### Facility Visit Batch Route-Order Guard - 2026-06-30 23:55 JST
+
+- Scope:
+  - Continued schedule-management and route-decision hardening for facility/home-group batch visits.
+  - Focused on the dedicated facility batch save paths that bypass the generic `visit-schedules/reorder` API.
+- Fixed:
+  - Schedule-day facility batch saves and facility-packet memo saves now send `expected_route_orders` for every reviewed schedule.
+  - `POST /api/facility-visit-batches` validates expected route orders before route-conflict lookup, batch create/update, schedule update, audit, preparation upsert, or workflow notification.
+  - `PATCH /api/facility-visit-batches/[id]` accepts the same expected route-order precondition and includes route order plus `version` in guarded writes.
+  - Both POST and PATCH reject locked schedule statuses and phone-confirmed route-order changes before side effects.
+- Safety:
+  - Reduces stale facility route-order mutation risk and prevents completed/cancelled-like or phone-confirmed visits from being reordered through the facility-batch-specific path.
+  - Preserves auth, org/RLS assignment scope, no-store wrapping, PHI-minimized audit behavior, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds only scalar fields to existing schedule reads and conditional predicates to existing guarded writes.
+  - No new broad query, dependency, background job, external call, unbounded loop, or heavy render path was added.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/facility-visit-batches/[id]/route.test.ts' src/app/api/facility-visit-batches/route.test.ts 'src/app/(dashboard)/schedules/schedule-day-facility-batch.test.ts' --reporter=dot --testTimeout=60000`: passed, `3` files / `59` tests.
+  - Scoped ESLint: passed.
+  - Scoped Prettier check: passed.
+  - Scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Commit:
+  - `034ad938 fix(schedules): guard facility batch route order saves`
+- Remaining:
+  - Broad schedule/prescription/route-management objective remains open.
+  - Next mapped gap: direct recurring visit generation still lacks medication deadline metadata parity with the proposal planner path.
+
+### Facility Visit Batch Route-Order Preconditions - 2026-06-30 23:54 JST
+
+- Scope:
+  - Continued schedule mutation hardening for facility-batch route order saves.
+  - Focused on `/api/facility-visit-batches`, `/api/facility-visit-batches/[id]`, the day-board facility batch helper, and the visit facility-packet memo save path.
+- Fixed:
+  - Facility batch create/update payloads now support `expected_route_orders` for each target schedule.
+  - The day-board facility batch save helper and facility-packet memo save path send the route order values the user reviewed.
+  - Facility batch POST/PATCH reject stale route-order preconditions with a sanitized 409 before batch create/update, schedule writes, audit entries, or workflow notifications.
+  - Guarded schedule writes include the expected `route_order` predicate when supplied, and audit entries record `expected_route_order`.
+  - Direct facility-batch PATCH also keeps the new status/confirmed-route protections and version-guarded writes.
+- Safety:
+  - Reduces stale facility-batch ordering risk where a user could save an old facility visit order after another staff member changed the same schedules.
+  - Existing auth, org/RLS assignment scope, no-store responses, PHI-minimized audit behavior, migrations, live DB operations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- Performance:
+  - Adds only scalar payload validation and in-memory route-order comparisons over already-loaded batch schedules.
+  - No new query, dependency, background job, broad scan, or unbounded loop was added.
+- Validation:
+  - `pnpm vitest run 'src/app/api/facility-visit-batches/route.test.ts' 'src/app/api/facility-visit-batches/[id]/route.test.ts' 'src/app/(dashboard)/schedules/schedule-day-facility-batch.test.ts' --reporter=dot --testTimeout=60000`: passed, `3` files / `59` tests.
+  - `pnpm typecheck --pretty false`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master/patient/schedule/collaboration objective remains open.
+  - No push was performed.
