@@ -590,6 +590,33 @@ describe('/api/visit-schedules/day-board', () => {
         metadata: { callback_note: '自由記載は出さない' },
         created_at: new Date('2026-06-12T01:00:00.000Z'),
       },
+      {
+        id: 'task_override_today',
+        task_type: 'visit_schedule_override_approval',
+        title: '変更承認',
+        description: null,
+        status: 'pending',
+        priority: 'high',
+        assigned_to: null,
+        due_date: null,
+        sla_due_at: null,
+        related_entity_type: 'visit_schedule',
+        related_entity_id: 'visit_today',
+        metadata: {
+          proposal_ids: [
+            'proposal_reschedule',
+            '',
+            'proposal_reschedule',
+            42,
+            'proposal_leading_space ',
+            'proposal/unsafe?phone=09011112222',
+          ],
+          source_schedule_id: ' visit_today ',
+          patient_phone: '090-1111-2222',
+          reason_note: '自由記載は返さない',
+        },
+        created_at: new Date('2026-06-12T02:00:00.000Z'),
+      },
     ]);
 
     const response = (await GET(createRequest('2026-06-12'), {
@@ -645,7 +672,7 @@ describe('/api/visit-schedules/day-board', () => {
           ]),
         }),
         take: 24,
-        select: expect.not.objectContaining({ metadata: true }),
+        select: expect.objectContaining({ metadata: true }),
       }),
     );
     expect(json.data.operational_tasks).toEqual([
@@ -659,9 +686,19 @@ describe('/api/visit-schedules/day-board', () => {
         sla_due_at: '2026-06-12T04:00:00.000Z',
         metadata: null,
       }),
+      expect.objectContaining({
+        id: 'task_override_today',
+        metadata: {
+          proposal_ids: ['proposal_reschedule', 'proposal_leading_space'],
+          source_schedule_id: 'visit_today',
+        },
+      }),
     ]);
     expect(JSON.stringify(json.data)).not.toContain('090-0000-0000');
+    expect(JSON.stringify(json.data)).not.toContain('090-1111-2222');
+    expect(JSON.stringify(json.data)).not.toContain('proposal/unsafe');
     expect(JSON.stringify(json.data)).not.toContain('自由記載は出さない');
+    expect(JSON.stringify(json.data)).not.toContain('自由記載は返さない');
   });
 
   it('reports hidden staff visit and task counts without exposing hidden task details', async () => {

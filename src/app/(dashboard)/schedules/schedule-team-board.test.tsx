@@ -1048,6 +1048,38 @@ describe('ScheduleTeamBoard', () => {
     );
   });
 
+  it('routes override approval tasks to the focused reschedule proposal from safe metadata', () => {
+    const proposalId = 'proposal_override-1';
+    mockQueries({
+      board: {
+        ...buildBoardFixture(),
+        operational_tasks: [
+          buildScheduleTask({
+            id: 'task_override',
+            task_type: 'visit_schedule_override_approval',
+            title: '変更承認が必要です',
+            related_entity_type: 'visit_schedule',
+            related_entity_id: 'visit_1',
+            metadata: {
+              proposal_ids: [proposalId],
+              source_schedule_id: 'visit_1',
+            },
+          }),
+        ],
+      },
+    });
+
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    const operationalTasks = screen.getByTestId('schedule-operational-tasks');
+    const approvalLink = within(operationalTasks).getByRole('link', {
+      name: /伊藤 キヨ様.*変更承認へを開く/,
+    });
+    expect(approvalLink.getAttribute('href')).toBe(
+      `/schedules/proposals?workspace=dashboard&status=reschedule_pending&preset=reschedule&detail=${encodeURIComponent(proposalId)}`,
+    );
+  });
+
   it('offers visit status changes from the staff gantt', () => {
     const mutate = vi.fn();
     useMutationMock.mockReturnValue({

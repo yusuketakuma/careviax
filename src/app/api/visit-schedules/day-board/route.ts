@@ -182,6 +182,46 @@ function isStringId(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
+const SAFE_TASK_METADATA_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+function readSafeTaskMetadataId(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const id = value.trim();
+  return SAFE_TASK_METADATA_ID_PATTERN.test(id) ? id : null;
+}
+
+function readSafeStringIdArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(value.map(readSafeTaskMetadataId).filter((id): id is string => id !== null)),
+  ).slice(0, 10);
+}
+
+function sanitizeOperationalTaskMetadata(task: {
+  task_type: string;
+  metadata: unknown;
+}): Record<string, unknown> | null {
+  if (
+    task.task_type !== 'visit_schedule_override_approval' ||
+    typeof task.metadata !== 'object' ||
+    task.metadata === null ||
+    Array.isArray(task.metadata)
+  ) {
+    return null;
+  }
+
+  const metadata = task.metadata as Record<string, unknown>;
+  const safeMetadata: Record<string, unknown> = {};
+  const proposalIds = readSafeStringIdArray(metadata.proposal_ids);
+  if (proposalIds.length > 0) safeMetadata.proposal_ids = proposalIds;
+  const sourceScheduleId = readSafeTaskMetadataId(metadata.source_schedule_id);
+  if (sourceScheduleId) {
+    safeMetadata.source_schedule_id = sourceScheduleId;
+  }
+
+  return Object.keys(safeMetadata).length > 0 ? safeMetadata : null;
+}
+
 function scheduleReadyAsOf(schedule: Pick<DayBoardScheduleReadySource, 'scheduled_date'>) {
   return schedule.scheduled_date instanceof Date ? schedule.scheduled_date : new Date(0);
 }
@@ -198,6 +238,7 @@ function serializeOperationalTask(task: {
   sla_due_at: Date | null;
   related_entity_type: string | null;
   related_entity_id: string | null;
+  metadata: Prisma.JsonValue | null;
   created_at: Date;
 }): ScheduleDayBoardOperationalTask {
   return {
@@ -212,7 +253,7 @@ function serializeOperationalTask(task: {
     sla_due_at: task.sla_due_at?.toISOString() ?? null,
     related_entity_type: task.related_entity_type,
     related_entity_id: task.related_entity_id,
-    metadata: null,
+    metadata: sanitizeOperationalTaskMetadata(task),
     created_at: task.created_at.toISOString(),
   };
 }
@@ -1138,6 +1179,7 @@ const authenticatedGET = withAuthContext(
                   sla_due_at: true,
                   related_entity_type: true,
                   related_entity_id: true,
+                  metadata: true,
                   created_at: true,
                 },
               });

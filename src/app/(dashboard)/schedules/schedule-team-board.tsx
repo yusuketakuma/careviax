@@ -1390,6 +1390,13 @@ function operationalTaskContext(
   return '対象は現在の表示日外です';
 }
 
+function readFirstProposalIdFromTaskMetadata(metadata: Record<string, unknown> | null) {
+  const proposalIds = metadata?.proposal_ids;
+  return Array.isArray(proposalIds) && typeof proposalIds[0] === 'string' && proposalIds[0]
+    ? proposalIds[0]
+    : null;
+}
+
 function operationalTaskActionHref(task: ScheduleDayBoardOperationalTask) {
   if (task.task_type === 'visit_preparation' || task.task_type === 'visit_carry_item_review') {
     if (task.related_entity_type === 'visit_schedule' && task.related_entity_id) {
@@ -1398,7 +1405,12 @@ function operationalTaskActionHref(task: ScheduleDayBoardOperationalTask) {
     return '/visits';
   }
   if (task.task_type === 'visit_schedule_override_approval') {
-    return '/schedules/proposals?workspace=dashboard&status=reschedule_pending';
+    const proposalId =
+      (task.related_entity_type === 'visit_schedule_proposal' ? task.related_entity_id : null) ??
+      readFirstProposalIdFromTaskMetadata(task.metadata);
+    return proposalId
+      ? `/schedules/proposals?workspace=dashboard&status=reschedule_pending&preset=reschedule&detail=${encodeURIComponent(proposalId)}`
+      : '/schedules/proposals?workspace=dashboard&status=reschedule_pending&preset=reschedule';
   }
   if (task.task_type === 'visit_contact_followup' && task.related_entity_id) {
     return `/schedules/proposals?workspace=dashboard&status=patient_contact_pending&preset=contact&detail=${encodeURIComponent(task.related_entity_id)}`;
