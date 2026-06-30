@@ -77,6 +77,23 @@ describe('describeOperationalTask', () => {
     );
   });
 
+  it('links tracing report follow-up tasks back to related communication requests', () => {
+    const tracingReportId = 'tracing/1?x=y#frag';
+
+    expect(
+      describeOperationalTask({
+        task_type: 'tracing_report_followup',
+        related_entity_type: 'tracing_report',
+        related_entity_id: tracingReportId,
+      }),
+    ).toMatchObject({
+      actionHref:
+        '/communications/requests?related_entity_type=tracing_report&related_entity_id=tracing%2F1%3Fx%3Dy%23frag',
+      actionLabel: '関連依頼を確認',
+      queueLabel: '服薬情報提供書',
+    });
+  });
+
   it.each(['intake_1', '../settings?x=1#frag'])(
     'encodes prescription intake id %s when linking fax original follow-up tasks',
     (intakeId) => {

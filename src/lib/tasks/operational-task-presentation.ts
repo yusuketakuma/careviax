@@ -196,9 +196,18 @@ export function describeOperationalTask(
       };
     case 'tracing_report_followup':
       return {
-        actionHref: '/workflow',
-        actionLabel: '減数調整を確認',
-        queueLabel: 'Tracing',
+        actionHref: buildCommunicationRequestsHref({
+          relatedEntityType:
+            task.related_entity_type === 'tracing_report' && task.related_entity_id
+              ? 'tracing_report'
+              : null,
+          relatedEntityId:
+            task.related_entity_type === 'tracing_report' && task.related_entity_id
+              ? task.related_entity_id
+              : null,
+        }),
+        actionLabel: '関連依頼を確認',
+        queueLabel: '服薬情報提供書',
       };
     case 'residual_reduction_review':
       return {

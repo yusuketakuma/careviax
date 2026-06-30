@@ -415,10 +415,14 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
       create: expect.objectContaining({
         task_type: 'tracing_report_followup',
         description: 'トレーシング返信を確認',
+        related_entity_type: 'tracing_report',
+        related_entity_id: 'tracing_1',
       }),
       update: expect.objectContaining({
         task_type: 'tracing_report_followup',
         description: 'トレーシング返信を確認',
+        related_entity_type: 'tracing_report',
+        related_entity_id: 'tracing_1',
       }),
     });
     expect(auditLogCreateMock).toHaveBeenCalledWith({

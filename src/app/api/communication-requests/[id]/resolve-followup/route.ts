@@ -74,6 +74,24 @@ function resolveFollowupTaskType(relatedEntityType: string | null) {
   return 'communication_request_followup';
 }
 
+function resolveFollowupTaskEntity(existing: {
+  patient_id: string | null;
+  related_entity_type: string | null;
+  related_entity_id: string | null;
+}) {
+  if (existing.related_entity_type === 'tracing_report' && existing.related_entity_id) {
+    return {
+      relatedEntityType: 'tracing_report',
+      relatedEntityId: existing.related_entity_id,
+    };
+  }
+
+  return {
+    relatedEntityType: existing.patient_id ? 'patient' : null,
+    relatedEntityId: existing.patient_id,
+  };
+}
+
 function resolveFollowupAuditHashSecret() {
   const authSecret = getAuthSecret();
   if (authSecret) return authSecret;
@@ -180,6 +198,7 @@ async function authenticatedPOST(req: NextRequest, { params }: ResolveFollowupRo
   if (existing.updated_at.getTime() !== expectedUpdatedAt.getTime()) {
     return conflict('連携依頼が同時に更新されました。再読み込みしてください');
   }
+  const followupTaskEntity = resolveFollowupTaskEntity(existing);
 
   let linkedTracingReport: {
     id: string;
@@ -267,8 +286,8 @@ async function authenticatedPOST(req: NextRequest, { params }: ResolveFollowupRo
             description: followup,
             priority: 'normal',
             dedupeKey: `communication-request-followup:${id}`,
-            relatedEntityType: existing.patient_id ? 'patient' : null,
-            relatedEntityId: existing.patient_id,
+            relatedEntityType: followupTaskEntity.relatedEntityType,
+            relatedEntityId: followupTaskEntity.relatedEntityId,
             metadata: {
               communication_request_id: id,
               source: 'communication_request_resolve_followup',
