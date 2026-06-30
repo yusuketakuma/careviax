@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, internalError } from '@/lib/api/response';
@@ -129,12 +130,16 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
 export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
   try {
     return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch {
+  } catch (err) {
+    unstable_rethrow(err);
     return withSensitiveNoStore(internalError());
   }
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedPATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '処方受付の更新権限がありません',
@@ -230,134 +235,139 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   let intake;
   try {
-    intake = await withOrgContext(ctx.orgId, async (tx) => {
-      const resolvedInstitution =
-        prescriber_institution_id !== undefined || rest.prescriber_institution !== undefined
-          ? await resolvePrescriberInstitutionFields(tx, ctx.orgId, {
-              prescriber_institution_id: prescriber_institution_id ?? null,
-              prescriber_institution: rest.prescriber_institution,
-            })
-          : null;
+    intake = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const resolvedInstitution =
+          prescriber_institution_id !== undefined || rest.prescriber_institution !== undefined
+            ? await resolvePrescriberInstitutionFields(tx, ctx.orgId, {
+                prescriber_institution_id: prescriber_institution_id ?? null,
+                prescriber_institution: rest.prescriber_institution,
+              })
+            : null;
 
-      const updated = await tx.prescriptionIntake.update({
-        where: { id },
-        data: {
-          ...rest,
-          ...(effectivePrescriptionCategory === 'regular' ? { emergency_category: null } : {}),
-          ...(resolvedInstitution
-            ? {
-                prescriber_institution_id: resolvedInstitution.prescriber_institution_id,
-                prescriber_institution: resolvedInstitution.prescriber_institution,
-              }
-            : {}),
-          ...(refill_next_dispense_date !== undefined
-            ? {
-                refill_next_dispense_date: refill_next_dispense_date
-                  ? new Date(refill_next_dispense_date)
-                  : null,
-              }
-            : {}),
-          ...(split_dispense_total != null ? { split_dispense_total } : {}),
-          ...(split_dispense_current != null ? { split_dispense_current } : {}),
-          ...(split_next_dispense_date !== undefined
-            ? {
-                split_next_dispense_date: split_next_dispense_date
-                  ? new Date(split_next_dispense_date)
-                  : null,
-              }
-            : {}),
-          ...(original_collected_at
-            ? {
-                original_collected_at: new Date(original_collected_at),
-                original_collected_by: ctx.userId,
-              }
-            : {}),
-        },
-        include: {
-          lines: { orderBy: { line_number: 'asc' } },
-        },
-      });
-
-      if (original_collected_at && updated.source_type === 'fax') {
-        await resolveOperationalTasks(tx, {
-          orgId: ctx.orgId,
-          taskType: 'fax_original_followup',
-          relatedEntityType: 'prescription_intake',
-          relatedEntityId: id,
-          status: 'completed',
-        });
-      }
-
-      const nextOriginalDocumentUrl = rest.original_document_url;
-      if (
-        nextOriginalDocumentUrl !== undefined &&
-        nextOriginalDocumentUrl !== existing.original_document_url
-      ) {
-        await createAuditLogEntry(tx, ctx, {
-          action: 'prescription_original_document_saved',
-          targetType: 'prescription_intake',
-          targetId: id,
-          changes: {
-            patient_id: existing.cycle.patient_id,
-            case_id: existing.cycle.case_id,
-            document_url_type: classifyPrescriptionDocumentUrl(nextOriginalDocumentUrl),
-            file_id: extractInternalFileIdFromPrescriptionUrl(nextOriginalDocumentUrl),
-            saved_at: new Date().toISOString(),
-            updated_by: ctx.userId,
+        const updated = await tx.prescriptionIntake.update({
+          where: { id },
+          data: {
+            ...rest,
+            ...(effectivePrescriptionCategory === 'regular' ? { emergency_category: null } : {}),
+            ...(resolvedInstitution
+              ? {
+                  prescriber_institution_id: resolvedInstitution.prescriber_institution_id,
+                  prescriber_institution: resolvedInstitution.prescriber_institution,
+                }
+              : {}),
+            ...(refill_next_dispense_date !== undefined
+              ? {
+                  refill_next_dispense_date: refill_next_dispense_date
+                    ? new Date(refill_next_dispense_date)
+                    : null,
+                }
+              : {}),
+            ...(split_dispense_total != null ? { split_dispense_total } : {}),
+            ...(split_dispense_current != null ? { split_dispense_current } : {}),
+            ...(split_next_dispense_date !== undefined
+              ? {
+                  split_next_dispense_date: split_next_dispense_date
+                    ? new Date(split_next_dispense_date)
+                    : null,
+                }
+              : {}),
+            ...(original_collected_at
+              ? {
+                  original_collected_at: new Date(original_collected_at),
+                  original_collected_by: ctx.userId,
+                }
+              : {}),
+          },
+          include: {
+            lines: { orderBy: { line_number: 'asc' } },
           },
         });
-      }
 
-      if (original_management) {
-        const originalManagementUpdatedAt = new Date();
-        const reconciliationCheckedAt =
-          original_management.reconciliation_result === 'not_checked'
-            ? null
-            : originalManagementUpdatedAt.toISOString();
-        const reconciliationCheckedBy =
-          original_management.reconciliation_result === 'not_checked' ? null : ctx.userId;
-        const originalManagementMetadata = {
-          ...original_management,
-          patient_id: existing.cycle.patient_id,
-          case_id: existing.cycle.case_id,
-          original_collected_at:
-            (original_collected_at
-              ? new Date(original_collected_at)
-              : updated.original_collected_at
-            )?.toISOString() ?? null,
-          original_collected_by: updated.original_collected_by ?? null,
-          reconciliation_checked_at: reconciliationCheckedAt,
-          reconciliation_checked_by: reconciliationCheckedBy,
-          updated_by: ctx.userId,
-          updated_at: originalManagementUpdatedAt.toISOString(),
-        };
+        if (original_collected_at && updated.source_type === 'fax') {
+          await resolveOperationalTasks(tx, {
+            orgId: ctx.orgId,
+            taskType: 'fax_original_followup',
+            relatedEntityType: 'prescription_intake',
+            relatedEntityId: id,
+            status: 'completed',
+          });
+        }
 
-        await upsertOperationalTask(tx, {
-          orgId: ctx.orgId,
-          taskType: 'prescription_original_management',
-          title: '処方せん原本管理を記録',
-          description:
-            original_management.reconciliation_result === 'discrepancy'
-              ? 'FAX・原本の差異内容、電子処方せん取得、調剤結果登録、保管場所を確認してください。'
-              : '処方せん原本照合、電子処方せん取得、調剤結果登録、保管場所を記録しました。',
-          priority: original_management.reconciliation_result === 'discrepancy' ? 'high' : 'normal',
-          status: 'completed',
-          dedupeKey: `prescription_original_management:${id}`,
-          relatedEntityType: 'prescription_intake',
-          relatedEntityId: id,
-          metadata: originalManagementMetadata,
-        });
+        const nextOriginalDocumentUrl = rest.original_document_url;
+        if (
+          nextOriginalDocumentUrl !== undefined &&
+          nextOriginalDocumentUrl !== existing.original_document_url
+        ) {
+          await createAuditLogEntry(tx, ctx, {
+            action: 'prescription_original_document_saved',
+            targetType: 'prescription_intake',
+            targetId: id,
+            changes: {
+              patient_id: existing.cycle.patient_id,
+              case_id: existing.cycle.case_id,
+              document_url_type: classifyPrescriptionDocumentUrl(nextOriginalDocumentUrl),
+              file_id: extractInternalFileIdFromPrescriptionUrl(nextOriginalDocumentUrl),
+              saved_at: new Date().toISOString(),
+              updated_by: ctx.userId,
+            },
+          });
+        }
 
-        await createAuditLogEntry(tx, ctx, {
-          action: 'prescription_original_management_updated',
-          targetType: 'prescription_intake',
-          targetId: id,
-          changes: originalManagementMetadata,
-        });
-      }
+        if (original_management) {
+          const originalManagementUpdatedAt = new Date();
+          const reconciliationCheckedAt =
+            original_management.reconciliation_result === 'not_checked'
+              ? null
+              : originalManagementUpdatedAt.toISOString();
+          const reconciliationCheckedBy =
+            original_management.reconciliation_result === 'not_checked' ? null : ctx.userId;
+          const originalManagementMetadata = {
+            ...original_management,
+            patient_id: existing.cycle.patient_id,
+            case_id: existing.cycle.case_id,
+            original_collected_at:
+              (original_collected_at
+                ? new Date(original_collected_at)
+                : updated.original_collected_at
+              )?.toISOString() ?? null,
+            original_collected_by: updated.original_collected_by ?? null,
+            reconciliation_checked_at: reconciliationCheckedAt,
+            reconciliation_checked_by: reconciliationCheckedBy,
+            updated_by: ctx.userId,
+            updated_at: originalManagementUpdatedAt.toISOString(),
+          };
 
-      return updated;
-    });
+          await upsertOperationalTask(tx, {
+            orgId: ctx.orgId,
+            taskType: 'prescription_original_management',
+            title: '処方せん原本管理を記録',
+            description:
+              original_management.reconciliation_result === 'discrepancy'
+                ? 'FAX・原本の差異内容、電子処方せん取得、調剤結果登録、保管場所を確認してください。'
+                : '処方せん原本照合、電子処方せん取得、調剤結果登録、保管場所を記録しました。',
+            priority:
+              original_management.reconciliation_result === 'discrepancy' ? 'high' : 'normal',
+            status: 'completed',
+            dedupeKey: `prescription_original_management:${id}`,
+            relatedEntityType: 'prescription_intake',
+            relatedEntityId: id,
+            metadata: originalManagementMetadata,
+          });
+
+          await createAuditLogEntry(tx, ctx, {
+            action: 'prescription_original_management_updated',
+            targetType: 'prescription_intake',
+            targetId: id,
+            changes: originalManagementMetadata,
+          });
+        }
+
+        return updated;
+      },
+      { requestContext: ctx },
+    );
   } catch (error) {
     if (error instanceof PrescriberInstitutionReferenceValidationError) {
       return validationError(error.message);
@@ -366,4 +376,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   return success(intake);
+}
+
+export async function PATCH(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }

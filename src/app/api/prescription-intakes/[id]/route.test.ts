@@ -258,6 +258,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '処方受付IDが不正です',
@@ -299,6 +300,14 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+    });
     expect(updateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -326,6 +335,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
@@ -338,6 +348,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -356,6 +367,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
@@ -387,8 +399,70 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns auth rejections with sensitive no-store headers before prescription writes', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: Response.json(
+        { code: 'AUTH_FORBIDDEN', message: '権限がありません' },
+        { status: 403 },
+      ),
+    });
+
+    const response = await PATCH(
+      createRequest({
+        original_collected_at: '2026-03-28T09:00:00.000Z',
+      }),
+      { params: Promise.resolve({ id: 'intake_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(requireWritablePatientMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a fixed no-store 500 when prescription intake updates fail without exposing raw PHI', async () => {
+    prescriptionIntakeFindFirstMock.mockResolvedValue({
+      id: 'intake_error',
+      org_id: 'org_1',
+      source_type: 'fax',
+      cycle: {
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+      },
+    });
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('prescription update failed for patient 山田 太郎 token secret raw JAHIS'),
+    );
+
+    const response = await PATCH(
+      createRequest({
+        original_collected_at: '2026-03-28T09:00:00.000Z',
+      }),
+      { params: Promise.resolve({ id: 'intake_error' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const bodyText = await response.text();
+    expect(JSON.parse(bodyText)).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(bodyText).not.toContain('山田');
+    expect(bodyText).not.toContain('token secret');
+    expect(bodyText).not.toContain('JAHIS');
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 

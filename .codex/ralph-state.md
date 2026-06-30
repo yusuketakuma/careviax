@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0904 JST
+
+- current task: propagate manual-auth request context into RLS transactions and harden `PATCH /api/prescription-intakes/[id]` with the established sensitive no-store / fixed-error boundary.
+- files inspected: agmsg inbox/send for `phos/codex`, `git status --short --untracked-files=all`, DB Steward subagent finding, gbrain search for `withOrgContext`/`requestContext`, local Next.js route handler and `unstable_rethrow` docs, `src/lib/db/rls.ts`, `src/app/api/patients/[id]/billing-profile/route.ts`, `src/app/api/patients/[id]/billing-profile/route.test.ts`, `src/app/api/prescription-intakes/[id]/route.ts`, `src/app/api/prescription-intakes/[id]/route.test.ts`, comparable requestContext tests in visit/summary routes, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/patients/[id]/billing-profile/route.ts`, `src/app/api/patients/[id]/billing-profile/route.test.ts`, `src/app/api/prescription-intakes/[id]/route.ts`, `src/app/api/prescription-intakes/[id]/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved codex2-owned `src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts` / `route.test.ts` dirty WIP.
+- bugs found: manual `requireAuthContext` routes were passing only `orgId` to `withOrgContext`, leaving the RLS helper to lack explicit actor/role/site/ip/user-agent metadata. `PATCH /api/prescription-intakes/[id]` also returned PHI-bearing prescription mutation responses without the route's sensitive no-store envelope and lacked an exported fixed-error fallback.
+- security risks found: reduced missing RLS/audit actor metadata risk for patient billing settings and prescription intake mutations; reduced cache and raw-error disclosure risk for prescription intake PATCH responses containing prescription details, patient text, token-like diagnostics, or raw JAHIS data. Auth/permission checks, validation semantics, writable-patient guard, scoped lookup predicates, operational-task behavior, audit payload shapes, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query shape, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only passes existing auth context into RLS setup and wraps existing PATCH responses.
+- validation commands: `pnpm exec prettier --write 'src/app/api/patients/[id]/billing-profile/route.ts' 'src/app/api/patients/[id]/billing-profile/route.test.ts' 'src/app/api/prescription-intakes/[id]/route.ts' 'src/app/api/prescription-intakes/[id]/route.test.ts'`; `pnpm exec vitest run 'src/app/api/patients/[id]/billing-profile/route.test.ts' 'src/app/api/prescription-intakes/[id]/route.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint on the four owned files; scoped `git diff --check` on the four owned files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`; full `git diff --check`.
+- validation results: Prettier passed. Focused billing-profile/prescription-intakes Vitest passed `2` files / `34` tests. Scoped ESLint, scoped `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and full `git diff --check` passed.
+- remaining work: stage only the four owned route/test files plus ledger hunks, commit, send agmsg FYI, and continue remaining backend candidates or incoming review interrupts. `reviewer` returned no findings; `medical_safety_reviewer` and `privacy_compliance_reviewer` returned `APPROVED`.
+- next action: exact-path stage and commit the validated non-overlapping slice.
+
 ### 20260630-0855 JST
 
 - current task: harden `POST /api/care-reports/reminders` so report reminder queueing failures use fixed no-store sanitized envelopes.

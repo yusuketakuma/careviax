@@ -63,40 +63,44 @@ async function authenticatedPATCH(
     updated_by: ctx.userId,
   };
 
-  const result = await withOrgContext(ctx.orgId, async (tx) => {
-    const patient = await tx.patient.findFirst({
-      where: buildPatientDetailWhere({
+  const result = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const patient = await tx.patient.findFirst({
+        where: buildPatientDetailWhere({
+          orgId: ctx.orgId,
+          patientId,
+          role: ctx.role,
+          userId: ctx.userId,
+        }),
+        select: { id: true, name: true },
+      });
+      if (!patient) return null;
+
+      await upsertOperationalTask(tx, {
         orgId: ctx.orgId,
-        patientId,
-        role: ctx.role,
-        userId: ctx.userId,
-      }),
-      select: { id: true, name: true },
-    });
-    if (!patient) return null;
+        taskType: BILLING_PAYMENT_PROFILE_TASK_TYPE,
+        title: `${patient.name} 支払設定`,
+        description: profile.note,
+        priority: 'normal',
+        status: 'completed',
+        dedupeKey: `patient_billing_payment_profile:${patientId}`,
+        relatedEntityType: 'patient',
+        relatedEntityId: patientId,
+        metadata: profile as Prisma.InputJsonObject,
+      });
 
-    await upsertOperationalTask(tx, {
-      orgId: ctx.orgId,
-      taskType: BILLING_PAYMENT_PROFILE_TASK_TYPE,
-      title: `${patient.name} 支払設定`,
-      description: profile.note,
-      priority: 'normal',
-      status: 'completed',
-      dedupeKey: `patient_billing_payment_profile:${patientId}`,
-      relatedEntityType: 'patient',
-      relatedEntityId: patientId,
-      metadata: profile as Prisma.InputJsonObject,
-    });
+      await createAuditLogEntry(tx, ctx, {
+        action: 'billing_payment_profile_updated',
+        targetType: 'Patient',
+        targetId: patientId,
+        changes: profile,
+      });
 
-    await createAuditLogEntry(tx, ctx, {
-      action: 'billing_payment_profile_updated',
-      targetType: 'Patient',
-      targetId: patientId,
-      changes: profile,
-    });
-
-    return profile;
-  });
+      return profile;
+    },
+    { requestContext: ctx },
+  );
 
   if (!result) return notFound('患者が見つかりません');
 

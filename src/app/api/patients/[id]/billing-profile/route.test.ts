@@ -105,6 +105,13 @@ describe('/api/patients/[id]/billing-profile PATCH', () => {
       permission: 'canManageBilling',
       message: '支払設定の更新権限がありません',
     });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+    });
     expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

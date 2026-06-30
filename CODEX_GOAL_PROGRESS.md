@@ -23,6 +23,44 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Manual Auth RLS Request Context + Prescription Intake PATCH Boundary - 2026-06-30 09:04 JST
+
+- Scope:
+  - Followed DB Steward's High finding that manual `requireAuthContext` routes can return `ctx` without installing request context for later `withOrgContext` calls.
+  - Updated only `PATCH /api/patients/[id]/billing-profile` and `PATCH /api/prescription-intakes/[id]`, plus focused tests.
+  - Preserved codex2's active lock on `src/app/api/partner-visit-records/[id]/physician-report-draft/{route.ts,route.test.ts}` and did not touch those files.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Patient billing-profile operational-task/audit transaction now calls `withOrgContext(ctx.orgId, ..., { requestContext: ctx })`, preserving actor/role/site/ip/user-agent context for RLS settings and audit-trigger metadata.
+  - Prescription intake PATCH transaction now passes the same `requestContext` into `withOrgContext`.
+  - Prescription intake PATCH is now split into `authenticatedPATCH` plus exported `PATCH` wrapper so success, auth rejection, validation, conflict, and unexpected failures receive the established sensitive no-store envelope.
+  - Prescription intake GET catch now calls `unstable_rethrow(err)` before returning the fixed `internalError()` fallback.
+  - Regression tests assert `withOrgContext` receives `requestContext`, PATCH responses are no-store, auth rejections avoid DB side effects, and raw prescription/patient/token/JAHIS failure text is not returned in 500 bodies.
+- Safety:
+  - Reduces missing RLS/audit actor metadata risk for patient billing settings and prescription intake mutations.
+  - Reduces browser/proxy cache and raw-error disclosure risk for PHI-bearing prescription intake PATCH responses.
+  - Preserves auth permissions, validation semantics, writable-patient guard behavior, scoped lookup predicates, operational-task side effects, audit payload shapes, and success/domain-error body shapes.
+- Performance:
+  - No DB query shape, dependency, retry loop, external request, synchronous blocking, or unbounded work was added.
+  - The additional `requestContext` object is passed to existing RLS transaction setup only.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/patients/[id]/billing-profile/route.ts' 'src/app/api/patients/[id]/billing-profile/route.test.ts' 'src/app/api/prescription-intakes/[id]/route.ts' 'src/app/api/prescription-intakes/[id]/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/patients/[id]/billing-profile/route.test.ts' 'src/app/api/prescription-intakes/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `34` tests.
+  - Scoped ESLint on the four owned route/test files: passed.
+  - Scoped `git diff --check` on the four owned route/test files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+- Review:
+  - Implementation was based on DB Steward's High read-only finding.
+  - `reviewer` returned no findings after checking the four-file diff, `withOrgContext` contract, exported PATCH boundary, focused Vitest, and scoped diff-check.
+  - `medical_safety_reviewer` returned `APPROVED`, confirming response-shape preservation, no-store/fixed-error coverage, RLS/audit context propagation, and no patient-safety workflow blockers.
+  - `privacy_compliance_reviewer` returned `APPROVED`, confirming PHI/PII no-store coverage, raw-error non-leakage, audit/requestContext propagation, and no new telemetry/log exposure.
+- Remaining:
+  - Stage only the four owned route/test files plus this ledger and `.codex/ralph-state.md`, commit, send agmsg FYI, then continue non-overlapping backend candidates or incoming codex2 review interrupts.
+
 ### Care Report Reminders POST No-Store / Sanitized Envelope - 2026-06-30 08:55 JST
 
 - Scope:
