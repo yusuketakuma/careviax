@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
+  authPlumbingFailureRef,
   withOrgContextMock,
   patientShareCaseFindFirstMock,
   pharmacyVisitRequestFindFirstMock,
@@ -12,6 +13,7 @@ const {
   correctionRequestCreateMock,
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
+  authPlumbingFailureRef: { current: null as Error | null },
   withOrgContextMock: vi.fn(),
   patientShareCaseFindFirstMock: vi.fn(),
   pharmacyVisitRequestFindFirstMock: vi.fn(),
@@ -25,8 +27,12 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => Promise<Response>) => {
-    return (req: NextRequest, routeContext?: unknown) =>
-      handler(
+    return (req: NextRequest, routeContext?: unknown) => {
+      if (authPlumbingFailureRef.current) {
+        throw authPlumbingFailureRef.current;
+      }
+
+      return handler(
         req,
         {
           orgId: 'org_1',
@@ -36,6 +42,7 @@ vi.mock('@/lib/auth/context', () => ({
         },
         routeContext,
       );
+    };
   },
 }));
 
@@ -75,9 +82,15 @@ function createRequest(body: unknown) {
   );
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/patient-share-cases/[id]/correction-requests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authPlumbingFailureRef.current = null;
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
       status: 'active',
@@ -158,8 +171,7 @@ describe('/api/patient-share-cases/[id]/correction-requests', () => {
     const response = await rawGET(createGetRequest(), routeContext);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expectSensitiveNoStore(response);
     expect(correctionRequestFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         select: expect.not.objectContaining({
@@ -212,8 +224,7 @@ describe('/api/patient-share-cases/[id]/correction-requests', () => {
     const response = await rawGET(createGetRequest(query), routeContext);
 
     expect(response.status).toBe(400);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: { status: ['ステータスを指定してください'] },
@@ -252,8 +263,7 @@ describe('/api/patient-share-cases/[id]/correction-requests', () => {
     const response = await rawGET(createGetRequest(), routeContext);
 
     expect(response.status).toBe(404);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_NOT_FOUND',
       message: '患者共有ケースが見つかりません',
@@ -270,8 +280,7 @@ describe('/api/patient-share-cases/[id]/correction-requests', () => {
     const response = await rawGET(createGetRequest('?limit=8'), routeContext);
 
     expect(response.status).toBe(500);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expectSensitiveNoStore(response);
     const body = await response.json();
     expect(body).toMatchObject({
       code: 'INTERNAL_ERROR',
@@ -296,6 +305,7 @@ describe('/api/patient-share-cases/[id]/correction-requests', () => {
     );
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(partnerVisitRecordFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'partner_visit_record_1', org_id: 'org_1', share_case_id: 'share_case_1' },
       select: { id: true },
@@ -471,6 +481,7 @@ describe('/api/patient-share-cases/[id]/correction-requests', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(correctionRequestCreateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
@@ -490,6 +501,7 @@ describe('/api/patient-share-cases/[id]/correction-requests', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(correctionRequestCreateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
@@ -511,6 +523,7 @@ describe('/api/patient-share-cases/[id]/correction-requests', () => {
       );
 
       expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
       expect(partnerVisitRecordFindFirstMock).not.toHaveBeenCalled();
       expect(claimCooperationNoteFindFirstMock).not.toHaveBeenCalled();
       expect(visitBillingCandidateFindFirstMock).not.toHaveBeenCalled();
@@ -539,7 +552,71 @@ describe('/api/patient-share-cases/[id]/correction-requests', () => {
     );
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(partnerVisitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(correctionRequestCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when correction request creation fails unexpectedly', async () => {
+    correctionRequestCreateMock.mockRejectedValueOnce(
+      new Error('raw correction create patient 山田花子 token secret proposed_value'),
+    );
+
+    const response = await rawPOST(
+      createRequest({
+        target_type: 'partner_visit_record',
+        target_id: 'partner_visit_record_1',
+        field_path: 'record_content',
+        request_type: 'correction',
+        reason: '患者 山田花子 token secret の記録確認',
+        proposed_value: { address: '東京都港区1-2-3' },
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serializedBody = JSON.stringify(body);
+    expect(serializedBody).not.toContain('raw correction');
+    expect(serializedBody).not.toContain('山田花子');
+    expect(serializedBody).not.toContain('token secret');
+    expect(serializedBody).not.toContain('proposed_value');
+    expect(serializedBody).not.toContain('東京都港区1-2-3');
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when auth plumbing fails before POST body parsing', async () => {
+    authPlumbingFailureRef.current = new Error(
+      'raw auth correction patient 山田花子 token secret proposed_value',
+    );
+
+    const response = await rawPOST(
+      createRequest({
+        target_type: 'partner_visit_record',
+        reason: '',
+      }),
+      { params: Promise.resolve({ id: '   ' }) },
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serializedBody = JSON.stringify(body);
+    expect(serializedBody).not.toContain('raw auth');
+    expect(serializedBody).not.toContain('山田花子');
+    expect(serializedBody).not.toContain('token secret');
+    expect(serializedBody).not.toContain('proposed_value');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(correctionRequestCreateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });

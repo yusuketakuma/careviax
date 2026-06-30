@@ -163,7 +163,7 @@ export const GET: typeof authenticatedGET = async (req, routeContext) => {
   }
 };
 
-export const POST = withAuthContext<{ id: string }>(
+const authenticatedPOST = withAuthContext<{ id: string }>(
   async (req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -308,3 +308,12 @@ export const POST = withAuthContext<{ id: string }>(
     message: '修正依頼の作成権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (error) {
+    unstable_rethrow(error);
+    return withSensitiveNoStore(internalError());
+  }
+};

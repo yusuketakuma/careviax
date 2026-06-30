@@ -24,6 +24,40 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Patient Share Correction Requests POST No-Store / Sanitized Envelope - 2026-06-30 09:56 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration objective on patient-share correction-request creation.
+  - Updated only `POST /api/patient-share-cases/[id]/correction-requests` and its focused tests.
+  - Preserved codex-owned patient create WIP and unrelated drug-master/pharmacy-drug-stocks helper WIP; no schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Existing correction-request POST handler logic now remains unchanged as `authenticatedPOST`, while exported `POST` applies the established `withSensitiveNoStore` + `unstable_rethrow` + fixed `internalError()` fallback pattern.
+  - Added a shared no-store assertion helper that checks both `Cache-Control` and `Pragma`.
+  - Added no-store assertions for representative POST success and domain-error responses.
+  - Added sanitized no-store 500 regressions for unexpected correction-request creation failures and auth/plumbing failures before POST body parsing.
+- Safety:
+  - Reduces raw-error and PHI/proposed-value disclosure risk for correction-request creation failures containing patient names, raw correction text, proposed values, addresses, or token-like diagnostics.
+  - Preserves auth/permission behavior, share-case active policy, target ownership validation, target scoping across visit requests, partner visit records, claim notes, and billing candidates, audit payload minimization, and existing success/domain-error response shapes.
+- Performance:
+  - No DB query shape, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only wraps the existing POST response boundary and adds focused assertions.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/patient-share-cases/[id]/correction-requests/route.ts' 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `16` tests.
+  - Scoped ESLint on the two correction-request files: passed.
+  - Scoped `pnpm exec prettier --check` on the two correction-request files: passed.
+  - Scoped and full `git diff --check`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm typecheck`: failed on unrelated dirty/untracked drug-master and pharmacy-drug-stocks helper tests missing Vitest globals.
+  - `pnpm typecheck:no-unused`: failed on the same unrelated helper tests plus unrelated dirty drug-master content test unused imports.
+  - `pnpm format:check`: failed on codex-owned dirty `src/app/api/patients/route.test.ts`.
+- Review:
+  - `PATCH_REVIEW_REQUEST` sent to codex with scope, validation, PHI/raw-error non-leakage, no-store coverage, response-shape preservation, and correction-request side-effect safety focus.
+  - Independent read-only Codex CLI review of only the two-file correction-request diff returned `No actionable findings.`.
+  - codex returned `APPROVED` after reviewing the route/test diff and independently re-running focused Vitest `16`/`16`, scoped ESLint, and scoped diff-check.
+- Remaining:
+  - Exact-path stage only the two correction-request files plus this ledger and `.codex/ralph-state.md`, commit, send agmsg FYI, then continue remaining visit/report/interprofessional API candidates after rechecking dirty state.
+
 ### Patient Share Consent Revoke POST No-Store / Sanitized Envelope - 2026-06-30 09:48 JST
 
 - Scope:

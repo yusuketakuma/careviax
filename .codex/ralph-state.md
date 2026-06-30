@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0956 JST
+
+- current task: harden `POST /api/patient-share-cases/[id]/correction-requests` response boundaries for interprofessional correction-request creation.
+- files inspected: agmsg inbox/send for `phos/codex2`, memory registry for CareViaX agmsg and visit/report context, `git status --short --untracked-files=all`, local Next.js route-handler and `unstable_rethrow` docs, `src/app/api/patient-share-cases/[id]/correction-requests/route.ts`, `src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts`, related patient-share consent route/test patterns, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/patient-share-cases/[id]/correction-requests/route.ts`, `src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved codex-owned patient create WIP and unrelated drug-master/pharmacy-drug-stocks helper WIP.
+- bugs found: correction-request `POST` was exported directly from `withAuthContext`; returned responses preserved PHI-minimized body shapes, but unexpected create failures or auth/plumbing failures before route-param/body handling could escape without the exported route's fixed no-store envelope.
+- security risks found: reduced raw-error and PHI/proposed-value disclosure risk for correction-request creation failures containing patient names, raw correction text, proposed values, addresses, or token-like diagnostics. Auth/permission checks, share-case active policy, target ownership validation, target scoping across visit requests/partner visit records/claim notes/billing candidates, audit minimization, response success/domain-error shapes, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query shape, dependency, retry loop, external request, synchronous blocking, or unbounded work was added. The patch only wraps the existing POST response boundary and adds focused assertions.
+- validation commands: `pnpm exec prettier --write 'src/app/api/patient-share-cases/[id]/correction-requests/route.ts' 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts'`; `pnpm exec vitest run 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint on the two correction-request files; scoped `pnpm exec prettier --check` on the two correction-request files; scoped and full `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused correction-request Vitest passed `1` file / `16` tests. Scoped ESLint, scoped Prettier check, scoped/full diff-check, and `pnpm lint` passed. `pnpm typecheck` failed on unrelated dirty/untracked drug-master and pharmacy-drug-stocks helper tests missing Vitest globals. `pnpm typecheck:no-unused` failed on the same unrelated helper tests plus unrelated dirty drug-master content test unused imports. `pnpm format:check` failed on codex-owned dirty `src/app/api/patients/route.test.ts`. Independent read-only Codex CLI review of only the two-file correction-request diff returned `No actionable findings.`. codex returned `APPROVED` after reviewing the route/test diff and independently re-running focused Vitest `16`/`16`, scoped ESLint, and scoped diff-check.
+- remaining work: exact-path stage only the two correction-request files plus ledger hunks, commit, send agmsg FYI, and continue next visit/report/interprofessional candidate after rechecking dirty state.
+- next action: explicit-path stage and commit this focused validated correction-request response-boundary slice.
+
 ### 20260630-0948 JST
 
 - current task: harden `POST /api/patient-share-cases/[id]/consents/[consentId]/revoke` response boundaries for interprofessional consent revocation.
