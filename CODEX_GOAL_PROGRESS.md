@@ -25142,3 +25142,29 @@ Next loop:
 - Remaining:
   - The broad visit/report/interprofessional collaboration goal remains open.
   - Current unrelated dirty paths include operating-hours, service-areas, facilities, patient form, schedule planner, ledgers, and `.codex`; keep staging exact.
+
+### Visit Preparation API Focused Schedule Actions - 2026-06-30 18:18 JST
+
+- Scope:
+  - Continued visit-time backend/BFF navigation hardening for `/api/visits/today-preparation`.
+  - Focused on card actions emitted by the API for route detail and facility packets, which had concrete schedule IDs but still returned `/schedules`.
+- Fixed:
+  - Individual visit preparation cards now emit `buildScheduleFocusHref(schedule.id)` for "ルート詳細".
+  - Facility batch cards now emit `buildScheduleFocusHref(lead.id)` for "施設パケット".
+  - Updated hostile schedule ID regression coverage for both individual and facility cards.
+- Safety:
+  - Makes the BFF contract match the focused UI behavior and reduces wrong-schedule navigation risk for API consumers outside `visits-today`.
+  - Keeps schedule ID encoding centralized in the shared schedule navigation helper.
+  - No auth/RLS policy, permission, PHI export, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - No new query, network call, dependency, background job, broad scan, unbounded loop, or render-heavy path was added.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/visits/today-preparation/route.ts src/app/api/visits/today-preparation/route.test.ts`: passed with no changes.
+  - `pnpm exec vitest run src/app/api/visits/today-preparation/route.test.ts src/lib/schedules/navigation.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `20` tests.
+  - Scoped ESLint on today-preparation route/test plus schedule navigation helper: passed.
+  - Scoped Prettier check and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - The broad visit/report/interprofessional collaboration goal remains open.
+  - Current unrelated dirty paths include operating-hours, service-areas, facilities, patient form, schedule planner, ledgers, and `.codex`; keep staging exact.

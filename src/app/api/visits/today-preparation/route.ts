@@ -15,6 +15,7 @@ import {
 } from '@/lib/patient/care-team-contact';
 import { getHomeVisitIntake, specialProcedureLabels } from '@/lib/patient/home-visit-intake';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { buildVisitRecordHref } from '@/lib/visits/navigation';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
@@ -341,7 +342,7 @@ function deriveHomeVisitCard(schedule: ScheduleQueryRow): VisitPreparationCard {
         ]
       : [
           { label: 'カードへ', href: patientHref },
-          { label: 'ルート詳細', href: '/schedules' },
+          { label: 'ルート詳細', href: buildScheduleFocusHref(schedule.id) },
         ],
   };
 }
@@ -419,7 +420,7 @@ function deriveFacilityVisitCard(
     note_tone: remaining > 0 ? 'info' : foundationGapPatientCount > 0 ? 'warning' : null,
     actions: [
       { label: 'セットへ', href: '/set' },
-      { label: '施設パケット', href: '/schedules' },
+      { label: '施設パケット', href: buildScheduleFocusHref(lead.id) },
     ],
   };
 }

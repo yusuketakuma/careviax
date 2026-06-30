@@ -274,7 +274,10 @@ describe('/api/visits/today-preparation', () => {
     );
     expect(json.data.cards[0].actions).toEqual([
       { label: 'カードへ', href: encodedPatientHref },
-      { label: 'ルート詳細', href: '/schedules' },
+      {
+        label: 'ルート詳細',
+        href: `/schedules?focus=schedule&schedule_id=${encodeURIComponent(rawScheduleId)}`,
+      },
     ]);
     expect(JSON.stringify(json)).not.toContain(`/visits/${rawScheduleId}/record`);
   });
@@ -484,7 +487,10 @@ describe('/api/visits/today-preparation', () => {
     );
     expect(json.data.cards[0].actions).toEqual([
       { label: 'セットへ', href: '/set' },
-      { label: '施設パケット', href: '/schedules' },
+      {
+        label: '施設パケット',
+        href: `/schedules?focus=schedule&schedule_id=${encodeURIComponent(rawLeadScheduleId)}`,
+      },
     ]);
     expect(JSON.stringify(json)).not.toContain(`/visits/${rawLeadScheduleId}/record`);
   });
