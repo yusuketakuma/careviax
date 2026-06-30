@@ -1,5 +1,5 @@
 import { addDays, differenceInCalendarDays, format, getDay } from 'date-fns';
-import type { VisitPriority, VisitType, VisitAssignmentMode } from '@prisma/client';
+import type { Prisma, VisitPriority, VisitType, VisitAssignmentMode } from '@prisma/client';
 import { buildOperatingCalendarFromDbRows } from '@/lib/calendar/operating-day-adapter';
 import { resolveOperatingState } from '@/lib/calendar/operating-day';
 import { formatUtcDateKey } from '@/lib/date-key';
@@ -1462,12 +1462,20 @@ export async function generateVisitScheduleProposalDrafts(
     }),
   ]);
 
+  const vehicleResourceWhere: Prisma.VisitVehicleResourceWhereInput = {
+    org_id: params.orgId,
+    available: true,
+    ...(params.vehicleResourceId
+      ? {
+          OR: [
+            { id: params.vehicleResourceId },
+            ...(siteIds.length > 0 ? [{ site_id: { in: siteIds } }] : []),
+          ],
+        }
+      : { site_id: { in: siteIds } }),
+  };
   const vehicleResources = await prisma.visitVehicleResource.findMany({
-    where: {
-      org_id: params.orgId,
-      available: true,
-      ...(params.vehicleResourceId ? { id: params.vehicleResourceId } : {}),
-    },
+    where: vehicleResourceWhere,
     select: {
       id: true,
       site_id: true,
@@ -1494,6 +1502,21 @@ export async function generateVisitScheduleProposalDrafts(
     return calendar;
   }
 
+  const candidatePharmacistIds = Array.from(new Set(shifts.map((shift) => shift.user_id)));
+  const candidateVehicleResourceIds = Array.from(
+    new Set(vehicleResources.map((vehicle) => vehicle.id)),
+  );
+  const confirmedScheduleScope: Prisma.VisitScheduleWhereInput[] = [
+    { case_: { patient_id: careCase.patient_id } },
+    ...(candidatePharmacistIds.length > 0
+      ? [{ pharmacist_id: { in: candidatePharmacistIds } }]
+      : []),
+    ...(siteIds.length > 0 ? [{ site_id: { in: siteIds } }] : []),
+    ...(candidateVehicleResourceIds.length > 0
+      ? [{ vehicle_resource_id: { in: candidateVehicleResourceIds } }]
+      : []),
+  ];
+
   const confirmedSchedules = await prisma.visitSchedule.findMany({
     where: {
       org_id: params.orgId,
@@ -1507,20 +1530,33 @@ export async function generateVisitScheduleProposalDrafts(
       schedule_status: {
         in: ACTIVE_BILLING_SCHEDULE_STATUSES,
       },
+      OR: confirmedScheduleScope,
     },
-    include: {
-      vehicle_resource: {
-        select: {
-          id: true,
-        },
-      },
+    select: {
+      pharmacist_id: true,
+      vehicle_resource_id: true,
+      route_order: true,
+      scheduled_date: true,
+      time_window_start: true,
+      time_window_end: true,
+      schedule_status: true,
+      confirmed_at: true,
+      priority: true,
       case_: {
-        include: {
+        select: {
           patient: {
-            include: {
+            select: {
+              id: true,
               residences: {
                 where: { is_primary: true },
                 take: 1,
+                select: {
+                  address: true,
+                  lat: true,
+                  lng: true,
+                  building_id: true,
+                  facility_unit_id: true,
+                },
               },
               scheduling_preference: {
                 select: {
@@ -1529,13 +1565,6 @@ export async function generateVisitScheduleProposalDrafts(
               },
             },
           },
-        },
-      },
-      site: {
-        select: {
-          address: true,
-          lat: true,
-          lng: true,
         },
       },
     },

@@ -1618,6 +1618,62 @@ describe('generateVisitScheduleProposalDrafts', () => {
     expect(estimateOne).not.toHaveBeenCalled();
   });
 
+  it('scopes confirmed schedule reads to candidate staff, sites, vehicles, and the current patient', async () => {
+    await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(visitVehicleResourceFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          available: true,
+          site_id: { in: ['site_1'] },
+        },
+      }),
+    );
+    const query = visitScheduleFindManyMock.mock.calls[0]?.[0];
+    expect(query).toEqual(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            { case_: { patient_id: 'patient_1' } },
+            { pharmacist_id: { in: ['pharmacist_primary', 'pharmacist_backup'] } },
+            { site_id: { in: ['site_1'] } },
+            { vehicle_resource_id: { in: ['vehicle_1'] } },
+          ]),
+        }),
+        select: expect.objectContaining({
+          pharmacist_id: true,
+          vehicle_resource_id: true,
+          route_order: true,
+          scheduled_date: true,
+          time_window_start: true,
+          time_window_end: true,
+          schedule_status: true,
+          confirmed_at: true,
+          priority: true,
+        }),
+      }),
+    );
+    expect(query.include).toBeUndefined();
+    expect(query.select.case_.select.patient.select.residences.select).toEqual({
+      address: true,
+      lat: true,
+      lng: true,
+      building_id: true,
+      facility_unit_id: true,
+    });
+    expect(query.select.case_.select.patient.select.scheduling_preference.select).toEqual({
+      visit_buffer_minutes: true,
+    });
+  });
+
   it('rejects max_travel_minutes candidates when missing geocodes make the travel limit unverifiable', async () => {
     careCaseFindFirstMock.mockResolvedValueOnce({
       id: 'case_1',
