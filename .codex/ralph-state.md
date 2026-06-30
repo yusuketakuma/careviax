@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-2026 JST
+
+- current task: focus billing evidence blocker actions on the exact patient/visit workspaces before committing remaining changes.
+- files inspected: `git status --short --branch --untracked-files=all`, `git diff --stat`, `src/server/services/billing-evidence/core.ts`, `src/server/services/billing-evidence/core.test.ts`, `src/lib/patient/navigation.ts`, `src/lib/visits/navigation.ts`, and billing-evidence search results for blocker consumers/tests.
+- files changed: `src/server/services/billing-evidence/core.ts`, `src/server/services/billing-evidence/core.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: billing evidence blockers still fell back to aggregate `/patients` or `/visits` actions even when the evidence row carried the exact patient or visit record, so staff could land outside the consent, management-plan, or visit-result remediation workspace.
+- security risks found: reduced wrong-patient/workspace navigation risk by using existing encoded navigation helpers. No PHI fields are added to response bodies beyond already exposed aggregate blocker/action data, and no auth/RLS policy, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- performance issues found: no additional query was introduced beyond selecting `patient_id` from the already fetched billing evidence rows; action href focusing is pure in-memory mapping.
+- validation commands: `pnpm exec vitest run src/server/services/billing-evidence/core.test.ts --reporter=dot --testTimeout=60000`; scoped Prettier check; scoped ESLint; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused Vitest passed `1` file / `71` tests. Scoped Prettier, scoped ESLint, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- remaining work: broad master-management/patient-information/schedule/report goal remains open; continue scanning remaining aggregate action destinations and capped master/patient selectors after the commit grouping request is satisfied.
+- next action: stage and commit only the billing evidence blocker action-link slice, then re-check dirty status.
+
 ### 20260630-2024 JST
 
 - current task: enforce selected vehicle route-duration caps on manual visit schedule create and PATCH save boundaries.

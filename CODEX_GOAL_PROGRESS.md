@@ -30,6 +30,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Billing Evidence Blocker Focus Links - 2026-06-30 20:26 JST
+
+- Scope:
+  - Continued patient-information, billing, and workflow remediation hardening for billing evidence blocker actions.
+  - Focused on reducing aggregate `/patients` and `/visits` fallbacks when the evidence row already identifies the exact patient or visit record.
+- Fixed:
+  - Consent blockers now point to the patient's consent subworkspace.
+  - Missing/review-overdue management-plan blockers now point to the patient's management-plan subworkspace.
+  - Non-claimable outcome blockers now point to the exact visit record when `visit_record_id` is available.
+  - `listBillingEvidenceBlockers` now selects and passes each evidence row's `patient_id` and `visit_record_id` into blocker action resolution.
+- Safety:
+  - Uses existing encoded patient/visit navigation helpers for hostile IDs and dot-segment protection.
+  - Does not add PHI detail beyond the existing blocker/action payload shape.
+  - No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Adds only `patient_id` to the existing billing evidence select and uses in-memory action mapping.
+  - No new query, dependency, background job, broad scan, unbounded loop, or render-heavy path was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/billing-evidence/core.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `71` tests.
+  - Scoped Prettier check and scoped ESLint on billing-evidence files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Continue scanning remaining aggregate action destinations and capped master/patient selectors after the grouped commit request is satisfied.
+
 ### Manual Schedule Vehicle Route Duration Guard - 2026-06-30 20:24 JST
 
 - Scope:

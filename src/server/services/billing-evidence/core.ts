@@ -15,6 +15,7 @@ import {
 } from '../billing-rules';
 import { resolveBillingRuntimeContext } from '../billing-runtime-context';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildVisitHref } from '@/lib/visits/navigation';
 import { getHomeVisit2026BillingEligibility } from '@/lib/visits/home-visit-2026-evidence';
 import {
   getHomeVisitIntake,
@@ -48,6 +49,7 @@ export type BillingEvidenceBlockersReader = {
     findMany(args: unknown): Promise<
       Array<{
         id: string;
+        patient_id: string | null;
         visit_record_id: string | null;
         claimable: boolean;
         exclusion_reason: string | null;
@@ -934,6 +936,7 @@ export function describeBillingEvidenceBlockers(args: {
   exclusionReason?: string | null;
   sameMonthExclusionFlags?: Prisma.JsonValue | null;
   patientId?: string | null;
+  visitRecordId?: string | null;
 }): BillingEvidenceBlocker[] {
   if (args.claimable) return [];
 
@@ -950,15 +953,50 @@ export function describeBillingEvidenceBlockers(args: {
     ];
   }
 
-  return keys.map((key, index) => {
-    const blocker = blockerDefinition(key, index === 0 ? args.exclusionReason : null);
-    if (blocker.action_href !== '/patients' || !args.patientId) return blocker;
+  return keys.map((key, index) =>
+    focusBillingEvidenceBlockerAction(
+      blockerDefinition(key, index === 0 ? args.exclusionReason : null),
+      args,
+    ),
+  );
+}
 
+function focusBillingEvidenceBlockerAction(
+  blocker: BillingEvidenceBlocker,
+  args: { patientId?: string | null; visitRecordId?: string | null },
+): BillingEvidenceBlocker {
+  if (blocker.key === 'outcome_not_claimable' && args.visitRecordId) {
     return {
       ...blocker,
-      action_href: buildPatientHref(args.patientId),
+      action_href: buildVisitHref(args.visitRecordId),
     };
-  });
+  }
+
+  if (!args.patientId) return blocker;
+
+  if (blocker.key === 'missing_visit_consent') {
+    return {
+      ...blocker,
+      action_href: buildPatientHref(args.patientId, '/consent'),
+    };
+  }
+
+  if (
+    blocker.key === 'missing_management_plan' ||
+    blocker.key === 'management_plan_review_overdue'
+  ) {
+    return {
+      ...blocker,
+      action_href: buildPatientHref(args.patientId, '/management-plan'),
+    };
+  }
+
+  if (blocker.action_href !== '/patients') return blocker;
+
+  return {
+    ...blocker,
+    action_href: buildPatientHref(args.patientId),
+  };
 }
 
 function resolveCareCertificationBlocker(args: {
@@ -1111,6 +1149,7 @@ export async function listBillingEvidenceBlockers(
     take: args.limit ?? 4,
     select: {
       id: true,
+      patient_id: true,
       visit_record_id: true,
       claimable: true,
       exclusion_reason: true,
@@ -1127,7 +1166,8 @@ export async function listBillingEvidenceBlockers(
       claimable: evidence.claimable,
       exclusionReason: evidence.exclusion_reason,
       sameMonthExclusionFlags: evidence.same_month_exclusion_flags,
-      patientId: args.patientId,
+      patientId: evidence.patient_id ?? args.patientId,
+      visitRecordId: evidence.visit_record_id,
     }),
   }));
 }

@@ -407,6 +407,50 @@ describe('billing-evidence/core: blocker descriptions', () => {
       },
     ]);
   });
+
+  it('focuses consent and management-plan blockers on patient subworkspaces when requested', () => {
+    const patientId = 'patient/1?x=y#frag';
+    const encodedPatientHref = `/patients/${encodeURIComponent(patientId)}`;
+
+    expect(
+      describeBillingEvidenceBlockers({
+        claimable: false,
+        exclusionReason: '訪問薬剤管理の有効同意がありません',
+        sameMonthExclusionFlags: {
+          missing_visit_consent: true,
+          missing_management_plan: true,
+          management_plan_review_overdue: true,
+        },
+        patientId,
+      }).map((blocker) => [blocker.key, blocker.action_href]),
+    ).toEqual([
+      ['missing_visit_consent', `${encodedPatientHref}/consent`],
+      ['missing_management_plan', `${encodedPatientHref}/management-plan`],
+      ['management_plan_review_overdue', `${encodedPatientHref}/management-plan`],
+    ]);
+  });
+
+  it('focuses outcome blockers on the exact visit record when available', () => {
+    const visitRecordId = 'visit/1?x=y#frag';
+
+    const blockers = describeBillingEvidenceBlockers({
+      claimable: false,
+      exclusionReason: '訪問結果が算定対象外です',
+      sameMonthExclusionFlags: { outcome_not_claimable: true },
+      visitRecordId,
+    });
+
+    expect(blockers).toEqual([
+      {
+        key: 'outcome_not_claimable',
+        reason: '訪問結果が算定対象外です',
+        action_href: `/visits/${encodeURIComponent(visitRecordId)}`,
+        action_label: '訪問結果を確認',
+        severity: 'normal',
+      },
+    ]);
+    expect(blockers[0]?.action_href).not.toContain(visitRecordId);
+  });
 });
 
 describe('billing-evidence/core: listBillingEvidenceBlockers', () => {
@@ -417,6 +461,7 @@ describe('billing-evidence/core: listBillingEvidenceBlockers', () => {
         findMany: vi.fn().mockResolvedValue([
           {
             id: 'evidence_1',
+            patient_id: patientId,
             visit_record_id: 'visit_1',
             claimable: false,
             exclusion_reason: '介護保険認定が申請中です',
@@ -444,6 +489,49 @@ describe('billing-evidence/core: listBillingEvidenceBlockers', () => {
       action_href: `/patients/${encodeURIComponent(patientId)}`,
     });
     expect(blockers[0]?.blockers[0]?.action_href).not.toBe(`/patients/${patientId}`);
+  });
+
+  it('uses evidence patient and visit ids for focused blocker action links', async () => {
+    const patientId = 'patient/1?x=y#frag';
+    const visitRecordId = 'visit/1?x=y#frag';
+    const tx = {
+      billingEvidence: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'evidence_1',
+            patient_id: patientId,
+            visit_record_id: visitRecordId,
+            claimable: false,
+            exclusion_reason: '訪問薬剤管理の有効同意がありません',
+            same_month_exclusion_flags: {
+              missing_visit_consent: true,
+              outcome_not_claimable: true,
+            },
+            validation_notes: null,
+          },
+        ]),
+      },
+    };
+
+    const blockers = await listBillingEvidenceBlockers(tx as never, {
+      orgId: 'org_1',
+      limit: 1,
+    });
+
+    expect(tx.billingEvidence.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          patient_id: true,
+          visit_record_id: true,
+        }),
+      }),
+    );
+    expect(blockers[0]?.blockers.map((blocker) => [blocker.key, blocker.action_href])).toEqual([
+      ['missing_visit_consent', `/patients/${encodeURIComponent(patientId)}/consent`],
+      ['outcome_not_claimable', `/visits/${encodeURIComponent(visitRecordId)}`],
+    ]);
+    expect(JSON.stringify(blockers[0]?.blockers)).not.toContain(patientId);
+    expect(JSON.stringify(blockers[0]?.blockers)).not.toContain(visitRecordId);
   });
 });
 
