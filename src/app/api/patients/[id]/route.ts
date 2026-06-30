@@ -129,6 +129,19 @@ type PatientRequesterPatch = NonNullable<UpdatePatientData['requester']>;
 type PatientIntakePatch = NonNullable<UpdatePatientData['intake']>;
 const PATIENT_EXTERNAL_SHARE_LIMIT = 8;
 
+function normalizeExpectedUpdatedAt(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function normalizeCurrentUpdatedAt(value: unknown): Date | null {
+  if (value instanceof Date) return value;
+  if (typeof value !== 'string') return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 async function listVisibleExternalSharesForPatient(args: {
   orgId: string;
   patientId: string;
@@ -1684,12 +1697,31 @@ async function authenticatedPATCH(
     medical_insurance_number,
     care_insurance_number,
     source_visit_record_id,
+    expected_updated_at,
     primary_pharmacist_id,
     backup_pharmacist_id,
     primary_staff_id,
     backup_staff_id,
     ...rest
   } = parsed.data;
+
+  const expectedUpdatedAt = normalizeExpectedUpdatedAt(expected_updated_at);
+  if (expected_updated_at && expectedUpdatedAt) {
+    const currentUpdatedAt = normalizeCurrentUpdatedAt(
+      (existing as { updated_at?: unknown }).updated_at,
+    );
+    if (!currentUpdatedAt || currentUpdatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+      return conflict(
+        '患者情報が他の操作で更新されています。画面を再読み込みしてから保存してください',
+        {
+          conflict_type: 'stale_patient',
+          expected_updated_at,
+          current_updated_at: currentUpdatedAt?.toISOString() ?? null,
+        },
+      );
+    }
+  }
+
   // 担当チーム（患者単位）: 未指定=skip / 空文字=null へ正規化し、ID は org-reference で検証する。
   const normalizeAssignmentId = (value: string | undefined) =>
     value === undefined ? undefined : value === '' ? null : value;
@@ -2378,6 +2410,24 @@ async function authenticatedPATCH(
           }
         }
 
+        const closeActiveInsuranceRows = (
+          insuranceType: 'medical' | 'care',
+          extraWhere: Prisma.PatientInsuranceWhereInput = {},
+        ) =>
+          tx.patientInsurance.updateMany({
+            where: {
+              org_id: ctx.orgId,
+              patient_id: id,
+              insurance_type: insuranceType,
+              is_active: true,
+              ...extraWhere,
+            },
+            data: {
+              is_active: false,
+              valid_until: revisionDate,
+            },
+          });
+
         for (const [insuranceType, nextNumber] of [
           ['medical', normalizedMedicalInsuranceNumber],
           ['care', normalizedCareInsuranceNumber],
@@ -2399,23 +2449,8 @@ async function authenticatedPATCH(
             const numberChanged = currentInsurance ? currentInsurance.number !== nextNumber : true;
 
             if (numberChanged) {
-              // valid_from / valid_until(@db.Date)へはローカル日付の UTC 深夜で書き込む
-              // (ローカル深夜だと JST では前日の日付として保存される)。tx 冒頭の revisionDate を共用する。
-              const today = revisionDate;
-
               // Close ALL active rows for this insurance type (Fix #3: multi-active guard)
-              await tx.patientInsurance.updateMany({
-                where: {
-                  org_id: ctx.orgId,
-                  patient_id: id,
-                  insurance_type: insuranceType,
-                  is_active: true,
-                },
-                data: {
-                  is_active: false,
-                  valid_until: today,
-                },
-              });
+              await closeActiveInsuranceRows(insuranceType);
 
               // Create new active row
               await tx.patientInsurance.create({
@@ -2424,23 +2459,16 @@ async function authenticatedPATCH(
                   patient_id: id,
                   insurance_type: insuranceType,
                   number: nextNumber,
-                  valid_from: today,
+                  valid_from: revisionDate,
                   is_active: true,
                 },
               });
+            } else if (currentInsurance) {
+              // If stale duplicate active rows exist, keep the current row and close the rest.
+              await closeActiveInsuranceRows(insuranceType, { id: { not: currentInsurance.id } });
             }
           } else {
-            await tx.patientInsurance.updateMany({
-              where: {
-                org_id: ctx.orgId,
-                patient_id: id,
-                insurance_type: insuranceType,
-                is_active: true,
-              },
-              data: {
-                is_active: false,
-              },
-            });
+            await closeActiveInsuranceRows(insuranceType);
           }
         }
 

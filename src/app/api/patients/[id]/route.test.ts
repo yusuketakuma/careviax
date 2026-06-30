@@ -1061,6 +1061,77 @@ describe('/api/patients/[id]', () => {
     });
   });
 
+  it('rejects stale patient master PATCH requests before writing', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '患者A',
+      birth_date: new Date('1950-01-01T00:00:00.000Z'),
+      gender: 'male',
+      archived_at: null,
+      updated_at: new Date('2026-03-30T09:00:00.000Z'),
+      cases: [],
+    });
+
+    const response = await PATCH(
+      createRequest(
+        {
+          phone: '090-1111-2222',
+          expected_updated_at: '2026-03-30T08:59:59.000Z',
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者情報が他の操作で更新されています。画面を再読み込みしてから保存してください',
+      details: {
+        conflict_type: 'stale_patient',
+        expected_updated_at: '2026-03-30T08:59:59.000Z',
+        current_updated_at: '2026-03-30T09:00:00.000Z',
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientUpdateMock).not.toHaveBeenCalled();
+    expect(patientFieldRevisionCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('does not write the matching expected_updated_at pseudo field to Patient', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '患者A',
+      birth_date: new Date('1950-01-01T00:00:00.000Z'),
+      gender: 'male',
+      archived_at: null,
+      updated_at: new Date('2026-03-30T09:00:00.000Z'),
+      cases: [],
+    });
+
+    const response = await PATCH(
+      createRequest(
+        {
+          phone: '090-1111-2222',
+          expected_updated_at: '2026-03-30T09:00:00.000Z',
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(patientUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'patient_1' },
+      data: expect.objectContaining({
+        phone: '090-1111-2222',
+      }),
+    });
+    expect(patientUpdateMock.mock.calls[0]?.[0].data).not.toHaveProperty('expected_updated_at');
+  });
+
   it('assigns the patient-level care team, normalizes empty ids to null, and validates supplied ids', async () => {
     const response = await PATCH(
       createRequest({
@@ -1755,8 +1826,7 @@ describe('/api/patients/[id]', () => {
     });
   });
 
-  it('does not close or recreate insurance when submitted number is identical to existing', async () => {
-    // idempotence: same number → no close, no create
+  it('does not recreate insurance when submitted number is identical and closes stale active duplicates', async () => {
     patientInsuranceFindFirstMock.mockResolvedValue({
       id: 'insurance_current_1',
       number: '1234567890',
@@ -1773,9 +1843,43 @@ describe('/api/patients/[id]', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
-    // updateMany is called for the "deactivate actives" path only when closing; not here
-    // The null-number path calls updateMany to deactivate, but we passed a non-empty number
-    // so the only updateMany call should NOT have occurred for the close step
+    expect(patientInsuranceUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'corg1234567890123456789012',
+        patient_id: 'patient_1',
+        insurance_type: 'medical',
+        is_active: true,
+        id: { not: 'insurance_current_1' },
+      },
+      data: {
+        is_active: false,
+        valid_until: expect.any(Date),
+      },
+    });
+    expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('closes active insurance with valid_until when submitted number is cleared', async () => {
+    const response = await PATCH(
+      createRequest({ medical_insurance_number: '' }, { 'x-org-id': 'corg1234567890123456789012' }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
+    expect(patientInsuranceUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'corg1234567890123456789012',
+        patient_id: 'patient_1',
+        insurance_type: 'medical',
+        is_active: true,
+      },
+      data: {
+        is_active: false,
+        valid_until: expect.any(Date),
+      },
+    });
     expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
   });
 

@@ -3,6 +3,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { PatientForm } from './patient-form';
 
@@ -35,6 +36,8 @@ vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
+    warning: vi.fn(),
+    info: vi.fn(),
   },
 }));
 
@@ -47,11 +50,17 @@ vi.mock('@/lib/patient/navigation', async (importActual) => {
   return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
 });
 
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
+
 describe('PatientForm', () => {
   beforeEach(() => {
     window.history.replaceState(null, '', '/patients/new');
     vi.stubGlobal('fetch', vi.fn());
     vi.mocked(buildPatientHref).mockClear();
+    vi.mocked(buildPatientApiPath).mockClear();
   });
 
   function fillRequiredPatientFields() {
@@ -268,6 +277,249 @@ describe('PatientForm', () => {
       name: '山田 太郎',
       duplicate_acknowledged: true,
     });
+  });
+
+  it('submits edit PATCH through the shared patient API path with expected_updated_at', async () => {
+    const hostilePatientId = 'pt/1?tab=x#frag';
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+    vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_pt__');
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ id: hostilePatientId }),
+    } as Response);
+
+    render(
+      <PatientForm
+        patientId={hostilePatientId}
+        defaultValues={{
+          name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
+          birth_date: '1950-01-01',
+          gender: 'male',
+        }}
+        expectedUpdatedAt="2026-03-30T09:00:00.000Z"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    expect(buildPatientApiPath).toHaveBeenCalledWith(hostilePatientId);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/patients/__helper_pt__');
+    expect(init.method).toBe('PATCH');
+    expect(init.headers).toMatchObject({
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+    });
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      name: '山田 太郎',
+      expected_updated_at: '2026-03-30T09:00:00.000Z',
+    });
+    expect(url).not.toContain('?tab=x');
+    expect(url).not.toContain('#frag');
+  });
+
+  it('runs qualification check from the current edit form through the shared patient API path', async () => {
+    const hostilePatientId = 'pt/1?tab=x#frag';
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+    vi.mocked(buildPatientApiPath).mockReturnValueOnce(
+      '/api/patients/__helper_pt__/qualification-check',
+    );
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: {
+          valid: true,
+          identityMatch: 'matched',
+          payerName: '東京健保',
+          copayRatio: 0.1,
+          warnings: [],
+        },
+      }),
+    } as Response);
+
+    render(
+      <PatientForm
+        patientId={hostilePatientId}
+        defaultValues={{
+          name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
+          birth_date: '1950-01-01',
+          gender: 'male',
+          medical_insurance_number: '12345678',
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: '住所・保険' }));
+    fireEvent.click(screen.getByRole('button', { name: '資格確認' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('資格確認OK: 東京健保 / 負担割合 10%')).toBeTruthy();
+    });
+    expect(buildPatientApiPath).toHaveBeenCalledWith(hostilePatientId, '/qualification-check');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/patients/__helper_pt__/qualification-check');
+    expect(init.method).toBe('POST');
+    expect(init.headers).toMatchObject({ 'x-org-id': 'org_1' });
+    expect(init.body).toBeUndefined();
+    expect(url).not.toContain('?tab=x');
+    expect(url).not.toContain('#frag');
+  });
+
+  it('surfaces qualification check failures near the insurance field instead of treating them as empty', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 501,
+      json: async () => ({ message: 'オンライン資格確認はまだ有効化されていません' }),
+    } as Response);
+
+    render(
+      <PatientForm
+        patientId="patient_1"
+        defaultValues={{
+          name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
+          birth_date: '1950-01-01',
+          gender: 'male',
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: '住所・保険' }));
+    fireEvent.click(screen.getByRole('button', { name: '資格確認' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain(
+        'オンライン資格確認はまだ有効化されていません',
+      );
+    });
+  });
+
+  it('encodes the selected facility id for the unit query before fetching', async () => {
+    const hostileFacilityId = 'fac/1?x=y#z';
+    useOrgIdMock.mockReturnValue('org_1');
+    const queryConfigs: Array<{ queryKey: unknown[]; queryFn?: () => Promise<unknown> }> = [];
+    useQueryMock.mockImplementation(
+      (options: { queryKey: unknown[]; queryFn?: () => Promise<unknown> }) => {
+        queryConfigs.push(options);
+        return { data: [], isLoading: false, isError: false, refetch: vi.fn() };
+      },
+    );
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: [] }),
+    } as Response);
+
+    render(
+      <PatientForm
+        defaultValues={{
+          name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
+          birth_date: '1950-01-01',
+          gender: 'male',
+          facility_id: hostileFacilityId,
+        }}
+      />,
+    );
+
+    const facilityUnitsQuery = queryConfigs.find(
+      (config) => config.queryKey[1] === 'facility-units',
+    );
+    expect(facilityUnitsQuery?.queryKey).toEqual([
+      'patient-form',
+      'facility-units',
+      'org_1',
+      hostileFacilityId,
+    ]);
+
+    await facilityUnitsQuery?.queryFn?.();
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`/api/admin/facilities/${encodeURIComponent(hostileFacilityId)}/units`);
+    expect(url).not.toContain('?x=y');
+    expect(url).not.toContain('#z');
+    expect(init.headers).toMatchObject({ 'x-org-id': 'org_1' });
+  });
+
+  it.each(['.', '..'])(
+    'fails closed without fetching facility units for exact dot-segment facility id %p',
+    async (facilityId) => {
+      useOrgIdMock.mockReturnValue('org_1');
+      const queryConfigs: Array<{ queryKey: unknown[]; queryFn?: () => Promise<unknown> }> = [];
+      useQueryMock.mockImplementation(
+        (options: { queryKey: unknown[]; queryFn?: () => Promise<unknown> }) => {
+          queryConfigs.push(options);
+          return { data: [], isLoading: false, isError: false, refetch: vi.fn() };
+        },
+      );
+      const fetchMock = vi.mocked(fetch);
+
+      render(
+        <PatientForm
+          defaultValues={{
+            name: '山田 太郎',
+            name_kana: 'ヤマダ タロウ',
+            birth_date: '1950-01-01',
+            gender: 'male',
+            facility_id: facilityId,
+          }}
+        />,
+      );
+
+      const facilityUnitsQuery = queryConfigs.find(
+        (config) => config.queryKey[1] === 'facility-units',
+      );
+      await expect(facilityUnitsQuery?.queryFn?.()).rejects.toThrow(RangeError);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('surfaces facility unit fetch failures instead of showing an empty unit list', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    const refetch = vi.fn();
+    useQueryMock.mockImplementation((options: { queryKey: unknown[] }) => {
+      if (options.queryKey[1] === 'facility-units') {
+        return {
+          data: undefined,
+          isLoading: false,
+          isError: true,
+          error: new Error('ユニット一覧の取得に失敗しました'),
+          refetch,
+        };
+      }
+      return { data: [], isLoading: false, isError: false, refetch: vi.fn() };
+    });
+
+    render(
+      <PatientForm
+        defaultValues={{
+          name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
+          birth_date: '1950-01-01',
+          gender: 'male',
+          facility_id: 'fac_1',
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: '住所・保険' }));
+
+    expect(screen.getByRole('alert').textContent).toContain('ユニット一覧の取得に失敗しました');
+    expect(screen.queryByText(/この施設には登録済みユニットがありません/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 
   it('guards unsaved changes while dirty and bypasses navigation on cancel', () => {

@@ -8,7 +8,7 @@ import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validati
 import { PATIENT_FIELD_REVISION_CATEGORIES } from '@/lib/patient/field-revision-categories';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
-import { listPatientFieldRevisions } from '@/server/services/patient-field-revision-list';
+import { listPatientFieldRevisionPage } from '@/server/services/patient-field-revision-list';
 import { z } from 'zod';
 
 const fieldRevisionQuerySchema = z.object({
@@ -43,14 +43,14 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   });
   if (!patient) return notFound('患者が見つかりません');
 
-  const revisions = await listPatientFieldRevisions(prisma, {
+  const revisions = await listPatientFieldRevisionPage(prisma, {
     orgId: ctx.orgId,
     patientId: id,
     category: parsedQuery.data.category,
     limit: parsedQuery.data.limit,
   });
 
-  return success({ data: revisions });
+  return success(revisions);
 }
 
 export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {

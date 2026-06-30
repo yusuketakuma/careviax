@@ -22,6 +22,7 @@ export type PatientOverview = {
   archived_at: string | null;
   archived_by: string | null;
   archived_by_name: string | null;
+  updated_at: string;
   residences: Array<{
     id: string;
     address: string;

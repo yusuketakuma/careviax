@@ -39,6 +39,7 @@ export async function findPatientOverviewBase(db: DbClient, args: DetailArgs) {
       notes: true,
       archived_at: true,
       archived_by: true,
+      updated_at: true,
       residences: true,
       scheduling_preference: {
         select: {

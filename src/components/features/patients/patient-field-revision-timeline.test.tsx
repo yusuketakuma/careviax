@@ -25,6 +25,55 @@ vi.mock('@/lib/patient/api-paths', async (importActual) => {
 });
 
 describe('PatientFieldRevisionTimeline', () => {
+  it('shows hidden count metadata when the revision list is truncated', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: {
+        data: [
+          {
+            id: 'rev_1',
+            category: 'basic',
+            field_key: 'gender',
+            field_label: '性別',
+            value_label: 'male → female',
+            previous: 'male',
+            current: 'female',
+            source: 'patient_detail_edit',
+            source_visit_record_id: null,
+            change_reason: null,
+            importance: 'normal',
+            confirmed_by: null,
+            confirmed_by_name: null,
+            confirmed_at: null,
+            valid_from: '2026-06-16T00:00:00.000Z',
+            valid_to: null,
+            is_current: true,
+            updated_by: 'user_u',
+            updated_by_name: '田中',
+            created_at: '2026-06-16T01:00:00.000Z',
+          },
+        ],
+        meta: {
+          total_count: 4,
+          visible_count: 1,
+          hidden_count: 3,
+          truncated: true,
+          count_basis: 'patient_field_revisions',
+          filters_applied: { category: null },
+          sort_basis: 'created_at_desc',
+          limit: 1,
+        },
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    render(<PatientFieldRevisionTimeline patientId="patient_1" />);
+
+    expect(screen.getByText('先頭1件を表示 / 他3件')).toBeTruthy();
+    expect(screen.getByText('性別')).toBeTruthy();
+  });
+
   it('routes field revision fetches through the shared patient API path helper', async () => {
     const patientId = 'pt/1?tab=x#frag';
     vi.mocked(buildPatientApiPath).mockReturnValueOnce(

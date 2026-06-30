@@ -12,6 +12,7 @@ import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { classifyPatientInsurances } from '@/lib/patient/insurance-summary';
+import { buildPatientInsuranceOverlapWhere } from '@/lib/patient/insurance-overlap';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 const dateStringSchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）');
@@ -40,39 +41,6 @@ class PatientInsuranceOverlapError extends Error {
   constructor() {
     super('PATIENT_INSURANCE_OVERLAP');
   }
-}
-
-function buildOverlapWhere(args: {
-  orgId: string;
-  patientId: string;
-  insuranceType: 'medical' | 'care' | 'public_subsidy';
-  publicProgramCode?: string | null;
-  validFrom?: string | null;
-  validUntil?: string | null;
-}) {
-  return {
-    org_id: args.orgId,
-    patient_id: args.patientId,
-    insurance_type: args.insuranceType,
-    is_active: true,
-    ...(args.insuranceType === 'public_subsidy' && args.publicProgramCode
-      ? { public_program_code: args.publicProgramCode }
-      : {}),
-    AND: [
-      {
-        OR: [
-          { valid_from: null },
-          ...(args.validUntil ? [{ valid_from: { lte: new Date(args.validUntil) } }] : []),
-        ],
-      },
-      {
-        OR: [
-          { valid_until: null },
-          ...(args.validFrom ? [{ valid_until: { gte: new Date(args.validFrom) } }] : []),
-        ],
-      },
-    ],
-  };
 }
 
 const insuranceSchema = z
@@ -185,7 +153,10 @@ export async function GET(req: NextRequest, routeContext: { params: Promise<{ id
   }
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedPOST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者保険情報の登録権限がありません',
@@ -215,7 +186,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     created = await withOrgContext(ctx.orgId, async (tx) => {
       if (rest.is_active !== false) {
         const overlappingInsurance = await tx.patientInsurance.findFirst({
-          where: buildOverlapWhere({
+          where: buildPatientInsuranceOverlapWhere({
             orgId: ctx.orgId,
             patientId: id,
             insuranceType: rest.insurance_type,
@@ -254,4 +225,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   return success({ data: created });
+}
+
+export async function POST(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }

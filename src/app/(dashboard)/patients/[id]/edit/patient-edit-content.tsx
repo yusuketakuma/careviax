@@ -195,6 +195,7 @@ export function PatientEditContent({ patientId }: { patientId: string }) {
         patientId={patientId}
         redirectTo={buildPatientHref(patientId)}
         defaultValues={buildDefaultValues(patientQuery.data)}
+        expectedUpdatedAt={patientQuery.data.updated_at}
       />
     </div>
   );

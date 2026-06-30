@@ -33,6 +33,7 @@ function buildPatient(overrides: Partial<PatientOverview> = {}): PatientOverview
     name_kana: 'タナカタロウ',
     birth_date: '1940-01-01',
     gender: 'male',
+    updated_at: '2026-06-01T00:00:00.000Z',
     phone: null,
     medical_insurance_number: null,
     care_insurance_number: null,

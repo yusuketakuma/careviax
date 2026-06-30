@@ -6,8 +6,11 @@ import { useQuery } from '@tanstack/react-query';
 import { useForm, useWatch, type FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { createPatientSchema, type CreatePatientInput } from '@/lib/validations/patient';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { Button } from '@/components/ui/button';
@@ -88,6 +91,17 @@ type ServiceAreaOption = ServiceAreaRecord & {
   } | null;
 };
 
+type QualificationCheckPayload = {
+  data?: {
+    valid?: boolean;
+    identityMatch?: 'matched' | 'mismatch' | 'unknown';
+    payerName?: string | null;
+    copayRatio?: number | null;
+    warnings?: string[];
+  } | null;
+  message?: string;
+};
+
 interface PatientFormProps {
   /** When provided, submits an update instead of a create */
   patientId?: string;
@@ -97,6 +111,8 @@ interface PatientFormProps {
   onSuccess?: (patientId: string) => void;
   /** Initial values (for embedded use in referral form) */
   defaultValues?: Partial<CreatePatientInput>;
+  /** Optimistic concurrency anchor for editing an existing patient */
+  expectedUpdatedAt?: string | null;
 }
 
 const optionalBooleanFieldOptions = {
@@ -120,6 +136,10 @@ const optionalTextFieldOptions = {
 
 function formatOptionLabelMap(labelMap: Record<string, string>) {
   return Object.entries(labelMap).map(([value, label]) => ({ value, label }));
+}
+
+function queryErrorMessage(errorValue: unknown, fallback: string) {
+  return errorValue instanceof Error ? errorValue.message : fallback;
 }
 
 const requesterProfessionOptions = formatOptionLabelMap(requesterProfessionLabels);
@@ -242,12 +262,23 @@ function findFirstErrorTab(errors: FieldErrors<CreatePatientInput>): PatientForm
   return 'basic';
 }
 
-export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }: PatientFormProps) {
+export function PatientForm({
+  patientId,
+  redirectTo,
+  onSuccess,
+  defaultValues,
+  expectedUpdatedAt,
+}: PatientFormProps) {
   const router = useRouter();
   const orgId = useOrgId();
   const [duplicates, setDuplicates] = useState<DuplicatePatient[]>([]);
   const [duplicateConfirmedKey, setDuplicateConfirmedKey] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<PatientFormTab>('basic');
+  const [qualificationCheckPending, setQualificationCheckPending] = useState(false);
+  const [qualificationCheckMessage, setQualificationCheckMessage] = useState<{
+    tone: 'success' | 'warning' | 'error';
+    text: string;
+  } | null>(null);
   // 段階表示: Tabs を内部維持したまま、現在ステップ index と前後ナビを被せる。
   // deep-link(?section=/#patient-form-*) と findFirstErrorTab は従来どおり activeTab を駆動する。
   const currentStepIndex = Math.max(
@@ -435,9 +466,12 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
   const facilityUnitsQuery = useQuery({
     queryKey: ['patient-form', 'facility-units', orgId, selectedFacilityId],
     queryFn: async () => {
-      const res = await fetch(`/api/admin/facilities/${selectedFacilityId}/units`, {
-        headers: { 'x-org-id': orgId },
-      });
+      const res = await fetch(
+        `/api/admin/facilities/${encodePathSegment(selectedFacilityId)}/units`,
+        {
+          headers: { 'x-org-id': orgId },
+        },
+      );
       if (!res.ok) {
         throw new Error('ユニット一覧の取得に失敗しました');
       }
@@ -501,6 +535,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
     address: watchedAddress,
     facilityId: selectedFacilityId || null,
   });
+  const facilityUnitsLoadFailed = Boolean(selectedFacilityId && facilityUnitsQuery.isError);
 
   useEffect(() => {
     if (patientId) return;
@@ -562,8 +597,12 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
   }, [facilitiesQuery.data, selectedFacilityId, setValue, watchedAddress]);
 
   async function onSubmit(data: CreatePatientInput) {
-    const payload = duplicateConfirmed ? { ...data, duplicate_acknowledged: true } : data;
-    const res = await fetch(patientId ? `/api/patients/${patientId}` : '/api/patients', {
+    const payload = {
+      ...data,
+      ...(duplicateConfirmed ? { duplicate_acknowledged: true } : {}),
+      ...(patientId && expectedUpdatedAt ? { expected_updated_at: expectedUpdatedAt } : {}),
+    };
+    const res = await fetch(patientId ? buildPatientApiPath(patientId) : '/api/patients', {
       method: patientId ? 'PATCH' : 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -594,6 +633,65 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
     onSuccess?.(patient.id ?? patientId);
     if (redirectTo) {
       router.push(redirectTo);
+    }
+  }
+
+  async function handleQualificationCheck() {
+    if (!patientId) return;
+    setQualificationCheckPending(true);
+    setQualificationCheckMessage(null);
+
+    try {
+      const res = await fetch(buildPatientApiPath(patientId, '/qualification-check'), {
+        method: 'POST',
+        headers: buildOrgHeaders(orgId),
+      });
+      const payload = (await res.json().catch(() => ({}))) as QualificationCheckPayload;
+
+      if (!res.ok) {
+        const message = payload.message ?? '資格確認に失敗しました';
+        setQualificationCheckMessage({ tone: 'error', text: message });
+        toast.error(message);
+        return;
+      }
+
+      const result = payload.data ?? null;
+      if (!result) {
+        const message = '資格情報が見つかりませんでした';
+        setQualificationCheckMessage({ tone: 'warning', text: message });
+        toast.error(message);
+        return;
+      }
+
+      const warnings = result.warnings?.filter(Boolean) ?? [];
+      const payer = result.payerName ?? '保険者不明';
+      const copay =
+        typeof result.copayRatio === 'number'
+          ? ` / 負担割合 ${Math.round(result.copayRatio * 100)}%`
+          : '';
+
+      if (result.valid) {
+        const message = `資格確認OK: ${payer}${copay}`;
+        setQualificationCheckMessage({
+          tone: warnings.length > 0 ? 'warning' : 'success',
+          text: warnings.length > 0 ? `${message}（${warnings.join(' / ')}）` : message,
+        });
+        toast.success(message);
+        return;
+      }
+
+      const message =
+        warnings.length > 0
+          ? `資格確認: 要確認（${warnings.join(' / ')}）`
+          : '資格確認: 保険資格が無効または期限切れです';
+      setQualificationCheckMessage({ tone: 'warning', text: message });
+      toast.error(message);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '資格確認に失敗しました';
+      setQualificationCheckMessage({ tone: 'error', text: message });
+      toast.error(message);
+    } finally {
+      setQualificationCheckPending(false);
     }
   }
 
@@ -825,9 +923,29 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                       </option>
                     ))}
                   </select>
-                  <p className="text-xs text-muted-foreground">
-                    施設患者の場合は先に施設を選択してください。
-                  </p>
+                  {facilitiesQuery.isError ? (
+                    <p
+                      className="flex flex-wrap items-center gap-x-2 text-xs text-destructive"
+                      role="alert"
+                    >
+                      <span>
+                        {queryErrorMessage(facilitiesQuery.error, '施設一覧の取得に失敗しました')}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="link"
+                        size="sm"
+                        className="h-auto min-h-0 p-0 text-xs"
+                        onClick={() => facilitiesQuery.refetch()}
+                      >
+                        再試行
+                      </Button>
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      施設患者の場合は先に施設を選択してください。
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
@@ -835,7 +953,9 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                   <select
                     id="facility_unit_id"
                     {...register('facility_unit_id')}
-                    disabled={!selectedFacilityId || facilityUnitsQuery.isLoading}
+                    disabled={
+                      !selectedFacilityId || facilityUnitsQuery.isLoading || facilityUnitsLoadFailed
+                    }
                     className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <option value="">
@@ -843,7 +963,9 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                         ? '施設を選択してください'
                         : facilityUnitsQuery.isLoading
                           ? 'ユニットを読み込み中...'
-                          : 'ユニットを選択してください'}
+                          : facilityUnitsLoadFailed
+                            ? 'ユニット一覧を取得できません'
+                            : 'ユニットを選択してください'}
                     </option>
                     {(facilityUnitsQuery.data ?? []).map((unit) => (
                       <option key={unit.id} value={unit.id}>
@@ -851,13 +973,36 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                       </option>
                     ))}
                   </select>
-                  {selectedFacilityId &&
+                  {facilityUnitsLoadFailed ? (
+                    <p
+                      className="flex flex-wrap items-center gap-x-2 text-xs text-destructive"
+                      role="alert"
+                    >
+                      <span>
+                        {queryErrorMessage(
+                          facilityUnitsQuery.error,
+                          'ユニット一覧の取得に失敗しました',
+                        )}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="link"
+                        size="sm"
+                        className="h-auto min-h-0 p-0 text-xs"
+                        onClick={() => facilityUnitsQuery.refetch()}
+                      >
+                        再試行
+                      </Button>
+                    </p>
+                  ) : (
+                    selectedFacilityId &&
                     !facilityUnitsQuery.isLoading &&
                     (facilityUnitsQuery.data?.length ?? 0) === 0 && (
                       <p className="text-xs text-state-confirm" role="status">
                         この施設には登録済みユニットがありません。施設管理から先にユニットを追加してください。
                       </p>
-                    )}
+                    )
+                  )}
                 </div>
               </div>
 
@@ -876,11 +1021,43 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="medical_insurance_number">医療保険番号</Label>
-                  <Input
-                    id="medical_insurance_number"
-                    {...register('medical_insurance_number')}
-                    placeholder="12345678"
-                  />
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      id="medical_insurance_number"
+                      {...register('medical_insurance_number')}
+                      placeholder="12345678"
+                      className="flex-1"
+                    />
+                    {patientId ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="min-h-11 shrink-0"
+                        onClick={handleQualificationCheck}
+                        disabled={qualificationCheckPending}
+                      >
+                        <ShieldCheck className="mr-2 h-4 w-4" aria-hidden="true" />
+                        {qualificationCheckPending ? '確認中...' : '資格確認'}
+                      </Button>
+                    ) : null}
+                  </div>
+                  {qualificationCheckMessage ? (
+                    <p
+                      role={qualificationCheckMessage.tone === 'error' ? 'alert' : 'status'}
+                      aria-live={
+                        qualificationCheckMessage.tone === 'error' ? 'assertive' : 'polite'
+                      }
+                      className={
+                        qualificationCheckMessage.tone === 'success'
+                          ? 'text-xs text-state-done'
+                          : qualificationCheckMessage.tone === 'warning'
+                            ? 'text-xs text-state-confirm'
+                            : 'text-xs text-destructive'
+                      }
+                    >
+                      {qualificationCheckMessage.text}
+                    </p>
+                  ) : null}
                 </div>
 
                 {/* 介護保険番号 */}

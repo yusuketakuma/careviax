@@ -27,6 +27,24 @@ export interface PatientFieldRevisionListItem {
   created_at: string;
 }
 
+export interface PatientFieldRevisionListMeta {
+  total_count: number;
+  visible_count: number;
+  hidden_count: number;
+  truncated: boolean;
+  count_basis: 'patient_field_revisions';
+  filters_applied: {
+    category: string | null;
+  };
+  sort_basis: 'created_at_desc';
+  limit: number;
+}
+
+export interface PatientFieldRevisionListPage {
+  data: PatientFieldRevisionListItem[];
+  meta: PatientFieldRevisionListMeta;
+}
+
 export interface PatientFieldRevisionMetadataItem {
   id: string;
   category: string;
@@ -153,6 +171,33 @@ interface ListArgs {
   limit?: number;
 }
 
+function buildPatientFieldRevisionWhere(args: ListArgs): Prisma.PatientFieldRevisionWhereInput {
+  return {
+    org_id: args.orgId,
+    patient_id: args.patientId,
+    ...(args.category ? { category: args.category } : {}),
+  };
+}
+
+function buildRevisionListMeta(args: {
+  totalCount: number;
+  visibleCount: number;
+  category?: string;
+  limit: number;
+}): PatientFieldRevisionListMeta {
+  const hiddenCount = Math.max(args.totalCount - args.visibleCount, 0);
+  return {
+    total_count: args.totalCount,
+    visible_count: args.visibleCount,
+    hidden_count: hiddenCount,
+    truncated: hiddenCount > 0,
+    count_basis: 'patient_field_revisions',
+    filters_applied: { category: args.category ?? null },
+    sort_basis: 'created_at_desc',
+    limit: args.limit,
+  };
+}
+
 /**
  * 患者項目の変更履歴(PatientFieldRevision)を時系列(新しい順)で取得し、
  * 更新者/確認者の User ID を氏名へ解決した表示用リストを返す。
@@ -162,17 +207,41 @@ export async function listPatientFieldRevisions(
   db: DbClient,
   args: ListArgs,
 ): Promise<PatientFieldRevisionListItem[]> {
+  const limit = args.limit ?? 50;
   const rows = await db.patientFieldRevision.findMany({
-    where: {
-      org_id: args.orgId,
-      patient_id: args.patientId,
-      ...(args.category ? { category: args.category } : {}),
-    },
+    where: buildPatientFieldRevisionWhere(args),
     orderBy: [{ created_at: 'desc' }],
-    take: args.limit ?? 50,
+    take: limit,
   });
 
   return shapeRevisionRows(db, args.orgId, rows);
+}
+
+export async function listPatientFieldRevisionPage(
+  db: DbClient,
+  args: ListArgs,
+): Promise<PatientFieldRevisionListPage> {
+  const limit = args.limit ?? 50;
+  const where = buildPatientFieldRevisionWhere(args);
+  const [totalCount, rows] = await Promise.all([
+    db.patientFieldRevision.count({ where }),
+    db.patientFieldRevision.findMany({
+      where,
+      orderBy: [{ created_at: 'desc' }],
+      take: limit,
+    }),
+  ]);
+  const data = await shapeRevisionRows(db, args.orgId, rows);
+
+  return {
+    data,
+    meta: buildRevisionListMeta({
+      totalCount,
+      visibleCount: data.length,
+      category: args.category,
+      limit,
+    }),
+  };
 }
 
 /**
@@ -185,11 +254,7 @@ export async function listPatientFieldRevisionMetadata(
   args: ListArgs,
 ): Promise<PatientFieldRevisionMetadataItem[]> {
   const rows = await db.patientFieldRevision.findMany({
-    where: {
-      org_id: args.orgId,
-      patient_id: args.patientId,
-      ...(args.category ? { category: args.category } : {}),
-    },
+    where: buildPatientFieldRevisionWhere(args),
     orderBy: [{ created_at: 'desc' }],
     take: args.limit ?? 50,
     select: {

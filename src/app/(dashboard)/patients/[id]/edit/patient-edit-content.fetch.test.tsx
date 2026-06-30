@@ -96,6 +96,7 @@ describe('PatientEditContent patient overview fetch', () => {
         billing_support_flag: false,
         allergy_info: null,
         notes: null,
+        updated_at: '2026-03-30T09:00:00.000Z',
         primary_pharmacist_id: null,
         backup_pharmacist_id: null,
         primary_staff_id: null,
@@ -115,6 +116,7 @@ describe('PatientEditContent patient overview fetch', () => {
       expect.objectContaining({
         patientId,
         redirectTo: '/patients/__helper_patient_1__',
+        expectedUpdatedAt: '2026-03-30T09:00:00.000Z',
       }),
     );
     expect(patientFormMock).not.toHaveBeenCalledWith(

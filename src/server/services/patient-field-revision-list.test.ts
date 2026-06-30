@@ -1,17 +1,23 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   listFieldRevisionsBySourceVisitRecord,
+  listPatientFieldRevisionPage,
   listPatientFieldRevisions,
 } from './patient-field-revision-list';
 
-function createDb(rows: unknown[], users: Array<{ id: string; name: string }>) {
+function createDb(
+  rows: unknown[],
+  users: Array<{ id: string; name: string }>,
+  count = rows.length,
+) {
   const findMany = vi.fn().mockResolvedValue(rows);
+  const countMock = vi.fn().mockResolvedValue(count);
   const userFindMany = vi.fn().mockResolvedValue(users);
   const db = {
-    patientFieldRevision: { findMany },
+    patientFieldRevision: { findMany, count: countMock },
     user: { findMany: userFindMany },
   } as unknown as Parameters<typeof listPatientFieldRevisions>[0];
-  return { db, findMany, userFindMany };
+  return { db, findMany, countMock, userFindMany };
 }
 
 const baseRow = {
@@ -178,6 +184,41 @@ describe('listPatientFieldRevisions', () => {
     const result = await listPatientFieldRevisions(db, { orgId: 'org_1', patientId: 'p1' });
     expect(result[0].confirmed_by_name).toBeNull();
     expect(result[0].confirmed_at).toBeNull();
+  });
+});
+
+describe('listPatientFieldRevisionPage', () => {
+  it('returns counted metadata for truncated revision lists without exposing hidden rows', async () => {
+    const { db, findMany, countMock } = createDb([baseRow], [{ id: 'user_u', name: '田中' }], 4);
+
+    const result = await listPatientFieldRevisionPage(db, {
+      orgId: 'org_1',
+      patientId: 'p1',
+      category: 'basic',
+      limit: 1,
+    });
+
+    expect(countMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1', patient_id: 'p1', category: 'basic' },
+    });
+    expect(findMany).toHaveBeenCalledWith({
+      where: { org_id: 'org_1', patient_id: 'p1', category: 'basic' },
+      orderBy: [{ created_at: 'desc' }],
+      take: 1,
+    });
+    expect(result.data).toHaveLength(1);
+    expect(result.meta).toEqual({
+      total_count: 4,
+      visible_count: 1,
+      hidden_count: 3,
+      truncated: true,
+      count_basis: 'patient_field_revisions',
+      filters_applied: { category: 'basic' },
+      sort_basis: 'created_at_desc',
+      limit: 1,
+    });
+    expect(JSON.stringify(result.meta)).not.toContain('田中');
+    expect(JSON.stringify(result.meta)).not.toContain('care_4');
   });
 });
 

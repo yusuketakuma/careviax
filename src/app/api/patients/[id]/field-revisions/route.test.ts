@@ -4,11 +4,13 @@ import { NextRequest } from 'next/server';
 const {
   patientFindFirstMock,
   fieldRevisionFindManyMock,
+  fieldRevisionCountMock,
   userFindManyMock,
   requireAuthContextMock,
 } = vi.hoisted(() => ({
   patientFindFirstMock: vi.fn(),
   fieldRevisionFindManyMock: vi.fn(),
+  fieldRevisionCountMock: vi.fn(),
   userFindManyMock: vi.fn(),
   requireAuthContextMock: vi.fn(),
 }));
@@ -20,7 +22,7 @@ vi.mock('@/lib/auth/context', () => ({
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     patient: { findFirst: patientFindFirstMock },
-    patientFieldRevision: { findMany: fieldRevisionFindManyMock },
+    patientFieldRevision: { findMany: fieldRevisionFindManyMock, count: fieldRevisionCountMock },
     user: { findMany: userFindManyMock },
   },
 }));
@@ -70,26 +72,59 @@ describe('GET /api/patients/[id]/field-revisions', () => {
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     userFindManyMock.mockResolvedValue([{ id: 'user_u', name: '田中' }]);
     fieldRevisionFindManyMock.mockResolvedValue([baseRow]);
+    fieldRevisionCountMock.mockResolvedValue(1);
   });
 
   it('変更履歴を整形し更新者名を解決して返す', async () => {
     const response = await GET(createRequest(), params);
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    const body = (await response.json()) as { data: Array<Record<string, unknown>> };
+    const body = (await response.json()) as {
+      data: Array<Record<string, unknown>>;
+      meta: Record<string, unknown>;
+    };
     expect(body.data).toHaveLength(1);
     expect(body.data[0]).toMatchObject({
       field_key: 'care_level',
       current: 'care_4',
       updated_by_name: '田中',
     });
+    expect(body.meta).toMatchObject({
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'patient_field_revisions',
+    });
   });
 
-  it('category フィルタをクエリへ渡す', async () => {
+  it('category and limit filters are reflected in the counted response metadata', async () => {
     fieldRevisionFindManyMock.mockResolvedValue([]);
-    await GET(createRequest('?category=basic'), params);
+    fieldRevisionCountMock.mockResolvedValue(3);
+    const response = await GET(createRequest('?category=basic&limit=1'), params);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [],
+      meta: {
+        total_count: 3,
+        visible_count: 0,
+        hidden_count: 3,
+        truncated: true,
+        count_basis: 'patient_field_revisions',
+        filters_applied: { category: 'basic' },
+        sort_basis: 'created_at_desc',
+        limit: 1,
+      },
+    });
+    expect(fieldRevisionCountMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({ category: 'basic' }),
+    });
     expect(fieldRevisionFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ category: 'basic' }) }),
+      expect.objectContaining({
+        where: expect.objectContaining({ category: 'basic' }),
+        take: 1,
+      }),
     );
   });
 

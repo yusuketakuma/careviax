@@ -289,6 +289,7 @@ export const createPatientSchema = z.object({
 export const updatePatientSchema = createPatientSchema.partial().extend({
   // 反映導線(訪問記録→患者詳細)の出所。指定時は変更履歴の source を visit_record にする。
   source_visit_record_id: z.string().optional(),
+  expected_updated_at: z.string().datetime('患者情報の版情報が不正です').optional(),
 });
 
 export const updatePatientConditionsSchema = z.object({

@@ -160,7 +160,7 @@
 | **`GET /api/visit-preparations/[scheduleId]`** | VisitSchedule, CareTeamLink, VisitRecord, Task, ContactLog, PrescriptionIntake, BillingEvidence | FirstVisitDocument, ConsentRecord, ContactParty | **FirstVisitDocument**（緊急連絡先スナップショット）、**ConsentRecord**（同意有効確認）、**ContactParty**（is_emergency_contact） |
 | **`GET /api/dashboard/workflow`** | ConsentRecord（visit_medication_management のみ）, ManagementPlan | FirstVisitDocument, ContactParty（emergency）| **FirstVisitDocument** 交付漏れ検出、緊急連絡先未登録患者の検出 |
 | **患者詳細画面 `patient-detail-tabs.tsx`** | Patient, ContactParty, CareTeamLink, ConsentRecord, FirstVisitDocument（`patient-detail-tabs` 経由） | PrescriptionIntake（タブ別に読む） | ― |
-| **`patient-master-card.tsx`** | Patient, Residence | ContactParty, ConsentRecord, FirstVisitDocument | ― |
+| **`PatientForm` / `patient-edit-content.tsx`** | Patient, Residence | ContactParty, ConsentRecord, FirstVisitDocument | ― |
 | **スケジュール日次ビュー `day-view.tsx`** | VisitSchedule, VisitPreparation, PrescriptionIntake | ConsentRecord, FirstVisitDocument, ContactParty | **ConsentRecord** 有効期限アラート、**FirstVisitDocument** 交付未了フラグ |
 
 ---
@@ -237,5 +237,5 @@
 | `src/app/api/visit-preparations/[scheduleId]/route.ts` | 訪問準備情報（PrescriptionIntake 比較含む）|
 | `src/app/api/dashboard/workflow/route.ts` | ワークフロー全体集計（missing_visit_consent 等）|
 | `src/app/(dashboard)/patients/[id]/patient-detail-tabs.tsx` | 患者詳細タブ UI |
-| `src/app/(dashboard)/patients/[id]/patient-master-card.tsx` | 患者基本情報カード |
+| `src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx` / `src/components/features/patients/patient-form.tsx` | 患者基本情報の正本編集フォーム |
 | `src/app/(dashboard)/schedules/day-view.tsx` | 訪問日次ビュー |

@@ -1593,7 +1593,7 @@ flowchart LR
 ### 14-1. オンライン資格確認（OQC）の UI 統合 `cc:完了`
 
 - [x] `POST /api/patients/[id]/qualification-check`(adapter 統合 + webhook 通知)
-- [x] UI 接続: `patients/[id]/patient-master-card.tsx` に資格確認導線
+- [x] UI 接続: `patients/[id]/edit` の `PatientForm` に資格確認導線
 - 注記: MHLW API 接続設定の専用管理画面は未確認(実接続は外部契約依存)
 
 ### 14-2. 電子処方箋の受付フロー統合 `cc:完了`

@@ -1545,6 +1545,7 @@ describe('CardWorkspace', () => {
       name_kana: 'エスエスアール',
       birth_date: '1942-04-12',
       gender: 'male',
+      updated_at: '2026-06-01T00:00:00.000Z',
       archived_at: null,
       archived_by: null,
       archived_by_name: null,

@@ -62,6 +62,11 @@ function createDeleteRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/patients/[id]/insurance/[insuranceId]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -113,6 +118,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(patientInsuranceUpdateMock).toHaveBeenCalledWith({
       where: { id: 'insurance_1' },
       data: {
@@ -142,6 +148,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '同じ期間に有効な保険情報が既に存在します',
       details: {
@@ -165,6 +172,40 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
     expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
   });
 
+  it('PUT checks open-ended active insurance against all existing active start dates', async () => {
+    patientInsuranceFindFirstMock.mockResolvedValue({
+      id: 'insurance_1',
+      insurance_type: 'medical',
+      public_program_code: null,
+      valid_from: new Date('2026-04-01'),
+      valid_until: null,
+      is_active: true,
+    });
+
+    const response = await PUT(createPutRequest({ notes: '継続中' }), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(patientInsuranceOverlapFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        insurance_type: 'medical',
+        is_active: true,
+        id: { not: 'insurance_1' },
+        AND: [{ OR: [{ valid_until: null }, { valid_until: { gte: new Date('2026-04-01') } }] }],
+      },
+      select: { id: true },
+    });
+    expect(patientInsuranceUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'insurance_1' },
+      data: { notes: '継続中' },
+    });
+  });
+
   it('PUT returns 409 for an archived patient before loading or updating insurance records', async () => {
     patientFindFirstMock.mockResolvedValue({
       id: 'patient_1',
@@ -177,6 +218,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'アーカイブ中の患者は復元するまで更新できません',
     });
@@ -192,6 +234,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(patientInsuranceDeleteMock).toHaveBeenCalledWith({
       where: { id: 'insurance_1' },
     });
@@ -213,6 +256,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientInsuranceDeleteMock).not.toHaveBeenCalled();
@@ -225,6 +269,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -240,6 +285,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '患者IDが不正です',
     });
@@ -255,6 +301,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '保険情報IDが不正です',
     });
@@ -275,6 +322,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '入力値が不正です',
       details: {
@@ -297,6 +345,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '入力値が不正です',
       details: {
@@ -317,6 +366,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(patientInsuranceDeleteMock).not.toHaveBeenCalled();
   });
 
@@ -329,6 +379,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(patientInsuranceDeleteMock).not.toHaveBeenCalled();
   });
 
@@ -339,6 +390,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '患者IDが不正です',
     });
@@ -354,6 +406,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '保険情報IDが不正です',
     });
@@ -377,6 +430,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
     expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
   });
 
@@ -395,6 +449,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
     expect(patientInsuranceDeleteMock).not.toHaveBeenCalled();
   });
 
@@ -410,6 +465,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
   });
 
@@ -428,6 +484,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
@@ -440,6 +497,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -457,6 +515,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
   });
 
@@ -469,6 +528,52 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('PUT returns a sanitized no-store 500 when record loading fails unexpectedly', async () => {
+    patientInsuranceFindFirstMock.mockRejectedValueOnce(
+      new Error('患者A insurance 12345678 update lookup token-secret'),
+    );
+
+    const response = await PUT(createPutRequest({ is_active: false }), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(JSON.stringify(body)).not.toContain('12345678');
+    expect(JSON.stringify(body)).not.toContain('token-secret');
+    expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('DELETE returns a sanitized no-store 500 when deletion fails unexpectedly', async () => {
+    patientInsuranceDeleteMock.mockRejectedValueOnce(
+      new Error('患者A insurance 12345678 delete failure token-secret'),
+    );
+
+    const response = await DELETE(createDeleteRequest(), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(JSON.stringify(body)).not.toContain('12345678');
+    expect(JSON.stringify(body)).not.toContain('token-secret');
   });
 });

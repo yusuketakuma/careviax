@@ -40,16 +40,16 @@
 
 | フィールド | バリデーション定義 | 現在の保存先 | 目標正規化先 | 表示先 UI | 利用先 API / サービス | 活用状況 | 備考 |
 |-----------|-----------------|-------------|-------------|----------|---------------------|---------|------|
-| `name` | `z.string().min(1)`（必須） | `Patient.name` | 正規化済み | PatientMasterCard / PatientIntakeSummaryCard B | すべての患者関連 API | アクティブ | |
-| `name_kana` | `optionalTrimmedString` | `Patient.name_kana` | 正規化済み | PatientMasterCard | `/api/patients`（name_kana ソート） | アクティブ | |
-| `birth_date` | `optionalDateString` | `Patient.birth_date` | 正規化済み | PatientMasterCard / PatientIntakeSummaryCard B | 患者 API 全般 | アクティブ | |
-| `gender` | `z.enum(['male','female','other'])`（必須） | `Patient.gender` | 正規化済み | PatientMasterCard | 患者 API 全般 | アクティブ | |
-| `phone` | `optionalTrimmedString` | `Patient.phone`（`contact_phone`/`contact_mobile` 優先から自動導出） | 正規化済み | PatientMasterCard | 患者 API 全般 | アクティブ | |
-| `medical_insurance_number` | `optionalTrimmedString` | `Patient.medical_insurance_number` | 正規化済み | PatientMasterCard | 患者 API（権限あり時のみ） | アクティブ | マスク制御あり |
-| `care_insurance_number` | `optionalTrimmedString` | `Patient.care_insurance_number` | 正規化済み | PatientMasterCard | 患者 API（権限あり時のみ） | アクティブ | マスク制御あり |
-| `address` | `optionalTrimmedString`（登録時必須） | `Residence.address` | 正規化済み | PatientMasterCard / 訪問準備 | `/api/visit-preparations/[scheduleId]`（patient.residences） | アクティブ | |
-| `building_id` | `optionalTrimmedString` | `Residence.building_id` | 正規化済み | PatientMasterCard | 施設モード判定、ルート計算 | アクティブ | |
-| `unit_name` | `optionalTrimmedString` | `Residence.unit_name` | 正規化済み | PatientMasterCard / PatientIntakeSummaryCard B | 同上 | アクティブ | |
+| `name` | `z.string().min(1)`（必須） | `Patient.name` | 正規化済み | PatientForm / PatientIntakeSummaryCard B | すべての患者関連 API | アクティブ | |
+| `name_kana` | `optionalTrimmedString` | `Patient.name_kana` | 正規化済み | PatientForm | `/api/patients`（name_kana ソート） | アクティブ | |
+| `birth_date` | `optionalDateString` | `Patient.birth_date` | 正規化済み | PatientForm / PatientIntakeSummaryCard B | 患者 API 全般 | アクティブ | |
+| `gender` | `z.enum(['male','female','other'])`（必須） | `Patient.gender` | 正規化済み | PatientForm | 患者 API 全般 | アクティブ | |
+| `phone` | `optionalTrimmedString` | `Patient.phone`（`contact_phone`/`contact_mobile` 優先から自動導出） | 正規化済み | PatientForm | 患者 API 全般 | アクティブ | |
+| `medical_insurance_number` | `optionalTrimmedString` | `Patient.medical_insurance_number` | 正規化済み | PatientForm | 患者 API（権限あり時のみ） | アクティブ | マスク制御あり |
+| `care_insurance_number` | `optionalTrimmedString` | `Patient.care_insurance_number` | 正規化済み | PatientForm | 患者 API（権限あり時のみ） | アクティブ | マスク制御あり |
+| `address` | `optionalTrimmedString`（登録時必須） | `Residence.address` | 正規化済み | PatientForm / 訪問準備 | `/api/visit-preparations/[scheduleId]`（patient.residences） | アクティブ | |
+| `building_id` | `optionalTrimmedString` | `Residence.building_id` | 正規化済み | PatientForm | 施設モード判定、ルート計算 | アクティブ | |
+| `unit_name` | `optionalTrimmedString` | `Residence.unit_name` | 正規化済み | PatientForm / PatientIntakeSummaryCard B | 同上 | アクティブ | |
 | `intake.age`（reported_age） | `optionalNumberString`（登録時必須） | `CareCase.required_visit_support.home_visit_intake.reported_age` | home_visit_intake に残す（生年月日不明時の代替値） | PatientIntakeSummaryCard B | `POST /api/patients`（`birth_date` 推定に使用） | 部分的アクティブ | 登録処理後は `Patient.birth_date` が SSOT |
 | `intake.primary_disease` | `optionalTrimmedString`（登録時必須） | `CareCase.required_visit_support.home_visit_intake.primary_disease` + `PatientCondition`（自動生成） | `PatientCondition`（既に正規化） | PatientIntakeSummaryCard B / 疾患タブ | 患者詳細 API（conditions） | アクティブ | 登録時に `PatientCondition` (is_primary=true) として複製保存済み |
 | `intake.postal_code` | `optionalTrimmedString` | `CareCase.required_visit_support.home_visit_intake.postal_code` | `Residence` にカラム追加推奨（ジオコーディング改善） | PatientIntakeSummaryCard B | なし | 表示のみ | Residence はすでに geocode 機能を持つが郵便番号カラムなし |

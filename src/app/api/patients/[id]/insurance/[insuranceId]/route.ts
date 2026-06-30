@@ -1,14 +1,17 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
-import { notFound, success, validationError } from '@/lib/api/response';
+import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { z } from 'zod';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
+import { buildPatientInsuranceOverlapWhere } from '@/lib/patient/insurance-overlap';
 
 const dateStringSchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）');
 const publicProgramCodeSchema = z
@@ -36,34 +39,6 @@ class PatientInsuranceOverlapError extends Error {
   constructor() {
     super('PATIENT_INSURANCE_OVERLAP');
   }
-}
-
-function buildOverlapWhere(args: {
-  orgId: string;
-  patientId: string;
-  insuranceId?: string;
-  insuranceType: 'medical' | 'care' | 'public_subsidy';
-  publicProgramCode?: string | null;
-  validFrom?: string | Date | null;
-  validUntil?: string | Date | null;
-}) {
-  const validFrom = args.validFrom ? new Date(args.validFrom) : null;
-  const validUntil = args.validUntil ? new Date(args.validUntil) : null;
-
-  return {
-    org_id: args.orgId,
-    patient_id: args.patientId,
-    insurance_type: args.insuranceType,
-    is_active: true,
-    ...(args.insuranceId ? { id: { not: args.insuranceId } } : {}),
-    ...(args.insuranceType === 'public_subsidy' && args.publicProgramCode
-      ? { public_program_code: args.publicProgramCode }
-      : {}),
-    AND: [
-      { OR: [{ valid_from: null }, ...(validUntil ? [{ valid_from: { lte: validUntil } }] : [])] },
-      { OR: [{ valid_until: null }, ...(validFrom ? [{ valid_until: { gte: validFrom } }] : [])] },
-    ],
-  };
 }
 
 const updateInsuranceSchema = z
@@ -138,7 +113,7 @@ const updateInsuranceSchema = z
     }
   });
 
-export async function PUT(
+async function authenticatedPUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; insuranceId: string }> },
 ) {
@@ -221,10 +196,10 @@ export async function PUT(
       const nextIsActive = parsed.data.is_active ?? existing.is_active;
       if (nextIsActive) {
         const overlappingInsurance = await tx.patientInsurance.findFirst({
-          where: buildOverlapWhere({
+          where: buildPatientInsuranceOverlapWhere({
             orgId: ctx.orgId,
             patientId: id,
-            insuranceId,
+            excludeInsuranceId: insuranceId,
             insuranceType: effectiveInsuranceType,
             publicProgramCode: parsed.data.public_program_code ?? existing.public_program_code,
             validFrom: valid_from !== undefined ? valid_from : existing.valid_from,
@@ -272,7 +247,19 @@ export async function PUT(
   return success({ data: updated });
 }
 
-export async function DELETE(
+export async function PUT(
+  req: NextRequest,
+  routeContext: { params: Promise<{ id: string; insuranceId: string }> },
+) {
+  try {
+    return withSensitiveNoStore(await authenticatedPUT(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+}
+
+async function authenticatedDELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; insuranceId: string }> },
 ) {
@@ -316,4 +303,16 @@ export async function DELETE(
   );
 
   return success({ id: insuranceId, deleted: true });
+}
+
+export async function DELETE(
+  req: NextRequest,
+  routeContext: { params: Promise<{ id: string; insuranceId: string }> },
+) {
+  try {
+    return withSensitiveNoStore(await authenticatedDELETE(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }
