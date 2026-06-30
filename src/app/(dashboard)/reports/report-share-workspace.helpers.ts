@@ -6,6 +6,7 @@ import type {
   NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
 import { buildExternalHref } from '@/lib/dashboard/home-link-builders';
+import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { familyNameOf as sharedFamilyNameOf } from '@/lib/utils/person-name';
@@ -67,11 +68,12 @@ export function buildWorkspaceNextAction(
       actionHref: '/audit',
     };
   }
-  if ((cockpit?.today_visits.length ?? 0) > 0) {
+  const firstVisit = cockpit?.today_visits[0] ?? null;
+  if (firstVisit) {
     return {
       actionLabel: '訪問準備を確認する',
       description: `本日の訪問 ${cockpit?.today_visits.length}件の準備状況を確認します。`,
-      actionHref: '/schedules',
+      actionHref: buildScheduleFocusHref(firstVisit.id),
     };
   }
   return {

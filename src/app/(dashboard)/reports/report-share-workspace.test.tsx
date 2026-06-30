@@ -693,6 +693,15 @@ describe('report-share-workspace helpers', () => {
     expect(waitingBadgeLabel(0)).toBe('本日送付');
   });
 
+  it('focuses the visit preparation action on the first visit schedule', () => {
+    const result = buildWorkspaceNextAction({
+      ...COCKPIT,
+      audit_queue: [],
+    });
+    expect(result.actionLabel).toBe('訪問準備を確認する');
+    expect(result.actionHref).toBe('/schedules?focus=schedule&schedule_id=visit_1');
+  });
+
   it('falls back next action when no audit queue', () => {
     const result = buildWorkspaceNextAction({
       ...COCKPIT,

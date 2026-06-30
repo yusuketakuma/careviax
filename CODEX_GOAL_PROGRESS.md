@@ -25002,3 +25002,28 @@ Next loop:
 - Remaining:
   - The broad visit/report/interprofessional collaboration goal remains open.
   - `.codex/ralph-state.md` already contains unrelated dirty operating-hours progress from another agent; do not broad-stage it with this report evidence slice.
+
+### Report Workspace Visit Action Focus - 2026-06-30 17:49 JST
+
+- Scope:
+  - Continued the report workspace navigation hardening by inspecting the shared next-action helper for schedule context.
+  - Focused on the no-audit visit-preparation action, which already had a concrete cockpit visit schedule ID but routed to the broad schedules hub.
+- Fixed:
+  - `buildWorkspaceNextAction` now routes the visit-preparation CTA to `buildScheduleFocusHref(firstVisit.id)`.
+  - Added a regression proving the report workspace focuses `/schedules?focus=schedule&schedule_id=...` for the first today's visit when there is no audit queue.
+- Safety:
+  - Reduces wrong-schedule navigation risk from the report workspace's visit-preparation action.
+  - Uses the existing schedule navigation helper, preserving hostile schedule ID encoding and the schedules page's focus contract.
+  - No auth/RLS policy, permission, PHI export, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - No new query, network call, dependency, background job, broad scan, unbounded loop, or render-heavy path was added.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/reports/report-share-workspace.helpers.ts' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`: passed with no changes.
+  - `pnpm exec vitest run 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' src/lib/schedules/navigation.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `23` tests.
+  - Scoped ESLint on report helper/test and `src/lib/schedules/navigation.ts`: passed.
+  - Scoped Prettier check and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - The broad visit/report/interprofessional collaboration goal remains open.
+  - Mapper identified additional high-value focused-link gaps in `workflow-dashboard-sections`, `operational-task-presentation`, `visits-today`, and conferences. Prefer currently clean, server/helper-only slices first.
