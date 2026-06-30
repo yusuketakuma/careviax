@@ -30,6 +30,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### External Professional Linked Patient Evidence - 2026-07-01 06:34 JST
+
+- Scope:
+  - Continued multi-professional cooperation and report-recipient master hardening.
+  - Focused on the real `/admin/external-professionals` editor and the existing linked-patients reverse-reference API.
+- Fixed:
+  - External-professional edit sheets now load the linked CareTeamLink patient list only while editing a selected master row.
+  - The UI shows total/visible/hidden counts from the API metadata instead of treating visible rows as the total.
+  - Linked patient rows show patient name, kana, role, primary flag, archive state, case status, and case id.
+  - Patient navigation uses `buildPatientHref`, and the linked-patients API path is centralized in `buildAdminExternalProfessionalPatientsApiPath`.
+  - Fetch failures are shown as an error state and are not collapsed into "no linked patients."
+- Safety:
+  - Reduces deletion/unlink ambiguity where admins saw only `patient_count` and could not identify the patients/cases behind that count.
+  - Preserves existing backend canReport/canVisit permissions, assignment scoping, archive defaults, sensitive no-store response behavior, report-recipient suggestion logic, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - The linked-patient read is gated to the open edit sheet and bounded with `limit=20`.
+  - No background polling, broad list fan-out, new dependency, DB query-shape change, render-heavy polling, or unbounded loop was added.
+- Validation:
+  - External-professionals UI/path Vitest passed `2` files / `22` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on external-professionals UI/path files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- Remaining:
+  - Broad visit-time, report, and multi-professional cooperation objective remains open.
+  - Direct link/unlink management remains in the patient care-team editor; this slice surfaces evidence and navigation from the external-professional master.
+  - Concurrent dirty admin-vehicles and visit-vehicle-resource files remain outside this slice.
+
 ### Route Compare Vehicle Assignment Freshness - 2026-07-01 06:30 JST
 
 - Scope:

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ADMIN_EXTERNAL_PROFESSIONALS_API_PATH,
   buildAdminExternalProfessionalApiPath,
+  buildAdminExternalProfessionalPatientsApiPath,
   buildAdminExternalProfessionalsApiPath,
 } from './api-paths';
 
@@ -41,4 +42,28 @@ describe('external professional admin API path helpers', () => {
   it.each(['.', '..'])('rejects exact dot-segment external professional id %s', (id) => {
     expect(() => buildAdminExternalProfessionalApiPath(id)).toThrow(RangeError);
   });
+
+  it('builds linked patient paths with an independently encoded external professional id', () => {
+    const id = 'external/1?mode=x#frag';
+    const params = new URLSearchParams({ limit: '20', archive_status: 'active' });
+
+    expect(buildAdminExternalProfessionalPatientsApiPath(id, params)).toBe(
+      `/api/admin/external-professionals/${encodeURIComponent(id)}/patients?${params.toString()}`,
+    );
+  });
+
+  it('preserves the empty linked-patient query path shape', () => {
+    expect(buildAdminExternalProfessionalPatientsApiPath('external_1', new URLSearchParams())).toBe(
+      '/api/admin/external-professionals/external_1/patients?',
+    );
+  });
+
+  it.each(['.', '..'])(
+    'rejects exact dot-segment external professional id for linked-patient path %s',
+    (id) => {
+      expect(() =>
+        buildAdminExternalProfessionalPatientsApiPath(id, new URLSearchParams()),
+      ).toThrow(RangeError);
+    },
+  );
 });

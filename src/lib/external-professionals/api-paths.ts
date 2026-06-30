@@ -9,3 +9,10 @@ export function buildAdminExternalProfessionalsApiPath(params: URLSearchParams) 
 export function buildAdminExternalProfessionalApiPath(externalProfessionalId: string) {
   return `${ADMIN_EXTERNAL_PROFESSIONALS_API_PATH}/${encodePathSegment(externalProfessionalId)}`;
 }
+
+export function buildAdminExternalProfessionalPatientsApiPath(
+  externalProfessionalId: string,
+  params: URLSearchParams,
+) {
+  return `${buildAdminExternalProfessionalApiPath(externalProfessionalId)}/patients?${params.toString()}`;
+}

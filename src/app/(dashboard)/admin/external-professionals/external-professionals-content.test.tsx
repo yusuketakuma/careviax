@@ -1,13 +1,17 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { toast } from 'sonner';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
-import { buildAdminExternalProfessionalApiPath } from '@/lib/external-professionals/api-paths';
+import {
+  buildAdminExternalProfessionalApiPath,
+  buildAdminExternalProfessionalPatientsApiPath,
+} from '@/lib/external-professionals/api-paths';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import {
   ExternalProfessionalsContent,
   type ExternalProfessional,
@@ -46,6 +50,17 @@ vi.mock('@/lib/external-professionals/api-paths', async (importActual) => {
   return {
     ...actual,
     buildAdminExternalProfessionalApiPath: vi.fn(actual.buildAdminExternalProfessionalApiPath),
+    buildAdminExternalProfessionalPatientsApiPath: vi.fn(
+      actual.buildAdminExternalProfessionalPatientsApiPath,
+    ),
+  };
+});
+
+vi.mock('@/lib/patient/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/navigation')>();
+  return {
+    ...actual,
+    buildPatientHref: vi.fn(actual.buildPatientHref),
   };
 });
 
@@ -132,7 +147,37 @@ function professionalFixture(id = 'external_1'): ExternalProfessional {
   };
 }
 
-function stubFetchWithProfessional(professional = professionalFixture()) {
+function linkedPatientsResponseFixture() {
+  return {
+    data: [
+      {
+        id: 'link_1',
+        role: 'nurse',
+        is_primary: true,
+        case_id: 'case_1',
+        case_status: 'active',
+        patient_id: 'patient_1',
+        patient_name: '山田 花子',
+        patient_name_kana: 'ヤマダ ハナコ',
+        archived_at: null,
+        archive: { status: 'active', archived: false, archived_at: null },
+      },
+    ],
+    metadata: {
+      limit: 20,
+      total_count: 2,
+      visible_count: 1,
+      hidden_count: 1,
+      has_more: true,
+      count_basis: 'care_team_links',
+    },
+  };
+}
+
+function stubFetchWithProfessional(
+  professional = professionalFixture(),
+  linkedPatientsResponse: unknown = linkedPatientsResponseFixture(),
+) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method;
@@ -154,6 +199,14 @@ function stubFetchWithProfessional(professional = professionalFixture()) {
       return new Response(JSON.stringify({ data: [{ id: 'facility_1', name: 'さくら荘' }] }), {
         status: 200,
       });
+    }
+
+    if (
+      url.includes('/patients?') &&
+      url.startsWith('/api/admin/external-professionals/') &&
+      !method
+    ) {
+      return new Response(JSON.stringify(linkedPatientsResponse), { status: 200 });
     }
 
     if (url === '/api/admin/external-professionals' && method === 'POST') {
@@ -252,6 +305,72 @@ describe('ExternalProfessionalsContent', () => {
       facility_id: 'facility_1',
       preferred_contact_method: 'fax',
     });
+  });
+
+  it('loads linked patients in the edit sheet with counted metadata and patient navigation helpers', async () => {
+    const fetchMock = stubFetchWithProfessional();
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '青葉 訪問看護 を編集' }));
+
+    const linkedPatientsRegion = await screen.findByRole('region', { name: '担当患者' });
+    expect(await within(linkedPatientsRegion).findByText('山田 花子')).toBeTruthy();
+    expect(within(linkedPatientsRegion).getByText('ヤマダ ハナコ / 訪問看護師')).toBeTruthy();
+    expect(within(linkedPatientsRegion).getByText('総数 2件')).toBeTruthy();
+    expect(within(linkedPatientsRegion).getByText('表示 1件')).toBeTruthy();
+    expect(within(linkedPatientsRegion).getByText('非表示 1件')).toBeTruthy();
+    expect(
+      within(linkedPatientsRegion).getByRole('link', { name: '山田 花子' }).getAttribute('href'),
+    ).toBe('/patients/patient_1');
+
+    const linkedPatientsPath = '/api/admin/external-professionals/external_1/patients?limit=20';
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(linkedPatientsPath, {
+        headers: buildOrgHeaders('org_1'),
+      });
+    });
+    const patientsPathCall = vi
+      .mocked(buildAdminExternalProfessionalPatientsApiPath)
+      .mock.calls.find(([externalProfessionalId]) => externalProfessionalId === 'external_1');
+    expect(patientsPathCall?.[1].toString()).toBe('limit=20');
+    expect(buildPatientHref).toHaveBeenCalledWith('patient_1');
+  });
+
+  it('does not collapse linked-patient query failures into an empty assigned-patient state', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method;
+      if (url === '/api/admin/external-professionals?' && !method) {
+        return new Response(
+          JSON.stringify({
+            data: [professionalFixture()],
+            total_count: 1,
+            visible_count: 1,
+            hidden_count: 0,
+            truncated: false,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/admin/facilities?' && !method) {
+        return new Response(JSON.stringify({ data: [{ id: 'facility_1', name: 'さくら荘' }] }), {
+          status: 200,
+        });
+      }
+      if (url === '/api/admin/external-professionals/external_1/patients?limit=20' && !method) {
+        return new Response(JSON.stringify({ message: 'failed' }), { status: 500 });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '青葉 訪問看護 を編集' }));
+
+    expect(await screen.findByText('担当患者を取得できませんでした')).toBeTruthy();
+    expect(screen.getByText('担当患者なしとして扱いません。', { exact: false })).toBeTruthy();
+    expect(screen.queryByText('この他職種に紐づく患者はありません。')).toBeNull();
   });
 
   it('POST creates a normalized external professional payload', async () => {

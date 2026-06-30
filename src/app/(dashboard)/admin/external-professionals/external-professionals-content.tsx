@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { Plus } from 'lucide-react';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -31,10 +32,12 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   ADMIN_EXTERNAL_PROFESSIONALS_API_PATH,
   buildAdminExternalProfessionalApiPath,
+  buildAdminExternalProfessionalPatientsApiPath,
   buildAdminExternalProfessionalsApiPath,
 } from '@/lib/external-professionals/api-paths';
 import { buildAdminFacilitiesApiPath } from '@/lib/facilities/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { formatDateLabel } from '@/lib/ui/date-format';
 
 type ProfessionType =
@@ -93,6 +96,35 @@ type FacilitiesResponse = {
   data: FacilityOption[];
 };
 
+type LinkedPatient = {
+  id: string;
+  role: string;
+  is_primary: boolean;
+  case_id: string;
+  case_status: string;
+  patient_id: string;
+  patient_name: string;
+  patient_name_kana: string | null;
+  archived_at: string | null;
+  archive?: {
+    status: 'active' | 'archived';
+    archived: boolean;
+    archived_at: string | null;
+  };
+};
+
+type LinkedPatientsResponse = {
+  data: LinkedPatient[];
+  metadata?: {
+    limit?: number;
+    total_count?: number;
+    visible_count?: number;
+    hidden_count?: number;
+    has_more?: boolean;
+    count_basis?: string;
+  };
+};
+
 type FormState = {
   profession_type: ProfessionType;
   name: string;
@@ -111,6 +143,8 @@ type FormState = {
 const NONE_VALUE = '__none__';
 const EMPTY_PROFESSIONALS: ExternalProfessional[] = [];
 const EMPTY_FACILITY_OPTIONS: FacilityOption[] = [];
+const EMPTY_LINKED_PATIENTS: LinkedPatient[] = [];
+const LINKED_PATIENT_LIMIT = 20;
 
 const PROFESSION_TYPES: Array<{ value: ProfessionType; label: string }> = [
   { value: 'physician', label: '医師' },
@@ -188,6 +222,34 @@ function getProfessionLabel(type: ProfessionType) {
 function getContactMethodLabel(method: ContactMethod | null) {
   if (!method) return '送付方法未設定';
   return CONTACT_METHODS.find((item) => item.value === method)?.label ?? method;
+}
+
+function getCareTeamRoleLabel(role: string) {
+  switch (role) {
+    case 'physician':
+      return '医師';
+    case 'nurse':
+      return '訪問看護師';
+    case 'care_manager':
+      return 'ケアマネジャー';
+    case 'pharmacist':
+      return '薬剤師';
+    default:
+      return 'その他';
+  }
+}
+
+function getCaseStatusLabel(status: string) {
+  switch (status) {
+    case 'active':
+      return '有効ケース';
+    case 'closed':
+      return '終了ケース';
+    case 'archived':
+      return 'アーカイブ';
+    default:
+      return status;
+  }
 }
 
 function formatOptionalDateTime(value: string | null) {
@@ -304,9 +366,27 @@ export function ExternalProfessionalsContent() {
     () => professionals.filter((item) => matchesProfessionalQuery(item, query)),
     [professionals, query],
   );
+  const editingProfessionalId = editingProfessional?.id;
   const totalCount = professionalsQuery.data?.total_count ?? professionals.length;
   const hiddenCount = professionalsQuery.data?.hidden_count ?? 0;
   const formBlocker = getFormBlocker(form);
+
+  const linkedPatientsQuery = useQuery({
+    queryKey: ['admin-external-professional-linked-patients', orgId, editingProfessionalId],
+    queryFn: async () => {
+      if (!editingProfessionalId) throw new Error('他職種マスターが選択されていません');
+      const params = new URLSearchParams({ limit: String(LINKED_PATIENT_LIMIT) });
+      const response = await fetch(
+        buildAdminExternalProfessionalPatientsApiPath(editingProfessionalId, params),
+        {
+          headers: buildOrgHeaders(orgId),
+        },
+      );
+      if (!response.ok) throw new Error('担当患者の取得に失敗しました');
+      return response.json() as Promise<LinkedPatientsResponse>;
+    },
+    enabled: Boolean(orgId && sheetOpen && editingProfessionalId),
+  });
 
   function resetForm() {
     setEditingProfessional(null);
@@ -769,6 +849,15 @@ export function ExternalProfessionalsContent() {
               </div>
             </div>
 
+            {editingProfessional ? (
+              <LinkedPatientsPanel
+                data={linkedPatientsQuery.data}
+                isError={linkedPatientsQuery.isError}
+                isLoading={linkedPatientsQuery.isLoading}
+                onRetry={() => void linkedPatientsQuery.refetch()}
+              />
+            ) : null}
+
             {formBlocker ? (
               <Alert variant="destructive" role="alert">
                 <AlertTitle>保存前に確認してください</AlertTitle>
@@ -798,5 +887,110 @@ export function ExternalProfessionalsContent() {
         </SheetContent>
       </Sheet>
     </>
+  );
+}
+
+function LinkedPatientsPanel({
+  data,
+  isError,
+  isLoading,
+  onRetry,
+}: {
+  data: LinkedPatientsResponse | undefined;
+  isError: boolean;
+  isLoading: boolean;
+  onRetry: () => void;
+}) {
+  const linkedPatients = data?.data ?? EMPTY_LINKED_PATIENTS;
+  const metadata = data?.metadata;
+  const visibleCount = metadata?.visible_count ?? linkedPatients.length;
+  const hiddenCount = metadata?.hidden_count ?? 0;
+  const totalCount = metadata?.total_count ?? visibleCount + hiddenCount;
+
+  return (
+    <section className="rounded-lg border bg-muted/20 p-4" aria-labelledby="linked-patients-title">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h3 id="linked-patients-title" className="text-sm font-semibold text-foreground">
+            担当患者
+          </h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            ケアチーム紐づけから報告書送付候補へ反映される患者です。
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 text-sm">
+          <StateBadge role="readonly">総数 {totalCount}件</StateBadge>
+          <StateBadge role={hiddenCount > 0 ? 'confirm' : 'done'}>表示 {visibleCount}件</StateBadge>
+          {hiddenCount > 0 || metadata?.has_more ? (
+            <StateBadge role="confirm">非表示 {hiddenCount}件</StateBadge>
+          ) : null}
+        </div>
+      </div>
+
+      {isError ? (
+        <Alert className="mt-4" variant="destructive" role="alert">
+          <AlertTitle>担当患者を取得できませんでした</AlertTitle>
+          <AlertDescription>
+            権限または通信状態を確認してください。担当患者なしとして扱いません。
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-3 !h-11 !min-h-[44px]"
+              onClick={onRetry}
+            >
+              再読み込み
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {isLoading ? (
+        <p className="mt-4 text-sm text-muted-foreground">担当患者を読み込み中...</p>
+      ) : null}
+
+      {!isLoading && !isError && linkedPatients.length === 0 ? (
+        <p className="mt-4 rounded-md border border-dashed bg-background p-3 text-sm text-muted-foreground">
+          この他職種に紐づく患者はありません。
+        </p>
+      ) : null}
+
+      {!isLoading && !isError && linkedPatients.length > 0 ? (
+        <div className="mt-4 divide-y rounded-md border bg-background">
+          {linkedPatients.map((patient) => {
+            const archived = patient.archive?.archived ?? Boolean(patient.archived_at);
+            return (
+              <div key={patient.id} className="grid gap-3 p-3 md:grid-cols-[minmax(0,1fr)_auto]">
+                <div className="min-w-0 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link
+                      href={buildPatientHref(patient.patient_id)}
+                      className="font-medium text-foreground underline-offset-4 hover:underline"
+                    >
+                      {patient.patient_name}
+                    </Link>
+                    {patient.is_primary ? <StateBadge role="done">主担当</StateBadge> : null}
+                    {archived ? (
+                      <StateBadge role="confirm">アーカイブ患者</StateBadge>
+                    ) : (
+                      <StateBadge role="readonly">有効患者</StateBadge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {patient.patient_name_kana || 'カナ未設定'} /{' '}
+                    {getCareTeamRoleLabel(patient.role)}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground md:justify-end">
+                  <StateBadge role={patient.case_status === 'active' ? 'done' : 'readonly'}>
+                    {getCaseStatusLabel(patient.case_status)}
+                  </StateBadge>
+                  <span className="font-mono">{patient.case_id}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </section>
   );
 }
