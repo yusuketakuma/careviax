@@ -64,11 +64,19 @@ function renderPanel() {
 }
 
 /** A fetch stub that serves `rules` on the GET and 200s every POST/PATCH. */
-function stubFetch(rules: SignalTuningRule[]) {
+function stubFetch(
+  rules: SignalTuningRule[],
+  metadata: Partial<{
+    total_count: number;
+    visible_count: number;
+    hidden_count: number;
+    truncated: boolean;
+  }> = {},
+) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === '/api/drug-alert-rules' && !init?.method) {
-      return new Response(JSON.stringify({ data: rules }), { status: 200 });
+      return new Response(JSON.stringify({ data: rules, ...metadata }), { status: 200 });
     }
     return new Response(JSON.stringify({}), { status: 200 });
   });
@@ -236,6 +244,26 @@ describe('SignalTuningPanel', () => {
       );
       expect(getCalls.length).toBeGreaterThanOrEqual(2);
     });
+  });
+
+  it('pauses saving when the alert-rule list is truncated', async () => {
+    const fetchMock = stubFetch(
+      [{ id: 'high_1', alert_type: 'high_risk', severity: 'critical', is_active: true }],
+      { total_count: 3, visible_count: 1, hidden_count: 2, truncated: true },
+    );
+    renderPanel();
+
+    expect(await screen.findByText(/他2件が非表示のため/)).toBeTruthy();
+    fireEvent.click(toggleButton('腎機能に注意'));
+    await waitFor(() => expect(saveButton().disabled).toBe(true));
+    fireEvent.click(saveButton());
+
+    const postCalls = fetchMock.mock.calls.filter(
+      ([input, init]) =>
+        String(input) === '/api/drug-alert-rules' &&
+        (init as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(postCalls).toHaveLength(0);
   });
 
   it('shows loading (not the all-standard panel) while orgId is unresolved and the query is disabled', () => {

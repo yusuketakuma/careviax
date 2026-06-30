@@ -43,6 +43,17 @@ type DrugAlertRule = {
   updated_at: string;
 };
 
+type DrugAlertRulesResponse = {
+  data: DrugAlertRule[];
+  total_count?: number;
+  visible_count?: number;
+  hidden_count?: number;
+  truncated?: boolean;
+  count_basis?: 'drug_alert_rules';
+  filters_applied?: Record<string, unknown>;
+  limit?: number;
+};
+
 const ALERT_TYPE_LABELS: Record<string, string> = {
   interaction: '相互作用',
   duplicate: '重複投薬',
@@ -86,7 +97,7 @@ export default function AlertRulesPage() {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('処方安全アラートルールの取得に失敗しました');
-      return res.json() as Promise<{ data: DrugAlertRule[] }>;
+      return res.json() as Promise<DrugAlertRulesResponse>;
     },
     enabled: !!orgId,
     staleTime: 300_000,
@@ -194,6 +205,11 @@ export default function AlertRulesPage() {
   });
 
   const rules = rulesQuery.data?.data ?? [];
+  const totalRuleCount = rulesQuery.data?.total_count ?? rules.length;
+  const visibleRuleCount = rulesQuery.data?.visible_count ?? rules.length;
+  const hiddenRuleCount =
+    rulesQuery.data?.hidden_count ?? Math.max(totalRuleCount - rules.length, 0);
+  const isRuleListTruncated = Boolean(rulesQuery.data?.truncated || hiddenRuleCount > 0);
 
   return (
     <PageScaffold>
@@ -210,6 +226,18 @@ export default function AlertRulesPage() {
       >
         <div className="space-y-6">
           <PageSection title="登録済みルール" contentClassName="space-y-3">
+            {rulesQuery.data ? (
+              <p className="text-xs text-muted-foreground">
+                {isRuleListTruncated
+                  ? `先頭${visibleRuleCount.toLocaleString()}件を表示 / 他${hiddenRuleCount.toLocaleString()}件`
+                  : `登録${totalRuleCount.toLocaleString()}件`}
+              </p>
+            ) : null}
+            {isRuleListTruncated ? (
+              <p className="rounded-md border border-state-confirm/40 bg-state-confirm/5 px-3 py-2 text-xs text-state-confirm">
+                {`処方安全アラートルールは先頭${visibleRuleCount.toLocaleString()}件のみ表示中です。他${hiddenRuleCount.toLocaleString()}件はアラート種別で絞り込むか limit を上げて確認してください。`}
+              </p>
+            ) : null}
             {rulesQuery.isError ? (
               // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
               <ErrorState

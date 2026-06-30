@@ -35,6 +35,14 @@ const TAG_TONE_CLASSES: Record<string, string> = {
   blue: 'border-tag-info/30 bg-tag-info/10 text-tag-info',
 };
 
+type DrugAlertRulesResponse = {
+  data?: SignalTuningRule[];
+  total_count?: number;
+  visible_count?: number;
+  hidden_count?: number;
+  truncated?: boolean;
+};
+
 export function SignalTuningPanel() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
@@ -44,14 +52,14 @@ export function SignalTuningPanel() {
     queryFn: async () => {
       const res = await fetch(DRUG_ALERT_RULES_API_PATH, { headers: buildOrgHeaders(orgId) });
       if (!res.ok) throw new Error('アラートルールの取得に失敗しました');
-      const json = await res.json();
-      return (json.data ?? []) as SignalTuningRule[];
+      const json = (await res.json()) as DrugAlertRulesResponse;
+      return { ...json, data: json.data ?? [] };
     },
     enabled: !!orgId,
   });
 
   const currentState = React.useMemo(
-    () => buildSignalTuningState(rulesQuery.data ?? []),
+    () => buildSignalTuningState(rulesQuery.data?.data ?? []),
     [rulesQuery.data],
   );
 
@@ -120,6 +128,11 @@ export function SignalTuningPanel() {
   const strongItems = SIGNAL_TUNING_ITEMS.filter((item) => desired[item.alertType]);
   const diff = diffSignalTuning(currentState, desired);
   const changedCount = diff.create.length + diff.activate.length + diff.deactivate.length;
+  const visibleRuleCount = rulesQuery.data?.visible_count ?? rulesQuery.data?.data?.length ?? 0;
+  const totalRuleCount = rulesQuery.data?.total_count ?? visibleRuleCount;
+  const hiddenRuleCount =
+    rulesQuery.data?.hidden_count ?? Math.max(totalRuleCount - visibleRuleCount, 0);
+  const isRuleListTruncated = Boolean(rulesQuery.data?.truncated || hiddenRuleCount > 0);
 
   if (rulesQuery.isError) {
     // A failed fetch must not render every safety signal as 標準 (a false default that
@@ -180,6 +193,14 @@ export function SignalTuningPanel() {
             )}
           </div>
         </div>
+        {isRuleListTruncated ? (
+          <p
+            role="alert"
+            className="mt-3 rounded-md border border-state-confirm/40 bg-state-confirm/5 px-3 py-2 text-xs leading-5 text-state-confirm"
+          >
+            {`処方安全アラートルールは先頭${visibleRuleCount.toLocaleString()}件のみ読み込まれています。他${hiddenRuleCount.toLocaleString()}件が非表示のため、表示設定の保存は一時停止しています。`}
+          </p>
+        ) : null}
         <ul className="mt-3 space-y-2.5" role="list">
           {SIGNAL_TUNING_ITEMS.map((item) => {
             const strong = desired[item.alertType];
@@ -260,7 +281,12 @@ export function SignalTuningPanel() {
         <Button
           type="button"
           className="mt-5 !h-11 !min-h-[44px] w-full sm:w-48"
-          disabled={saveMutation.isPending || rulesQuery.isLoading || changedCount === 0}
+          disabled={
+            saveMutation.isPending ||
+            rulesQuery.isLoading ||
+            isRuleListTruncated ||
+            changedCount === 0
+          }
           onClick={() => saveMutation.mutate()}
         >
           {saveMutation.isPending

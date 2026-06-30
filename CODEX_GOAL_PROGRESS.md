@@ -30,6 +30,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Drug Alert Rule Master Counted Metadata - 2026-06-30 20:34 JST
+
+- Scope:
+  - Continued master-management and patient-safety hardening for the medication safety alert rule master.
+  - Focused on the PH-OS counted-list contract for a bounded safety-rule API consumed by the admin rule list and the patient-card signal tuning panel.
+- Fixed:
+  - `GET /api/drug-alert-rules` now returns `total_count`, `visible_count`, `hidden_count`, `truncated`, `count_basis`, `filters_applied`, and `limit` while preserving the existing `data` array.
+  - The alert-rule admin page now displays exact visible/hidden counts instead of treating the bounded response as the full rule master.
+  - The signal tuning panel now detects truncated rule results and pauses save actions so staff cannot persist "strong/standard" display settings from an incomplete safety-rule view.
+- Safety:
+  - Reduces false-complete medication safety master risk without returning hidden rule details or PHI.
+  - Existing org/global rule visibility, admin auth, RLS context, save/delete path helper fail-closed behavior, and false-empty error handling remain intact.
+  - No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Adds one scoped `drugAlertRule.count` query with the same global/org and `alert_type` predicate as the bounded list query.
+  - No new dependency, background job, external network call, unbounded loop, or broad scan outside the existing predicate was added.
+- Validation:
+  - Read `docs/ui-ux-design-guidelines.md` and local Next Route Handler docs before the API/UI change.
+  - `pnpm exec vitest run src/app/api/drug-alert-rules/route.test.ts 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx' --reporter=dot --testTimeout=60000`: passed, `3` files / `34` tests.
+  - Scoped Prettier check, scoped ESLint, and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - Continue scanning remaining capped master APIs and patient-linked selectors.
+  - Separate uncommitted patient-board report-link and recurring visit-generation route-duration WIP remains outside this slice and should be validated/committed independently if claimed.
+
 ### Billing Evidence Blocker Focus Links - 2026-06-30 20:26 JST
 
 - Scope:
@@ -26178,3 +26205,35 @@ Next loop:
 - Remaining:
   - The broad master-management/patient-information goal remains open.
   - Continue scanning capped master APIs and patient-facing visit/preparation surfaces for count metadata, stale preconditions, audit-near-action gaps, and false-empty states.
+
+### Visit Schedule Generate Vehicle Duration Enforcement - 2026-06-30 20:34 JST
+
+- Scope:
+  - Continued schedule-management and route-decision hardening for recurring visit schedule generation.
+  - Focused on selected `VisitVehicleResource` constraints at the final batch schedule creation boundary.
+- Fixed:
+  - `POST /api/visit-schedules/generate` now selects `max_route_duration_minutes`, `travel_mode`, and site coordinates for the selected vehicle resource.
+  - The vehicle validation now loads existing same-day same-vehicle schedules with route order, time window, and primary residence coordinates.
+  - Batch generation now estimates the candidate route duration with the same shared route-duration helper used by manual schedule create/PATCH.
+  - Generated candidates are accumulated per date during validation so multiple generated items on a date are counted against the same vehicle route.
+  - The serializable transaction now revalidates the selected vehicle resource before creation, closing stale preflight gaps caused by concurrent same-day schedule or vehicle-limit changes.
+  - Regression tests cover preflight route-duration rejection and transaction revalidation rejection before `visitSchedule.create`.
+- Safety:
+  - Reduces over-capacity vehicle-route finalization risk for patient visit scheduling.
+  - Uses only org-scoped vehicle/site coordinates and the scoped patient's primary residence coordinates required for route estimation.
+  - Existing site mismatch, stop-count, workflow gate, operating-day, billing, duplicate schedule/proposal, audit, no-store, and authorization behavior remain intact.
+  - No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Reuses a single selected-vehicle same-day schedule lookup for both stop-count and route-duration checks.
+  - Adds transaction revalidation only when `vehicle_resource_id` is selected.
+  - No new dependency, background job, broad scan, unbounded loop, or network requirement was added; route estimation still falls back to local coordinate distance when no routing provider is configured.
+- Validation:
+  - Read Next route-handler docs before editing the API route.
+  - `pnpm vitest run src/app/api/visit-schedules/generate/route.test.ts`: passed, `1` file / `45` tests.
+  - `pnpm exec eslint src/app/api/visit-schedules/generate/route.ts src/app/api/visit-schedules/generate/route.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/visit-schedules/generate/route.ts src/app/api/visit-schedules/generate/route.test.ts`: passed after formatting the test file.
+  - `git diff --check -- src/app/api/visit-schedules/generate/route.ts src/app/api/visit-schedules/generate/route.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - The broad schedule-management goal remains open.
+  - Continue inspecting route order, reschedule, and route-reorder finalization paths for stale saved-route and persisted vehicle-duration gaps.

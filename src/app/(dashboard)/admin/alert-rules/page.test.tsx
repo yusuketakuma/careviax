@@ -284,6 +284,50 @@ describe('AlertRulesPage', () => {
     expect(screen.queryByText('サーバーエラーが発生しました')).toBeNull();
   });
 
+  it('shows hidden alert rule counts when the API result is truncated', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/drug-alert-rules' && !init?.method) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'rule_1',
+                  org_id: 'org_1',
+                  alert_type: 'interaction',
+                  condition: {},
+                  severity: 'warning',
+                  message: '併用禁忌候補を再確認してください',
+                  is_active: true,
+                  updated_at: '2026-06-19T10:00:00.000Z',
+                },
+              ],
+              total_count: 3,
+              visible_count: 1,
+              hidden_count: 2,
+              truncated: true,
+              count_basis: 'drug_alert_rules',
+              filters_applied: { alert_type: null },
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      }),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText('先頭1件を表示 / 他2件')).toBeTruthy();
+    expect(
+      screen.getByText(
+        '処方安全アラートルールは先頭1件のみ表示中です。他2件はアラート種別で絞り込むか limit を上げて確認してください。',
+      ),
+    ).toBeTruthy();
+  });
+
   it('persists the chosen alert type and severity into the save payload', async () => {
     renderPage();
 

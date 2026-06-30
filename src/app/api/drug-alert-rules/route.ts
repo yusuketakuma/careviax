@@ -9,6 +9,7 @@ import { withOrgContext } from '@/lib/db/rls';
 
 const DEFAULT_DRUG_ALERT_RULE_LIMIT = 200;
 const MAX_DRUG_ALERT_RULE_LIMIT = 500;
+const DRUG_ALERT_RULE_COUNT_BASIS = 'drug_alert_rules' as const;
 
 const alertTypeSchema = z.enum([
   'interaction',
@@ -51,18 +52,36 @@ export async function GET(req: NextRequest) {
     MAX_DRUG_ALERT_RULE_LIMIT,
   );
 
-  const rules = await withOrgContext(ctx.orgId, (tx) =>
-    tx.drugAlertRule.findMany({
-      where: {
-        ...(alertType ? { alert_type: alertType.data } : {}),
-        OR: [{ org_id: ctx.orgId }, { org_id: null }],
-      },
-      orderBy: [{ alert_type: 'asc' }, { org_id: 'desc' }, { updated_at: 'desc' }],
-      take: limit,
-    }),
-  );
+  const where = {
+    ...(alertType ? { alert_type: alertType.data } : {}),
+    OR: [{ org_id: ctx.orgId }, { org_id: null }],
+  };
 
-  return success({ data: rules });
+  const [rules, totalCount] = await withOrgContext(ctx.orgId, (tx) =>
+    Promise.all([
+      tx.drugAlertRule.findMany({
+        where,
+        orderBy: [{ alert_type: 'asc' }, { org_id: 'desc' }, { updated_at: 'desc' }],
+        take: limit,
+      }),
+      tx.drugAlertRule.count({ where }),
+    ]),
+  );
+  const visibleCount = rules.length;
+  const hiddenCount = Math.max(totalCount - visibleCount, 0);
+
+  return success({
+    data: rules,
+    total_count: totalCount,
+    visible_count: visibleCount,
+    hidden_count: hiddenCount,
+    truncated: hiddenCount > 0,
+    count_basis: DRUG_ALERT_RULE_COUNT_BASIS,
+    filters_applied: {
+      alert_type: alertType?.data ?? null,
+    },
+    limit,
+  });
 }
 
 export async function POST(req: NextRequest) {

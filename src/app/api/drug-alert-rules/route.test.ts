@@ -4,11 +4,13 @@ import { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   drugAlertRuleFindManyMock,
+  drugAlertRuleCountMock,
   drugAlertRuleCreateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   drugAlertRuleFindManyMock: vi.fn(),
+  drugAlertRuleCountMock: vi.fn(),
   drugAlertRuleCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
@@ -56,11 +58,13 @@ describe('/api/drug-alert-rules', () => {
       },
     });
     drugAlertRuleFindManyMock.mockResolvedValue([{ id: 'rule_1' }]);
+    drugAlertRuleCountMock.mockResolvedValue(1);
     drugAlertRuleCreateMock.mockResolvedValue({ id: 'rule_2' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         drugAlertRule: {
           findMany: drugAlertRuleFindManyMock,
+          count: drugAlertRuleCountMock,
           create: drugAlertRuleCreateMock,
         },
       }),
@@ -77,6 +81,21 @@ describe('/api/drug-alert-rules', () => {
       },
       orderBy: [{ alert_type: 'asc' }, { org_id: 'desc' }, { updated_at: 'desc' }],
       take: 200,
+    });
+    expect(drugAlertRuleCountMock).toHaveBeenCalledWith({
+      where: {
+        OR: [{ org_id: 'org_1' }, { org_id: null }],
+      },
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: 'rule_1' }],
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'drug_alert_rules',
+      filters_applied: { alert_type: null },
+      limit: 200,
     });
   });
 
@@ -108,6 +127,31 @@ describe('/api/drug-alert-rules', () => {
       orderBy: [{ alert_type: 'asc' }, { org_id: 'desc' }, { updated_at: 'desc' }],
       take: 5,
     });
+    expect(drugAlertRuleCountMock).toHaveBeenCalledWith({
+      where: {
+        alert_type: 'interaction',
+        OR: [{ org_id: 'org_1' }, { org_id: null }],
+      },
+    });
+  });
+
+  it('returns counted metadata when the bounded alert rule list is truncated', async () => {
+    drugAlertRuleFindManyMock.mockResolvedValueOnce([{ id: 'rule_1' }]);
+    drugAlertRuleCountMock.mockResolvedValueOnce(3);
+
+    const response = (await GET(createGetRequest('?alert_type=interaction&limit=1')))!;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: 'rule_1' }],
+      total_count: 3,
+      visible_count: 1,
+      hidden_count: 2,
+      truncated: true,
+      count_basis: 'drug_alert_rules',
+      filters_applied: { alert_type: 'interaction' },
+      limit: 1,
+    });
   });
 
   it('rejects unsupported alert_type filters before querying rules', async () => {
@@ -115,6 +159,7 @@ describe('/api/drug-alert-rules', () => {
 
     expect(response.status).toBe(400);
     expect(drugAlertRuleFindManyMock).not.toHaveBeenCalled();
+    expect(drugAlertRuleCountMock).not.toHaveBeenCalled();
   });
 
   it('creates an alert rule', async () => {
