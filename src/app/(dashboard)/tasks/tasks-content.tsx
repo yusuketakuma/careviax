@@ -238,9 +238,19 @@ export function TasksContent({
     if (statusFilter) p.set('status', statusFilter);
     if (taskTypeFilter) p.set('task_type', taskTypeFilter);
     if (priorityFilter) p.set('priority', priorityFilter);
+    if (initialRelatedEntityType) p.set('related_entity_type', initialRelatedEntityType);
+    if (initialRelatedEntityId) p.set('related_entity_id', initialRelatedEntityId);
     if (assignedToMe && currentUserId) p.set('assigned_to', currentUserId);
     return p.toString();
-  }, [statusFilter, taskTypeFilter, priorityFilter, assignedToMe, currentUserId]);
+  }, [
+    statusFilter,
+    taskTypeFilter,
+    priorityFilter,
+    initialRelatedEntityType,
+    initialRelatedEntityId,
+    assignedToMe,
+    currentUserId,
+  ]);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['tasks', orgId, queryParams],

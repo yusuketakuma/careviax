@@ -32,13 +32,17 @@ export function buildTasksHref(args?: {
   status?: TasksStatusFilter;
   taskType?: string;
   priority?: TasksPriorityFilter;
+  relatedEntityType?: string;
+  relatedEntityId?: string;
   context?: HomeLinkContext;
 }) {
   const params = new URLSearchParams();
   if (args?.assigned && args.assigned !== 'all') params.set('assigned', args.assigned);
-  if (args?.status) params.set('status', args.status);
+  if (args?.status !== undefined) params.set('status', args.status);
   if (args?.taskType) params.set('task_type', args.taskType);
   if (args?.priority) params.set('priority', args.priority);
+  if (args?.relatedEntityType) params.set('related_entity_type', args.relatedEntityType);
+  if (args?.relatedEntityId) params.set('related_entity_id', args.relatedEntityId);
   if (args?.context) params.set('context', args.context);
 
   const query = params.toString();
