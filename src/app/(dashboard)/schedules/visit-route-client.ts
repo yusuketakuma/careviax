@@ -24,6 +24,7 @@ export type VisitMixedRouteUpdate = {
 
 export type VisitRouteConfirmationSource =
   | 'schedule_day_route_preview'
+  | 'schedule_conflict_resolution'
   | 'route_compare_adoption'
   | 'emergency_route_interruption'
   | 'proposal_detail_route_preview'

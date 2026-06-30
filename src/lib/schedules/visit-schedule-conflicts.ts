@@ -228,13 +228,15 @@ function detectVehicleConflicts(schedules: ConflictScheduleInput[]): ScheduleCon
 
 /** 緊急処方割込 → 一時訪問 → 未確定 → 緊急以外 の順で「動かしやすい」予定を選ぶ */
 function pickMovableSchedule(schedules: ConflictScheduleInput[]): ConflictScheduleInput | null {
-  const candidates = [...schedules].sort((left, right) => {
-    const score = (schedule: ConflictScheduleInput) =>
-      (schedule.visitType === 'emergency' ? 0 : 1) +
-      (schedule.confirmed ? 2 : 0) +
-      (schedule.visitType === 'temporary' ? -1 : 0);
-    return score(left) - score(right);
-  });
+  const candidates = schedules
+    .filter((schedule) => !schedule.confirmed)
+    .sort((left, right) => {
+      const score = (schedule: ConflictScheduleInput) =>
+        (schedule.visitType === 'emergency' ? 0 : 1) +
+        (schedule.confirmed ? 2 : 0) +
+        (schedule.visitType === 'temporary' ? -1 : 0);
+      return score(left) - score(right);
+    });
   return candidates[0] ?? null;
 }
 

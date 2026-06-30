@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CalendarCheck2 } from 'lucide-react';
 import { StateBadge } from '@/components/ui/state-badge';
@@ -16,6 +16,7 @@ import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params
 import { timeIsoToMinutes } from '@/lib/visits/time-of-day';
 import { ScheduleDateNavigator } from '../schedule-date-navigator';
 import type { Pharmacist, VisitSchedule } from '../day-view.shared';
+import { applyVisitScheduleRouteUpdates } from '../visit-route-client';
 import { fetchVisitSchedulesWindow } from '../visit-schedule-fetch.helpers';
 import {
   buildScheduleConflictViewModel,
@@ -27,7 +28,8 @@ import {
 /**
  * p0_19「予定の重なりを直す」: 本日の訪問予定から、同一薬剤師の時間帯重複と
  * 同一社用車の同時使用を検知し、左に重なり一覧テーブル、中央に調整案 A/B/C、
- * 右に「次にやること」(推奨案の採用 / 患者再確認)を提示する読取専用の調整画面。
+ * 右に「次にやること」(推奨案の採用 / 患者再確認)を提示し、
+ * 採用時は訪問予定の担当変更、再確認時は検証済みタスク作成まで永続化する調整画面。
  * 検知・調整案合成のロジックは lib/schedules/visit-schedule-conflicts.ts に集約する。
  */
 
@@ -38,8 +40,145 @@ const PLAN_CARD_TONE: Record<AdjustmentPlanTone, string> = {
   slate: 'border-border/70 bg-card',
 };
 
+const CONFLICT_REORDERABLE_STATUSES: ReadonlySet<VisitSchedule['schedule_status']> = new Set([
+  'planned',
+  'in_preparation',
+  'ready',
+  'departed',
+  'in_progress',
+]);
+
+type ConflictPlanAdoptionDraft =
+  | {
+      ok: true;
+      plan: AdjustmentPlan;
+      targetSchedule: VisitSchedule;
+      targetPharmacist: Pharmacist;
+      routeOrder: number;
+    }
+  | {
+      ok: false;
+      plan: AdjustmentPlan | null;
+      reason: string;
+    };
+
 function isoTimeToMinutes(value: string | null): number | null {
   return timeIsoToMinutes(value);
+}
+
+function scheduleDateKey(schedule: VisitSchedule) {
+  return schedule.scheduled_date.slice(0, 10);
+}
+
+function schedulesOverlap(left: VisitSchedule, right: VisitSchedule) {
+  const leftStart = isoTimeToMinutes(left.time_window_start);
+  const rightStart = isoTimeToMinutes(right.time_window_start);
+  if (leftStart == null || rightStart == null) return false;
+  const leftEnd = isoTimeToMinutes(left.time_window_end) ?? leftStart;
+  const rightEnd = isoTimeToMinutes(right.time_window_end) ?? rightStart;
+  return leftStart < rightEnd && rightStart < leftEnd ? true : leftStart === rightStart;
+}
+
+function findConflictPlanAdoptionDraft(args: {
+  plan: AdjustmentPlan | null;
+  schedules: VisitSchedule[];
+  pharmacists: Pharmacist[];
+  targetDate: string;
+}): ConflictPlanAdoptionDraft {
+  if (!args.plan) {
+    return { ok: false, plan: null, reason: '採用できる担当変更案がありません' };
+  }
+  if (args.plan.id !== 'plan_a') {
+    return { ok: false, plan: args.plan, reason: '担当変更案ではないため自動採用できません' };
+  }
+
+  const targetSchedule = args.schedules.find(
+    (schedule) => schedule.id === args.plan?.targetScheduleIds[0],
+  );
+  if (!targetSchedule) {
+    return { ok: false, plan: args.plan, reason: '対象の訪問予定を特定できません' };
+  }
+  if (targetSchedule.confirmed_at) {
+    return {
+      ok: false,
+      plan: args.plan,
+      reason: '電話確定済みの訪問予定は担当変更できません',
+    };
+  }
+  if (!CONFLICT_REORDERABLE_STATUSES.has(targetSchedule.schedule_status)) {
+    return {
+      ok: false,
+      plan: args.plan,
+      reason: '完了済みまたは中止済みの訪問予定は担当変更できません',
+    };
+  }
+
+  const candidate = args.pharmacists.find((pharmacist) => {
+    if (pharmacist.id === targetSchedule.pharmacist_id) return false;
+    return !args.schedules.some(
+      (schedule) =>
+        schedule.id !== targetSchedule.id &&
+        schedule.pharmacist_id === pharmacist.id &&
+        scheduleDateKey(schedule) === args.targetDate &&
+        schedulesOverlap(targetSchedule, schedule),
+    );
+  });
+
+  if (!candidate) {
+    return {
+      ok: false,
+      plan: args.plan,
+      reason: '重なりなく受けられる薬剤師が見つかりません',
+    };
+  }
+
+  const routeOrder =
+    Math.max(
+      0,
+      ...args.schedules
+        .filter(
+          (schedule) =>
+            schedule.id !== targetSchedule.id &&
+            schedule.pharmacist_id === candidate.id &&
+            scheduleDateKey(schedule) === args.targetDate,
+        )
+        .map((schedule) => schedule.route_order ?? 0),
+    ) + 1;
+
+  return {
+    ok: true,
+    plan: args.plan,
+    targetSchedule,
+    targetPharmacist: candidate,
+    routeOrder,
+  };
+}
+
+async function createConflictReconfirmationTask(args: {
+  orgId: string;
+  scheduleId: string;
+  targetDate: string;
+  planId?: AdjustmentPlan['id'];
+}) {
+  const response = await fetch(
+    `/api/visit-schedules/${encodeURIComponent(args.scheduleId)}/conflict-reconfirmation`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-org-id': args.orgId,
+      },
+      body: JSON.stringify({
+        target_date: args.targetDate,
+        ...(args.planId ? { plan_id: args.planId } : {}),
+      }),
+    },
+  );
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message ?? '患者再確認依頼の作成に失敗しました');
+  }
+  return response.json();
 }
 
 function toConflictInput(
@@ -63,16 +202,21 @@ function toConflictInput(
 
 export function ConflictResolutionContent({ initialDate }: { initialDate?: string }) {
   const orgId = useOrgId();
+  const queryClient = useQueryClient();
   const syncSearchParams = useSyncedSearchParams();
   const [targetDate, setTargetDate] = useState(
     () => initialDate ?? format(new Date(), 'yyyy-MM-dd'),
   );
   const [adoptedPlanId, setAdoptedPlanId] = useState<AdjustmentPlan['id'] | null>(null);
+  const [reconfirmationTaskScheduleId, setReconfirmationTaskScheduleId] = useState<string | null>(
+    null,
+  );
   const handleSelectDate = (date: string) => {
     setTargetDate(date);
     // plan id は plan_a/b/c の安定リテラルのため、日付を跨いで採用状態を残すと
     // 別日の同名プランが「採用済み」に誤表示される。対象日変更で採用状態をクリアする。
     setAdoptedPlanId(null);
+    setReconfirmationTaskScheduleId(null);
     syncSearchParams({ date });
   };
   const dateNavigator = (
@@ -108,6 +252,7 @@ export function ConflictResolutionContent({ initialDate }: { initialDate?: strin
     staleTime: 60_000,
   });
 
+  const schedules = useMemo(() => schedulesQuery.data ?? [], [schedulesQuery.data]);
   const pharmacistNameById = useMemo(
     () =>
       new Map(
@@ -117,16 +262,96 @@ export function ConflictResolutionContent({ initialDate }: { initialDate?: strin
   );
 
   const viewModel = useMemo(() => {
-    const schedules = schedulesQuery.data ?? [];
     return buildScheduleConflictViewModel(
       schedules.map((schedule) => toConflictInput(schedule, pharmacistNameById)),
     );
-  }, [schedulesQuery.data, pharmacistNameById]);
+  }, [schedules, pharmacistNameById]);
 
   const recommendedPlan = useMemo(
     () => viewModel.plans.find((plan) => plan.recommended) ?? viewModel.plans[0] ?? null,
     [viewModel.plans],
   );
+  const planA = useMemo(
+    () => viewModel.plans.find((plan) => plan.id === 'plan_a') ?? null,
+    [viewModel.plans],
+  );
+  const adoptionDraft = useMemo(
+    () =>
+      findConflictPlanAdoptionDraft({
+        plan: planA,
+        schedules,
+        pharmacists: pharmacistsQuery.data?.data ?? [],
+        targetDate,
+      }),
+    [planA, schedules, pharmacistsQuery.data, targetDate],
+  );
+  const reconfirmationTargetSchedule = useMemo(() => {
+    const targetScheduleId =
+      recommendedPlan?.targetScheduleIds[0] ?? viewModel.rows[0]?.scheduleId ?? null;
+    return targetScheduleId
+      ? (schedules.find((schedule) => schedule.id === targetScheduleId) ?? null)
+      : null;
+  }, [recommendedPlan, schedules, viewModel.rows]);
+
+  const invalidateConflictQueries = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'conflicts', orgId] }),
+      queryClient.invalidateQueries({ queryKey: ['visit-schedules'] }),
+      queryClient.invalidateQueries({ queryKey: ['schedule-day-board', orgId, targetDate] }),
+    ]);
+  };
+
+  const applyPlanMutation = useMutation({
+    mutationFn: async (draft: Extract<ConflictPlanAdoptionDraft, { ok: true }>) =>
+      applyVisitScheduleRouteUpdates({
+        orgId,
+        updates: [
+          {
+            scheduleId: draft.targetSchedule.id,
+            scheduled_date: targetDate,
+            pharmacist_id: draft.targetPharmacist.id,
+            route_order: draft.routeOrder,
+          },
+        ],
+        confirmationContext: {
+          source: 'schedule_conflict_resolution',
+          date: targetDate,
+          pharmacist_id: draft.targetPharmacist.id,
+          target_count: 1,
+          route_order_diff_count: 1,
+        },
+      }),
+    onSuccess: async (_data, draft) => {
+      setAdoptedPlanId(draft.plan.id);
+      await invalidateConflictQueries();
+      toast.success(`担当を${draft.targetPharmacist.name}へ変更しました`);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const reconfirmationMutation = useMutation({
+    mutationFn: async (schedule: VisitSchedule) =>
+      createConflictReconfirmationTask({
+        orgId,
+        scheduleId: schedule.id,
+        targetDate,
+        planId: recommendedPlan?.id,
+      }),
+    onSuccess: async (_data, schedule) => {
+      setReconfirmationTaskScheduleId(schedule.id);
+      await Promise.all([
+        invalidateConflictQueries(),
+        queryClient.invalidateQueries({ queryKey: ['tasks', 'schedule-board', orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['tasks', orgId] }),
+      ]);
+      toast.success('患者再確認依頼を作成しました');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
 
   if (!orgId || schedulesQuery.isLoading || pharmacistsQuery.isLoading) {
     return (
@@ -279,30 +504,58 @@ export function ConflictResolutionContent({ initialDate }: { initialDate?: strin
           <p className="text-sm text-muted-foreground">
             正式決定済みの患者さんはなるべく動かさず、推奨案から調整します。
           </p>
-          {recommendedPlan ? (
+          {viewModel.hasConflict ? (
             <div className="flex flex-col gap-2">
               <Button
                 type="button"
                 size="lg"
                 className="w-full"
-                disabled={adoptedPlanId === recommendedPlan.id}
+                disabled={
+                  !adoptionDraft.ok ||
+                  applyPlanMutation.isPending ||
+                  adoptedPlanId === adoptionDraft.plan?.id
+                }
                 onClick={() => {
-                  setAdoptedPlanId(recommendedPlan.id);
-                  toast.success(
-                    `${recommendedPlan.title.split('：')[0] ?? '推奨案'}を採用しました`,
-                  );
+                  if (!adoptionDraft.ok) {
+                    toast.error(adoptionDraft.reason);
+                    return;
+                  }
+                  applyPlanMutation.mutate(adoptionDraft);
                 }}
               >
-                {adoptedPlanId === recommendedPlan.id ? '採用済み' : '案Aを採用する'}
+                {applyPlanMutation.isPending
+                  ? '反映中...'
+                  : adoptedPlanId === adoptionDraft.plan?.id
+                    ? '採用済み'
+                    : '案Aを採用する'}
               </Button>
+              {!adoptionDraft.ok ? (
+                <p className="text-xs text-state-confirm">{adoptionDraft.reason}</p>
+              ) : null}
               <Button
                 type="button"
                 size="lg"
                 variant="outline"
                 className="w-full text-primary"
-                onClick={() => toast.info('患者さんへの再確認を依頼に追加してください')}
+                disabled={
+                  !reconfirmationTargetSchedule ||
+                  reconfirmationMutation.isPending ||
+                  reconfirmationTaskScheduleId === reconfirmationTargetSchedule.id
+                }
+                onClick={() => {
+                  if (!reconfirmationTargetSchedule) {
+                    toast.error('再確認対象の訪問予定を特定できません');
+                    return;
+                  }
+                  reconfirmationMutation.mutate(reconfirmationTargetSchedule);
+                }}
               >
-                患者さんへ再確認
+                {reconfirmationMutation.isPending
+                  ? '依頼作成中...'
+                  : reconfirmationTargetSchedule &&
+                      reconfirmationTaskScheduleId === reconfirmationTargetSchedule.id
+                    ? '再確認依頼済み'
+                    : '患者さんへ再確認を依頼'}
               </Button>
             </div>
           ) : null}

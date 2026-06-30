@@ -9,6 +9,7 @@ export const ORG_REALTIME_EVENT_TYPES = [
 ] as const;
 
 export const WORKFLOW_REALTIME_SOURCES = [
+  'schedule_conflict_resolution',
   'cycle_holds_create',
   'cycle_holds_resolve',
   'dispense_audits',
@@ -35,6 +36,7 @@ export const WORKFLOW_REALTIME_SOURCES = [
   'visit_schedule_proposals_reject',
   'visit_schedule_proposals_reorder',
   'visit_routes_mixed_reorder',
+  'visit_schedule_conflict_reconfirmation',
   'visit_schedules_create',
   'visit_schedules_delete',
   'visit_schedules_generate',

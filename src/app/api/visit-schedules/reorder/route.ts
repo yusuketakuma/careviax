@@ -39,6 +39,7 @@ const ROUTE_REORDERABLE_STATUSES = VEHICLE_ASSIGNABLE_STATUSES;
 const routeOrderConfirmationContextSchema = z.object({
   source: z.enum([
     'schedule_day_route_preview',
+    'schedule_conflict_resolution',
     'route_compare_adoption',
     'emergency_route_interruption',
   ]),
