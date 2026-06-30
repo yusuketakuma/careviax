@@ -43,7 +43,7 @@ function createTx({
   exceptions = [],
 }: {
   auditTasks?: ReturnType<typeof buildAuditTask>[];
-  visits?: Array<{ patient_name: string; time_start: Date | null }>;
+  visits?: Array<{ id?: string; patient_name: string; time_start: Date | null }>;
   exceptions?: Array<{
     id: string;
     exception_type: string;
@@ -57,7 +57,8 @@ function createTx({
     dispenseTask: { findMany: vi.fn().mockResolvedValue(auditTasks) },
     visitSchedule: {
       findMany: vi.fn().mockResolvedValue(
-        visits.map((visit) => ({
+        visits.map((visit, index) => ({
+          id: visit.id ?? `visit_${index + 1}`,
           time_window_start: visit.time_start,
           case_: { patient: { name: visit.patient_name } },
         })),
@@ -186,7 +187,7 @@ describe('buildTodayOpsRail', () => {
     expect(withVisits.next_action).toEqual({
       label: '訪問準備を確認する',
       description: '本日の訪問 1件の準備状況を確認します。',
-      href: '/schedules',
+      href: '/schedules?focus=schedule&schedule_id=visit_1',
     });
 
     const idle = await buildTodayOpsRail(createTx({}), 'org_1', now);

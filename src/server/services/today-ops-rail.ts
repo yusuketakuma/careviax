@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { format } from 'date-fns';
 import { extractPackagingInstructionTags } from '@/lib/dispensing/packaging';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import type {
@@ -95,7 +96,7 @@ function familyName(name: string): string {
 
 function buildNextAction(
   topAudit: { patientName: string; dueAt: Date | null; hasNarcotic: boolean } | null,
-  todayVisits: Array<{ patient_name: string; time_start: Date | null }>,
+  todayVisits: Array<{ id: string; patient_name: string; time_start: Date | null }>,
 ): TodayOpsNextAction {
   if (topAudit) {
     const auditLabel = topAudit.hasNarcotic ? '麻薬監査' : '監査';
@@ -114,7 +115,7 @@ function buildNextAction(
     return {
       label: '訪問準備を確認する',
       description: `本日の訪問 ${todayVisits.length}件の準備状況を確認します。`,
-      href: '/schedules',
+      href: buildScheduleFocusHref(todayVisits[0].id),
     };
   }
   return {
@@ -180,6 +181,7 @@ export async function buildTodayOpsRail(
     },
     orderBy: [{ time_window_start: 'asc' }],
     select: {
+      id: true,
       time_window_start: true,
       case_: { select: { patient: { select: { name: true } } } },
     },
@@ -221,6 +223,7 @@ export async function buildTodayOpsRail(
     });
 
   const todayVisits = todaySchedules.map((schedule) => ({
+    id: schedule.id,
     patient_name: schedule.case_.patient.name,
     time_start: schedule.time_window_start,
   }));
