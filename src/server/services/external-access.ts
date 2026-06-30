@@ -546,31 +546,72 @@ export async function recordExternalAccessViewAudit(args: {
   grant: ExternalGrantRecord;
   ipAddress?: string | null;
   userAgent?: string | null;
+  viewedAt?: Date;
 }) {
-  const publicScope = toPublicExternalAccessScope(args.grant.scope);
+  const viewedAt = args.viewedAt ?? new Date();
   await createAuditLogEntry(
     prisma,
-    {
-      orgId: args.grant.org_id,
-      userId: `external_access:${args.grant.id}`,
-      ipAddress: args.ipAddress ?? undefined,
-      userAgent: args.userAgent ?? undefined,
-    },
-    {
-      action: 'external_access_payload_viewed',
-      targetType: 'external_access_grant',
-      targetId: args.grant.id,
-      changes: {
-        patient_id: args.grant.patient_id,
-        granted_to_name: args.grant.granted_to_name ?? null,
-        granted_to_contact_masked: maskContactValueForAudit(args.grant.granted_to_contact ?? null, {
-          phoneLeadingDigits: 3,
-        }),
-        scope: publicScope,
-        scope_keys: EXTERNAL_ACCESS_SCOPE_KEYS.filter((scopeKey) => publicScope[scopeKey] === true),
-      },
-    },
+    buildExternalAccessViewAuditContext(args),
+    buildExternalAccessViewAuditInput(args.grant, viewedAt),
   );
+}
+
+export async function recordExternalAccessViewed(args: {
+  grant: ExternalGrantRecord;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}) {
+  const viewedAt = new Date();
+  await prisma.$transaction(async (tx) => {
+    const markResult = await tx.externalAccessGrant.updateMany({
+      where: {
+        id: args.grant.id,
+        org_id: args.grant.org_id,
+      },
+      data: { accessed_at: viewedAt },
+    });
+    if (markResult.count !== 1) {
+      throw new Error('EXTERNAL_ACCESS_VIEW_MARK_FAILED');
+    }
+    await createAuditLogEntry(
+      tx,
+      buildExternalAccessViewAuditContext(args),
+      buildExternalAccessViewAuditInput(args.grant, viewedAt),
+    );
+  });
+}
+
+function buildExternalAccessViewAuditContext(args: {
+  grant: ExternalGrantRecord;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}) {
+  return {
+    orgId: args.grant.org_id,
+    userId: `external_access:${args.grant.id}`,
+    ipAddress: args.ipAddress ?? undefined,
+    userAgent: args.userAgent ?? undefined,
+  };
+}
+
+function buildExternalAccessViewAuditInput(grant: ExternalGrantRecord, viewedAt: Date) {
+  const publicScope = toPublicExternalAccessScope(grant.scope);
+  return {
+    action: 'external_access_payload_viewed',
+    targetType: 'external_access_grant',
+    targetId: grant.id,
+    patientId: grant.patient_id,
+    changes: {
+      patient_id: grant.patient_id,
+      viewed_at: viewedAt.toISOString(),
+      granted_to_name: grant.granted_to_name ?? null,
+      granted_to_contact_masked: maskContactValueForAudit(grant.granted_to_contact ?? null, {
+        phoneLeadingDigits: 3,
+      }),
+      scope: publicScope,
+      scope_keys: EXTERNAL_ACCESS_SCOPE_KEYS.filter((scopeKey) => publicScope[scopeKey] === true),
+    },
+  };
 }
 
 function formatShareDate(value: Date) {

@@ -30,6 +30,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### External Access View Audit Transaction - 2026-07-01 05:11 JST
+
+- Scope:
+  - Continued multi-professional external-sharing hardening under `docs/high-roi-functional-proposals-2026-06-18.md` item 39.
+  - Focused on the public `/api/external-access/[token]` view path after token/OTP validation and safe payload construction.
+- Fixed:
+  - Added `recordExternalAccessViewed`, which updates `ExternalAccessGrant.accessed_at` and writes the `external_access_payload_viewed` audit event in one Prisma transaction.
+  - The audit event now carries explicit `viewed_at`, `scope`, `scope_keys`, masked contact, patient id, IP, and user agent evidence.
+  - The public route now calls the single transactional service instead of marking viewed before writing the audit.
+  - Regression coverage proves successful transaction contents and that audit evidence is not written when the grant row cannot be marked viewed.
+- Safety:
+  - Reduces external-share audit inconsistency where a failed audit could leave a grant marked viewed.
+  - Preserves token/OTP validation, OTP rate limiting, payload fail-closed behavior, no-store responses, scope redaction, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Replaces two sequential writes with one short transaction containing the same update and insert.
+  - No new dependency, external call, broad scan, render-heavy path, or unbounded loop was added.
+- Validation:
+  - External-access public route/service Vitest passed `2` files / `41` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on external-access files: passed.
+  - Initial full `pnpm typecheck --pretty false` failed on incomplete new test fixtures; after fixture correction it passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit-time, report, and multi-professional cooperation objective remains open.
+  - External access still has follow-ups for document-scope grants and self-report public-scope expansion.
+
 ### CareReport Email Shared URL Gate - 2026-07-01 05:03 JST
 
 - Scope:

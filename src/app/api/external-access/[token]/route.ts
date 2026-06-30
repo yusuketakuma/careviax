@@ -4,8 +4,7 @@ import { getClientIp } from '@/lib/api/request-ip';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import {
   buildExternalAccessPayload,
-  markExternalAccessViewed,
-  recordExternalAccessViewAudit,
+  recordExternalAccessViewed,
 } from '@/server/services/external-access';
 import { prepareExternalAccessOtpRequest, validatePreparedExternalAccessGrant } from '../shared';
 
@@ -27,8 +26,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   if (!payload) return withSensitiveNoStore(notFound('患者情報が見つかりません'));
 
   try {
-    await markExternalAccessViewed(validation.grant.id);
-    await recordExternalAccessViewAudit({
+    await recordExternalAccessViewed({
       grant: validation.grant,
       ipAddress: getClientIp(req),
       userAgent: req.headers.get('user-agent'),
