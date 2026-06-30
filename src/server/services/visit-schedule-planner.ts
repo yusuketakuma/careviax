@@ -468,19 +468,20 @@ function assessSpecialtyCoverage(args: { specialProcedures: string[]; visitSpeci
           SPECIALTY_MISMATCH_BASE_PENALTY +
             missingLabels.length * SPECIALTY_MISMATCH_PER_REQUIREMENT_PENALTY,
         );
+  const matchStatus: SpecialtyCoverageMatchStatus =
+    requirements.length === 0
+      ? 'not_required'
+      : unknownProcedureCount > 0
+        ? 'unknown'
+        : missingLabels.length > 0
+          ? 'unmatched'
+          : 'matched';
 
   return {
     requiredLabels: requirements.map((requirement) => requirement.label),
     missingLabels,
     unknownProcedureCount,
-    matchStatus:
-      requirements.length === 0
-        ? 'not_required'
-        : unknownProcedureCount > 0
-          ? 'unknown'
-          : missingLabels.length > 0
-            ? 'unmatched'
-            : 'matched',
+    matchStatus,
     penalty,
   };
 }
