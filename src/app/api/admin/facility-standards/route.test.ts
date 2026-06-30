@@ -1,10 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { authMock, membershipFindFirstMock, facilityStandardFindManyMock } = vi.hoisted(() => ({
+const {
+  authMock,
+  membershipFindFirstMock,
+  facilityStandardFindManyMock,
+  facilityStandardCountMock,
+} = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   facilityStandardFindManyMock: vi.fn(),
+  facilityStandardCountMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -18,6 +24,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     facilityStandardRegistration: {
       findMany: facilityStandardFindManyMock,
+      count: facilityStandardCountMock,
     },
   },
 }));
@@ -37,6 +44,7 @@ function createGetRequest(search = '', headers?: Record<string, string>) {
 describe('/api/admin/facility-standards GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    facilityStandardCountMock.mockResolvedValue(0);
   });
 
   it('returns 403 when the role lacks admin permission', async () => {
@@ -86,6 +94,7 @@ describe('/api/admin/facility-standards GET', () => {
         },
       },
     ]);
+    facilityStandardCountMock.mockResolvedValue(2);
 
     const response = await GET(
       createGetRequest('?limit=5', { 'x-org-id': 'org_1' }),
@@ -113,6 +122,18 @@ describe('/api/admin/facility-standards GET', () => {
           requirements_status: null,
         }),
       ],
+      total_count: 2,
+      visible_count: 2,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'facility_standards',
+      filters_applied: {},
+      limit: 5,
+    });
+    expect(facilityStandardCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+      },
     });
     expect(facilityStandardFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -123,6 +144,44 @@ describe('/api/admin/facility-standards GET', () => {
         take: 5,
       }),
     );
+  });
+
+  it('returns counted metadata when the bounded list is truncated', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    facilityStandardCountMock.mockResolvedValue(3);
+    facilityStandardFindManyMock.mockResolvedValue([
+      {
+        id: 'std_1',
+        standard_type: '地域連携薬局',
+        filed_date: new Date('2026-01-01T00:00:00Z'),
+        effective_date: null,
+        expiry_date: null,
+        renewal_alert_date: null,
+        requirements_status: {},
+        site: {
+          id: 'site_1',
+          name: '本店',
+        },
+      },
+    ]);
+
+    const response = await GET(
+      createGetRequest('?limit=1', { 'x-org-id': 'org_1' }),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      total_count: 3,
+      visible_count: 1,
+      hidden_count: 2,
+      truncated: true,
+      count_basis: 'facility_standards',
+      filters_applied: {},
+      limit: 1,
+    });
   });
 
   it('uses a default list bound and clamps overly large limits', async () => {

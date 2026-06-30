@@ -30,6 +30,30 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Patient Workspace Visit Schedule Focus Links - 2026-06-30 18:42 JST
+
+- Scope:
+  - Continued Codex2-owned visit-time/report/collaboration navigation cleanup in the patient detail workspace same-day task model.
+  - No UI layout, schema migration, live DB operation, auth/RLS change, external send, push/deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Same-day patient workspace visit tasks now use `buildScheduleFocusHref(visit.id)` instead of generic `/schedules`.
+  - Regression coverage asserts the visit task opens `/schedules?focus=schedule&schedule_id=visit_1`.
+- Safety:
+  - Reduces wrong-schedule / wrong-patient navigation risk by preserving the exact schedule row context from the patient detail workspace.
+  - Uses the existing schedule navigation helper rather than local query-string construction.
+- Performance:
+  - Link construction only. No new query, dependency, network call, background job, payload expansion, render loop, or broad scan was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/patient-detail-workspace.test.ts src/lib/schedules/navigation.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `11` tests.
+  - Scoped ESLint on patient-detail-workspace and schedule navigation files: passed.
+  - Scoped Prettier check on patient-detail-workspace and schedule navigation files: passed.
+  - Scoped `git diff --check` on patient-detail-workspace files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Continue scanning visit-time/report/collaboration surfaces for generic action links or missing relation filters.
+  - Preserve unrelated dirty admin facility-standards files.
+
 ### Communication Queue External Focus Links - 2026-06-30 17:37 JST
 
 - Scope:
@@ -25460,3 +25484,32 @@ Next loop:
   - The broad master-management/patient-information goal remains open.
   - Continue scanning capped admin master APIs such as facility standards, external professionals, staff metrics/KPI surfaces, and patient-linked selectors for count metadata, stale preconditions, audit-near-action gaps, and false-empty states.
   - Separate unrelated dirty `src/server/services/communication-queue*` changes appeared during this slice and were preserved outside the owned commit scope.
+
+### Facility Standard Counted Metadata - 2026-06-30 18:42 JST
+
+- Scope:
+  - Continued master-management hardening for the facility-standard registration master used to judge billing/readiness requirements.
+  - Focused on preventing a bounded facility-standard list from driving a whole-list "today judgement" when hidden registrations exist.
+- Fixed:
+  - `GET /api/admin/facility-standards` now returns `total_count`, `visible_count`, `hidden_count`, `truncated`, `count_basis`, `filters_applied`, and `limit`.
+  - The facility-standards admin page now shows `登録N件` or `先頭N件を表示 / 他N件` above the table.
+  - When hidden facility-standard rows exist, the "算定可否" summary falls back to `表示中のみ判定` instead of presenting visible-row criteria as a whole-master judgement.
+  - The page now shows an inline warning that hidden registrations make the judgement limited to visible rows.
+- Safety:
+  - Reduces false-claimable/false-complete risk for a billing/readiness master where hidden registrations could carry expiry or unmet requirement states.
+  - Hidden standard names, site details, requirements JSON, PHI, raw internals, and secrets are not exposed; metadata contains only counts, count basis, filters, and limit.
+  - Existing admin authorization, org scoping, requirement parsing, claim-status derivation for visible rows, retryable error handling, and false-empty-on-error behavior remain intact.
+  - No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Adds one scoped `facilityStandardRegistration.count` query using the same org predicate as the bounded row query.
+  - No new dependency, background job, broad scan outside that predicate, unbounded loop, network call, or render-heavy path was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/admin/facility-standards/route.test.ts 'src/app/(dashboard)/admin/facility-standards/facility-standards-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `2` files / `7` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` on facility-standard API/UI files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - The broad master-management/patient-information goal remains open.
+  - Continue scanning capped admin master APIs such as external professionals, escalation rules/webhooks, shifts/templates, and patient-linked selectors for count metadata, stale preconditions, audit-near-action gaps, and false-empty states.
+  - Unrelated dirty `src/server/services/communication-queue*` changes remain preserved outside the owned commit scope.

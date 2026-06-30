@@ -25,28 +25,33 @@ export const GET = withAuthContext(
       MAX_FACILITY_STANDARD_LIMIT,
     );
 
-    const standards = await prisma.facilityStandardRegistration.findMany({
-      where: {
-        org_id: ctx.orgId,
-      },
-      select: {
-        id: true,
-        standard_type: true,
-        filed_date: true,
-        effective_date: true,
-        expiry_date: true,
-        renewal_alert_date: true,
-        requirements_status: true,
-        site: {
-          select: {
-            id: true,
-            name: true,
+    const where = {
+      org_id: ctx.orgId,
+    };
+    const [totalCount, standards] = await Promise.all([
+      prisma.facilityStandardRegistration.count({ where }),
+      prisma.facilityStandardRegistration.findMany({
+        where,
+        select: {
+          id: true,
+          standard_type: true,
+          filed_date: true,
+          effective_date: true,
+          expiry_date: true,
+          renewal_alert_date: true,
+          requirements_status: true,
+          site: {
+            select: {
+              id: true,
+              name: true,
+            },
           },
         },
-      },
-      orderBy: [{ expiry_date: 'asc' }, { filed_date: 'desc' }],
-      take: limit,
-    });
+        orderBy: [{ expiry_date: 'asc' }, { filed_date: 'desc' }],
+        take: limit,
+      }),
+    ]);
+    const visibleCount = standards.length;
 
     return success({
       data: standards.map((item) => {
@@ -69,6 +74,13 @@ export const GET = withAuthContext(
           site_name: item.site.name,
         };
       }),
+      total_count: totalCount,
+      visible_count: visibleCount,
+      hidden_count: Math.max(totalCount - visibleCount, 0),
+      truncated: totalCount > visibleCount,
+      count_basis: 'facility_standards',
+      filters_applied: {},
+      limit,
     });
   },
   {

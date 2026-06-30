@@ -52,6 +52,11 @@ const SUCCESS_DATA = {
         claim_status: 'claimable',
       },
     ],
+    total_count: 1,
+    visible_count: 1,
+    hidden_count: 0,
+    truncated: false,
+    count_basis: 'facility_standards',
   },
   isLoading: false,
   isError: false,
@@ -70,6 +75,28 @@ describe('FacilityStandardsContent', () => {
     const table = screen.getByTestId('facility-standards-table');
     expect(table).toBeTruthy();
     expect(table.getAttribute('data-rows')).toBe('1');
+    expect(screen.getByText('登録1件')).toBeTruthy();
+  });
+
+  it('shows hidden counts and avoids whole-list claim judgement when standards are truncated', () => {
+    useQueryMock.mockReturnValue({
+      ...SUCCESS_DATA,
+      data: {
+        ...SUCCESS_DATA.data,
+        total_count: 3,
+        visible_count: 1,
+        hidden_count: 2,
+        truncated: true,
+      },
+    });
+
+    render(<FacilityStandardsContent />);
+
+    expect(screen.getByText('先頭1件を表示 / 他2件')).toBeTruthy();
+    expect(screen.getByText('表示中のみ判定')).toBeTruthy();
+    expect(
+      screen.getByText('非表示の届出が2件あります。判定は表示中の届出に限定されています。'),
+    ).toBeTruthy();
   });
 
   it('shows ErrorState (not a misleading judgement) with retry when the query fails', () => {

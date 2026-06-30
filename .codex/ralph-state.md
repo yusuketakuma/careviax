@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-1842 JST
+
+- current task: focus patient detail workspace same-day visit task links on the exact visit schedule row.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox for `phos/codex2`, `src/server/services/patient-detail-workspace.ts`, `src/server/services/patient-detail-workspace.test.ts`, `src/lib/schedules/navigation.ts`, `src/lib/schedules/navigation.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/server/services/patient-detail-workspace.ts`, `src/server/services/patient-detail-workspace.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Unrelated dirty admin facility-standards files were preserved.
+- bugs found: patient detail workspace same-day visit tasks carried the matching `visit.id` but still linked to generic `/schedules`, so visit-time users could lose the exact schedule row after opening the task.
+- security risks found: reduced wrong-schedule / wrong-patient navigation risk by routing through existing `buildScheduleFocusHref()` with encoded `schedule_id`. No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- performance issues found: link construction only; no new query, dependency, network call, background job, payload expansion, broad scan, or loop changed.
+- validation commands: focused patient-detail-workspace/schedule-navigation Vitest; scoped ESLint; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused Vitest passed `2` files / `11` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- remaining work: commit only the two owned patient workspace files and ledger files, then continue scanning visit/report/collaboration surfaces for generic action links or missing relation filters.
+- next action: commit `Focus patient workspace visit schedule links`, send agmsg FYI, and continue the next clean slice.
+
 ### 20260630-1737 JST
 
 - current task: focus communication queue self-report and external-share actions on the matching external collaboration queue instead of the generic external workspace.
@@ -13208,4 +13221,17 @@ Backup directory:
 - validation commands: `pnpm exec prettier --write src/app/api/pharmacists/route.ts src/app/api/pharmacists/route.test.ts 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`; focused `pnpm exec vitest run src/app/api/pharmacists/route.test.ts 'src/app/(dashboard)/admin/users/users-content.test.tsx' --reporter=dot --testTimeout=60000`; scoped `pnpm exec eslint --max-warnings=0`; scoped `pnpm exec prettier --check`; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`.
 - validation results: focused pharmacist/admin-users API/UI suite passed `2` files / `35` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint` passed.
 - remaining work: the broad master-management/patient-information goal remains open. Continue scanning capped admin master APIs and high-risk patient/master save paths for count metadata, stale preconditions, audit-near-action gaps, and false-empty states. Do not broad-stage because unrelated `communication-queue` files are dirty.
+- next action: commit the six owned files only, then continue the next bounded master-management/patient-information slice after rechecking dirty ownership.
+
+### 20260630-1842 JST
+
+- current task: continue master-management hardening by adding counted-list metadata to the facility-standard registration master and preventing hidden rows from producing a whole-list claim judgement.
+- files inspected: `git status --branch --short --untracked-files=all`, capped admin API search results, `src/app/api/admin/facility-standards/route.ts`, `src/app/api/admin/facility-standards/route.test.ts`, `src/app/(dashboard)/admin/facility-standards/facility-standards-content.tsx`, `src/app/(dashboard)/admin/facility-standards/facility-standards-content.test.tsx`, `docs/ui-ux-design-guidelines.md`, and Next route-handler docs already read earlier in this turn.
+- files changed: `src/app/api/admin/facility-standards/route.ts`, `src/app/api/admin/facility-standards/route.test.ts`, `src/app/(dashboard)/admin/facility-standards/facility-standards-content.tsx`, `src/app/(dashboard)/admin/facility-standards/facility-standards-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Unrelated `src/server/services/communication-queue.ts` and `src/server/services/communication-queue.test.ts` dirty changes were preserved.
+- bugs found: `GET /api/admin/facility-standards` used a bounded `take` limit but returned only rows, and the admin page derived "today's judgement" from those visible rows. Hidden registrations could therefore make billing/readiness status look complete or claimable when it was only a partial view.
+- security risks found: reduced false-claimable/false-complete master risk while exposing only aggregate count metadata and visible rows. Hidden standard names, requirement JSON, site details, PHI, raw internals, and secrets are not exposed. Existing admin authorization, org scoping, requirement parsing, visible-row claim-status derivation, retryable error handling, and false-empty-on-error behavior remain intact. No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation changed.
+- performance issues found: added one scoped `facilityStandardRegistration.count` query using the same org predicate as the bounded row query. No new dependency, background job, broad scan outside that predicate, unbounded loop, network call, or render-heavy path was added.
+- validation commands: `pnpm exec prettier --write src/app/api/admin/facility-standards/route.ts src/app/api/admin/facility-standards/route.test.ts 'src/app/(dashboard)/admin/facility-standards/facility-standards-content.tsx' 'src/app/(dashboard)/admin/facility-standards/facility-standards-content.test.tsx'`; focused `pnpm exec vitest run src/app/api/admin/facility-standards/route.test.ts 'src/app/(dashboard)/admin/facility-standards/facility-standards-content.test.tsx' --reporter=dot --testTimeout=60000`; scoped `pnpm exec eslint --max-warnings=0`; scoped `pnpm exec prettier --check`; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`.
+- validation results: focused facility-standard API/UI suite passed `2` files / `7` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint` passed.
+- remaining work: the broad master-management/patient-information goal remains open. Continue scanning capped admin master APIs and patient-linked selectors for count metadata, stale preconditions, audit-near-action gaps, and false-empty states. Do not broad-stage because unrelated `communication-queue` files are dirty.
 - next action: commit the six owned files only, then continue the next bounded master-management/patient-information slice after rechecking dirty ownership.

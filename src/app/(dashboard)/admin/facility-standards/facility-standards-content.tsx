@@ -31,6 +31,17 @@ type FacilityStandard = {
   claim_status: 'claimable' | 'blocked' | 'unknown';
 };
 
+type FacilityStandardsResponse = {
+  data: FacilityStandard[];
+  total_count?: number;
+  visible_count?: number;
+  hidden_count?: number;
+  truncated?: boolean;
+  count_basis?: 'facility_standards';
+  filters_applied?: Record<string, never>;
+  limit?: number;
+};
+
 // --- Helpers ---
 
 function getRequirementBadge(status: Record<string, boolean> | null) {
@@ -134,7 +145,7 @@ export function FacilityStandardsContent() {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('施設基準の取得に失敗しました');
-      return res.json() as Promise<{ data: FacilityStandard[] }>;
+      return res.json() as Promise<FacilityStandardsResponse>;
     },
     enabled: !!orgId,
   });
@@ -145,6 +156,23 @@ export function FacilityStandardsContent() {
     () => summarizeFacilityCriteriaRows(criteriaRows),
     [criteriaRows],
   );
+  const totalStandardsCount = data?.total_count ?? standards.length;
+  const visibleStandardsCount = data?.visible_count ?? standards.length;
+  const hiddenStandardsCount =
+    data?.hidden_count ?? Math.max(totalStandardsCount - standards.length, 0);
+  const isStandardsTruncated = Boolean(data?.truncated || hiddenStandardsCount > 0);
+  const standardsListSummary = data
+    ? isStandardsTruncated
+      ? `先頭${visibleStandardsCount.toLocaleString()}件を表示 / 他${hiddenStandardsCount.toLocaleString()}件`
+      : `登録${totalStandardsCount.toLocaleString()}件`
+    : null;
+  const claimSummaryStatus: FacilityStandard['claim_status'] = isStandardsTruncated
+    ? 'unknown'
+    : criteriaSummary.statusTone === 'ok'
+      ? 'claimable'
+      : criteriaSummary.statusTone === 'missing'
+        ? 'blocked'
+        : 'unknown';
 
   // Alerts: expiry within 90 days
   const alertItems = standards.filter((s) => {
@@ -234,17 +262,13 @@ export function FacilityStandardsContent() {
           <div className="rounded-lg border border-border/70 bg-background px-4 py-3">
             <p className="text-xs font-medium text-muted-foreground">算定可否</p>
             <div className="mt-2 flex items-center gap-2">
-              <ClaimStatusBadge
-                status={
-                  criteriaSummary.statusTone === 'ok'
-                    ? 'claimable'
-                    : criteriaSummary.statusTone === 'missing'
-                      ? 'blocked'
-                      : 'unknown'
-                }
-              />
+              <ClaimStatusBadge status={claimSummaryStatus} />
               <span className="text-lg font-bold text-foreground">
-                {isLoading ? '読込中' : criteriaSummary.statusLabel}
+                {isLoading
+                  ? '読込中'
+                  : isStandardsTruncated
+                    ? '表示中のみ判定'
+                    : criteriaSummary.statusLabel}
               </span>
             </div>
           </div>
@@ -271,19 +295,30 @@ export function FacilityStandardsContent() {
           <div className="rounded-lg border border-border/70 bg-background px-4 py-3">
             <p className="text-xs font-medium text-muted-foreground">次にすること</p>
             <p className="mt-2 text-sm leading-6 text-foreground">
-              {isLoading ? '施設基準の届出を取得しています。' : criteriaSummary.nextAction}
+              {isLoading
+                ? '施設基準の届出を取得しています。'
+                : isStandardsTruncated
+                  ? `非表示の届出が${hiddenStandardsCount.toLocaleString()}件あります。表示中の届出だけで算定可否を判断しないでください。`
+                  : criteriaSummary.nextAction}
             </p>
           </div>
         </div>
       </section>
 
       {/* Alert banner */}
-      {(alertItems.length > 0 || standards.some((item) => item.claim_status === 'blocked')) && (
+      {(isStandardsTruncated ||
+        alertItems.length > 0 ||
+        standards.some((item) => item.claim_status === 'blocked')) && (
         <div className="flex items-start gap-3 rounded-md border-l-4 border-border/70 border-l-state-confirm bg-card px-4 py-3 text-sm text-state-confirm">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <div>
-            <p className="font-medium">更新期限または要件未達の届出があります</p>
+            <p className="font-medium">確認が必要な施設基準届出があります</p>
             <ul className="mt-1 list-inside list-disc text-state-confirm">
+              {isStandardsTruncated ? (
+                <li>
+                  {`非表示の届出が${hiddenStandardsCount.toLocaleString()}件あります。判定は表示中の届出に限定されています。`}
+                </li>
+              ) : null}
               {standards
                 .filter((item) => item.claim_status === 'blocked')
                 .map((item) => (
@@ -308,6 +343,9 @@ export function FacilityStandardsContent() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">届出一覧</CardTitle>
+          {standardsListSummary ? (
+            <p className="text-sm text-muted-foreground">{standardsListSummary}</p>
+          ) : null}
         </CardHeader>
         <CardContent className="p-0">
           <DataTable
