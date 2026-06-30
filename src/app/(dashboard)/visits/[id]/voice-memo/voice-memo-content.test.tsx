@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -71,6 +71,39 @@ describe('VoiceMemoContent', () => {
       );
     });
     expect(screen.getByTestId('voice-memo-title').textContent).toBe('訪問中メモ 00:42');
+  });
+
+  it('does not overwrite manual typing when draft restore resolves late', async () => {
+    type DraftSnapshot = Awaited<ReturnType<typeof loadLatestVoiceMemoDraft>>;
+    let resolveDraft!: (value: DraftSnapshot) => void;
+    const draftPromise = new Promise<DraftSnapshot>((resolve) => {
+      resolveDraft = resolve;
+    });
+    vi.mocked(loadLatestVoiceMemoDraft).mockReturnValueOnce(draftPromise);
+    renderContent();
+
+    const textarea = (await screen.findByTestId(
+      'voice-memo-manual-transcript',
+    )) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: '今ここで入力しているメモ' } });
+
+    await act(async () => {
+      resolveDraft({
+        dataUrl: 'data:audio/webm;base64,OLD_VOICE',
+        fileName: 'old.webm',
+        mimeType: 'audio/webm',
+        durationSeconds: 42,
+        recordedAt: '2026-06-18T10:00:00.000Z',
+        manualTranscript: '古い転写',
+      });
+      await draftPromise;
+    });
+
+    expect((screen.getByTestId('voice-memo-manual-transcript') as HTMLTextAreaElement).value).toBe(
+      '今ここで入力しているメモ',
+    );
+    expect(screen.queryByTestId('voice-memo-transcript-text')).toBeNull();
+    expect(screen.getByTestId('voice-memo-title').textContent).toBe('訪問中メモ');
   });
 
   it('reflects a manual transcript into the same transcript/append workflow used by STT results', async () => {

@@ -592,7 +592,10 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
                 maxLength={VOICE_MEMO_MANUAL_TRANSCRIPT_MAX_LENGTH}
                 rows={5}
                 placeholder="患者・家族の言葉、症状、次回確認したいこと"
-                onChange={(event) => setManualTranscript(event.target.value)}
+                onChange={(event) => {
+                  interactedRef.current = true;
+                  setManualTranscript(event.target.value);
+                }}
                 data-testid="voice-memo-manual-transcript"
               />
               <div className="flex flex-wrap items-center gap-3">
