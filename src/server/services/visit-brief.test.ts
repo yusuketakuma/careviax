@@ -313,9 +313,13 @@ describe('getPatientVisitBrief', () => {
       communicationRequest: {
         findMany: vi.fn().mockResolvedValue([
           {
+            id: 'request/1?x=y#frag',
+            patient_id: 'patient_1',
             request_type: 'prescriber_followup',
             subject: '降圧薬の減量相談',
             content: 'ふらつき継続のため確認',
+            related_entity_type: 'care_report',
+            related_entity_id: 'report/1?x=y#frag',
             status: 'escalated',
             due_date: new Date('2026-03-27T12:00:00Z'),
             requested_at: new Date('2026-03-27T06:00:00Z'),
@@ -574,6 +578,9 @@ describe('getPatientVisitBrief', () => {
         expect.objectContaining({
           source_type: 'request',
           summary: '処方医フォロー / escalated / ふらつき継続のため確認',
+          action_href:
+            '/communications/requests?status=escalated&patient_id=patient_1&request_id=request%2F1%3Fx%3Dy%23frag&related_entity_type=care_report&related_entity_id=report%2F1%3Fx%3Dy%23frag',
+          action_label: '依頼を確認',
         }),
       ]),
     );

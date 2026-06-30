@@ -1,9 +1,11 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import {
   AlertTriangle,
+  ArrowUpRight,
   FileStack,
   MessageSquareMore,
   Package2,
@@ -418,6 +420,15 @@ export function VisitBriefCard({
                       </Badge>
                     </div>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.summary}</p>
+                    {item.action_href ? (
+                      <Link
+                        href={item.action_href}
+                        className="mt-2 inline-flex min-h-10 items-center gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      >
+                        共有を確認
+                        <ArrowUpRight className="size-3.5" aria-hidden="true" />
+                      </Link>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -474,6 +485,15 @@ export function VisitBriefCard({
                       </span>
                     </div>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.summary}</p>
+                    {item.action_href ? (
+                      <Link
+                        href={item.action_href}
+                        className="mt-2 inline-flex min-h-10 items-center gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      >
+                        {item.action_label ?? '依頼を確認'}
+                        <ArrowUpRight className="size-3.5" aria-hidden="true" />
+                      </Link>
+                    ) : null}
                   </li>
                 ))}
               </ul>

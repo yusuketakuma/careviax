@@ -12,6 +12,7 @@ import {
   getInquiryPrimaryDetail,
 } from '@/lib/inquiries/presentation';
 import { listCommunicationQueue } from '@/server/services/communication-queue';
+import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { formatCommunicationRequestTypeLabel } from '@/lib/communications/request-labels';
 import { generateVisitBriefAiSummary } from '@/server/services/visit-brief-ai';
 import { buildPatientStateSnapshot } from '@/server/services/patient-state-snapshot';
@@ -76,9 +77,13 @@ type VisitBriefDataReader = BillingEvidenceBlockersReader & {
     channel: string;
   }>;
   communicationRequest: FindManyDelegate<{
+    id: string;
+    patient_id: string | null;
     request_type: string;
     subject: string;
     content: string;
+    related_entity_type: string | null;
+    related_entity_id: string | null;
     status: string;
     due_date: Date | null;
     requested_at: Date;
@@ -720,9 +725,13 @@ function buildCommunicationItems(args: {
     channel: string;
   }>;
   communicationRequests: Array<{
+    id: string;
+    patient_id: string | null;
     request_type: string;
     subject: string;
     content: string;
+    related_entity_type: string | null;
+    related_entity_id: string | null;
     status: string;
     due_date: Date | null;
     requested_at: Date;
@@ -761,6 +770,14 @@ function buildCommunicationItems(args: {
       occurred_at: (item.due_date ?? item.requested_at).toISOString(),
       counterpart: null,
       severity: severityFromPriority(item.status),
+      action_href: buildCommunicationRequestsHref({
+        status: item.status,
+        patientId: item.patient_id,
+        requestId: item.id,
+        relatedEntityType: item.related_entity_type,
+        relatedEntityId: item.related_entity_id,
+      }),
+      action_label: '依頼を確認',
     })),
     ...args.contactLogs.map((item) => ({
       source_type: 'contact_log' as const,
@@ -1294,9 +1311,13 @@ export async function getPatientVisitBrief(
       orderBy: [{ due_date: 'asc' }, { requested_at: 'desc' }],
       take: 4,
       select: {
+        id: true,
+        patient_id: true,
         request_type: true,
         subject: true,
         content: true,
+        related_entity_type: true,
+        related_entity_id: true,
         status: true,
         due_date: true,
         requested_at: true,

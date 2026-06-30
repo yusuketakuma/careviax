@@ -104,6 +104,8 @@ export type VisitBriefCommunicationItem = {
   occurred_at: string | null;
   counterpart: string | null;
   severity: VisitBriefSeverity;
+  action_href?: string;
+  action_label?: string;
 };
 
 export type VisitBriefJahisSupplementalRecord = {

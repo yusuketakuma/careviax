@@ -245,4 +245,59 @@ describe('VisitBriefCard', () => {
 
     expect(screen.queryByText('その他薬（セット外で持参）')).toBeNull();
   });
+
+  it('renders multidisciplinary update actions beside the communication evidence', () => {
+    const queryClient = new QueryClient();
+    const href = '/communications/requests?status=sent&patient_id=patient_1&request_id=request_1';
+    const brief: VisitBrief = {
+      ...buildBrief(),
+      multidisciplinary_updates: [
+        {
+          source_type: 'request',
+          title: '降圧薬の減量相談',
+          summary: '処方医フォロー / sent / ふらつき継続のため確認',
+          occurred_at: '2026-04-09T10:00:00.000Z',
+          counterpart: null,
+          severity: 'high',
+          action_href: href,
+          action_label: '依頼を確認',
+        },
+      ],
+    };
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VisitBriefCard brief={brief} />
+      </QueryClientProvider>,
+    );
+
+    const link = screen.getByRole('link', { name: /依頼を確認/ });
+    expect(link.getAttribute('href')).toBe(href);
+  });
+
+  it('renders delivery status actions beside the report delivery evidence', () => {
+    const queryClient = new QueryClient();
+    const href = '/reports/report_1';
+    const brief: VisitBrief = {
+      ...buildBrief(),
+      delivery_status: [
+        {
+          title: '医師報告書の送達',
+          status_bucket: 'reply_waiting',
+          summary: '在宅主治医 / fax / response_waiting',
+          occurred_at: '2026-04-09T10:00:00.000Z',
+          action_href: href,
+        },
+      ],
+    };
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VisitBriefCard brief={brief} />
+      </QueryClientProvider>,
+    );
+
+    const link = screen.getByRole('link', { name: /共有を確認/ });
+    expect(link.getAttribute('href')).toBe(href);
+  });
 });
