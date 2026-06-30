@@ -2,9 +2,17 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { hasPermission } from '@/lib/auth/permissions';
 import { requireAuthContext } from '@/lib/auth/context';
 import { getAuthSecret } from '@/lib/auth/secret';
-import { conflict, forbidden, notFound, success, validationError } from '@/lib/api/response';
+import {
+  conflict,
+  forbidden,
+  internalError,
+  notFound,
+  success,
+  validationError,
+} from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { buildTracingReportPdfPath } from '@/lib/reports/tracing-report-pdf-path';
@@ -23,6 +31,7 @@ import {
   resolveTracingReportCommunicationScope,
 } from '@/server/services/communication-request-access';
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { createHmac } from 'node:crypto';
 import { z } from 'zod';
 
@@ -93,7 +102,9 @@ function buildFollowupAuditChanges(requestId: string, followup: string | undefin
   };
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+type ResolveFollowupRouteContext = { params: Promise<{ id: string }> };
+
+async function authenticatedPOST(req: NextRequest, { params }: ResolveFollowupRouteContext) {
   const authResult = await requireAuthContext(req, {
     permission: 'canReport',
     message: '連携依頼の更新権限がありません',
@@ -355,4 +366,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   return success({ data: result });
+}
+
+export async function POST(req: NextRequest, routeContext: ResolveFollowupRouteContext) {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }

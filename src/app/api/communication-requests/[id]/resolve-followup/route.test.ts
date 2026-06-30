@@ -72,6 +72,11 @@ function createRequest(body: unknown) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/communication-requests/[id]/resolve-followup POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -152,6 +157,7 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(communicationRequestUpdateManyMock).toHaveBeenCalledWith({
       where: {
         id: 'request_1',
@@ -238,6 +244,7 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(communicationResponseCreateMock).not.toHaveBeenCalled();
     expect(taskUpsertMock).not.toHaveBeenCalled();
@@ -263,6 +270,7 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
     expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(taskUpsertMock).not.toHaveBeenCalled();
@@ -297,6 +305,7 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(taskUpsertMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
@@ -325,6 +334,7 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(taskUpsertMock).toHaveBeenCalledWith({
       where: {
         org_id_dedupe_key: {
@@ -385,6 +395,7 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(tracingReportUpdateMock).toHaveBeenCalledWith({
       where: { id: 'tracing_1' },
       data: expect.objectContaining({
@@ -474,6 +485,7 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(tracingReportFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: HOSTILE_TRACING_REPORT_ID,
@@ -505,5 +517,65 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
         }),
       }),
     });
+  });
+
+  it('returns a sanitized no-store 500 when auth context fails before request loading', async () => {
+    requireAuthContextMock.mockRejectedValueOnce(
+      new Error('raw communication followup auth patient 山田 花子 token secret'),
+    );
+
+    const response = await POST(
+      createRequest({
+        expected_updated_at: CURRENT_UPDATED_AT,
+      }),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw communication followup auth');
+    expect(bodyText).not.toContain('山田 花子');
+    expect(bodyText).not.toContain('token secret');
+    expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when follow-up transaction fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('raw followup transaction patient 山田 花子 token secret 夕食後薬'),
+    );
+
+    const response = await POST(
+      createRequest({
+        expected_updated_at: CURRENT_UPDATED_AT,
+        followup: '夕食後薬の飲み忘れを確認',
+      }),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw followup transaction');
+    expect(bodyText).not.toContain('山田 花子');
+    expect(bodyText).not.toContain('token secret');
+    expect(bodyText).not.toContain('夕食後薬');
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(taskUpsertMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 });
