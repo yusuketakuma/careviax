@@ -1,9 +1,11 @@
 import { buildAuditTaskHref } from '@/lib/audit/navigation';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+import { buildConferencesHref, buildExternalHref, buildTasksHref } from '@/lib/dashboard/home-link-builders';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
+import { buildVisitHref } from '@/lib/visits/navigation';
 
 export type OperationalTaskPresentation = {
   actionHref: string;
@@ -16,6 +18,18 @@ export type OperationalTaskPresentationInput = {
   related_entity_type: string | null;
   related_entity_id: string | null;
 };
+
+function buildRelatedTaskQueueHref(
+  taskType: string,
+  task: OperationalTaskPresentationInput,
+): string {
+  return buildTasksHref({
+    status: '',
+    taskType,
+    relatedEntityType: task.related_entity_type ?? undefined,
+    relatedEntityId: task.related_entity_id ?? undefined,
+  });
+}
 
 export function describeOperationalTask(
   task: OperationalTaskPresentationInput,
@@ -71,19 +85,28 @@ export function describeOperationalTask(
       };
     case 'management_plan_review':
       return {
-        actionHref: '/workflow',
+        actionHref:
+          task.related_entity_type === 'patient' && task.related_entity_id
+            ? buildPatientHref(task.related_entity_id, '#patient-documents')
+            : buildRelatedTaskQueueHref('management_plan_review', task),
         actionLabel: '計画を見直す',
         queueLabel: '計画書',
       };
     case 'geocode_review':
       return {
-        actionHref: '/workflow',
+        actionHref:
+          task.related_entity_type === 'patient' && task.related_entity_id
+            ? buildPatientHref(task.related_entity_id, '/edit?section=visit#intake.address')
+            : buildRelatedTaskQueueHref('geocode_review', task),
         actionLabel: '住所確認',
         queueLabel: '住所',
       };
     case 'visit_intake_linkage':
       return {
-        actionHref: '/workflow',
+        actionHref:
+          task.related_entity_type === 'prescription_intake' && task.related_entity_id
+            ? buildPrescriptionHref(task.related_entity_id)
+            : buildRelatedTaskQueueHref('visit_intake_linkage', task),
         actionLabel: '訪問導線を確認',
         queueLabel: '処方受付',
       };
@@ -95,7 +118,10 @@ export function describeOperationalTask(
       };
     case 'patient_self_report_followup':
       return {
-        actionHref: '/external',
+        actionHref:
+          task.related_entity_type === 'patient' && task.related_entity_id
+            ? buildPatientHref(task.related_entity_id, '/collaboration')
+            : buildExternalHref({ focus: 'self_reports' }),
         actionLabel: '自己申告を確認',
         queueLabel: '患者連絡',
       };
@@ -116,13 +142,19 @@ export function describeOperationalTask(
       };
     case 'dosage_form_support':
       return {
-        actionHref: '/patients',
+        actionHref:
+          task.related_entity_type === 'patient' && task.related_entity_id
+            ? buildPatientHref(task.related_entity_id, '/safety-check')
+            : buildExternalHref({ focus: 'self_reports' }),
         actionLabel: '剤形支援を確認',
         queueLabel: '剤形支援',
       };
     case 'inquiry_workbench':
       return {
-        actionHref: '/workflow',
+        actionHref:
+          task.related_entity_type === 'prescription_intake' && task.related_entity_id
+            ? buildPrescriptionHref(task.related_entity_id)
+            : buildRelatedTaskQueueHref('inquiry_workbench', task),
         actionLabel: '疑義照会を確認',
         queueLabel: '照会',
       };
@@ -161,7 +193,7 @@ export function describeOperationalTask(
       };
     case 'community_activity_followup':
       return {
-        actionHref: '/external',
+        actionHref: buildExternalHref({ focus: 'activities' }),
         actionLabel: '地域フォローを確認',
         queueLabel: '地域活動',
       };
@@ -218,7 +250,10 @@ export function describeOperationalTask(
       };
     case 'residual_reduction_review':
       return {
-        actionHref: '/visits',
+        actionHref:
+          task.related_entity_type === 'visit_record' && task.related_entity_id
+            ? buildVisitHref(task.related_entity_id)
+            : '/visits',
         actionLabel: '残薬を確認',
         queueLabel: '残薬調整',
       };
@@ -230,7 +265,10 @@ export function describeOperationalTask(
       };
     case 'first_visit_document_delivery':
       return {
-        actionHref: '/patients',
+        actionHref:
+          task.related_entity_type === 'patient' && task.related_entity_id
+            ? buildPatientHref(task.related_entity_id, '#patient-documents')
+            : buildRelatedTaskQueueHref('first_visit_document_delivery', task),
         actionLabel: '文書交付を記録',
         queueLabel: '初回文書',
       };
@@ -242,7 +280,7 @@ export function describeOperationalTask(
       };
     case 'conference_action_item':
       return {
-        actionHref: '/conferences',
+        actionHref: buildConferencesHref({ focus: 'notes' }),
         actionLabel: '会議アクションを確認',
         queueLabel: 'カンファレンス',
       };

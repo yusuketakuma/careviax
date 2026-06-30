@@ -31,6 +31,19 @@ describe('home-link-builders', () => {
     ).toBe('/tasks?assigned=me&status=pending&context=dashboard_home');
   });
 
+  it('builds Tasks hrefs with related entity filters and an all-status seed', () => {
+    expect(
+      buildTasksHref({
+        status: '',
+        taskType: 'conference_action_item',
+        relatedEntityType: 'conference_note',
+        relatedEntityId: 'note/1?x=y#frag',
+      }),
+    ).toBe(
+      '/tasks?status=&task_type=conference_action_item&related_entity_type=conference_note&related_entity_id=note%2F1%3Fx%3Dy%23frag',
+    );
+  });
+
   it('builds Workflow and Notifications hrefs with dashboard context', () => {
     expect(
       buildWorkflowHref({

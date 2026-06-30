@@ -273,6 +273,15 @@ describe('TasksContent', () => {
     expect(screen.getByDisplayValue('田中さんの監査をしてほしい')).toBeTruthy();
     expect(screen.getByDisplayValue('14:00訪問前に完了')).toBeTruthy();
     expect(screen.getByText('対象の監査タスクに紐づけて依頼します。')).toBeTruthy();
+    expect(useQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: [
+          'tasks',
+          'org_1',
+          'status=pending&related_entity_type=dispense_task&related_entity_id=task-tanaka',
+        ],
+      }),
+    );
   });
 
   it('surfaces server-provided bulk completion failure details', async () => {
