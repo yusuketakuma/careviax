@@ -260,6 +260,7 @@ const UNKNOWN_PREPARATION_SUMMARY: DayBoardVisit['preparation_summary'] = {
   status: 'unknown',
   incomplete_labels: ['準備未確認'],
 };
+const PREPARATION_DETAIL_VISIBLE_LIMIT = 2;
 
 function scheduleStatusLabel(status: string | null): string {
   return (
@@ -897,18 +898,18 @@ function normalizePreparationSummary(
 
 function preparationSummaryAriaLabel(summary: DayBoardVisit['preparation_summary']) {
   const label = preparationSummaryDisplayLabel(summary);
-  const firstReadyBlocker = summary.ready_blocker_summary?.category_labels[0] ?? null;
-  const firstIncompleteBlocker = summary.incomplete_labels[0] ?? null;
   const readyBlockerLabel = readyBlockerDisplayLabel(summary);
-  return [
-    label,
-    readyBlockerLabel,
-    firstReadyBlocker
-      ? `確認: ${firstReadyBlocker}`
-      : firstIncompleteBlocker
-        ? `未完: ${firstIncompleteBlocker}`
-        : null,
-  ]
+  const readyBlockerDetailLabel = formatPreparationDetailLabels(
+    '確認',
+    summary.ready_blocker_summary?.category_labels ?? [],
+    Number.POSITIVE_INFINITY,
+  );
+  const incompleteDetailLabel = formatPreparationDetailLabels(
+    '未完',
+    summary.incomplete_labels,
+    Number.POSITIVE_INFINITY,
+  );
+  return [label, readyBlockerLabel, readyBlockerDetailLabel, incompleteDetailLabel]
     .filter((part): part is string => Boolean(part))
     .join('、');
 }
@@ -937,6 +938,20 @@ function readyBlockerDisplayLabel(summary: DayBoardVisit['preparation_summary'])
   return `出発前条件 未解決${readyBlockerSummary.blocker_count}件`;
 }
 
+function formatPreparationDetailLabels(
+  prefix: string,
+  labels: readonly string[] | null | undefined,
+  visibleLimit = PREPARATION_DETAIL_VISIBLE_LIMIT,
+) {
+  const uniqueLabels = Array.from(
+    new Set((labels ?? []).map((label) => label.trim()).filter(Boolean)),
+  );
+  if (uniqueLabels.length === 0) return null;
+  const visibleLabels = uniqueLabels.slice(0, visibleLimit);
+  const hiddenCount = uniqueLabels.length - visibleLabels.length;
+  return `${prefix}: ${visibleLabels.join(' / ')}${hiddenCount > 0 ? ` / 他${hiddenCount}件` : ''}`;
+}
+
 function PreparationSummaryChip({
   summary,
   compact = false,
@@ -950,13 +965,12 @@ function PreparationSummaryChip({
   const readyBlockerLabel = readyBlockerDisplayLabel(summary);
   const label =
     compact && readyBlockerLabel ? readyBlockerLabel : preparationSummaryDisplayLabel(summary);
-  const firstBlocker =
-    summary.ready_blocker_summary?.category_labels[0] ?? summary.incomplete_labels[0] ?? null;
-  const detailLabel = readyBlockerLabel
-    ? `出発前条件: ${summary.ready_blocker_summary?.category_labels.join(' / ')}`
-    : firstBlocker
-      ? `未完: ${firstBlocker}`
-      : null;
+  const detailLabels = [
+    readyBlockerLabel
+      ? formatPreparationDetailLabels('出発前条件', summary.ready_blocker_summary?.category_labels)
+      : null,
+    formatPreparationDetailLabels('未完', summary.incomplete_labels),
+  ].filter((part): part is string => part !== null);
   return (
     <span
       className={cn(
@@ -970,8 +984,8 @@ function PreparationSummaryChip({
     >
       {!ready ? <AlertTriangle className="size-3 shrink-0" aria-hidden="true" /> : null}
       <span className="truncate">{label}</span>
-      {detailLabel && !compact ? (
-        <span className="hidden truncate text-state-confirm sm:inline">{detailLabel}</span>
+      {detailLabels.length > 0 && !compact ? (
+        <span className="truncate text-state-confirm">{detailLabels.join(' / ')}</span>
       ) : null}
     </span>
   );

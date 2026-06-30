@@ -109,10 +109,10 @@ function buildPharmacist(overrides: Partial<DayBoardStaff> = {}): DayBoardStaff 
         facility_batch_id: null,
         facility_patient_count: 1,
         preparation_summary: {
-          completed_count: 3,
+          completed_count: 2,
           total_count: 5,
           status: 'incomplete',
-          incomplete_labels: ['持参薬・物品確認', 'ルート確認'],
+          incomplete_labels: ['薬歴・前回変更の確認', '持参薬・物品確認', 'ルート確認'],
         },
       },
       {
@@ -465,10 +465,10 @@ describe('buildStaffLane', () => {
     expect(visitBlocks.every((block) => block.locked)).toBe(true);
     expect(visitBlocks.find((block) => block.label === '田中 一郎様')?.risk).toBe(true);
     expect(visitBlocks.find((block) => block.label === '伊藤 キヨ様')?.preparationSummary).toEqual({
-      completed_count: 3,
+      completed_count: 2,
       total_count: 5,
       status: 'incomplete',
-      incomplete_labels: ['持参薬・物品確認', 'ルート確認'],
+      incomplete_labels: ['薬歴・前回変更の確認', '持参薬・物品確認', 'ルート確認'],
     });
     const facilityBlock = visitBlocks.find((block) => block.label === '施設グリーンヒル 12名');
     expect(facilityBlock?.status).toBeNull();
@@ -832,9 +832,11 @@ describe('ScheduleTeamBoard', () => {
       true,
     );
     expect(
-      within(gantt).getByLabelText(/伊藤 キヨ様、準備 3\/5、未完: 持参薬・物品確認/),
+      within(gantt).getByLabelText(
+        /伊藤 キヨ様、準備 2\/5、未完: 薬歴・前回変更の確認 \/ 持参薬・物品確認 \/ ルート確認/,
+      ),
     ).toBeTruthy();
-    expect(within(gantt).getAllByText('準備 3/5').length).toBeGreaterThan(0);
+    expect(within(gantt).getAllByText('準備 2/5').length).toBeGreaterThan(0);
     expect(
       within(gantt).getByLabelText(
         /田中 一郎様、準備チェック完了、出発前条件 未解決2件、確認: 導入準備 2件/,
@@ -883,8 +885,10 @@ describe('ScheduleTeamBoard', () => {
       'min-h-[44px]',
     );
     expect(within(routePreview).getByText('伊藤 キヨ様')).toBeTruthy();
-    expect(within(routePreview).getByText('準備 3/5')).toBeTruthy();
-    expect(within(routePreview).getByText('未完: 持参薬・物品確認')).toBeTruthy();
+    expect(within(routePreview).getByText('準備 2/5')).toBeTruthy();
+    expect(
+      within(routePreview).getByText('未完: 薬歴・前回変更の確認 / 持参薬・物品確認 / 他1件'),
+    ).toBeTruthy();
     expect(within(routePreview).getAllByText('準備チェック完了').length).toBeGreaterThan(0);
     expect(within(routePreview).getByText('出発前条件: 導入準備 2件')).toBeTruthy();
     expect(within(routePreview).getAllByText(/軽バン1号/).length).toBeGreaterThan(0);
