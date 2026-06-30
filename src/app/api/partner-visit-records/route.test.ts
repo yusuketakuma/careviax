@@ -194,6 +194,9 @@ describe('/api/partner-visit-records', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+    });
     const where = partnerVisitRecordFindManyMock.mock.calls[0]?.[0]?.where;
     expect(where).toEqual(
       expect.objectContaining({
@@ -338,6 +341,9 @@ describe('/api/partner-visit-records', () => {
     expect(response.status).toBe(201);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+    });
     expect(sourceVisitRecordFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'visit_record_1', org_id: 'org_1', patient_id: 'patient_1' },
       select: { id: true },
