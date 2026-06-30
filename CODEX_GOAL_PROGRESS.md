@@ -27651,6 +27651,31 @@ Next loop:
   - Broad master/patient objective remains open.
   - Next mapped patient gap remains PRE-06 archive/detail UI state: archived-patient detail banner/read-only affordance and cross-surface archive identifiers.
 
+### Patient Archive Header State - 2026-07-01 00:40 JST
+
+- Scope:
+  - Continued Phase 5 PRE-06 patient archive/detail UI state work.
+  - Focused on the pinned common `PatientHeader` used by patient detail.
+- Fixed:
+  - `PatientHeader` now accepts an optional archive state contract.
+  - Archived patients show an `アーカイブ中` badge in the always-visible identity tier.
+  - Archived patients show a compact read-only notice with archive date/operator metadata.
+  - `CardWorkspace` passes the existing `foundation.archive` data into the header.
+- Safety:
+  - Reduces archived-patient wrong-use risk by making read-only archive state visible before staff reaches lower detail sections.
+  - Preserves existing archive/restore APIs, write guards, org/RLS scope, PHI minimization, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - UI-only render of existing archive fields.
+  - No new query, dependency, job, external call, broad scan, unbounded loop, or heavy render path was added.
+- Validation:
+  - `pnpm vitest run src/components/features/patients/patient-header.test.tsx src/app/'(dashboard)'/patients/'[id]'/card-workspace.test.tsx --reporter=dot --testTimeout=60000`: passed, `2` files / `68` tests.
+  - Scoped ESLint on `PatientHeader` / `CardWorkspace` files and tests: passed.
+  - Scoped Prettier check on the same files plus progress ledgers: passed after formatting `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`.
+  - Scoped `git diff --check` on the same files plus progress ledgers: passed.
+- Remaining:
+  - Broad master/patient objective remains open.
+  - PRE-06 still needs archived identifiers in schedule / visit brief / shared links and patient summary rules across print/PDF/shared.
+
 ### Facility Batch Delete Route-Unlink Guard - 2026-07-01 00:23 JST
 
 - Scope:

@@ -1,6 +1,6 @@
 import * as React from 'react';
 import Link from 'next/link';
-import { ChevronRight, ShieldAlert } from 'lucide-react';
+import { Archive, ChevronRight, ShieldAlert } from 'lucide-react';
 import { differenceInCalendarDays, format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
@@ -33,6 +33,12 @@ export type PatientHeaderSafety = {
   cautions?: string[];
 };
 
+export type PatientHeaderArchive = {
+  archived: boolean;
+  archivedAt?: string | null;
+  archivedByName?: string | null;
+};
+
 export type PatientHeaderProps = {
   // --- identity ---
   name: string;
@@ -62,6 +68,7 @@ export type PatientHeaderProps = {
   // --- safety（常時表示・折りたたまない） ---
   safety?: PatientHeaderSafety;
   safetyCheckHref?: string;
+  archive?: PatientHeaderArchive | null;
 
   /** main(overflow-y-auto) 上端に固定して常時可視にする（既定 true）。 */
   sticky?: boolean;
@@ -176,6 +183,7 @@ export function PatientHeader({
   nextPrescriptionLabel,
   safety,
   safetyCheckHref,
+  archive,
   sticky = true,
   now,
   className,
@@ -217,6 +225,13 @@ export function PatientHeader({
     Boolean(safety?.allergy || safety?.renal || safety?.swallowing) ||
     handlingTags.length > 0 ||
     cautionItems.length > 0;
+  const isArchived = archive?.archived === true;
+  const archiveMeta = [
+    archive?.archivedAt ? `アーカイブ日 ${archive.archivedAt}` : null,
+    archive?.archivedByName ? `実施 ${archive.archivedByName}` : null,
+  ]
+    .filter(Boolean)
+    .join(' / ');
 
   return (
     <section
@@ -249,7 +264,27 @@ export function PatientHeader({
             {homeStatusLabel}
           </span>
         ) : null}
+        {isArchived ? (
+          <span
+            data-testid="patient-header-archive-badge"
+            className="inline-flex items-center gap-1 rounded-full border border-state-blocked/40 bg-state-blocked/10 px-2 py-0.5 text-[11px] font-semibold text-state-blocked"
+          >
+            <Archive className="size-3" aria-hidden="true" />
+            アーカイブ中
+          </span>
+        ) : null}
       </div>
+
+      {isArchived ? (
+        <div
+          role="status"
+          data-testid="patient-header-archive-notice"
+          className="border-t border-state-blocked/25 bg-state-blocked/10 px-4 py-2 text-xs font-medium text-state-blocked"
+        >
+          閲覧専用の患者正本です。復元するまで新規作業・共有・更新には使わないでください。
+          {archiveMeta ? <span className="ml-2 font-normal">{archiveMeta}</span> : null}
+        </div>
+      ) : null}
 
       {/* Tier 2: clinical context（密なラベル:値グリッド）。1 つも値が無ければ tier ごと出さない。 */}
       {hasClinical ? (

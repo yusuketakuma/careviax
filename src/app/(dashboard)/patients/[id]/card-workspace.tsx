@@ -4519,6 +4519,11 @@ export function CardWorkspace({
                 swallowing: workspace.safety.swallowing ?? null,
                 cautions: workspace.safety.cautions,
               }}
+              archive={{
+                archived: patient.foundation.archive.archived,
+                archivedAt: patient.foundation.archive.archived_at,
+                archivedByName: patient.foundation.archive.archived_by_name,
+              }}
               safetyCheckHref={buildPatientHref(patientId, '/safety-check')}
             />
             {headerSummaryError ? (

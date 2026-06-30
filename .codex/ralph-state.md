@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0040 JST
+
+- current task: surface archived-patient state in the pinned patient detail header.
+- files inspected: `git status --short --branch --untracked-files=all`, `Plans.md` PRE-06, `docs/plans-archive.md` P-08/P-12 archive UI requirements, `docs/ui-ux-design-guidelines.md`, `src/components/features/patients/patient-header.tsx`, `src/components/features/patients/patient-header.test.tsx`, `src/app/(dashboard)/patients/[id]/card-workspace.tsx`, `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`, and patient foundation archive search results.
+- files changed: `src/components/features/patients/patient-header.tsx`, `src/components/features/patients/patient-header.test.tsx`, `src/app/(dashboard)/patients/[id]/card-workspace.tsx`, `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: archived patients were marked in the lower foundation panel, but the pinned patient header did not show archive state, so staff could miss that the patient detail should be treated as read-only until restore.
+- security risks found: reduced archived-patient wrong-use risk by making archive state visible in the always-visible patient identity tier and by carrying archive date/operator metadata from the existing foundation archive contract. Existing archive/restore APIs, write guards, org/RLS scope, PHI minimization, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: UI-only render of existing archive fields. No new query, dependency, external call, background job, broad scan, unbounded loop, or heavy render path was added.
+- validation commands: `pnpm vitest run src/components/features/patients/patient-header.test.tsx src/app/'(dashboard)'/patients/'[id]'/card-workspace.test.tsx --reporter=dot --testTimeout=60000`; `pnpm exec eslint --max-warnings=0 src/components/features/patients/patient-header.tsx src/components/features/patients/patient-header.test.tsx src/app/'(dashboard)'/patients/'[id]'/card-workspace.tsx src/app/'(dashboard)'/patients/'[id]'/card-workspace.test.tsx`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check .codex/ralph-state.md CODEX_GOAL_PROGRESS.md src/components/features/patients/patient-header.tsx src/components/features/patients/patient-header.test.tsx src/app/'(dashboard)'/patients/'[id]'/card-workspace.tsx src/app/'(dashboard)'/patients/'[id]'/card-workspace.test.tsx`; `git diff --check -- .codex/ralph-state.md CODEX_GOAL_PROGRESS.md src/components/features/patients/patient-header.tsx src/components/features/patients/patient-header.test.tsx src/app/'(dashboard)'/patients/'[id]'/card-workspace.tsx src/app/'(dashboard)'/patients/'[id]'/card-workspace.test.tsx`.
+- validation results: focused Vitest passed `2` files / `68` tests; scoped ESLint passed; scoped Prettier check passed after formatting `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`; scoped `git diff --check` passed.
+- remaining work: broad master-management and patient-information objective remains open. PRE-06 still needs archived identifiers in schedule / visit brief / shared links and patient summary rules across print/PDF/shared.
+- next action: run scoped/full validation, then commit the patient archive header UI slice.
+
 ### 20260701-0029 JST
 
 - current task: guard visit-record handoff confirmation with the reviewed visit-record version.

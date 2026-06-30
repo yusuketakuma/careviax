@@ -29,6 +29,27 @@ describe('PatientHeader', () => {
     expect(screen.getByText('在宅')).toBeTruthy();
   });
 
+  it('surfaces archived patients in the always-visible identity tier', () => {
+    render(
+      <PatientHeader
+        name="山田 太郎"
+        archive={{
+          archived: true,
+          archivedAt: '2026-06-30',
+          archivedByName: '管理者',
+        }}
+        now={NOW}
+      />,
+    );
+
+    expect(screen.getByTestId('patient-header-archive-badge').textContent).toContain(
+      'アーカイブ中',
+    );
+    const notice = screen.getByTestId('patient-header-archive-notice');
+    expect(notice.textContent).toContain('閲覧専用の患者正本です');
+    expect(notice.textContent).toContain('アーカイブ日 2026-06-30 / 実施 管理者');
+  });
+
   it('renders the 4-person care team (主/副 薬剤師・スタッフ), omitting unset roles', () => {
     const { rerender } = render(
       <PatientHeader

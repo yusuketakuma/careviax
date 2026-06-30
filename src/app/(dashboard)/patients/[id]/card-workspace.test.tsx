@@ -1167,6 +1167,46 @@ describe('CardWorkspace', () => {
     expect(screen.queryByTestId('evidence-panel')).toBeNull();
   });
 
+  it('surfaces archived patient state in the pinned patient header', () => {
+    mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        patientOverrides: {
+          archived_at: '2026-06-30T00:00:00.000Z',
+          archived_by: 'user_admin',
+          archived_by_name: '管理者',
+          foundation: {
+            summary: { status: 'missing', label: 'アーカイブ中', items: ['read-onlyで確認'] },
+            items: [],
+            changes_since_last_visit: [],
+            latest_labs: [],
+            insurances: [],
+            archive: {
+              archived: true,
+              archived_at: '2026-06-30',
+              archived_by_name: '管理者',
+            },
+          },
+        },
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const header = screen.getByTestId('patient-header');
+    expect(within(header).getByTestId('patient-header-archive-badge').textContent).toContain(
+      'アーカイブ中',
+    );
+    expect(within(header).getByTestId('patient-header-archive-notice').textContent).toContain(
+      '復元するまで新規作業・共有・更新には使わないでください',
+    );
+    const foundationPanel = screen.getByTestId('patient-foundation-panel');
+    expect(within(foundationPanel).getByText('アーカイブ中の患者です')).toBeTruthy();
+    expect(within(foundationPanel).queryByText('未確認を作業化')).toBeNull();
+  });
+
   it('surfaces a clear failure state when the patient header summary fetch errors (no false-empty)', () => {
     mockPatientQuery(buildWorkspace(), null, {}, { headerSummaryError: true });
 
