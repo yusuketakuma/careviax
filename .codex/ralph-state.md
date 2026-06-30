@@ -20,6 +20,32 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0139 JST
+
+- current task: guard care-report send finalization against stale report updates after delivery attempts.
+- files inspected: `git status --short --branch --untracked-files=all`, agmsg inbox/send output, gbrain search output, `src/app/api/care-reports/[id]/send/route.ts`, `src/app/api/care-reports/[id]/send/route.test.ts`, focused Vitest output, scoped validation output, and full validation output.
+- files changed: `src/app/api/care-reports/[id]/send/route.ts`, `src/app/api/care-reports/[id]/send/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: `POST /api/care-reports/[id]/send` checked the displayed `updated_at` before delivery side effects, but final report status/content writes still updated by report id only after delivery attempts. A concurrent report edit could be overwritten as `sent`, `response_waiting`, or `failed`.
+- security risks found: reduced stale clinical-report lifecycle and audit integrity risk by claiming final report writes with `org_id`, current report `status`, and `updated_at`, and by returning a sanitized `409 WORKFLOW_CONFLICT` for stale finalization. Existing auth, assignment/case checks, recipient validation, idempotency replay, no-store wrappers, PHI/error sanitization, external-send boundaries, migrations, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: replaces id-only report updates with narrow conditional `updateMany` claims and reuses the already-scoped report content/status read. No new broad scans, dependencies, jobs, extra external calls, render paths, or unbounded loops were added.
+- validation commands: `pnpm vitest run src/app/api/care-reports/'[id]'/send/route.test.ts --reporter=dot --testTimeout=60000`; scoped ESLint on the changed send route/test; scoped Prettier check on the changed send route/test; scoped `git diff --check`; `pnpm typecheck --pretty false`; `pnpm typecheck:no-unused`; `pnpm lint`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: focused Vitest passed `1` file / `59` tests; scoped ESLint, scoped Prettier check, and scoped diff-check passed; `pnpm typecheck --pretty false`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and `git diff --check` passed.
+- remaining work: broad visit/report/interprofessional collaboration objective remains open. Untracked patient operational-summary WIP remains present and preserved outside this commit.
+- next action: commit only the care-report send finalization guard plus ledgers, send agmsg FYI, then re-check inbox/status before selecting the next non-overlapping report/collaboration gap.
+
+### 20260701-0138 JST
+
+- current task: add a schedule-safe patient operational summary foundation.
+- files inspected: `Plans.md` PRE-06 notes, `docs/plans-archive.md` P-12 notes, `docs/ui-ux-design-guidelines.md`, Next route-handler docs, `src/lib/patient/archive-summary.ts`, `src/lib/patient/insurance-summary.ts`, `src/lib/patient/lab-analytes.ts`, `src/lib/date-key.ts`, `src/lib/utils/date-boundary.ts`, `src/lib/patient/operational-summary.ts`, `src/lib/patient/operational-summary.test.ts`, `src/server/services/visit-schedule-patient-summary.ts`, and `src/server/services/visit-schedule-patient-summary.test.ts`.
+- files changed: `src/lib/patient/operational-summary.ts`, `src/lib/patient/operational-summary.test.ts`, `src/server/services/visit-schedule-patient-summary.ts`, `src/server/services/visit-schedule-patient-summary.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: schedule/day-view patient summary work lacked a compact contract that could carry archive state, current insurance, allergy, and lab-risk flags without leaking raw insurance arrays, allergy JSON, lab observations, or archive source columns into API responses.
+- security risks found: reduced future PHI/internal-field leakage risk by centralizing summary construction and adding a schedule helper that strips raw source fields after computing a compact summary. Raw insurance identifiers and archive ownership fields remain excluded.
+- performance issues found: helper consumes compact preselected records and limits display lab flags to three items. No DB query, external call, dependency, background job, render path, or unbounded loop was added in this foundation slice.
+- validation commands: `pnpm vitest run 'src/app/api/care-reports/[id]/send/route.test.ts' src/lib/patient/operational-summary.test.ts src/server/services/visit-schedule-patient-summary.test.ts --reporter=dot --testTimeout=60000`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck --pretty false`; `pnpm typecheck:no-unused --pretty false`; scoped ESLint on changed send and patient-summary files; scoped Prettier check; `git diff --check`.
+- validation results: focused Vitest passed `3` files / `62` tests; typecheck, no-unused, scoped ESLint, scoped Prettier check, and diff-check passed.
+- remaining work: broad master-management / patient-information objective remains open. The schedule/day-view include, API, and UI consumers still need follow-up wiring to use this contract.
+- next action: commit the patient operational summary foundation separately, then commit progress ledgers.
+
 ### 20260701-0130 JST
 
 - current task: surface archived-patient state in report detail and interprofessional share preparation surfaces.

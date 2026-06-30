@@ -30,6 +30,58 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Care Report Send Finalization Claim Guard - 2026-07-01 01:38 JST
+
+- Scope:
+  - Continued report / interprofessional collaboration integrity hardening.
+  - Focused on `POST /api/care-reports/[id]/send` final report status updates after delivery attempts.
+- Fixed:
+  - Final report status/content writes now claim the report by org, current status, and `updated_at` before moving to `sent`, `response_waiting`, or `failed`.
+  - Stale finalization now returns sanitized `409 WORKFLOW_CONFLICT` and stores the conflict result for keyed idempotency replay.
+  - SES failure fallback now uses the same guarded claim before marking a report `failed`.
+- Safety:
+  - Reduces report lifecycle corruption under concurrent operator edits after delivery side effects.
+  - Preserves auth, assignment/case checks, recipient validation, idempotency replay, no-store wrappers, PHI/error sanitization, migrations, external-send boundaries, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Replaces id-only report updates with narrow conditional `updateMany` claims and one already-scoped report content/status read.
+  - No new broad scan, dependency, background job, external call beyond the existing send path, render path, or unbounded loop was added.
+- Validation:
+  - `pnpm vitest run src/app/api/care-reports/'[id]'/send/route.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `59` tests.
+  - Scoped ESLint on the changed care-report send route/test: passed.
+  - Scoped Prettier check and scoped `git diff --check`: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit/report/interprofessional collaboration objective remains open.
+  - Untracked patient operational-summary WIP remains present and preserved outside this commit.
+
+### Patient Operational Summary Foundation - 2026-07-01 01:38 JST
+
+- Scope:
+  - Continued PRE-06 / P-12 patient summary contract work.
+  - Built the reusable patient operational summary foundation for schedule/day-view API expansion.
+- Fixed:
+  - Added `buildPatientOperationalSummary` for compact archive, current insurance, allergy, and lab-risk summaries.
+  - Added false-empty allergy handling and Japan business-day insurance boundary handling.
+  - Added `attachVisitSchedulePatientSummary` to attach compact schedule-safe summaries while stripping raw source fields such as raw insurance arrays, allergy JSON, lab observations, and archive source columns from the patient payload.
+- Safety:
+  - Reduces PHI/internal-field leakage risk before schedule/day-view surfaces consume richer patient summary data.
+  - Summary output intentionally excludes raw insurance identifiers and archive ownership fields.
+- Performance:
+  - The helper consumes already-selected compact records and limits lab flags to the top three display items.
+  - No new DB queries, external calls, dependencies, jobs, render paths, or unbounded loops were added in this foundation slice.
+- Validation:
+  - `pnpm vitest run 'src/app/api/care-reports/[id]/send/route.test.ts' src/lib/patient/operational-summary.test.ts src/server/services/visit-schedule-patient-summary.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `62` tests.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck --pretty false`: passed.
+  - `pnpm typecheck:no-unused --pretty false`: passed.
+  - Scoped ESLint on the changed care-report send and patient-summary files: passed.
+  - Scoped Prettier check and `git diff --check`: passed.
+- Remaining:
+  - Schedule include/API/UI wiring still needs to consume this contract in a follow-up slice.
+
 ### Tracing Report PATCH Version Guard - 2026-07-01 01:18 JST
 
 - Scope:

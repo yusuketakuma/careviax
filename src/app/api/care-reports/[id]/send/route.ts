@@ -1,7 +1,7 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
-import { Prisma, type MemberRole } from '@prisma/client';
+import { Prisma, type MemberRole, type ReportStatus } from '@prisma/client';
 import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { parseOptionalIdempotencyKey } from '@/lib/api/idempotency-key';
@@ -709,7 +709,7 @@ type ReportRecord = {
   id: string;
   patient_id: string;
   case_id: string | null;
-  status: string;
+  status: ReportStatus;
   visit_record_id: string | null;
   partner_visit_record_id: string | null;
   content: Prisma.JsonValue;
@@ -753,9 +753,39 @@ class DeliveryInProgressConflict extends Error {
   }
 }
 
+class CareReportFinalizationConflict extends Error {
+  constructor(readonly reportId: string) {
+    super('報告書が同時に更新されました。再読み込みしてください');
+  }
+}
+
 function isStaleSendRequest(updatedAt: Date | null | undefined, now = new Date()) {
   if (!(updatedAt instanceof Date)) return false;
   return now.getTime() - updatedAt.getTime() >= STALE_SEND_REQUEST_MS;
+}
+
+async function respondCareReportFinalizationConflict(args: {
+  ctx: AuthContext;
+  claim: ReportSendIdempotencyClaim;
+  reportId: string;
+}) {
+  const responseBody = {
+    code: 'WORKFLOW_CONFLICT',
+    message: '報告書が同時に更新されました。再読み込みしてください',
+    details: {
+      report_id: args.reportId,
+      reason: 'report_finalization_stale',
+    },
+  };
+  const replayBody = minimizeResponseBodyForIdempotencyReplay(responseBody);
+  await completeCareReportSendIdempotency({
+    ctx: args.ctx,
+    claim: args.claim,
+    reportId: args.reportId,
+    responseStatus: 409,
+    responseBody: replayBody,
+  });
+  return success(args.claim.kind === 'claimed' ? replayBody : responseBody, 409);
 }
 
 function toJsonSerializable(value: unknown) {
@@ -1465,14 +1495,28 @@ async function finalizeReportDelivery(args: {
     async (tx) => {
       const currentReportContent = await tx.careReport.findFirst({
         where: { id: reportId, org_id: ctx.orgId },
-        select: { content: true },
+        select: { content: true, status: true, updated_at: true },
       });
-      const updatedReport = await tx.careReport.update({
-        where: { id: reportId },
+      if (
+        !currentReportContent ||
+        currentReportContent.status !== report.status ||
+        currentReportContent.updated_at.getTime() !== report.updated_at.getTime()
+      ) {
+        throw new CareReportFinalizationConflict(reportId);
+      }
+
+      const nextStatus = outcomes.some((outcome) => outcome.failureReason !== null)
+        ? 'response_waiting'
+        : 'sent';
+      const updatedReport = await tx.careReport.updateMany({
+        where: {
+          id: reportId,
+          org_id: ctx.orgId,
+          status: report.status,
+          updated_at: report.updated_at,
+        },
         data: {
-          status: outcomes.some((outcome) => outcome.failureReason !== null)
-            ? 'response_waiting'
-            : 'sent',
+          status: nextStatus,
           content: toPrismaJsonInput(
             mergeReportDeliveryTargets({
               content: currentReportContent?.content ?? report.content,
@@ -1480,11 +1524,10 @@ async function finalizeReportDelivery(args: {
             }),
           ),
         },
-        select: {
-          id: true,
-          status: true,
-        },
       });
+      if (updatedReport.count !== 1) {
+        throw new CareReportFinalizationConflict(reportId);
+      }
 
       if (report.visit_record_id) {
         const schedule = await tx.visitRecord.findFirst({
@@ -1611,7 +1654,33 @@ async function finalizeReportDelivery(args: {
         }
       }
 
-      return updatedReport;
+      return { id: reportId, status: nextStatus };
+    },
+    { requestContext: ctx },
+  );
+}
+
+async function markCareReportSendFailed(args: {
+  ctx: AuthContext;
+  reportId: string;
+  report: ReportRecord;
+}) {
+  const { ctx, reportId, report } = args;
+  await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const updatedReport = await tx.careReport.updateMany({
+        where: {
+          id: reportId,
+          org_id: ctx.orgId,
+          status: report.status,
+          updated_at: report.updated_at,
+        },
+        data: { status: 'failed' },
+      });
+      if (updatedReport.count !== 1) {
+        throw new CareReportFinalizationConflict(reportId);
+      }
     },
     { requestContext: ctx },
   );
@@ -1851,16 +1920,18 @@ async function authenticatedPOST(
 
   // 単一送付でメール送信が失敗した場合は、従来どおり報告書を failed にして 502 を返す。
   if (successes.length === 0) {
-    await withOrgContext(
-      ctx.orgId,
-      async (tx) => {
-        await tx.careReport.update({
-          where: { id },
-          data: { status: 'failed' },
+    try {
+      await markCareReportSendFailed({ ctx, reportId: id, report: existing });
+    } catch (cause) {
+      if (cause instanceof CareReportFinalizationConflict) {
+        return respondCareReportFinalizationConflict({
+          ctx,
+          claim: idempotencyClaim,
+          reportId: id,
         });
-      },
-      { requestContext: ctx },
-    );
+      }
+      throw cause;
+    }
 
     const responseBody = {
       code: 'EXTERNAL_EMAIL_SEND_FAILED',
@@ -1882,7 +1953,19 @@ async function authenticatedPOST(
     return success(idempotencyClaim.kind === 'claimed' ? replayBody : responseBody, 502);
   }
 
-  const report = await finalizeReportDelivery({ ctx, reportId: id, report: existing, outcomes });
+  let report: { id: string; status: string };
+  try {
+    report = await finalizeReportDelivery({ ctx, reportId: id, report: existing, outcomes });
+  } catch (cause) {
+    if (cause instanceof CareReportFinalizationConflict) {
+      return respondCareReportFinalizationConflict({
+        ctx,
+        claim: idempotencyClaim,
+        reportId: id,
+      });
+    }
+    throw cause;
+  }
 
   const deliveries = outcomes.map(buildDeliveryResponseItem);
   const reusedDeliveryCount = outcomes.filter(
