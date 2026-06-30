@@ -29196,18 +29196,18 @@ Next loop:
   - Fixed the Base UI Select nullability mismatch by normalizing empty facility selection to the existing `NONE_VALUE` sentinel before writing `FormState.facility_id`.
 - Safety:
   - Reduces false-operational master risk and protects patient care-team references from accidental master deletion.
-  - Preserves existing canVisit/canAdmin permissions, org/RLS scoping, create/update validation, sensitive no-store responses, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+  - Preserves existing canReport/canAdmin permissions, org/RLS scoping, create/update validation, sensitive no-store responses, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
 - Performance:
   - Adds bounded React Query reads for external-professionals and facility options plus local filtering only.
   - No backend query shape expansion beyond the delete route `_count` precheck, no new dependency, external call, polling, broad fan-out, background job, or unbounded loop was added.
 - Validation:
   - `pnpm exec vitest run 'src/app/(dashboard)/admin/external-professionals/external-professionals-content.test.tsx' src/lib/external-professionals/api-paths.test.ts src/app/api/admin/external-professionals/route.test.ts 'src/app/api/admin/external-professionals/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `4` files / `44` tests.
-  - Scoped ESLint, scoped Prettier check, and scoped diff-check on external-professionals and route-engine files: passed.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on external-professionals files: passed.
   - `pnpm typecheck --pretty false`: passed.
   - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
   - `pnpm lint`: passed.
   - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
   - `git diff --check`: passed.
 - Remaining:
-  - Broad visit/report/collaboration objective remains open.
+  - Broad master/patient/collaboration objective remains open.
   - External-professional patient-link management and report-send recipient selection from the master remain follow-ups.
