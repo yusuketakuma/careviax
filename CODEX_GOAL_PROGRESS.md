@@ -30,29 +30,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
-### Facility Master Contact OCC - 2026-07-01 04:40 JST
+### Facility Master And Contact OCC - 2026-07-01 04:44 JST
 
 - Scope:
-  - Continued master-management hardening on facility master detail updates and facility-contact replacement APIs.
-  - Focused on preventing stale facility master screens from replacing contact rows after another operator already changed the facility.
+  - Continued master-management and patient-information hardening through the shared facility master and facility contact APIs.
+  - Focused on stale writes to facility master data and destructive contact replacement, which affect linked patient selectors, facility coordination, and care-team contact accuracy.
 - Fixed:
-  - `PATCH /api/admin/facilities/[id]` now requires `expected_updated_at`, compares it to `Facility.updated_at`, and claims the same facility row version with `updateMany` before scalar updates or nested contact replacement.
-  - `PUT /api/admin/facilities/[id]/contacts` and `PUT /api/facilities/[id]/contacts` now require `expected_updated_at`, claim the facility row version before `deleteMany + createMany`, and return `409` without deleting contacts when the claim loses the race.
-  - Facility detail/contact GET responses now expose the current facility-backed version anchor so callers can submit the correct `expected_updated_at`.
-  - Facility serialization now preserves contact `updated_at` when timestamp output is requested.
+  - `PATCH /api/admin/facilities/[id]` now requires `expected_updated_at`, compares it with `Facility.updated_at`, claims the row with `updateMany({ id, org_id, updated_at })`, and only then replaces nested contacts.
+  - `PUT /api/admin/facilities/[id]/contacts` and `PUT /api/facilities/[id]/contacts` now require the same facility version token, advance the facility version before deleting/recreating contacts, and reject race losses before destructive contact changes.
+  - Facility detail/contact GET responses now expose timestamp/version metadata needed by clients, and contact serialization supports opt-in `updated_at`.
+  - Regression coverage proves missing-version validation, stale 409 responses, race-loss guards that do not delete contacts, timestamp serialization, and fresh metadata on write success.
 - Safety:
-  - Reduces stale facility/contact master overwrite risk and prevents old screens from silently deleting newer facility contacts.
-  - Preserves existing canVisit/canAdmin permissions, org scoping, validation-before-DB behavior for malformed payloads, no-store GET wrappers, sanitized GET 500 handling, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+  - Reduces stale facility master overwrite and stale multi-professional contact replacement risk.
+  - Preserves existing canVisit/canAdmin auth, org scoping, RLS transaction context, no-store GET wrappers, sanitized 500 behavior, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
 - Performance:
-  - Adds one narrow `Facility.updateMany` version claim per facility/contact replacement and reuses the existing bounded contact reload.
-  - No new dependency, external call, background job, broad scan, render-heavy path, or unbounded loop was added.
+  - Adds one scalar version read and one guarded facility `updateMany` to existing write paths.
+  - No new dependency, list count query, broad scan, external call, background job, render-heavy path, or unbounded loop was added.
 - Validation:
-  - Focused facility OCC/helper Vitest passed `4` files / `36` tests.
-  - Related facility admin/public API suite passed `8` files / `55` tests with the expected sanitized-500 route log.
-  - Scoped ESLint, scoped Prettier, scoped diff-check, full typecheck, no-unused, full lint, full format check, and full diff-check passed.
+  - Focused facility OCC Vitest passed `4` files / `36` tests.
+  - Initial `pnpm typecheck` failed on inferred `undefined` route returns from transaction result unions, then passed after converting the transaction results to discriminated unions.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
 - Remaining:
-  - Broad master-management / patient-information objective remains open.
-  - Concurrent visit-schedule-planner concurrency dirty files remain preserved outside this facility master slice.
+  - Broad master-management and patient-information objective remains open.
+  - Facility master UI is still a disabled sample editor, so this slice hardens the API/backend contract and tests rather than adding a production editor.
 
 ### Visit Planner Candidate Evaluation Concurrency Cap - 2026-07-01 04:41 JST
 
