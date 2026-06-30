@@ -30,6 +30,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Workflow Emergency Draft Idempotency - 2026-07-01 06:57 JST
+
+- Scope:
+  - Continued multi-professional cooperation hardening for workflow-originated emergency contact requests.
+  - Focused on `POST /api/communication-requests` when the dashboard creates draft requests from the `communication_queue` workflow source.
+- Fixed:
+  - Draft workflow emergency/contact requests now reuse an existing active communication request for the same organization, patient, case, request type, template, recipient role, related patient entity, and `communication_queue` source.
+  - Reused requests return `reused_existing_draft: true` and avoid a second create/write path.
+  - Existing care-report and patient-share reply duplicate conflict behavior remains unchanged.
+- Safety:
+  - Reduces duplicate urgent multidisciplinary contact requests caused by double-clicks, retries, or stale workflow screens.
+  - Preserves existing assignment and writable-patient checks, sensitive no-store responses, sanitized error handling, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds one bounded existing-draft lookup only for draft `communication_queue` workflow requests.
+  - Adds no new network call, dependency, background job, broad scan, render path, polling, or unbounded loop.
+- Validation:
+  - Focused communication-request route Vitest passed `1` file / `43` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on the communication-request route/test files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - Independent verifier spawn was attempted but unavailable because the agent thread limit was reached.
+- Remaining:
+  - Broad visit-time, report, and multi-professional cooperation objective remains open.
+  - This is application-level idempotency; no DB unique constraint or migration was added.
+  - Short-lived report/PDF grant send wiring remains deferred pending an OTP delivery/security product decision.
+
 ### Shared Viewer Self-Report Draft Autosave - 2026-07-01 06:46 JST
 
 - Scope:

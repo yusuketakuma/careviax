@@ -703,6 +703,86 @@ describe('/api/communication-requests', () => {
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();
   });
 
+  it('reuses an active workflow emergency draft instead of creating a duplicate', async () => {
+    communicationRequestFindFirstMock.mockResolvedValueOnce({
+      id: 'request_existing',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      case_id: null,
+      request_type: 'emergency_physician',
+      template_key: 'emergency_physician',
+      recipient_name: '青葉医師',
+      recipient_role: 'physician',
+      related_entity_type: 'patient',
+      related_entity_id: 'patient_1',
+      context_snapshot: {
+        source: 'communication_queue',
+        template_key: 'emergency_physician',
+      },
+      status: 'draft',
+      subject: '佐藤花子 の緊急連絡',
+      content: '急変時共有をお願いします',
+      requested_by: 'user_1',
+      requested_at: new Date('2026-06-18T00:00:00.000Z'),
+      due_date: null,
+      created_at: new Date('2026-06-18T00:00:00.000Z'),
+      updated_at: new Date('2026-06-18T00:00:00.000Z'),
+    });
+
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        request_type: 'emergency_physician',
+        template_key: 'emergency_physician',
+        recipient_name: '青葉医師',
+        recipient_role: 'physician',
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_1',
+        context_snapshot: {
+          source: 'communication_queue',
+          template_key: 'emergency_physician',
+        },
+        status: 'draft',
+        subject: '佐藤花子 の緊急連絡',
+        content: '急変時共有をお願いします',
+      }),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'request_existing',
+        status: 'draft',
+      },
+      reused_existing_draft: true,
+    });
+    expect(communicationRequestFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        request_type: 'emergency_physician',
+        patient_id: 'patient_1',
+        case_id: null,
+        template_key: 'emergency_physician',
+        recipient_role: 'physician',
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_1',
+        status: {
+          in: ['draft', 'sent', 'received', 'in_progress', 'responded', 'escalated'],
+        },
+        context_snapshot: { path: ['source'], equals: 'communication_queue' },
+      },
+      select: expect.objectContaining({
+        id: true,
+        context_snapshot: true,
+        status: true,
+      }),
+      orderBy: [{ requested_at: 'desc' }, { id: 'desc' }],
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects archived patients before recipient suggestions or request creation', async () => {
     patientFindFirstMock.mockResolvedValue({
       id: 'patient_1',

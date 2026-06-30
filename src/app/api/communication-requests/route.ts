@@ -64,6 +64,29 @@ const ACTIVE_REPLY_REQUEST_STATUSES = [
   RequestStatus.responded,
   RequestStatus.escalated,
 ];
+const COMMUNICATION_QUEUE_SOURCE = 'communication_queue';
+
+const reusableCommunicationRequestSelect = {
+  id: true,
+  org_id: true,
+  patient_id: true,
+  case_id: true,
+  request_type: true,
+  template_key: true,
+  recipient_name: true,
+  recipient_role: true,
+  related_entity_type: true,
+  related_entity_id: true,
+  context_snapshot: true,
+  status: true,
+  subject: true,
+  content: true,
+  requested_by: true,
+  requested_at: true,
+  due_date: true,
+  created_at: true,
+  updated_at: true,
+} satisfies Prisma.CommunicationRequestSelect;
 
 const communicationRequestQuerySchema = z.object({
   status: communicationRequestStatusSchema.optional(),
@@ -110,6 +133,28 @@ function isInterprofessionalShareRequest(args: {
   return (
     args.templateKey === 'interprofessional_share_reply_request' ||
     args.contextSnapshot?.source === 'interprofessional_share'
+  );
+}
+
+function readContextSnapshotString(
+  contextSnapshot: Prisma.InputJsonObject,
+  key: string,
+): string | null {
+  const value = contextSnapshot[key];
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function isCommunicationQueueDraftRequest(args: {
+  contextSnapshot: Prisma.InputJsonObject;
+  relatedEntityType?: string;
+  relatedEntityId?: string;
+  status?: RequestStatus;
+}): boolean {
+  return (
+    (args.status ?? RequestStatus.draft) === RequestStatus.draft &&
+    args.relatedEntityType === 'patient' &&
+    Boolean(args.relatedEntityId) &&
+    readContextSnapshotString(args.contextSnapshot, 'source') === COMMUNICATION_QUEUE_SOURCE
   );
 }
 
@@ -519,6 +564,39 @@ const authenticatedPOST = withAuthContext(
         return conflict('この相手への返信依頼は既に起票されています', {
           request_id: existingOpenRequest.id,
           status: existingOpenRequest.status,
+        });
+      }
+    }
+
+    if (
+      isCommunicationQueueDraftRequest({
+        contextSnapshot: effectiveContextSnapshot,
+        relatedEntityType: related_entity_type,
+        relatedEntityId: related_entity_id,
+        status,
+      })
+    ) {
+      const existingDraft = await prisma.communicationRequest.findFirst({
+        where: {
+          org_id: ctx.orgId,
+          request_type,
+          patient_id: effectivePatientId,
+          case_id: effectiveCaseId,
+          template_key: template_key ?? null,
+          recipient_role: effectiveRecipientRole,
+          related_entity_type: related_entity_type ?? null,
+          related_entity_id: related_entity_id ?? null,
+          status: { in: ACTIVE_REPLY_REQUEST_STATUSES },
+          context_snapshot: { path: ['source'], equals: COMMUNICATION_QUEUE_SOURCE },
+        },
+        select: reusableCommunicationRequestSelect,
+        orderBy: [{ requested_at: 'desc' }, { id: 'desc' }],
+      });
+
+      if (existingDraft) {
+        return success({
+          data: existingDraft,
+          reused_existing_draft: true,
         });
       }
     }

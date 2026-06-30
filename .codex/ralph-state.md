@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0657 JST
+
+- current task: reuse active workflow emergency communication drafts to prevent duplicate multidisciplinary contact requests.
+- files inspected: `git status --short --branch --untracked-files=all`, `date '+%Y-%m-%d %H:%M:%S %Z'`, current communication-request route/test diffs, `src/app/api/communication-requests/route.ts`, `src/app/api/communication-requests/route.test.ts`, workflow emergency contact context, validation output, agmsg lock/FYI context, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Concurrent dirty `src/app/api/pharmacists/[id]/route.ts` and `src/app/api/pharmacists/[id]/route.test.ts` were observed and preserved outside this slice.
+- files changed: `src/app/api/communication-requests/route.ts`, `src/app/api/communication-requests/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: workflow emergency draft creation could create duplicate active draft/contact requests for the same patient, template, recipient role, related entity, and `communication_queue` source on double-click/retry because the generic create route only conflict-guarded the care-report/patient-share reply request types.
+- security risks found: reduced duplicate urgent interprofessional contact noise while preserving existing assignment/writable-patient checks, report/share duplicate conflict behavior, sensitive no-store responses, sanitized errors, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries. No raw PHI or secrets were added to logs, and the reused response returns the same scalar request shape as the create path.
+- performance issues found: adds one bounded `findFirst` only for draft `communication_queue` workflow requests; no new network call, dependency, background job, broad scan, render path, polling, or unbounded loop was added.
+- validation commands: `pnpm exec vitest run src/app/api/communication-requests/route.test.ts --reporter=dot --testTimeout=60000`; `pnpm exec eslint --max-warnings=0 src/app/api/communication-requests/route.ts src/app/api/communication-requests/route.test.ts`; `pnpm exec prettier --check src/app/api/communication-requests/route.ts src/app/api/communication-requests/route.test.ts`; `git diff --check -- src/app/api/communication-requests/route.ts src/app/api/communication-requests/route.test.ts`; `pnpm typecheck --pretty false`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`; `pnpm lint`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: focused communication-request route Vitest passed `1` file / `43` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed; full typecheck passed; no-unused passed; full lint passed; full format check passed; full diff-check passed. Independent verifier spawn was attempted but unavailable because the agent thread limit was reached.
+- remaining work: broad visit-time, report, and multi-professional cooperation objective remains active. This is application-level idempotency and does not add a DB unique constraint or migration. Short-lived report/PDF grant send wiring remains deferred pending an OTP delivery/security product decision.
+- next action: stage only the communication-request route/test and matching progress-ledger hunks, commit the group, send agmsg FYI to the team, then continue the next bounded visit/report/cooperation gap.
+
 ### 20260701-0648 JST
 
 - current task: commit pending `/admin/staff` real-surface composition as a validated group.
