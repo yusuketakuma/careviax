@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   patientFindFirstMock,
+  patientUpdateManyMock,
   withOrgContextMock,
   deleteManyMock,
   createManyMock,
@@ -11,6 +12,7 @@ const {
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
+  patientUpdateManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   deleteManyMock: vi.fn(),
   createManyMock: vi.fn(),
@@ -42,14 +44,21 @@ vi.mock('@/lib/audit/audit-entry', () => ({
 
 import { GET, PUT } from './route';
 
+const CURRENT_UPDATED_AT = '2026-03-30T09:00:00.000Z';
+const STALE_UPDATED_AT = '2026-03-30T08:59:59.000Z';
+
 function createRequest(body: unknown, headers?: Record<string, string>) {
+  const requestBody =
+    body && typeof body === 'object' && !Array.isArray(body) && !('expected_updated_at' in body)
+      ? { expected_updated_at: CURRENT_UPDATED_AT, ...body }
+      : body;
   return new NextRequest('http://localhost/api/patients/patient_1/contacts', {
-    method: body === undefined ? 'GET' : 'PUT',
+    method: requestBody === undefined ? 'GET' : 'PUT',
     headers: {
-      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      ...(requestBody === undefined ? {} : { 'content-type': 'application/json' }),
       ...headers,
     },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    ...(requestBody === undefined ? {} : { body: JSON.stringify(requestBody) }),
   });
 }
 
@@ -79,11 +88,20 @@ describe('/api/patients/[id]/contacts PUT', () => {
         role: 'pharmacist',
       },
     });
-    patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: null,
+      updated_at: new Date(CURRENT_UPDATED_AT),
+      scheduling_preference: null,
+    });
+    patientUpdateManyMock.mockResolvedValue({ count: 1 });
     createManyMock.mockResolvedValue({ count: 1 });
     findManyMock.mockResolvedValue([{ id: 'contact_1', name: '田中花子' }]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        patient: {
+          updateMany: patientUpdateManyMock,
+        },
         contactParty: {
           deleteMany: deleteManyMock,
           createMany: createManyMock,
@@ -202,6 +220,38 @@ describe('/api/patients/[id]/contacts PUT', () => {
     expect(createManyMock).not.toHaveBeenCalled();
   });
 
+  it('rejects missing expected_updated_at before loading the patient', async () => {
+    const response = await PUT(
+      createRequest(
+        {
+          expected_updated_at: undefined,
+          contacts: [
+            {
+              relation: 'care_manager',
+              name: '田中花子',
+              phone: '03-1234-5678',
+            },
+          ],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        expected_updated_at: ['Invalid input: expected string, received undefined'],
+      },
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(patientUpdateManyMock).not.toHaveBeenCalled();
+    expect(deleteManyMock).not.toHaveBeenCalled();
+    expect(createManyMock).not.toHaveBeenCalled();
+  });
+
   it('replaces patient contacts with expanded fields', async () => {
     findManyMock.mockResolvedValue([
       {
@@ -245,6 +295,14 @@ describe('/api/patients/[id]/contacts PUT', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(patientUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'patient_1',
+        org_id: 'corg1234567890123456789012',
+        updated_at: new Date(CURRENT_UPDATED_AT),
+      },
+      data: { updated_at: expect.any(Date) },
+    });
     expect(createManyMock).toHaveBeenCalledWith({
       data: [
         {
@@ -277,20 +335,23 @@ describe('/api/patients/[id]/contacts PUT', () => {
           ready: true,
           detail: '電話可能な主連絡先または緊急連絡先があります。',
         },
+        expected_updated_at: expect.any(String),
+        version_basis: 'patient_updated_at',
       },
     });
   });
 
   it('returns contact readiness warnings without raw contact values when saved contacts are still not callable', async () => {
-    patientFindFirstMock
-      .mockResolvedValueOnce({ id: 'patient_1', archived_at: null })
-      .mockResolvedValueOnce({
-        scheduling_preference: {
-          preferred_contact_name: '長男',
-          preferred_contact_phone: null,
-          visit_before_contact_required: true,
-        },
-      });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: null,
+      updated_at: new Date(CURRENT_UPDATED_AT),
+      scheduling_preference: {
+        preferred_contact_name: '長男',
+        preferred_contact_phone: null,
+        visit_before_contact_required: true,
+      },
+    });
     findManyMock.mockResolvedValue([
       {
         id: 'contact_1',
@@ -454,6 +515,76 @@ describe('/api/patients/[id]/contacts PUT', () => {
     });
   });
 
+  it('rejects stale expected_updated_at before replacing patient contacts', async () => {
+    const response = await PUT(
+      createRequest(
+        {
+          expected_updated_at: STALE_UPDATED_AT,
+          contacts: [
+            {
+              relation: 'child',
+              name: '長男',
+              phone: '090-1111-1111',
+              is_primary: true,
+              is_emergency_contact: true,
+            },
+          ],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者連絡先が他の操作で更新されています。再読み込みしてください',
+      details: {
+        conflict_type: 'stale_patient_contacts',
+        expected_updated_at: STALE_UPDATED_AT,
+        current_updated_at: CURRENT_UPDATED_AT,
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientUpdateManyMock).not.toHaveBeenCalled();
+    expect(deleteManyMock).not.toHaveBeenCalled();
+    expect(createManyMock).not.toHaveBeenCalled();
+  });
+
+  it('does not delete contacts when the patient version claim loses the race', async () => {
+    patientUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await PUT(
+      createRequest(
+        {
+          contacts: [
+            {
+              relation: 'child',
+              name: '長男',
+              phone: '090-1111-1111',
+              is_primary: true,
+              is_emergency_contact: true,
+            },
+          ],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        conflict_type: 'stale_patient_contacts',
+        expected_updated_at: CURRENT_UPDATED_AT,
+        current_updated_at: CURRENT_UPDATED_AT,
+      },
+    });
+    expect(deleteManyMock).not.toHaveBeenCalled();
+    expect(createManyMock).not.toHaveBeenCalled();
+  });
+
   it('returns duplicate contact warnings without raw contact values', async () => {
     const response = await PUT(
       createRequest(
@@ -533,6 +664,7 @@ describe('/api/patients/[id]/contacts PUT', () => {
       message: 'アーカイブ中の患者は復元するまで更新できません',
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientUpdateManyMock).not.toHaveBeenCalled();
     expect(deleteManyMock).not.toHaveBeenCalled();
     expect(createManyMock).not.toHaveBeenCalled();
   });
@@ -555,7 +687,10 @@ describe('/api/patients/[id]/contacts PUT', () => {
         address: '東京都千代田区4-5-6',
       },
     ]);
-    vi.mocked(patientFindFirstMock).mockResolvedValue({ id: 'patient_1' });
+    vi.mocked(patientFindFirstMock).mockResolvedValue({
+      id: 'patient_1',
+      updated_at: new Date(CURRENT_UPDATED_AT),
+    });
 
     const response = await GET(
       createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
@@ -575,6 +710,10 @@ describe('/api/patients/[id]/contacts PUT', () => {
           address: '東京都千代田***',
         },
       ],
+      metadata: {
+        expected_updated_at: CURRENT_UPDATED_AT,
+        version_basis: 'patient_updated_at',
+      },
     });
   });
 });

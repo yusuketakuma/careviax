@@ -53,6 +53,13 @@ type ReliabilityWarning = {
   message: string;
 };
 
+type ContactSaveResponse = {
+  warnings?: ReliabilityWarning[];
+  metadata?: {
+    expected_updated_at?: string | null;
+  };
+};
+
 const relationLabel: Record<ContactRow['relation'], string> = {
   self: '本人',
   spouse: '配偶者',
@@ -69,14 +76,17 @@ const relationLabel: Record<ContactRow['relation'], string> = {
 const CONTACT_DELETE_DISABLED_REASON_ID = 'patient-contact-delete-disabled-reason';
 const CONTACT_SAVE_EMPTY_REASON_ID = 'patient-contact-save-empty-reason';
 const CONTACT_SAVE_EMPTY_REASON = '保存するには連絡先の氏名を入力してください。';
+const CONTACT_SAVE_STALE_REASON = '患者情報を再読み込みしてから連絡先を保存してください。';
 
 export function PatientContactsPanel({
   patientId,
   orgId,
   initialContacts,
+  initialExpectedUpdatedAt = null,
 }: {
   patientId: string;
   orgId: string;
+  initialExpectedUpdatedAt?: string | null;
   initialContacts: Array<{
     id: string;
     relation: ContactRow['relation'];
@@ -125,13 +135,18 @@ export function PatientContactsPanel({
           },
         ],
   );
+  const [expectedUpdatedAt, setExpectedUpdatedAt] = useState(initialExpectedUpdatedAt);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (!expectedUpdatedAt) {
+        throw new Error(CONTACT_SAVE_STALE_REASON);
+      }
       const res = await fetch(buildPatientApiPath(patientId, '/contacts'), {
         method: 'PUT',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
+          expected_updated_at: expectedUpdatedAt,
           contacts: contacts
             .filter((contact) => contact.name.trim())
             .map((contact) => ({
@@ -153,9 +168,12 @@ export function PatientContactsPanel({
       if (!res.ok) {
         throw new Error((payload as { message?: string }).message ?? '連絡先の保存に失敗しました');
       }
-      return payload as { warnings?: ReliabilityWarning[] };
+      return payload as ContactSaveResponse;
     },
     onSuccess: async (payload) => {
+      if (payload.metadata?.expected_updated_at) {
+        setExpectedUpdatedAt(payload.metadata.expected_updated_at);
+      }
       toast.success('連絡先を更新しました');
       for (const warning of payload.warnings ?? []) {
         toast.warning(warning.message);
@@ -167,7 +185,11 @@ export function PatientContactsPanel({
     },
   });
   const hasPersistableContact = contacts.some((contact) => contact.name.trim());
-  const saveDisabledReason = hasPersistableContact ? null : CONTACT_SAVE_EMPTY_REASON;
+  const saveDisabledReason = !hasPersistableContact
+    ? CONTACT_SAVE_EMPTY_REASON
+    : expectedUpdatedAt
+      ? null
+      : CONTACT_SAVE_STALE_REASON;
 
   return (
     <Card>

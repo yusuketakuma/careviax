@@ -17,7 +17,6 @@ import {
 import { updatePatientContactsSchema } from '@/lib/validations/patient';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import type { AuthContext } from '@/lib/auth/context';
-import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import {
   buildPatientContactReadiness,
   normalizePatientPrimaryContacts,
@@ -31,9 +30,18 @@ async function assertPatient(ctx: AuthContext, id: string) {
       { id, org_id: ctx.orgId },
       { userId: ctx.userId, role: ctx.role },
     ),
-    select: { id: true },
+    select: { id: true, updated_at: true },
   });
   if (!patient) throw new Error('PATIENT_NOT_FOUND');
+  return patient;
+}
+
+function staleContactsConflict(expectedUpdatedAt: string, currentUpdatedAt: Date | null) {
+  return conflict('患者連絡先が他の操作で更新されています。再読み込みしてください', {
+    conflict_type: 'stale_patient_contacts',
+    expected_updated_at: expectedUpdatedAt,
+    current_updated_at: currentUpdatedAt?.toISOString() ?? null,
+  });
 }
 
 async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -47,8 +55,9 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('患者IDが不正です');
 
+  let patient;
   try {
-    await assertPatient(ctx, id);
+    patient = await assertPatient(ctx, id);
   } catch {
     return notFound('患者が見つかりません');
   }
@@ -71,6 +80,10 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       email: privacy.sensitiveFieldsMasked ? maskContactValue(contact.email) : contact.email,
       address: privacy.addressFieldsMasked ? maskAddressDetail(contact.address) : contact.address,
     })),
+    metadata: {
+      expected_updated_at: patient.updated_at.toISOString(),
+      version_basis: 'patient_updated_at',
+    },
   });
 }
 
@@ -104,11 +117,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const normalizedContacts = normalizePatientPrimaryContacts(parsed.data.contacts);
   const duplicateContactWarnings = detectDuplicatePatientContacts(normalizedContacts);
 
-  const writable = await requireWritablePatient(prisma, ctx, id);
-  if ('response' in writable) return writable.response;
-  const patientSettings = await prisma.patient.findFirst({
-    where: { id, org_id: ctx.orgId },
+  const patient = await prisma.patient.findFirst({
+    where: applyPatientAssignmentWhere(
+      { id, org_id: ctx.orgId },
+      { userId: ctx.userId, role: ctx.role },
+    ),
     select: {
+      id: true,
+      archived_at: true,
+      updated_at: true,
       scheduling_preference: {
         select: {
           preferred_contact_name: true,
@@ -118,12 +135,31 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       },
     },
   });
+  if (!patient) return notFound('患者が見つかりません');
+  if (patient.archived_at) return conflict('アーカイブ中の患者は復元するまで更新できません');
 
-  let data;
+  const expectedUpdatedAt = new Date(parsed.data.expected_updated_at);
+  if (patient.updated_at.toISOString() !== expectedUpdatedAt.toISOString()) {
+    return staleContactsConflict(parsed.data.expected_updated_at, patient.updated_at);
+  }
+
+  let result;
   try {
-    data = await withOrgContext(
+    result = await withOrgContext(
       ctx.orgId,
       async (tx) => {
+        const nextUpdatedAt = new Date();
+        const claimed = await tx.patient.updateMany({
+          where: { id, org_id: ctx.orgId, updated_at: expectedUpdatedAt },
+          data: { updated_at: nextUpdatedAt },
+        });
+        if (claimed.count !== 1) {
+          return {
+            kind: 'response' as const,
+            response: staleContactsConflict(parsed.data.expected_updated_at, patient.updated_at),
+          };
+        }
+
         await tx.contactParty.deleteMany({
           where: { org_id: ctx.orgId, patient_id: id },
         });
@@ -157,10 +193,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           },
         });
 
-        return tx.contactParty.findMany({
+        const contacts = await tx.contactParty.findMany({
           where: { org_id: ctx.orgId, patient_id: id },
           orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
         });
+        return {
+          kind: 'updated' as const,
+          contacts,
+          expectedUpdatedAt: nextUpdatedAt,
+        };
       },
       { requestContext: ctx },
     );
@@ -170,18 +211,18 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
     throw error;
   }
+  if (result.kind === 'response') return result.response;
 
   const privacy = getPatientPrivacyFlags(ctx.role);
   const contactReliability = buildPatientContactReadiness({
-    contacts: data,
-    preferredContactName: patientSettings?.scheduling_preference?.preferred_contact_name,
-    preferredContactPhone: patientSettings?.scheduling_preference?.preferred_contact_phone,
-    visitBeforeContactRequired:
-      patientSettings?.scheduling_preference?.visit_before_contact_required,
+    contacts: result.contacts,
+    preferredContactName: patient.scheduling_preference?.preferred_contact_name,
+    preferredContactPhone: patient.scheduling_preference?.preferred_contact_phone,
+    visitBeforeContactRequired: patient.scheduling_preference?.visit_before_contact_required,
   });
 
   return success({
-    data: data.map((contact) => ({
+    data: result.contacts.map((contact) => ({
       ...contact,
       phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.phone) : contact.phone,
       fax: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.fax) : contact.fax,
@@ -203,6 +244,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     metadata: {
       contact_readiness: contactReliability,
       duplicate_contacts: duplicateContactWarnings,
+      expected_updated_at: result.expectedUpdatedAt.toISOString(),
+      version_basis: 'patient_updated_at',
     },
   });
 }

@@ -30,6 +30,36 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Patient Contacts OCC - 2026-07-01 04:59 JST
+
+- Scope:
+  - Continued patient-information and master-management hardening on the patient contact replacement API and its existing patient-detail contact editor component.
+  - Focused on stale browser/API writes to destructive patient contact replacement (`deleteMany + createMany`), which can otherwise delete newer family/care-team contact rows.
+- Fixed:
+  - `PUT /api/patients/[id]/contacts` now requires `expected_updated_at`, compares it to `Patient.updated_at`, claims the same patient row version with `updateMany({ id, org_id, updated_at })`, and only then deletes/recreates contacts.
+  - `GET /api/patients/[id]/contacts` now returns `metadata.expected_updated_at` with `version_basis: "patient_updated_at"` so clients can submit the correct version token.
+  - `PatientContactsPanel` now sends the patient version token, disables save when no version is available, and refreshes its local token from successful save metadata.
+  - Protected GET matrix mocks were updated to include the timestamp/contact relation fields required by current patient/facility contact metadata contracts.
+  - Regression coverage proves missing-version validation, stale 409 responses, race-loss guards that do not delete contacts, protected GET no-store compatibility, UI body shape, and path-helper fail-closed behavior.
+- Safety:
+  - Reduces stale patient contact overwrite/deletion risk for patient/family/care-team contact management.
+  - Preserves canVisit auth, assignment-aware patient access filtering, archived-patient write blocking, org scoping, RLS transaction context, no-store GET wrappers, privacy masking, duplicate-contact warning redaction, contact-readiness warning redaction, audit creation after successful replacement, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds one narrow patient `updateMany` version claim on the existing write path and reuses the existing contact reload.
+  - No new dependency, external call, background job, list scan, render-heavy path, or unbounded loop was added.
+- Validation:
+  - Focused patient contacts API/UI Vitest passed `2` files / `25` tests.
+  - Related patient/protected API suite passed `5` files / `486` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on patient contact files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master-management and patient-information objective remains open.
+  - Patient contacts now have backend/API and component-level precondition support, but the current `/patients/[id]` card workspace does not yet mount `PatientContactsPanel`; production patient-detail contact editing still needs a current-surface integration pass.
+
 ### CareReport PDF Unsupported Content Fail-Closed - 2026-07-01 04:55 JST
 
 - Scope:

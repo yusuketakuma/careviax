@@ -297,6 +297,7 @@ export const updatePatientConditionsSchema = z.object({
 });
 
 export const updatePatientContactsSchema = z.object({
+  expected_updated_at: z.string().datetime('患者連絡先の版情報が不正です'),
   contacts: z.array(patientContactSchema),
 });
 

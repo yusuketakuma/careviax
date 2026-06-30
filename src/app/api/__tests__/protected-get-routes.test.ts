@@ -37,6 +37,8 @@ const {
     line_id: 'line_1',
     patient_id: 'patient_1',
     case_id: 'case_1',
+    created_at: new Date('2026-06-18T00:00:00.000Z'),
+    updated_at: new Date('2026-06-18T00:00:00.000Z'),
     structured_soap: {
       handoff: {
         next_check_items: ['確認事項'],
@@ -53,6 +55,7 @@ const {
     case_: {
       patient_id: 'patient_1',
     },
+    contacts: [],
     role: 'admin',
     _count: { id: 0 },
     retry_count: 0,
@@ -1048,6 +1051,7 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     setupSuccess: () => {
       prismaMock.facility.findFirst.mockResolvedValueOnce({
         id: 'facility_1',
+        updated_at: new Date('2026-06-18T00:00:00.000Z'),
         contacts: [
           {
             id: 'contact_1',
@@ -1058,6 +1062,7 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
             fax: null,
             is_primary: true,
             notes: null,
+            updated_at: new Date('2026-06-18T00:00:00.000Z'),
           },
         ],
       });

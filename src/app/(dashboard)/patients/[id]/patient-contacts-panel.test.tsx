@@ -32,6 +32,8 @@ import { toast } from 'sonner';
 
 setupDomTestEnv();
 
+const EXPECTED_UPDATED_AT = '2026-03-30T09:00:00.000Z';
+
 describe('PatientContactsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -45,6 +47,7 @@ describe('PatientContactsPanel', () => {
       <PatientContactsPanel
         patientId="patient_1"
         orgId="org_1"
+        initialExpectedUpdatedAt={EXPECTED_UPDATED_AT}
         initialContacts={[
           {
             id: 'contact_1',
@@ -95,6 +98,7 @@ describe('PatientContactsPanel', () => {
       <PatientContactsPanel
         patientId="patient_1"
         orgId="org_1"
+        initialExpectedUpdatedAt={EXPECTED_UPDATED_AT}
         initialContacts={[
           {
             id: 'contact_1',
@@ -140,7 +144,14 @@ describe('PatientContactsPanel', () => {
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
     useMutationMock.mockReturnValue({ mutate, isPending: false });
 
-    render(<PatientContactsPanel patientId="patient_1" orgId="org_1" initialContacts={[]} />);
+    render(
+      <PatientContactsPanel
+        patientId="patient_1"
+        orgId="org_1"
+        initialExpectedUpdatedAt={EXPECTED_UPDATED_AT}
+        initialContacts={[]}
+      />,
+    );
 
     const saveButton = screen.getByRole('button', { name: '保存' });
     const saveReason = screen.getByText('保存するには連絡先の氏名を入力してください。');
@@ -175,6 +186,7 @@ describe('PatientContactsPanel', () => {
       <PatientContactsPanel
         patientId="patient_1"
         orgId="org_1"
+        initialExpectedUpdatedAt={EXPECTED_UPDATED_AT}
         initialContacts={[
           {
             id: 'contact_1',
@@ -245,6 +257,7 @@ describe('PatientContactsPanel', () => {
         <PatientContactsPanel
           patientId={hostileId}
           orgId="org_1"
+          initialExpectedUpdatedAt={EXPECTED_UPDATED_AT}
           initialContacts={sampleContacts}
         />,
       );
@@ -262,6 +275,7 @@ describe('PatientContactsPanel', () => {
       // patient id lives only in the URL path; every contact field is preserved verbatim and name is trimmed.
       expect(body).not.toContain(hostileId);
       expect(JSON.parse(body)).toEqual({
+        expected_updated_at: EXPECTED_UPDATED_AT,
         contacts: [
           {
             relation: 'child',
@@ -316,6 +330,7 @@ describe('PatientContactsPanel', () => {
         <PatientContactsPanel
           patientId={patientId}
           orgId="org_1"
+          initialExpectedUpdatedAt={EXPECTED_UPDATED_AT}
           initialContacts={sampleContacts}
         />,
       );
@@ -355,7 +370,12 @@ describe('PatientContactsPanel', () => {
 
       try {
         render(
-          <PatientContactsPanel patientId={dotId} orgId="org_1" initialContacts={sampleContacts} />,
+          <PatientContactsPanel
+            patientId={dotId}
+            orgId="org_1"
+            initialExpectedUpdatedAt={EXPECTED_UPDATED_AT}
+            initialContacts={sampleContacts}
+          />,
         );
         await expect(savedConfig?.mutationFn?.()).rejects.toThrow(RangeError);
         expect(fetchMock).not.toHaveBeenCalled();
