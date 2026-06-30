@@ -132,6 +132,11 @@ type SyncPatientMcsTimelineArgs = {
   sourceUrl?: string;
 };
 
+type SyncPatientMcsTimelineDependencies = {
+  scrapeTimeline?: (sourceUrl: string) => Promise<ScrapedMcsTimelineWithContext>;
+  now?: () => Date;
+};
+
 type PatientMcsSyncErrorKind = 'validation' | 'conflict' | 'external';
 
 type ResolvedMcsProjectLink = {
@@ -881,12 +886,13 @@ export async function generatePatientMcsSummarySafely(args: {
   }
 }
 
-export async function syncPatientMcsTimeline({
-  orgId,
-  patientId,
-  userId,
-  sourceUrl,
-}: SyncPatientMcsTimelineArgs): Promise<PatientMcsSyncResult> {
+export async function syncPatientMcsTimeline(
+  { orgId, patientId, userId, sourceUrl }: SyncPatientMcsTimelineArgs,
+  dependencies: SyncPatientMcsTimelineDependencies = {},
+): Promise<PatientMcsSyncResult> {
+  const scrapeTimeline = dependencies.scrapeTimeline ?? scrapeMcsTimeline;
+  const now = dependencies.now ?? (() => new Date());
+
   const patient = await prisma.patient.findFirst({
     where: { id: patientId, org_id: orgId },
     select: { id: true, name: true, name_kana: true },
@@ -911,7 +917,7 @@ export async function syncPatientMcsTimeline({
   }
 
   try {
-    const scraped = await scrapeMcsTimeline(effectiveSourceUrl);
+    const scraped = await scrapeTimeline(effectiveSourceUrl);
     if (
       existingLink?.mcs_patient_id &&
       scraped.mcsPatientId &&
@@ -926,7 +932,7 @@ export async function syncPatientMcsTimeline({
       projectTitle: scraped.projectTitle,
       messages: preparedMessages,
     });
-    const syncedAt = new Date();
+    const syncedAt = now();
 
     const saved = await withOrgContext(orgId, async (tx) => {
       const txWithSummary = tx as typeof tx & {
@@ -974,15 +980,6 @@ export async function syncPatientMcsTimeline({
         },
       });
 
-      if (existingLink?.mcs_project_id && existingLink.mcs_project_id !== scraped.mcsProjectId) {
-        await tx.patientMcsMessage.deleteMany({
-          where: { link_id: link.id, org_id: orgId },
-        });
-        await txWithSummary.patientMcsSummary.deleteMany({
-          where: { patient_id: patientId, org_id: orgId },
-        });
-      }
-
       const buildMessageFields = (message: PreparedPatientMcsMessage) => {
         return {
           author_name: message.authorName,
@@ -1026,19 +1023,8 @@ export async function syncPatientMcsTimeline({
         );
       }
 
-      const currentMessageIds = preparedMessages.map((message) => message.sourceMessageId);
-      // Only remove messages that are no longer present on the remote side.
-      // When the sync returns an empty set we skip deletion entirely to preserve
-      // existing data (avoids data loss from transient scraping failures).
-      if (currentMessageIds.length > 0) {
-        await tx.patientMcsMessage.deleteMany({
-          where: {
-            link_id: link.id,
-            org_id: orgId,
-            source_message_id: { notIn: currentMessageIds },
-          },
-        });
-      }
+      // MCS scraping is bounded and not authoritative for deletion. Preserve local
+      // timeline history and only upsert messages observed in the latest scrape.
 
       if (summary) {
         await txWithSummary.patientMcsSummary.upsert({
@@ -1078,7 +1064,7 @@ export async function syncPatientMcsTimeline({
     return saved;
   } catch (error) {
     const syncError = toPatientMcsSyncError(error);
-    const attemptedAt = new Date();
+    const attemptedAt = now();
 
     await withOrgContext(orgId, async (tx) => {
       await tx.patientMcsLink.upsert({

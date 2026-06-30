@@ -14,6 +14,7 @@ vi.mock('@/lib/db/client', () => ({
     patientMcsMessage: {
       findMany: vi.fn(),
       upsert: vi.fn(),
+      deleteMany: vi.fn(),
     },
     patientMcsSummary: {
       findFirst: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock('./patient-mcs-ai', () => ({
   generatePatientMcsAiSummary: generatePatientMcsAiSummaryMock,
 }));
 
+import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import {
   extractPatientNameFromProjectTitle,
@@ -52,7 +54,112 @@ import {
   parseMcsAuthorDescriptor,
   parseMcsPostedAtLabel,
   sanitizePatientMcsExternalErrorMessage,
+  syncPatientMcsTimeline,
 } from './patient-mcs';
+
+type TransactionCallback = Parameters<typeof withOrgContext>[1];
+type TransactionClient = Parameters<TransactionCallback>[0];
+
+function buildScrapedMcsTimeline(overrides: Record<string, unknown> = {}) {
+  return {
+    sourceUrl: 'https://www.medical-care.net/patients/123',
+    mcsPatientId: '123',
+    mcsPatientUrl: 'https://www.medical-care.net/patients/123',
+    mcsProjectId: 'project_new',
+    mcsProjectUrl: 'https://www.medical-care.net/projects/medical/project_new',
+    projectTitle: '板屋 美恵子：年長者の里',
+    projectMemo: null,
+    memberCount: 4,
+    mcsPatientName: '板屋 美恵子',
+    messages: [
+      {
+        sourceMessageId: 'message_new',
+        authorName: '看護師 佐藤',
+        authorDescriptor: '看護師（訪問看護）',
+        postedAtLabel: '4/2 12:12',
+        body: '発熱なし',
+        reactionCount: 1,
+        replyCount: 0,
+        sortOrder: 0,
+        sourceUrl: 'https://www.medical-care.net/projects/medical/project_new#message-message_new',
+      },
+    ],
+    ...overrides,
+  };
+}
+
+function buildSavedMcsSummary() {
+  return {
+    id: 'summary_existing',
+    generation_id: 'gen_existing',
+    provider: 'rule',
+    requested_provider: 'disabled',
+    is_fallback: true,
+    model: null,
+    fallback_reason: 'provider_unavailable',
+    headline: '既存の要約を保持',
+    bullets: ['食欲低下の共有を確認'],
+    must_check_today: [],
+    suggested_actions: [],
+    source_refs: ['message_old'],
+    message_count: 1,
+    other_professional_message_count: 1,
+    latest_posted_at: new Date('2026-04-01T10:00:00.000Z'),
+    generated_at: new Date('2026-04-01T10:01:00.000Z'),
+    duration_ms: null,
+  };
+}
+
+function buildPatientMcsSyncTx() {
+  return {
+    patientMcsLink: {
+      upsert: vi.fn().mockResolvedValue({
+        id: 'link_1',
+        source_url: 'https://www.medical-care.net/patients/123',
+        mcs_patient_id: '123',
+        mcs_patient_url: 'https://www.medical-care.net/patients/123',
+        mcs_project_id: 'project_new',
+        mcs_project_url: 'https://www.medical-care.net/projects/medical/project_new',
+        project_title: '板屋 美恵子：年長者の里',
+        project_memo: null,
+        member_count: 4,
+        last_sync_attempt_at: new Date('2026-04-02T03:00:00.000Z'),
+        last_synced_at: new Date('2026-04-02T03:00:00.000Z'),
+        last_sync_status: 'success',
+        last_sync_error: null,
+      }),
+    },
+    patientMcsMessage: {
+      upsert: vi.fn().mockResolvedValue({ id: 'message_new' }),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+    patientMcsSummary: {
+      upsert: vi.fn().mockResolvedValue({ id: 'summary_new' }),
+      findUnique: vi.fn().mockResolvedValue(null),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+  };
+}
+
+function mockPatientMcsSyncLookups(existingProjectId = 'project_new') {
+  vi.mocked(prisma.patient.findFirst).mockResolvedValueOnce({
+    id: 'patient_1',
+    name: '板屋 美恵子',
+    name_kana: 'イタヤ ミエコ',
+  } as never);
+  vi.mocked(prisma.patientMcsLink.findUnique).mockResolvedValueOnce({
+    id: 'link_1',
+    source_url: 'https://www.medical-care.net/patients/123',
+    mcs_patient_id: '123',
+    mcs_project_id: existingProjectId,
+  } as never);
+}
+
+function mockPatientMcsSyncTransaction(tx: ReturnType<typeof buildPatientMcsSyncTx>) {
+  vi.mocked(withOrgContext).mockImplementationOnce(async (_orgId, callback) =>
+    callback(tx as unknown as TransactionClient),
+  );
+}
 
 describe('patient-mcs service helpers', () => {
   const originalEnv = {
@@ -65,6 +172,7 @@ describe('patient-mcs service helpers', () => {
     process.env.AWS_EXECUTION_ENV = originalEnv.awsExecutionEnv;
     process.env.PATIENT_MCS_BROWSER_SYNC_ENABLED = originalEnv.mcsBrowserSyncEnabled;
     process.env.VERCEL = originalEnv.vercel;
+    vi.clearAllMocks();
   });
 
   it('normalizes medical-care URLs and strips hashes', () => {
@@ -146,6 +254,10 @@ describe('patient-mcs service helpers', () => {
         '別患者',
         'ベツカンジャ',
       ]),
+    ).toBe(false);
+
+    expect(
+      matchesPatientIdentity({ name: '板屋 美恵子', name_kana: 'イタヤ ミエコ' }, ['板屋']),
     ).toBe(false);
   });
 
@@ -330,10 +442,69 @@ describe('patient-mcs service helpers', () => {
     ).toBeNull();
   });
 
-  it('normalizes overview message limits before querying messages', async () => {
-    type TransactionCallback = Parameters<typeof withOrgContext>[1];
-    type TransactionClient = Parameters<TransactionCallback>[0];
+  it('upserts scraped MCS messages without deleting local messages missing from the latest scrape', async () => {
+    mockPatientMcsSyncLookups();
+    const tx = buildPatientMcsSyncTx();
+    mockPatientMcsSyncTransaction(tx);
+    generatePatientMcsAiSummaryMock.mockResolvedValueOnce(null);
 
+    await expect(
+      syncPatientMcsTimeline(
+        {
+          orgId: 'org_1',
+          patientId: 'patient_1',
+          userId: 'user_1',
+        },
+        {
+          now: () => new Date('2026-04-02T03:00:00.000Z'),
+          scrapeTimeline: async () => buildScrapedMcsTimeline({ mcsProjectId: 'project_new' }),
+        },
+      ),
+    ).resolves.toMatchObject({
+      importedCount: 1,
+      latestMessageAt: new Date('2026-04-02T03:12:00.000Z'),
+    });
+
+    expect(tx.patientMcsMessage.upsert).toHaveBeenCalledTimes(1);
+    expect(tx.patientMcsMessage.deleteMany).not.toHaveBeenCalled();
+    expect(tx.patientMcsSummary.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('preserves existing MCS messages and summary when the linked project changes and summary generation fails', async () => {
+    mockPatientMcsSyncLookups('project_old');
+    const tx = buildPatientMcsSyncTx();
+    const existingSummary = buildSavedMcsSummary();
+    tx.patientMcsSummary.findUnique.mockResolvedValueOnce(existingSummary);
+    mockPatientMcsSyncTransaction(tx);
+    generatePatientMcsAiSummaryMock.mockRejectedValueOnce(new Error('temporary AI failure'));
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(
+      syncPatientMcsTimeline(
+        {
+          orgId: 'org_1',
+          patientId: 'patient_1',
+          userId: 'user_1',
+        },
+        {
+          now: () => new Date('2026-04-02T03:00:00.000Z'),
+          scrapeTimeline: async () => buildScrapedMcsTimeline({ mcsProjectId: 'project_new' }),
+        },
+      ),
+    ).resolves.toMatchObject({
+      importedCount: 1,
+      summary: { id: 'summary_existing', headline: '既存の要約を保持' },
+    });
+
+    expect(tx.patientMcsMessage.upsert).toHaveBeenCalledTimes(1);
+    expect(tx.patientMcsMessage.deleteMany).not.toHaveBeenCalled();
+    expect(tx.patientMcsSummary.upsert).not.toHaveBeenCalled();
+    expect(tx.patientMcsSummary.deleteMany).not.toHaveBeenCalled();
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('normalizes overview message limits before querying messages', async () => {
     const tx = {
       patientMcsLink: {
         findFirst: vi.fn().mockResolvedValue({

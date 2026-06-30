@@ -30,6 +30,37 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Patient MCS Sync Data Retention - 2026-07-01 02:40 JST
+
+- Scope:
+  - Continued patient-information hardening on the MCS timeline sync service.
+  - Focused on Plans.md Phase 8-3 acceptance: MCS sync must not delete existing local data when the latest scrape is bounded, incomplete, or summary generation fails.
+- Fixed:
+  - `syncPatientMcsTimeline` now parameterizes the scraper/clock for deterministic service tests without invoking the local browser bridge.
+  - Removed project-change `patientMcsMessage.deleteMany` and `patientMcsSummary.deleteMany` from sync.
+  - Removed the stale-message `notIn` delete pass after each scrape; sync now upserts observed messages only.
+  - Summary generation failure continues to preserve the existing summary and is now covered through the full sync path.
+  - Patient identity matching is covered against partial-name matches; normalized exact equality remains required.
+  - `Plans.md` Phase 8-3 checkboxes now match the verified implementation state.
+- Safety:
+  - Reduces patient MCS timeline/history loss risk caused by bounded scraping, transient MCS UI omissions, project URL changes, or temporary AI summary failures.
+  - Preserves org/patient lookup scoping, MCS patient-id conflict checks, exact patient identity checks, sanitized sync error handling, existing link upsert behavior, browser-host allowlist behavior, migrations, live DB state, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Removes delete queries from successful sync and keeps the existing chunked message upserts.
+  - No new dependency, DB scan, background job, external call, broad transaction, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/patient-mcs.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `21` tests.
+  - `pnpm exec eslint --max-warnings=0 src/server/services/patient-mcs.ts src/server/services/patient-mcs.test.ts`: passed.
+  - `pnpm exec prettier --check src/server/services/patient-mcs.ts src/server/services/patient-mcs.test.ts Plans.md`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --check src/server/services/patient-mcs.ts src/server/services/patient-mcs.test.ts Plans.md CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`: passed after the same ledger-inclusive check without raised heap aborted with Node OOM.
+  - `git diff --check -- src/server/services/patient-mcs.ts src/server/services/patient-mcs.test.ts Plans.md`: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `rg` confirmed no `patientMcsMessage.deleteMany`, `patientMcsSummary.deleteMany`, or `source_message_id: { notIn ... }` sync deletion remains in `src/server/services/patient-mcs.ts`.
+- Remaining:
+  - Broad master-management / patient-information objective remains open.
+  - Concurrent unrelated dirty changes appeared in `src/app/api/visit-schedule-proposals/[id]/route.ts`, `src/app/api/visit-schedule-proposals/[id]/route.test.ts`, `src/app/api/care-reports/today-workspace/route.ts`, `src/app/api/care-reports/today-workspace/route.test.ts`, `src/lib/visits/navigation.ts`, and `src/lib/visits/navigation.test.ts`; they were inspected, preserved, and excluded from this MCS slice.
+
 ### Master Hub Expired Vehicle Freshness - 2026-07-01 02:28 JST
 
 - Scope:
