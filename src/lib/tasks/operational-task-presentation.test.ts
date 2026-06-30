@@ -77,6 +77,87 @@ describe('describeOperationalTask', () => {
     );
   });
 
+  it('focuses management-plan review tasks on the related task queue when only the plan is known', () => {
+    const planId = 'plan/1?x=y#frag';
+
+    expect(
+      describeOperationalTask({
+        task_type: 'management_plan_review',
+        related_entity_type: 'management_plan',
+        related_entity_id: planId,
+      }),
+    ).toMatchObject({
+      actionHref:
+        '/tasks?status=&task_type=management_plan_review&related_entity_type=management_plan&related_entity_id=plan%2F1%3Fx%3Dy%23frag',
+      actionLabel: '計画を見直す',
+      queueLabel: '計画書',
+    });
+  });
+
+  it('links geocode review tasks to the patient address editor', () => {
+    const patientId = 'patient/1?x=y#frag';
+
+    expect(
+      describeOperationalTask({
+        task_type: 'geocode_review',
+        related_entity_type: 'patient',
+        related_entity_id: patientId,
+      }).actionHref,
+    ).toBe(`/patients/${encodeURIComponent(patientId)}/edit?section=visit#intake.address`);
+  });
+
+  it('links visit intake linkage tasks to prescription detail when the intake is known', () => {
+    const intakeId = 'intake/1?x=y#frag';
+
+    expect(
+      describeOperationalTask({
+        task_type: 'visit_intake_linkage',
+        related_entity_type: 'prescription_intake',
+        related_entity_id: intakeId,
+      }).actionHref,
+    ).toBe(`/prescriptions/${encodeURIComponent(intakeId)}`);
+  });
+
+  it('focuses self-report and community follow-up tasks on the external work queues', () => {
+    expect(
+      describeOperationalTask({
+        task_type: 'patient_self_report_followup',
+        related_entity_type: 'patient_self_report',
+        related_entity_id: 'report_1',
+      }).actionHref,
+    ).toBe('/external?focus=self_reports');
+
+    expect(
+      describeOperationalTask({
+        task_type: 'community_activity_followup',
+        related_entity_type: 'community_activity',
+        related_entity_id: 'activity_1',
+      }).actionHref,
+    ).toBe('/external?focus=activities');
+  });
+
+  it('links residual review tasks back to the originating visit record', () => {
+    const visitRecordId = 'visit/1?x=y#frag';
+
+    expect(
+      describeOperationalTask({
+        task_type: 'residual_reduction_review',
+        related_entity_type: 'visit_record',
+        related_entity_id: visitRecordId,
+      }).actionHref,
+    ).toBe(`/visits/${encodeURIComponent(visitRecordId)}`);
+  });
+
+  it('focuses conference action items on the conference note workspace', () => {
+    expect(
+      describeOperationalTask({
+        task_type: 'conference_action_item',
+        related_entity_type: 'conference_note',
+        related_entity_id: 'note_1',
+      }).actionHref,
+    ).toBe('/conferences?focus=notes');
+  });
+
   it.each([
     ['report_delivery_followup', '報告送達を確認', '報告送達'],
     ['report_response_followup', '未確認報告を確認', '報告返信待ち'],
