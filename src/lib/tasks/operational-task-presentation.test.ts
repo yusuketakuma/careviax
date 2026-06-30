@@ -77,6 +77,25 @@ describe('describeOperationalTask', () => {
     );
   });
 
+  it.each([
+    ['report_delivery_followup', '報告送達を確認', '報告送達'],
+    ['report_response_followup', '未確認報告を確認', '報告返信待ち'],
+  ])('links %s tasks back to the related report detail', (taskType, actionLabel, queueLabel) => {
+    const reportId = 'report/1?x=y#frag';
+
+    expect(
+      describeOperationalTask({
+        task_type: taskType,
+        related_entity_type: 'care_report',
+        related_entity_id: reportId,
+      }),
+    ).toMatchObject({
+      actionHref: `/reports/${encodeURIComponent(reportId)}`,
+      actionLabel,
+      queueLabel,
+    });
+  });
+
   it('links tracing report follow-up tasks back to related communication requests', () => {
     const tracingReportId = 'tracing/1?x=y#frag';
 

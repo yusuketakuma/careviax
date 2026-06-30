@@ -2,6 +2,7 @@ import { buildAuditTaskHref } from '@/lib/audit/navigation';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
+import { buildReportHref } from '@/lib/reports/navigation';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 
 export type OperationalTaskPresentation = {
@@ -166,13 +167,19 @@ export function describeOperationalTask(
       };
     case 'report_delivery_followup':
       return {
-        actionHref: '/reports',
+        actionHref:
+          task.related_entity_type === 'care_report' && task.related_entity_id
+            ? buildReportHref(task.related_entity_id)
+            : '/reports',
         actionLabel: '報告送達を確認',
         queueLabel: '報告送達',
       };
     case 'report_response_followup':
       return {
-        actionHref: '/reports',
+        actionHref:
+          task.related_entity_type === 'care_report' && task.related_entity_id
+            ? buildReportHref(task.related_entity_id)
+            : '/reports',
         actionLabel: '未確認報告を確認',
         queueLabel: '報告返信待ち',
       };

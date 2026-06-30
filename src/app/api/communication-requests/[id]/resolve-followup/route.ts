@@ -79,9 +79,13 @@ function resolveFollowupTaskEntity(existing: {
   related_entity_type: string | null;
   related_entity_id: string | null;
 }) {
-  if (existing.related_entity_type === 'tracing_report' && existing.related_entity_id) {
+  if (
+    (existing.related_entity_type === 'care_report' ||
+      existing.related_entity_type === 'tracing_report') &&
+    existing.related_entity_id
+  ) {
     return {
-      relatedEntityType: 'tracing_report',
+      relatedEntityType: existing.related_entity_type,
       relatedEntityId: existing.related_entity_id,
     };
   }

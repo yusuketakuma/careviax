@@ -307,9 +307,10 @@ export async function queueOverdueReportResponseReminders(
       dueDate: addDays(delivery.sent_at, overdueDays),
       slaDueAt: addDays(delivery.sent_at, overdueDays + 1),
       dedupeKey: buildReportResponseReminderTaskKey(delivery.id),
-      relatedEntityType: 'delivery_record',
-      relatedEntityId: delivery.id,
+      relatedEntityType: 'care_report',
+      relatedEntityId: delivery.report.id,
       metadata: {
+        delivery_record_id: delivery.id,
         report_id: delivery.report.id,
         patient_id: delivery.report.patient_id,
         report_type: delivery.report.report_type,

@@ -345,10 +345,14 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
       create: expect.objectContaining({
         task_type: 'report_response_followup',
         description: '報告書返信を確認',
+        related_entity_type: 'care_report',
+        related_entity_id: 'report_1',
       }),
       update: expect.objectContaining({
         task_type: 'report_response_followup',
         description: '報告書返信を確認',
+        related_entity_type: 'care_report',
+        related_entity_id: 'report_1',
       }),
     });
   });

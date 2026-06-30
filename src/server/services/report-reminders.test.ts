@@ -209,9 +209,10 @@ describe('report-reminders service', () => {
         orgId: 'org_1',
         taskType: 'report_response_followup',
         dedupeKey: 'report-response-followup:delivery_waiting',
-        relatedEntityType: 'delivery_record',
-        relatedEntityId: 'delivery_waiting',
+        relatedEntityType: 'care_report',
+        relatedEntityId: 'report_1',
         metadata: expect.objectContaining({
+          delivery_record_id: 'delivery_waiting',
           recipient_contact_masked: '03****2222',
         }),
       }),
