@@ -7,6 +7,7 @@ describe('requests-query-state', () => {
       readCommunicationRequestsState({
         status: 'sent',
         patient_id: 'patient_1',
+        request_id: 'request_1',
         related_entity_type: 'care_report',
         related_entity_id: 'report_1',
         context: 'dashboard_home',
@@ -14,6 +15,7 @@ describe('requests-query-state', () => {
     ).toEqual({
       initialStatus: 'sent',
       initialPatientId: 'patient_1',
+      initialRequestId: 'request_1',
       initialRelatedEntityType: 'care_report',
       initialRelatedEntityId: 'report_1',
       initialContext: 'dashboard_home',

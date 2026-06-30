@@ -43,6 +43,7 @@ export default async function CommunicationRequestsPage({
         <CommunicationRequestsContent
           initialStatus={initialState.initialStatus}
           initialPatientId={initialState.initialPatientId}
+          initialRequestId={initialState.initialRequestId}
           initialRelatedEntityType={initialState.initialRelatedEntityType}
           initialRelatedEntityId={initialState.initialRelatedEntityId}
           initialContext={initialState.initialContext}

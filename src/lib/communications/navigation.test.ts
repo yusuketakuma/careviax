@@ -39,8 +39,9 @@ describe('communication navigation helpers', () => {
       buildCommunicationRequestsHref({
         status: 'responded',
         patientId: 'patient_1',
+        requestId: 'request_1',
       }),
-    ).toBe('/communications/requests?status=responded&patient_id=patient_1');
+    ).toBe('/communications/requests?status=responded&patient_id=patient_1&request_id=request_1');
   });
 
   it('maps supported related entities to reachable UI destinations', () => {

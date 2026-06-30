@@ -139,7 +139,7 @@ describe('listCommunicationQueue', () => {
         queue_type: 'request',
         summary: '多職種連携 報告書返信依頼',
         action_href:
-          '/communications/requests?status=sent&patient_id=p-1&related_entity_type=care_report&related_entity_id=report-1',
+          '/communications/requests?status=sent&patient_id=p-1&request_id=cr-1&related_entity_type=care_report&related_entity_id=report-1',
       }),
     ]);
     expect(result.timeline).toEqual([
@@ -147,7 +147,7 @@ describe('listCommunicationQueue', () => {
         source_type: 'communication_request',
         summary: '報告書返信依頼 / 用量について確認',
         action_href:
-          '/communications/requests?status=sent&patient_id=p-1&related_entity_type=care_report&related_entity_id=report-1',
+          '/communications/requests?status=sent&patient_id=p-1&request_id=cr-1&related_entity_type=care_report&related_entity_id=report-1',
       }),
     ]);
   });

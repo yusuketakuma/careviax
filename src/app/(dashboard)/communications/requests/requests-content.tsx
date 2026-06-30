@@ -114,6 +114,7 @@ function resolveFollowupDueDisplay(item: CommunicationRequestRow): {
 type CommunicationRequestsContentProps = {
   initialStatus?: string | null;
   initialPatientId?: string | null;
+  initialRequestId?: string | null;
   initialRelatedEntityType?: string | null;
   initialRelatedEntityId?: string | null;
   initialContext?: string | null;
@@ -122,6 +123,7 @@ type CommunicationRequestsContentProps = {
 export function CommunicationRequestsContent({
   initialStatus,
   initialPatientId,
+  initialRequestId,
   initialRelatedEntityType,
   initialRelatedEntityId,
   initialContext,
@@ -130,7 +132,9 @@ export function CommunicationRequestsContent({
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState(initialStatus ?? '');
-  const [focusedSelectedId, setFocusedSelectedId] = useState<string | null>(null);
+  const [focusedSelectedId, setFocusedSelectedId] = useState<string | null>(
+    initialRequestId ?? null,
+  );
   const [focusedForm, setFocusedForm] = useState(DEFAULT_FOCUSED_FORM);
   const patientFilter = initialPatientId ?? '';
   const relatedEntityTypeFilter = initialRelatedEntityType ?? '';
@@ -246,10 +250,13 @@ export function CommunicationRequestsContent({
   }, [data?.data]);
 
   const focusedSelected =
-    focusedRequests.find((row) => row.id === focusedSelectedId) ?? focusedRequests[0] ?? null;
+    focusedSelectedId == null
+      ? (focusedRequests[0] ?? null)
+      : (focusedRequests.find((row) => row.id === focusedSelectedId) ?? null);
 
   const selectFocusedRequest = (item: CommunicationRequestRow) => {
     setFocusedSelectedId(item.id);
+    replaceRequestsUrl({ request_id: item.id });
     setFocusedForm({
       responder_name: item.recipient_name ?? '',
       content: '',
@@ -424,7 +431,7 @@ export function CommunicationRequestsContent({
               className="!h-auto !min-h-[44px]"
               onClick={() => {
                 setStatusFilter(tab.value);
-                replaceRequestsUrl({ status: tab.value || null });
+                replaceRequestsUrl({ status: tab.value || null, request_id: null });
               }}
             >
               {tab.label}
@@ -432,7 +439,7 @@ export function CommunicationRequestsContent({
           ))}
         </div>
 
-        {patientFilter || relatedEntityTypeFilter || relatedEntityIdFilter ? (
+        {patientFilter || relatedEntityTypeFilter || relatedEntityIdFilter || initialRequestId ? (
           <FilterSummaryBar
             items={[
               {
@@ -452,6 +459,7 @@ export function CommunicationRequestsContent({
                 ? [{ label: '関連種別', value: relatedEntityTypeFilter }]
                 : []),
               ...(relatedEntityIdFilter ? [{ label: '関連ID', value: relatedEntityIdFilter }] : []),
+              ...(initialRequestId ? [{ label: '依頼ID', value: initialRequestId }] : []),
             ]}
             actions={
               <ActionRail>

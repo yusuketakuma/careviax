@@ -176,6 +176,53 @@ describe('CommunicationRequestsContent', () => {
     expect(screen.queryByText('連携ログ一覧')).toBeNull();
   });
 
+  it('opens the request_id query target instead of the first matching request', () => {
+    useQueryMock.mockImplementation(() => {
+      return {
+        data: {
+          data: [
+            {
+              id: 'request_1',
+              request_type: 'care_report_reply_request',
+              subject: '報告書確認',
+              status: 'sent',
+              requested_at: '2026-05-12T00:00:00.000Z',
+              updated_at: '2026-06-18T00:00:00.000Z',
+              due_date: null,
+              patient_id: 'patient_1',
+              related_entity_type: 'care_report',
+              related_entity_id: 'report_1',
+              recipient_name: '青葉ケアプラン',
+              recipient_role: 'care_manager',
+              responses: [],
+            },
+            {
+              id: 'request_2',
+              request_type: 'patient_share_reply_request',
+              subject: '状態確認',
+              status: 'sent',
+              requested_at: '2026-05-12T01:00:00.000Z',
+              updated_at: '2026-06-18T01:00:00.000Z',
+              due_date: null,
+              patient_id: 'patient_1',
+              related_entity_type: 'patient',
+              related_entity_id: 'patient_1',
+              recipient_name: '訪看B',
+              recipient_role: 'visiting_nurse',
+              responses: [],
+            },
+          ],
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<CommunicationRequestsContent initialStatus="sent" initialRequestId="request_2" />);
+
+    expect(screen.getByText('訪問看護：訪看B / 患者共有返信依頼 / 状態確認')).toBeTruthy();
+    expect(screen.getByText('依頼ID request_2')).toBeTruthy();
+  });
+
   it('shows an error state instead of an empty follow-up workspace when request loading fails', () => {
     const refetch = vi.fn();
     useQueryMock.mockReturnValue({
@@ -411,6 +458,7 @@ describe('CommunicationRequestsContent', () => {
     expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
     expect(fetchArg.params.get('status')).toBe('sent');
     expect(fetchArg.params.get('patient_id')).toBe(hostilePatientId);
+    expect(fetchArg.params.get('request_id')).toBeNull();
     expect(fetchArg.params.get('related_entity_type')).toBe('care_report');
     expect(fetchArg.params.get('related_entity_id')).toBe(hostileRelatedId);
   });

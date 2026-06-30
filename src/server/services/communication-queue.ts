@@ -820,6 +820,7 @@ export async function listCommunicationQueue(
       action_href: buildCommunicationRequestsHref({
         status: request.status,
         patientId: request.patient_id,
+        requestId: request.id,
         relatedEntityType: request.related_entity_type,
         relatedEntityId: request.related_entity_id,
       }),
@@ -895,6 +896,7 @@ export async function listCommunicationQueue(
       action_href: buildCommunicationRequestsHref({
         status: request.status,
         patientId: request.patient_id,
+        requestId: request.id,
         relatedEntityType: request.related_entity_type,
         relatedEntityId: request.related_entity_id,
       }),
