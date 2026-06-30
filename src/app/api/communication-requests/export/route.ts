@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { unstable_rethrow } from 'next/navigation';
 import { NextResponse } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
@@ -7,7 +8,7 @@ import {
   buildCommunicationRequestAssignmentWhere,
   canAccessCareReportCommunication,
 } from '@/server/services/communication-request-access';
-import { error, forbidden, validationError } from '@/lib/api/response';
+import { error, forbidden, internalError, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { communicationRequestStatusSchema } from '@/lib/validations/communication-request';
 import { recordDataExportAudit } from '@/server/services/export-audit';
@@ -117,7 +118,7 @@ function resolveFaxReady(contextSnapshot: unknown) {
   return '';
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const statusParam = searchParams.get('status') ?? undefined;
@@ -398,3 +399,12 @@ export const GET = withAuthContext(
     message: '連携依頼のエクスポート権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

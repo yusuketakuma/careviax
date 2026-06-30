@@ -175,6 +175,31 @@ describe('/api/communication-requests/export GET', () => {
     });
   });
 
+  it('returns a sanitized no-store 500 when auth lookup fails unexpectedly', async () => {
+    authMock.mockRejectedValueOnce(new Error('患者 山田花子 090-1234-5678 raw export auth detail'));
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/communication-requests/export?profile=internal&status=responded',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('raw export auth detail');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestFindManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('neutralizes formula-leading CSV cells in internal exports', async () => {
     communicationRequestFindManyMock.mockResolvedValueOnce([
       {
