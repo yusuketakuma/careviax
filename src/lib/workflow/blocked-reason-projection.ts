@@ -10,6 +10,8 @@
  * - category は常に string を返す(CockpitBlockedReason.category の `string | null` とも互換)。
  */
 
+import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+
 export type BlockedReasonPresentation = {
   category: string;
   actionLabel: string;
@@ -95,6 +97,7 @@ export function resolveBlockedReasonPresentation(exceptionType: string): Blocked
 export type BlockedReasonSource = {
   id: string;
   exception_type: string;
+  patient_id?: string | null;
   description: string;
   severity: string;
   created_at: Date;
@@ -121,6 +124,14 @@ export function buildBlockedReasons(exceptions: BlockedReasonSource[], now: Date
   const nowMs = now.getTime();
   return exceptions.map((exception) => {
     const presentation = resolveBlockedReasonPresentation(exception.exception_type);
+    const actionHref =
+      exception.exception_type === 'family_consent_pending' ||
+      exception.exception_type === 'awaiting_reply'
+        ? buildCommunicationRequestsHref({
+            status: 'sent',
+            patientId: exception.patient_id ?? null,
+          })
+        : presentation.actionHref;
     return {
       id: exception.id,
       label: exception.description,
@@ -128,7 +139,7 @@ export function buildBlockedReasons(exceptions: BlockedReasonSource[], now: Date
       category: presentation.category,
       age_minutes: Math.max(0, Math.floor((nowMs - exception.created_at.getTime()) / 60_000)),
       action_label: presentation.actionLabel,
-      action_href: presentation.actionHref,
+      action_href: actionHref,
     };
   });
 }

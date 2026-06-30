@@ -547,6 +547,7 @@ const authenticatedGET = withAuthContext(
         select: {
           id: true,
           exception_type: true,
+          patient_id: true,
           severity: true,
           created_at: true,
         },

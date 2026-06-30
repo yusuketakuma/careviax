@@ -195,6 +195,7 @@ describe('/api/visits/today-preparation', () => {
     expect(workflowExceptionFindManyMock.mock.calls[0][0].select).toEqual({
       id: true,
       exception_type: true,
+      patient_id: true,
       severity: true,
       created_at: true,
     });

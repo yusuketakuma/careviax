@@ -298,6 +298,7 @@ async function authenticatedGET(req: NextRequest) {
         select: {
           id: true,
           exception_type: true,
+          patient_id: true,
           description: true,
           severity: true,
           created_at: true,
