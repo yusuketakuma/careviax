@@ -55,6 +55,29 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Remaining:
   - Broad master-management / patient-information objective remains open.
 
+### Tracing Report DELETE Draft Claim Guard - 2026-07-01 01:25 JST
+
+- Scope:
+  - Continued report / interprofessional collaboration integrity hardening.
+  - Focused on `DELETE /api/tracing-reports/[id]`, complementing the direct PATCH guard above.
+- Fixed:
+  - Draft tracing-report deletion now uses a guarded `deleteMany` claim scoped by org, patient, case, and `draft` status.
+  - If the report changes after the precheck, the route returns sanitized `409 WORKFLOW_CONFLICT` instead of deleting by id.
+- Safety:
+  - Reduces sent-document disappearance and stale report lifecycle risk under concurrent operator updates.
+  - Preserves auth, case access checks, no-store wrappers, PHI/error sanitization, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Replaces id-only delete with one narrow conditional delete over the already-loaded row identity.
+  - No new broad scan, dependency, background job, external call, render path, or unbounded loop was added.
+- Validation:
+  - `pnpm vitest run src/app/api/tracing-reports/'[id]'/route.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `21` tests.
+  - Scoped ESLint on tracing route/test: passed.
+  - Scoped Prettier check and scoped `git diff --check`: passed.
+  - `pnpm typecheck --pretty false`: blocked by unrelated dirty/untracked patient operational-summary WIP (`src/lib/patient/operational-summary.ts`), not by this tracing slice. codex was notified; those peer-owned files were not touched.
+- Remaining:
+  - Broad visit/report/interprofessional collaboration objective remains open.
+  - `src/app/api/care-reports/[id]/send/route.ts` post-send finalize claim remains a likely next report gap, but current dirty care-report WIP needs ownership clarity first.
+
 ### Archived Patient Summary Propagation - 2026-07-01 01:10 JST
 
 - Scope:

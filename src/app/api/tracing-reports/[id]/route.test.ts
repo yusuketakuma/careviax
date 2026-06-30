@@ -6,7 +6,7 @@ const {
   tracingReportFindFirstMock,
   tracingReportUpdateManyMock,
   tracingReportFindUpdatedMock,
-  tracingReportDeleteMock,
+  tracingReportDeleteManyMock,
   careCaseFindFirstMock,
   communicationRequestFindManyMock,
   communicationRequestCreateMock,
@@ -20,7 +20,7 @@ const {
   tracingReportFindFirstMock: vi.fn(),
   tracingReportUpdateManyMock: vi.fn(),
   tracingReportFindUpdatedMock: vi.fn(),
-  tracingReportDeleteMock: vi.fn(),
+  tracingReportDeleteManyMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   communicationRequestFindManyMock: vi.fn(),
   communicationRequestCreateMock: vi.fn(),
@@ -805,11 +805,11 @@ describe('/api/tracing-reports/[id] DELETE', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         tracingReport: {
-          delete: tracingReportDeleteMock,
+          deleteMany: tracingReportDeleteManyMock,
         },
       }),
     );
-    tracingReportDeleteMock.mockResolvedValue({ id: 'tracing_1' });
+    tracingReportDeleteManyMock.mockResolvedValue({ count: 1 });
   });
 
   it('rejects blank tracing report ids before loading or deleting the report', async () => {
@@ -827,6 +827,52 @@ describe('/api/tracing-reports/[id] DELETE', () => {
     expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('deletes only when the reviewed tracing report is still a draft', async () => {
+    const response = await DELETE(createRequest(null, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'tracing_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      data: { id: 'tracing_1' },
+    });
+    expect(tracingReportDeleteManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'tracing_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        status: 'draft',
+      },
+    });
+  });
+
+  it('returns conflict when the draft delete claim loses the race', async () => {
+    tracingReportDeleteManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await DELETE(createRequest(null, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'tracing_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+    });
+    expect(tracingReportDeleteManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'tracing_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        status: 'draft',
+      },
+    });
   });
 
   it('does not delete when assignment access is denied', async () => {
@@ -858,6 +904,6 @@ describe('/api/tracing-reports/[id] DELETE', () => {
     expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(tracingReportDeleteMock).not.toHaveBeenCalled();
+    expect(tracingReportDeleteManyMock).not.toHaveBeenCalled();
   });
 });

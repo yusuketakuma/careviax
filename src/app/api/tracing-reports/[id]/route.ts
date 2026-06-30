@@ -92,13 +92,27 @@ async function authenticatedDELETE(
       return withSensitiveNoStore(forbidden('下書き以外のトレーシングレポートは削除できません'));
     }
 
-    await withOrgContext(
+    const deleteResult = await withOrgContext(
       ctx.orgId,
       async (tx) => {
-        await tx.tracingReport.delete({ where: { id } });
+        return tx.tracingReport.deleteMany({
+          where: {
+            id,
+            org_id: ctx.orgId,
+            patient_id: existing.patient_id,
+            case_id: existing.case_id,
+            status: 'draft',
+          },
+        });
       },
       { requestContext: ctx },
     );
+
+    if (deleteResult.count !== 1) {
+      return withSensitiveNoStore(
+        conflict('トレーシングレポートが更新されています。最新の内容を確認してください'),
+      );
+    }
 
     return withSensitiveNoStore(success({ data: { id } }));
   } catch (err) {

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0125 JST
+
+- current task: guard tracing-report draft deletion against stale status changes.
+- files inspected: `git status --short --branch --untracked-files=all`, agmsg inbox, `src/app/api/tracing-reports/[id]/route.ts`, `src/app/api/tracing-reports/[id]/route.test.ts`, focused test output, scoped validation output, and unrelated typecheck failure output.
+- files changed: `src/app/api/tracing-reports/[id]/route.ts`, `src/app/api/tracing-reports/[id]/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: tracing-report DELETE checked that a report was still a draft, then deleted by id only inside the transaction, so a report that was sent between the precheck and delete could be removed as if it were still a draft.
+- security risks found: reduced sent-document disappearance and audit integrity risk by deleting only when the row still matches org, patient, case, and `draft` status. Existing auth, case access checks, no-store wrappers, PHI/error sanitization, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: replaces a single id delete with a narrow `deleteMany` claim over the already-loaded row identity. No new broad scans, external calls, dependencies, background jobs, render paths, or unbounded loops were added.
+- validation commands: `pnpm vitest run src/app/api/tracing-reports/'[id]'/route.test.ts --reporter=dot --testTimeout=60000`; `pnpm exec eslint --max-warnings=0 src/app/api/tracing-reports/'[id]'/route.ts src/app/api/tracing-reports/'[id]'/route.test.ts`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check src/app/api/tracing-reports/'[id]'/route.ts src/app/api/tracing-reports/'[id]'/route.test.ts`; scoped `git diff --check`; `pnpm typecheck --pretty false`.
+- validation results: focused Vitest passed `1` file / `21` tests; scoped ESLint, scoped Prettier check, and scoped `git diff --check` passed. `pnpm typecheck --pretty false` is blocked by unrelated dirty/untracked patient operational-summary WIP (`src/lib/patient/operational-summary.ts` type errors at lines 100, 101, and 110) plus concurrent dirty care-report files; codex was notified and those files were preserved untouched.
+- remaining work: broad visit/report/interprofessional collaboration objective remains open. `src/app/api/care-reports/[id]/send/route.ts` still has a higher-risk post-send finalize claim gap, but it overlaps current dirty care-report WIP and should wait for ownership clarity.
+- next action: commit only the tracing-report DELETE stale-status guard plus ledgers, then continue a non-overlapping visit/report/collaboration gap or pick up care-report finalize after the peer WIP resolves.
+
 ### 20260701-0118 JST
 
 - current task: guard tracing-report PATCH status sync with version and linked communication-request claims.
