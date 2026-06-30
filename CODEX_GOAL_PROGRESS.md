@@ -27699,8 +27699,12 @@ Next loop:
   - Adds scalar version metadata and a guarded update predicate only.
   - No new dependency, external call, job, broad scan, unbounded loop, or render-heavy path was added.
 - Validation:
-  - `pnpm vitest run src/app/api/visit-records/'[id]'/handoff/route.test.ts src/server/services/visit-handoff.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `30` tests.
-  - Shared scoped lint/format/diff-check/typecheck results will be recorded after the combined facility/handoff dirty set is validated.
+  - `pnpm vitest run src/app/api/visit-records/'[id]'/handoff/route.test.ts src/server/services/visit-handoff.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `31` tests.
+  - `pnpm typecheck --pretty false`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
 - Remaining:
   - Broad master/patient objective remains open.
   - Next mapped patient gap remains PRE-06 archive/detail UI state: archived-patient detail banner/read-only affordance and cross-surface archive identifiers.

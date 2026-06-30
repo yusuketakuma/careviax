@@ -273,10 +273,11 @@ export async function confirmHandoff(
     edits?: Partial<
       Pick<VisitHandoff, 'next_check_items' | 'ongoing_monitoring' | 'decision_rationale'>
     >;
+    expectedVersion: number;
     requestContext?: RequestAuthContext;
   },
 ): Promise<VisitHandoff> {
-  const { orgId, visitRecordId, confirmedBy, edits, requestContext } = args;
+  const { orgId, visitRecordId, confirmedBy, edits, expectedVersion, requestContext } = args;
 
   let confirmed: HandoffData | null = null;
 
@@ -285,8 +286,12 @@ export async function confirmHandoff(
     async (tx) => {
       const record = await tx.visitRecord.findUniqueOrThrow({
         where: { id: visitRecordId },
-        select: { structured_soap: true },
+        select: { structured_soap: true, version: true },
       });
+
+      if (record.version !== expectedVersion) {
+        throw new VisitHandoffStaleRecordError(visitRecordId);
+      }
 
       const currentSoap = readStructuredSoap(record.structured_soap);
       const currentHandoff = readHandoffData(currentSoap.handoff);
@@ -315,10 +320,16 @@ export async function confirmHandoff(
         handoff: confirmed,
       };
 
-      await tx.visitRecord.update({
-        where: { id: visitRecordId },
-        data: { structured_soap: toPrismaJsonInput(updated) },
+      const claim = await tx.visitRecord.updateMany({
+        where: { id: visitRecordId, version: expectedVersion },
+        data: {
+          structured_soap: toPrismaJsonInput(updated),
+          version: { increment: 1 },
+        },
       });
+      if (claim.count !== 1) {
+        throw new VisitHandoffStaleRecordError(visitRecordId);
+      }
 
       await resolveOperationalTasks(tx, {
         orgId,

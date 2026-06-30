@@ -29,9 +29,9 @@ Backup directory:
 - security risks found: reduced stale clinical handoff confirmation risk by returning the visit-record version in GET, requiring `expected_visit_record_version` on PUT, checking it before service calls, and claiming the service update with `updateMany({ id, version })` before resolving tasks. Existing auth, assignment access, no-store wrappers, PHI-redacted extraction error behavior, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
 - performance issues found: added scalar `version` / `updated_at` selects and an in-transaction guarded update predicate. No new dependency, external call, background job, broad scan, unbounded loop, or render-heavy path was added.
 - validation commands: `pnpm vitest run src/app/api/visit-records/'[id]'/handoff/route.test.ts src/server/services/visit-handoff.test.ts --reporter=dot --testTimeout=60000`; scoped ESLint; scoped Prettier check; `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
-- validation results: focused Vitest passed `2` files / `30` tests. Remaining shared gate results will be recorded after the facility/handoff guard set is validated.
+- validation results: focused Vitest passed `2` files / `31` tests. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and `git diff --check` passed.
 - remaining work: broad master-management and patient-information objective remains open. Next mapped patient gap remains PRE-06 archive/detail UI state.
-- next action: validate the combined facility/handoff guard set, then commit it as the next grouped safety slice.
+- next action: commit only the visit handoff confirmation version-guard slice plus ledger updates, send agmsg FYI, then re-check inbox/status before selecting the next visit/report/collaboration gap.
 
 ### 20260701-0023 JST
 

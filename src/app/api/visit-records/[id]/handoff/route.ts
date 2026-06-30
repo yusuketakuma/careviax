@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
 import {
+  conflict,
   success,
   validationError,
   notFound,
@@ -17,12 +18,17 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import {
   confirmHandoff,
+  VisitHandoffStaleRecordError,
   VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE,
 } from '@/server/services/visit-handoff';
 import type { StructuredSoap } from '@/types/structured-soap';
 
 const confirmHandoffSchema = z.object({
   confirmed: z.literal(true),
+  expected_visit_record_version: z
+    .number()
+    .int('訪問記録の版情報が不正です')
+    .positive('訪問記録の版情報が不正です'),
   edits: z
     .object({
       next_check_items: z.array(z.string()).optional(),
@@ -34,6 +40,8 @@ const confirmHandoffSchema = z.object({
 
 const visitRecordHandoffSelect = {
   id: true,
+  version: true,
+  updated_at: true,
   structured_soap: true,
   schedule: {
     select: {
@@ -80,12 +88,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const { edits } = parsed.data;
+  if (record.version !== parsed.data.expected_visit_record_version) {
+    return withSensitiveNoStore(conflict('訪問記録が同時に更新されました。再読み込みしてください'));
+  }
 
   try {
     const handoff = await confirmHandoff(prisma, {
       orgId: ctx.orgId,
       visitRecordId: id,
       confirmedBy: ctx.userId,
+      expectedVersion: parsed.data.expected_visit_record_version,
       edits,
       requestContext: ctx,
     });
@@ -94,6 +106,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (cause instanceof Error && cause.message.includes('No handoff found')) {
       return withSensitiveNoStore(
         notFound('引継ぎデータが見つかりません。AI抽出が完了していない可能性があります'),
+      );
+    }
+    if (cause instanceof VisitHandoffStaleRecordError) {
+      return withSensitiveNoStore(
+        conflict('訪問記録が同時に更新されました。再読み込みしてください'),
       );
     }
     return withSensitiveNoStore(error('internal_error', '引継ぎの確定処理に失敗しました', 500));
@@ -165,6 +182,8 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     success({
       data: handoff,
       extraction,
+      visit_record_version: record.version,
+      visit_record_updated_at: record.updated_at.toISOString(),
     }),
   );
 }

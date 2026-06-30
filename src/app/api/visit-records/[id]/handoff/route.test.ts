@@ -32,11 +32,13 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/server/services/visit-handoff', () => ({
   confirmHandoff: confirmHandoffMock,
+  VisitHandoffStaleRecordError: class VisitHandoffStaleRecordError extends Error {},
   VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE:
     '申し送り抽出に失敗しました。時間をおいて再実行してください',
 }));
 
 import { GET, PUT } from './route';
+import { VisitHandoffStaleRecordError } from '@/server/services/visit-handoff';
 
 function createRequest(url: string, body?: unknown) {
   if (body === undefined) {
@@ -75,6 +77,23 @@ const accessibleSchedule = {
   },
 };
 
+const VISIT_RECORD_VERSION = 2;
+const VISIT_RECORD_UPDATED_AT = new Date('2026-04-01T00:00:00.000Z');
+const VISIT_RECORD_UPDATED_AT_ISO = VISIT_RECORD_UPDATED_AT.toISOString();
+
+function buildVisitRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'vr_1',
+    version: VISIT_RECORD_VERSION,
+    updated_at: VISIT_RECORD_UPDATED_AT,
+    schedule: accessibleSchedule,
+    structured_soap: {
+      handoff: { next_check_items: ['item1'], ongoing_monitoring: [] },
+    },
+    ...overrides,
+  };
+}
+
 function expectSensitiveNoStore(response: Response) {
   expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
   expect(response.headers.get('Pragma')).toBe('no-cache');
@@ -103,13 +122,7 @@ describe('/api/visit-records/[id]/handoff', () => {
     });
 
     it('returns 200 with handoff data', async () => {
-      visitRecordFindFirstMock.mockResolvedValue({
-        id: 'vr_1',
-        schedule: accessibleSchedule,
-        structured_soap: {
-          handoff: { next_check_items: ['item1'], ongoing_monitoring: [] },
-        },
-      });
+      visitRecordFindFirstMock.mockResolvedValue(buildVisitRecord());
       visitHandoffExtractionFindUniqueMock.mockResolvedValue({
         status: 'succeeded',
         retry_count: 0,
@@ -136,6 +149,10 @@ describe('/api/visit-records/[id]/handoff', () => {
         status: 'succeeded',
         retryable: false,
         source_visit_record_version: 2,
+      });
+      expect(json).toMatchObject({
+        visit_record_version: VISIT_RECORD_VERSION,
+        visit_record_updated_at: VISIT_RECORD_UPDATED_AT_ISO,
       });
     });
 
@@ -178,13 +195,7 @@ describe('/api/visit-records/[id]/handoff', () => {
 
     it('returns 403 before reading extraction state when assignment access is denied', async () => {
       canAccessVisitScheduleAssignmentMock.mockReturnValue(false);
-      visitRecordFindFirstMock.mockResolvedValue({
-        id: 'vr_1',
-        schedule: accessibleSchedule,
-        structured_soap: {
-          handoff: { next_check_items: ['item1'], ongoing_monitoring: [] },
-        },
-      });
+      visitRecordFindFirstMock.mockResolvedValue(buildVisitRecord());
 
       const req = createRequest('http://localhost/api/visit-records/vr_1/handoff');
       const res = await GET(req, { params: Promise.resolve({ id: 'vr_1' }) });
@@ -199,11 +210,7 @@ describe('/api/visit-records/[id]/handoff', () => {
     });
 
     it('returns 404 when no handoff data', async () => {
-      visitRecordFindFirstMock.mockResolvedValue({
-        id: 'vr_1',
-        schedule: accessibleSchedule,
-        structured_soap: null,
-      });
+      visitRecordFindFirstMock.mockResolvedValue(buildVisitRecord({ structured_soap: null }));
 
       const req = createRequest('http://localhost/api/visit-records/vr_1/handoff');
       const res = await GET(req, { params: Promise.resolve({ id: 'vr_1' }) });
@@ -212,11 +219,7 @@ describe('/api/visit-records/[id]/handoff', () => {
     });
 
     it('returns redacted extraction status even when handoff data is not yet available', async () => {
-      visitRecordFindFirstMock.mockResolvedValue({
-        id: 'vr_1',
-        schedule: accessibleSchedule,
-        structured_soap: null,
-      });
+      visitRecordFindFirstMock.mockResolvedValue(buildVisitRecord({ structured_soap: null }));
       visitHandoffExtractionFindUniqueMock.mockResolvedValue({
         status: 'failed',
         retry_count: 2,
@@ -258,6 +261,7 @@ describe('/api/visit-records/[id]/handoff', () => {
 
       const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
         confirmed: true,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
       });
       const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
 
@@ -268,16 +272,15 @@ describe('/api/visit-records/[id]/handoff', () => {
     });
 
     it('returns 200 on valid handoff confirmation', async () => {
-      visitRecordFindFirstMock.mockResolvedValue({
-        id: 'vr_1',
-        schedule: accessibleSchedule,
-        structured_soap: { handoff: {} },
-      });
+      visitRecordFindFirstMock.mockResolvedValue(
+        buildVisitRecord({ structured_soap: { handoff: {} } }),
+      );
       const handoffResult = { confirmed: true, confirmed_by: 'user_1' };
       confirmHandoffMock.mockResolvedValue(handoffResult);
 
       const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
         confirmed: true,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
       });
       const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
       expect(res!.status).toBe(200);
@@ -286,11 +289,20 @@ describe('/api/visit-records/[id]/handoff', () => {
         authCtx.ctx,
         accessibleSchedule,
       );
+      expect(confirmHandoffMock).toHaveBeenCalledWith(expect.anything(), {
+        orgId: 'org_1',
+        visitRecordId: 'vr_1',
+        confirmedBy: 'user_1',
+        expectedVersion: VISIT_RECORD_VERSION,
+        edits: undefined,
+        requestContext: authCtx.ctx,
+      });
     });
 
     it('rejects blank visit record ids before confirming handoff data', async () => {
       const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
         confirmed: true,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
       });
 
       const res = await PUT(req, { params: Promise.resolve({ id: '   ' }) });
@@ -337,6 +349,7 @@ describe('/api/visit-records/[id]/handoff', () => {
     it('rejects schema-invalid confirmation payloads before loading the visit record', async () => {
       const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
         confirmed: false,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
       });
 
       const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
@@ -353,14 +366,13 @@ describe('/api/visit-records/[id]/handoff', () => {
 
     it('returns 403 before confirming handoff data when assignment access is denied', async () => {
       canAccessVisitScheduleAssignmentMock.mockReturnValue(false);
-      visitRecordFindFirstMock.mockResolvedValue({
-        id: 'vr_1',
-        schedule: accessibleSchedule,
-        structured_soap: { handoff: {} },
-      });
+      visitRecordFindFirstMock.mockResolvedValue(
+        buildVisitRecord({ structured_soap: { handoff: {} } }),
+      );
 
       const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
         confirmed: true,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
       });
       const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
 
@@ -371,6 +383,68 @@ describe('/api/visit-records/[id]/handoff', () => {
         accessibleSchedule,
       );
       expect(confirmHandoffMock).not.toHaveBeenCalled();
+    });
+
+    it('requires the visit record version before loading the visit record for confirmation', async () => {
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: true,
+      });
+
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(400);
+      expectSensitiveNoStore(res!);
+      await expect(res!.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '入力値が不正です',
+        details: {
+          expected_visit_record_version: expect.any(Array),
+        },
+      });
+      expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+      expect(confirmHandoffMock).not.toHaveBeenCalled();
+    });
+
+    it('returns conflict for stale visit record versions before confirming handoff data', async () => {
+      visitRecordFindFirstMock.mockResolvedValue(
+        buildVisitRecord({ version: VISIT_RECORD_VERSION + 1, structured_soap: { handoff: {} } }),
+      );
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: true,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
+      });
+
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(409);
+      expectSensitiveNoStore(res!);
+      await expect(res!.json()).resolves.toMatchObject({
+        code: 'WORKFLOW_CONFLICT',
+        message: '訪問記録が同時に更新されました。再読み込みしてください',
+      });
+      expect(confirmHandoffMock).not.toHaveBeenCalled();
+    });
+
+    it('maps lost service-level confirmation claims to a sanitized conflict', async () => {
+      visitRecordFindFirstMock.mockResolvedValue(
+        buildVisitRecord({ structured_soap: { handoff: {} } }),
+      );
+      confirmHandoffMock.mockRejectedValueOnce(new VisitHandoffStaleRecordError('vr_1'));
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: true,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
+      });
+
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(409);
+      expectSensitiveNoStore(res!);
+      await expect(res!.json()).resolves.toMatchObject({
+        code: 'WORKFLOW_CONFLICT',
+        message: '訪問記録が同時に更新されました。再読み込みしてください',
+      });
     });
   });
 });

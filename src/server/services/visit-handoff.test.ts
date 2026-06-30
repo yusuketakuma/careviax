@@ -481,9 +481,10 @@ describe('confirmHandoff', () => {
     };
 
     const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      version: 2,
       structured_soap: { ...baseSoap, handoff: existingHandoff },
     });
-    const visitRecordUpdateMock = vi.fn().mockResolvedValue({});
+    const visitRecordUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
     resolveOperationalTasksMock.mockResolvedValue({ count: 1 });
 
     withOrgContextMock.mockImplementation(
@@ -491,7 +492,7 @@ describe('confirmHandoff', () => {
         const tx = {
           visitRecord: {
             findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
-            update: visitRecordUpdateMock,
+            updateMany: visitRecordUpdateManyMock,
           },
         };
         return fn(tx);
@@ -503,13 +504,14 @@ describe('confirmHandoff', () => {
       orgId: 'org-1',
       visitRecordId: 'vr-1',
       confirmedBy: 'user-1',
+      expectedVersion: 2,
     });
 
     expect(result.confirmed_by).toBe('user-1');
     expect(result.confirmed_at).toBeTruthy();
     expect(result.next_check_items).toEqual(['血圧確認']);
-    expect(visitRecordUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'vr-1' },
+    expect(visitRecordUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'vr-1', version: 2 },
       data: {
         structured_soap: expect.objectContaining({
           ...baseSoap,
@@ -524,6 +526,7 @@ describe('confirmHandoff', () => {
             extracted_at: '2026-04-01T00:00:00Z',
           }),
         }),
+        version: { increment: 1 },
       },
     });
 
@@ -545,9 +548,10 @@ describe('confirmHandoff', () => {
     };
 
     const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      version: 2,
       structured_soap: { ...baseSoap, handoff: existingHandoff },
     });
-    const visitRecordUpdateMock = vi.fn().mockResolvedValue({});
+    const visitRecordUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
     resolveOperationalTasksMock.mockResolvedValue({ count: 1 });
 
     withOrgContextMock.mockImplementation(
@@ -555,7 +559,7 @@ describe('confirmHandoff', () => {
         const tx = {
           visitRecord: {
             findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
-            update: visitRecordUpdateMock,
+            updateMany: visitRecordUpdateManyMock,
           },
         };
         return fn(tx);
@@ -567,6 +571,7 @@ describe('confirmHandoff', () => {
       orgId: 'org-1',
       visitRecordId: 'vr-1',
       confirmedBy: 'user-2',
+      expectedVersion: 2,
       edits: {
         next_check_items: ['新項目A', '新項目B'],
         decision_rationale: '更新された根拠',
@@ -580,15 +585,17 @@ describe('confirmHandoff', () => {
 
   it('throws when no handoff exists on visit record', async () => {
     const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      version: 2,
       structured_soap: baseSoap, // no handoff field
     });
+    const visitRecordUpdateManyMock = vi.fn();
 
     withOrgContextMock.mockImplementation(
       async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
         const tx = {
           visitRecord: {
             findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
-            update: vi.fn(),
+            updateMany: visitRecordUpdateManyMock,
           },
         };
         return fn(tx);
@@ -601,24 +608,29 @@ describe('confirmHandoff', () => {
         orgId: 'org-1',
         visitRecordId: 'vr-1',
         confirmedBy: 'user-1',
+        expectedVersion: 2,
       }),
     ).rejects.toThrow('No handoff found');
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
   });
 
   it('throws when persisted handoff is malformed', async () => {
     const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      version: 2,
       structured_soap: {
         ...baseSoap,
         handoff: ['unexpected'],
       },
     });
+    const visitRecordUpdateManyMock = vi.fn();
 
     withOrgContextMock.mockImplementation(
       async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
         const tx = {
           visitRecord: {
             findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
-            update: vi.fn(),
+            updateMany: visitRecordUpdateManyMock,
           },
         };
         return fn(tx);
@@ -631,7 +643,98 @@ describe('confirmHandoff', () => {
         orgId: 'org-1',
         visitRecordId: 'vr-1',
         confirmedBy: 'user-1',
+        expectedVersion: 2,
       }),
     ).rejects.toThrow('No handoff found');
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale visit record versions before resolving the confirmation task', async () => {
+    const existingHandoff = {
+      next_check_items: ['血圧確認'],
+      ongoing_monitoring: ['残薬管理'],
+      decision_rationale: '急変リスクあり',
+      ai_extracted: true,
+      ai_confidence: 0.85,
+      confirmed_by: null,
+      confirmed_at: null,
+      extracted_at: '2026-04-01T00:00:00Z',
+    };
+
+    const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      version: 3,
+      structured_soap: { ...baseSoap, handoff: existingHandoff },
+    });
+    const visitRecordUpdateManyMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          visitRecord: {
+            findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
+            updateMany: visitRecordUpdateManyMock,
+          },
+        };
+        return fn(tx);
+      },
+    );
+
+    const db = {} as Parameters<typeof confirmHandoff>[0];
+    await expect(
+      confirmHandoff(db, {
+        orgId: 'org-1',
+        visitRecordId: 'vr-1',
+        confirmedBy: 'user-1',
+        expectedVersion: 2,
+      }),
+    ).rejects.toThrow('changed before handoff extraction');
+
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects lost confirmation claims before resolving the confirmation task', async () => {
+    const existingHandoff = {
+      next_check_items: ['血圧確認'],
+      ongoing_monitoring: ['残薬管理'],
+      decision_rationale: '急変リスクあり',
+      ai_extracted: true,
+      ai_confidence: 0.85,
+      confirmed_by: null,
+      confirmed_at: null,
+      extracted_at: '2026-04-01T00:00:00Z',
+    };
+
+    const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      version: 2,
+      structured_soap: { ...baseSoap, handoff: existingHandoff },
+    });
+    const visitRecordUpdateManyMock = vi.fn().mockResolvedValue({ count: 0 });
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          visitRecord: {
+            findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
+            updateMany: visitRecordUpdateManyMock,
+          },
+        };
+        return fn(tx);
+      },
+    );
+
+    const db = {} as Parameters<typeof confirmHandoff>[0];
+    await expect(
+      confirmHandoff(db, {
+        orgId: 'org-1',
+        visitRecordId: 'vr-1',
+        confirmedBy: 'user-1',
+        expectedVersion: 2,
+      }),
+    ).rejects.toThrow('changed before handoff extraction');
+
+    expect(visitRecordUpdateManyMock).toHaveBeenCalledOnce();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
   });
 });
