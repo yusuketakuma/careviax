@@ -221,7 +221,8 @@ describe('workflow-dashboard-sections', () => {
       expect.objectContaining({
         id: 'management_plan_review_overdue',
         count: 3,
-        action_href: '/patients?readiness_issue=management_plan_review_overdue',
+        action_href: '/tasks?status=&task_type=management_plan_review',
+        action_label: '計画レビューを確認',
       }),
       expect.objectContaining({
         id: 'missing_first_visit_doc',
@@ -236,7 +237,7 @@ describe('workflow-dashboard-sections', () => {
       expect.objectContaining({
         id: 'missing_primary_physician',
         count: 2,
-        action_href: '/patients',
+        action_href: '/patients?readiness_issue=missing_primary_physician',
       }),
       expect.objectContaining({
         id: 'visit_intake_linkage',

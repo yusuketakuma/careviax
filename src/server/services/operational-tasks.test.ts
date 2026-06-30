@@ -127,7 +127,7 @@ describe('describeOperationalTask', () => {
     });
 
     expect(result).toEqual({
-      actionHref: '/schedules',
+      actionHref: '/tasks?status=&task_type=visit_demand',
       actionLabel: '候補を確認',
       queueLabel: '訪問候補',
     });

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-2003 JST
+
+- current task: focus workflow readiness remediation actions on the exact follow-up workspace.
+- files inspected: `git status --short --branch --untracked-files=all`, `git log --oneline -n 12`, agmsg inbox/team for `phos/codex2`, `src/server/services/workflow-dashboard-sections.ts`, `src/server/services/workflow-dashboard-sections.test.ts`, patient readiness filter support in `src/app/api/patients/route.ts` and `src/server/services/patient-service.ts`, shared task presentation in `src/lib/tasks/operational-task-presentation.ts`, and focused validation output.
+- files changed: `src/server/services/workflow-dashboard-sections.ts`, `src/server/services/workflow-dashboard-sections.test.ts`, `src/server/services/operational-tasks.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: management-plan-review overdue guidance pointed at an unsupported patient readiness filter rather than the management-plan review task queue, missing-primary-physician guidance fell back to the aggregate patient list instead of the supported readiness filter, and the server-level operational task re-export test still expected the obsolete aggregate `/schedules` fallback for `visit_demand`.
+- security risks found: reduced wrong-workspace/patient-follow-up drift without exposing additional PHI or changing auth/RLS/API response boundaries.
+- performance issues found: URL construction only; no query, dependency, network call, background job, unbounded loop, or render-heavy path was added.
+- validation commands: initial focused Vitest bundle for workflow dashboard / patient route / operational tasks; final focused Vitest bundle for workflow dashboard / patient route / operational tasks / shared task presentation; scoped ESLint; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: initial focused Vitest failed only because `src/server/services/operational-tasks.test.ts` expected stale `visit_demand` `/schedules` fallback; after aligning that test with the shared implementation, final focused Vitest passed `4` files / `100` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- remaining work: broad master-management/patient-information goal remains open; keep scanning aggregate action links.
+- next action: stage only this workflow readiness action-link slice if the mixed ledger hunks can be separated safely; otherwise commit the code/test slice and leave mixed progress-ledger hunks unstaged.
+
 ### 20260630-1959 JST
 
 - current task: carry partner-pharmacy visit-record lab excerpts into generated physician report drafts.

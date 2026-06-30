@@ -30,9 +30,10 @@ import type {
 import type { WorkflowCoreData, WorkflowDependentData } from './workflow-dashboard-queries';
 
 type PatientReadinessIssueHref =
-  | VisitWorkflowGateIssue
+  | Exclude<VisitWorkflowGateIssue, 'management_plan_review_overdue'>
   | 'missing_first_visit_doc'
-  | 'missing_emergency_contact';
+  | 'missing_emergency_contact'
+  | 'missing_primary_physician';
 
 function buildPatientsReadinessIssueHref(issue: PatientReadinessIssueHref) {
   const params = new URLSearchParams([['readiness_issue', issue]]);
@@ -141,14 +142,24 @@ export function buildRemediationGuidance(
       .filter(([, count]) => count > 0)
       .map(([issue, count]) => {
         const guidance = getVisitWorkflowGuidance(issue);
+        const action =
+          issue === 'management_plan_review_overdue'
+            ? {
+                action_href: buildTasksHref({ status: '', taskType: 'management_plan_review' }),
+                action_label: '計画レビューを確認',
+              }
+            : {
+                action_href: buildPatientsReadinessIssueHref(issue),
+                action_label: '患者一覧で確認',
+              };
         return {
           id: issue,
           title: guidance.title,
           description: guidance.description,
           severity: guidance.severity,
           count,
-          action_href: buildPatientsReadinessIssueHref(issue),
-          action_label: '患者一覧で確認',
+          action_href: action.action_href,
+          action_label: action.action_label,
         } satisfies RemediationGuidanceItem;
       }),
     ...(missingFirstVisitDocCount > 0
@@ -187,7 +198,7 @@ export function buildRemediationGuidance(
               '主治医が未登録のケースがあります。初回訪問判断、疑義照会、報告導線が不完全です。',
             severity: 'high' as const,
             count: missingPrimaryPhysicianCount,
-            action_href: '/patients',
+            action_href: buildPatientsReadinessIssueHref('missing_primary_physician'),
             action_label: '患者一覧で確認',
           } satisfies RemediationGuidanceItem,
         ]
