@@ -10,7 +10,10 @@ import {
 } from '@/server/services/communication-request-access';
 import { error, forbidden, internalError, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { communicationRequestStatusSchema } from '@/lib/validations/communication-request';
+import {
+  communicationRequestStatusSchema,
+  optionalTrimmedSearchParam,
+} from '@/lib/validations/communication-request';
 import { recordDataExportAudit } from '@/server/services/export-audit';
 import { quotedCsvCell as csvCell } from '@/lib/csv/safe-csv';
 
@@ -71,10 +74,27 @@ function parseExportProfile(value: string | null): ExportProfile | null {
   return null;
 }
 
-function buildFilename(status: string | undefined, profile: ExportProfile) {
-  const statusSuffix = status ? `_${status}` : '';
-  const profileSuffix = profile === 'external' ? '_external' : '';
-  return `communication_requests${statusSuffix}${profileSuffix}.csv`;
+function filenameFilterToken(value: string) {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+  return slug || hashExportScopeId(value);
+}
+
+function buildFilename(args: {
+  status: string | undefined;
+  requestType: string | undefined;
+  profile: ExportProfile;
+}) {
+  const suffixes = [
+    args.status,
+    args.requestType ? `type-${filenameFilterToken(args.requestType)}` : undefined,
+    args.profile === 'external' ? 'external' : undefined,
+  ].filter((suffix): suffix is string => Boolean(suffix));
+  return `communication_requests${suffixes.length > 0 ? `_${suffixes.join('_')}` : ''}.csv`;
 }
 
 function buildExportAuditMetadata(args: {
@@ -121,7 +141,14 @@ function resolveFaxReady(contextSnapshot: unknown) {
 const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
-    const statusParam = searchParams.get('status') ?? undefined;
+    const statusParam = optionalTrimmedSearchParam(searchParams.get('status'));
+    if (searchParams.has('status') && !statusParam) {
+      return withSensitiveNoStore(
+        validationError('連携依頼ステータスが不正です', {
+          status: ['ステータスを指定してください'],
+        }),
+      );
+    }
     const status = statusParam ? communicationRequestStatusSchema.safeParse(statusParam) : null;
     if (status && !status.success) {
       return withSensitiveNoStore(
@@ -138,7 +165,14 @@ const authenticatedGET = withAuthContext(
         }),
       );
     }
-    const requestType = searchParams.get('request_type') ?? undefined;
+    const requestType = optionalTrimmedSearchParam(searchParams.get('request_type'));
+    if (searchParams.has('request_type') && !requestType) {
+      return withSensitiveNoStore(
+        validationError('連携依頼種別が不正です', {
+          request_type: ['依頼種別を指定してください'],
+        }),
+      );
+    }
     const canReadCareReportOutput = canAccessCareReportCommunication(ctx.role);
     if (profile === 'internal' && !canReadCareReportOutput) {
       return withSensitiveNoStore(forbidden('内部向け連携依頼エクスポートの権限がありません'));
@@ -386,7 +420,7 @@ const authenticatedGET = withAuthContext(
     const header = profile === 'external' ? EXTERNAL_HEADER : INTERNAL_HEADER;
     const csv = [header.join(','), ...csvRows.map((row) => row.join(','))].join('\n');
 
-    const filename = buildFilename(status?.data, profile);
+    const filename = buildFilename({ status: status?.data, requestType, profile });
 
     return withSensitiveNoStore(
       new NextResponse(`${UTF8_BOM}${csv}`, {

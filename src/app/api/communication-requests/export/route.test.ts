@@ -182,6 +182,75 @@ describe('/api/communication-requests/export GET', () => {
     });
   });
 
+  it('trims export status and request type filters before query and audit', async () => {
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/communication-requests/export?profile=internal&status=%20responded%20&request_type=%20inquiry%20',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('Content-Disposition')).toContain(
+      'communication_requests_responded_type-inquiry.csv',
+    );
+    expect(communicationRequestFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          status: 'responded',
+          request_type: 'inquiry',
+        }),
+      }),
+    );
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: expect.objectContaining({
+          filters: expect.objectContaining({
+            status: 'responded',
+            request_type: 'inquiry',
+            profile: 'internal',
+          }),
+        }),
+      }),
+    });
+  });
+
+  it('allows internal exports narrowed only by request type and uses a safe filename token', async () => {
+    const response = await GET(
+      createRequest(
+        `http://localhost/api/communication-requests/export?profile=internal&request_type=${encodeURIComponent('処方医フォロー')}`,
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('Content-Disposition')).toMatch(
+      /^attachment; filename="communication_requests_type-[a-f0-9]{16}\.csv"$/,
+    );
+    expect(communicationRequestFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          request_type: '処方医フォロー',
+        }),
+      }),
+    );
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: expect.objectContaining({
+          filters: expect.objectContaining({
+            status: null,
+            request_type: '処方医フォロー',
+            profile: 'internal',
+          }),
+        }),
+      }),
+    });
+  });
+
   it('returns a sanitized no-store 500 when auth lookup fails unexpectedly', async () => {
     authMock.mockRejectedValueOnce(new Error('患者 山田花子 090-1234-5678 raw export auth detail'));
 
@@ -450,6 +519,35 @@ describe('/api/communication-requests/export GET', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(communicationRequestFindManyMock).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['status', '?status=', { status: ['ステータスを指定してください'] }],
+    ['blank status', '?status=%20%20', { status: ['ステータスを指定してください'] }],
+    ['request_type', '?request_type=', { request_type: ['依頼種別を指定してください'] }],
+    [
+      'blank request_type',
+      '?request_type=%20%20',
+      { request_type: ['依頼種別を指定してください'] },
+    ],
+  ])(
+    'rejects explicitly empty %s filters before resolving assignment scope',
+    async (_label, query, details) => {
+      const response = await GET(
+        createRequest(`http://localhost/api/communication-requests/export${query}`),
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        details,
+      });
+      expect(careCaseFindManyMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(communicationRequestFindManyMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects internal exports without a narrowing status or request type filter', async () => {
     const response = await GET(
