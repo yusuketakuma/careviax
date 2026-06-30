@@ -116,6 +116,13 @@ describe('buildTodayOpsRail', () => {
           severity: 'warning',
           created_at: new Date(2026, 5, 11, 9, 12),
         },
+        {
+          id: 'exception_unknown',
+          exception_type: 'unexpected_blocker',
+          description: '訪問準備の確認待ち',
+          severity: 'warning',
+          created_at: new Date(2026, 5, 11, 9, 22),
+        },
       ],
     });
 
@@ -128,7 +135,7 @@ describe('buildTodayOpsRail', () => {
       href: '/audit',
     });
 
-    expect(rail.blocked_reasons).toHaveLength(2);
+    expect(rail.blocked_reasons).toHaveLength(3);
     expect(rail.blocked_reasons[0]).toMatchObject({
       label: 'ご家族の同意待ち(新規契約)',
       severity: 'critical',
@@ -144,6 +151,14 @@ describe('buildTodayOpsRail', () => {
       age_minutes: 30,
       action_label: '状況を見る →',
       action_href: '/admin/contact-profiles',
+    });
+    expect(rail.blocked_reasons[2]).toMatchObject({
+      label: '訪問準備の確認待ち',
+      severity: 'warning',
+      category: '事務',
+      age_minutes: 20,
+      action_label: '状況を見る →',
+      action_href: '/workflow?focus=exceptions',
     });
   });
 

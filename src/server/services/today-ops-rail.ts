@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { format } from 'date-fns';
 import { extractPackagingInstructionTags } from '@/lib/dispensing/packaging';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+import { buildWorkflowHref } from '@/lib/dashboard/home-link-builders';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
 import { timeDateToString } from '@/lib/visits/time-of-day';
@@ -56,7 +57,10 @@ const EXCEPTION_ACTIONS: Record<string, { label: string; href: string }> = {
   delivery_target_confirmation: { label: '状況を見る →', href: '/admin/contact-profiles' },
 };
 
-const EXCEPTION_ACTION_FALLBACK = { label: '状況を見る →', href: '/workflow' };
+const EXCEPTION_ACTION_FALLBACK = {
+  label: '状況を見る →',
+  href: buildWorkflowHref({ focus: 'exceptions' }),
+};
 
 type AuditTaskRecord = {
   id: string;
