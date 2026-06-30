@@ -1,6 +1,10 @@
 import { buildAuditTaskHref } from '@/lib/audit/navigation';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
-import { buildConferencesHref, buildExternalHref, buildTasksHref } from '@/lib/dashboard/home-link-builders';
+import {
+  buildConferencesHref,
+  buildExternalHref,
+  buildTasksHref,
+} from '@/lib/dashboard/home-link-builders';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';

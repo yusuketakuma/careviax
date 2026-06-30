@@ -141,7 +141,7 @@ describe('describeOperationalTask', () => {
     });
 
     expect(result).toEqual({
-      actionHref: '/workflow',
+      actionHref: '/tasks?status=&task_type=management_plan_review',
       actionLabel: '計画を見直す',
       queueLabel: '計画書',
     });
