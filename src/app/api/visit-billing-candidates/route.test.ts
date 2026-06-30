@@ -64,6 +64,11 @@ function createGetRequest(query = '') {
   return new NextRequest(`http://localhost/api/visit-billing-candidates${query}`);
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function confirmedPartnerRecord(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: 'partner_visit_record_1',
@@ -133,7 +138,7 @@ describe('/api/visit-billing-candidates GET', () => {
     const response = await GET(createGetRequest(query));
 
     expect(response.status).toBe(400);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details,
@@ -146,7 +151,7 @@ describe('/api/visit-billing-candidates GET', () => {
     const response = await GET(createGetRequest('?billing_month='));
 
     expect(response.status).toBe(400);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitBillingCandidateFindManyMock).not.toHaveBeenCalled();
   });
@@ -159,6 +164,10 @@ describe('/api/visit-billing-candidates GET', () => {
     );
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+    });
     expect(visitBillingCandidateFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -169,6 +178,26 @@ describe('/api/visit-billing-candidates GET', () => {
         }),
       }),
     );
+  });
+
+  it('returns a sanitized no-store 500 when listing fails unexpectedly', async () => {
+    visitBillingCandidateFindManyMock.mockRejectedValueOnce(
+      new Error('田中 花子 請求候補 raw visit billing list failure'),
+    );
+
+    const response = await GET(createGetRequest('?billing_month=2026-06-01'));
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('田中 花子');
+    expect(bodyText).not.toContain('請求候補');
+    expect(bodyText).not.toContain('raw visit billing list failure');
   });
 });
 
@@ -229,6 +258,10 @@ describe('/api/visit-billing-candidates POST', () => {
     const response = await POST(createRequest({ billing_month: '2026-06-01' }));
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+    });
     expect(partnerVisitRecordFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -448,7 +481,7 @@ describe('/api/visit-billing-candidates POST', () => {
     const response = await POST(createRequest({ billing_month: '2026-06-15' }));
 
     expect(response.status).toBe(400);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitBillingCandidateCreateMock).not.toHaveBeenCalled();
     expect(visitBillingCandidateUpdateMock).not.toHaveBeenCalled();
@@ -565,5 +598,26 @@ describe('/api/visit-billing-candidates POST', () => {
       skipped_locked_count: 0,
       candidate_ids: ['visit_billing_candidate_concurrent'],
     });
+  });
+
+  it('returns a sanitized no-store 500 when candidate generation fails unexpectedly', async () => {
+    visitBillingCandidateCreateMock.mockRejectedValueOnce(
+      new Error('佐藤 太郎 協力訪問 raw visit billing generation failure'),
+    );
+
+    const response = await POST(createRequest({ billing_month: '2026-06-01' }));
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('佐藤 太郎');
+    expect(bodyText).not.toContain('協力訪問');
+    expect(bodyText).not.toContain('raw visit billing generation failure');
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 });
