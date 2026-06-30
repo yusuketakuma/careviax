@@ -7,6 +7,7 @@ import { buildReportHref } from '@/lib/reports/navigation';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useParamsMock = vi.hoisted(() => vi.fn());
+const useSearchParamsMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
@@ -34,6 +35,7 @@ vi.mock('@/lib/api/org-headers', () => ({
 
 vi.mock('next/navigation', () => ({
   useParams: useParamsMock,
+  useSearchParams: useSearchParamsMock,
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -219,6 +221,7 @@ describe('ReportDetailPage send safety dialog', () => {
     vi.clearAllMocks();
     useOrgIdMock.mockReturnValue('org_1');
     useParamsMock.mockReturnValue({ id: 'report_1' });
+    useSearchParamsMock.mockReturnValue(new URLSearchParams());
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
     useMutationMock.mockReturnValue({
       mutate: sendMutateMock,
@@ -501,6 +504,113 @@ describe('ReportDetailPage send safety dialog', () => {
       expected_updated_at: '2026-05-12T00:00:00.000Z',
       safety_ack: true,
     });
+  });
+
+  it('opens and pre-fills the resend dialog from report workspace deep links', () => {
+    useSearchParamsMock.mockReturnValue(
+      new URLSearchParams('action=resend&delivery_id=delivery_failed'),
+    );
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: { data: [] },
+          isLoading: false,
+        };
+      }
+
+      return {
+        data: {
+          data: {
+            ...mockReport(),
+            status: 'failed',
+            delivery_records: [
+              {
+                id: 'delivery_failed',
+                channel: 'fax',
+                recipient_name: '山田 太郎',
+                recipient_contact: '03-1111-2222',
+                status: 'failed',
+                sent_at: null,
+                created_at: '2026-05-12T00:00:00.000Z',
+              },
+            ],
+          },
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    expect(screen.getByRole('dialog', { name: '報告書を再送' })).toBeTruthy();
+    expect(screen.getByDisplayValue('山田 太郎')).toBeTruthy();
+    expect(screen.getByDisplayValue('03-1111-2222')).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: '患者、訪問日、報告書種別、送付先氏名、連絡先、送付チャネルを確認しました',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '再送する' }));
+
+    expect(sendMutateMock).toHaveBeenCalledWith({
+      channel: 'fax',
+      recipient_name: '山田 太郎',
+      recipient_contact: '03-1111-2222',
+      recipient_role: 'physician',
+      expected_updated_at: '2026-05-12T00:00:00.000Z',
+      safety_ack: true,
+    });
+  });
+
+  it('opens the send dialog from report workspace send deep links without requiring a delivery record', () => {
+    useSearchParamsMock.mockReturnValue(new URLSearchParams('action=send'));
+
+    render(<ReportDetailPage />);
+
+    expect(screen.getByRole('dialog', { name: '報告書を送付' })).toBeTruthy();
+  });
+
+  it('does not open an empty resend dialog when the delivery deep link is stale', () => {
+    useSearchParamsMock.mockReturnValue(
+      new URLSearchParams('action=resend&delivery_id=missing_delivery'),
+    );
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: { data: [] },
+          isLoading: false,
+        };
+      }
+
+      return {
+        data: {
+          data: {
+            ...mockReport(),
+            status: 'failed',
+            delivery_records: [
+              {
+                id: 'delivery_failed',
+                channel: 'fax',
+                recipient_name: '山田 太郎',
+                recipient_contact: '03-1111-2222',
+                status: 'failed',
+                sent_at: null,
+                created_at: '2026-05-12T00:00:00.000Z',
+              },
+            ],
+          },
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    expect(screen.queryByRole('dialog', { name: '報告書を再送' })).toBeNull();
+    expect(sendMutateMock).not.toHaveBeenCalled();
   });
 
   it('opens the report composer from the current report detail workspace', () => {

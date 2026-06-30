@@ -108,7 +108,13 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       waiting_days: 3,
       title: '加藤 ミサ 様 — ケアマネへの服薬状況報告',
       subtitle: '再送は前回送付の記録つきで送られます',
-      actions: [{ label: '再送する', href: '/reports/rep_1', kind: 'button' }],
+      actions: [
+        {
+          label: '再送する',
+          href: '/reports/rep_1?action=resend&delivery_id=delivery_waiting',
+          kind: 'button',
+        },
+      ],
     },
     {
       id: 'wait_2',
@@ -190,7 +196,10 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
         failure_reason: 'メール送信に失敗しました',
         retry_count: 1,
         failed_at: '2026-06-11T04:40:00.000Z',
-        action: { label: '宛先確認・再送', href: '/reports/report_failed' },
+        action: {
+          label: '宛先確認・再送',
+          href: '/reports/report_failed?action=resend&delivery_id=delivery_failed',
+        },
       },
       action: { label: '→ 詳細へ', href: '/reports/report_failed' },
     },
@@ -431,13 +440,16 @@ describe('ReportShareWorkspace', () => {
     expect(screen.getByText('メール / やまもと内科 / 再送1回')).toBeTruthy();
     expect(screen.getByText('メール送信に失敗しました')).toBeTruthy();
     expect(screen.getByRole('link', { name: '宛先確認・再送' }).getAttribute('href')).toBe(
-      '/reports/report_failed',
+      '/reports/report_failed?action=resend&delivery_id=delivery_failed',
     );
 
     // 返信待ち / 今日解決した待ち
     expect(screen.getByText('返信待ち')).toBeTruthy();
     expect(screen.getByText('3日経過')).toBeTruthy();
     expect(screen.getByText('再送する')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '再送する' }).getAttribute('href')).toBe(
+      '/reports/rep_1?action=resend&delivery_id=delivery_waiting',
+    );
     expect(screen.getByRole('link', { name: '依頼を確認' }).getAttribute('href')).toBe(
       WAITING_REPLY_REQUEST_HREF,
     );

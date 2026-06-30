@@ -16,7 +16,7 @@ import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { familyNameOf } from '@/lib/utils/person-name';
 import { sanitizeDeliveryFailureReason } from '@/lib/reports/delivery-failure-reasons';
-import { buildReportHref } from '@/lib/reports/navigation';
+import { buildReportHref, buildReportSendHref } from '@/lib/reports/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import {
   buildCommunicationRequestsHref,
@@ -312,7 +312,13 @@ function buildFailedDeliverySummary(
     failure_reason: sanitizeDeliveryFailureReason(delivery.failure_reason),
     retry_count: delivery.retry_count,
     failed_at: delivery.updated_at.toISOString(),
-    action: { label: '宛先確認・再送', href: buildReportHref(reportId) },
+    action: {
+      label: '宛先確認・再送',
+      href: buildReportSendHref(reportId, {
+        action: 'resend',
+        deliveryRecordId: delivery.id,
+      }),
+    },
   };
 }
 
@@ -383,7 +389,7 @@ function buildReportOpenIssues(args: {
         ? describeFailedDelivery(failedDeliverySummary)
         : '送付失敗の記録があります。宛先とチャネルを確認して再送してください。',
       failed_delivery: failedDeliverySummary,
-      action: { label: '宛先確認・再送', href },
+      action: failedDeliverySummary?.action ?? { label: '宛先確認・再送', href },
     });
   }
 
@@ -908,7 +914,10 @@ const authenticatedGET = withAuthContext(
               actions: [
                 {
                   label: '再送する',
-                  href: buildReportHref(delivery.report.id),
+                  href: buildReportSendHref(delivery.report.id, {
+                    action: 'resend',
+                    deliveryRecordId: delivery.id,
+                  }),
                   kind: 'button',
                 },
               ],

@@ -602,7 +602,7 @@ describe('/api/care-reports/today-workspace', () => {
     expect(oldest.actions).toEqual([
       {
         label: '再送する',
-        href: `/reports/${encodeURIComponent(HOSTILE_WAITING_REPORT_ID)}`,
+        href: `/reports/${encodeURIComponent(HOSTILE_WAITING_REPORT_ID)}?action=resend&delivery_id=del_1`,
         kind: 'button',
       },
     ]);
@@ -927,7 +927,7 @@ describe('/api/care-reports/today-workspace', () => {
         failed_at: '2026-06-11T04:40:00.000Z',
         action: {
           label: '宛先確認・再送',
-          href: `/reports/${encodeURIComponent(HOSTILE_FAILED_REPORT_ID)}`,
+          href: `/reports/${encodeURIComponent(HOSTILE_FAILED_REPORT_ID)}?action=resend&delivery_id=delivery_failed`,
         },
       },
       action: {
@@ -963,7 +963,7 @@ describe('/api/care-reports/today-workspace', () => {
           severity: 'critical',
           action: {
             label: '宛先確認・再送',
-            href: `/reports/${encodeURIComponent(HOSTILE_FAILED_REPORT_ID)}`,
+            href: `/reports/${encodeURIComponent(HOSTILE_FAILED_REPORT_ID)}?action=resend&delivery_id=delivery_failed`,
           },
           description:
             'メール / やまもと内科 / 再送1回 / 理由: 送付に失敗しました。宛先とチャネルを確認して再送してください。',

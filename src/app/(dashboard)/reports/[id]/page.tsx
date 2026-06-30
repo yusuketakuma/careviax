@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -212,6 +212,18 @@ function isCareReportDirectSendChannel(
   value: string | null | undefined,
 ): value is CareReportDirectSendChannel {
   return typeof value === 'string' && CARE_REPORT_SEND_CHANNEL_SET.has(value);
+}
+
+function buildSendFormFromDeliveryRecord(
+  reportType: string,
+  delivery: DeliveryRecord,
+): SendFormData {
+  return {
+    channel: isCareReportDirectSendChannel(delivery.channel) ? delivery.channel : 'email',
+    recipient_name: delivery.recipient_name,
+    recipient_contact: delivery.recipient_contact,
+    recipient_role: inferCareReportTargetRole(reportType),
+  };
 }
 
 type ExternalProfessionalSuggestion = {
@@ -441,11 +453,19 @@ function resolveSuggestionDelivery(
 
 export default function ReportDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const orgId = useOrgId();
   const isBootstrappingOrg = !orgId;
   const queryClient = useQueryClient();
+  const requestedReportAction = searchParams.get('action');
+  const requestedDeliveryId = searchParams.get('delivery_id');
+  const requestedSendDialogKey =
+    requestedReportAction === 'send' || requestedReportAction === 'resend'
+      ? `${requestedReportAction}:${requestedDeliveryId ?? ''}`
+      : null;
 
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
+  const [dismissedSendDialogKey, setDismissedSendDialogKey] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [sendForm, setSendForm] = useState<SendFormData>({
     channel: 'email',
@@ -549,6 +569,9 @@ export default function ReportDetailPage() {
     },
     onSuccess: () => {
       toast.success('報告書を送付しました');
+      if (requestedSendDialogKey) {
+        setDismissedSendDialogKey(requestedSendDialogKey);
+      }
       setSendDialogOpen(false);
       setSendForm({
         channel: 'email',
@@ -602,10 +625,10 @@ export default function ReportDetailPage() {
     }
 
     const normalizedForm = {
-      channel: sendForm.channel,
-      recipient_name: sendForm.recipient_name.trim(),
-      recipient_contact: sendForm.recipient_contact.trim(),
-      recipient_role: sendForm.recipient_role,
+      channel: effectiveSendForm.channel,
+      recipient_name: effectiveSendForm.recipient_name.trim(),
+      recipient_contact: effectiveSendForm.recipient_contact.trim(),
+      recipient_role: effectiveSendForm.recipient_role,
     };
     const validation = validateCareReportSendRecipientForm(normalizedForm);
     const nextErrors: SendFormErrors = validation.ok ? {} : validation.errors;
@@ -733,6 +756,9 @@ export default function ReportDetailPage() {
   const hasCareManagerContent = isCareManager && isCareManagerReportContent(report.content);
   const hasAudienceContent = isAudienceReport && isAudienceReportContent(report.content);
   const hasContentView = hasPhysicianContent || hasCareManagerContent || hasAudienceContent;
+  const isConfirmedReport = report.status === 'confirmed';
+  const isRetryableReport = report.status === 'failed' || report.status === 'response_waiting';
+  const canSendReportStatus = isConfirmedReport || isRetryableReport;
   const editableReportContent: PhysicianReportContent | CareManagerReportContent | null =
     isPhysician && isPhysicianReportContent(report.content)
       ? report.content
@@ -752,9 +778,31 @@ export default function ReportDetailPage() {
     report.patient_summary?.birth_date ?? readStringField(contentPatient, 'birth_date');
   const visitDate =
     report.visit_summary?.visit_date ?? readStringField(reportContentObject, 'visit_date');
-  const recipientNameForConfirmation = sendForm.recipient_name.trim() || '未入力';
-  const recipientContactForConfirmation = sendForm.recipient_contact.trim() || '未入力';
-  const channelLabel = CHANNEL_LABELS[sendForm.channel] ?? sendForm.channel;
+  const requestedDeliveryRecord = requestedDeliveryId
+    ? (report.delivery_records.find((record) => record.id === requestedDeliveryId) ?? null)
+    : null;
+  const requestedSendForm =
+    requestedDeliveryRecord && requestedReportAction === 'resend'
+      ? buildSendFormFromDeliveryRecord(report.report_type, requestedDeliveryRecord)
+      : null;
+  const hasValidRequestedSendAction =
+    requestedReportAction === 'send' ||
+    (requestedReportAction === 'resend' && requestedDeliveryRecord !== null);
+  const shouldOpenSendDialogFromQuery = Boolean(
+    requestedSendDialogKey &&
+    hasValidRequestedSendAction &&
+    dismissedSendDialogKey !== requestedSendDialogKey &&
+    hasContentView &&
+    canSendReportStatus &&
+    canSendReport,
+  );
+  const isQuerySendDialogOpen = shouldOpenSendDialogFromQuery && !sendDialogOpen;
+  const effectiveSendForm =
+    isQuerySendDialogOpen && requestedSendForm ? requestedSendForm : sendForm;
+  const isSendDialogOpen = sendDialogOpen || shouldOpenSendDialogFromQuery;
+  const recipientNameForConfirmation = effectiveSendForm.recipient_name.trim() || '未入力';
+  const recipientContactForConfirmation = effectiveSendForm.recipient_contact.trim() || '未入力';
+  const channelLabel = CHANNEL_LABELS[effectiveSendForm.channel] ?? effectiveSendForm.channel;
   const billingContext = readReportBillingContext(report.content);
   const warnings = readReportWarnings(report.content);
   const complianceChecks = hasContentView
@@ -906,9 +954,6 @@ export default function ReportDetailPage() {
     composerRecipientError ? 'report-composer-recipient-error' : null,
     composerChecksError ? 'report-composer-checks-error' : null,
   ].filter(Boolean);
-  const isConfirmedReport = report.status === 'confirmed';
-  const isRetryableReport = report.status === 'failed' || report.status === 'response_waiting';
-  const canSendReportStatus = isConfirmedReport || isRetryableReport;
   const canBulkSend =
     hasContentView &&
     canSendReportStatus &&
@@ -1460,10 +1505,13 @@ export default function ReportDetailPage() {
 
         {/* Send dialog */}
         <Dialog
-          open={sendDialogOpen}
+          open={isSendDialogOpen}
           onOpenChange={(open) => {
             setSendDialogOpen(open);
             if (!open) {
+              if (requestedSendDialogKey) {
+                setDismissedSendDialogKey(requestedSendDialogKey);
+              }
               setSendSafetyAck(false);
               setSendFormErrors({});
             }
@@ -1611,10 +1659,11 @@ export default function ReportDetailPage() {
               <div className="space-y-1.5">
                 <Label htmlFor="send-channel">送付チャネル</Label>
                 <Select
-                  value={sendForm.channel}
-                  onValueChange={(v) =>
-                    setSendForm((prev) => ({ ...prev, channel: v ?? prev.channel }))
-                  }
+                  value={effectiveSendForm.channel}
+                  onValueChange={(v) => {
+                    setSendDialogOpen(true);
+                    setSendForm({ ...effectiveSendForm, channel: v ?? effectiveSendForm.channel });
+                  }}
                 >
                   <SelectTrigger
                     id="send-channel"
@@ -1642,10 +1691,11 @@ export default function ReportDetailPage() {
                 </Label>
                 <Input
                   id="send-recipient-name"
-                  value={sendForm.recipient_name}
-                  onChange={(e) =>
-                    setSendForm((prev) => ({ ...prev, recipient_name: e.target.value }))
-                  }
+                  value={effectiveSendForm.recipient_name}
+                  onChange={(e) => {
+                    setSendDialogOpen(true);
+                    setSendForm({ ...effectiveSendForm, recipient_name: e.target.value });
+                  }}
                   placeholder="例: 山田 太郎 先生"
                   aria-invalid={Boolean(sendFormErrors.recipient_name)}
                   aria-describedby={
@@ -1671,10 +1721,11 @@ export default function ReportDetailPage() {
                 </Label>
                 <Input
                   id="send-recipient-contact"
-                  value={sendForm.recipient_contact}
-                  onChange={(e) =>
-                    setSendForm((prev) => ({ ...prev, recipient_contact: e.target.value }))
-                  }
+                  value={effectiveSendForm.recipient_contact}
+                  onChange={(e) => {
+                    setSendDialogOpen(true);
+                    setSendForm({ ...effectiveSendForm, recipient_contact: e.target.value });
+                  }}
                   placeholder="メールアドレスまたはFAX番号"
                   aria-invalid={Boolean(sendFormErrors.recipient_contact)}
                   aria-describedby={
