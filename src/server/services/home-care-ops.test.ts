@@ -281,6 +281,25 @@ describe('home-care-ops', () => {
     });
   });
 
+  it('focuses patient caregiver share gap actions on the patient share workspace', async () => {
+    const patientId = 'patient 1/../x?y=#frag';
+    const db = makePatientSummaryDb(patientId);
+    db.externalAccessGrant.findMany.mockResolvedValue([]);
+
+    const summary = await getPatientHomeCareFeatureSummary(
+      db as unknown as Parameters<typeof getPatientHomeCareFeatureSummary>[0],
+      { orgId: 'org_1', patientId },
+    );
+
+    const feature = summary.features.find((item) => item.key === 'caregiver_self_report_intake');
+    expect(feature).toMatchObject({
+      count: 1,
+      action_href: `/patients/${encodeURIComponent(patientId)}/share`,
+      action_label: '外部共有を確認',
+    });
+    expect(feature?.action_href).not.toContain(patientId);
+  });
+
   it('focuses patient multidisciplinary share actions on a single stalled report', async () => {
     const patientId = 'patient_1';
     const reportId = 'report/1?x=y#frag';

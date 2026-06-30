@@ -4,6 +4,7 @@ import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
@@ -1382,6 +1383,12 @@ export async function getPatientHomeCareFeatureSummary(
           : selfReports.length > 0
             ? 'attention'
             : 'ready',
+      ...(shares.length === 0 && activeCases.length > 0
+        ? {
+            actionHref: buildPatientHref(args.patientId, '/share'),
+            actionLabel: '外部共有を確認',
+          }
+        : {}),
     }),
     buildFeatureState({
       key: 'carry_item_fallback',
