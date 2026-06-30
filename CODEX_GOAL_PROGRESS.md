@@ -24,6 +24,44 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Patient Qualification Check POST RLS / No-Store / Identity Safety - 2026-06-30 09:46 JST
+
+- Scope:
+  - Hardened `POST /api/patients/[id]/qualification-check`, the patient online qualification check boundary.
+  - Focused on RLS request context, fixed no-store response boundaries, provider-response minimization, fixed adapter error messages, and patient identity match safety.
+  - Preserved codex2-owned patient-share-cases work and waited for `1cf7d0bd` to release ledgers before updating progress files. No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Patient/writable/insurance reads now run inside `withOrgContext(ctx.orgId, ..., { requestContext: ctx })`.
+  - Exported `POST` now wraps `authenticatedPOST` with `withSensitiveNoStore`, `unstable_rethrow`, and fixed `internalError()` fallback for unexpected failures.
+  - Adapter errors now return fixed user-facing messages instead of echoing provider/config/raw messages.
+  - Client success payload now strips provider `patientName`, `raw`, local patient names, insurance numbers, and tokens while preserving payer/copy/coverage/warnings needed by callers.
+  - Webhook payload remains minimal and now includes non-PHI `identityMatch`.
+  - Client `data.valid` is true only when provider identity positively matches the local patient name or kana; mismatch and unknown identity return `valid: false` with a warning.
+  - Unexpected-error logging uses safe structured context only and does not pass raw `Error` objects, messages, stacks, causes, patient names, insurance numbers, or tokens to the logger call.
+- Safety:
+  - Reduces PHI/PII/raw-provider disclosure risk for online qualification success responses, provider errors, webhook metadata, and unexpected failures.
+  - Reduces wrong-patient/wrong-insurance false-valid risk by requiring positive provider/local identity match before client-visible validity is true.
+  - Preserves auth permission behavior, writable-patient guard behavior, active structured medical insurance preference over legacy patient columns, adapter capability response shape, and existing webhook event type.
+- Performance:
+  - No dependency, retry loop, external request, synchronous blocking, or unbounded work was added.
+  - The change only scopes existing DB reads under RLS context and adds lightweight name normalization.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/patients/[id]/qualification-check/route.ts' 'src/app/api/patients/[id]/qualification-check/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/patients/[id]/qualification-check/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `12` tests.
+  - Scoped ESLint on the two qualification-check files: passed.
+  - Scoped `git diff --check` on the two qualification-check files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - codex2 initially reviewed the qualification-check route/test diff and returned `APPROVED`.
+  - General reviewer and observability subagents returned `APPROVED`.
+  - Medical-safety subagent found a High blocker for provider-valid unknown identity; fixed by making `valid` true only for `identityMatch: "matched"` and adding unknown-identity warning/test. Re-review returned `APPROVED`.
+  - Privacy subagent found a High blocker for passing raw `Error` objects to the logger mock boundary; fixed by logging only safe structured context with a whitelisted `code` and adding full logger-call non-leakage assertions. Re-review returned `APPROVED`.
+- Remaining:
+  - Final diff-check after ledger update, exact-path stage only the two qualification-check files plus this ledger and `.codex/ralph-state.md`, commit, send agmsg FYI, then continue Codex/Codex2-only backend/API hardening or incoming codex2 review interrupts.
+
 ### Patient Share Case Consents GET/POST No-Store / Sanitized Envelope - 2026-06-30 09:42 JST
 
 - Scope:
