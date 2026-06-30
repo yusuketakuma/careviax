@@ -14,6 +14,7 @@ import {
   type HomeCareBillingRuleEngineTx,
 } from '../billing-rules';
 import { resolveBillingRuntimeContext } from '../billing-runtime-context';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { getHomeVisit2026BillingEligibility } from '@/lib/visits/home-visit-2026-evidence';
 import {
   getHomeVisitIntake,
@@ -932,6 +933,7 @@ export function describeBillingEvidenceBlockers(args: {
   claimable: boolean;
   exclusionReason?: string | null;
   sameMonthExclusionFlags?: Prisma.JsonValue | null;
+  patientId?: string | null;
 }): BillingEvidenceBlocker[] {
   if (args.claimable) return [];
 
@@ -948,9 +950,15 @@ export function describeBillingEvidenceBlockers(args: {
     ];
   }
 
-  return keys.map((key, index) =>
-    blockerDefinition(key, index === 0 ? args.exclusionReason : null),
-  );
+  return keys.map((key, index) => {
+    const blocker = blockerDefinition(key, index === 0 ? args.exclusionReason : null);
+    if (blocker.action_href !== '/patients' || !args.patientId) return blocker;
+
+    return {
+      ...blocker,
+      action_href: buildPatientHref(args.patientId),
+    };
+  });
 }
 
 function resolveCareCertificationBlocker(args: {
@@ -1119,6 +1127,7 @@ export async function listBillingEvidenceBlockers(
       claimable: evidence.claimable,
       exclusionReason: evidence.exclusion_reason,
       sameMonthExclusionFlags: evidence.same_month_exclusion_flags,
+      patientId: args.patientId,
     }),
   }));
 }

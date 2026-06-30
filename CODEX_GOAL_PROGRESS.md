@@ -30,6 +30,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Billing Evidence Blocker Patient Focus Links - 2026-06-30 19:24 JST
+
+- Scope:
+  - Continued visit/report readiness cleanup for billing evidence blockers surfaced through patient-scoped home-care/report workflows.
+  - No UI layout, schema migration, live DB operation, auth/RLS change, external send, push/deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `describeBillingEvidenceBlockers` now accepts optional `patientId` and focuses `/patients` blocker actions on `buildPatientHref(patientId)` only when the caller has explicitly provided patient scope.
+  - `listBillingEvidenceBlockers` passes its patient filter through, so patient-scoped billing blockers retain the exact patient context.
+  - Unfiltered callers keep aggregate `/patients`; report, workflow, billing, and visit blockers keep their existing destinations.
+  - Regression coverage asserts hostile patient-id encoding and patient-filter propagation.
+- Safety:
+  - Reduces wrong-patient / wrong-workspace navigation risk when staff resolve insurance/certification/public-subsidy blockers from visit/report billing readiness.
+  - Uses the shared guarded patient navigation helper instead of local path construction.
+- Performance:
+  - Reuses already-known `patientId`; link construction is in-memory only.
+  - No new query, dependency, network call, background job, payload expansion, render loop, or broad scan was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/billing-evidence/core.test.ts src/lib/patient/navigation.test.ts src/server/services/home-care-ops.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `82` tests.
+  - Scoped ESLint on billing-evidence, patient-navigation, and home-care files: passed.
+  - Scoped Prettier write/check on billing-evidence, patient-navigation, and home-care files: passed.
+  - Scoped `git diff --check` on billing-evidence files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Continue scanning visit-time/report/collaboration and patient-information surfaces for generic action links or missing relation filters.
+
 ### Workflow Blocked-Reason Patient Focus Links - 2026-06-30 19:20 JST
 
 - Scope:

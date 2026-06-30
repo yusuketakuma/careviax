@@ -37,6 +37,7 @@ import {
   describeBillingEvidenceBlockers,
   endOfMonth,
   japanMonthRangeForBillingMonth,
+  listBillingEvidenceBlockers,
   monthLabel,
   readBillingCandidateWorkflowState,
   reviewBillingCandidate,
@@ -384,6 +385,65 @@ describe('billing-evidence/core: blocker descriptions', () => {
         severity: 'high',
       },
     ]);
+  });
+
+  it('focuses patient-action blockers on the exact patient when requested', () => {
+    const patientId = 'patient/1?x=y#frag';
+
+    expect(
+      describeBillingEvidenceBlockers({
+        claimable: false,
+        exclusionReason: '介護保険認定が申請中です',
+        sameMonthExclusionFlags: { care_certification_pending: true },
+        patientId,
+      }),
+    ).toEqual([
+      {
+        key: 'care_certification_pending',
+        reason: '介護保険認定が申請中です',
+        action_href: `/patients/${encodeURIComponent(patientId)}`,
+        action_label: '介護認定を確認',
+        severity: 'high',
+      },
+    ]);
+  });
+});
+
+describe('billing-evidence/core: listBillingEvidenceBlockers', () => {
+  it('passes the patient filter through to patient-action blocker links', async () => {
+    const patientId = 'patient/1?x=y#frag';
+    const tx = {
+      billingEvidence: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'evidence_1',
+            visit_record_id: 'visit_1',
+            claimable: false,
+            exclusion_reason: '介護保険認定が申請中です',
+            same_month_exclusion_flags: { care_certification_pending: true },
+            validation_notes: null,
+          },
+        ]),
+      },
+    };
+
+    const blockers = await listBillingEvidenceBlockers(tx as never, {
+      orgId: 'org_1',
+      patientId,
+      limit: 1,
+    });
+
+    expect(tx.billingEvidence.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ patient_id: patientId }),
+        take: 1,
+      }),
+    );
+    expect(blockers[0]?.blockers[0]).toMatchObject({
+      key: 'care_certification_pending',
+      action_href: `/patients/${encodeURIComponent(patientId)}`,
+    });
+    expect(blockers[0]?.blockers[0]?.action_href).not.toBe(`/patients/${patientId}`);
   });
 });
 

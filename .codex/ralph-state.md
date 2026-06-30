@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-1924 JST
+
+- current task: focus patient-scoped billing evidence blocker actions on the exact patient when the blocker list is already patient-filtered.
+- files inspected: `git status --short --untracked-files=all`, generic report/collaboration action-link search results, `src/server/services/billing-evidence/core.ts`, `src/server/services/billing-evidence/core.test.ts`, `src/server/services/home-care-ops.ts`, `src/server/services/home-care-ops.test.ts`, `src/lib/patient/navigation.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/server/services/billing-evidence/core.ts`, `src/server/services/billing-evidence/core.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: patient-filtered billing evidence blocker lists still emitted aggregate `/patients` actions for patient-specific insurance/certification/public-subsidy blockers, dropping the exact patient context before staff could resolve visit/report billing readiness.
+- security risks found: reduced wrong-patient / wrong-workspace navigation risk by overriding only `/patients` blocker actions when `patientId` is explicitly supplied to `describeBillingEvidenceBlockers`; unfiltered callers keep aggregate links and non-patient blockers keep existing destinations. No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- performance issues found: link construction over already-known patient ids only; no query, dependency, network call, background job, payload expansion, broad scan, or render loop changed.
+- validation commands: focused billing-evidence/home-care/patient-navigation Vitest; scoped ESLint; scoped Prettier write/check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused Vitest passed `3` files / `82` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- remaining work: commit the billing evidence files and ledger files, send agmsg FYI, then continue scanning report/collaboration surfaces for generic action links or missing relation filters.
+- next action: commit `Focus billing blocker patient actions`, send agmsg FYI, and continue the next clean slice.
+
 ### 20260630-1920 JST
 
 - current task: focus patient-related workflow blocked-reason actions on the exact patient when patient context is available.
