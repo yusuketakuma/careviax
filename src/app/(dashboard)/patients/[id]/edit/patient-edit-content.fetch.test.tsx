@@ -64,6 +64,11 @@ describe('PatientEditContent patient overview fetch', () => {
       render(<PatientEditContent patientId={patientId} />);
 
       expect(captured?.queryKey).toEqual(['patient-overview', patientId, 'org_1']);
+      expect(captured).toMatchObject({
+        enabled: true,
+        refetchOnReconnect: false,
+        refetchOnWindowFocus: false,
+      });
 
       await captured?.queryFn?.();
 

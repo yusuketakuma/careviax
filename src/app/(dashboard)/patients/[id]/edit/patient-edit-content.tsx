@@ -169,6 +169,8 @@ export function PatientEditContent({ patientId }: { patientId: string }) {
       return response.json();
     },
     enabled: Boolean(orgId),
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
   });
 
   if (!orgId || patientQuery.isLoading) {

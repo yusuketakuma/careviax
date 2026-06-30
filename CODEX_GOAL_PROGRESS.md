@@ -27434,3 +27434,23 @@ Next loop:
 - Remaining:
   - Broad master/patient/schedule/collaboration objective remains open.
   - No push was performed; code/test changes were committed locally in the groups above.
+
+### Patient Edit Reconnect Guard - 2026-07-01 00:00 JST
+
+- Scope:
+  - Continued Phase 5 PRE patient master safety work.
+  - Focused on the remaining patient edit data-loss risk during online reconnect/focus refreshes.
+- Fixed:
+  - Patient edit overview query now disables `refetchOnReconnect` and `refetchOnWindowFocus`.
+  - The fetch contract test locks those query options so an open edit form cannot silently advance `expected_updated_at` while keeping stale form field values.
+- Safety:
+  - Reduces stale patient master overwrite risk for long-running edit sessions.
+  - Existing patient update API `expected_updated_at` enforcement, org scope, auth, unsaved-change guard, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- Performance:
+  - Avoids unnecessary patient overview refetch while editing; no new query or dependency added.
+- Validation:
+  - Focused patient edit/form/API Vitest passed `3` files / `69` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- Remaining:
+  - Broad master/patient objective remains open.
+  - Concurrent dirty facility-visit-batch files were observed and intentionally left unstaged/untouched.
