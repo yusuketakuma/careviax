@@ -12,6 +12,7 @@ const {
   membershipUpdateMock,
   membershipUpdateManyMock,
   auditLogCreateMock,
+  loggerErrorMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -23,6 +24,7 @@ const {
   membershipUpdateMock: vi.fn(),
   membershipUpdateManyMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -52,6 +54,12 @@ vi.mock('@/server/services/cognito-admin', () => ({
   resendCognitoInvite: vi.fn(),
 }));
 
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
+}));
+
 import { PATCH } from './route';
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
@@ -74,6 +82,11 @@ function createMalformedJsonRequest(headers?: Record<string, string>) {
       ...headers,
     },
   });
+}
+
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/pharmacists/[id] PATCH', () => {
@@ -372,5 +385,41 @@ describe('/api/pharmacists/[id] PATCH', () => {
         can_audit_set: false,
       }),
     });
+  });
+
+  it('returns a sanitized no-store 500 when staff updates fail unexpectedly', async () => {
+    userFindFirstMock.mockRejectedValueOnce(new Error('raw staff route secret'));
+
+    const response = await PATCH(
+      createRequest(
+        {
+          action: 'suspend',
+          reason: '長期休職',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'user_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw staff route secret');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'pharmacists_id_patch_unhandled_error',
+      undefined,
+      {
+        event: 'pharmacists_id_patch_unhandled_error',
+        route: '/api/pharmacists/[id]',
+        method: 'PATCH',
+        status: 500,
+        error_name: 'Error',
+      },
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw staff route secret');
+    expect(disableCognitoUserMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 });

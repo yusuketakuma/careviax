@@ -1,3 +1,4 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -6,10 +7,13 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { internalError, success, validationError, notFound } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { isOperationalMemberRole, membershipFlagsForRole } from '@/lib/auth/member-roles';
 import { phosRoleFromMemberRole } from '@/lib/auth/phos-role';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import { updatePharmacistSchema } from '@/lib/validations/pharmacist';
 import {
   disableCognitoUser,
@@ -18,7 +22,26 @@ import {
   updateCognitoUserProfile,
 } from '@/server/services/cognito-admin';
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+const ROUTE = '/api/pharmacists/[id]';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
+
+async function authenticatedPATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
     message: '薬剤師管理の権限がありません',
@@ -259,4 +282,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
 
   return success({ data: updated });
+}
+
+export async function PATCH(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('pharmacists_id_patch_unhandled_error', undefined, {
+        event: 'pharmacists_id_patch_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
 }

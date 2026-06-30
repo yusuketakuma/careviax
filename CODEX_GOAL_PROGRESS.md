@@ -109,6 +109,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Broad master-management and patient-information objective remains open.
   - Staff API hardening and deeper staff-specific page tests remain possible follow-ups, but this slice restores the real operational staff surface.
 
+### Staff PATCH API Safety Boundary - 2026-07-01 JST
+
+- Scope:
+  - Continued staff master hardening after `/admin/staff` was switched to real staff-management surfaces.
+  - Focused on `PATCH /api/pharmacists/[id]`, which owns staff profile, role/site assignment, workflow permissions, invite resend, suspension, retirement, and reactivation operations.
+- Fixed:
+  - Split the route into `authenticatedPATCH` plus a public `PATCH` boundary.
+  - Added route performance tracking around staff update operations.
+  - Wrapped all staff update responses with sensitive no-store headers.
+  - Converted unexpected exceptions to the standard sanitized `INTERNAL_ERROR` envelope while logging only safe error metadata.
+  - Added regression coverage proving raw unexpected error text does not appear in the response or logger payload and that Cognito/RLS side effects are not attempted after the simulated lookup failure.
+- Safety:
+  - Reduces staff-management error leakage and cache ambiguity for a core master-management mutation path.
+  - Preserves existing canAdmin permission, request validation, route param normalization, Cognito update/disable/enable/resend behavior, RLS transaction writes, audit-log writes, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds only the existing lightweight route-performance sample wrapper; no new DB query, external call, dependency, polling, broad scan, or unbounded loop was added.
+- Validation:
+  - Pharmacists list/create/update API Vitest passed `2` files / `34` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on `src/app/api/pharmacists/[id]` route/test: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master-management and patient-information objective remains open.
+  - A separate unowned `src/app/api/communication-requests` duplicate-draft reuse diff was observed and preserved outside this staff API slice.
+
 ### External Professional Linked Patient Evidence - 2026-07-01 06:34 JST
 
 - Scope:
