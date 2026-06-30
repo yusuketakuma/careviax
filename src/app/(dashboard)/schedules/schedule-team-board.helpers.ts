@@ -56,8 +56,14 @@ export type StaffLane = {
   rowLabel: string;
   roleKind: DayBoardStaff['role_kind'];
   blocks: BoardBlock[];
+  /** ガントに置いた訪問ブロックの合計(分)。施設一括訪問は1つの訪問窓として数える */
+  visitMinutes: number;
+  /** ガントに置いた移動ブロックの合計(分) */
+  travelMinutes: number;
   /** 勤務帯(9:00-18:00)内の空き合計(分) */
   idleMinutes: number;
+  /** 余白から見た仮の追加訪問枠数(確定可否ではなく目安) */
+  estimatedVisitSlots: number;
   idleTone: 'ok' | 'tight';
 };
 
@@ -281,8 +287,11 @@ export function buildStaffLane({
   const blocks: BoardBlock[] = [];
   const occupied: OccupiedRange[] = [];
   const visitWindows = buildVisitWindows(staff.visits);
+  let visitMinutes = 0;
+  let travelMinutes = 0;
 
   for (const window of visitWindows) {
+    visitMinutes += window.end - window.start;
     blocks.push({
       id: `visit:${window.visit.id}`,
       kind: 'visit',
@@ -314,6 +323,7 @@ export function buildStaffLane({
         risk: false,
       });
       occupied.push({ start: travelStart, end: window.start });
+      travelMinutes += window.start - travelStart;
     }
   }
 
@@ -436,6 +446,8 @@ export function buildStaffLane({
 
   // 余白: 空き合計を行バッジに、十分大きい空きは点線ブロックとして可視化
   const idleMinutes = totalFreeMinutes(occupied);
+  const estimatedVisitSlots =
+    staff.role_kind === 'pharmacist' ? Math.floor(idleMinutes / DEFAULT_VISIT_MINUTES) : 0;
   for (const gap of freeGaps(occupied)) {
     const gapMinutes = gap.end - gap.start;
     if (gapMinutes < IDLE_RENDER_MIN_MINUTES) continue;
@@ -456,7 +468,10 @@ export function buildStaffLane({
     rowLabel: staffRowLabel(staff),
     roleKind: staff.role_kind,
     blocks: blocks.sort((left, right) => left.startMinutes - right.startMinutes),
+    visitMinutes,
+    travelMinutes,
     idleMinutes,
+    estimatedVisitSlots,
     idleTone: idleMinutes < IDLE_TIGHT_THRESHOLD_MINUTES ? 'tight' : 'ok',
   };
 }

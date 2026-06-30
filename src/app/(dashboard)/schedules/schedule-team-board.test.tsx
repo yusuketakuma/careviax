@@ -246,6 +246,19 @@ function buildBoardFixture(): ScheduleDayBoardResponse {
     ],
     audit_pending_count: 6,
     report_pending_count: 2,
+    staff_counts: {
+      total_count: 2,
+      visible_count: 2,
+      hidden_count: 0,
+      total_visit_count: 5,
+      visible_visit_count: 5,
+      hidden_visit_count: 0,
+      total_preparation_attention_count: 4,
+      visible_preparation_attention_count: 4,
+      hidden_preparation_attention_count: 0,
+      hidden_operational_task_count: 0,
+      limit: 6,
+    },
     vehicle_resources: [
       {
         id: 'vehicle_1',
@@ -472,6 +485,9 @@ describe('buildStaffLane', () => {
     // 勤務帯9:00-18:00から占有分を引いた余白が件数として出る
     expect(lane.idleMinutes).toBeGreaterThan(0);
     expect(lane.idleMinutes).toBeLessThan(9 * 60);
+    expect(lane.visitMinutes).toBe(180);
+    expect(lane.travelMinutes).toBe(90);
+    expect(lane.estimatedVisitSlots).toBe(Math.floor(lane.idleMinutes / 60));
   });
 
   it('aggregates facility visits with full-ready blockers as departure blockers', () => {
@@ -790,6 +806,16 @@ describe('ScheduleTeamBoard', () => {
     expect(screen.getByRole('heading', { name: '今日のスケジュール — 全員' })).toBeTruthy();
     expect(screen.getAllByText('山田(薬)').length).toBeGreaterThan(0);
     expect(screen.getByText('鈴木(事務)')).toBeTruthy();
+    const capacitySummary = screen.getByTestId('team-board-capacity-summary');
+    expect(within(capacitySummary).getByText('薬剤師稼働目安')).toBeTruthy();
+    expect(within(capacitySummary).getByText('訪問')).toBeTruthy();
+    expect(within(capacitySummary).getByText('210分')).toBeTruthy();
+    expect(within(capacitySummary).getByText('移動')).toBeTruthy();
+    expect(within(capacitySummary).getByText('90分')).toBeTruthy();
+    expect(within(capacitySummary).getByText('概算余白')).toBeTruthy();
+    expect(within(capacitySummary).getByText('120分')).toBeTruthy();
+    expect(within(capacitySummary).getByText('仮枠(概算)')).toBeTruthy();
+    expect(within(capacitySummary).getByText('約2枠')).toBeTruthy();
     expect(screen.getAllByTestId('team-board-idle').length).toBe(2);
     expect(screen.getAllByText('予定').length).toBeGreaterThan(0);
     expect(screen.getAllByText('準備完了').length).toBeGreaterThan(0);
@@ -825,7 +851,9 @@ describe('ScheduleTeamBoard', () => {
     const preparationLink = within(operationalTasks).getByRole('link', {
       name: /伊藤 キヨ様.*準備一覧へを開く/,
     });
-    expect(preparationLink.getAttribute('href')).toBe('/visits');
+    expect(preparationLink.getAttribute('href')).toBe(
+      '/schedules?focus=schedule&schedule_id=visit_1',
+    );
     expect(preparationLink.className).toContain('min-h-[44px]');
     expect(
       within(operationalTasks).queryByRole('button', { name: /伊藤 キヨ様.*完了にする/ }),
@@ -931,6 +959,38 @@ describe('ScheduleTeamBoard', () => {
     expect(within(pending).getByRole('link', { name: '→ 確定フローへ' }).getAttribute('href')).toBe(
       '/schedules/proposals?workspace=dashboard&status=patient_contact_pending&preset=contact&detail=proposal_1',
     );
+  });
+
+  it('uses staff count metadata so hidden staff work is not shown as an empty day', () => {
+    mockQueries({
+      board: {
+        ...buildBoardFixture(),
+        staff_counts: {
+          total_count: 3,
+          visible_count: 2,
+          hidden_count: 1,
+          total_visit_count: 7,
+          visible_visit_count: 5,
+          hidden_visit_count: 2,
+          total_preparation_attention_count: 5,
+          visible_preparation_attention_count: 4,
+          hidden_preparation_attention_count: 1,
+          hidden_operational_task_count: 3,
+          limit: 6,
+        },
+      },
+    });
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    const summary = screen.getByTestId('schedule-day-summary');
+    expect(within(summary).getByText('7件')).toBeTruthy();
+    expect(within(summary).getByText('表示5件 +他2件 / 表示2名 +他1名')).toBeTruthy();
+    expect(within(summary).getByText('5件')).toBeTruthy();
+    expect(within(summary).getByText('表示4件 +他1件')).toBeTruthy();
+    expect(within(summary).getByTestId('schedule-hidden-staff-counts').textContent).toContain(
+      '非表示スタッフ1名、非表示訪問2件。運用タスク3件は詳細を展開せず件数のみ表示しています。',
+    );
+    expect(screen.getByText('非表示スタッフ1名は別集計')).toBeTruthy();
   });
 
   it('falls back to visible pending proposal length when count summary is absent', () => {

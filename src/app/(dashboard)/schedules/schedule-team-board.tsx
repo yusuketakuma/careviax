@@ -22,6 +22,7 @@ import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { buildWorkRequestHref } from '@/lib/tasks/work-request-navigation';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { familyNameOf } from '@/lib/utils/person-name';
@@ -472,6 +473,55 @@ function GanttRow({ lane }: { lane: StaffLane }) {
   );
 }
 
+function TeamBoardCapacitySummary({
+  lanes,
+  hiddenStaffCount,
+}: {
+  lanes: StaffLane[];
+  hiddenStaffCount: number;
+}) {
+  const pharmacistLanes = lanes.filter((lane) => lane.roleKind === 'pharmacist');
+  if (pharmacistLanes.length === 0) return null;
+
+  const summary = pharmacistLanes.reduce(
+    (totals, lane) => ({
+      visitMinutes: totals.visitMinutes + lane.visitMinutes,
+      travelMinutes: totals.travelMinutes + lane.travelMinutes,
+      idleMinutes: totals.idleMinutes + lane.idleMinutes,
+      estimatedVisitSlots: totals.estimatedVisitSlots + lane.estimatedVisitSlots,
+    }),
+    { visitMinutes: 0, travelMinutes: 0, idleMinutes: 0, estimatedVisitSlots: 0 },
+  );
+  const items = [
+    { label: '訪問', value: `${summary.visitMinutes}分` },
+    { label: '移動', value: `${summary.travelMinutes}分` },
+    { label: '概算余白', value: `${summary.idleMinutes}分` },
+    { label: '仮枠(概算)', value: `約${summary.estimatedVisitSlots}枠` },
+  ];
+
+  return (
+    <div
+      className="mt-3 grid gap-2 rounded-md border border-border/60 bg-muted/20 p-3 text-xs sm:grid-cols-[1.1fr_repeat(4,minmax(0,1fr))]"
+      data-testid="team-board-capacity-summary"
+    >
+      <p className="font-semibold text-muted-foreground">
+        薬剤師稼働目安
+        {hiddenStaffCount > 0 ? (
+          <span className="mt-0.5 block font-normal text-state-confirm">
+            非表示スタッフ{hiddenStaffCount}名は別集計
+          </span>
+        ) : null}
+      </p>
+      {items.map((item) => (
+        <p key={item.label} className="flex items-center justify-between gap-2 sm:block">
+          <span className="text-muted-foreground">{item.label}</span>
+          <strong className="tabular-nums text-foreground sm:mt-0.5 sm:block">{item.value}</strong>
+        </p>
+      ))}
+    </div>
+  );
+}
+
 const TRAVEL_MODE_LABELS: Record<string, string> = {
   DRIVE: '車',
   TWO_WHEELER: '二輪',
@@ -542,11 +592,6 @@ const scheduleTopActionClassName = cn(
   '!h-auto !min-h-[44px] sm:!h-auto sm:!min-h-[44px]',
 );
 
-function visitNeedsPreparationAttention(visit: DayBoardVisit) {
-  const summary = normalizePreparationSummary(visit.preparation_summary);
-  return summary.status !== 'ready' || Boolean(summary.ready_blocker_summary?.blocked);
-}
-
 function ScheduleDaySummaryStrip({
   board,
   dateLabel,
@@ -554,22 +599,32 @@ function ScheduleDaySummaryStrip({
   board: ScheduleDayBoardResponse;
   dateLabel: string;
 }) {
-  const visits = board.staff.flatMap((member) => member.visits);
-  const preparationAttentionCount = visits.filter(visitNeedsPreparationAttention).length;
+  const staffCounts = board.staff_counts;
   const recommendedVehicleTargets = unassignedTimedVisitsForRecommendedVehicle(board).length;
   const proposalCounts = pendingProposalCounts(board);
   const summaryItems = [
     {
       label: '訪問枠',
-      value: `${visits.length}件`,
-      detail: `${board.staff.length}名で対応`,
+      value: `${staffCounts.total_visit_count}件`,
+      detail:
+        staffCounts.hidden_visit_count > 0 || staffCounts.hidden_count > 0
+          ? `表示${staffCounts.visible_visit_count}件 +他${staffCounts.hidden_visit_count}件 / 表示${staffCounts.visible_count}名 +他${staffCounts.hidden_count}名`
+          : `${staffCounts.visible_count}名で対応`,
       tone: 'info' as const,
     },
     {
       label: '出発前要確認',
-      value: `${preparationAttentionCount}件`,
-      detail: preparationAttentionCount > 0 ? '準備/前提条件' : '準備完了',
-      tone: preparationAttentionCount > 0 ? ('confirm' as const) : ('done' as const),
+      value: `${staffCounts.total_preparation_attention_count}件`,
+      detail:
+        staffCounts.hidden_preparation_attention_count > 0
+          ? `表示${staffCounts.visible_preparation_attention_count}件 +他${staffCounts.hidden_preparation_attention_count}件`
+          : staffCounts.total_preparation_attention_count > 0
+            ? '準備/前提条件'
+            : '準備完了',
+      tone:
+        staffCounts.total_preparation_attention_count > 0
+          ? ('confirm' as const)
+          : ('done' as const),
     },
     {
       label: '監査/記録',
@@ -627,6 +682,16 @@ function ScheduleDaySummaryStrip({
           );
         })}
       </dl>
+      {staffCounts.hidden_count > 0 || staffCounts.hidden_operational_task_count > 0 ? (
+        <p
+          className="mt-3 rounded-md border border-state-confirm/25 bg-state-confirm/5 px-3 py-2 text-sm text-state-confirm"
+          data-testid="schedule-hidden-staff-counts"
+        >
+          非表示スタッフ{staffCounts.hidden_count}名、非表示訪問{staffCounts.hidden_visit_count}
+          件。運用タスク{staffCounts.hidden_operational_task_count}
+          件は詳細を展開せず件数のみ表示しています。
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -952,6 +1017,7 @@ function TeamGanttCard({
           {dateLabel}
         </span>
       </div>
+      <TeamBoardCapacitySummary lanes={lanes} hiddenStaffCount={board.staff_counts.hidden_count} />
 
       {lanes.length === 0 ? (
         <p className="mt-4 rounded-md border border-border/70 bg-muted/20 px-4 py-6 text-sm text-muted-foreground">
@@ -1222,6 +1288,9 @@ function operationalTaskContext(
 
 function operationalTaskActionHref(task: ScheduleDayBoardOperationalTask) {
   if (task.task_type === 'visit_preparation' || task.task_type === 'visit_carry_item_review') {
+    if (task.related_entity_type === 'visit_schedule' && task.related_entity_id) {
+      return buildScheduleFocusHref(task.related_entity_id);
+    }
     return '/visits';
   }
   if (task.task_type === 'visit_schedule_override_approval') {
