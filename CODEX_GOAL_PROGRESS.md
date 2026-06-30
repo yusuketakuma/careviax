@@ -46,15 +46,17 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Adds one row-level lock query for the target note and removes the previous separate global-Prisma note read.
   - No broad scan, dependency, background job, external call, or unbounded loop was added.
 - Validation:
-  - `pnpm exec vitest run 'src/app/api/conference-notes/[id]/generate-report/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `13` tests.
+  - `pnpm exec vitest run 'src/app/api/conference-notes/[id]/generate-report/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `1` file / `13` tests.
+  - Related conference/report-disclosure suite passed `3` files / `23` tests.
   - Scoped ESLint on route/test: passed.
   - Scoped Prettier check on route/test: passed.
   - Scoped `git diff --check`: passed.
   - `pnpm typecheck --pretty false`: failed once on an inferred `undefined` route return, fixed by typing the transaction result, then passed.
-  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
 - Remaining:
   - Broad master-management / patient-information objective remains open.
-  - Concurrent unrelated dirty changes appeared in `src/server/services/visit-route-engine.ts` and `src/server/services/visit-route-engine.test.ts`; they were inspected, preserved, and excluded from this conference-note slice.
+  - The concurrent route-engine slice was kept separate and later committed as `710e4540`.
 
 ### Visit Route Heuristic Hard Priority Bands - 2026-07-01 02:58 JST
 
