@@ -118,6 +118,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Broad visit-time, report, and multi-professional cooperation objective remains open.
   - Full format gate needs the unowned pharmacist-credentials slice formatted or committed by its owner.
 
+### Pharmacist Credential Master Boundary - 2026-07-01 07:29 JST
+
+- Scope:
+  - Continued master-management hardening for `/admin/pharmacist-credentials` and `/api/admin/pharmacist-credentials/[id]`.
+  - Focused on update/delete safety for pharmacist credential records that drive staffing and home-care readiness decisions.
+- Fixed:
+  - `PATCH` and `DELETE` for pharmacist credentials now run inside `withOrgContext` and write audit entries in the same transaction as the mutation.
+  - Unexpected detail-route errors are wrapped in sensitive no-store sanitized `INTERNAL_ERROR` responses.
+  - Credential update/delete responses now consistently carry `Cache-Control: private, no-store, max-age=0`.
+  - The credentials UI now uses shared org-header helpers for list/staff/save/delete fetches and the shared pharmacist API path helper for staff options.
+  - Tests lock the RLS transaction, audit payload, no-store headers, shared path/helper delegation, and fail-closed encoded credential id behavior.
+- Safety:
+  - Reduces audit gaps and tenant-boundary drift for a core staff credential master.
+  - Preserves existing canAdmin permission, route-param validation, pharmacist org-reference validation, credential response shape, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds no new query outside the existing mutation path; update/delete move existing reads and writes into one RLS transaction and add one audit write.
+  - UI helper convergence changes only string/header construction and adds no network request, polling, dependency, broad scan, render fan-out, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/admin/pharmacist-credentials/route.test.ts src/app/api/admin/pharmacist-credentials/'[id]'/route.test.ts src/lib/pharmacist-credentials/api-paths.test.ts src/app/'(dashboard)'/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx --reporter=dot --testTimeout=60000`: passed, `4` files / `43` tests.
+  - Scoped ESLint, scoped Prettier check, and `git diff --check`: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- Remaining:
+  - Broad master-management and patient-information objective remains open.
+  - Next high-value follow-ups include auditing remaining admin master detail routes for no-store/audit/RLS parity and patient-detail stale-write preconditions.
+
 ### Workflow Emergency Draft Idempotency - 2026-07-01 06:57 JST
 
 - Scope:
