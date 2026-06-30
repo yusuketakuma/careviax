@@ -22,7 +22,7 @@ import {
   buildCommunicationRequestsHref,
   resolveCommunicationEntityLink,
 } from '@/lib/communications/navigation';
-import { buildVisitRecordHref } from '@/lib/visits/navigation';
+import { buildVisitFacilityPacketHref, buildVisitRecordHref } from '@/lib/visits/navigation';
 import {
   BILLING_VALIDATION_LAYER_KEYS,
   readBillingValidationLayers,
@@ -728,7 +728,10 @@ const authenticatedGET = withAuthContext(
                   label: DRAFT_GENERATION_TARGET_LABELS.facility_handoff,
                 },
               ],
-              action: null,
+              action: {
+                label: '→ 施設パケットへ',
+                href: buildVisitFacilityPacketHref(schedule.id),
+              },
             });
             continue;
           }

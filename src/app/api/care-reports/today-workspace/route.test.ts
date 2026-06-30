@@ -7,6 +7,7 @@ const HOSTILE_SENT_REPORT_ID = 'report/sent?tab=x#frag';
 const HOSTILE_DRAFT_REPORT_ID = 'report/draft?tab=x#frag';
 const HOSTILE_FAILED_REPORT_ID = 'report/failed?tab=x#frag';
 const HOSTILE_DRAFT_SCHEDULE_ID = 'sched/1?tab=x#frag';
+const HOSTILE_FACILITY_SCHEDULE_ID = 'facility/sched?tab=x#frag';
 
 const { authMock, membershipFindFirstMock, withOrgContextMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
@@ -254,7 +255,7 @@ describe('/api/care-reports/today-workspace', () => {
         },
         // 施設一括(同一 batch の 2 行 → 1 行に集約)
         {
-          id: 'sched_3',
+          id: HOSTILE_FACILITY_SCHEDULE_ID,
           schedule_status: 'planned',
           time_window_start: new Date('2026-06-11T06:30:00.000Z'),
           facility_batch_id: 'batch_1',
@@ -308,6 +309,11 @@ describe('/api/care-reports/today-workspace', () => {
     expect(third.generation_targets).toEqual([
       { report_type: 'facility_handoff', label: '施設向け' },
     ]);
+    expect(third.action).toEqual({
+      label: '→ 施設パケットへ',
+      href: `/visits/${encodeURIComponent(HOSTILE_FACILITY_SCHEDULE_ID)}/facility-packet`,
+    });
+    expect(third.action?.href).not.toBe(`/visits/${HOSTILE_FACILITY_SCHEDULE_ID}/facility-packet`);
 
     expect(json.data.counts.to_write).toBe(3);
   });

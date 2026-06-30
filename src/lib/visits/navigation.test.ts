@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildVisitHref, buildVisitRecordHref, buildVisitRecordPdfHref } from './navigation';
+import {
+  buildVisitFacilityPacketHref,
+  buildVisitHref,
+  buildVisitRecordHref,
+  buildVisitRecordPdfHref,
+} from './navigation';
 
 describe('visit navigation helpers', () => {
   it('encodes only the visit id path segment', () => {
@@ -20,6 +25,14 @@ describe('visit navigation helpers', () => {
     );
   });
 
+  it('builds facility-packet hrefs with the packet suffix outside the encoded schedule id', () => {
+    const scheduleId = 'schedule/1?mode=x#frag';
+
+    expect(buildVisitFacilityPacketHref(scheduleId)).toBe(
+      `/visits/${encodeURIComponent(scheduleId)}/facility-packet`,
+    );
+  });
+
   it('builds visit record PDF hrefs with the PDF suffix outside the encoded record id', () => {
     const visitRecordId = 'record/1?mode=x#frag';
 
@@ -31,6 +44,7 @@ describe('visit navigation helpers', () => {
   it.each(['.', '..'])('rejects exact dot-segment visit id %s', (visitId) => {
     expect(() => buildVisitHref(visitId)).toThrow(RangeError);
     expect(() => buildVisitRecordHref(visitId)).toThrow(RangeError);
+    expect(() => buildVisitFacilityPacketHref(visitId)).toThrow(RangeError);
     expect(() => buildVisitRecordPdfHref(visitId)).toThrow(RangeError);
   });
 });

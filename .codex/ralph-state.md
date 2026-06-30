@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0245 JST
+
+- current task: validate and group the care-report today-workspace facility-packet link slice.
+- files inspected: `git status --short --branch --untracked-files=all`, `src/app/api/care-reports/today-workspace/route.ts`, `src/app/api/care-reports/today-workspace/route.test.ts`, `src/lib/visits/navigation.ts`, `src/lib/visits/navigation.test.ts`, validation output, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/care-reports/today-workspace/route.ts`, `src/app/api/care-reports/today-workspace/route.test.ts`, `src/lib/visits/navigation.ts`, `src/lib/visits/navigation.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: facility-batch rows in the care-report today workspace exposed the facility handoff generation target but did not provide the direct facility-packet action, forcing staff to navigate elsewhere despite a concrete schedule id.
+- security risks found: reduced wrong-route/path-injection risk by using a shared visit href helper that encodes only the schedule id segment and keeps `/facility-packet` outside the encoded id. Existing auth, RLS request scoping, no-store error behavior, generation target labels, report counts, migrations, live DB state, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: pure href construction over already-loaded schedule rows. No DB query, dependency, external call, background job, broad scan, or unbounded loop was added.
+- validation commands: `pnpm exec vitest run src/app/api/care-reports/today-workspace/route.test.ts src/lib/visits/navigation.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint --max-warnings=0 src/app/api/care-reports/today-workspace/route.ts src/app/api/care-reports/today-workspace/route.test.ts src/lib/visits/navigation.ts src/lib/visits/navigation.test.ts`; `pnpm exec prettier --check src/app/api/care-reports/today-workspace/route.ts src/app/api/care-reports/today-workspace/route.test.ts src/lib/visits/navigation.ts src/lib/visits/navigation.test.ts`; `git diff --check -- src/app/api/care-reports/today-workspace/route.ts src/app/api/care-reports/today-workspace/route.test.ts src/lib/visits/navigation.ts src/lib/visits/navigation.test.ts`.
+- validation results: focused Vitest passed `2` files / `33` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed.
+- remaining work: broad master-management / patient-information objective remains open. The visit-schedule-proposals medication-cycle guard remains an uncommitted separate group.
+- next action: final scoped check with ledgers, commit this facility-packet link group, then validate the visit-schedule-proposals medication-cycle guard group.
+
 ### 20260701-0240 JST
 
 - current task: harden patient MCS timeline sync data retention.

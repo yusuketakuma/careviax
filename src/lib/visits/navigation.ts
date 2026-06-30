@@ -12,6 +12,10 @@ export function buildVisitRecordHref(scheduleId: string) {
   return buildVisitHref(scheduleId, '/record');
 }
 
+export function buildVisitFacilityPacketHref(scheduleId: string) {
+  return buildVisitHref(scheduleId, '/facility-packet');
+}
+
 export function buildVisitRecordPdfHref(visitRecordId: string) {
   return `/api/visit-records/${encodePathSegment(visitRecordId)}/pdf`;
 }

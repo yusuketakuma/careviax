@@ -30,6 +30,28 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Today Workspace Facility Packet Link - 2026-07-01 02:45 JST
+
+- Scope:
+  - Grouped and validated the concurrent care-report today-workspace facility-batch navigation slice.
+  - Focused on facility-batch draft rows that previously exposed a generation target but no direct action.
+- Fixed:
+  - Added shared `buildVisitFacilityPacketHref(scheduleId)` on top of the existing encoded visit navigation helper.
+  - Facility-batch today-workspace rows now return a `→ 施設パケットへ` action to `/visits/:scheduleId/facility-packet`.
+  - Tests cover hostile schedule ids so the suffix stays outside the encoded id segment.
+- Safety:
+  - Reduces wrong-route and path-injection risk for facility packet follow-up links by avoiding raw schedule-id interpolation.
+  - Preserves existing auth, RLS request scoping, no-store error behavior, generation target labels, report counts, migrations, live DB state, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds only local href construction over already-loaded schedule rows. No DB query, dependency, external call, background job, broad scan, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/care-reports/today-workspace/route.test.ts src/lib/visits/navigation.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `33` tests.
+  - Scoped ESLint on the four changed files: passed.
+  - Scoped Prettier check on the four changed files: passed.
+  - Scoped `git diff --check`: passed.
+- Remaining:
+  - Broad master-management / patient-information objective remains open.
+
 ### Patient MCS Sync Data Retention - 2026-07-01 02:40 JST
 
 - Scope:
