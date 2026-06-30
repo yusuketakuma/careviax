@@ -90,6 +90,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Broad visit-time, report, and multi-professional cooperation objective remains open.
   - Analytics still represents overdue deliveries as overdue even after snooze, because snooze controls follow-up task timing rather than external recipient response state.
 
+### Visit Route Insertion Time Order - 2026-07-01 07:22 JST
+
+- Scope:
+  - Continued visit-time function hardening in the visit schedule planner.
+  - Focused on route insertion scoring after a concrete visit slot has been selected.
+- Fixed:
+  - Route insertion now rejects positions that would place a candidate visit before an earlier-starting previous point or after a later-starting next point.
+  - `computeRouteInsertion` now receives the candidate point with the selected slot start time instead of the pre-slot candidate point.
+  - This keeps route order compatible with visit chronology even when pure travel scoring would prefer an impossible order.
+- Safety:
+  - Reduces operational risk where a visit proposal could carry a route order that contradicts the chosen visit time window.
+  - Preserves existing workflow gates, staff/site/vehicle scope, travel-mode logic, route duration checks, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds a constant-time adjacent time-order check per candidate insertion position.
+  - Adds no DB query, network call, dependency, polling, broad scan, background job, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `45` tests.
+  - `pnpm exec vitest run src/app/api/visit-schedule-proposals/route.test.ts src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `134` tests with the expected sanitized-500 route log.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on planner files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: failed on unowned dirty `src/app/api/admin/pharmacist-credentials/[id]/route.ts` and `src/app/api/admin/pharmacist-credentials/[id]/route.test.ts`; planner files passed scoped Prettier.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit-time, report, and multi-professional cooperation objective remains open.
+  - Full format gate needs the unowned pharmacist-credentials slice formatted or committed by its owner.
+
 ### Workflow Emergency Draft Idempotency - 2026-07-01 06:57 JST
 
 - Scope:

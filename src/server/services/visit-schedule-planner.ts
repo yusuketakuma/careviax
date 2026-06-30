@@ -595,6 +595,22 @@ function sortRoutePoints(points: SchedulePoint[]) {
   });
 }
 
+function canInsertAtRouteTimePosition(args: {
+  candidatePoint: SchedulePoint;
+  previousPoint: SchedulePoint | null;
+  nextPoint: SchedulePoint | null;
+}) {
+  if (!args.candidatePoint.startsAt) return true;
+  const candidateTime = args.candidatePoint.startsAt.getTime();
+  if (args.previousPoint?.startsAt && args.previousPoint.startsAt.getTime() > candidateTime) {
+    return false;
+  }
+  if (args.nextPoint?.startsAt && args.nextPoint.startsAt.getTime() < candidateTime) {
+    return false;
+  }
+  return true;
+}
+
 function sortVehicleRoutePoints(points: SchedulePoint[]) {
   return [...points].sort((left, right) => {
     if (left.startsAt && right.startsAt) {
@@ -707,6 +723,15 @@ async function computeRouteInsertion(
   for (let insertIndex = 0; insertIndex <= ordered.length; insertIndex++) {
     const prev = insertIndex === 0 ? sitePoint : ordered[insertIndex - 1];
     const next = ordered[insertIndex] ?? null;
+    if (
+      !canInsertAtRouteTimePosition({
+        candidatePoint,
+        previousPoint: insertIndex === 0 ? null : prev,
+        nextPoint: next,
+      })
+    ) {
+      continue;
+    }
     let score = 0;
     let candidateAdjacentMinutes = 0;
     let isTravelLimitVerifiable = !(insertIndex === 0 && !prev);
@@ -1837,7 +1862,7 @@ export async function generateVisitScheduleProposalDrafts(
         const routeInsertion = await computeRouteInsertion(
           sitePoint,
           schedulesForShift.map(scheduleToPoint),
-          candidatePoint,
+          candidatePointForSlot,
           estimateRoadTravel,
           travelMode,
         );

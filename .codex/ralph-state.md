@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0722 JST
+
+- current task: keep visit schedule route insertion order compatible with selected visit slot times.
+- files inspected: `git status --short --branch --untracked-files=all`, agmsg `phos/codex2` inbox output, agmsg claim/FYI output, `src/server/services/visit-schedule-planner.ts`, `src/server/services/visit-schedule-planner.test.ts`, `src/app/api/visit-schedule-proposals/route.test.ts`, current unowned pharmacist-credentials dirty status, focused diff, validation output, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/server/services/visit-schedule-planner.ts`, `src/server/services/visit-schedule-planner.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: route insertion scoring could evaluate a candidate without its selected slot start time and choose a travel-optimal `route_order` that contradicted the visit chronology. A 13:00 candidate could be inserted before a 09:00 or after a 15:00 existing point if travel score made that order look cheaper.
+- security risks found: no auth, RLS, PHI export, external sharing, secret, migration, live DB mutation outside normal proposal reads, push/deploy, or destructive-operation surface was changed. Existing workflow gates, staff/site/vehicle scope, route duration limits, and travel-mode checks remain in place.
+- performance issues found: adds only constant-time adjacent time-order checks while iterating candidate insertion positions. No DB query, network call, dependency, polling, broad scan, background job, render path, or unbounded loop was added.
+- validation commands: `pnpm exec vitest run src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`; `pnpm exec vitest run src/app/api/visit-schedule-proposals/route.test.ts src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`; `pnpm exec eslint --max-warnings=0 src/server/services/visit-schedule-planner.ts src/server/services/visit-schedule-planner.test.ts`; `pnpm exec prettier --check src/server/services/visit-schedule-planner.ts src/server/services/visit-schedule-planner.test.ts`; `git diff --check -- src/server/services/visit-schedule-planner.ts src/server/services/visit-schedule-planner.test.ts`; `pnpm typecheck --pretty false`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`; `pnpm lint`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: focused visit schedule planner Vitest passed `1` file / `45` tests; proposal API + planner suite passed `2` files / `134` tests with the expected sanitized-500 route log; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed; full typecheck passed; no-unused passed; full lint passed; full diff-check passed. Full format check failed on unowned dirty `src/app/api/admin/pharmacist-credentials/[id]/route.ts` and `src/app/api/admin/pharmacist-credentials/[id]/route.test.ts`; planner files passed scoped Prettier. Existing planner test `keeps route insertion compatible with the selected visit slot time` covers this behavior.
+- remaining work: broad visit-time, report, and multi-professional cooperation objective remains active. Full format gate needs the unowned pharmacist-credentials slice formatted or committed by its owner.
+- next action: stage only planner code/test plus matching ledger hunks, commit the visit route time-order slice, send agmsg FYI, then continue selecting the next bounded gap after rechecking dirty ownership.
+
 ### 20260701-0717 JST
 
 - current task: connect care-report reminder snooze API to the report-delivery dashboard overdue rows.
