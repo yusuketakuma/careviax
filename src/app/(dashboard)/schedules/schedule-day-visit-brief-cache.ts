@@ -43,6 +43,15 @@ type VisitBriefBatchPayload = {
         provider: 'rule' | 'openai';
         is_fallback: boolean;
       };
+      latest_labs?: Array<{
+        analyte_code: string;
+        analyte_label: string;
+        value_label: string;
+        measured_at_label: string;
+        abnormal: boolean;
+        abnormal_flag: string | null;
+        stale: boolean;
+      }>;
     }
   >;
 };
@@ -109,6 +118,22 @@ export function sortScheduleDayVisitBriefCards(cards: CachedVisitBriefCard[]) {
   return [...cards].sort((left, right) =>
     (left.timeWindowStart ?? '').localeCompare(right.timeWindowStart ?? ''),
   );
+}
+
+function formatCachedLatestLab(
+  lab: NonNullable<VisitBriefBatchPayload['data'][string]['latest_labs']>[number],
+) {
+  const flags = [
+    lab.abnormal ? `異常${lab.abnormal_flag ? ` ${lab.abnormal_flag}` : ''}` : null,
+    lab.stale ? '測定日確認' : null,
+  ].filter((item): item is string => Boolean(item));
+  return [
+    `${lab.analyte_label || lab.analyte_code} ${lab.value_label}`,
+    lab.measured_at_label ? `測定日 ${lab.measured_at_label}` : null,
+    ...flags,
+  ]
+    .filter((item): item is string => Boolean(item))
+    .join(' / ');
 }
 
 function isCachedVisitBriefRowMatch({
@@ -239,6 +264,7 @@ export async function fetchMissingScheduleDayVisitBriefCards({
       siteName: schedule.site?.name ?? null,
       headline: brief.ai_summary.headline,
       mustCheckToday: brief.ai_summary.must_check_today,
+      latestLabs: (brief.latest_labs ?? []).slice(0, 3).map(formatCachedLatestLab),
       sourceRefs: brief.ai_summary.source_refs,
       generatedAt: brief.ai_summary.generated_at,
       provider: brief.ai_summary.provider,

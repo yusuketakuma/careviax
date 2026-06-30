@@ -30,6 +30,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Schedule Offline Brief Latest Labs - 2026-06-30 19:52 JST
+
+- Scope:
+  - Continued visit-preparation work after adding `VisitBrief.latest_labs`.
+  - Focused on the schedule-day offline/mobile visit brief cache and panel, where the latest-lab values were still not persisted/displayed.
+  - Unrelated dirty `src/app/(dashboard)/schedules/schedule-team-board.helpers.ts` and `src/app/(dashboard)/schedules/schedule-team-board.tsx` were preserved and not staged.
+- Fixed:
+  - `CachedVisitBriefCard` now includes `latestLabs: string[]`.
+  - Schedule-day visit brief cache mapping now derives up to three latest-lab excerpt strings from `brief.latest_labs`.
+  - The offline sync panel now renders a compact "最新検査値" block inside each cached visit brief card.
+  - Legacy cached payloads without `latestLabs` remain accepted as `[]`; malformed present `latestLabs` arrays are rejected by the cache parser.
+- Safety:
+  - Reduces clinical-context omission risk when a pharmacist uses the offline/mobile visit mode and still needs patient latest eGFR/K/HbA1c/etc. excerpts.
+  - Stores only short lab excerpt strings already present in the visit brief payload; no new authorization path or live DB read was added.
+- Performance:
+  - Adds at most three short strings per cached brief and one small list render.
+  - No new query, dependency, background job, external network call, unbounded loop, or heavy render path was added.
+- Validation:
+  - `pnpm exec vitest run src/lib/visits/visit-brief-cache.test.ts 'src/app/(dashboard)/schedules/schedule-day-visit-brief-cache.test.ts' 'src/app/(dashboard)/schedules/schedule-day-offline-panel.test.tsx' --reporter=dot --testTimeout=60000`: passed, `3` files / `20` tests.
+  - Scoped ESLint on cache/offline files: passed.
+  - Scoped Prettier write/check on cache/offline files: passed.
+  - Scoped `git diff --check` on cache/offline files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Continue lab projection work for medication-specific safety displays and backfill verification.
+  - Preserve the unrelated schedule-team-board dirty WIP unless explicitly claimed.
+
 ### Visit Brief Latest Lab Projection - 2026-06-30 19:44 JST
 
 - Scope:

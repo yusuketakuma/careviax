@@ -332,6 +332,16 @@ function CachedVisitBrief({ item }: { item: CachedVisitBriefCard }) {
       {item.mustCheckToday.length === 0 && (
         <p className="mt-2 text-xs text-muted-foreground">本日重要チェックなし（生成済み）</p>
       )}
+      {item.latestLabs.length > 0 ? (
+        <div className="mt-2 rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
+          <p className="text-[11px] font-medium text-muted-foreground">最新検査値</p>
+          <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+            {item.latestLabs.slice(0, 3).map((lab) => (
+              <li key={lab}>- {lab}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <p className="mt-2 text-[11px] text-muted-foreground">
         生成 {format(parseISO(item.generatedAt), 'M/d HH:mm', { locale: ja })} / 根拠{' '}
         {item.sourceRefs.join(' / ')}

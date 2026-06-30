@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { OfflineVisitBriefCache } from '@/lib/stores/offline-db';
-import type { CachedVisitBriefCard } from '@/lib/visits/visit-brief-cache';
+import {
+  parseCachedVisitBriefCardPayload,
+  type CachedVisitBriefCard,
+} from '@/lib/visits/visit-brief-cache';
 import type { VisitSchedule } from './day-view.shared';
 import {
   fetchMissingScheduleDayVisitBriefCards,
@@ -25,6 +28,7 @@ function buildCachedCard(overrides: Partial<CachedVisitBriefCard> = {}): CachedV
     siteName: null,
     headline: 'Check medication',
     mustCheckToday: [],
+    latestLabs: [],
     sourceRefs: [],
     generatedAt: '2026-04-09T08:00:00.000Z',
     provider: 'rule',
@@ -255,6 +259,17 @@ describe('schedule day visit brief cache helpers', () => {
             provider: 'openai' as const,
             is_fallback: false,
           },
+          latest_labs: [
+            {
+              analyte_code: 'egfr',
+              analyte_label: 'eGFR',
+              value_label: '38 mL/min/1.73m2',
+              measured_at_label: '2026-04-01',
+              abnormal: true,
+              abnormal_flag: 'L',
+              stale: false,
+            },
+          ],
         },
         schedule_missing_early: {
           ai_summary: {
@@ -317,7 +332,17 @@ describe('schedule day visit brief cache helpers', () => {
       siteName: 'Site A',
       headline: 'Late visit',
       provider: 'openai',
+      latestLabs: ['eGFR 38 mL/min/1.73m2 / 測定日 2026-04-01 / 異常 L'],
     });
+  });
+
+  it('accepts legacy cached brief payloads without latest lab excerpts', () => {
+    const legacy: Partial<CachedVisitBriefCard> = buildCachedCard();
+    delete legacy.latestLabs;
+
+    expect(parseCachedVisitBriefCardPayload(JSON.stringify(legacy))).toEqual(
+      expect.objectContaining({ latestLabs: [] }),
+    );
   });
 
   it('encrypts and replaces fetched visit brief cache cards with a shared updated timestamp', async () => {

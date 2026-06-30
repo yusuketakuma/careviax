@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-1952 JST
+
+- current task: preserve and display latest-lab excerpts in the schedule-day offline visit brief cache.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox for `phos/codex2`, `src/app/(dashboard)/schedules/schedule-day-preparation.ts`, `src/app/(dashboard)/schedules/day-view.shared.ts`, `src/app/(dashboard)/schedules/schedule-day-visit-brief-cache.ts`, `src/app/(dashboard)/schedules/schedule-day-offline-panel.tsx`, `src/lib/visits/visit-brief-cache.ts`, and their focused tests. Unrelated dirty `src/app/(dashboard)/schedules/schedule-team-board.helpers.ts` and `src/app/(dashboard)/schedules/schedule-team-board.tsx` were inspected and preserved but not claimed.
+- files changed: `src/lib/visits/visit-brief-cache.ts`, `src/lib/visits/visit-brief-cache.test.ts`, `src/app/(dashboard)/schedules/schedule-day-visit-brief-cache.ts`, `src/app/(dashboard)/schedules/schedule-day-visit-brief-cache.test.ts`, `src/app/(dashboard)/schedules/schedule-day-offline-panel.tsx`, `src/app/(dashboard)/schedules/schedule-day-offline-panel.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: the schedule-day offline visit brief cache persisted headline, must-check, and source refs only; `VisitBrief.latest_labs` values were dropped before offline/mobile visit preparation display, so latest lab excerpts could disappear from the read-only visit mode.
+- security risks found: reduced clinical-context omission risk in offline visit preparation while storing only short lab excerpt strings already returned by the visit brief. Legacy cache payloads without `latestLabs` remain accepted as empty arrays, but malformed present `latestLabs` values are rejected. No auth/RLS weakening, permission change, PHI export expansion beyond existing visit brief payload, schema migration, live DB operation, external send, push/deploy, secret handling, or destructive operation was added.
+- performance issues found: persisted and rendered at most three latest-lab excerpt strings per cached brief. No new query, dependency, background job, external network call, unbounded loop, or render-heavy path was added.
+- validation commands: focused visit-brief cache/offline-panel Vitest; scoped ESLint; scoped Prettier write/check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused cache/offline-panel suite passed `3` files / `20` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed, including the unrelated dirty schedule-team-board WIP.
+- remaining work: continue lab projection work for medication-specific latest-lab safety surfaces and backfill verification; preserve unrelated schedule-team-board dirty files.
+- next action: commit only the offline cache files and ledger files, send agmsg FYI, then continue the next bounded visit/report/collaboration slice.
+
 ### 20260630-1944 JST
 
 - current task: surface patient latest-lab projection in visit brief / visit-preparation cards without rewriting visit SOAP snapshots.

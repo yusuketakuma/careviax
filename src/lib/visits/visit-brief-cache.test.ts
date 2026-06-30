@@ -17,6 +17,7 @@ const validCard: CachedVisitBriefCard = {
   siteName: '本店',
   headline: '前回の血圧変動を確認',
   mustCheckToday: ['血圧記録', '残薬'],
+  latestLabs: ['eGFR 38 / 測定日 2026-05-20 / 異常 L'],
   sourceRefs: ['前回訪問', '処方歴'],
   generatedAt: '2026-05-31T08:00:00.000Z',
   provider: 'openai',
@@ -26,6 +27,16 @@ const validCard: CachedVisitBriefCard = {
 describe('visit brief cache helpers', () => {
   it('parses a valid cached visit brief payload', () => {
     expect(parseCachedVisitBriefCardPayload(JSON.stringify(validCard))).toEqual(validCard);
+  });
+
+  it('accepts legacy payloads without latest lab excerpts', () => {
+    const legacy: Partial<CachedVisitBriefCard> = { ...validCard };
+    delete legacy.latestLabs;
+
+    expect(parseCachedVisitBriefCardPayload(JSON.stringify(legacy))).toEqual({
+      ...validCard,
+      latestLabs: [],
+    });
   });
 
   it('rejects malformed roots and unsafe enum/date values', () => {
@@ -42,6 +53,12 @@ describe('visit brief cache helpers', () => {
         ...validCard,
         mustCheckToday: ['血圧', 123, null],
         sourceRefs: ['前回訪問', false],
+      }),
+    ).toBeNull();
+    expect(
+      normalizeCachedVisitBriefCard({
+        ...validCard,
+        latestLabs: ['eGFR', 123],
       }),
     ).toBeNull();
   });

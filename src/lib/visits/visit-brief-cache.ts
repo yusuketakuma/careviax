@@ -12,6 +12,7 @@ export type CachedVisitBriefCard = {
   siteName: string | null;
   headline: string;
   mustCheckToday: string[];
+  latestLabs: string[];
   sourceRefs: string[];
   generatedAt: string;
   provider: 'rule' | 'openai';
@@ -72,6 +73,7 @@ export function normalizeCachedVisitBriefCard(value: unknown): CachedVisitBriefC
   const siteName = readNullableString(object.siteName);
   const headline = readNonEmptyString(object.headline);
   const mustCheckToday = readStringArray(object.mustCheckToday);
+  const latestLabs = object.latestLabs === undefined ? [] : readStringArray(object.latestLabs);
   const sourceRefs = readStringArray(object.sourceRefs);
   const generatedAt = readNonEmptyString(object.generatedAt);
   const provider = readProvider(object.provider);
@@ -84,6 +86,7 @@ export function normalizeCachedVisitBriefCard(value: unknown): CachedVisitBriefC
     !priority ||
     !headline ||
     !mustCheckToday ||
+    !latestLabs ||
     !sourceRefs ||
     !generatedAt ||
     !provider ||
@@ -107,6 +110,7 @@ export function normalizeCachedVisitBriefCard(value: unknown): CachedVisitBriefC
     siteName,
     headline,
     mustCheckToday,
+    latestLabs,
     sourceRefs,
     generatedAt,
     provider,

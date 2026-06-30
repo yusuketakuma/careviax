@@ -42,6 +42,7 @@ const cachedBrief: CachedVisitBriefCard = {
   siteName: '本店',
   headline: '血圧変動と残薬確認',
   mustCheckToday: ['降圧薬残数', 'ふらつき', '服薬カレンダー', '次回採血予定'],
+  latestLabs: ['eGFR 38 mL/min/1.73m2 / 測定日 2026-04-01 / 異常 L'],
   sourceRefs: ['latest_visit_record', 'medication_list'],
   generatedAt: '2026-04-09T07:30:00.000Z',
   provider: 'openai',
@@ -301,6 +302,8 @@ describe('ScheduleDayOfflinePanel', () => {
     expect(screen.getByText('- ふらつき')).toBeTruthy();
     expect(screen.getByText('- 服薬カレンダー')).toBeTruthy();
     expect(screen.queryByText('- 次回採血予定')).toBeNull();
+    expect(screen.getByText('最新検査値')).toBeTruthy();
+    expect(screen.getByText('- eGFR 38 mL/min/1.73m2 / 測定日 2026-04-01 / 異常 L')).toBeTruthy();
   });
 
   it('marks generated cached briefs with no must-check items explicitly', () => {
