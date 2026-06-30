@@ -187,12 +187,28 @@ describe('report-reminders service', () => {
               patient_id: 'patient_1',
               report_type: 'physician_report',
               created_by: 'user_1',
+              created_at: new Date('2026-03-01T08:30:00.000Z'),
+            },
+          },
+          {
+            id: 'delivery_waiting_retry',
+            channel: 'fax',
+            recipient_name: '在宅主治医A',
+            recipient_contact: '03-1111-2222',
+            sent_at: new Date('2026-03-02T09:00:00.000Z'),
+            report: {
+              id: 'report_1_retry',
+              patient_id: 'patient_1',
+              report_type: 'physician_report',
+              created_by: 'user_1',
+              created_at: new Date('2026-03-02T08:30:00.000Z'),
             },
           },
         ]),
       },
       task: {
         create: vi.fn(),
+        findMany: vi.fn().mockResolvedValue([]),
         updateMany: vi.fn(),
         upsert: vi.fn(),
       },
@@ -208,21 +224,169 @@ describe('report-reminders service', () => {
       expect.objectContaining({
         orgId: 'org_1',
         taskType: 'report_response_followup',
-        dedupeKey: 'report-response-followup:delivery_waiting',
+        dedupeKey: expect.stringMatching(
+          /^report-response-followup:patient_1:2026-03:[a-f0-9]{16}$/,
+        ),
         relatedEntityType: 'care_report',
         relatedEntityId: 'report_1',
         metadata: expect.objectContaining({
           delivery_record_id: 'delivery_waiting',
+          delivery_record_ids: ['delivery_waiting', 'delivery_waiting_retry'],
+          report_ids: ['report_1', 'report_1_retry'],
+          report_month: '2026-03',
           recipient_contact_masked: '03****2222',
+          delivery_count: 2,
         }),
       }),
     );
     expect(JSON.stringify(upsertOperationalTaskMock.mock.calls[0]?.[1]?.metadata)).not.toContain(
       '03-1111-2222',
     );
+    expect(tx.task.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          dedupe_key: {
+            in: expect.arrayContaining([
+              'report-response-followup:delivery_waiting',
+              'report-response-followup:delivery_waiting_retry',
+            ]),
+          },
+          status: { in: ['pending', 'in_progress'] },
+        }),
+      }),
+    );
     expect(result).toEqual({
       queued_count: 1,
-      delivery_ids: ['delivery_waiting'],
+      reminder_task_count: 1,
+      queued_delivery_count: 2,
+      delivery_ids: ['delivery_waiting', 'delivery_waiting_retry'],
+      skipped_snoozed_count: 0,
+      skipped_snoozed_dedupe_keys: [],
+    });
+  });
+
+  it('does not overwrite an existing snoozed reminder task before its future due date', async () => {
+    const tx = {
+      deliveryRecord: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'delivery_snoozed',
+            channel: 'email',
+            recipient_name: '在宅主治医A',
+            recipient_contact: 'doctor@example.com',
+            sent_at: new Date('2026-03-01T09:00:00.000Z'),
+            report: {
+              id: 'report_snoozed',
+              patient_id: 'patient_1',
+              report_type: 'physician_report',
+              created_by: 'user_1',
+              created_at: new Date('2026-03-01T08:30:00.000Z'),
+            },
+          },
+        ]),
+      },
+      task: {
+        create: vi.fn(),
+        findMany: vi.fn().mockImplementation((args: { where: { dedupe_key: { in: string[] } } }) =>
+          Promise.resolve([
+            {
+              dedupe_key:
+                args.where.dedupe_key.in.find((key) =>
+                  key.startsWith('report-response-followup:patient_1:2026-03:'),
+                ) ?? 'report-response-followup:patient_1:2026-03:missing',
+              due_date: new Date('2026-03-20T00:00:00.000Z'),
+              sla_due_at: null,
+              metadata: null,
+            },
+          ]),
+        ),
+        updateMany: vi.fn(),
+        upsert: vi.fn(),
+      },
+    } as const;
+
+    const result = await queueOverdueReportResponseReminders(tx, 'org_1', {
+      overdueDays: 7,
+      now: new Date('2026-03-12T00:00:00.000Z'),
+    });
+
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      queued_count: 0,
+      reminder_task_count: 0,
+      queued_delivery_count: 0,
+      delivery_ids: [],
+      skipped_snoozed_count: 1,
+    });
+    expect(result.skipped_snoozed_dedupe_keys[0]).toMatch(
+      /^report-response-followup:patient_1:2026-03:[a-f0-9]{16}$/,
+    );
+  });
+
+  it('can snooze selected overdue deliveries without queueing every overdue report', async () => {
+    const snoozeUntil = new Date('2026-03-18T00:00:00.000Z');
+    const tx = {
+      deliveryRecord: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'delivery_selected',
+            channel: 'email',
+            recipient_name: '在宅主治医A',
+            recipient_contact: 'doctor@example.com',
+            sent_at: new Date('2026-03-01T09:00:00.000Z'),
+            report: {
+              id: 'report_selected',
+              patient_id: 'patient_1',
+              report_type: 'physician_report',
+              created_by: 'user_1',
+              created_at: new Date('2026-03-01T08:30:00.000Z'),
+            },
+          },
+        ]),
+      },
+      task: {
+        create: vi.fn(),
+        findMany: vi.fn().mockResolvedValue([]),
+        updateMany: vi.fn(),
+        upsert: vi.fn(),
+      },
+    } as const;
+
+    const result = await queueOverdueReportResponseReminders(tx, 'org_1', {
+      deliveryIds: ['delivery_selected', 'delivery_selected'],
+      overdueDays: 7,
+      now: new Date('2026-03-12T00:00:00.000Z'),
+      snoozeUntil,
+    });
+
+    expect(tx.deliveryRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { in: ['delivery_selected'] },
+        }),
+      }),
+    );
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        priority: 'normal',
+        dueDate: snoozeUntil,
+        slaDueAt: snoozeUntil,
+        metadata: expect.objectContaining({
+          snooze_until: '2026-03-18T00:00:00.000Z',
+          recipient_contact_masked: 'd***@example.com',
+        }),
+      }),
+    );
+    expect(JSON.stringify(upsertOperationalTaskMock.mock.calls[0]?.[1]?.metadata)).not.toContain(
+      'doctor@example.com',
+    );
+    expect(result).toMatchObject({
+      queued_count: 1,
+      reminder_task_count: 1,
+      queued_delivery_count: 1,
+      delivery_ids: ['delivery_selected'],
     });
   });
 });

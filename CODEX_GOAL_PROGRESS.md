@@ -30,6 +30,37 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### CareReport Reminder Dedupe/Snooze Backend - 2026-07-01 07:12 JST
+
+- Scope:
+  - Continued report-function and multi-professional cooperation hardening for `POST /api/care-reports/reminders`.
+  - Focused on overdue `response_waiting` delivery follow-up task creation.
+- Fixed:
+  - Reminder task dedupe now groups overdue deliveries by patient, report month, channel, and hashed recipient key instead of creating one task per delivery record.
+  - Legacy per-delivery reminder dedupe keys are still checked so existing open tasks are not blindly duplicated during rollout.
+  - The reminder route accepts optional `delivery_ids` for targeted queueing and `snooze_until` for targeted future due-date snoozing.
+  - `snooze_until` is rejected unless explicit `delivery_ids` are provided, and past snooze timestamps fail closed before DB work.
+  - Existing open reminder tasks with a future `due_date` or future `metadata.snooze_until` are skipped on normal bulk queueing.
+- Safety:
+  - Reduces duplicate report-response follow-up tasks for the same patient/month/recipient while preserving org RLS context, canSendCareReport permission, sensitive no-store responses, and sanitized unexpected errors.
+  - No raw recipient phone/email is persisted in new reminder metadata; contact values are stored as masked display values plus a short deterministic recipient hash for grouping.
+  - No migration, live DB mutation, external send, push/deploy, secret handling, or destructive operation was performed.
+- Performance:
+  - Adds one bounded open-task lookup for candidate dedupe keys after the overdue delivery read.
+  - Grouping is in-memory over the already selected overdue deliveries; no new dependency, background job, polling, broad scan, render path, or unbounded loop was added.
+- Validation:
+  - Focused reminder service/API Vitest passed `2` files / `14` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on reminder service/API files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - Independent verifier spawn was attempted but unavailable because the agent thread limit was reached.
+- Remaining:
+  - Broad visit-time, report, and multi-professional cooperation objective remains open.
+  - UI controls for per-row snooze were not added in this backend/API slice; the API contract is now ready for a focused UI follow-up.
+
 ### Workflow Emergency Draft Idempotency - 2026-07-01 06:57 JST
 
 - Scope:
@@ -29491,3 +29522,28 @@ Next loop:
 - Remaining:
   - Broad schedule/prescription/route/master/patient/report/cooperation objective remains open.
   - Deeper time-window feasibility and route planner/engine scoring convergence remain follow-ups.
+
+### Care Report Response Reminder Grouping - 2026-07-01 07:12 JST
+
+- Scope:
+  - Continued patient/report safety hardening.
+  - Focused on `/api/care-reports/reminders` and the operational task queue for unanswered care-report deliveries.
+- Fixed:
+  - Grouped overdue response reminders by patient, report month, channel, and recipient instead of creating one pending task per delivery record.
+  - Preserved legacy delivery-id dedupe keys when checking existing tasks so older pending reminders are not duplicated during the transition.
+  - Added selected-delivery queuing and `snooze_until` support with route-level validation that requires explicit `delivery_ids` and future timestamps.
+  - Kept raw recipient contact values out of reminder task metadata by using masked contacts and a short recipient hash.
+- Safety:
+  - Reduces duplicate operational tasks for the same patient/month/recipient and prevents a snoozed reminder from being overwritten before its future due date.
+  - Existing auth, org/RLS transaction scope, sensitive no-store response wrapping, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- Performance:
+  - Adds one bounded lookup for existing pending/in-progress task dedupe keys before upserting reminder tasks.
+  - Groups deliveries in memory over the already bounded overdue-delivery result set and adds no new dependency, polling, background job, external call, broad scan, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/server/services/report-reminders.test.ts src/app/api/care-reports/reminders/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `14` tests.
+  - Scoped ESLint, scoped Prettier check, and `git diff --check`: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+- Remaining:
+  - Broad master/patient/report objective remains open.
+  - Additional follow-ups include UI-level bulk snooze controls and audit visibility for grouped report-response reminders.

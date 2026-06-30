@@ -85,7 +85,14 @@ describe('/api/care-reports/reminders POST', () => {
   });
 
   it('creates overdue response follow-up tasks', async () => {
-    const response = await POST(createRequest({ overdue_days: 5 }), emptyRouteContext);
+    const response = await POST(
+      createRequest({
+        overdue_days: 5,
+        delivery_ids: ['delivery_1'],
+        snooze_until: '2999-03-18T00:00:00.000Z',
+      }),
+      emptyRouteContext,
+    );
 
     const ensuredResponse = response;
     if (!ensuredResponse) throw new Error('response is required');
@@ -93,6 +100,8 @@ describe('/api/care-reports/reminders POST', () => {
     expectSensitiveNoStore(ensuredResponse);
     expect(queueOverdueReportResponseRemindersMock).toHaveBeenCalledWith({ tx: true }, 'org_1', {
       overdueDays: 5,
+      deliveryIds: ['delivery_1'],
+      snoozeUntil: new Date('2999-03-18T00:00:00.000Z'),
     });
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: expect.objectContaining({
@@ -157,6 +166,52 @@ describe('/api/care-reports/reminders POST', () => {
       message: '入力値が不正です',
       details: {
         overdue_days: expect.any(Array),
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(queueOverdueReportResponseRemindersMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects snooze requests without explicit delivery ids', async () => {
+    const response = await POST(
+      createRequest({ overdue_days: 5, snooze_until: '2999-03-18T00:00:00.000Z' }),
+      emptyRouteContext,
+    );
+
+    const ensuredResponse = response;
+    if (!ensuredResponse) throw new Error('response is required');
+    expect(ensuredResponse.status).toBe(400);
+    expectSensitiveNoStore(ensuredResponse);
+    await expect(ensuredResponse.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'snooze_until を指定する場合は delivery_ids が必要です',
+      details: {
+        delivery_ids: ['delivery_ids を指定してください'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(queueOverdueReportResponseRemindersMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects past snooze timestamps before reminder queueing', async () => {
+    const response = await POST(
+      createRequest({
+        overdue_days: 5,
+        delivery_ids: ['delivery_1'],
+        snooze_until: '2000-03-18T00:00:00.000Z',
+      }),
+      emptyRouteContext,
+    );
+
+    const ensuredResponse = response;
+    if (!ensuredResponse) throw new Error('response is required');
+    expect(ensuredResponse.status).toBe(400);
+    expectSensitiveNoStore(ensuredResponse);
+    await expect(ensuredResponse.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'snooze_until は未来日時を指定してください',
+      details: {
+        snooze_until: ['未来日時を指定してください'],
       },
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();

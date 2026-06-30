@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { addDays, differenceInCalendarDays, startOfMonth, subMonths } from 'date-fns';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
@@ -7,7 +8,7 @@ import { maskContactValueForAudit } from '@/lib/privacy/contact-mask';
 
 type Tx = {
   deliveryRecord: Pick<Prisma.TransactionClient['deliveryRecord'], 'findMany'>;
-  task: Pick<Prisma.TransactionClient['task'], 'create' | 'updateMany' | 'upsert'>;
+  task: Pick<Prisma.TransactionClient['task'], 'create' | 'findMany' | 'updateMany' | 'upsert'>;
 };
 
 type DeliveryAnalyticsDb = Pick<Prisma.TransactionClient, 'deliveryRecord' | 'patient'>;
@@ -24,12 +25,130 @@ function formatMonth(value: Date) {
   return `${year}-${month}`;
 }
 
-function buildReportResponseReminderTaskKey(deliveryId: string) {
+function buildLegacyReportResponseReminderTaskKey(deliveryId: string) {
   return `report-response-followup:${deliveryId}`;
 }
 
 function maskDeliveryContact(value: string | null) {
   return maskContactValueForAudit(value, { phoneLeadingDigits: 2 }) ?? '';
+}
+
+function hashReminderRecipient(input: {
+  channel: string;
+  recipientName: string;
+  recipientContact: string | null;
+}) {
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        channel: input.channel,
+        recipient_name: input.recipientName.trim(),
+        recipient_contact: input.recipientContact?.trim() ?? '',
+      }),
+    )
+    .digest('hex')
+    .slice(0, 16);
+}
+
+function buildReportResponseReminderTaskKey(input: {
+  patientId: string;
+  reportMonth: string;
+  channel: string;
+  recipientName: string;
+  recipientContact: string | null;
+}) {
+  const recipientHash = hashReminderRecipient(input);
+  return `report-response-followup:${input.patientId}:${input.reportMonth}:${recipientHash}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseFutureDate(value: unknown, now: Date) {
+  if (typeof value !== 'string') return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) || parsed <= now ? null : parsed;
+}
+
+function readSnoozeUntil(metadata: Prisma.JsonValue | null, now: Date) {
+  if (!isRecord(metadata)) return null;
+  return parseFutureDate(metadata.snooze_until, now);
+}
+
+type ReminderDelivery = {
+  id: string;
+  channel: string;
+  recipient_name: string;
+  recipient_contact: string | null;
+  sent_at: Date | null;
+  report: {
+    id: string;
+    patient_id: string;
+    report_type: string;
+    created_by: string;
+    created_at: Date;
+  };
+};
+
+type ReminderGroup = {
+  dedupeKey: string;
+  legacyDedupeKeys: string[];
+  reportMonth: string;
+  patientId: string;
+  channel: string;
+  recipientName: string;
+  recipientContactMasked: string;
+  deliveries: ReminderDelivery[];
+  earliestSentAt: Date;
+  latestSentAt: Date;
+  maxDaysWaiting: number;
+  reportType: string;
+  createdBy: string;
+  reportIds: string[];
+};
+
+function createReminderGroup(delivery: ReminderDelivery, now: Date): ReminderGroup | null {
+  if (!delivery.sent_at) return null;
+  const reportMonth = formatMonth(startOfMonth(delivery.report.created_at));
+  const dedupeKey = buildReportResponseReminderTaskKey({
+    patientId: delivery.report.patient_id,
+    reportMonth,
+    channel: delivery.channel,
+    recipientName: delivery.recipient_name,
+    recipientContact: delivery.recipient_contact,
+  });
+  const daysWaiting = differenceInCalendarDays(now, delivery.sent_at);
+
+  return {
+    dedupeKey,
+    legacyDedupeKeys: [buildLegacyReportResponseReminderTaskKey(delivery.id)],
+    reportMonth,
+    patientId: delivery.report.patient_id,
+    channel: delivery.channel,
+    recipientName: delivery.recipient_name,
+    recipientContactMasked: maskDeliveryContact(delivery.recipient_contact),
+    deliveries: [delivery],
+    earliestSentAt: delivery.sent_at,
+    latestSentAt: delivery.sent_at,
+    maxDaysWaiting: daysWaiting,
+    reportType: delivery.report.report_type,
+    createdBy: delivery.report.created_by,
+    reportIds: [delivery.report.id],
+  };
+}
+
+function addDeliveryToReminderGroup(group: ReminderGroup, delivery: ReminderDelivery, now: Date) {
+  if (!delivery.sent_at) return;
+  group.deliveries.push(delivery);
+  group.legacyDedupeKeys.push(buildLegacyReportResponseReminderTaskKey(delivery.id));
+  if (delivery.sent_at < group.earliestSentAt) group.earliestSentAt = delivery.sent_at;
+  if (delivery.sent_at > group.latestSentAt) group.latestSentAt = delivery.sent_at;
+  group.maxDaysWaiting = Math.max(
+    group.maxDaysWaiting,
+    differenceInCalendarDays(now, delivery.sent_at),
+  );
+  if (!group.reportIds.includes(delivery.report.id)) group.reportIds.push(delivery.report.id);
 }
 
 export async function getCareReportDeliveryAnalytics(
@@ -257,15 +376,23 @@ export async function getCareReportDeliveryAnalytics(
 export async function queueOverdueReportResponseReminders(
   tx: Tx,
   orgId: string,
-  options: Pick<DeliveryAnalyticsOptions, 'overdueDays' | 'now'> = {},
+  options: Pick<DeliveryAnalyticsOptions, 'overdueDays' | 'now'> & {
+    deliveryIds?: string[];
+    snoozeUntil?: Date | null;
+  } = {},
 ) {
   const now = options.now ?? new Date();
   const overdueDays = options.overdueDays ?? 7;
   const threshold = addDays(now, -overdueDays);
+  const deliveryIds = options.deliveryIds
+    ? Array.from(new Set(options.deliveryIds.map((id) => id.trim()).filter(Boolean)))
+    : [];
+  const snoozeUntil = options.snoozeUntil && options.snoozeUntil > now ? options.snoozeUntil : null;
 
-  const deliveries = await tx.deliveryRecord.findMany({
+  const deliveries = (await tx.deliveryRecord.findMany({
     where: {
       org_id: orgId,
+      ...(deliveryIds.length > 0 ? { id: { in: deliveryIds } } : {}),
       status: 'response_waiting',
       sent_at: {
         not: null,
@@ -284,47 +411,130 @@ export async function queueOverdueReportResponseReminders(
           patient_id: true,
           report_type: true,
           created_by: true,
+          created_at: true,
         },
       },
     },
     orderBy: [{ sent_at: 'asc' }],
-  });
+  })) as ReminderDelivery[];
 
+  const groups = new Map<string, ReminderGroup>();
   for (const delivery of deliveries) {
-    if (!delivery.sent_at) continue;
+    const group = createReminderGroup(delivery, now);
+    if (!group) continue;
 
-    const daysWaiting = differenceInCalendarDays(now, delivery.sent_at);
-    const reportTypeLabel =
-      REPORT_TYPE_LABELS[delivery.report.report_type] ?? delivery.report.report_type;
+    const existing = groups.get(group.dedupeKey);
+    if (existing) {
+      addDeliveryToReminderGroup(existing, delivery, now);
+      continue;
+    }
+    groups.set(group.dedupeKey, group);
+  }
+
+  const dedupeKeys = Array.from(
+    new Set(
+      Array.from(groups.values()).flatMap((group) => [group.dedupeKey, ...group.legacyDedupeKeys]),
+    ),
+  );
+  const existingTasks =
+    dedupeKeys.length === 0
+      ? []
+      : await tx.task.findMany({
+          where: {
+            org_id: orgId,
+            dedupe_key: { in: dedupeKeys },
+            status: { in: ['pending', 'in_progress'] },
+          },
+          select: {
+            dedupe_key: true,
+            due_date: true,
+            sla_due_at: true,
+            metadata: true,
+          },
+        });
+  const existingTaskByDedupeKey = new Map(
+    existingTasks
+      .filter((task) => task.dedupe_key)
+      .map((task) => [task.dedupe_key as string, task]),
+  );
+
+  const queuedDeliveryIds: string[] = [];
+  let queuedTaskCount = 0;
+  const skippedSnoozedDedupeKeys: string[] = [];
+
+  for (const group of groups.values()) {
+    const matchingExistingTask =
+      existingTaskByDedupeKey.get(group.dedupeKey) ??
+      group.legacyDedupeKeys
+        .map((dedupeKey) => existingTaskByDedupeKey.get(dedupeKey))
+        .find((task): task is NonNullable<typeof task> => Boolean(task));
+    const existingSnoozeUntil =
+      matchingExistingTask?.due_date && matchingExistingTask.due_date > now
+        ? matchingExistingTask.due_date
+        : readSnoozeUntil(matchingExistingTask?.metadata ?? null, now);
+
+    if (!snoozeUntil && existingSnoozeUntil) {
+      skippedSnoozedDedupeKeys.push(group.dedupeKey);
+      continue;
+    }
+
+    const effectiveDedupeKey = matchingExistingTask?.dedupe_key ?? group.dedupeKey;
+    const reportTypeLabel = REPORT_TYPE_LABELS[group.reportType] ?? group.reportType;
+    const dueDate = snoozeUntil ?? addDays(group.earliestSentAt, overdueDays);
+    const slaDueAt = snoozeUntil ?? addDays(group.earliestSentAt, overdueDays + 1);
 
     await upsertOperationalTask(tx, {
       orgId,
       taskType: 'report_response_followup',
       title: '未確認報告書のフォローが必要です',
-      description: `${delivery.recipient_name} へ送付した ${reportTypeLabel} が ${daysWaiting}日未確認です。`,
-      priority: daysWaiting >= overdueDays * 2 ? 'urgent' : 'high',
-      assignedTo: delivery.report.created_by,
-      dueDate: addDays(delivery.sent_at, overdueDays),
-      slaDueAt: addDays(delivery.sent_at, overdueDays + 1),
-      dedupeKey: buildReportResponseReminderTaskKey(delivery.id),
+      description:
+        group.deliveries.length === 1
+          ? `${group.recipientName} へ送付した ${reportTypeLabel} が ${group.maxDaysWaiting}日未確認です。`
+          : `${group.recipientName} へ送付した ${reportTypeLabel} ほか${group.deliveries.length}件が最大${group.maxDaysWaiting}日未確認です。`,
+      priority: snoozeUntil
+        ? 'normal'
+        : group.maxDaysWaiting >= overdueDays * 2
+          ? 'urgent'
+          : 'high',
+      assignedTo: group.createdBy,
+      dueDate,
+      slaDueAt,
+      dedupeKey: effectiveDedupeKey,
       relatedEntityType: 'care_report',
-      relatedEntityId: delivery.report.id,
+      relatedEntityId: group.reportIds[0] ?? null,
       metadata: {
-        delivery_record_id: delivery.id,
-        report_id: delivery.report.id,
-        patient_id: delivery.report.patient_id,
-        report_type: delivery.report.report_type,
-        recipient_name: delivery.recipient_name,
-        recipient_contact_masked: maskDeliveryContact(delivery.recipient_contact),
-        channel: delivery.channel,
-        sent_at: delivery.sent_at.toISOString(),
-        days_waiting: daysWaiting,
+        delivery_record_id: group.deliveries[0]?.id ?? null,
+        delivery_record_ids: group.deliveries.map((item) => item.id),
+        report_id: group.reportIds[0] ?? null,
+        report_ids: group.reportIds,
+        patient_id: group.patientId,
+        report_month: group.reportMonth,
+        report_type: group.reportType,
+        recipient_name: group.recipientName,
+        recipient_contact_masked: group.recipientContactMasked,
+        recipient_key_hash: hashReminderRecipient({
+          channel: group.channel,
+          recipientName: group.recipientName,
+          recipientContact: group.deliveries[0]?.recipient_contact ?? null,
+        }),
+        channel: group.channel,
+        sent_at: group.earliestSentAt.toISOString(),
+        latest_sent_at: group.latestSentAt.toISOString(),
+        days_waiting: group.maxDaysWaiting,
+        delivery_count: group.deliveries.length,
+        ...(snoozeUntil ? { snooze_until: snoozeUntil.toISOString() } : {}),
       },
     });
+    queuedTaskCount += 1;
+    queuedDeliveryIds.push(...group.deliveries.map((item) => item.id));
   }
 
   return {
-    queued_count: deliveries.length,
-    delivery_ids: deliveries.map((item) => item.id),
+    queued_count: queuedTaskCount,
+    reminder_task_count: queuedTaskCount,
+    queued_delivery_count: queuedDeliveryIds.length,
+    delivery_ids: queuedDeliveryIds,
+    skipped_snoozed_count: skippedSnoozedDedupeKeys.length,
+    skipped_snoozed_dedupe_keys: skippedSnoozedDedupeKeys,
   };
 }
