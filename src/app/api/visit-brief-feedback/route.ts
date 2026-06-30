@@ -1,8 +1,10 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError } from '@/lib/api/response';
+import { success, validationError, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 
@@ -21,7 +23,7 @@ const feedbackSchema = z.object({
   is_fallback: z.boolean().optional(),
 });
 
-export async function POST(req: NextRequest) {
+const authenticatedPOST = async (req: NextRequest) => {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問要約フィードバックの送信権限がありません',
@@ -67,4 +69,13 @@ export async function POST(req: NextRequest) {
   );
 
   return success({ ok: true }, 201);
-}
+};
+
+export const POST: typeof authenticatedPOST = async (req) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

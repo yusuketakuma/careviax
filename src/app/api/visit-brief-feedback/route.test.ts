@@ -37,6 +37,11 @@ function createMalformedJsonRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/visit-brief-feedback POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -70,6 +75,7 @@ describe('/api/visit-brief-feedback POST', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).toHaveBeenCalledWith(
       'corg1234567890123456789012',
       expect.any(Function),
@@ -148,6 +154,65 @@ describe('/api/visit-brief-feedback POST', () => {
 
     expect(response.status).toBe(400);
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when feedback auth lookup fails unexpectedly', async () => {
+    requireAuthContextMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 090-1234-5678 raw visit brief feedback auth detail'),
+    );
+
+    const response = (await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        context: 'patient',
+        generation_id: 'gen_1',
+        summary_kind: 'ai',
+        rating: 'helpful',
+      }),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('raw visit brief feedback auth detail');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when feedback audit logging fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 raw corrected summary audit failure detail'),
+    );
+
+    const response = (await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        context: 'patient',
+        generation_id: 'gen_1',
+        summary_kind: 'ai',
+        rating: 'needs_review',
+        comment: '一部修正する',
+        corrected_summary: '夕食後薬の飲み忘れ確認を最優先にしてください。',
+      }),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('raw corrected summary audit failure detail');
+    expect(JSON.stringify(body)).not.toContain('夕食後薬の飲み忘れ');
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 });
