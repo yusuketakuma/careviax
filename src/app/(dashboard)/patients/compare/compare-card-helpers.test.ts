@@ -28,6 +28,7 @@ function buildWorkspace(overrides: Partial<CompareWorkspaceInput> = {}): Compare
 
 function buildBoardCard(overrides: Partial<CompareBoardCardInput> = {}): CompareBoardCardInput {
   return {
+    patient_id: 'patient_1',
     attention: 'urgent_now',
     status_text: '麻薬監査 期限12:00 — 持参薬が未確定',
     link_label: '監査へ',
@@ -50,9 +51,9 @@ describe('deriveCardTypeLabel', () => {
   });
 
   it('returns 返信待ちカード ahead of category when both apply', () => {
-    expect(
-      deriveCardTypeLabel({ attention: 'reply_wait', prescriptionCategory: 'regular' }),
-    ).toBe('返信待ちカード');
+    expect(deriveCardTypeLabel({ attention: 'reply_wait', prescriptionCategory: 'regular' })).toBe(
+      '返信待ちカード',
+    );
   });
 
   it('falls back to 処方カード when no vocabulary is available', () => {
@@ -156,12 +157,16 @@ describe('deriveCompareCardView', () => {
     expect(view.periodSub).toBe('今回処方 6/10 取込');
     expect(view.highlights).toEqual(['現在の工程: 判断(疑義照会中)']);
     expect(view.blockedReasons).toEqual([
-      { id: 'attention-external_wait', label: '医師回答待ち 2日 — 再照会を検討', severity: 'warning' },
+      {
+        id: 'attention-external_wait',
+        label: '医師回答待ち 2日 — 再照会を検討',
+        severity: 'warning',
+      },
     ]);
     expect(view.nextAction).toEqual({
       description: '医師からの回答を確認して、処方へ反映します。',
       actionLabel: '照会状況を確認する',
-      actionHref: '/communications/requests',
+      actionHref: '/communications/requests?status=sent&patient_id=patient_1',
     });
   });
 
@@ -182,13 +187,37 @@ describe('deriveCompareCardView', () => {
     expect(view.periodSub).toBe('進行中の処方はありません');
     expect(view.highlights).toEqual(['現在の工程: 算定']);
     expect(view.blockedReasons).toEqual([
-      { id: 'attention-reply_wait', label: '報告先の返信待ち 3日 — 再送できます', severity: 'warning' },
+      {
+        id: 'attention-reply_wait',
+        label: '報告先の返信待ち 3日 — 再送できます',
+        severity: 'warning',
+      },
     ]);
     expect(view.nextAction).toEqual({
       description: '返信状況を確認して、必要であれば報告を再送します。',
       actionLabel: '報告・共有へ',
-      actionHref: '/reports',
+      actionHref: '/communications/requests?status=sent&patient_id=patient_1',
     });
+  });
+
+  it('keeps reply-wait patient ids URL-encoded in compare card actions', () => {
+    const patientId = '../patient with space?x=1#frag';
+
+    const view = deriveCompareCardView({
+      boardCard: buildBoardCard({
+        patient_id: patientId,
+        attention: 'reply_wait',
+        status_text: '報告先の返信待ち 3日 — 再送できます',
+        link_label: '報告・共有へ',
+        link_href: '/reports',
+        current_step: 'billing',
+      }),
+      workspace: null,
+    });
+
+    expect(view.nextAction?.actionHref).toBe(
+      `/communications/requests?${new URLSearchParams({ status: 'sent', patient_id: patientId }).toString()}`,
+    );
   });
 
   it('handles a card without board entry or workspace', () => {

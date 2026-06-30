@@ -5,6 +5,7 @@ import {
   getProcessStepIndex,
   getProcessStepKeyForStatus,
 } from '@/lib/prescription/cycle-workspace';
+import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import type { PatientAttentionKey, PatientBoardCard } from '@/types/patient-board';
 
 /**
@@ -32,7 +33,7 @@ export type CompareWorkspaceInput = {
 /** 患者カード一覧(board BFF)からの最小情報。 */
 export type CompareBoardCardInput = Pick<
   PatientBoardCard,
-  'attention' | 'status_text' | 'link_label' | 'link_href' | 'current_step'
+  'patient_id' | 'attention' | 'status_text' | 'link_label' | 'link_href' | 'current_step'
 >;
 
 export type CompareCardBlockedReason = {
@@ -113,8 +114,7 @@ export function formatMedicationPeriodSub(workspace: CompareWorkspaceInput | nul
   const previousEnd = formatMonthDay(workspace.previous_medication?.end);
   const currentStart = formatMonthDay(workspace.current_medication?.start);
   const currentEnd = formatMonthDay(workspace.current_medication?.end);
-  const currentLabel =
-    currentStart && currentEnd ? `今回 ${currentStart}〜${currentEnd}` : null;
+  const currentLabel = currentStart && currentEnd ? `今回 ${currentStart}〜${currentEnd}` : null;
   if (previousEnd && currentLabel) return `前回薬 ${previousEnd}まで / ${currentLabel}`;
   if (currentLabel) return currentLabel;
   const prescribed = formatMonthDay(workspace.current_intake?.prescribed_date);
@@ -143,11 +143,13 @@ export function deriveCompareCardView(args: {
   const workspaceStepLabel = workspace
     ? getStepLabel(getProcessStepKeyForStatus(workspace.overall_status))
     : null;
-  const boardStepLabel = boardCard?.current_step
-    ? getStepLabel(boardCard.current_step)
-    : null;
+  const boardStepLabel = boardCard?.current_step ? getStepLabel(boardCard.current_step) : null;
   const isExternalWait =
     boardCard != null && EXTERNAL_WAIT_ATTENTIONS.includes(boardCard.attention);
+  const externalWaitRequestHref =
+    boardCard && isExternalWait
+      ? buildCommunicationRequestsHref({ status: 'sent', patientId: boardCard.patient_id })
+      : null;
 
   // ── 今日の見どころ ──────────────────────────────────────────
   let highlights: string[];
@@ -196,13 +198,13 @@ export function deriveCompareCardView(args: {
       actionLabel: deadlineTask?.due_time
         ? `${cycleAction.actionLabel} — ${deadlineTask.due_time}期限`
         : cycleAction.actionLabel,
-      actionHref: cycleAction.actionHref,
+      actionHref: externalWaitRequestHref ?? cycleAction.actionHref,
     };
   } else if (boardCard) {
     nextAction = {
       description: ATTENTION_NEXT_DESCRIPTIONS[boardCard.attention] ?? FALLBACK_NEXT_DESCRIPTION,
       actionLabel: boardCard.link_label,
-      actionHref: boardCard.link_href,
+      actionHref: externalWaitRequestHref ?? boardCard.link_href,
     };
   }
 
