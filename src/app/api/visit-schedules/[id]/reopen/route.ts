@@ -101,6 +101,17 @@ async function authenticatedPOST(
           org_id: ctx.orgId,
           version: existing.version,
           schedule_status: 'cancelled',
+          OR: [
+            { override_request: { is: null } },
+            {
+              override_request: {
+                is: {
+                  status: { not: 'completed' },
+                  replacement_schedule_id: null,
+                },
+              },
+            },
+          ],
         },
         data: { schedule_status: 'planned', version: { increment: 1 } },
       });

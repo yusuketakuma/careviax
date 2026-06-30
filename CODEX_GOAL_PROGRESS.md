@@ -30,6 +30,29 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Visit Schedule Reopen Override Claim - 2026-07-01 03:25 JST
+
+- Scope:
+  - Continued visit-time workflow hardening on `POST /api/visit-schedules/[id]/reopen`.
+  - Focused on reopening a cancelled source visit after a reschedule override changes between precheck and final write.
+- Fixed:
+  - Reopen now claims the final `VisitSchedule.updateMany` with the existing version/status plus an override relation guard.
+  - The claim only succeeds when no override exists, or the override is still not completed and has no replacement schedule.
+  - Added regression coverage for the stale case where the precheck saw a pending override but the write claim loses because the override was completed before update.
+- Safety:
+  - Reduces risk that a rescheduled source visit can be reopened after the reschedule has already been approved.
+  - Preserves existing auth, assignment checks, cancelled-only reopen behavior, pending-override compatibility, audit logging, workflow mutation notification, no-store wrappers, migrations, live data, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds a nested relation predicate to the existing indexed schedule update claim.
+  - No new query, dependency, background job, external call, broad scan, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/visit-schedules/[id]/reopen/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `1` file / `11` tests.
+  - Related reopen/reschedule suite passed `3` files / `52` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck --pretty false`, `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`, `pnpm lint`, `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`, and full `git diff --check`: passed.
+- Remaining:
+  - Broad visit-time / report / interprofessional collaboration objective remains open.
+  - Concurrent unrelated visit-route/proposal/preparation dirty files remain preserved outside this slice.
+
 ### Patient Consent Status Active Boundary - 2026-07-01 03:14 JST
 
 - Scope:

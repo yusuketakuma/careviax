@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0325 JST
+
+- current task: guard visit-schedule reopen against stale completed reschedule overrides.
+- files inspected: `git status --short --branch --untracked-files=all`, agmsg inbox output, local Next route-handler docs, `src/app/api/visit-schedules/[id]/reopen/route.ts`, `src/app/api/visit-schedules/[id]/reopen/route.test.ts`, `src/app/api/visit-schedules/[id]/reschedule/approve/route.ts`, `src/app/api/visit-schedules/[id]/reschedule/route.ts`, `prisma/schema/visit.prisma`, validation output, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/visit-schedules/[id]/reopen/route.ts`, `src/app/api/visit-schedules/[id]/reopen/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: `POST /api/visit-schedules/[id]/reopen` rejected completed reschedule overrides during the precheck, but the final `VisitSchedule.updateMany` only claimed schedule id/org/version/status. If a reschedule override completed after the precheck without the reopen claim observing that relation state, the cancelled source visit could be reopened after approval.
+- security risks found: reduced stale visit workflow and reschedule lineage risk by adding a final override relation guard to the schedule reopen claim. The update now succeeds only when no override exists, or the override remains not completed and has no replacement schedule. Existing auth, assignment checks, cancelled-only reopen behavior, pending-override compatibility, audit logging, workflow mutation notification, no-store wrappers, migrations, live data, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: adds a nested relation predicate to the existing guarded update. No new query, dependency, background job, external call, broad scan, or unbounded loop was added.
+- validation commands: `pnpm exec vitest run 'src/app/api/visit-schedules/[id]/reopen/route.test.ts' --reporter=dot --testTimeout=60000`; `pnpm exec vitest run 'src/app/api/visit-schedules/[id]/reopen/route.test.ts' 'src/app/api/visit-schedules/[id]/reschedule/approve/route.test.ts' 'src/app/api/visit-schedules/[id]/reschedule/route.test.ts' --reporter=dot --testTimeout=60000`; `pnpm exec eslint --max-warnings=0 'src/app/api/visit-schedules/[id]/reopen/route.ts' 'src/app/api/visit-schedules/[id]/reopen/route.test.ts'`; `pnpm exec prettier --check 'src/app/api/visit-schedules/[id]/reopen/route.ts' 'src/app/api/visit-schedules/[id]/reopen/route.test.ts'`; `git diff --check -- 'src/app/api/visit-schedules/[id]/reopen/route.ts' 'src/app/api/visit-schedules/[id]/reopen/route.test.ts'`; `pnpm typecheck --pretty false`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`; `pnpm lint`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: focused reopen route Vitest passed `1` file / `11` tests; related reopen/reschedule suite passed `3` files / `52` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed; typecheck passed; no-unused passed; full lint passed; full format check passed; full diff-check passed.
+- remaining work: broad visit-time / report / interprofessional collaboration objective remains open. Concurrent unrelated dirty files under `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/api/visit-routes/route.ts`, `src/app/api/visit-schedule-proposals/[id]/route.ts`, `src/server/services/visit-route-engine.ts`, `src/server/services/visit-route-engine.test.ts`, and `src/types/visit-route.ts` remain preserved outside this reopen commit.
+- next action: stage only the reopen code/test and matching ledger hunks, commit, send agmsg FYI, then re-check status before choosing the next bounded gap.
+
 ### 20260701-0320 JST
 
 - current task: harden conference-note PATCH with an RLS-scoped row lock.
