@@ -104,6 +104,11 @@ function createMalformedJsonPostRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/communication-requests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -314,6 +319,7 @@ describe('/api/communication-requests', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(communicationRequestCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -545,6 +551,32 @@ describe('/api/communication-requests', () => {
         due_date: null,
       }),
     });
+  });
+
+  it('returns a sanitized no-store 500 when request creation fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 090-1234-5678 raw communication request creation detail'),
+    );
+
+    const response = (await POST(
+      createPostRequest({
+        request_type: '疑義照会',
+        subject: '確認事項',
+        content: '処方内容を確認したいです',
+      }),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('raw communication request creation detail');
   });
 
   it('rejects non-object request bodies before assignment checks or create side effects', async () => {
