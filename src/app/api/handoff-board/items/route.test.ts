@@ -53,6 +53,11 @@ function createMalformedJsonRequest(url: string) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/handoff-board/items', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -82,8 +87,37 @@ describe('/api/handoff-board/items', () => {
     });
     const res = await POST(req, { params: Promise.resolve({}) });
     expect(res!.status).toBe(201);
+    expectSensitiveNoStore(res!);
     const json = await res!.json();
     expect(json.data.id).toBe('item_1');
+  });
+
+  it('returns a sanitized no-store 500 when handoff item creation fails unexpectedly', async () => {
+    handoffBoardFindFirstMock.mockResolvedValue({ id: 'board_1' });
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('鈴木 一郎 14時の鈴木様 raw handoff create failure'),
+    );
+
+    const req = createRequest('http://localhost/api/handoff-board/items', {
+      board_id: 'board_1',
+      kind: 'message',
+      content: '14時の鈴木様、保冷剤の準備お願いします',
+      recipient_user_id: 'user_2',
+      recipient_label: '鈴木 一郎(事務スタッフ)',
+    });
+    const res = await POST(req, { params: Promise.resolve({}) });
+
+    expect(res!.status).toBe(500);
+    expectSensitiveNoStore(res!);
+    const body = await res!.json();
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('鈴木 一郎');
+    expect(bodyText).not.toContain('14時の鈴木様');
+    expect(bodyText).not.toContain('raw handoff create failure');
   });
 
   it('returns 404 when board not found', async () => {

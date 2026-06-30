@@ -1,6 +1,8 @@
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
@@ -96,7 +98,7 @@ const createHandoffItemSchema = z
     }
   });
 
-export const POST = withAuthContext(
+const authenticatedPOST = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -203,3 +205,12 @@ export const POST = withAuthContext(
     message: '申し送り項目の追加権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
