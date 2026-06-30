@@ -1,8 +1,10 @@
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { deriveVisitPlaceGroup } from '@/lib/utils/facility';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError } from '@/lib/api/response';
+import { success, validationError, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { upsertFacilityVisitDaysSchema } from '@/lib/validations/visit-constraints';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
@@ -12,7 +14,7 @@ function toTimeValue(value?: string | null) {
   return value ? hhmmToTimeDate(value) : null;
 }
 
-export const POST = withAuthContext(
+const authenticatedPOST = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -161,3 +163,12 @@ export const POST = withAuthContext(
     message: '訪問先グループ定期訪問日の更新権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

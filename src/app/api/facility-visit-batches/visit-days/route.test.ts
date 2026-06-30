@@ -55,6 +55,11 @@ function createMalformedRequest() {
   } satisfies NextRequestInit);
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/facility-visit-batches/visit-days POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -254,6 +259,7 @@ describe('/api/facility-visit-batches/visit-days POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       facility_label: 'facility_a',
       patient_count: 2,
@@ -287,5 +293,32 @@ describe('/api/facility-visit-batches/visit-days POST', () => {
         facility_time_to: new Date(Date.UTC(1970, 0, 1, 15, 30)),
       }),
     });
+  });
+
+  it('returns a sanitized no-store 500 when visit day preference transaction fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 090-1234-5678 raw facility visit day detail'),
+    );
+
+    const response = await POST(
+      createRequest({
+        facility_label: 'facility_a',
+        schedule_ids: ['schedule_1', 'schedule_2'],
+        preferred_weekdays: [1, 3],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('raw facility visit day detail');
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 });
