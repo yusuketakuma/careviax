@@ -2,7 +2,12 @@ import { isoOrNull } from '@/lib/utils/date';
 import { formatDateKey } from '@/lib/date-key';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
-import { buildExternalHref, buildReportsHref } from '@/lib/dashboard/home-link-builders';
+import {
+  buildExternalHref,
+  buildReportsHref,
+  buildTasksHref,
+} from '@/lib/dashboard/home-link-builders';
+import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import {
   buildScheduleFocusHref,
   buildScheduleProposalDetailHref,
@@ -32,6 +37,10 @@ type PatientReadinessIssueHref =
 function buildPatientsReadinessIssueHref(issue: PatientReadinessIssueHref) {
   const params = new URLSearchParams([['readiness_issue', issue]]);
   return `/patients?${params.toString()}`;
+}
+
+function buildVisitIntakeLinkageTaskHref() {
+  return buildTasksHref({ status: '', taskType: 'visit_intake_linkage' });
 }
 
 function priorityRank(priority: QueuePriority) {
@@ -191,7 +200,7 @@ export function buildRemediationGuidance(
             description: '受付済み処方が訪問候補・架電・確定フローへ接続されていません。',
             severity: 'high' as const,
             count: taskCountByType.visit_intake_linkage,
-            action_href: '/workflow',
+            action_href: buildVisitIntakeLinkageTaskHref(),
             action_label: '未接続の処方を確認',
           } satisfies RemediationGuidanceItem,
         ]
@@ -204,7 +213,7 @@ export function buildRemediationGuidance(
             description: '患者または家族からの申告が triage 待ちまたは triage 中です。',
             severity: 'high' as const,
             count: triageSelfReportsCount,
-            action_href: '/workflow',
+            action_href: buildExternalHref({ focus: 'self_reports' }),
             action_label: 'セルフレポートを確認',
           } satisfies RemediationGuidanceItem,
         ]
@@ -612,7 +621,7 @@ export function buildUnifiedWorkbench(
             summary: `${intakeLinkage.length}件の処方が候補生成または架電フローへ未接続です。`,
             priority: 'high' as const,
             due_at: (intakeLinkage[0] as { due_at?: string | null })?.due_at ?? null,
-            action_href: '/workflow',
+            action_href: buildVisitIntakeLinkageTaskHref(),
             action_label: '未接続の処方を確認',
             owner_name: null,
             patient_name: null,
@@ -913,7 +922,7 @@ export function buildIntakeLinkage(candidateIntakes: WorkflowCoreData['candidate
             ? 'リフィル予定日に向けた訪問候補または架電導線が未作成です。'
             : '処方受付後の訪問候補または架電導線が未作成です。',
         due_at: isoOrNull(dueAt),
-        action_href: '/workflow',
+        action_href: buildPrescriptionHref(intake.id),
         action_label: '訪問導線を作成',
         category: intake.source_type === 'refill' ? 'リフィル' : '処方受付',
       };

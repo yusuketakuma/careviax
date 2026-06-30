@@ -25168,3 +25168,30 @@ Next loop:
 - Remaining:
   - The broad visit/report/interprofessional collaboration goal remains open.
   - Current unrelated dirty paths include operating-hours, service-areas, facilities, patient form, schedule planner, ledgers, and `.codex`; keep staging exact.
+
+### Workflow Dashboard Intake And Self-Report Focus Links - 2026-06-30 18:24 JST
+
+- Scope:
+  - Continued workflow dashboard collaboration navigation hardening for visit-intake linkage and patient/family self-report triage.
+  - Focused on remediation cards, workbench aggregates, and intake-linkage rows that had actionable context but still routed to `/workflow`.
+- Fixed:
+  - Visit-intake remediation and workbench aggregate actions now route to the matching task queue with `buildTasksHref({ status: '', taskType: 'visit_intake_linkage' })`.
+  - Self-report remediation actions now route to `buildExternalHref({ focus: 'self_reports' })`.
+  - `buildIntakeLinkage` rows now route directly to the prescription intake detail with `buildPrescriptionHref(intake.id)`.
+  - Added regression coverage for remediation hrefs, aggregate hrefs, and hostile prescription intake IDs.
+- Safety:
+  - Reduces wrong-workbench navigation risk for unlinked visit-intake work and self-report triage.
+  - Keeps hostile intake IDs behind the shared prescription navigation helper and avoids exposing hidden intake rows beyond existing count/list behavior.
+  - No auth/RLS policy, permission, PHI export, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - No new query, network call, dependency, background job, broad scan, unbounded loop, or render-heavy path was added.
+- Validation:
+  - `pnpm exec prettier --write src/server/services/workflow-dashboard-sections.ts src/server/services/workflow-dashboard-sections.test.ts`: passed.
+  - `pnpm exec vitest run src/server/services/workflow-dashboard-sections.test.ts src/lib/dashboard/home-link-builders.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `15` tests.
+  - Scoped ESLint on workflow dashboard sections plus home-link/prescription navigation helpers: passed.
+  - Scoped Prettier check and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: failed on unrelated dirty schedule proposal route `src/app/api/visit-schedule-proposals/[id]/route.ts:1651-1653` (`proposalResidence?.lat/lng/address` typed as `{ facility_unit_id: string | null }`). codex was notified via agmsg NOTICE; this slice did not touch that file.
+- Remaining:
+  - The broad visit/report/interprofessional collaboration goal remains open.
+  - Current unrelated dirty paths include operating-hours, service-areas, facilities, pharmacist credentials, patient form, schedule planner/proposal route, ledgers, and `.codex`; keep staging exact.

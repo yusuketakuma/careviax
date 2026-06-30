@@ -3,6 +3,7 @@ import {
   buildAfterHoursReadiness,
   buildExceptionCommandCenter,
   buildFacilityVisibility,
+  buildIntakeLinkage,
   buildRemediationGuidance,
   buildUnifiedWorkbench,
 } from './workflow-dashboard-sections';
@@ -237,8 +238,16 @@ describe('workflow-dashboard-sections', () => {
         count: 2,
         action_href: '/patients',
       }),
-      expect.objectContaining({ id: 'visit_intake_linkage', count: 1 }),
-      expect.objectContaining({ id: 'self_report_triage', count: 4 }),
+      expect.objectContaining({
+        id: 'visit_intake_linkage',
+        count: 1,
+        action_href: '/tasks?status=&task_type=visit_intake_linkage',
+      }),
+      expect.objectContaining({
+        id: 'self_report_triage',
+        count: 4,
+        action_href: '/external?focus=self_reports',
+      }),
     ]);
   });
 
@@ -499,7 +508,7 @@ describe('workflow-dashboard-sections', () => {
         },
       ],
       2,
-      [],
+      [{ due_at: '2026-04-01T08:00:00.000Z' }],
       emptyCommunicationQueue(),
       new Map(),
       new Map([['patient_1', '患者A']]),
@@ -515,8 +524,49 @@ describe('workflow-dashboard-sections', () => {
           id: 'aggregate:awaiting_reports',
           action_href: '/reports?focus=delivery&delivery_status=response_waiting',
         }),
+        expect.objectContaining({
+          id: 'aggregate:intake_linkage',
+          action_href: '/tasks?status=&task_type=visit_intake_linkage',
+        }),
       ]),
     );
+  });
+
+  it('links intake linkage rows to the prescription intake detail', () => {
+    const intakeId = 'intake/unsafe ?#';
+    const result = buildIntakeLinkage([
+      {
+        id: intakeId,
+        cycle_id: 'cycle_1',
+        source_type: 'refill',
+        refill_remaining_count: null,
+        split_dispense_total: null,
+        split_dispense_current: null,
+        prescribed_date: new Date('2026-04-01T00:00:00.000Z'),
+        prescription_expiry_date: null,
+        refill_next_dispense_date: null,
+        split_next_dispense_date: null,
+        cycle: {
+          id: 'cycle_1',
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          case_: {
+            id: 'case_1',
+            primary_pharmacist_id: null,
+            patient: { id: 'patient_1', name: '患者A' },
+          },
+          visit_schedules: [],
+          visit_schedule_proposals: [],
+        },
+      },
+    ]);
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        id: intakeId,
+        action_href: `/prescriptions/${encodeURIComponent(intakeId)}`,
+      }),
+    ]);
   });
 
   it('focuses exception command center report and self-report aggregates', () => {
