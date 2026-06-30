@@ -93,7 +93,7 @@ describe('CommunicationRequestsContent', () => {
           data: [
             {
               id: 'request_1',
-              request_type: 'tracing_report',
+              request_type: 'care_report_reply_request',
               subject: '服薬情報提供書の確認',
               status: 'sent',
               requested_at: '2026-05-12T00:00:00.000Z',
@@ -115,6 +115,7 @@ describe('CommunicationRequestsContent', () => {
 
     expect(screen.getByTestId('reply-followup-list')).toBeTruthy();
     expect(screen.getByText('返信内容と次の対応')).toBeTruthy();
+    expect(screen.getAllByText(/報告書返信依頼/).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: '対応済みにする' }).className).toContain(
       '!min-h-[44px]',
     );

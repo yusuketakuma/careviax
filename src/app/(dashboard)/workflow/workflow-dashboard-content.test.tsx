@@ -353,5 +353,46 @@ describe('WorkflowDashboardContent', () => {
     expect(screen.queryByText('patient_portal')).toBeNull();
     expect(screen.queryByText('collaboration')).toBeNull();
     expect(screen.queryByText('external_portal')).toBeNull();
+    expect(
+      screen.getAllByRole('link', { name: '確認' }).map((link) => link.getAttribute('href')),
+    ).toEqual(['/x1', '/x2', '/x3']);
+  });
+
+  it('labels emergency draft request types in Japanese without leaking raw enums', () => {
+    const base = buildWorkflowData();
+    useRealtimeQueryMock.mockReturnValue({
+      data: {
+        data: {
+          ...base,
+          communication_queue: {
+            ...base.communication_queue,
+            emergency_drafts: [
+              {
+                id: 'draft_1',
+                patient_id: 'patient_1',
+                template_key: 'emergency_physician',
+                request_type: 'emergency_physician',
+                target_name: '青葉医師',
+                target_role: 'physician',
+                title: '青葉医師 宛の緊急連絡ドラフト',
+                summary: '急変時共有 / 宛先: 青葉医師',
+                subject: '佐藤花子 の緊急連絡',
+                content: '【患者】佐藤花子',
+                action_href: '/communications/requests',
+                action_label: 'ドラフト化する',
+              },
+            ],
+          },
+        },
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    render(<WorkflowDashboardContent />);
+
+    expect(screen.getByText('青葉医師 / 主治医緊急連絡')).toBeTruthy();
+    expect(screen.queryByText(/emergency_physician/)).toBeNull();
   });
 });

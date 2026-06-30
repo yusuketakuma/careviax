@@ -2,6 +2,8 @@ import { addDays } from 'date-fns';
 import { isoOrNull } from '@/lib/utils/date';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+import { formatCommunicationRequestTypeLabel } from '@/lib/communications/request-labels';
 import { buildExternalAccessGrantVisibilityWhere } from './external-access';
 
 export type CommunicationQueueDbClient = typeof prisma | Prisma.TransactionClient;
@@ -44,6 +46,8 @@ export type CommunicationQueueReader = {
         subject: string;
         content?: string | null;
         template_key?: string | null;
+        related_entity_type?: string | null;
+        related_entity_id?: string | null;
         status: string;
         due_date: Date | null;
         requested_at: Date;
@@ -633,6 +637,8 @@ export async function listCommunicationQueue(
         subject: true,
         content: true,
         template_key: true,
+        related_entity_type: true,
+        related_entity_id: true,
         status: true,
         due_date: true,
         requested_at: true,
@@ -801,7 +807,7 @@ export async function listCommunicationQueue(
       id: `request:${request.id}`,
       queue_type: 'request' as const,
       title: request.subject,
-      summary: `多職種連携 ${request.request_type}`,
+      summary: `多職種連携 ${formatCommunicationRequestTypeLabel(request.request_type)}`,
       channel: 'collaboration',
       status: request.status,
       priority: (request.due_date && request.due_date <= now
@@ -811,7 +817,12 @@ export async function listCommunicationQueue(
       patient_name:
         request.patient_id != null ? (patientNameById.get(request.patient_id) ?? null) : null,
       due_at: isoOrNull(request.due_date ?? request.requested_at),
-      action_href: '/communications/requests',
+      action_href: buildCommunicationRequestsHref({
+        status: request.status,
+        patientId: request.patient_id,
+        relatedEntityType: request.related_entity_type,
+        relatedEntityId: request.related_entity_id,
+      }),
       action_label: '依頼を確認',
     })),
     ...actionableDeliveries.map((record) => ({
@@ -876,10 +887,17 @@ export async function listCommunicationQueue(
       source_type: 'communication_request' as const,
       patient_id: request.patient_id ?? null,
       title: request.subject,
-      summary: `${request.request_type} / ${request.content}`,
+      summary: `${formatCommunicationRequestTypeLabel(request.request_type)} / ${
+        request.content ?? '内容未記録'
+      }`,
       status: request.status,
       occurred_at: request.due_date ?? request.requested_at,
-      action_href: '/communications/requests',
+      action_href: buildCommunicationRequestsHref({
+        status: request.status,
+        patientId: request.patient_id,
+        relatedEntityType: request.related_entity_type,
+        relatedEntityId: request.related_entity_id,
+      }),
       action_label: '依頼を確認',
     })),
     ...deliveryRecords.map((record) => ({

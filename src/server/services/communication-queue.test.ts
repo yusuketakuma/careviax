@@ -116,10 +116,12 @@ describe('listCommunicationQueue', () => {
       {
         id: 'cr-1',
         patient_id: 'p-1',
-        request_type: 'physician_inquiry',
+        request_type: 'care_report_reply_request',
         subject: '処方確認',
         content: '用量について確認',
         template_key: null,
+        related_entity_type: 'care_report',
+        related_entity_id: 'report-1',
         status: 'sent',
         due_date: new Date('2026-04-02'),
         requested_at: new Date('2026-04-01'),
@@ -132,7 +134,22 @@ describe('listCommunicationQueue', () => {
     });
 
     expect(result.summary.open_requests).toBe(1);
-    expect(result.items.some((i) => i.queue_type === 'request')).toBe(true);
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        queue_type: 'request',
+        summary: '多職種連携 報告書返信依頼',
+        action_href:
+          '/communications/requests?status=sent&patient_id=p-1&related_entity_type=care_report&related_entity_id=report-1',
+      }),
+    ]);
+    expect(result.timeline).toEqual([
+      expect.objectContaining({
+        source_type: 'communication_request',
+        summary: '報告書返信依頼 / 用量について確認',
+        action_href:
+          '/communications/requests?status=sent&patient_id=p-1&related_entity_type=care_report&related_entity_id=report-1',
+      }),
+    ]);
   });
 
   it('scopes case-backed communication records when caseIds are provided', async () => {

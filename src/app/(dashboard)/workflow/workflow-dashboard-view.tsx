@@ -37,6 +37,7 @@ import {
   SELF_REPORT_STATUS_LABELS,
   type StatusRoleOrNeutral,
 } from '@/lib/constants/status-labels';
+import { formatCommunicationRequestTypeLabel } from '@/lib/communications/request-labels';
 import type { HomeLinkContext, WorkflowFocus } from '@/lib/dashboard/home-link-builders';
 import type {
   InquiryEditState,
@@ -442,6 +443,14 @@ export function WorkflowDashboardView({
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">{item.summary}</p>
+                  <div className="flex justify-end">
+                    <Link
+                      href={item.action_href}
+                      className="inline-flex min-h-11 items-center text-xs font-medium text-primary underline-offset-4 hover:underline"
+                    >
+                      {item.action_label}
+                    </Link>
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -467,7 +476,8 @@ export function WorkflowDashboardView({
                         <div>
                           <p className="font-medium text-foreground">{draft.title}</p>
                           <p className="text-xs text-muted-foreground">
-                            {draft.target_name ?? draft.target_role} / {draft.request_type}
+                            {draft.target_name ?? draft.target_role} /{' '}
+                            {formatCommunicationRequestTypeLabel(draft.request_type)}
                           </p>
                         </div>
                         <Link

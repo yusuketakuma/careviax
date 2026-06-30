@@ -22,6 +22,10 @@ import {
   buildCommunicationRequestsHref,
   resolveCommunicationEntityLink,
 } from '@/lib/communications/navigation';
+import {
+  formatCommunicationRecipientRoleLabel,
+  formatCommunicationRequestTypeLabel,
+} from '@/lib/communications/request-labels';
 import { toast } from 'sonner';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 
@@ -45,20 +49,10 @@ type CommunicationRequestRow = {
   }>;
 };
 
-const RECIPIENT_ROLE_LABELS: Record<string, string> = {
-  physician: '主治医',
-  doctor: '主治医',
-  care_manager: 'ケアマネ',
-  nurse: '訪問看護',
-  visiting_nurse: '訪問看護',
-  facility: '施設',
-  family: '家族',
-};
-
 function formatRecipientLabel(
   item: Pick<CommunicationRequestRow, 'recipient_role' | 'recipient_name'>,
 ) {
-  const roleLabel = item.recipient_role ? RECIPIENT_ROLE_LABELS[item.recipient_role] : null;
+  const roleLabel = formatCommunicationRecipientRoleLabel(item.recipient_role);
   return [roleLabel, item.recipient_name ?? '宛先未設定'].filter(Boolean).join('：');
 }
 
@@ -335,7 +329,7 @@ export function CommunicationRequestsContent({
                         {formatRecipientLabel(item)}
                       </p>
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {item.subject}
+                        {formatCommunicationRequestTypeLabel(item.request_type)} / {item.subject}
                       </p>
                       <div className="mt-2">
                         <StateBadge role={due.role}>{due.label}</StateBadge>
@@ -352,7 +346,9 @@ export function CommunicationRequestsContent({
                   <div>
                     <h3 className="text-sm font-semibold text-foreground">返信内容と次の対応</h3>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      {formatRecipientLabel(focusedSelected)} / {focusedSelected.subject}
+                      {formatRecipientLabel(focusedSelected)} /{' '}
+                      {formatCommunicationRequestTypeLabel(focusedSelected.request_type)} /{' '}
+                      {focusedSelected.subject}
                     </p>
                   </div>
 
