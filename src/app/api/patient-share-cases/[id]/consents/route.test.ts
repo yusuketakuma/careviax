@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
+  authPlumbingFailureRef,
   withOrgContextMock,
   patientShareCaseFindFirstMock,
   patientShareConsentFindManyMock,
@@ -11,6 +12,7 @@ const {
   fileAssetFindFirstMock,
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
+  authPlumbingFailureRef: { current: null as Error | null },
   withOrgContextMock: vi.fn(),
   patientShareCaseFindFirstMock: vi.fn(),
   patientShareConsentFindManyMock: vi.fn(),
@@ -23,8 +25,12 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => Promise<Response>) => {
-    return (req: NextRequest, routeContext?: unknown) =>
-      handler(
+    return (req: NextRequest, routeContext?: unknown) => {
+      if (authPlumbingFailureRef.current) {
+        throw authPlumbingFailureRef.current;
+      }
+
+      return handler(
         req,
         {
           orgId: 'org_1',
@@ -34,6 +40,7 @@ vi.mock('@/lib/auth/context', () => ({
         },
         routeContext,
       );
+    };
   },
 }));
 
@@ -61,9 +68,15 @@ function createPostRequest(body: unknown) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/patient-share-cases/[id]/consents', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authPlumbingFailureRef.current = null;
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
       status: 'consent_pending',
@@ -127,7 +140,7 @@ describe('/api/patient-share-cases/[id]/consents', () => {
     const response = await rawGET(createGetRequest(), routeContext);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expectSensitiveNoStore(response);
     expect(patientShareConsentFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { org_id: 'org_1', share_case_id: 'share_case_1' },
@@ -169,9 +182,24 @@ describe('/api/patient-share-cases/[id]/consents', () => {
   });
 
   it('fails closed when patient share consent list audit cannot be recorded', async () => {
-    createAuditLogEntryMock.mockRejectedValueOnce(new Error('audit unavailable'));
+    createAuditLogEntryMock.mockRejectedValueOnce(
+      new Error('audit unavailable patient 山田花子 token secret consent_person'),
+    );
 
-    await expect(rawGET(createGetRequest(), routeContext)).rejects.toThrow('audit unavailable');
+    const response = await rawGET(createGetRequest(), routeContext);
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serializedBody = JSON.stringify(body);
+    expect(serializedBody).not.toContain('audit unavailable');
+    expect(serializedBody).not.toContain('山田花子');
+    expect(serializedBody).not.toContain('token secret');
+    expect(serializedBody).not.toContain('consent_person');
   });
 
   it('does not audit missing patient share consent lists', async () => {
@@ -180,6 +208,7 @@ describe('/api/patient-share-cases/[id]/consents', () => {
     const response = await rawGET(createGetRequest(), routeContext);
 
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(patientShareConsentFindManyMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
@@ -198,7 +227,7 @@ describe('/api/patient-share-cases/[id]/consents', () => {
     );
 
     expect(response.status).toBe(201);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expectSensitiveNoStore(response);
     expect(consentRecordFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'consent_record_1',
@@ -259,6 +288,67 @@ describe('/api/patient-share-cases/[id]/consents', () => {
     expect(JSON.stringify(await response.json())).not.toContain('山田花子');
   });
 
+  it('returns a sanitized no-store 500 when consent creation fails unexpectedly', async () => {
+    patientShareConsentCreateMock.mockRejectedValueOnce(
+      new Error('raw consent_create patient 山田花子 file key token secret consent_person'),
+    );
+
+    const response = await rawPOST(
+      createPostRequest({
+        consent_date: '2026-06-19',
+        consent_person: '患者家族 山田花子',
+        consent_method: 'paper_scan',
+        scope: { pdf_output: true },
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serializedBody = JSON.stringify(body);
+    expect(serializedBody).not.toContain('consent_create');
+    expect(serializedBody).not.toContain('山田花子');
+    expect(serializedBody).not.toContain('file key');
+    expect(serializedBody).not.toContain('token secret');
+    expect(serializedBody).not.toContain('consent_person');
+    expect(patientShareCaseUpdateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when auth plumbing fails before POST body parsing', async () => {
+    authPlumbingFailureRef.current = new Error(
+      'raw auth consent_register patient 山田花子 token secret',
+    );
+
+    const response = await rawPOST(
+      createPostRequest({
+        consent_date: 'not-a-date',
+      }),
+      { params: Promise.resolve({ id: '   ' }) },
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serializedBody = JSON.stringify(body);
+    expect(serializedBody).not.toContain('raw auth');
+    expect(serializedBody).not.toContain('consent_register');
+    expect(serializedBody).not.toContain('山田花子');
+    expect(serializedBody).not.toContain('token secret');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientShareConsentCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
   it('rejects file assets that are not uploaded and org-scoped to the patient share case', async () => {
     fileAssetFindFirstMock.mockResolvedValue(null);
 
@@ -273,6 +363,7 @@ describe('/api/patient-share-cases/[id]/consents', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(patientShareConsentCreateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
@@ -294,6 +385,7 @@ describe('/api/patient-share-cases/[id]/consents', () => {
     );
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(patientShareConsentCreateMock).not.toHaveBeenCalled();
     expect(patientShareCaseUpdateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();

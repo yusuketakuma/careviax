@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0942 JST
+
+- current task: harden `GET/POST /api/patient-share-cases/[id]/consents` response boundaries for interprofessional consent listing and registration.
+- files inspected: agmsg inbox/send for `phos/codex2`, `git status --short --untracked-files=all`, local Next.js route-handler and `unstable_rethrow` docs read earlier this turn, `src/app/api/patient-share-cases/[id]/consents/route.ts`, `src/app/api/patient-share-cases/[id]/consents/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Also preserved and did not edit codex-owned qualification-check WIP.
+- files changed: `src/app/api/patient-share-cases/[id]/consents/route.ts`, `src/app/api/patient-share-cases/[id]/consents/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: patient-share consent GET/POST were exported directly from `withAuthContext`; manually returned responses were no-store, but unexpected audit/create failures or auth/plumbing failures before route-param/body handling could escape without the exported route's fixed no-store envelope.
+- security risks found: reduced raw-error and PHI/consent-artifact disclosure risk for consent list/register failures containing patient names, consent person text, file-key/token-like diagnostics, or raw audit/create error text. Auth/permission checks, share-case status rules, consent-record/file-asset scoping, update/audit semantics, response success/domain-error shapes, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query shape, dependency, retry loop, external request, synchronous blocking, or unbounded work was added. The patch only wraps existing GET/POST response boundaries and adds focused assertions.
+- validation commands: `pnpm exec prettier --write 'src/app/api/patient-share-cases/[id]/consents/route.ts' 'src/app/api/patient-share-cases/[id]/consents/route.test.ts'`; `pnpm exec vitest run 'src/app/api/patient-share-cases/[id]/consents/route.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint on the two consents files; scoped `git diff --check` on the two consents files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; scoped `pnpm exec prettier --check` on the two consents files; full `git diff --check`; `pnpm format:check`.
+- validation results: Prettier passed. Focused consents Vitest passed `1` file / `8` tests. Scoped ESLint and scoped diff-check passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, scoped Prettier check, full `git diff --check`, and `pnpm format:check` passed. Independent read-only Codex CLI review of only the two-file consents diff returned `No actionable findings.`. codex returned `APPROVED` after reviewing the route/test diff and independently re-running focused Vitest `8`/`8`, scoped ESLint, and scoped diff-check.
+- remaining work: exact-path stage only the two consents files plus ledger hunks, commit, send agmsg FYI, and release the ledger lock so codex can commit its qualification-check slice.
+- next action: poll agmsg once for peer feedback, then explicit-path stage/commit this validated consents response-boundary slice if no blocker arrived.
+
 ### 20260630-0930 JST
 
 - current task: harden `POST /api/patient-share-cases/[id]/activate` response boundaries for interprofessional patient-share activation.

@@ -24,6 +24,42 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Patient Share Case Consents GET/POST No-Store / Sanitized Envelope - 2026-06-30 09:42 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration objective on patient-share consent listing and registration.
+  - Updated only `GET/POST /api/patient-share-cases/[id]/consents` and its focused tests.
+  - Preserved codex-owned dirty `src/app/api/patients/[id]/qualification-check/route.ts` and `route.test.ts`; no schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Existing consent list/register handler logic now remains unchanged as `authenticatedGET` / `authenticatedPOST`, while exported `GET` and `POST` apply the established `withSensitiveNoStore` + `unstable_rethrow` + fixed `internalError()` fallback pattern.
+  - Added a shared no-store assertion helper that checks both `Cache-Control` and `Pragma`.
+  - Added no-store assertions for representative list, missing-case, register-success, invalid file-asset, and declined-share-case responses.
+  - Converted the list-audit failure regression into a sanitized no-store 500 check.
+  - Added sanitized no-store 500 regressions for unexpected consent creation failures and auth/plumbing failures before POST body parsing.
+- Safety:
+  - Reduces raw-error and PHI/consent-artifact disclosure risk for consent list/register failures containing patient names, consent person text, file-key/token-like diagnostics, or raw audit/create error text.
+  - Preserves auth/permission behavior, share-case status rules, consent-record/file-asset scoping, active consent update semantics, audit payloads, and existing success/domain-error response shapes.
+- Performance:
+  - No DB query shape, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only wraps existing GET/POST response boundaries and adds focused assertions.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/patient-share-cases/[id]/consents/route.ts' 'src/app/api/patient-share-cases/[id]/consents/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/patient-share-cases/[id]/consents/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `8` tests.
+  - Scoped ESLint on the two consents files: passed.
+  - Scoped `git diff --check` on the two consents files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - Scoped `pnpm exec prettier --check` on the two consents files: passed.
+  - Full `git diff --check`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` sent to codex with scope, validation, PHI/raw-error non-leakage, no-store coverage, and consent side-effect safety focus.
+  - Independent read-only Codex CLI review of only the two-file consents diff returned `No actionable findings.`.
+  - codex returned `APPROVED` after reviewing the route/test diff and independently re-running focused Vitest `8`/`8`, scoped ESLint, and scoped diff-check.
+- Remaining:
+  - Exact-path stage only the two consents files plus this ledger and `.codex/ralph-state.md`, commit, send agmsg FYI, then release the ledger lock for codex's qualification-check commit.
+
 ### Conference Notes POST/PATCH No-Store / Sanitized Envelope - 2026-06-30 09:17 JST
 
 - Scope:
