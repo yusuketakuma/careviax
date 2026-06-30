@@ -50,6 +50,8 @@ export type ShareAudienceCard = {
   label: string;
   /** 例: 「中島 桜(きたきゅうケアプラン)」。該当者なしは null */
   memberLabel: string | null;
+  recipientName: string | null;
+  recipientOrganizationName: string | null;
 };
 
 function pickPrimaryFirst<T extends { is_primary: boolean }>(items: readonly T[]): T | null {
@@ -77,6 +79,8 @@ export function buildShareAudienceCards(
       key: audience.key,
       label: audience.label,
       memberLabel: member ? formatMemberLabel(member) : null,
+      recipientName: member?.name ?? null,
+      recipientOrganizationName: member?.organization_name ?? null,
     };
   });
 }
@@ -300,6 +304,17 @@ export type ShareCommunicationRequest = {
   responses: ShareReplyMeta[];
 };
 
+/** 選択中の相手宛てで、作成日時が最も新しい連携依頼を選ぶ */
+export function pickLatestAudienceRequest(
+  requests: readonly ShareCommunicationRequest[],
+  audience: ShareAudienceKey,
+): ShareCommunicationRequest | null {
+  const candidates = requests
+    .filter((request) => audienceKeyFromRecipientRole(request.recipient_role) === audience)
+    .sort((a, b) => b.requested_at.localeCompare(a.requested_at));
+  return candidates[0] ?? null;
+}
+
 /** 選択中の相手宛てで、返信が付いている最新の連携依頼を選ぶ */
 export function pickLatestAudienceReplyRequest(
   requests: readonly ShareCommunicationRequest[],
@@ -314,6 +329,96 @@ export function pickLatestAudienceReplyRequest(
       return bAt.localeCompare(aAt);
     });
   return candidates[0] ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// 返信依頼を起票する(POST /api/communication-requests の入力)
+// ---------------------------------------------------------------------------
+
+export type ShareCommunicationRequestInput = {
+  patient_id: string;
+  case_id?: string;
+  request_type: string;
+  template_key: string;
+  recipient_name: string;
+  recipient_role: string;
+  related_entity_type: 'care_report';
+  related_entity_id: string;
+  context_snapshot: Record<string, string | string[]>;
+  status: 'sent';
+  subject: string;
+  content: string;
+};
+
+const REQUEST_SUBJECT_MAX = 200;
+const REQUEST_CONTENT_MAX = 4000;
+
+const COMMUNICATION_RECIPIENT_ROLE_BY_AUDIENCE: Record<ShareAudienceKey, string> = {
+  physician: 'physician',
+  care_manager: 'care_manager',
+  visiting_nurse: 'visiting_nurse',
+  facility: 'facility',
+  family: 'family',
+};
+
+function formatPatientLabel(patientName: string | null): string {
+  return patientName ? `${patientName} 様` : '対象患者';
+}
+
+function buildShareRequestContent(args: {
+  audienceLabel: string;
+  sections: readonly ShareSection[];
+}): string {
+  return truncate(
+    [
+      `${args.audienceLabel}向けに共有する報告内容です。確認後、必要な返信をPH-OSの連携依頼へ記録してください。`,
+      '',
+      ...args.sections.map((section) => `【${section.title}】\n${section.body}`),
+    ].join('\n'),
+    REQUEST_CONTENT_MAX,
+  );
+}
+
+export function buildShareCommunicationRequestInput(args: {
+  audience: ShareAudienceKey;
+  patientId: string;
+  caseId: string | null | undefined;
+  patientName: string | null;
+  reportId: string;
+  reportType: string;
+  recipientName: string;
+  recipientOrganizationName: string | null;
+  sections: readonly ShareSection[];
+}): ShareCommunicationRequestInput {
+  const audienceLabel = shareAudienceLabel(args.audience);
+  const subject = truncate(
+    `返信依頼: ${audienceLabel}向け報告書共有(${formatPatientLabel(args.patientName)})`,
+    REQUEST_SUBJECT_MAX,
+  );
+
+  return {
+    patient_id: args.patientId,
+    ...(args.caseId ? { case_id: args.caseId } : {}),
+    request_type: 'care_report_reply_request',
+    template_key: 'interprofessional_share_reply_request',
+    recipient_name: args.recipientName,
+    recipient_role: COMMUNICATION_RECIPIENT_ROLE_BY_AUDIENCE[args.audience],
+    related_entity_type: 'care_report',
+    related_entity_id: args.reportId,
+    context_snapshot: {
+      source: 'interprofessional_share',
+      report_id: args.reportId,
+      report_type: args.reportType,
+      audience: args.audience,
+      ...(args.recipientOrganizationName
+        ? { recipient_organization_name: args.recipientOrganizationName }
+        : {}),
+      section_keys: args.sections.map((section) => section.key),
+    },
+    status: 'sent',
+    subject,
+    content: buildShareRequestContent({ audienceLabel, sections: args.sections }),
+  };
 }
 
 // ---------------------------------------------------------------------------

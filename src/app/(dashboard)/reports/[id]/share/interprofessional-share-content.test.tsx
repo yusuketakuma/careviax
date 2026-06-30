@@ -174,6 +174,11 @@ function stubFetch(
       }
       return new Response(JSON.stringify({ data: options.requests ?? REQUESTS }), { status: 200 });
     }
+    if (url === '/api/communication-requests' && init?.method === 'POST') {
+      return new Response(JSON.stringify({ data: { id: 'req_new', status: 'sent' } }), {
+        status: 201,
+      });
+    }
     if (url.startsWith('/api/communication-requests/')) {
       return new Response(JSON.stringify({ data: options.requestDetail ?? REQUEST_DETAIL }), {
         status: 200,
@@ -206,6 +211,34 @@ function expectFetchHeaders(
 ) {
   const call = fetchMock.mock.calls.find(([input]) => matcher(String(input)));
   expect(call?.[1]?.headers).toEqual(expectedHeaders);
+}
+
+function readCommunicationRequestPostBody(fetchMock: ReturnType<typeof stubFetch>) {
+  const requestCall = fetchMock.mock.calls.find(
+    ([input, init]) => String(input) === '/api/communication-requests' && init?.method === 'POST',
+  );
+  expect(requestCall).toBeTruthy();
+  return JSON.parse(String(requestCall?.[1]?.body)) as {
+    patient_id: string;
+    case_id?: string;
+    request_type: string;
+    template_key: string;
+    recipient_name: string;
+    recipient_role: string;
+    related_entity_type: string;
+    related_entity_id: string;
+    context_snapshot: {
+      source: string;
+      report_id: string;
+      report_type: string;
+      audience: string;
+      recipient_organization_name?: string;
+      section_keys: string[];
+    };
+    status: string;
+    subject: string;
+    content: string;
+  };
 }
 
 function readTaskPostBody(fetchMock: ReturnType<typeof stubFetch>) {
@@ -380,6 +413,98 @@ describe('InterprofessionalShareContent', () => {
 
     // 起票済みの返信では再実行できない
     expect((screen.getByTestId('share-next-task-button') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('選択した相手に POST /api/communication-requests で返信依頼を起票する', async () => {
+    const fetchMock = stubFetch();
+    renderShare();
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('share-audience-card')).toHaveLength(5);
+    });
+
+    fireEvent.click(
+      screen
+        .getAllByTestId('share-audience-card')
+        .find((card) => card.getAttribute('data-audience') === 'physician')!,
+    );
+
+    const button = await screen.findByTestId('share-create-request-button');
+    await waitFor(() => {
+      expect((button as HTMLButtonElement).disabled).toBe(false);
+    });
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(screen.getByText('返信依頼起票済み')).toBeTruthy();
+    });
+
+    const requestCall = fetchMock.mock.calls.find(
+      ([input, init]) => String(input) === '/api/communication-requests' && init?.method === 'POST',
+    );
+    expect(requestCall?.[1]?.headers).toEqual({
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+    });
+    expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+    const body = readCommunicationRequestPostBody(fetchMock);
+    expect(body).toMatchObject({
+      patient_id: 'pt_1',
+      case_id: 'case_1',
+      request_type: 'care_report_reply_request',
+      template_key: 'interprofessional_share_reply_request',
+      recipient_name: '山本 健',
+      recipient_role: 'physician',
+      related_entity_type: 'care_report',
+      related_entity_id: 'rep_1',
+      status: 'sent',
+      subject: '返信依頼: 主治医向け報告書共有(加藤 ミサ 様)',
+      context_snapshot: {
+        source: 'interprofessional_share',
+        report_id: 'rep_1',
+        report_type: 'care_manager_report',
+        audience: 'physician',
+        recipient_organization_name: 'やまもと内科',
+      },
+    });
+    expect(body.context_snapshot.section_keys).toEqual([
+      'medication_status',
+      'residual',
+      'pharmacist_request',
+      'next_check',
+      'attachments',
+    ]);
+    expect(body.content).toContain('主治医向けに共有する報告内容です');
+    expect(body.content).toContain('【薬剤師からのお願い】');
+    expect(body.content).toContain('昼分はヘルパー訪問時の声かけ');
+  });
+
+  it('共有相手が未登録の宛先では返信依頼を起票しない', async () => {
+    const fetchMock = stubFetch();
+    renderShare();
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('share-audience-card')).toHaveLength(5);
+    });
+
+    fireEvent.click(
+      screen
+        .getAllByTestId('share-audience-card')
+        .find((card) => card.getAttribute('data-audience') === 'visiting_nurse')!,
+    );
+
+    const button = screen.getByTestId('share-create-request-button') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(
+      screen.getByText('ケアチームまたは連絡先に共有相手を登録すると、返信依頼を起票できます。'),
+    ).toBeTruthy();
+    fireEvent.click(button);
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          String(input) === '/api/communication-requests' && init?.method === 'POST',
+      ),
+    ).toBe(false);
   });
 
   it('keeps hostile report, patient, and request identities raw in the follow-up task body', async () => {

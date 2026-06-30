@@ -4,8 +4,10 @@ import {
   audienceKeyFromRecipientRole,
   buildAudienceShareSections,
   buildNextCheckTaskInput,
+  buildShareCommunicationRequestInput,
   buildShareAudienceCards,
   defaultAudienceForReportType,
+  pickLatestAudienceRequest,
   pickLatestAudienceReplyRequest,
   SHARE_SECTION_EMPTY_BODY,
   type ShareCommunicationRequest,
@@ -103,9 +105,13 @@ describe('buildShareAudienceCards', () => {
       '家族',
     ]);
     expect(cards[0].memberLabel).toBe('山本 健(やまもと内科)');
+    expect(cards[0].recipientName).toBe('山本 健');
+    expect(cards[0].recipientOrganizationName).toBe('やまもと内科');
     expect(cards[1].memberLabel).toBe('中島 桜(きたきゅうケアプラン)');
     expect(cards[2].memberLabel).toBe('三浦 恵');
     expect(cards[3].memberLabel).toBeNull(); // 施設は未登録
+    expect(cards[3].recipientName).toBeNull();
+    expect(cards[3].recipientOrganizationName).toBeNull();
     expect(cards[4].memberLabel).toBe('加藤 直子'); // 家族は連絡先(長女)から
   });
 
@@ -272,6 +278,11 @@ describe('pickLatestAudienceReplyRequest', () => {
     },
   ];
 
+  it('選択中の相手宛てで作成日時が最新の依頼を選ぶ', () => {
+    expect(pickLatestAudienceRequest(requests, 'care_manager')?.id).toBe('req_cm_no_reply');
+    expect(pickLatestAudienceRequest(requests, 'physician')?.id).toBe('req_physician');
+  });
+
   it('選択中の相手宛てで返信つきの最新依頼を選ぶ', () => {
     expect(pickLatestAudienceReplyRequest(requests, 'care_manager')?.id).toBe('req_cm_new');
     expect(pickLatestAudienceReplyRequest(requests, 'physician')?.id).toBe('req_physician');
@@ -280,6 +291,79 @@ describe('pickLatestAudienceReplyRequest', () => {
   it('該当宛先の返信が無ければ null を返す', () => {
     expect(pickLatestAudienceReplyRequest(requests, 'family')).toBeNull();
     expect(pickLatestAudienceReplyRequest([], 'care_manager')).toBeNull();
+  });
+});
+
+describe('buildShareCommunicationRequestInput', () => {
+  it('選択中の相手と共有プレビューから POST /api/communication-requests の入力を組み立てる', () => {
+    const sections = buildAudienceShareSections(CARE_MANAGER_CONTENT, 'care_manager', {
+      hasPdf: true,
+    });
+
+    const input = buildShareCommunicationRequestInput({
+      audience: 'care_manager',
+      patientId: 'patient_1',
+      caseId: 'case_1',
+      patientName: '加藤 ミサ',
+      reportId: 'report_1',
+      reportType: 'care_manager_report',
+      recipientName: '中島 桜',
+      recipientOrganizationName: 'きたきゅうケアプラン',
+      sections,
+    });
+
+    expect(input).toMatchObject({
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      request_type: 'care_report_reply_request',
+      template_key: 'interprofessional_share_reply_request',
+      recipient_name: '中島 桜',
+      recipient_role: 'care_manager',
+      related_entity_type: 'care_report',
+      related_entity_id: 'report_1',
+      status: 'sent',
+      subject: '返信依頼: ケアマネ向け報告書共有(加藤 ミサ 様)',
+      context_snapshot: {
+        source: 'interprofessional_share',
+        report_id: 'report_1',
+        report_type: 'care_manager_report',
+        audience: 'care_manager',
+        recipient_organization_name: 'きたきゅうケアプラン',
+      },
+    });
+    expect(input.content).toContain('ケアマネ向けに共有する報告内容です');
+    expect(input.content).toContain('【服薬状況】');
+    expect(input.content).toContain('昼分の飲み忘れ');
+    expect(input.content.length).toBeLessThanOrEqual(4000);
+    expect(input.context_snapshot.section_keys).toEqual([
+      'medication_status',
+      'residual',
+      'pharmacist_request',
+      'next_check',
+      'attachments',
+    ]);
+  });
+
+  it('患者名・ケース・組織名が無くても安全な最小入力を返す', () => {
+    const input = buildShareCommunicationRequestInput({
+      audience: 'family',
+      patientId: 'patient_2',
+      caseId: null,
+      patientName: null,
+      reportId: 'report_2',
+      reportType: 'family_share',
+      recipientName: '加藤 直子',
+      recipientOrganizationName: null,
+      sections: buildAudienceShareSections({ body: 'あ'.repeat(5000) }, 'family', {
+        hasPdf: false,
+      }),
+    });
+
+    expect(input.case_id).toBeUndefined();
+    expect(input.recipient_role).toBe('family');
+    expect(input.subject).toBe('返信依頼: 家族向け報告書共有(対象患者)');
+    expect(input.context_snapshot).not.toHaveProperty('recipient_organization_name');
+    expect(input.content.length).toBeLessThanOrEqual(4000);
   });
 });
 

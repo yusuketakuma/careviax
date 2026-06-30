@@ -417,27 +417,31 @@ const authenticatedPOST = withAuthContext(
         : {}),
     });
 
-    const result = await withOrgContext(ctx.orgId, async (tx) => {
-      return tx.communicationRequest.create({
-        data: {
-          org_id: ctx.orgId,
-          patient_id: effectivePatientId,
-          case_id: effectiveCaseId,
-          request_type,
-          template_key: template_key ?? null,
-          recipient_name: effectiveRecipientName,
-          recipient_role: effectiveRecipientRole,
-          related_entity_type: related_entity_type ?? null,
-          related_entity_id: related_entity_id ?? null,
-          context_snapshot: effectiveContextSnapshot,
-          status: status ?? 'draft',
-          subject,
-          content,
-          requested_by: ctx.userId,
-          due_date: due_date ? new Date(due_date) : null,
-        },
-      });
-    });
+    const result = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        return tx.communicationRequest.create({
+          data: {
+            org_id: ctx.orgId,
+            patient_id: effectivePatientId,
+            case_id: effectiveCaseId,
+            request_type,
+            template_key: template_key ?? null,
+            recipient_name: effectiveRecipientName,
+            recipient_role: effectiveRecipientRole,
+            related_entity_type: related_entity_type ?? null,
+            related_entity_id: related_entity_id ?? null,
+            context_snapshot: effectiveContextSnapshot,
+            status: status ?? 'draft',
+            subject,
+            content,
+            requested_by: ctx.userId,
+            due_date: due_date ? new Date(due_date) : null,
+          },
+        });
+      },
+      { requestContext: ctx },
+    );
 
     return success({ data: result }, 201);
   },

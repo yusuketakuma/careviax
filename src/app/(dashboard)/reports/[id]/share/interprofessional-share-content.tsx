@@ -2,10 +2,10 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { AlertTriangle, CheckCircle2, ListTodo, MessageCircle, Share2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ListTodo, MessageCircle, Send, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -23,8 +23,10 @@ import type { CareReportActionPermissions } from '@/types/care-report-permission
 import {
   buildAudienceShareSections,
   buildNextCheckTaskInput,
+  buildShareCommunicationRequestInput,
   buildShareAudienceCards,
   defaultAudienceForReportType,
+  pickLatestAudienceRequest,
   pickLatestAudienceReplyRequest,
   shareAudienceLabel,
   type CareTeamMemberSummary,
@@ -67,10 +69,14 @@ type ShareReplyDetail = {
 
 export function InterprofessionalShareContent({ reportId }: { reportId: string }) {
   const orgId = useOrgId();
+  const queryClient = useQueryClient();
   const isBootstrappingOrg = !orgId;
 
   const [selectedAudience, setSelectedAudience] = useState<ShareAudienceKey | null>(null);
   const [createdResponseIds, setCreatedResponseIds] = useState<readonly string[]>([]);
+  const [createdRequestAudiences, setCreatedRequestAudiences] = useState<
+    readonly ShareAudienceKey[]
+  >([]);
 
   const reportQuery = useQuery({
     queryKey: ['care-report', reportId, orgId],
@@ -148,9 +154,11 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
     careTeamQuery.data?.data ?? [],
     contactsQuery.data?.data ?? [],
   );
+  const selectedAudienceCard = audienceCards.find((card) => card.key === audience) ?? null;
   const sections = buildAudienceShareSections(report?.content ?? null, audience, {
     hasPdf: Boolean(report && canUseShareOutput),
   });
+  const audienceRequest = pickLatestAudienceRequest(requestsQuery.data?.data ?? [], audience);
   const replyRequest = pickLatestAudienceReplyRequest(requestsQuery.data?.data ?? [], audience);
 
   // 一覧 API の responses は本文を含まないため、対象依頼のみ詳細を取得する
@@ -169,6 +177,8 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   });
   const latestReply = replyDetailQuery.data?.data.responses[0] ?? null;
   const taskCreated = Boolean(latestReply && createdResponseIds.includes(latestReply.id));
+  const requestCreated = createdRequestAudiences.includes(audience);
+  const hasActiveAudienceRequest = Boolean(audienceRequest && audienceRequest.status !== 'closed');
   const supportingDataErrors = [
     careTeamQuery.isError ? 'ケアチーム' : null,
     contactsQuery.isError ? '患者連絡先' : null,
@@ -210,6 +220,54 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
         setCreatedResponseIds((prev) => [...prev, latestReply.id]);
       }
       toast.success('次回訪問の確認タスクを作成しました');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const createReplyRequestMutation = useMutation({
+    mutationFn: async () => {
+      if (!report || !patientId) {
+        throw new Error('報告書または患者情報を取得できませんでした');
+      }
+      if (!selectedAudienceCard?.recipientName) {
+        throw new Error('共有相手が未登録です');
+      }
+      if (requestsQuery.isLoading || requestsQuery.isError) {
+        throw new Error('返信状況を確認してから起票してください');
+      }
+      if (hasActiveAudienceRequest || requestCreated) {
+        throw new Error('この相手への返信依頼は既に起票されています');
+      }
+      const input = buildShareCommunicationRequestInput({
+        audience,
+        patientId,
+        caseId: report.case_id,
+        patientName: report.patient_summary?.name ?? null,
+        reportId: report.id,
+        reportType: report.report_type,
+        recipientName: selectedAudienceCard.recipientName,
+        recipientOrganizationName: selectedAudienceCard.recipientOrganizationName,
+        sections,
+      });
+      const res = await fetch('/api/communication-requests', {
+        method: 'POST',
+        headers: buildOrgJsonHeaders(orgId),
+        body: JSON.stringify(input),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(
+          (err as { message?: string } | null)?.message ?? '返信依頼の起票に失敗しました',
+        );
+      }
+      return res.json();
+    },
+    onSuccess: async () => {
+      setCreatedRequestAudiences((prev) => [...prev, audience]);
+      toast.success('返信依頼を起票しました');
+      await queryClient.invalidateQueries({
+        queryKey: ['communication-requests', 'care_report', reportId, orgId],
+      });
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -478,6 +536,43 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
                 </p>
               </div>
             )}
+
+            <Button
+              type="button"
+              variant="outline"
+              data-testid="share-create-request-button"
+              className="mt-4 w-full bg-background"
+              disabled={
+                !selectedAudienceCard?.recipientName ||
+                requestsQuery.isLoading ||
+                requestsQuery.isError ||
+                createReplyRequestMutation.isPending ||
+                hasActiveAudienceRequest ||
+                requestCreated
+              }
+              onClick={() => createReplyRequestMutation.mutate()}
+            >
+              {hasActiveAudienceRequest || requestCreated ? (
+                <>
+                  <CheckCircle2 className="mr-1.5 size-4" aria-hidden="true" />
+                  返信依頼起票済み
+                </>
+              ) : (
+                <>
+                  <Send className="mr-1.5 size-4" aria-hidden="true" />
+                  {createReplyRequestMutation.isPending ? '起票中...' : '返信依頼を起票'}
+                </>
+              )}
+            </Button>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+              {!selectedAudienceCard?.recipientName
+                ? 'ケアチームまたは連絡先に共有相手を登録すると、返信依頼を起票できます。'
+                : requestsQuery.isError
+                  ? '返信状況を取得できないため、重複防止のため起票を停止しています。'
+                  : hasActiveAudienceRequest || requestCreated
+                    ? 'この相手への返信依頼は既に連携依頼キューにあります。'
+                    : '選択中の相手に、表示中の共有内容を確認してもらう返信待ち依頼を作成します。'}
+            </p>
 
             <Button
               type="button"

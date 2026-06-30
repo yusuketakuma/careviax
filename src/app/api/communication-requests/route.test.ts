@@ -328,6 +328,13 @@ describe('/api/communication-requests', () => {
         context_snapshot: {},
       }),
     });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      },
+    });
   });
 
   it('normalizes request identity and text fields before assignment checks and persistence', async () => {
