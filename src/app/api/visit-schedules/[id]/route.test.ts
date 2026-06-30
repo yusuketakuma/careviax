@@ -2111,6 +2111,7 @@ describe('/api/visit-schedules/[id] GET', () => {
       id: 'schedule_1',
       pharmacist_id: 'user_other',
       version: 1,
+      schedule_status: 'planned',
       case_: {
         primary_pharmacist_id: 'user_primary',
         backup_pharmacist_id: null,
@@ -2125,7 +2126,7 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'schedule_1', org_id: 'org_1', version: 1 },
+      where: { id: 'schedule_1', org_id: 'org_1', version: 1, schedule_status: 'planned' },
       data: { schedule_status: 'cancelled', version: { increment: 1 } },
     });
     expect(visitScheduleOverrideFindManyMock).toHaveBeenCalledWith({
@@ -2185,6 +2186,7 @@ describe('/api/visit-schedules/[id] GET', () => {
       id: 'schedule_1',
       pharmacist_id: 'user_other',
       version: 1,
+      schedule_status: 'planned',
       case_: {
         primary_pharmacist_id: 'user_primary',
         backup_pharmacist_id: null,
@@ -2198,10 +2200,45 @@ describe('/api/visit-schedules/[id] GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'schedule_1', org_id: 'org_1', version: 1 },
+      where: { id: 'schedule_1', org_id: 'org_1', version: 1, schedule_status: 'planned' },
       data: { schedule_status: 'cancelled', version: { increment: 1 } },
     });
   });
+
+  it.each(['completed', 'cancelled', 'postponed', 'rescheduled', 'no_show'] as const)(
+    'rejects deleting %s schedules before cancellation side effects',
+    async (scheduleStatus) => {
+      visitScheduleFindFirstMock.mockResolvedValueOnce({
+        id: 'schedule_1',
+        pharmacist_id: 'user_1',
+        version: 1,
+        schedule_status: scheduleStatus,
+        case_: {
+          primary_pharmacist_id: 'user_primary',
+          backup_pharmacist_id: null,
+        },
+      });
+
+      const response = await DELETE(createRequest({ 'x-org-id': 'org_1' }), {
+        params: Promise.resolve({ id: 'schedule_1' }),
+      });
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '終了済みまたは中止済みの訪問予定は取消できません',
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+      expect(visitScheduleOverrideFindManyMock).not.toHaveBeenCalled();
+      expect(visitScheduleOverrideUpdateManyMock).not.toHaveBeenCalled();
+      expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+      expect(auditLogCreateMock).not.toHaveBeenCalled();
+      expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('returns conflict when delete loses a version race', async () => {
     visitScheduleUpdateManyMock.mockResolvedValueOnce({ count: 0 });
@@ -2217,7 +2254,7 @@ describe('/api/visit-schedules/[id] GET', () => {
       message: '訪問予定が同時に更新されました。再読み込みしてください',
     });
     expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'schedule_1', org_id: 'org_1', version: 1 },
+      where: { id: 'schedule_1', org_id: 'org_1', version: 1, schedule_status: 'planned' },
       data: { schedule_status: 'cancelled', version: { increment: 1 } },
     });
     expect(visitScheduleOverrideFindManyMock).not.toHaveBeenCalled();

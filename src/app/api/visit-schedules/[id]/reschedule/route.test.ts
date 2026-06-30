@@ -433,12 +433,21 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
-  it('rejects completed schedules', async () => {
+  it.each([
+    'completed',
+    'cancelled',
+    'postponed',
+    'rescheduled',
+    'no_show',
+    'ready',
+    'departed',
+    'in_progress',
+  ] as const)('rejects %s schedules before reschedule side effects', async (scheduleStatus) => {
     visitScheduleFindFirstMock.mockResolvedValue(
       buildSchedule({
         time_window_start: null,
         time_window_end: null,
-        schedule_status: 'completed',
+        schedule_status: scheduleStatus,
       }),
     );
 
@@ -454,6 +463,19 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
       message: 'この訪問予定はリスケできません',
     });
     expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleCountMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object reschedule payloads before loading the source schedule', async () => {
@@ -645,7 +667,7 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
         pharmacist_id: 'user_1',
         scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
         schedule_status: {
-          notIn: ['cancelled', 'rescheduled', 'completed'],
+          in: ['planned', 'in_preparation'],
         },
         id: { not: 'schedule_1' },
       },
@@ -654,6 +676,9 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           pharmacist_id: 'user_1',
+          schedule_status: {
+            in: ['planned', 'in_preparation'],
+          },
         }),
       }),
     );
@@ -662,7 +687,7 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
         id: 'schedule_1',
         org_id: 'org_1',
         version: 4,
-        schedule_status: 'planned',
+        schedule_status: { in: ['planned', 'in_preparation'] },
       },
       data: {
         version: { increment: 1 },
@@ -799,6 +824,74 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
     });
   });
 
+  it('skips in-flight impacted schedules during emergency insert auto-rescheduling', async () => {
+    visitScheduleFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      buildImpactedSchedule({
+        id: 'schedule_departed',
+        case_id: 'case_departed',
+        schedule_status: 'departed',
+      }),
+      buildImpactedSchedule({
+        id: 'schedule_in_progress',
+        case_id: 'case_in_progress',
+        schedule_status: 'in_progress',
+      }),
+    ]);
+
+    const response = await POST(
+      createRequest(
+        {
+          reason: '緊急訪問が割り込んだため',
+          reason_code: 'emergency_insert',
+          communication_channel: 'phone',
+          communication_result: 'pending',
+          start_date: '2026-03-28',
+          priority: 'urgent',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'schedule_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ rescheduleSourceScheduleId: 'schedule_departed' }),
+    );
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ rescheduleSourceScheduleId: 'schedule_in_progress' }),
+    );
+    expect(visitScheduleProposalCreateMock).toHaveBeenCalledTimes(1);
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        reschedule_source_schedule_id: 'schedule_departed',
+      }),
+    });
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        reschedule_source_schedule_id: 'schedule_in_progress',
+      }),
+    });
+    expect(visitScheduleOverrideCreateMock).toHaveBeenCalledTimes(1);
+    expect(visitScheduleOverrideCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        source_schedule_id: 'schedule_1',
+        impact_summary: expect.objectContaining({
+          impacted_schedule_count: 0,
+          auto_reschedule_summary: [],
+        }),
+      }),
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'visit_schedule_reschedule_requested',
+        changes: expect.objectContaining({
+          proposals: ['proposal_1'],
+        }),
+      }),
+    });
+  });
+
   it('returns existing pending reschedule proposals on success retry without side effects', async () => {
     visitScheduleOverrideFindFirstMock.mockResolvedValueOnce({
       id: 'override_existing',
@@ -866,6 +959,67 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
         org_id: 'org_1',
         id: { in: ['proposal_existing'] },
         reschedule_source_schedule_id: 'schedule_1',
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+        finalized_schedule_id: null,
+      },
+    });
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(visitScheduleCountMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps stale pending reschedule overrides with no open proposals as conflicts', async () => {
+    visitScheduleOverrideFindFirstMock.mockResolvedValueOnce({
+      id: 'override_existing',
+      status: 'pending',
+      impact_summary: {
+        request_intent_key: buildExpectedRescheduleRequestIntentKey(),
+      },
+      after_snapshot: [
+        {
+          proposal_id: 'proposal_rejected',
+          proposed_date: '2026-03-28T00:00:00.000Z',
+        },
+      ],
+    });
+    visitScheduleProposalFindManyMock.mockResolvedValueOnce([]);
+
+    const response = await POST(
+      createRequest(
+        {
+          reason: '患者都合で変更',
+          reason_code: 'patient_request',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'schedule_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'この訪問予定には既にリスケ要求があります。再読み込みしてください',
+    });
+    expect(visitScheduleProposalFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: { in: ['proposal_rejected'] },
+        reschedule_source_schedule_id: 'schedule_1',
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+        finalized_schedule_id: null,
       },
     });
     expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();

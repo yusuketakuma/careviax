@@ -823,12 +823,20 @@ async function authenticatedDELETE(
   if (!canAccessVisitScheduleAssignment(ctx, existing)) {
     return forbiddenResponse('この訪問予定を更新する権限がありません');
   }
+  if (isTerminalScheduleStatus(existing.schedule_status)) {
+    return validationError('終了済みまたは中止済みの訪問予定は取消できません');
+  }
 
   const schedule = await withOrgContext(
     ctx.orgId,
     async (tx) => {
       const updated = await tx.visitSchedule.updateMany({
-        where: { id, org_id: ctx.orgId, version: existing.version },
+        where: {
+          id,
+          org_id: ctx.orgId,
+          version: existing.version,
+          schedule_status: existing.schedule_status,
+        },
         data: { schedule_status: 'cancelled', version: { increment: 1 } },
       });
       if (updated.count !== 1) {

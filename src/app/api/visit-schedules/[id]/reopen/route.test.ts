@@ -111,7 +111,7 @@ describe('/api/visit-schedules/[id]/reopen POST', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'schedule_1', org_id: 'org_1', version: 1 },
+      where: { id: 'schedule_1', org_id: 'org_1', version: 1, schedule_status: 'cancelled' },
       data: { schedule_status: 'planned', version: { increment: 1 } },
     });
     expect(auditLogCreateMock).toHaveBeenCalledWith({
@@ -157,6 +157,49 @@ describe('/api/visit-schedules/[id]/reopen POST', () => {
     expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    {
+      label: 'completed override with replacement schedule',
+      override_request: { status: 'completed', replacement_schedule_id: 'schedule_replacement' },
+    },
+    {
+      label: 'completed override without replacement schedule',
+      override_request: { status: 'completed', replacement_schedule_id: null },
+    },
+    {
+      label: 'replacement schedule lineage',
+      override_request: { status: 'pending', replacement_schedule_id: 'schedule_replacement' },
+    },
+  ])('rejects reopening a cancelled schedule with $label', async ({ override_request }) => {
+    visitScheduleFindFirstMock.mockResolvedValue({
+      id: 'schedule_1',
+      pharmacist_id: 'user_1',
+      version: 1,
+      schedule_status: 'cancelled',
+      override_request,
+      case_: {
+        primary_pharmacist_id: 'user_1',
+        backup_pharmacist_id: null,
+      },
+    });
+
+    const response = await POST(createReopenRequest({ reason_code: 'other' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '確定済みリスケの元訪問予定は再開できません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('requires a known reason code', async () => {
     const response = await POST(createReopenRequest({ reason_code: 'whatever' }), {
       params: Promise.resolve({ id: 'schedule_1' }),
@@ -190,7 +233,7 @@ describe('/api/visit-schedules/[id]/reopen POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'schedule_1', org_id: 'org_1', version: 1 },
+      where: { id: 'schedule_1', org_id: 'org_1', version: 1, schedule_status: 'cancelled' },
       data: { schedule_status: 'planned', version: { increment: 1 } },
     });
   });

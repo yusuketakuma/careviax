@@ -64,6 +64,12 @@ async function authenticatedPOST(
       pharmacist_id: true,
       version: true,
       schedule_status: true,
+      override_request: {
+        select: {
+          status: true,
+          replacement_schedule_id: true,
+        },
+      },
       case_: {
         select: {
           primary_pharmacist_id: true,
@@ -79,12 +85,23 @@ async function authenticatedPOST(
   if (existing.schedule_status !== 'cancelled') {
     return validationError('取消済みの訪問予定のみ再開できます');
   }
+  if (
+    existing.override_request?.status === 'completed' ||
+    existing.override_request?.replacement_schedule_id
+  ) {
+    return validationError('確定済みリスケの元訪問予定は再開できません');
+  }
 
   const result = await withOrgContext(
     ctx.orgId,
     async (tx) => {
       const updated = await tx.visitSchedule.updateMany({
-        where: { id, org_id: ctx.orgId, version: existing.version },
+        where: {
+          id,
+          org_id: ctx.orgId,
+          version: existing.version,
+          schedule_status: 'cancelled',
+        },
         data: { schedule_status: 'planned', version: { increment: 1 } },
       });
       if (updated.count !== 1) {

@@ -65,6 +65,12 @@ const RESCHEDULE_REASON_LABELS: Record<z.infer<typeof rescheduleSchema>['reason_
   other: 'その他',
 };
 
+const RESCHEDULE_CREATABLE_SOURCE_STATUSES = ['planned', 'in_preparation'] as const;
+
+function isRescheduleCreatableSourceStatus(status: ScheduleStatus) {
+  return (RESCHEDULE_CREATABLE_SOURCE_STATUSES as readonly ScheduleStatus[]).includes(status);
+}
+
 function isSourceScheduleOverrideUniqueError(error: unknown) {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
     return false;
@@ -269,9 +275,16 @@ async function loadExistingPendingReschedule(args: {
             org_id: args.ctx.orgId,
             id: { in: proposalIds },
             reschedule_source_schedule_id: args.schedule.id,
+            proposal_status: {
+              in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+            },
+            finalized_schedule_id: null,
           },
         })
       : [];
+  if (existingProposals.length === 0) {
+    return { error: 'stale_existing_override' as const };
+  }
   const proposalById = new Map(existingProposals.map((proposal) => [proposal.id, proposal]));
 
   const emergencyContacts = await fetchEmergencyContacts(
@@ -413,7 +426,7 @@ const authenticatedPOST = async (
       : null,
   };
 
-  if (['completed', 'cancelled', 'rescheduled'].includes(schedule.schedule_status)) {
+  if (!isRescheduleCreatableSourceStatus(schedule.schedule_status)) {
     return validationError('この訪問予定はリスケできません');
   }
 
@@ -543,7 +556,7 @@ const authenticatedPOST = async (
           id: schedule.id,
           org_id: ctx.orgId,
           version: schedule.version,
-          schedule_status: schedule.schedule_status,
+          schedule_status: { in: [...RESCHEDULE_CREATABLE_SOURCE_STATUSES] },
           ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
         },
         data: {
@@ -560,7 +573,7 @@ const authenticatedPOST = async (
           pharmacist_id: schedule.pharmacist_id,
           scheduled_date: schedule.scheduled_date,
           schedule_status: {
-            notIn: ['cancelled', 'rescheduled', 'completed'],
+            in: [...RESCHEDULE_CREATABLE_SOURCE_STATUSES],
           },
           id: { not: schedule.id },
           ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
@@ -602,7 +615,7 @@ const authenticatedPOST = async (
             pharmacist_id: schedule.pharmacist_id,
             scheduled_date: schedule.scheduled_date,
             schedule_status: {
-              notIn: ['cancelled', 'rescheduled', 'completed'],
+              in: [...RESCHEDULE_CREATABLE_SOURCE_STATUSES],
             },
             id: { not: schedule.id },
             ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
@@ -644,8 +657,10 @@ const authenticatedPOST = async (
           orderBy: [{ route_order: 'asc' }, { time_window_start: 'asc' }],
         })) as ImpactedSchedule[];
 
-        const impactedCandidates = impactedSchedules.filter((candidate) =>
-          isPotentiallyImpactedByEmergencyInsert(schedule, candidate),
+        const impactedCandidates = impactedSchedules.filter(
+          (candidate) =>
+            isRescheduleCreatableSourceStatus(candidate.schedule_status) &&
+            isPotentiallyImpactedByEmergencyInsert(schedule, candidate),
         );
         impactedScheduleCount = impactedCandidates.length;
 
