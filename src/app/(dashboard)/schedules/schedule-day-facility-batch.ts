@@ -14,6 +14,7 @@ export type ScheduleDayFacilityRouteDrafts = Record<string, Record<string, strin
 export type ScheduleDayFacilityBatchPayload = {
   schedule_ids: string[];
   ordered_schedule_ids: string[];
+  expected_route_orders: Array<{ schedule_id: string; route_order: number | null }>;
   carry_items_confirmed: boolean;
   allow_mixed_unit: true;
 };
@@ -37,6 +38,10 @@ export function buildScheduleDayFacilityBatchPayload({
   return {
     schedule_ids: group.scheduleIds,
     ordered_schedule_ids: buildOrderedFacilityScheduleIds(group, routeDraft),
+    expected_route_orders: group.patients.map((patient) => ({
+      schedule_id: patient.scheduleId,
+      route_order: patient.routeOrder,
+    })),
     carry_items_confirmed: carryItemsConfirmed,
     allow_mixed_unit: true,
   };

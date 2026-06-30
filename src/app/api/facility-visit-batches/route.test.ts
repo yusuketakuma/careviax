@@ -71,6 +71,38 @@ function expectSensitiveNoStore(response: Response) {
   expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
+function buildBatchableSchedule(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'schedule_1',
+    site_id: 'site_1',
+    pharmacist_id: 'ph_1',
+    scheduled_date: new Date('2026-03-28T00:00:00Z'),
+    facility_batch_id: null,
+    route_order: 1,
+    schedule_status: 'planned',
+    confirmed_at: null,
+    version: 7,
+    case_id: 'case_1',
+    carry_items_status: 'ready',
+    preparation: null,
+    case_: {
+      patient: {
+        id: 'patient_1',
+        name: '山田 太郎',
+        residences: [
+          {
+            facility_id: 'facility_a',
+            building_id: 'facility_a',
+            address: '東京都港区1-1-1',
+            unit_name: '201',
+          },
+        ],
+      },
+    },
+    ...overrides,
+  };
+}
+
 describe('/api/facility-visit-batches POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -155,6 +187,7 @@ describe('/api/facility-visit-batches POST', () => {
               pharmacist_id: 'ph_1',
               scheduled_date: new Date('2026-03-28T00:00:00Z'),
               facility_batch_id: null,
+              route_order: 2,
               version: 7,
               case_id: 'case_1',
               preparation: null,
@@ -179,6 +212,7 @@ describe('/api/facility-visit-batches POST', () => {
               pharmacist_id: 'ph_1',
               scheduled_date: new Date('2026-03-28T00:00:00Z'),
               facility_batch_id: null,
+              route_order: 1,
               version: 3,
               case_id: 'case_2',
               preparation: null,
@@ -239,6 +273,7 @@ describe('/api/facility-visit-batches POST', () => {
               pharmacist_id: 'ph_1',
               scheduled_date: new Date('2026-03-28T00:00:00Z'),
               facility_batch_id: null,
+              route_order: 2,
               version: 7,
               case_id: 'case_1',
               carry_items_status: 'ready',
@@ -273,6 +308,7 @@ describe('/api/facility-visit-batches POST', () => {
               pharmacist_id: 'ph_1',
               scheduled_date: new Date('2026-03-28T00:00:00Z'),
               facility_batch_id: null,
+              route_order: 1,
               version: 3,
               case_id: 'case_2',
               carry_items_status: 'ready',
@@ -322,6 +358,10 @@ describe('/api/facility-visit-batches POST', () => {
       createRequest({
         schedule_ids: ['schedule_1', 'schedule_2'],
         ordered_schedule_ids: ['schedule_2', 'schedule_1'],
+        expected_route_orders: [
+          { schedule_id: 'schedule_1', route_order: 2 },
+          { schedule_id: 'schedule_2', route_order: 1 },
+        ],
         carry_items_confirmed: true,
       }),
     );
@@ -356,6 +396,7 @@ describe('/api/facility-visit-batches POST', () => {
         org_id: 'org_1',
         id: 'schedule_2',
         facility_batch_id: null,
+        route_order: 1,
         version: 3,
       },
       data: {
@@ -385,14 +426,16 @@ describe('/api/facility-visit-batches POST', () => {
               schedule_id: 'schedule_2',
               case_id: 'case_2',
               previous_facility_batch_id: null,
-              previous_route_order: null,
+              previous_route_order: 1,
+              expected_route_order: 1,
               route_order: 1,
             },
             {
               schedule_id: 'schedule_1',
               case_id: 'case_1',
               previous_facility_batch_id: null,
-              previous_route_order: null,
+              previous_route_order: 2,
+              expected_route_order: 2,
               route_order: 2,
             },
           ],
@@ -400,6 +443,121 @@ describe('/api/facility-visit-batches POST', () => {
       },
     );
   });
+
+  it.each([
+    {
+      caseName: 'completed schedule status',
+      schedules: [
+        buildBatchableSchedule({
+          id: 'schedule_1',
+          case_id: 'case_1',
+          route_order: 1,
+          schedule_status: 'completed',
+          version: 7,
+        }),
+        buildBatchableSchedule({
+          id: 'schedule_2',
+          case_id: 'case_2',
+          route_order: 2,
+          version: 3,
+          case_: {
+            patient: {
+              id: 'patient_2',
+              name: '山田 花子',
+              residences: [
+                {
+                  facility_id: 'facility_a',
+                  building_id: 'facility_a',
+                  address: '東京都港区1-1-1',
+                  unit_name: '105',
+                },
+              ],
+            },
+          },
+        }),
+      ],
+      message: '完了済みまたは中止済みの訪問予定は順路を変更できません',
+    },
+    {
+      caseName: 'confirmed route change',
+      schedules: [
+        buildBatchableSchedule({
+          id: 'schedule_1',
+          case_id: 'case_1',
+          route_order: 1,
+          confirmed_at: new Date('2026-03-28T10:00:00.000Z'),
+          version: 7,
+        }),
+        buildBatchableSchedule({
+          id: 'schedule_2',
+          case_id: 'case_2',
+          route_order: 2,
+          version: 3,
+          case_: {
+            patient: {
+              id: 'patient_2',
+              name: '山田 花子',
+              residences: [
+                {
+                  facility_id: 'facility_a',
+                  building_id: 'facility_a',
+                  address: '東京都港区1-1-1',
+                  unit_name: '105',
+                },
+              ],
+            },
+          },
+        }),
+      ],
+      message: '電話確定済みの訪問予定は順路を変更できません',
+    },
+  ])(
+    'rejects facility batch save for $caseName before side effects',
+    async ({ schedules, message }) => {
+      const batchCreateMock = vi.fn();
+      const scheduleUpdateMock = vi.fn();
+      const proposalConflictFindFirstMock = vi.fn();
+
+      withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+        callback({
+          visitSchedule: {
+            findFirst: vi.fn(),
+            findMany: vi.fn().mockResolvedValue(schedules),
+            count: visitScheduleCountMock,
+            updateMany: scheduleUpdateMock,
+          },
+          visitScheduleProposal: {
+            findFirst: proposalConflictFindFirstMock,
+          },
+          facilityVisitBatch: {
+            create: batchCreateMock,
+            update: vi.fn(),
+          },
+          visitPreparation: {
+            upsert: vi.fn(),
+          },
+        }),
+      );
+
+      const response = await POST(
+        createRequest({
+          schedule_ids: ['schedule_1', 'schedule_2'],
+          ordered_schedule_ids: ['schedule_2', 'schedule_1'],
+        }),
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message,
+      });
+      expect(proposalConflictFindFirstMock).not.toHaveBeenCalled();
+      expect(batchCreateMock).not.toHaveBeenCalled();
+      expect(scheduleUpdateMock).not.toHaveBeenCalled();
+      expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     {
@@ -784,6 +942,111 @@ describe('/api/facility-visit-batches POST', () => {
     });
     expect(batchCreateMock).not.toHaveBeenCalled();
     expect(scheduleUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale expected route orders before batch side effects', async () => {
+    const batchCreateMock = vi.fn();
+    const scheduleUpdateMock = vi.fn();
+    const scheduleConflictFindFirstMock = vi.fn();
+    const proposalConflictFindFirstMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        visitSchedule: {
+          findFirst: scheduleConflictFindFirstMock,
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'schedule_1',
+              site_id: 'site_1',
+              pharmacist_id: 'ph_1',
+              scheduled_date: new Date('2026-03-28T00:00:00Z'),
+              facility_batch_id: null,
+              route_order: 4,
+              version: 7,
+              case_id: 'case_1',
+              carry_items_status: 'ready',
+              preparation: null,
+              case_: {
+                patient: {
+                  id: 'patient_1',
+                  name: '山田 太郎',
+                  residences: [
+                    {
+                      facility_id: 'facility_a',
+                      building_id: 'facility_a',
+                      address: '東京都港区1-1-1',
+                      unit_name: '201',
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              id: 'schedule_2',
+              site_id: 'site_1',
+              pharmacist_id: 'ph_1',
+              scheduled_date: new Date('2026-03-28T00:00:00Z'),
+              facility_batch_id: null,
+              route_order: 5,
+              version: 3,
+              case_id: 'case_2',
+              carry_items_status: 'ready',
+              preparation: null,
+              case_: {
+                patient: {
+                  id: 'patient_2',
+                  name: '山田 花子',
+                  residences: [
+                    {
+                      facility_id: 'facility_a',
+                      building_id: 'facility_a',
+                      address: '東京都港区1-1-1',
+                      unit_name: '105',
+                    },
+                  ],
+                },
+              },
+            },
+          ]),
+          count: visitScheduleCountMock,
+          updateMany: scheduleUpdateMock,
+        },
+        visitScheduleProposal: {
+          findFirst: proposalConflictFindFirstMock,
+        },
+        facilityVisitBatch: {
+          create: batchCreateMock,
+          update: vi.fn(),
+        },
+        visitPreparation: {
+          upsert: vi.fn(),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        schedule_ids: ['schedule_1', 'schedule_2'],
+        ordered_schedule_ids: ['schedule_2', 'schedule_1'],
+        expected_route_orders: [
+          { schedule_id: 'schedule_1', route_order: 2 },
+          { schedule_id: 'schedule_2', route_order: 1 },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '施設一括訪問の順序が同時に更新されました。再読み込みしてください',
+    });
+    expect(scheduleConflictFindFirstMock).not.toHaveBeenCalled();
+    expect(proposalConflictFindFirstMock).not.toHaveBeenCalled();
+    expect(batchCreateMock).not.toHaveBeenCalled();
+    expect(scheduleUpdateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 

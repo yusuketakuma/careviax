@@ -147,6 +147,10 @@ export function FacilityPacketContent({ scheduleId }: { scheduleId: string }) {
         orgId={orgId}
         notes={context.common_notes}
         orderedScheduleIds={patients.map((patient) => patient.schedule_id)}
+        expectedRouteOrders={patients.map((patient) => ({
+          schedule_id: patient.schedule_id,
+          route_order: patient.route_order,
+        }))}
         onSaved={() =>
           void queryClient.invalidateQueries({ queryKey: ['visit-preparation-facility-packet'] })
         }
@@ -183,11 +187,13 @@ function FacilityPacketMemoSection({
   orgId,
   notes,
   orderedScheduleIds,
+  expectedRouteOrders,
   onSaved,
 }: {
   orgId: string;
   notes: string | null;
   orderedScheduleIds: string[];
+  expectedRouteOrders: Array<{ schedule_id: string; route_order: number | null }>;
   onSaved: () => void;
 }) {
   const savedMemo = useMemo(() => parseFacilityPacketMemo(notes), [notes]);
@@ -203,6 +209,7 @@ function FacilityPacketMemoSection({
         body: JSON.stringify({
           schedule_ids: orderedScheduleIds,
           ordered_schedule_ids: orderedScheduleIds,
+          expected_route_orders: expectedRouteOrders,
           packet_memo: memo,
         }),
       });

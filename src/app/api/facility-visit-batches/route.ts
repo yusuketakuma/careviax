@@ -21,6 +21,15 @@ const upsertFacilityVisitBatchSchema = z
     pharmacist_id: z.string().trim().optional(),
     site_id: z.string().trim().optional(),
     ordered_schedule_ids: z.array(z.string().trim().min(1)).optional(),
+    expected_route_orders: z
+      .array(
+        z.object({
+          schedule_id: z.string().trim().min(1),
+          route_order: z.number().int().min(1).nullable(),
+        }),
+      )
+      .max(100)
+      .optional(),
     carry_items_confirmed: z.boolean().optional(),
     allow_mixed_unit: z.boolean().optional(),
     // 施設訪問パケットの構造化申し送りメモ(5 項目)。指定時は notes へ直列化保存する。
@@ -55,6 +64,18 @@ const upsertFacilityVisitBatchSchema = z
       });
     }
   });
+
+const FACILITY_BATCH_ROUTE_REORDERABLE_STATUSES = new Set([
+  'planned',
+  'in_preparation',
+  'ready',
+  'departed',
+  'in_progress',
+]);
+
+function isFacilityBatchRouteStatusLocked(scheduleStatus: string | null | undefined) {
+  return scheduleStatus != null && !FACILITY_BATCH_ROUTE_REORDERABLE_STATUSES.has(scheduleStatus);
+}
 
 function buildFacilityLabel(schedule: {
   case_: {
@@ -139,17 +160,40 @@ const authenticatedPOST = withAuthContext(
 
     const requestedIds = parsed.data.schedule_ids ?? [];
     const orderedIds = parsed.data.ordered_schedule_ids ?? null;
+    const expectedRouteOrders = parsed.data.expected_route_orders ?? null;
     if (hasDuplicateValue(requestedIds)) {
       return validationError('同じ訪問予定IDを複数回指定できません');
     }
     if (orderedIds && hasDuplicateValue(orderedIds)) {
       return validationError('同じ順序指定IDを複数回指定できません');
     }
+    if (
+      expectedRouteOrders &&
+      hasDuplicateValue(expectedRouteOrders.map((item) => item.schedule_id))
+    ) {
+      return validationError('同じ訪問予定IDの現在順序を複数回指定できません');
+    }
     if (orderedIds && requestedIds.length > 0 && orderedIds.length !== requestedIds.length) {
       return validationError('順序指定と対象予定数が一致しません');
     }
     if (orderedIds && requestedIds.some((scheduleId) => !orderedIds.includes(scheduleId))) {
       return validationError('順序指定に対象外の訪問予定が含まれています');
+    }
+    if (
+      expectedRouteOrders &&
+      requestedIds.length > 0 &&
+      expectedRouteOrders.length !== requestedIds.length
+    ) {
+      return validationError('現在順序と対象予定数が一致しません');
+    }
+    if (
+      expectedRouteOrders &&
+      requestedIds.length > 0 &&
+      requestedIds.some(
+        (scheduleId) => !expectedRouteOrders.some((item) => item.schedule_id === scheduleId),
+      )
+    ) {
+      return validationError('現在順序に対象外の訪問予定が含まれています');
     }
 
     const result = await withOrgContext(ctx.orgId, async (tx) => {
@@ -192,6 +236,8 @@ const authenticatedPOST = withAuthContext(
             scheduled_date: true,
             facility_batch_id: true,
             route_order: true,
+            schedule_status: true,
+            confirmed_at: true,
             version: true,
             case_id: true,
             carry_items_status: true,
@@ -255,6 +301,25 @@ const authenticatedPOST = withAuthContext(
       }
       if (orderedIds && targetScheduleIds.some((scheduleId) => !orderedIds.includes(scheduleId))) {
         return { error: 'ordered_contains_unknown' as const };
+      }
+      const expectedRouteOrderByScheduleId =
+        expectedRouteOrders == null
+          ? null
+          : new Map(expectedRouteOrders.map((item) => [item.schedule_id, item.route_order]));
+      if (
+        expectedRouteOrderByScheduleId &&
+        (expectedRouteOrderByScheduleId.size !== targetScheduleIds.length ||
+          targetScheduleIds.some((scheduleId) => !expectedRouteOrderByScheduleId.has(scheduleId)))
+      ) {
+        return { error: 'expected_route_order_target_mismatch' as const };
+      }
+      if (
+        expectedRouteOrderByScheduleId &&
+        schedules.some(
+          (schedule) => expectedRouteOrderByScheduleId.get(schedule.id) !== schedule.route_order,
+        )
+      ) {
+        return { error: 'stale_route_order' as const };
       }
 
       const siteIds = new Set(schedules.map((schedule) => schedule.site_id ?? 'site:none'));
@@ -325,6 +390,21 @@ const authenticatedPOST = withAuthContext(
       )
         .map((scheduleId) => scheduleById.get(scheduleId))
         .filter((schedule): schedule is NonNullable<typeof schedule> => schedule != null);
+
+      if (
+        orderedSchedules.some((schedule) =>
+          isFacilityBatchRouteStatusLocked(schedule.schedule_status),
+        )
+      ) {
+        return { error: 'route_status_locked' as const };
+      }
+
+      const confirmedRouteChange = orderedSchedules.some(
+        (schedule, index) => schedule.confirmed_at != null && schedule.route_order !== index + 1,
+      );
+      if (confirmedRouteChange) {
+        return { error: 'confirmed_route_change' as const };
+      }
 
       if (parsed.data.carry_items_confirmed) {
         const unsafeCarrySchedules = orderedSchedules.filter(
@@ -416,6 +496,9 @@ const authenticatedPOST = withAuthContext(
               id: schedule.id,
               facility_batch_id: schedule.facility_batch_id,
               version: schedule.version,
+              ...(expectedRouteOrderByScheduleId?.has(schedule.id)
+                ? { route_order: expectedRouteOrderByScheduleId.get(schedule.id) }
+                : {}),
             },
             data: {
               facility_batch_id: batch.id,
@@ -492,6 +575,9 @@ const authenticatedPOST = withAuthContext(
             case_id: schedule.case_id,
             previous_facility_batch_id: schedule.facility_batch_id,
             previous_route_order: schedule.route_order ?? null,
+            ...(expectedRouteOrderByScheduleId?.has(schedule.id)
+              ? { expected_route_order: expectedRouteOrderByScheduleId.get(schedule.id) }
+              : {}),
             route_order: index + 1,
           })),
         },
@@ -549,8 +635,20 @@ const authenticatedPOST = withAuthContext(
       if (result.error === 'ordered_contains_unknown') {
         return validationError('順序指定に自動取得対象外の訪問予定が含まれています');
       }
+      if (result.error === 'expected_route_order_target_mismatch') {
+        return validationError('現在順序と対象予定数が一致しません');
+      }
+      if (result.error === 'stale_route_order') {
+        return conflict('施設一括訪問の順序が同時に更新されました。再読み込みしてください');
+      }
       if (result.error === 'duplicate_route_order') {
         return validationError('同一セル内で route_order は重複できません');
+      }
+      if (result.error === 'route_status_locked') {
+        return validationError('完了済みまたは中止済みの訪問予定は順路を変更できません');
+      }
+      if (result.error === 'confirmed_route_change') {
+        return validationError('電話確定済みの訪問予定は順路を変更できません');
       }
       if (result.error === 'stale_schedule') {
         return conflict('施設一括訪問の対象予定が同時に更新されました。再読み込みしてください');

@@ -145,8 +145,22 @@ describe('/api/facility-visit-batches/[id]', () => {
     facilityVisitBatchDeleteMock.mockResolvedValue({ id: 'batch_1' });
     notifyWorkflowMutationMock.mockResolvedValue(undefined);
     visitScheduleFindManyMock.mockResolvedValue([
-      { id: 'schedule_1', case_id: 'case_1', route_order: 1 },
-      { id: 'schedule_2', case_id: 'case_2', route_order: 2 },
+      {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        route_order: 1,
+        schedule_status: 'planned',
+        confirmed_at: null,
+        version: 7,
+      },
+      {
+        id: 'schedule_2',
+        case_id: 'case_2',
+        route_order: 2,
+        schedule_status: 'planned',
+        confirmed_at: null,
+        version: 3,
+      },
     ]);
     visitScheduleCountMock.mockResolvedValue(2);
     visitScheduleUpdateManyMock.mockResolvedValue({ count: 2 });
@@ -573,7 +587,14 @@ describe('/api/facility-visit-batches/[id]', () => {
       });
       expect(visitScheduleFindManyMock).toHaveBeenCalledWith({
         where: { org_id: 'org_1', facility_batch_id: 'batch_1' },
-        select: { id: true, case_id: true, route_order: true },
+        select: {
+          id: true,
+          case_id: true,
+          route_order: true,
+          schedule_status: true,
+          confirmed_at: true,
+          version: true,
+        },
       });
       expectNoMutationSideEffects();
     });
@@ -591,7 +612,100 @@ describe('/api/facility-visit-batches/[id]', () => {
       });
       expect(visitScheduleFindManyMock).toHaveBeenCalledWith({
         where: { org_id: 'org_1', facility_batch_id: 'batch_1' },
-        select: { id: true, case_id: true, route_order: true },
+        select: {
+          id: true,
+          case_id: true,
+          route_order: true,
+          schedule_status: true,
+          confirmed_at: true,
+          version: true,
+        },
+      });
+      expectNoMutationSideEffects();
+    });
+
+    it('rejects locked schedule statuses before route reorder side effects', async () => {
+      visitScheduleFindManyMock.mockResolvedValue([
+        {
+          id: 'schedule_1',
+          case_id: 'case_1',
+          route_order: 1,
+          schedule_status: 'completed',
+          confirmed_at: null,
+          version: 7,
+        },
+        {
+          id: 'schedule_2',
+          case_id: 'case_2',
+          route_order: 2,
+          schedule_status: 'planned',
+          confirmed_at: null,
+          version: 3,
+        },
+      ]);
+
+      const response = await PATCH(
+        createRequest({ ordered_schedule_ids: ['schedule_2', 'schedule_1'] }),
+        routeContext('batch_1'),
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '完了済みまたは中止済みの訪問予定は順路を変更できません',
+      });
+      expectNoMutationSideEffects();
+    });
+
+    it('rejects confirmed route changes before route reorder side effects', async () => {
+      visitScheduleFindManyMock.mockResolvedValue([
+        {
+          id: 'schedule_1',
+          case_id: 'case_1',
+          route_order: 1,
+          schedule_status: 'planned',
+          confirmed_at: new Date('2026-03-27T10:00:00.000Z'),
+          version: 7,
+        },
+        {
+          id: 'schedule_2',
+          case_id: 'case_2',
+          route_order: 2,
+          schedule_status: 'planned',
+          confirmed_at: null,
+          version: 3,
+        },
+      ]);
+
+      const response = await PATCH(
+        createRequest({ ordered_schedule_ids: ['schedule_2', 'schedule_1'] }),
+        routeContext('batch_1'),
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '電話確定済みの訪問予定は順路を変更できません',
+      });
+      expectNoMutationSideEffects();
+    });
+
+    it('rejects stale expected route orders before route reorder side effects', async () => {
+      const response = await PATCH(
+        createRequest({
+          ordered_schedule_ids: ['schedule_2', 'schedule_1'],
+          expected_route_orders: [
+            { schedule_id: 'schedule_1', route_order: 7 },
+            { schedule_id: 'schedule_2', route_order: 2 },
+          ],
+        }),
+        routeContext('batch_1'),
+      );
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'WORKFLOW_CONFLICT',
+        message: '施設一括訪問の順序が同時に更新されました。再読み込みしてください',
       });
       expectNoMutationSideEffects();
     });
@@ -663,6 +777,10 @@ describe('/api/facility-visit-batches/[id]', () => {
       const response = await PATCH(
         createRequest({
           ordered_schedule_ids: ['schedule_2', 'schedule_1'],
+          expected_route_orders: [
+            { schedule_id: 'schedule_1', route_order: 1 },
+            { schedule_id: 'schedule_2', route_order: 2 },
+          ],
         }),
         routeContext('  batch_1  '),
       );
@@ -678,7 +796,14 @@ describe('/api/facility-visit-batches/[id]', () => {
       });
       expect(visitScheduleFindManyMock).toHaveBeenCalledWith({
         where: { org_id: 'org_1', facility_batch_id: 'batch_1' },
-        select: { id: true, case_id: true, route_order: true },
+        select: {
+          id: true,
+          case_id: true,
+          route_order: true,
+          schedule_status: true,
+          confirmed_at: true,
+          version: true,
+        },
       });
       expect(visitScheduleUpdateManyMock).toHaveBeenCalledTimes(2);
       expect(visitScheduleUpdateManyMock).toHaveBeenNthCalledWith(1, {
@@ -686,6 +811,8 @@ describe('/api/facility-visit-batches/[id]', () => {
           org_id: 'org_1',
           id: 'schedule_2',
           facility_batch_id: 'batch_1',
+          version: 3,
+          route_order: 2,
         },
         data: { route_order: 1, version: { increment: 1 } },
       });
@@ -694,6 +821,8 @@ describe('/api/facility-visit-batches/[id]', () => {
           org_id: 'org_1',
           id: 'schedule_1',
           facility_batch_id: 'batch_1',
+          version: 7,
+          route_order: 1,
         },
         data: { route_order: 2, version: { increment: 1 } },
       });
@@ -711,12 +840,14 @@ describe('/api/facility-visit-batches/[id]', () => {
                 schedule_id: 'schedule_2',
                 case_id: 'case_2',
                 previous_route_order: 2,
+                expected_route_order: 2,
                 route_order: 1,
               },
               {
                 schedule_id: 'schedule_1',
                 case_id: 'case_1',
                 previous_route_order: 1,
+                expected_route_order: 1,
                 route_order: 2,
               },
             ],

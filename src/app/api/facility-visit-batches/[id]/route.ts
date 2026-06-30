@@ -23,7 +23,28 @@ import {
 
 const patchFacilityVisitBatchSchema = z.object({
   ordered_schedule_ids: z.array(z.string().trim().min(1)).min(1),
+  expected_route_orders: z
+    .array(
+      z.object({
+        schedule_id: z.string().trim().min(1),
+        route_order: z.number().int().min(1).nullable(),
+      }),
+    )
+    .max(100)
+    .optional(),
 });
+
+const FACILITY_BATCH_ROUTE_REORDERABLE_STATUSES = new Set([
+  'planned',
+  'in_preparation',
+  'ready',
+  'departed',
+  'in_progress',
+]);
+
+function isFacilityBatchRouteStatusLocked(scheduleStatus: string | null | undefined) {
+  return scheduleStatus != null && !FACILITY_BATCH_ROUTE_REORDERABLE_STATUSES.has(scheduleStatus);
+}
 
 function buildBatchScheduleAccessWhere(ctx: AuthContext, batchId: string) {
   const assignmentWhere = buildVisitScheduleAssignmentWhere(ctx);
@@ -145,6 +166,25 @@ const authenticatedPATCH = withAuthContext(
     if (new Set(orderedIds).size !== orderedIds.length) {
       return validationError('同じ訪問予定IDを複数回指定できません');
     }
+    const expectedRouteOrders = parsed.data.expected_route_orders ?? null;
+    if (
+      expectedRouteOrders &&
+      new Set(expectedRouteOrders.map((item) => item.schedule_id)).size !==
+        expectedRouteOrders.length
+    ) {
+      return validationError('同じ訪問予定IDの現在順序を複数回指定できません');
+    }
+    if (expectedRouteOrders && expectedRouteOrders.length !== orderedIds.length) {
+      return validationError('現在順序と対象予定数が一致しません');
+    }
+    if (
+      expectedRouteOrders &&
+      orderedIds.some(
+        (scheduleId) => !expectedRouteOrders.some((item) => item.schedule_id === scheduleId),
+      )
+    ) {
+      return validationError('現在順序に対象外の訪問予定が含まれています');
+    }
 
     const result = await withOrgContext(ctx.orgId, async (tx) => {
       const batch = await tx.facilityVisitBatch.findFirst({
@@ -155,7 +195,14 @@ const authenticatedPATCH = withAuthContext(
 
       const schedules = await tx.visitSchedule.findMany({
         where: { org_id: ctx.orgId, facility_batch_id: id },
-        select: { id: true, case_id: true, route_order: true },
+        select: {
+          id: true,
+          case_id: true,
+          route_order: true,
+          schedule_status: true,
+          confirmed_at: true,
+          version: true,
+        },
       });
       if (!canBypassVisitScheduleAssignmentAccess(ctx)) {
         const accessibleSchedules = await tx.visitSchedule.count({
@@ -174,27 +221,66 @@ const authenticatedPATCH = withAuthContext(
       if (orderedIds.length !== batchScheduleIds.size) {
         return { error: 'incomplete_schedule_order' as const };
       }
+      const expectedRouteOrderByScheduleId =
+        expectedRouteOrders == null
+          ? null
+          : new Map(expectedRouteOrders.map((item) => [item.schedule_id, item.route_order]));
+      if (
+        expectedRouteOrderByScheduleId &&
+        (expectedRouteOrderByScheduleId.size !== batchScheduleIds.size ||
+          schedules.some((schedule) => !expectedRouteOrderByScheduleId.has(schedule.id)))
+      ) {
+        return { error: 'expected_route_order_target_mismatch' as const };
+      }
+      if (
+        expectedRouteOrderByScheduleId &&
+        schedules.some(
+          (schedule) => expectedRouteOrderByScheduleId.get(schedule.id) !== schedule.route_order,
+        )
+      ) {
+        return { error: 'stale_route_order' as const };
+      }
+
+      if (
+        schedules.some((schedule) => isFacilityBatchRouteStatusLocked(schedule.schedule_status))
+      ) {
+        return { error: 'route_status_locked' as const };
+      }
+
+      const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
+      const confirmedRouteChange = orderedIds.some((scheduleId, index) => {
+        const schedule = scheduleById.get(scheduleId);
+        return schedule?.confirmed_at != null && schedule.route_order !== index + 1;
+      });
+      if (confirmedRouteChange) {
+        return { error: 'confirmed_route_change' as const };
+      }
 
       const updateResults = await Promise.all(
-        orderedIds.map((scheduleId, index) =>
-          tx.visitSchedule.updateMany({
+        orderedIds.map((scheduleId, index) => {
+          const schedule = scheduleById.get(scheduleId);
+          if (!schedule) return Promise.resolve({ count: 0 });
+          return tx.visitSchedule.updateMany({
             where: {
               org_id: ctx.orgId,
               id: scheduleId,
               facility_batch_id: id,
+              version: schedule.version,
+              ...(expectedRouteOrderByScheduleId?.has(scheduleId)
+                ? { route_order: expectedRouteOrderByScheduleId.get(scheduleId) }
+                : {}),
             },
             data: {
               route_order: index + 1,
               version: { increment: 1 },
             },
-          }),
-        ),
+          });
+        }),
       );
       if (updateResults.some((updateResult) => updateResult.count !== 1)) {
         return { error: 'stale_schedule' as const };
       }
 
-      const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
       await createAuditLogEntry(tx, ctx, {
         action: 'facility_visit_batch_reordered',
         targetType: 'FacilityVisitBatch',
@@ -206,6 +292,9 @@ const authenticatedPATCH = withAuthContext(
               schedule_id: scheduleId,
               case_id: schedule?.case_id ?? null,
               previous_route_order: schedule?.route_order ?? null,
+              ...(expectedRouteOrderByScheduleId?.has(scheduleId)
+                ? { expected_route_order: expectedRouteOrderByScheduleId.get(scheduleId) }
+                : {}),
               route_order: index + 1,
             };
           }),
@@ -227,6 +316,18 @@ const authenticatedPATCH = withAuthContext(
       }
       if (result.error === 'incomplete_schedule_order') {
         return validationError('バッチ内のすべての訪問予定IDを指定してください');
+      }
+      if (result.error === 'expected_route_order_target_mismatch') {
+        return validationError('現在順序と対象予定数が一致しません');
+      }
+      if (result.error === 'stale_route_order') {
+        return conflict('施設一括訪問の順序が同時に更新されました。再読み込みしてください');
+      }
+      if (result.error === 'route_status_locked') {
+        return validationError('完了済みまたは中止済みの訪問予定は順路を変更できません');
+      }
+      if (result.error === 'confirmed_route_change') {
+        return validationError('電話確定済みの訪問予定は順路を変更できません');
       }
       if (result.error === 'stale_schedule') {
         return conflict('施設一括訪問の順序が同時に更新されました。再読み込みしてください');

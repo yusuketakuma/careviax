@@ -78,6 +78,11 @@ describe('schedule day facility batch helpers', () => {
     ).toEqual({
       schedule_ids: ['schedule_a', 'schedule_b', 'schedule_c'],
       ordered_schedule_ids: ['schedule_b', 'schedule_c', 'schedule_a'],
+      expected_route_orders: [
+        { schedule_id: 'schedule_a', route_order: 2 },
+        { schedule_id: 'schedule_b', route_order: 1 },
+        { schedule_id: 'schedule_c', route_order: null },
+      ],
       carry_items_confirmed: true,
       allow_mixed_unit: true,
     });
@@ -116,6 +121,11 @@ describe('schedule day facility batch helpers', () => {
       JSON.stringify({
         schedule_ids: ['schedule_a', 'schedule_b', 'schedule_c'],
         ordered_schedule_ids: ['schedule_b', 'schedule_a', 'schedule_c'],
+        expected_route_orders: [
+          { schedule_id: 'schedule_a', route_order: 2 },
+          { schedule_id: 'schedule_b', route_order: 1 },
+          { schedule_id: 'schedule_c', route_order: null },
+        ],
         carry_items_confirmed: false,
         allow_mixed_unit: true,
       }),
@@ -123,6 +133,11 @@ describe('schedule day facility batch helpers', () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       schedule_ids: ['schedule_a', 'schedule_b', 'schedule_c'],
       ordered_schedule_ids: ['schedule_b', 'schedule_a', 'schedule_c'],
+      expected_route_orders: [
+        { schedule_id: 'schedule_a', route_order: 2 },
+        { schedule_id: 'schedule_b', route_order: 1 },
+        { schedule_id: 'schedule_c', route_order: null },
+      ],
       carry_items_confirmed: false,
       allow_mixed_unit: true,
     });
