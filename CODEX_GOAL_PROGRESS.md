@@ -26345,3 +26345,54 @@ Next loop:
 - Remaining:
   - The broad schedule-management goal remains open.
   - Continue reviewing proposal finalization/reorder and reschedule save boundaries for persisted vehicle-duration and stale route-plan gaps.
+
+### Mixed Route Reorder Vehicle Duration Enforcement - 2026-06-30 20:49 JST
+
+- Scope:
+  - Continued route-decision hardening for `PATCH /api/visit-routes/reorder`.
+  - Focused on mixed route preview adoption that directly persists schedule `route_order`.
+- Fixed:
+  - Mixed route reorder now loads vehicle/resource, primary residence, and route point fields for schedule updates.
+  - Schedules with an already assigned vehicle and a `max_route_duration_minutes` limit are validated before any schedule/proposal route writes.
+  - Guarded schedule writes include the persisted `vehicle_resource_id` when route-duration validation depends on it.
+  - Regression coverage verifies an over-limit mixed route schedule reorder is rejected before schedule/proposal writes, audit, or notification.
+- Safety:
+  - Reduces stale route-plan finalization risk for mixed schedule/proposal route previews.
+  - Proposal-only reorder still persists only proposal order, and proposal confirmation retains final vehicle-duration validation.
+  - No new response exposure, auth/RLS change, live DB operation, external send, secret handling, push, deploy, or destructive operation was added.
+- Performance:
+  - Adds the existing-vehicle route-duration lookup only for schedule updates whose assigned vehicle defines `max_route_duration_minutes`.
+  - Proposal-only and unassigned schedule reorders add no extra query.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-routes/reorder/route.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `14` tests.
+  - `pnpm exec eslint src/app/api/visit-routes/reorder/route.ts src/app/api/visit-routes/reorder/route.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/visit-routes/reorder/route.ts src/app/api/visit-routes/reorder/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/visit-routes/reorder/route.ts src/app/api/visit-routes/reorder/route.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - The broad schedule-management goal remains open.
+  - Next useful area is operator visibility: day-board/schedule display should make vehicle route-duration warnings or failed saves understandable.
+
+### Billing Narcotic Review Safety Action - 2026-06-30 20:52 JST
+
+- Scope:
+  - Continued patient-information and billing remediation hardening for `GET /api/billing-evidence/check`.
+  - Focused on narcotic management review rows that already identify the patient record.
+- Fixed:
+  - `麻薬管理指導` review rows now resolve their existing action label to the exact patient safety-check workspace when `patient_id` is present.
+  - Hostile patient IDs still pass through `buildPatientHref` before appending `/safety-check`.
+  - API and billing check UI tests now lock the patient safety-check href instead of the aggregate `/visits` fallback.
+- Safety:
+  - Reduces wrong-workspace navigation risk for narcotic management checks without exposing extra PHI or changing the response shape.
+  - Existing auth, org-scoped candidate/rule/patient reads, sensitive no-store handling, live DB safety, external sends, migrations, push/deploy, and destructive-operation boundaries remain unchanged.
+- Performance:
+  - Uses already selected `patient_id` and pure URL resolution. No new query, dependency, background job, unbounded loop, or render-heavy path was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/billing-evidence/check/route.test.ts 'src/app/(dashboard)/billing/billing-check-content.test.tsx' --reporter=dot --testTimeout=60000`: final rerun passed, `2` files / `15` tests.
+  - `pnpm exec prettier --check src/app/api/billing-evidence/check/route.ts src/app/api/billing-evidence/check/route.test.ts 'src/app/(dashboard)/billing/billing-check-content.test.tsx'`: passed.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/billing-evidence/check/route.ts src/app/api/billing-evidence/check/route.test.ts 'src/app/(dashboard)/billing/billing-check-content.test.tsx'`: passed.
+  - `git diff --check -- src/app/api/billing-evidence/check/route.ts src/app/api/billing-evidence/check/route.test.ts 'src/app/(dashboard)/billing/billing-check-content.test.tsx'`: passed.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - The broad master-management and patient-information goal remains open.
+  - Continue scanning remaining aggregate billing/patient action destinations and capped master selectors.
