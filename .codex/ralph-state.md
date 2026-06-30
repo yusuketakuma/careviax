@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-1909 JST
+
+- current task: continue master-management hardening by adding counted-list metadata to escalation-rule masters and surfacing hidden-row state in notification settings.
+- files inspected: `git status --short --branch --untracked-files=all`, `git log --oneline -n 12`, `CODEX_GOAL_PROGRESS.md`, `.codex/ralph-state.md`, relevant memory entries for counted-list/false-empty guidance, `gbrain search "CareViaX master patient selector false empty count metadata" --limit 8`, local Next.js Route Handler docs, `docs/ui-ux-design-guidelines.md`, `src/app/api/admin/escalation-rules/route.ts`, `src/app/api/admin/escalation-rules/route.test.ts`, `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`, `src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx`, and capped API search results.
+- files changed: `src/app/api/admin/escalation-rules/route.ts`, `src/app/api/admin/escalation-rules/route.test.ts`, `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`, `src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Separate dirty `src/server/services/home-care-ops.ts` and `src/server/services/home-care-ops.test.ts` changes were preserved.
+- bugs found: `GET /api/admin/escalation-rules` used a bounded `take` limit but returned only rows, and the notification settings page treated the visible rows as the whole escalation-rule master. The page also showed an empty state before the escalation fetch completed.
+- security risks found: reduced false-complete escalation-rule master risk while exposing only aggregate count metadata and visible rows. Hidden rule conditions, targets, PHI, raw internals, and secrets are not exposed. Existing admin authorization, org scoping, no-store response wrapping, validation, update/delete behavior, and retryable error-state behavior remain intact. No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation changed.
+- performance issues found: added one scoped `escalationRule.count` query with the same org predicate as the bounded row query. No new dependency, background job, broad scan outside that predicate, unbounded loop, network call, or render-heavy path was added.
+- validation commands: `pnpm exec vitest run src/app/api/admin/escalation-rules/route.test.ts 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx' --reporter=dot --testTimeout=60000`; scoped `pnpm exec eslint --max-warnings=0`; scoped `pnpm exec prettier --check`; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused escalation API/UI suite passed `2` files / `18` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- remaining work: commit only the four owned escalation API/UI files and the escalation ledger hunks, then continue scanning notification rules, webhooks, shift templates, vehicle resources, and other master/patient selectors.
+- next action: commit `Count escalation rule list metadata`, then recheck dirty ownership before selecting the next slice.
+
 ### 20260630-1858 JST
 
 - current task: focus communication-queue missing-emergency-contact draft actions on the exact patient edit target.

@@ -77,6 +77,25 @@ type EscalationRule = {
   created_at: string;
 };
 
+type EscalationRulesResponse = {
+  data?: EscalationRule[];
+  total_count?: number;
+  visible_count?: number;
+  hidden_count?: number;
+  truncated?: boolean;
+  count_basis?: string;
+  filters_applied?: Record<string, unknown>;
+  limit?: number;
+};
+
+type EscalationListMeta = {
+  totalCount: number;
+  visibleCount: number;
+  hiddenCount: number;
+  truncated: boolean;
+  limit: number | null;
+};
+
 type EventConfig = {
   eventType: string;
   title: string;
@@ -281,7 +300,9 @@ export function NotificationSettingsContent() {
   const orgId = useOrgId();
   const [rules, setRules] = useState<NotificationRule[]>([]);
   const [escalationRules, setEscalationRules] = useState<EscalationRule[]>([]);
+  const [escalationListMeta, setEscalationListMeta] = useState<EscalationListMeta | null>(null);
   const [rulesLoadedOrgId, setRulesLoadedOrgId] = useState<string | null>(null);
+  const [escalationLoadedOrgId, setEscalationLoadedOrgId] = useState<string | null>(null);
   const [rulesLoadError, setRulesLoadError] = useState(false);
   const [rulesReloadKey, setRulesReloadKey] = useState(0);
   const [escalationLoadError, setEscalationLoadError] = useState(false);
@@ -354,16 +375,34 @@ export function NotificationSettingsContent() {
         if (!response.ok) {
           throw new Error('エスカレーションルールの取得に失敗しました');
         }
-        return (await response.json()) as { data?: EscalationRule[] };
+        return (await response.json()) as EscalationRulesResponse;
       })
       .then((payload) => {
         if (!active) return;
-        setEscalationRules(payload.data ?? []);
+        const rows = payload.data ?? [];
+        const totalCount =
+          typeof payload.total_count === 'number' ? payload.total_count : rows.length;
+        const visibleCount =
+          typeof payload.visible_count === 'number' ? payload.visible_count : rows.length;
+        const hiddenCount =
+          typeof payload.hidden_count === 'number'
+            ? payload.hidden_count
+            : Math.max(totalCount - visibleCount, 0);
+        setEscalationRules(rows);
+        setEscalationListMeta({
+          totalCount,
+          visibleCount,
+          hiddenCount,
+          truncated: payload.truncated ?? hiddenCount > 0,
+          limit: typeof payload.limit === 'number' ? payload.limit : null,
+        });
         setEscalationLoadError(false);
+        setEscalationLoadedOrgId(orgId);
       })
       .catch((error: unknown) => {
         if (!active) return;
         setEscalationLoadError(true);
+        setEscalationLoadedOrgId(orgId);
         toast.error(
           error instanceof Error ? error.message : 'エスカレーションルールの取得に失敗しました',
         );
@@ -375,8 +414,16 @@ export function NotificationSettingsContent() {
   }, [orgId, escalationReloadKey]);
 
   const loading = Boolean(orgId) && rulesLoadedOrgId !== orgId;
+  const escalationLoading = Boolean(orgId) && escalationLoadedOrgId !== orgId;
   const permission = browserNotificationState.permission;
   const browserNotificationsEnabled = browserNotificationState.enabled;
+  const escalationTotalCount = escalationListMeta?.totalCount ?? escalationRules.length;
+  const escalationVisibleCount = escalationListMeta?.visibleCount ?? escalationRules.length;
+  const escalationHiddenCount = escalationListMeta?.hiddenCount ?? 0;
+  const escalationListSummary =
+    escalationHiddenCount > 0
+      ? `先頭${escalationVisibleCount}件を表示 / 他${escalationHiddenCount}件`
+      : `登録${escalationTotalCount}件`;
 
   const rulesByEvent = useMemo(() => {
     return EVENT_CONFIGS.reduce<
@@ -553,6 +600,7 @@ export function NotificationSettingsContent() {
       const payload = (await response.json()) as { data?: EscalationRule };
       if (payload.data) {
         setEscalationRules((prev) => [payload.data!, ...prev]);
+        setEscalationReloadKey((key) => key + 1);
       }
       setNewEscalationOpen(false);
       setNewEscalationThresholdHours('24');
@@ -593,6 +641,7 @@ export function NotificationSettingsContent() {
           throw new Error('エスカレーションルールの削除に失敗しました');
         }
         setEscalationRules((prev) => prev.filter((rule) => rule.id !== ruleId));
+        setEscalationReloadKey((key) => key + 1);
         setDeleteEscalationTarget((current) => (current?.id === ruleId ? null : current));
         toast.success('エスカレーションルールを削除しました');
       } catch (error) {
@@ -783,6 +832,9 @@ export function NotificationSettingsContent() {
               <CardDescription>
                 停滞や失敗が一定時間続いたときに、誰へ何を起こすかを定義します。
               </CardDescription>
+              {!escalationLoading && !escalationLoadError ? (
+                <p className="mt-2 text-sm text-muted-foreground">{escalationListSummary}</p>
+              ) : null}
             </div>
             <Button
               type="button"
@@ -795,7 +847,12 @@ export function NotificationSettingsContent() {
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {escalationLoadError ? (
+          {escalationLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              エスカレーションルールを読み込み中です
+            </div>
+          ) : escalationLoadError ? (
             // 取得失敗を「まだありません」の偽 empty に潰さず、再読込導線つき ErrorState を出す。
             <ErrorState
               variant="server"
@@ -806,6 +863,7 @@ export function NotificationSettingsContent() {
                 label: '再読み込み',
                 onClick: () => {
                   setEscalationLoadError(false);
+                  setEscalationLoadedOrgId(null);
                   setEscalationReloadKey((key) => key + 1);
                 },
               }}
@@ -815,63 +873,77 @@ export function NotificationSettingsContent() {
               エスカレーションルールはまだありません。
             </p>
           ) : (
-            escalationRules.map((rule) => {
-              const trigger =
-                ESCALATION_TRIGGER_OPTIONS.find((item) => item.value === rule.trigger_type) ??
-                ESCALATION_TRIGGER_OPTIONS[0];
-              const action =
-                ESCALATION_ACTION_OPTIONS.find((item) => item.value === rule.action) ??
-                ESCALATION_ACTION_OPTIONS[0];
-              const role = ESCALATION_ROLE_OPTIONS.find((item) => item.value === rule.notify_role);
-              const isSaving = savingKey === `escalation:${rule.id}`;
-              const isDeleting = savingKey === `escalation:delete:${rule.id}`;
+            <>
+              {escalationHiddenCount > 0 ? (
+                <Alert>
+                  <ShieldAlert className="size-4" aria-hidden="true" />
+                  <AlertTitle>表示中のみ確認中</AlertTitle>
+                  <AlertDescription>
+                    追加のエスカレーションルールが {escalationHiddenCount}
+                    件あります。表示中の状態だけで全体の通知設計を判断しないでください。
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+              {escalationRules.map((rule) => {
+                const trigger =
+                  ESCALATION_TRIGGER_OPTIONS.find((item) => item.value === rule.trigger_type) ??
+                  ESCALATION_TRIGGER_OPTIONS[0];
+                const action =
+                  ESCALATION_ACTION_OPTIONS.find((item) => item.value === rule.action) ??
+                  ESCALATION_ACTION_OPTIONS[0];
+                const role = ESCALATION_ROLE_OPTIONS.find(
+                  (item) => item.value === rule.notify_role,
+                );
+                const isSaving = savingKey === `escalation:${rule.id}`;
+                const isDeleting = savingKey === `escalation:delete:${rule.id}`;
 
-              return (
-                <div
-                  key={rule.id}
-                  className="flex flex-col gap-3 rounded-xl border border-border px-4 py-3 md:flex-row md:items-start md:justify-between"
-                >
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium text-foreground">{trigger.label}</p>
-                      <Badge variant={rule.is_active ? 'secondary' : 'outline'}>
-                        {rule.is_active ? '有効' : '停止中'}
-                      </Badge>
-                      <Badge variant="outline">{action.label}</Badge>
-                      {role ? <Badge variant="outline">{role.label}</Badge> : null}
+                return (
+                  <div
+                    key={rule.id}
+                    className="flex flex-col gap-3 rounded-xl border border-border px-4 py-3 md:flex-row md:items-start md:justify-between"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium text-foreground">{trigger.label}</p>
+                        <Badge variant={rule.is_active ? 'secondary' : 'outline'}>
+                          {rule.is_active ? '有効' : '停止中'}
+                        </Badge>
+                        <Badge variant="outline">{action.label}</Badge>
+                        {role ? <Badge variant="outline">{role.label}</Badge> : null}
+                      </div>
+                      <p className="text-sm text-muted-foreground">{trigger.description}</p>
+                      <p className="text-xs text-muted-foreground">
+                        しきい時間: {rule.condition?.threshold_hours ?? '—'} 時間
+                      </p>
                     </div>
-                    <p className="text-sm text-muted-foreground">{trigger.description}</p>
-                    <p className="text-xs text-muted-foreground">
-                      しきい時間: {rule.condition?.threshold_hours ?? '—'} 時間
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                        <Checkbox
+                          className="size-11 rounded-lg"
+                          checked={rule.is_active}
+                          disabled={isSaving || isDeleting}
+                          onCheckedChange={(checked) =>
+                            void toggleEscalationRule(rule, checked === true)
+                          }
+                        />
+                        {isSaving ? '保存中...' : rule.is_active ? '有効' : '停止'}
+                      </label>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-11 sm:h-11 sm:min-h-[44px]"
+                        disabled={isDeleting}
+                        aria-label={`${escalationRuleSummary(rule)} を削除`}
+                        onClick={() => setDeleteEscalationTarget(rule)}
+                      >
+                        削除
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-2 text-sm font-medium text-foreground">
-                      <Checkbox
-                        className="size-11 rounded-lg"
-                        checked={rule.is_active}
-                        disabled={isSaving || isDeleting}
-                        onCheckedChange={(checked) =>
-                          void toggleEscalationRule(rule, checked === true)
-                        }
-                      />
-                      {isSaving ? '保存中...' : rule.is_active ? '有効' : '停止'}
-                    </label>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="h-11 sm:h-11 sm:min-h-[44px]"
-                      disabled={isDeleting}
-                      aria-label={`${escalationRuleSummary(rule)} を削除`}
-                      onClick={() => setDeleteEscalationTarget(rule)}
-                    >
-                      削除
-                    </Button>
-                  </div>
-                </div>
-              );
-            })
+                );
+              })}
+            </>
           )}
         </CardContent>
       </Card>

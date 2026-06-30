@@ -26,11 +26,17 @@ const authenticatedGET = withAuthContext(
       MAX_ESCALATION_RULE_LIMIT,
     );
 
-    const rules = await prisma.escalationRule.findMany({
-      where: { org_id: ctx.orgId },
-      orderBy: [{ is_active: 'desc' }, { created_at: 'desc' }],
-      take: limit,
-    });
+    const where = { org_id: ctx.orgId };
+    const [totalCount, rules] = await Promise.all([
+      prisma.escalationRule.count({ where }),
+      prisma.escalationRule.findMany({
+        where,
+        orderBy: [{ is_active: 'desc' }, { created_at: 'desc' }],
+        take: limit,
+      }),
+    ]);
+    const visibleCount = rules.length;
+    const hiddenCount = Math.max(totalCount - visibleCount, 0);
 
     return success({
       data: rules.map((rule) => ({
@@ -43,6 +49,13 @@ const authenticatedGET = withAuthContext(
         created_at: rule.created_at.toISOString(),
         updated_at: rule.updated_at.toISOString(),
       })),
+      total_count: totalCount,
+      visible_count: visibleCount,
+      hidden_count: hiddenCount,
+      truncated: hiddenCount > 0,
+      count_basis: 'escalation_rules',
+      filters_applied: {},
+      limit,
     });
   },
   {

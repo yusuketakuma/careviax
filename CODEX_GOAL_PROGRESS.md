@@ -30,6 +30,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Escalation Rule Counted Metadata - 2026-06-30 19:09 JST
+
+- Scope:
+  - Continued master-management hardening for notification/escalation rules used to route stalled workflow, failed report delivery, and overdue communication follow-up.
+  - Read local Next.js Route Handlers docs and `docs/ui-ux-design-guidelines.md` before the API/UI-facing change.
+  - No schema migration, live DB operation, auth/RLS change, external send, push/deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `GET /api/admin/escalation-rules` now returns `total_count`, `visible_count`, `hidden_count`, `truncated`, `count_basis`, `filters_applied`, and `limit` using the same org-scoped predicate as the bounded row query.
+  - The notification settings page now consumes the metadata and shows `登録N件` or `先頭N件を表示 / 他N件`.
+  - The escalation rule panel now has an explicit loading state, preventing the initial fetch from rendering as a false empty list.
+  - When hidden escalation rules exist, the page shows an inline warning that the visible rows are only a partial view.
+- Safety:
+  - Reduces false-complete escalation-rule master risk where staff could assume only visible notification/escalation rules exist.
+  - Hidden rule conditions, free-form action details, targets, PHI, raw internals, and secrets are not exposed; metadata contains only aggregate counts, count basis, filters, and limit.
+  - Existing admin authorization, org scoping, no-store response wrapping, validation, update/delete behavior, and error-state retry behavior remain intact.
+- Performance:
+  - Adds one scoped `escalationRule.count` query with the same org predicate as the bounded row query.
+  - No new dependency, background job, broad scan outside that predicate, unbounded loop, external network call, or render-heavy path was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/admin/escalation-rules/route.test.ts 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `2` files / `18` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` on escalation API/UI files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Continue scanning notification rules, webhooks, shift templates, vehicle resources, and other master/patient selectors for count metadata, stale preconditions, audit-near-action gaps, and false-empty states.
+  - Separate dirty `src/server/services/home-care-ops*` changes remain preserved outside this slice.
+
 ### Communication Queue Emergency Contact Focus Link - 2026-06-30 18:58 JST
 
 - Scope:

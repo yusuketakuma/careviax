@@ -1,13 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { authMock, membershipFindFirstMock, escalationRuleFindManyMock, escalationRuleCreateMock } =
-  vi.hoisted(() => ({
-    authMock: vi.fn(),
-    membershipFindFirstMock: vi.fn(),
-    escalationRuleFindManyMock: vi.fn(),
-    escalationRuleCreateMock: vi.fn(),
-  }));
+const {
+  authMock,
+  membershipFindFirstMock,
+  escalationRuleCountMock,
+  escalationRuleFindManyMock,
+  escalationRuleCreateMock,
+} = vi.hoisted(() => ({
+  authMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
+  escalationRuleCountMock: vi.fn(),
+  escalationRuleFindManyMock: vi.fn(),
+  escalationRuleCreateMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -19,6 +25,7 @@ vi.mock('@/lib/db/client', () => ({
       findFirst: membershipFindFirstMock,
     },
     escalationRule: {
+      count: escalationRuleCountMock,
       findMany: escalationRuleFindManyMock,
       create: escalationRuleCreateMock,
     },
@@ -61,11 +68,13 @@ function createMalformedJsonPostRequest(headers?: Record<string, string>) {
 describe('/api/admin/escalation-rules', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    escalationRuleCountMock.mockResolvedValue(0);
   });
 
   it('returns escalation rules for admins', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    escalationRuleCountMock.mockResolvedValue(1);
     escalationRuleFindManyMock.mockResolvedValue([
       {
         id: 'rule_1',
@@ -99,11 +108,56 @@ describe('/api/admin/escalation-rules', () => {
           updated_at: '2026-03-28T01:00:00.000Z',
         },
       ],
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'escalation_rules',
+      filters_applied: {},
+      limit: 5,
+    });
+    expect(escalationRuleCountMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1' },
     });
     expect(escalationRuleFindManyMock).toHaveBeenCalledWith({
       where: { org_id: 'org_1' },
       orderBy: [{ is_active: 'desc' }, { created_at: 'desc' }],
       take: 5,
+    });
+  });
+
+  it('returns counted metadata when the bounded escalation rule list is truncated', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    escalationRuleCountMock.mockResolvedValue(3);
+    escalationRuleFindManyMock.mockResolvedValue([
+      {
+        id: 'rule_1',
+        trigger_type: 'workflow_exception_unresolved',
+        condition: { threshold_hours: 12, severity: 'high' },
+        action: 'admin_alert',
+        notify_role: 'admin',
+        is_active: true,
+        created_at: new Date('2026-03-28T00:00:00Z'),
+        updated_at: new Date('2026-03-28T01:00:00Z'),
+      },
+    ]);
+
+    const response = await GET(
+      createGetRequest('?limit=1', { 'x-org-id': 'org_1' }),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      total_count: 3,
+      visible_count: 1,
+      hidden_count: 2,
+      truncated: true,
+      count_basis: 'escalation_rules',
+      filters_applied: {},
+      limit: 1,
     });
   });
 

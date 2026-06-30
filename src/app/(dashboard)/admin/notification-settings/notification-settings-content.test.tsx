@@ -51,6 +51,13 @@ describe('NotificationSettingsContent', () => {
                   created_at: '2026-06-19T10:00:00.000Z',
                 },
               ],
+              total_count: 1,
+              visible_count: 1,
+              hidden_count: 0,
+              truncated: false,
+              count_basis: 'escalation_rules',
+              filters_applied: {},
+              limit: 100,
             }),
             { status: 200 },
           );
@@ -117,6 +124,57 @@ describe('NotificationSettingsContent', () => {
     expect(
       screen.getAllByRole('checkbox').some((checkbox) => checkbox.className.includes('size-11')),
     ).toBe(true);
+  });
+
+  it('shows hidden escalation rule counts when the API result is truncated', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url === '/api/notification-rules' && !init?.method) {
+          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        }
+
+        if (url === '/api/admin/escalation-rules' && !init?.method) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'rule_1',
+                  trigger_type: 'communication_response_overdue',
+                  condition: { threshold_hours: 24, severity: 'high' },
+                  action: 'in_app_notification',
+                  notify_role: 'admin',
+                  is_active: true,
+                  created_at: '2026-06-19T10:00:00.000Z',
+                },
+              ],
+              total_count: 3,
+              visible_count: 1,
+              hidden_count: 2,
+              truncated: true,
+              count_basis: 'escalation_rules',
+              filters_applied: {},
+              limit: 1,
+            }),
+            { status: 200 },
+          );
+        }
+
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    render(<NotificationSettingsContent />);
+
+    expect(await screen.findByText('先頭1件を表示 / 他2件')).toBeTruthy();
+    expect(screen.getByText('表示中のみ確認中')).toBeTruthy();
+    expect(
+      screen.getByText(
+        '追加のエスカレーションルールが 2件あります。表示中の状態だけで全体の通知設計を判断しないでください。',
+      ),
+    ).toBeTruthy();
   });
 
   it('shows inline validation before creating an escalation rule with an invalid threshold', async () => {
