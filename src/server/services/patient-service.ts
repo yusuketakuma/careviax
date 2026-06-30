@@ -176,7 +176,15 @@ type PatientRow = Prisma.PatientGetPayload<{
   select: ReturnType<typeof buildPatientSelect>;
 }>;
 
-function buildDbWhere(orgId: string, filters: PatientListFilters) {
+function buildActiveVisitConsentWhere(referenceDate: Date): Prisma.ConsentRecordWhereInput {
+  return {
+    consent_type: 'visit_medication_management',
+    revoked_date: null,
+    OR: [{ expiry_date: null }, { expiry_date: { gte: referenceDate } }],
+  };
+}
+
+function buildDbWhere(orgId: string, filters: PatientListFilters, referenceDate: Date) {
   const where: Prisma.PatientWhereInput = {
     org_id: orgId,
     ...buildSearchFilter(filters.q, ['name', 'name_kana']),
@@ -237,19 +245,14 @@ function buildDbWhere(orgId: string, filters: PatientListFilters) {
   }
 
   // consent_status → DB filter
+  const activeVisitConsentWhere = buildActiveVisitConsentWhere(referenceDate);
   if (filters.consent_status === 'complete') {
     where.consents = {
-      some: {
-        consent_type: 'visit_medication_management',
-        revoked_date: null,
-      },
+      some: activeVisitConsentWhere,
     };
   } else if (filters.consent_status === 'missing') {
     where.consents = {
-      none: {
-        consent_type: 'visit_medication_management',
-        revoked_date: null,
-      },
+      none: activeVisitConsentWhere,
     };
   }
 
@@ -672,7 +675,7 @@ export async function listPatients(
 ) {
   const limit = normalizePatientListLimit(filters.limit);
   const referenceDate = new Date();
-  const baseWhere = buildDbWhere(orgId, filters);
+  const baseWhere = buildDbWhere(orgId, filters, referenceDate);
   const where = accessContext ? applyPatientAssignmentWhere(baseWhere, accessContext) : baseWhere;
   const orderBy = buildPatientOrderBy(filters);
   const batchSize = Math.min(Math.max(limit * 3, 100), 250);
@@ -744,7 +747,7 @@ export async function listPatientPaletteSearchSummaries(
   accessContext?: VisitScheduleAccessContext,
 ) {
   const limit = normalizePatientPaletteLimit(filters.limit);
-  const baseWhere = buildDbWhere(orgId, filters);
+  const baseWhere = buildDbWhere(orgId, filters, new Date());
   const where = accessContext ? applyPatientAssignmentWhere(baseWhere, accessContext) : baseWhere;
   const rows = await prisma.patient.findMany({
     where,
@@ -776,7 +779,7 @@ export async function listPatientSearchResultSummaries(
   accessContext?: VisitScheduleAccessContext,
 ) {
   const limit = normalizePatientPaletteLimit(filters.limit);
-  const baseWhere = buildDbWhere(orgId, filters);
+  const baseWhere = buildDbWhere(orgId, filters, new Date());
   const where = accessContext ? applyPatientAssignmentWhere(baseWhere, accessContext) : baseWhere;
   const caseAssignmentWhere = accessContext ? buildCareCaseAssignmentWhere(accessContext) : null;
   const rows = await prisma.patient.findMany({
@@ -839,7 +842,7 @@ export async function listPatientMatchSummaries(
   accessContext?: VisitScheduleAccessContext,
 ) {
   const limit = normalizePatientPaletteLimit(filters.limit);
-  const baseWhere = buildDbWhere(orgId, filters);
+  const baseWhere = buildDbWhere(orgId, filters, new Date());
   const where = accessContext ? applyPatientAssignmentWhere(baseWhere, accessContext) : baseWhere;
   const rows = await prisma.patient.findMany({
     where,

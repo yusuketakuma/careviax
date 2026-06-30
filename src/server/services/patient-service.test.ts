@@ -104,6 +104,35 @@ describe('listPatients', () => {
       }),
     );
   });
+
+  it.each([
+    ['complete', 'some'],
+    ['missing', 'none'],
+  ] as const)(
+    'filters %s visit consent by active, non-expired records at the DB boundary',
+    async (consentStatus, relationFilter) => {
+      const db = makeDb();
+
+      await listPatients(db, 'org_1', 'pharmacist', {
+        consent_status: consentStatus,
+        limit: 10,
+      });
+
+      expect(db.patient.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            consents: {
+              [relationFilter]: expect.objectContaining({
+                consent_type: 'visit_medication_management',
+                revoked_date: null,
+                OR: [{ expiry_date: null }, { expiry_date: { gte: expect.any(Date) } }],
+              }),
+            },
+          }),
+        }),
+      );
+    },
+  );
 });
 
 describe('listPatients cursor pagination optimization', () => {
