@@ -21488,3 +21488,35 @@ Next loop:
 - Remaining:
   - Commit only the two reopen route/test files plus these ledger updates.
   - Continue after codex commits or releases the reschedule lifecycle WIP.
+
+### Visit Schedule Generation Response Boundary Slice — 2026-06-30 10:44 JST
+
+- Scope:
+  - Continued schedule-management implementation in `/api/visit-schedules/generate`.
+  - Kept generation validation, workflow gates, billing guard checks, serializable transaction behavior, audit entries, workflow notification, and response payload shape unchanged.
+  - Preserved codex-owned reschedule lifecycle WIP and QR draft dirty files without staging them.
+- Fixed:
+  - Split the generation handler into `authenticatedPOST` plus an exported wrapper.
+  - Wrapped exported POST responses in `withSensitiveNoStore`.
+  - Converted exported-route auth/plumbing failures and unexpected transaction failures to fixed `INTERNAL_ERROR` responses after `unstable_rethrow`.
+  - Added no-store assertions for success, validation, and duplicate/conflict responses.
+  - Added sanitized no-store 500 tests for auth failure before body parsing and unexpected generation transaction failure.
+- Safety:
+  - Reduces cache leakage risk for generated visit schedule responses and route-generation conflicts.
+  - Unexpected 500 bodies do not expose seeded patient names, token text, or raw thrown messages.
+  - No database migration, live data operation, external send, authorization change, audit payload expansion, transaction rewrite, billing guard change, or workflow notification change was run.
+- Review:
+  - Sent agmsg `PATCH_REVIEW_REQUEST` to codex with scope and validation details.
+  - No review reply arrived before the commit window; in Codex+codex2-only mode, any later finding will be handled as fix-forward.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-schedules/generate/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `43` tests; forced 500 test emitted expected structured `route_handler_unhandled_error` stderr.
+  - Scoped ESLint on the two owned generate files: passed.
+  - Scoped Prettier check on the two owned generate files: passed.
+  - Scoped `git diff --check` on the two owned generate files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the two generate route/test files plus these ledger updates.
+  - Watch for delayed codex review and handle any finding as fix-forward.

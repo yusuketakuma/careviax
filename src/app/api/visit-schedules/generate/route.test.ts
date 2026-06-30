@@ -142,6 +142,11 @@ function createMalformedJsonRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function buildSerializableConflictError() {
   return new Prisma.PrismaClientKnownRequestError('Serializable transaction conflict', {
     code: 'P2034',
@@ -347,6 +352,7 @@ describe('/api/visit-schedules/generate POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(visitScheduleCreateMock).toHaveBeenCalledTimes(2);
     const firstCall = visitScheduleCreateMock.mock.calls[0][0].data;
     const secondCall = visitScheduleCreateMock.mock.calls[1][0].data;
@@ -552,6 +558,7 @@ describe('/api/visit-schedules/generate POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: '同一ケース・同一日付の訪問予定が既に存在します。再読み込みしてください',
@@ -1607,6 +1614,7 @@ describe('/api/visit-schedules/generate POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -1615,6 +1623,63 @@ describe('/api/visit-schedules/generate POST', () => {
     expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when auth plumbing fails before body parsing', async () => {
+    authMock.mockRejectedValueOnce(
+      new Error('raw auth schedule generate patient 山田 花子 token secret'),
+    );
+
+    const response = await POST(createRequest(['case_1']));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw auth');
+    expect(bodyText).not.toContain('山田 花子');
+    expect(bodyText).not.toContain('token secret');
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when generation transaction fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('raw schedule generation transaction patient 山田 花子 token secret'),
+    );
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-07',
+        end_date: '2026-04-07',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw schedule generation');
+    expect(bodyText).not.toContain('山田 花子');
+    expect(bodyText).not.toContain('token secret');
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 

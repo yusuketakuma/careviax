@@ -1,10 +1,18 @@
 import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
-import { conflict, forbiddenResponse, success, validationError } from '@/lib/api/response';
+import {
+  conflict,
+  forbiddenResponse,
+  internalError,
+  success,
+  validationError,
+} from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
 import { buildOperatingCalendarFromDbRows } from '@/lib/calendar/operating-day-adapter';
 import { resolveOperatingState } from '@/lib/calendar/operating-day';
@@ -335,7 +343,7 @@ async function validateGeneratedVisitVehicleResource(args: {
   return null;
 }
 
-export const POST = withAuthContext(
+const authenticatedPOST = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -859,3 +867,12 @@ export const POST = withAuthContext(
     message: '訪問予定の自動生成権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
