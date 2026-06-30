@@ -4,6 +4,8 @@
  * 文言ルール: design/README_Codex.md(Next Action →「次にやること」)。
  */
 
+import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+
 export type CycleWorkspaceAction = {
   /** 左カード「現在」/ 工程タブの状態表示 */
   statusLabel: string;
@@ -32,7 +34,7 @@ export const CYCLE_WORKSPACE_ACTIONS: Record<string, CycleWorkspaceAction> = {
     statusLabel: '疑義照会中',
     description: '医師からの回答を確認して、処方へ反映します。',
     actionLabel: '照会状況を確認する',
-    actionHref: '/communications/requests',
+    actionHref: buildCommunicationRequestsHref({ status: 'sent' }),
   },
   inquiry_resolved: {
     statusLabel: '照会反映待ち',

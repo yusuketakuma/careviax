@@ -95,4 +95,11 @@ describe('PROCESS_STEPS_9', () => {
     expect(CYCLE_STATUS_SHORT_LABELS.setting).toBe('監査待');
     expect(CYCLE_STATUS_SHORT_LABELS.set_audited).toBe('監査済');
   });
+
+  it('focuses inquiry-pending cycle action on reply-waiting communication requests', () => {
+    expect(CYCLE_WORKSPACE_ACTIONS.inquiry_pending).toMatchObject({
+      actionLabel: '照会状況を確認する',
+      actionHref: '/communications/requests?status=sent',
+    });
+  });
 });
