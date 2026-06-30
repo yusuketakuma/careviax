@@ -125,6 +125,14 @@ type VisitVehicleResourceOption = VisitVehicleResourceSummary & {
   } | null;
 };
 
+type VisitVehicleResourcesResponse = {
+  data: VisitVehicleResourceOption[];
+  total_count?: number;
+  visible_count?: number;
+  hidden_count?: number;
+  truncated?: boolean;
+};
+
 type DragSchedule = {
   id: string;
   patientName: string;
@@ -526,7 +534,7 @@ export function ScheduleWeeklyOptimizer({
         headers: { 'x-org-id': orgId },
       });
       if (!response.ok) throw new Error('社用車リソースの取得に失敗しました');
-      return response.json() as Promise<{ data: VisitVehicleResourceOption[] }>;
+      return response.json() as Promise<VisitVehicleResourcesResponse>;
     },
     enabled: !!orgId,
   });
@@ -549,6 +557,13 @@ export function ScheduleWeeklyOptimizer({
     () => vehicleResourcesQuery.data?.data ?? EMPTY_VEHICLE_RESOURCES,
     [vehicleResourcesQuery.data],
   );
+  const vehicleResourceHiddenCount =
+    vehicleResourcesQuery.data?.hidden_count ??
+    Math.max(
+      (vehicleResourcesQuery.data?.total_count ?? vehicleResources.length) -
+        (vehicleResourcesQuery.data?.visible_count ?? vehicleResources.length),
+      0,
+    );
   const selectedPlannerVehicle =
     vehicleResources.find((vehicle) => vehicle.id === plannerSettings.vehicle_resource_id) ?? null;
 
@@ -1297,6 +1312,12 @@ export function ScheduleWeeklyOptimizer({
                     ? '社用車候補を読み込み中'
                     : '未指定なら自動割当'}
               </p>
+              {vehicleResourceHiddenCount > 0 ? (
+                <p className="max-w-[14rem] text-xs text-state-confirm">
+                  社用車候補が他{vehicleResourceHiddenCount}
+                  件あります。表示中の車両だけで全体の割当可否を判断しないでください。
+                </p>
+              ) : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="weekly-time-from">希望枠</Label>

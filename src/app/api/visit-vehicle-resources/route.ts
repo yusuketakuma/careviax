@@ -64,30 +64,49 @@ async function authenticatedGET(req: NextRequest) {
       if (!refResult.ok) return refResult.response;
     }
 
-    const resources = await withOrgContext(
+    const where = {
+      org_id: ctx.orgId,
+      ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
+      ...(parsed.data.available !== undefined ? { available: parsed.data.available } : {}),
+    };
+
+    const [totalCount, resources] = await withOrgContext(
       ctx.orgId,
       (tx) =>
-        tx.visitVehicleResource.findMany({
-          where: {
-            org_id: ctx.orgId,
-            ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
-            ...(parsed.data.available !== undefined ? { available: parsed.data.available } : {}),
-          },
-          orderBy: [{ site_id: 'asc' }, { label: 'asc' }],
-          take: limit,
-          include: {
-            site: {
-              select: {
-                id: true,
-                name: true,
+        Promise.all([
+          tx.visitVehicleResource.count({ where }),
+          tx.visitVehicleResource.findMany({
+            where,
+            orderBy: [{ site_id: 'asc' }, { label: 'asc' }],
+            take: limit,
+            include: {
+              site: {
+                select: {
+                  id: true,
+                  name: true,
+                },
               },
             },
-          },
-        }),
+          }),
+        ]),
       { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
+    const visibleCount = resources.length;
+    const hiddenCount = Math.max(totalCount - visibleCount, 0);
 
-    return success({ data: resources });
+    return success({
+      data: resources,
+      total_count: totalCount,
+      visible_count: visibleCount,
+      hidden_count: hiddenCount,
+      truncated: hiddenCount > 0,
+      count_basis: 'visit_vehicle_resources',
+      filters_applied: {
+        ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
+        ...(parsed.data.available !== undefined ? { available: parsed.data.available } : {}),
+      },
+      limit,
+    });
   });
 }
 

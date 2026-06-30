@@ -6,6 +6,7 @@ const {
   membershipFindFirstMock,
   validateOrgReferencesMock,
   withOrgContextMock,
+  visitVehicleResourceCountMock,
   visitVehicleResourceFindManyMock,
   visitVehicleResourceCreateMock,
   createAuditLogEntryMock,
@@ -15,6 +16,7 @@ const {
   membershipFindFirstMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  visitVehicleResourceCountMock: vi.fn(),
   visitVehicleResourceFindManyMock: vi.fn(),
   visitVehicleResourceCreateMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
@@ -87,6 +89,7 @@ describe('/api/visit-vehicle-resources', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin', site_id: null });
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
+    visitVehicleResourceCountMock.mockResolvedValue(0);
     visitVehicleResourceFindManyMock.mockResolvedValue([]);
     visitVehicleResourceCreateMock.mockImplementation(async ({ data }) => ({
       id: 'vehicle_1',
@@ -96,6 +99,7 @@ describe('/api/visit-vehicle-resources', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitVehicleResource: {
+          count: visitVehicleResourceCountMock,
           findMany: visitVehicleResourceFindManyMock,
           create: visitVehicleResourceCreateMock,
         },
@@ -104,6 +108,18 @@ describe('/api/visit-vehicle-resources', () => {
   });
 
   it('lists vehicle resources filtered by site and availability', async () => {
+    visitVehicleResourceCountMock.mockResolvedValueOnce(1);
+    visitVehicleResourceFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'vehicle_1',
+        org_id: 'org_1',
+        site_id: 'site_1',
+        label: '社用車A',
+        available: true,
+        site: { id: 'site_1', name: '本店' },
+      },
+    ]);
+
     const response = await GET(
       createGetRequest(
         'http://localhost/api/visit-vehicle-resources?site_id=site_1&available=true',
@@ -123,6 +139,13 @@ describe('/api/visit-vehicle-resources', () => {
       maxWaitMs: 10_000,
       timeoutMs: 20_000,
     });
+    expect(visitVehicleResourceCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        site_id: 'site_1',
+        available: true,
+      },
+    });
     expect(visitVehicleResourceFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -139,6 +162,16 @@ describe('/api/visit-vehicle-resources', () => {
           },
         },
       },
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: [expect.objectContaining({ id: 'vehicle_1', label: '社用車A' })],
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'visit_vehicle_resources',
+      filters_applied: { site_id: 'site_1', available: true },
+      limit: 100,
     });
   });
 
@@ -172,6 +205,37 @@ describe('/api/visit-vehicle-resources', () => {
         take: 200,
       }),
     );
+  });
+
+  it('returns counted metadata when the bounded vehicle resource list is truncated', async () => {
+    visitVehicleResourceCountMock.mockResolvedValueOnce(3);
+    visitVehicleResourceFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'vehicle_1',
+        org_id: 'org_1',
+        site_id: 'site_1',
+        label: '社用車A',
+        available: true,
+        site: { id: 'site_1', name: '本店' },
+      },
+    ]);
+
+    const response = await GET(
+      createGetRequest('http://localhost/api/visit-vehicle-resources?available=true&limit=1'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [expect.objectContaining({ id: 'vehicle_1' })],
+      total_count: 3,
+      visible_count: 1,
+      hidden_count: 2,
+      truncated: true,
+      count_basis: 'visit_vehicle_resources',
+      filters_applied: { available: true },
+      limit: 1,
+    });
   });
 
   it('rejects blank site filters before reference checks or DB access', async () => {

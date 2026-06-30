@@ -214,6 +214,38 @@ describe('ScheduleWeeklyOptimizer', () => {
     expect(screen.getByText('未指定なら自動割当')).toBeTruthy();
   });
 
+  it('warns when the vehicle resource selector hides additional options', () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'cases' && queryKey[1] === 'weekly-optimizer') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      if (queryKey[0] === 'cases' && queryKey[1] === 'weekly-optimizer-search') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      if (queryKey[0] === 'visit-vehicle-resources') {
+        return {
+          data: {
+            data: [],
+            total_count: 3,
+            visible_count: 1,
+            hidden_count: 2,
+            truncated: true,
+          },
+          isLoading: false,
+        };
+      }
+      return { data: undefined, isLoading: false };
+    });
+
+    render(<ScheduleWeeklyOptimizer />);
+
+    expect(
+      screen.getByText((content) => {
+        return content.includes('社用車候補が他2') && content.includes('全体の割当可否');
+      }),
+    ).toBeTruthy();
+  });
+
   it('keeps proposal generation disabled reasons visible until a case is selected', () => {
     useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
       if (queryKey[0] === 'cases' && queryKey[1] === 'weekly-optimizer') {

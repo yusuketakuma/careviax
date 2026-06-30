@@ -281,7 +281,7 @@ function failedProposalDetailButtonName(
 
 function proposalTargetName(
   patientName: string,
-  timeRange = '18:00 - 19:00',
+  timeRange = '09:00 - 10:00',
   dateLabel = '2026/04/09',
   options?: {
     caseId?: string;
@@ -297,7 +297,7 @@ function proposalTargetName(
 
 function proposalCheckboxName(
   patientName: string,
-  timeRange = '18:00 - 19:00',
+  timeRange = '09:00 - 10:00',
   dateLabel = '2026/04/09',
   options?: Parameters<typeof proposalTargetName>[3],
 ) {
@@ -395,6 +395,54 @@ describe('ScheduleProposalsContent', () => {
     render(<ScheduleProposalsContent initialDetailId="proposal_1" />);
 
     expect(screen.getByTestId('schedule-proposal-active-row')).toBeTruthy();
+  });
+
+  it('warns when the reproposal vehicle resource selector hides additional options', () => {
+    const detail = buildProposalDetail();
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-dashboard') {
+        return {
+          data: { data: [detail] },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      if (queryKey[0] === 'schedule-proposal-detail') {
+        return {
+          data: { data: detail },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: undefined,
+        isLoading: false,
+        connected: true,
+      };
+    });
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-vehicle-resources') {
+        return {
+          data: {
+            data: [],
+            total_count: 4,
+            visible_count: 1,
+            hidden_count: 3,
+            truncated: true,
+          },
+          isLoading: false,
+        };
+      }
+      return { data: undefined, isLoading: false };
+    });
+
+    render(<ScheduleProposalsContent initialDetailId="proposal_1" />);
+
+    expect(
+      screen.getByText((content) => {
+        return content.includes('社用車候補が他3') && content.includes('全体の割当可否');
+      }),
+    ).toBeTruthy();
   });
 
   it('shows an error state instead of an empty proposal workspace when proposal loading fails', () => {
@@ -533,7 +581,7 @@ describe('ScheduleProposalsContent', () => {
     render(<ScheduleProposalsContent />);
 
     const firstTarget = proposalTargetName('佐藤太郎');
-    const secondTarget = proposalTargetName('佐藤太郎', '18:00 - 19:00', '2026/04/09', {
+    const secondTarget = proposalTargetName('佐藤太郎', '09:00 - 10:00', '2026/04/09', {
       caseId: 'case_2',
       proposalId: 'proposal_2',
     });
@@ -853,7 +901,7 @@ describe('ScheduleProposalsContent', () => {
     });
     expect(within(confirmDialog).getByText('山田花子')).toBeTruthy();
     expect(within(confirmDialog).getAllByText(/2026\/04\/09/).length).toBeGreaterThan(0);
-    expect(within(confirmDialog).getAllByText(/18:00 - 19:00/).length).toBeGreaterThan(0);
+    expect(within(confirmDialog).getAllByText(/09:00 - 10:00/).length).toBeGreaterThan(0);
     expect(within(confirmDialog).getByText('薬剤師A')).toBeTruthy();
     expect(within(confirmDialog).getByText('社用車A')).toBeTruthy();
     expect(within(confirmDialog).getByText('提案中')).toBeTruthy();
@@ -1536,7 +1584,7 @@ describe('ScheduleProposalsContent', () => {
     expect(
       screen
         .getByRole('checkbox', {
-          name: proposalCheckboxName('鈴木一郎', '18:00 - 19:00', '2026/04/09', {
+          name: proposalCheckboxName('鈴木一郎', '09:00 - 10:00', '2026/04/09', {
             caseId: 'case_3',
             proposalId: 'proposal_3',
           }),
@@ -1864,7 +1912,7 @@ describe('ScheduleProposalsContent', () => {
     expect(
       screen
         .getByRole('checkbox', {
-          name: proposalCheckboxName('佐藤太郎', '18:00 - 19:00', '2026/04/09', {
+          name: proposalCheckboxName('佐藤太郎', '09:00 - 10:00', '2026/04/09', {
             caseId: 'case_2',
             proposalId: 'proposal_2',
           }),
@@ -1944,7 +1992,7 @@ describe('ScheduleProposalsContent', () => {
     expect(
       screen
         .getByRole('checkbox', {
-          name: proposalCheckboxName('佐藤太郎', '18:00 - 19:00', '2026/04/09', {
+          name: proposalCheckboxName('佐藤太郎', '09:00 - 10:00', '2026/04/09', {
             caseId: 'case_2',
             proposalId: 'proposal_2',
           }),
@@ -2013,7 +2061,7 @@ describe('ScheduleProposalsContent', () => {
     expect(
       screen
         .getByRole('checkbox', {
-          name: proposalCheckboxName('佐藤太郎', '18:00 - 19:00', '2026/04/09', {
+          name: proposalCheckboxName('佐藤太郎', '09:00 - 10:00', '2026/04/09', {
             caseId: 'case_2',
             proposalId: 'proposal_2',
           }),

@@ -235,7 +235,13 @@ type VisitVehicleResourceOption = VisitVehicleResourceSummary & {
     name: string;
   } | null;
 };
-type VisitVehicleResourcesResponse = { data: VisitVehicleResourceOption[] };
+type VisitVehicleResourcesResponse = {
+  data: VisitVehicleResourceOption[];
+  total_count?: number;
+  visible_count?: number;
+  hidden_count?: number;
+  truncated?: boolean;
+};
 type ContactOutcome = 'attempted' | 'declined' | 'change_requested' | 'unreachable' | 'confirmed';
 type ContactMethod = 'phone' | 'fax' | 'email';
 
@@ -1600,6 +1606,13 @@ export function ScheduleProposalsContent({
       : null;
   const caseSearchResults = casesQuery.data?.data ?? [];
   const vehicleResourceOptions = vehicleResourcesQuery.data?.data ?? [];
+  const vehicleResourceHiddenCount =
+    vehicleResourcesQuery.data?.hidden_count ??
+    Math.max(
+      (vehicleResourcesQuery.data?.total_count ?? vehicleResourceOptions.length) -
+        (vehicleResourcesQuery.data?.visible_count ?? vehicleResourceOptions.length),
+      0,
+    );
   const selectedReproposalVehicle = vehicleResourceOptions.find(
     (vehicle) => vehicle.id === reproposalForm.vehicle_resource_id,
   );
@@ -3327,6 +3340,12 @@ export function ScheduleProposalsContent({
                             ? '社用車候補を読み込み中'
                             : '未指定の場合は患者希望時間とルート条件から自動割当します'}
                       </p>
+                      {vehicleResourceHiddenCount > 0 ? (
+                        <p className="text-xs text-state-confirm">
+                          社用車候補が他{vehicleResourceHiddenCount}
+                          件あります。表示中の車両だけで全体の割当可否を判断しないでください。
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                   <div className="space-y-1.5">
