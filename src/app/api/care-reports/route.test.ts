@@ -18,6 +18,7 @@ const {
   deliveryRecordGroupByMock,
   patientFindFirstMock,
   patientFindManyMock,
+  txQueryRawMock,
   visitRecordFindFirstMock,
 } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
@@ -35,6 +36,7 @@ const {
   deliveryRecordGroupByMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   patientFindManyMock: vi.fn(),
+  txQueryRawMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
 }));
 
@@ -239,8 +241,19 @@ describe('/api/care-reports GET', () => {
     });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        $queryRaw: txQueryRawMock,
         careReport: {
           create: careReportCreateMock,
+        },
+        careCase: {
+          findFirst: careCaseFindFirstMock,
+          findMany: careCaseFindManyMock,
+        },
+        patient: {
+          findFirst: patientFindFirstMock,
+        },
+        visitRecord: {
+          findFirst: visitRecordFindFirstMock,
         },
       }),
     );
@@ -1063,8 +1076,19 @@ describe('/api/care-reports POST', () => {
     });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        $queryRaw: txQueryRawMock,
         careReport: {
           create: careReportCreateMock,
+        },
+        careCase: {
+          findFirst: careCaseFindFirstMock,
+          findMany: careCaseFindManyMock,
+        },
+        patient: {
+          findFirst: patientFindFirstMock,
+        },
+        visitRecord: {
+          findFirst: visitRecordFindFirstMock,
         },
       }),
     );
@@ -1198,6 +1222,65 @@ describe('/api/care-reports POST', () => {
         }),
       }),
     );
+  });
+
+  it('locks and revalidates the visit source before creating the report', async () => {
+    const response = await createCareReport(
+      createPostRequest({
+        patient_id: 'patient_1',
+        visit_record_id: 'visit_1',
+        report_type: 'physician_report',
+        content: { summary: '訪問後報告' },
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(txQueryRawMock).toHaveBeenCalledTimes(1);
+    const lockQuery = txQueryRawMock.mock.calls[0]?.[0] as {
+      sql?: string;
+      values?: unknown[];
+    };
+    expect(lockQuery.sql).toContain('FOR UPDATE');
+    expect(lockQuery.values).toEqual(['visit_1', 'org_1']);
+    expect(txQueryRawMock.mock.invocationCallOrder[0]).toBeLessThan(
+      careReportCreateMock.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('rejects when the visit source disappears after the precheck', async () => {
+    const visibleVisitRecord = {
+      id: 'visit_1',
+      version: 2,
+      updated_at: new Date('2026-03-28T08:45:00.000Z'),
+      schedule: {
+        case_id: 'case_1',
+        pharmacist_id: 'user_1',
+        case_: {
+          primary_pharmacist_id: 'user_1',
+          backup_pharmacist_id: null,
+        },
+      },
+    };
+    visitRecordFindFirstMock.mockResolvedValueOnce(visibleVisitRecord).mockResolvedValueOnce(null);
+
+    const response = await createCareReport(
+      createPostRequest({
+        patient_id: 'patient_1',
+        visit_record_id: 'visit_1',
+        report_type: 'physician_report',
+        content: { summary: '訪問後報告' },
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(txQueryRawMock).toHaveBeenCalledTimes(1);
+    expect(careReportCreateMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問記録が患者に紐付いていません',
+    });
   });
 
   it('returns 409 when a report already exists for the visit record and type', async () => {

@@ -10,7 +10,7 @@ import { parseOptionalBoundedIntegerParam, parsePaginationParams } from '@/lib/a
 import { prisma } from '@/lib/db/client';
 import { readJsonObject, readJsonObjectString, toPrismaJsonInput } from '@/lib/db/json';
 import { dateKeySchema } from '@/lib/validations/date-key';
-import { Prisma, ReportStatus, ReportType } from '@prisma/client';
+import { Prisma, ReportStatus, ReportType, type CareReport } from '@prisma/client';
 import { z } from 'zod';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
 import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
@@ -105,6 +105,11 @@ type CareReportListRow = Prisma.CareReportGetPayload<{
 }> & {
   content?: Prisma.JsonValue;
 };
+type CareReportSourceDb = Pick<Prisma.TransactionClient, 'careCase' | 'patient' | 'visitRecord'>;
+type CareReportVisitLockDb = Pick<Prisma.TransactionClient, '$queryRaw'>;
+type CareReportCreateResult =
+  | { kind: 'validation_error'; response: Response }
+  | { kind: 'created'; report: CareReport };
 
 const careReportListOrderBy = [
   { created_at: 'desc' },
@@ -395,9 +400,24 @@ function duplicateCareReportResponse(report: {
   });
 }
 
-async function buildVisitReportSourceProvenance(args: { orgId: string; visitRecordId?: string }) {
+async function lockCareReportVisitRecordSource(
+  db: CareReportVisitLockDb,
+  orgId: string,
+  visitRecordId?: string,
+) {
+  if (!visitRecordId) return;
+
+  await db.$queryRaw(
+    Prisma.sql`SELECT "id" FROM "VisitRecord" WHERE "id" = ${visitRecordId} AND "org_id" = ${orgId} FOR UPDATE`,
+  );
+}
+
+async function buildVisitReportSourceProvenance(
+  db: Pick<Prisma.TransactionClient, 'visitRecord'>,
+  args: { orgId: string; visitRecordId?: string },
+) {
   if (!args.visitRecordId) return null;
-  const visitRecord = await prisma.visitRecord.findFirst({
+  const visitRecord = await db.visitRecord.findFirst({
     where: { id: args.visitRecordId, org_id: args.orgId },
     select: { id: true, version: true, updated_at: true },
   });
@@ -415,15 +435,18 @@ async function buildVisitReportSourceProvenance(args: { orgId: string; visitReco
   };
 }
 
-async function validateCareReportSource(args: {
-  orgId: string;
-  userId: string;
-  role: AuthContext['role'];
-  patientId: string;
-  caseId?: string;
-  visitRecordId?: string;
-}): Promise<{ error: string } | { caseId?: string }> {
-  const patient = await prisma.patient.findFirst({
+async function validateCareReportSource(
+  db: CareReportSourceDb,
+  args: {
+    orgId: string;
+    userId: string;
+    role: AuthContext['role'];
+    patientId: string;
+    caseId?: string;
+    visitRecordId?: string;
+  },
+): Promise<{ error: string } | { caseId?: string }> {
+  const patient = await db.patient.findFirst({
     where: { id: args.patientId, org_id: args.orgId },
     select: { id: true },
   });
@@ -432,7 +455,7 @@ async function validateCareReportSource(args: {
   }
 
   if (args.caseId) {
-    const careCase = await prisma.careCase.findFirst({
+    const careCase = await db.careCase.findFirst({
       where: { id: args.caseId, org_id: args.orgId, patient_id: args.patientId },
       select: { id: true },
     });
@@ -443,7 +466,7 @@ async function validateCareReportSource(args: {
 
   let resolvedCaseId = args.caseId;
   if (args.visitRecordId) {
-    const visitRecord = await prisma.visitRecord.findFirst({
+    const visitRecord = await db.visitRecord.findFirst({
       where: { id: args.visitRecordId, org_id: args.orgId, patient_id: args.patientId },
       select: {
         id: true,
@@ -466,7 +489,7 @@ async function validateCareReportSource(args: {
   }
 
   const canAccess = await canAccessCareReportSource(
-    prisma,
+    db,
     args.orgId,
     { userId: args.userId, role: args.role },
     {
@@ -899,7 +922,7 @@ async function authenticatedPOST(req: NextRequest) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const sourceValidation = await validateCareReportSource({
+    const sourceValidation = await validateCareReportSource(prisma, {
       orgId: ctx.orgId,
       userId: ctx.userId,
       role: ctx.role,
@@ -926,16 +949,7 @@ async function authenticatedPOST(req: NextRequest) {
     }
 
     const { content, ...reportInput } = parsed.data;
-    const sourceProvenance = await buildVisitReportSourceProvenance({
-      orgId: ctx.orgId,
-      visitRecordId: parsed.data.visit_record_id,
-    });
-    let enrichedContent = sourceProvenance
-      ? {
-          ...content,
-          source_provenance: sourceProvenance,
-        }
-      : content;
+    let enrichedContent = content;
     let recipientPrefill: { recipient_name?: string; recipient_organization?: string } | undefined;
 
     if (resolvedCaseId) {
@@ -996,17 +1010,57 @@ async function authenticatedPOST(req: NextRequest) {
 
     let report;
     try {
-      report = await withOrgContext(ctx.orgId, async (tx) => {
-        return tx.careReport.create({
-          data: {
-            org_id: ctx.orgId,
-            created_by: ctx.userId,
-            ...reportInput,
-            case_id: resolvedCaseId ?? null,
-            content: toPrismaJsonInput(enrichedContent),
-          },
+      const createResult = await withOrgContext<CareReportCreateResult>(ctx.orgId, async (tx) => {
+        await lockCareReportVisitRecordSource(tx, ctx.orgId, parsed.data.visit_record_id);
+
+        const finalSourceValidation = await validateCareReportSource(tx, {
+          orgId: ctx.orgId,
+          userId: ctx.userId,
+          role: ctx.role,
+          patientId: parsed.data.patient_id,
+          caseId: parsed.data.case_id,
+          visitRecordId: parsed.data.visit_record_id,
         });
+        if ('error' in finalSourceValidation) {
+          return {
+            kind: 'validation_error' as const,
+            response: validationError(finalSourceValidation.error),
+          };
+        }
+        const finalResolvedCaseId = finalSourceValidation.caseId;
+        if (finalResolvedCaseId !== resolvedCaseId) {
+          return {
+            kind: 'validation_error' as const,
+            response: validationError('訪問記録が更新されました。再読み込みしてください'),
+          };
+        }
+
+        const sourceProvenance = await buildVisitReportSourceProvenance(tx, {
+          orgId: ctx.orgId,
+          visitRecordId: parsed.data.visit_record_id,
+        });
+        const finalContent = sourceProvenance
+          ? {
+              ...enrichedContent,
+              source_provenance: sourceProvenance,
+            }
+          : enrichedContent;
+
+        return {
+          kind: 'created' as const,
+          report: await tx.careReport.create({
+            data: {
+              org_id: ctx.orgId,
+              created_by: ctx.userId,
+              ...reportInput,
+              case_id: finalResolvedCaseId ?? null,
+              content: toPrismaJsonInput(finalContent),
+            },
+          }),
+        };
       });
+      if (createResult.kind === 'validation_error') return createResult.response;
+      report = createResult.report;
     } catch (errorValue) {
       if (isCareReportVisitTypeUniqueConflict(errorValue)) {
         const existingReport = parsed.data.visit_record_id

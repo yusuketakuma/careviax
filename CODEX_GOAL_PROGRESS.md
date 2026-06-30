@@ -30,6 +30,53 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Facility Visit Batch History Count Contract - 2026-07-01 03:42 JST
+
+- Scope:
+  - Continued master-management and patient-information hardening on `GET /api/admin/facilities/[id]/visit-batches`.
+  - Focused on facility master visit-batch history where a fixed recent-history limit could look complete without count metadata.
+- Fixed:
+  - The route now returns sensitive no-store responses for success, not-found, and sanitized unexpected failures.
+  - Added an org/facility-scoped total count alongside the bounded latest 20 visit batches.
+  - Response metadata now exposes `limit`, `total_count`, `visible_count`, `hidden_count`, count basis, and applied facility filter.
+  - Added regression coverage for normal history, truncated history, no-store 404, and sanitized no-store 500 without leaking patient names or phone numbers.
+- Safety:
+  - Reduces false-complete facility master history risk when older visit batches are hidden by the fixed recent-history window.
+  - Reduces PHI cache and unexpected-error leakage risk for visit history responses containing patient names.
+  - Preserves existing auth permission, org scoping, bounded list behavior, migrations, live DB mutation scripts, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds one narrow `count` query with the same `org_id` / `facility_id` predicate as the bounded list.
+  - No new dependency, background job, external call, broad scan, or unbounded loop was added.
+- Validation:
+  - Focused facility visit-batch Vitest passed `1` file / `4` tests.
+  - Related facility admin suite passed `4` files / `25` tests with the expected sanitized-500 test log.
+  - Scoped ESLint, scoped Prettier write/check, scoped diff-check, full typecheck, no-unused, format check, and full diff-check passed.
+- Remaining:
+  - Broad master-management / patient-information objective remains open.
+
+### Patient Visit Constraint Coordinate Guard - 2026-07-01 03:42 JST
+
+- Scope:
+  - Continued patient-information hardening on `PUT /api/patients/[id]/visit-constraints`.
+  - Focused on residence coordinates used by visit planning and facility/patient route workflows.
+- Fixed:
+  - Residence latitude and longitude now require finite values within geographic bounds.
+  - The schema rejects `0/0` placeholder coordinates and copied same latitude/longitude values.
+  - Added regression coverage proving invalid coordinates fail before patient lookup or transaction work.
+- Safety:
+  - Reduces wrong-location visit planning risk from impossible or placeholder coordinates in patient visit constraints.
+  - Invalid coordinate payloads fail before patient loading, preference upsert, or residence update side effects.
+  - Preserves existing auth, org scoping, time-window validation, migrations, live DB mutation scripts, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Validation is local schema/refinement work before DB access.
+  - No new query, dependency, background job, external call, broad scan, or unbounded loop was added.
+- Validation:
+  - `pnpm vitest run 'src/app/api/patients/[id]/visit-constraints/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `1` file / `16` tests.
+  - Scoped ESLint on the validation schema and route test passed.
+  - Full typecheck, no-unused, format check, and full diff-check passed as part of the grouped validation batch.
+- Remaining:
+  - Broad patient-information objective remains open.
+
 ### Visit Route Time Window And Service Duration - 2026-07-01 03:27 JST
 
 - Scope:
@@ -28388,3 +28435,32 @@ Next loop:
 - Remaining:
   - Broad master/patient objective remains open.
   - Next mapped patient gap remains PRE-06 archive/detail UI state: archived-patient detail banner/read-only affordance and cross-surface archive identifiers.
+
+### Care Report Visit Source Lock - 2026-07-01 03:41 JST
+
+- Scope:
+  - Continued report-function hardening for manual care-report creation from a visit record.
+  - Focused on `POST /api/care-reports`, where `CareReport.visit_record_id` is a string reference rather than a Prisma relation/FK.
+- Fixed:
+  - Care-report source validation now accepts the active DB client so the same validation can run in the RLS transaction.
+  - When a report is created from a visit record, the source `VisitRecord` row is locked with `FOR UPDATE` inside `withOrgContext` before final validation and report insertion.
+  - Patient/case/source access is revalidated inside the write transaction, and the persisted source provenance is built from the locked source row.
+  - If the source disappears or the resolved source case changes between precheck and create, the request now returns a sanitized validation error before creating the report.
+- Safety:
+  - Reduces orphan/stale visit-report risk when a visit record changes or disappears after the first precheck but before report insertion.
+  - Preserves existing auth, author permission, org/RLS scope, duplicate report unique-conflict mapping, no-store wrapping, PHI-redacted error logging, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds one narrow row lock and final scalar validation on the already selected source path only.
+  - No new dependency, background job, broad scan, external call, unbounded loop, or render-heavy path was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/care-reports/route.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `62` tests.
+  - Related report suite `pnpm exec vitest run src/app/api/care-reports/route.test.ts src/app/api/care-reports/generate-from-visit/route.test.ts 'src/app/api/care-reports/[id]/route.test.ts' 'src/app/api/care-reports/[id]/send/route.test.ts' 'src/app/api/care-reports/[id]/print-audit/route.test.ts' src/lib/reports/care-report-send-validation.test.ts src/lib/reports/care-report-target-role.test.ts --reporter=dot --testTimeout=60000`: passed, `7` files / `206` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on `src/app/api/care-reports/route.ts` and `src/app/api/care-reports/route.test.ts`: passed.
+  - `pnpm typecheck --pretty false`: passed after discriminating the transaction create result.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit/report/collaboration objective remains open.
+  - Concurrent unowned dirty files remain in facility visit-batch and visit-constraint areas; they were preserved outside this report slice.
