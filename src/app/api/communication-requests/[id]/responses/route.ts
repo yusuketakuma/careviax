@@ -210,38 +210,12 @@ async function authenticatedPOST(req: NextRequest, { params }: RouteContext) {
     });
     if (writable && 'response' in writable) return writable.response;
 
-    const result = await withOrgContext(ctx.orgId, async (tx) => {
-      let responseResult: Awaited<ReturnType<typeof upsertCommunicationResponseByIntent>> | null =
-        null;
-      if (existingRequest.status !== 'responded') {
-        const claim = await tx.communicationRequest.updateMany({
-          where: {
-            id,
-            org_id: ctx.orgId,
-            status: existingRequest.status,
-            updated_at: expectedUpdatedAt,
-          },
-          data: { status: 'responded' },
-        });
-        if (claim.count !== 1) {
-          return { error: 'state_changed' as const };
-        }
-      } else {
-        const existingResponse = await findCommunicationResponseByIntent({
-          db: tx,
-          orgId: ctx.orgId,
-          requestId: id,
-          responderName: parsed.data.responder_name,
-          content: parsed.data.content,
-          respondedAt,
-        });
-        if (existingResponse.response) {
-          responseResult = {
-            response: existingResponse.response,
-            created: false,
-            responseIntentKey: existingResponse.responseIntentKey,
-          };
-        } else {
+    const result = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        let responseResult: Awaited<ReturnType<typeof upsertCommunicationResponseByIntent>> | null =
+          null;
+        if (existingRequest.status !== 'responded') {
           const claim = await tx.communicationRequest.updateMany({
             where: {
               id,
@@ -249,54 +223,84 @@ async function authenticatedPOST(req: NextRequest, { params }: RouteContext) {
               status: existingRequest.status,
               updated_at: expectedUpdatedAt,
             },
-            data: { updated_at: new Date() },
+            data: { status: 'responded' },
           });
           if (claim.count !== 1) {
             return { error: 'state_changed' as const };
           }
+        } else {
+          const existingResponse = await findCommunicationResponseByIntent({
+            db: tx,
+            orgId: ctx.orgId,
+            requestId: id,
+            responderName: parsed.data.responder_name,
+            content: parsed.data.content,
+            respondedAt,
+          });
+          if (existingResponse.response) {
+            responseResult = {
+              response: existingResponse.response,
+              created: false,
+              responseIntentKey: existingResponse.responseIntentKey,
+            };
+          } else {
+            const claim = await tx.communicationRequest.updateMany({
+              where: {
+                id,
+                org_id: ctx.orgId,
+                status: existingRequest.status,
+                updated_at: expectedUpdatedAt,
+              },
+              data: { updated_at: new Date() },
+            });
+            if (claim.count !== 1) {
+              return { error: 'state_changed' as const };
+            }
+          }
         }
-      }
 
-      responseResult ??= await upsertCommunicationResponseByIntent({
-        db: tx,
-        orgId: ctx.orgId,
-        requestId: id,
-        responderName: parsed.data.responder_name,
-        content: parsed.data.content,
-        respondedAt,
-      });
-      const updatedRequest = await tx.communicationRequest.findFirst({
-        where: { id, org_id: ctx.orgId },
-        select: { updated_at: true },
-      });
-      if (!updatedRequest) {
-        return { error: 'state_changed' as const };
-      }
-      if (responseResult.created || existingRequest.status !== 'responded') {
-        await createAuditLogEntry(tx, ctx, {
-          action: 'communication_response_recorded',
-          targetType: 'communication_request',
-          targetId: id,
-          changes: {
-            from_status: existingRequest.status,
-            to_status: 'responded',
-            response_id: responseResult.response.id,
-            response_created: responseResult.created,
-            response_intent_key: responseResult.responseIntentKey,
-            responder_name: parsed.data.responder_name,
-            response_content_digest: buildCommunicationResponseContentDigest({
-              requestId: id,
-              responseId: responseResult.response.id,
-              content: parsed.data.content,
-            }),
-            response_content_length: parsed.data.content.length,
-            responded_at: respondedAt.toISOString(),
-            actor_id: ctx.userId,
-          },
+        responseResult ??= await upsertCommunicationResponseByIntent({
+          db: tx,
+          orgId: ctx.orgId,
+          requestId: id,
+          responderName: parsed.data.responder_name,
+          content: parsed.data.content,
+          respondedAt,
         });
-      }
-      return { ...responseResult, requestUpdatedAt: updatedRequest.updated_at };
-    });
+        const updatedRequest = await tx.communicationRequest.findFirst({
+          where: { id, org_id: ctx.orgId },
+          select: { updated_at: true },
+        });
+        if (!updatedRequest) {
+          return { error: 'state_changed' as const };
+        }
+        if (responseResult.created || existingRequest.status !== 'responded') {
+          await createAuditLogEntry(tx, ctx, {
+            action: 'communication_response_recorded',
+            targetType: 'communication_request',
+            targetId: id,
+            changes: {
+              from_status: existingRequest.status,
+              to_status: 'responded',
+              response_id: responseResult.response.id,
+              response_created: responseResult.created,
+              response_intent_key: responseResult.responseIntentKey,
+              responder_name: parsed.data.responder_name,
+              response_content_digest: buildCommunicationResponseContentDigest({
+                requestId: id,
+                responseId: responseResult.response.id,
+                content: parsed.data.content,
+              }),
+              response_content_length: parsed.data.content.length,
+              responded_at: respondedAt.toISOString(),
+              actor_id: ctx.userId,
+            },
+          });
+        }
+        return { ...responseResult, requestUpdatedAt: updatedRequest.updated_at };
+      },
+      { requestContext: ctx },
+    );
 
     if ('error' in result) {
       return conflict('連携依頼が同時に更新されました。再読み込みしてください');

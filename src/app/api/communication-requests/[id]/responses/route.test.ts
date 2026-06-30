@@ -296,6 +296,13 @@ describe('/api/communication-requests/[id]/responses', () => {
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
       expect.any(Function),
     );
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+    });
     await expect(response.clone().json()).resolves.toMatchObject({
       data: { id: 'response_2' },
       request_updated_at: '2026-03-28T09:01:00.000Z',
