@@ -102,8 +102,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - No new dependency, background job, external call, broad scan, or unbounded loop was added.
 - Validation:
   - `pnpm exec vitest run 'src/app/api/visit-schedule-proposals/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `1` file / `74` tests.
-  - Related schedule generation/planner suite passed `3` files / `151` tests.
-  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, verifier focused Vitest/diff-check, `pnpm typecheck --pretty false`, `pnpm lint`, `pnpm typecheck:no-unused --pretty false`, `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`, and full `git diff --check`: passed.
+  - Related schedule generation/planner suite passed `3` files / `152` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck --pretty false`, `pnpm lint`, `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`, `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`, and full `git diff --check`: passed.
 - Remaining:
   - Broad schedule-management / prescription-to-schedule / route-decision objective remains open.
   - Concurrent unrelated today-workspace facility-packet link files and ledger hunks remain preserved outside this proposal-confirm slice.
