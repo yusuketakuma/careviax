@@ -164,6 +164,11 @@ describe('ServiceAreasPage', () => {
         if (url === '/api/service-areas' && !init?.method) {
           return new Response(
             JSON.stringify({
+              total_count: 1,
+              visible_count: 1,
+              hidden_count: 0,
+              truncated: false,
+              count_basis: 'service_areas',
               data: [
                 {
                   id: 'area_1',
@@ -262,6 +267,49 @@ describe('ServiceAreasPage', () => {
     expect((screen.getByLabelText('備考') as HTMLTextAreaElement).value).toBe('16km 圏確認済み');
   });
 
+  it('shows service-area list counts without treating a bounded page as the total', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/pharmacy-sites') {
+          return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+            status: 200,
+          });
+        }
+        if (url === '/api/service-areas' && !init?.method) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'area_1',
+                  site_id: 'site_1',
+                  name: '北多摩エリア',
+                  area_type: 'radius',
+                  geo_data: { match_keywords: ['北多摩'] },
+                  notes: null,
+                  site: { id: 'site_1', name: '本店' },
+                },
+              ],
+              total_count: 3,
+              visible_count: 1,
+              hidden_count: 2,
+              truncated: true,
+              count_basis: 'service_areas',
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText('先頭1件を表示 / 他2件')).toBeTruthy();
+    expect(screen.queryByText('登録済み 1件')).toBeNull();
+  });
+
   it('gives the site and area-type selects a >=44px touch target at all breakpoints (WCAG)', async () => {
     renderPage();
 
@@ -289,6 +337,11 @@ describe('ServiceAreasPage', () => {
       if (url === '/api/service-areas' && !init?.method) {
         return new Response(
           JSON.stringify({
+            total_count: 1,
+            visible_count: 1,
+            hidden_count: 0,
+            truncated: false,
+            count_basis: 'service_areas',
             data: [
               {
                 id: areaId,

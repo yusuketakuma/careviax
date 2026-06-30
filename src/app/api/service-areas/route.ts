@@ -47,26 +47,44 @@ export async function GET(req: NextRequest) {
     if (!refResult.ok) return refResult.response;
   }
 
-  const serviceAreas = await withOrgContext(ctx.orgId, (tx) =>
-    tx.serviceArea.findMany({
-      where: {
-        org_id: ctx.orgId,
-        ...(parsedSiteId?.success ? { site_id: parsedSiteId.data } : {}),
-      },
-      orderBy: [{ site_id: 'asc' }, { name: 'asc' }],
-      take: limit,
-      include: {
-        site: {
-          select: {
-            id: true,
-            name: true,
+  const where = {
+    org_id: ctx.orgId,
+    ...(parsedSiteId?.success ? { site_id: parsedSiteId.data } : {}),
+  };
+
+  const [totalCount, serviceAreas] = await withOrgContext(ctx.orgId, (tx) =>
+    Promise.all([
+      tx.serviceArea.count({ where }),
+      tx.serviceArea.findMany({
+        where,
+        orderBy: [{ site_id: 'asc' }, { name: 'asc' }],
+        take: limit,
+        include: {
+          site: {
+            select: {
+              id: true,
+              name: true,
+            },
           },
         },
-      },
-    }),
+      }),
+    ]),
   );
 
-  return success({ data: serviceAreas });
+  const visibleCount = serviceAreas.length;
+
+  return success({
+    data: serviceAreas,
+    total_count: totalCount,
+    visible_count: visibleCount,
+    hidden_count: Math.max(totalCount - visibleCount, 0),
+    truncated: totalCount > visibleCount,
+    count_basis: 'service_areas',
+    filters_applied: {
+      site_id: parsedSiteId?.success ? parsedSiteId.data : null,
+    },
+    limit,
+  });
 }
 
 export async function POST(req: NextRequest) {

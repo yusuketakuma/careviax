@@ -5,6 +5,7 @@ const {
   authMock,
   membershipFindFirstMock,
   facilityFindManyMock,
+  facilityCountMock,
   facilityCreateMock,
   residenceGroupByMock,
   withOrgContextMock,
@@ -12,6 +13,7 @@ const {
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   facilityFindManyMock: vi.fn(),
+  facilityCountMock: vi.fn(),
   facilityCreateMock: vi.fn(),
   residenceGroupByMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -28,6 +30,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     facility: {
       findMany: facilityFindManyMock,
+      count: facilityCountMock,
     },
     residence: {
       groupBy: residenceGroupByMock,
@@ -101,6 +104,7 @@ describe('/api/admin/facilities GET', () => {
       created_at: new Date('2026-03-01T00:00:00Z'),
       updated_at: new Date('2026-03-01T00:00:00Z'),
     });
+    facilityCountMock.mockResolvedValue(0);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         facility: {
@@ -179,6 +183,12 @@ describe('/api/admin/facilities GET', () => {
           contacts: [expect.objectContaining({ name: '施設担当' })],
         }),
       ],
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'facilities',
+      filters_applied: { q: null },
     });
   });
 
@@ -217,6 +227,7 @@ describe('/api/admin/facilities GET', () => {
         contacts: [],
       },
     ]);
+    facilityCountMock.mockResolvedValue(3);
     residenceGroupByMock.mockResolvedValue([
       {
         facility_id: 'facility_1',
@@ -262,6 +273,15 @@ describe('/api/admin/facilities GET', () => {
       take: 3,
       orderBy: [{ name: 'asc' }],
     });
+    expect(facilityCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        OR: [
+          { name: { contains: 'あおば', mode: 'insensitive' } },
+          { address: { contains: 'あおば', mode: 'insensitive' } },
+        ],
+      },
+    });
     expect(residenceGroupByMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -290,6 +310,13 @@ describe('/api/admin/facilities GET', () => {
         },
       ],
       hasMore: true,
+      total_count: 3,
+      visible_count: 2,
+      hidden_count: 1,
+      truncated: true,
+      count_basis: 'facilities',
+      filters_applied: { q: 'あおば' },
+      limit: 2,
     });
     expect(body.data[0]).not.toHaveProperty('contacts');
     expect(body.data[0]).not.toHaveProperty('phone');

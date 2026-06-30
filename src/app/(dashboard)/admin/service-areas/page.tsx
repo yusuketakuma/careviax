@@ -41,6 +41,15 @@ type ServiceArea = {
   site: PharmacySite;
 };
 
+type ServiceAreasResponse = {
+  data: ServiceArea[];
+  total_count?: number;
+  visible_count?: number;
+  hidden_count?: number;
+  truncated?: boolean;
+  count_basis?: 'service_areas';
+};
+
 type ServiceAreaForm = {
   id: string;
   site_id: string;
@@ -104,7 +113,7 @@ export default function ServiceAreasPage() {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('訪問エリアの取得に失敗しました');
-      return res.json() as Promise<{ data: ServiceArea[] }>;
+      return res.json() as Promise<ServiceAreasResponse>;
     },
     enabled: !!orgId,
   });
@@ -169,6 +178,15 @@ export default function ServiceAreasPage() {
 
   const sites = sitesQuery.data?.data ?? [];
   const serviceAreas = areasQuery.data?.data ?? [];
+  const totalServiceAreaCount = areasQuery.data?.total_count ?? serviceAreas.length;
+  const visibleServiceAreaCount = areasQuery.data?.visible_count ?? serviceAreas.length;
+  const hiddenServiceAreaCount =
+    areasQuery.data?.hidden_count ?? Math.max(totalServiceAreaCount - serviceAreas.length, 0);
+  const serviceAreaListSummary = areasQuery.data
+    ? areasQuery.data.truncated || hiddenServiceAreaCount > 0
+      ? `先頭${visibleServiceAreaCount.toLocaleString()}件を表示 / 他${hiddenServiceAreaCount.toLocaleString()}件`
+      : `登録済み ${totalServiceAreaCount.toLocaleString()}件`
+    : null;
 
   return (
     <PageScaffold>
@@ -329,6 +347,9 @@ export default function ServiceAreasPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">登録済みエリア</CardTitle>
+            {serviceAreaListSummary ? (
+              <p className="text-sm text-muted-foreground">{serviceAreaListSummary}</p>
+            ) : null}
           </CardHeader>
           <CardContent className="space-y-3">
             {areasQuery.isError ? (

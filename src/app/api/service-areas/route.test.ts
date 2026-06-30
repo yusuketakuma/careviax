@@ -4,12 +4,14 @@ import { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   serviceAreaFindManyMock,
+  serviceAreaCountMock,
   serviceAreaCreateMock,
   validateOrgReferencesMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   serviceAreaFindManyMock: vi.fn(),
+  serviceAreaCountMock: vi.fn(),
   serviceAreaCreateMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -60,12 +62,14 @@ describe('/api/service-areas', () => {
       },
     });
     serviceAreaFindManyMock.mockResolvedValue([{ id: 'area_1' }]);
+    serviceAreaCountMock.mockResolvedValue(1);
     serviceAreaCreateMock.mockResolvedValue({ id: 'area_2' });
     validateOrgReferencesMock.mockResolvedValue({ ok: true, data: {} });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         serviceArea: {
           findMany: serviceAreaFindManyMock,
+          count: serviceAreaCountMock,
           create: serviceAreaCreateMock,
         },
       }),
@@ -76,6 +80,21 @@ describe('/api/service-areas', () => {
     const response = (await GET(createGetRequest('http://localhost/api/service-areas')))!;
 
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: 'area_1' }],
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'service_areas',
+      filters_applied: { site_id: null },
+      limit: 100,
+    });
+    expect(serviceAreaCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+      },
+    });
     expect(serviceAreaFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -100,6 +119,12 @@ describe('/api/service-areas', () => {
 
     expect(response.status).toBe(200);
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', { site_id: 'site_1' });
+    expect(serviceAreaCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        site_id: 'site_1',
+      },
+    });
     expect(serviceAreaFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -109,6 +134,28 @@ describe('/api/service-areas', () => {
         take: 5,
       }),
     );
+  });
+
+  it('returns counted metadata when the bounded list is truncated', async () => {
+    serviceAreaCountMock.mockResolvedValueOnce(205);
+    serviceAreaFindManyMock.mockResolvedValueOnce(
+      Array.from({ length: 200 }, (_value, index) => ({ id: `area_${index + 1}` })),
+    );
+
+    const response = (await GET(
+      createGetRequest('http://localhost/api/service-areas?limit=9999'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      total_count: 205,
+      visible_count: 200,
+      hidden_count: 5,
+      truncated: true,
+      count_basis: 'service_areas',
+      filters_applied: { site_id: null },
+      limit: 200,
+    });
   });
 
   it('clamps overly large service area list limits', async () => {

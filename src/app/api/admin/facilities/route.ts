@@ -24,29 +24,35 @@ const authenticatedGET = withAuthContext(
     if (isSearchMode) {
       const query = normalizeSearchQuery(searchParams.get('q'));
       const limit = parseBoundedInteger(searchParams.get('limit'), 8, 1, 50);
-      const facilities = await prisma.facility.findMany({
-        where: {
-          org_id: ctx.orgId,
-          ...(query
-            ? {
-                OR: [
-                  { name: { contains: query, mode: 'insensitive' as const } },
-                  { address: { contains: query, mode: 'insensitive' as const } },
-                ],
-              }
-            : {}),
-        },
-        select: {
-          id: true,
-          name: true,
-          facility_type: true,
-          address: true,
-        },
-        take: limit + 1,
-        orderBy: [{ name: 'asc' }],
-      });
+      const where = {
+        org_id: ctx.orgId,
+        ...(query
+          ? {
+              OR: [
+                { name: { contains: query, mode: 'insensitive' as const } },
+                { address: { contains: query, mode: 'insensitive' as const } },
+              ],
+            }
+          : {}),
+      };
+      const [totalCount, facilities] = await Promise.all([
+        prisma.facility.count({ where }),
+        prisma.facility.findMany({
+          where,
+          select: {
+            id: true,
+            name: true,
+            facility_type: true,
+            address: true,
+          },
+          take: limit + 1,
+          orderBy: [{ name: 'asc' }],
+        }),
+      ]);
       const hasMore = facilities.length > limit;
       const data = hasMore ? facilities.slice(0, limit) : facilities;
+      const visibleCount = data.length;
+      const hiddenCount = Math.max(totalCount - visibleCount, 0);
       const facilityIds = data.map((facility) => facility.id);
       const residenceCounts =
         facilityIds.length === 0
@@ -78,7 +84,16 @@ const authenticatedGET = withAuthContext(
           address: facility.address,
           patient_count: patientCountByFacilityId.get(facility.id) ?? 0,
         })),
-        hasMore,
+        hasMore: hasMore || hiddenCount > 0,
+        total_count: totalCount,
+        visible_count: visibleCount,
+        hidden_count: hiddenCount,
+        truncated: hiddenCount > 0,
+        count_basis: 'facilities',
+        filters_applied: {
+          q: query,
+        },
+        limit,
       });
     }
 
@@ -122,6 +137,14 @@ const authenticatedGET = withAuthContext(
           { includeTimestamps: true },
         ),
       ),
+      total_count: facilities.length,
+      visible_count: facilities.length,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'facilities',
+      filters_applied: {
+        q: null,
+      },
     });
   },
   {
