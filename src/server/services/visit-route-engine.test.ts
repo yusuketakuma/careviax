@@ -247,6 +247,71 @@ describe('computeOptimizedVisitRoute (heuristic path)', () => {
     expect(estimateOne).not.toHaveBeenCalled();
   });
 
+  it('improves the greedy heuristic order with a bounded same-band 2-opt pass', async () => {
+    const estimateOne = vi.fn(async () => null);
+    const estimateMatrix = vi.fn(async () => [
+      [
+        null,
+        { durationMinutes: 10, distanceKm: 10 },
+        { durationMinutes: 20, distanceKm: 20 },
+        { durationMinutes: 20, distanceKm: 20 },
+        { durationMinutes: 20, distanceKm: 20 },
+      ],
+      [
+        { durationMinutes: 50, distanceKm: 50 },
+        null,
+        { durationMinutes: 1, distanceKm: 1 },
+        { durationMinutes: 10, distanceKm: 10 },
+        { durationMinutes: 10, distanceKm: 10 },
+      ],
+      [
+        { durationMinutes: 20, distanceKm: 20 },
+        { durationMinutes: 50, distanceKm: 50 },
+        null,
+        { durationMinutes: 1, distanceKm: 1 },
+        { durationMinutes: 1, distanceKm: 1 },
+      ],
+      [
+        { durationMinutes: 1, distanceKm: 1 },
+        { durationMinutes: 50, distanceKm: 50 },
+        { durationMinutes: 1, distanceKm: 1 },
+        null,
+        { durationMinutes: 1, distanceKm: 1 },
+      ],
+      [
+        { durationMinutes: 100, distanceKm: 100 },
+        { durationMinutes: 50, distanceKm: 50 },
+        { durationMinutes: 50, distanceKm: 50 },
+        { durationMinutes: 1, distanceKm: 1 },
+        null,
+      ],
+    ]);
+    createRoadTravelEstimatorMock.mockReturnValue(Object.assign(estimateOne, { estimateMatrix }));
+
+    const result = await computeOptimizedVisitRoute({
+      origin,
+      travelMode,
+      waypoints: [
+        { scheduleId: 'sched_a', patientName: '患者A', address: '住所A', lat: 35.1, lng: 139.0 },
+        { scheduleId: 'sched_b', patientName: '患者B', address: '住所B', lat: 35.2, lng: 139.0 },
+        { scheduleId: 'sched_c', patientName: '患者C', address: '住所C', lat: 35.3, lng: 139.0 },
+        { scheduleId: 'sched_d', patientName: '患者D', address: '住所D', lat: 35.4, lng: 139.0 },
+      ],
+    });
+
+    expect(result.status).toBe('ok');
+    expect(result.orderedScheduleIds).toEqual(['sched_a', 'sched_b', 'sched_d', 'sched_c']);
+    expect(result.totalDurationSeconds).toBe(14 * 60);
+    expect(result.totalDistanceMeters).toBe(14000);
+    expect(result.stopSummaries.map((stop) => stop.arrivalOffsetSeconds)).toEqual([
+      10 * 60,
+      11 * 60,
+      12 * 60,
+      13 * 60,
+    ]);
+    expect(estimateOne).not.toHaveBeenCalled();
+  });
+
   it('includes the return-to-origin leg in heuristic total duration and distance', async () => {
     const estimateOne = vi.fn(async () => null);
     const estimateMatrix = vi.fn(async () => [

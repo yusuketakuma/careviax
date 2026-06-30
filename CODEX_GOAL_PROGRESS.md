@@ -29153,3 +29153,29 @@ Next loop:
 - Remaining:
   - Broad visit/report/collaboration objective remains open.
   - Concurrent unowned facility visit-batch and visit-constraint dirty files, plus the unowned 03:44 facility Ralph hunk, remain outside this slice.
+
+### Visit Route Heuristic 2-opt Improvement - 2026-07-01 06:09 JST
+
+- Scope:
+  - Continued schedule/route-management release hardening.
+  - Focused on the heuristic path in `src/server/services/visit-route-engine.ts`, which is used when Google optimization is unavailable or when priority/locked-route constraints must be preserved.
+- Fixed:
+  - Added a bounded 2-opt improvement pass after nearest-neighbor route construction.
+  - 2-opt only reverses stops inside the same priority band and never moves the locked confirmed-visit prefix.
+  - Route summaries, arrival offsets, total duration, total distance, distance source, service duration, time-window fields, and return-to-origin totals are now recomputed from the final improved order.
+  - Regression tests cover same-band 2-opt improvement and locked-prefix tail improvement.
+- Safety:
+  - Reduces unsafe route-decision risk by avoiding avoidable high-cost route tails while preserving emergency/urgent/normal ordering and confirmed-visit pinning.
+  - No PHI logging, patient/address exposure, auth/RLS behavior, migrations, external sends, push/deploy, secrets, or destructive operations were changed.
+- Performance:
+  - Reuses the existing route matrix and adds no route-provider calls.
+  - Caps 2-opt candidate evaluations at 4000 for the existing max-50-stop route API.
+- Validation:
+  - `pnpm exec vitest run src/server/services/visit-route-engine.test.ts src/server/services/visit-route-engine.locked.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `19` tests.
+  - Related suite `pnpm exec vitest run src/server/services/visit-route-engine.test.ts src/server/services/visit-route-engine.locked.test.ts src/app/api/visit-routes/route.test.ts src/app/api/visit-routes/route.locked.test.ts 'src/app/api/visit-preparations/[scheduleId]/route.test.ts' 'src/app/api/visit-schedule-proposals/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `6` files / `153` tests.
+  - Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm lint`, and full `git diff --check`: passed.
+  - `pnpm typecheck` and `pnpm typecheck:no-unused`: failed only in unowned `src/app/(dashboard)/admin/external-professionals/external-professionals-content.tsx` where `facility_id: string | null` is returned into `FormState.facility_id: string`.
+  - `pnpm format:check`: failed only on the same unowned external-professionals file.
+- Remaining:
+  - Broad schedule/prescription/route-management objective remains open.
+  - Full gates are currently blocked by unowned external-professionals WIP; preserve those files outside this route slice.

@@ -254,6 +254,7 @@ type NodePoint = { lat: number; lng: number };
 
 const DEFAULT_ROUTE_MATRIX_PAIR_CONCURRENCY = 8;
 const MAX_ROUTE_MATRIX_PAIR_CONCURRENCY = 16;
+const MAX_TWO_OPT_CANDIDATE_EVALUATIONS = 4000;
 
 function normalizeRouteMatrixPairConcurrency(value: unknown) {
   return normalizeConcurrencyLimit(value, {
@@ -364,6 +365,213 @@ async function buildRouteMatrix(args: {
   );
 
   return matrix;
+}
+
+type RouteOrderTravelCost = {
+  seconds: number;
+  meters: number;
+};
+
+function routeOrderTravelCost(order: number[], matrix: RouteMatrix): RouteOrderTravelCost | null {
+  let currentNodeIndex = 0;
+  let seconds = 0;
+  let meters = 0;
+
+  for (const waypointIdx of order) {
+    const cell = matrix[currentNodeIndex]?.[waypointIdx + 1] ?? null;
+    if (!cell || !Number.isFinite(cell.seconds) || !Number.isFinite(cell.meters)) return null;
+    seconds += cell.seconds;
+    meters += cell.meters;
+    currentNodeIndex = waypointIdx + 1;
+  }
+
+  const returnToOrigin = matrix[currentNodeIndex]?.[0] ?? null;
+  if (
+    !returnToOrigin ||
+    !Number.isFinite(returnToOrigin.seconds) ||
+    !Number.isFinite(returnToOrigin.meters)
+  ) {
+    return null;
+  }
+
+  return {
+    seconds: seconds + returnToOrigin.seconds,
+    meters: meters + returnToOrigin.meters,
+  };
+}
+
+function routeOrderCostImproves(candidate: RouteOrderTravelCost, current: RouteOrderTravelCost) {
+  return candidate.seconds < current.seconds
+    ? true
+    : candidate.seconds === current.seconds && candidate.meters < current.meters;
+}
+
+function routeOrderWithReversedSegment(order: number[], start: number, endInclusive: number) {
+  return [
+    ...order.slice(0, start),
+    ...order.slice(start, endInclusive + 1).reverse(),
+    ...order.slice(endInclusive + 1),
+  ];
+}
+
+function improveRouteOrderSegmentWithTwoOpt(args: {
+  order: number[];
+  matrix: RouteMatrix;
+  segmentStart: number;
+  segmentEnd: number;
+  remainingEvaluationBudget: number;
+}) {
+  if (args.segmentEnd - args.segmentStart < 2) {
+    return args.remainingEvaluationBudget;
+  }
+
+  let currentCost = routeOrderTravelCost(args.order, args.matrix);
+  if (!currentCost) {
+    return args.remainingEvaluationBudget;
+  }
+
+  let remainingEvaluationBudget = args.remainingEvaluationBudget;
+  let improved = true;
+
+  while (improved && remainingEvaluationBudget > 0) {
+    improved = false;
+    let bestOrder: number[] | null = null;
+    let bestCost: RouteOrderTravelCost = currentCost;
+
+    for (
+      let left = args.segmentStart;
+      left < args.segmentEnd - 1 && remainingEvaluationBudget > 0;
+      left += 1
+    ) {
+      for (
+        let right = left + 1;
+        right < args.segmentEnd && remainingEvaluationBudget > 0;
+        right += 1
+      ) {
+        remainingEvaluationBudget -= 1;
+        const candidateOrder = routeOrderWithReversedSegment(args.order, left, right);
+        const candidateCost = routeOrderTravelCost(candidateOrder, args.matrix);
+        if (candidateCost && routeOrderCostImproves(candidateCost, bestCost)) {
+          bestOrder = candidateOrder;
+          bestCost = candidateCost;
+        }
+      }
+    }
+
+    if (bestOrder) {
+      args.order.splice(0, args.order.length, ...bestOrder);
+      currentCost = bestCost;
+      improved = true;
+    }
+  }
+
+  return remainingEvaluationBudget;
+}
+
+function lockedRoutePrefixLength(args: {
+  order: number[];
+  waypoints: VisitRouteWaypoint[];
+  lockedScheduleIdSet: ReadonlySet<string>;
+}) {
+  let prefixLength = 0;
+  while (prefixLength < args.order.length) {
+    const waypoint = args.waypoints[args.order[prefixLength]];
+    if (!waypoint || !args.lockedScheduleIdSet.has(waypoint.scheduleId)) break;
+    prefixLength += 1;
+  }
+  return prefixLength;
+}
+
+function optimizeRouteOrderWithinConstraints(args: {
+  greedyOrder: number[];
+  waypoints: VisitRouteWaypoint[];
+  matrix: RouteMatrix;
+  lockedScheduleIdSet: ReadonlySet<string>;
+}) {
+  const optimizedOrder = [...args.greedyOrder];
+  if (optimizedOrder.length < 2) return optimizedOrder;
+
+  const fixedPrefixLength = lockedRoutePrefixLength({
+    order: optimizedOrder,
+    waypoints: args.waypoints,
+    lockedScheduleIdSet: args.lockedScheduleIdSet,
+  });
+  let segmentStart = fixedPrefixLength;
+  let remainingEvaluationBudget = MAX_TWO_OPT_CANDIDATE_EVALUATIONS;
+
+  while (segmentStart < optimizedOrder.length && remainingEvaluationBudget > 0) {
+    const firstWaypoint = args.waypoints[optimizedOrder[segmentStart]];
+    const priorityRank = routePriorityRank(firstWaypoint?.priority);
+    let segmentEnd = segmentStart + 1;
+    while (segmentEnd < optimizedOrder.length) {
+      const segmentWaypoint = args.waypoints[optimizedOrder[segmentEnd]];
+      if (routePriorityRank(segmentWaypoint?.priority) !== priorityRank) break;
+      segmentEnd += 1;
+    }
+
+    remainingEvaluationBudget = improveRouteOrderSegmentWithTwoOpt({
+      order: optimizedOrder,
+      matrix: args.matrix,
+      segmentStart,
+      segmentEnd,
+      remainingEvaluationBudget,
+    });
+    segmentStart = segmentEnd;
+  }
+
+  return optimizedOrder;
+}
+
+function summarizeHeuristicRouteOrder(args: {
+  order: number[];
+  waypoints: VisitRouteWaypoint[];
+  matrix: RouteMatrix;
+}): Pick<
+  VisitRoutePlan,
+  'stopSummaries' | 'totalDistanceMeters' | 'totalDurationSeconds' | 'distanceSource'
+> {
+  const stopSummaries: VisitRoutePlan['stopSummaries'] = [];
+  let currentNodeIndex = 0;
+  let totalDistanceMeters = 0;
+  let totalDurationSeconds = 0;
+  let distanceSource: VisitRouteDistanceSource | null = null;
+
+  for (const [index, waypointIdx] of args.order.entries()) {
+    const waypoint = args.waypoints[waypointIdx]!;
+    const targetNodeIndex = waypointIdx + 1;
+    const cell = args.matrix[currentNodeIndex]?.[targetNodeIndex] ?? null;
+    const distanceMeters = cell ? Math.round(cell.meters) : null;
+    const durationSeconds = cell ? cell.seconds : null;
+
+    totalDistanceMeters += distanceMeters ?? 0;
+    totalDurationSeconds += durationSeconds ?? 0;
+    distanceSource = mergeRouteDistanceSource(distanceSource, cell?.distanceSource ?? null);
+    stopSummaries.push({
+      scheduleId: waypoint.scheduleId,
+      optimizedOrder: index + 1,
+      arrivalOffsetSeconds: totalDurationSeconds,
+      distanceFromPreviousMeters: distanceMeters,
+      durationFromPreviousSeconds: durationSeconds,
+      distanceSource: cell?.distanceSource ?? null,
+      ...stopServiceFields(waypoint),
+    });
+    totalDurationSeconds += waypointServiceDurationSeconds(waypoint);
+    currentNodeIndex = targetNodeIndex;
+  }
+
+  const returnToOrigin = args.matrix[currentNodeIndex]?.[0] ?? null;
+  if (returnToOrigin) {
+    totalDistanceMeters += Math.round(returnToOrigin.meters);
+    totalDurationSeconds += returnToOrigin.seconds;
+    distanceSource = mergeRouteDistanceSource(distanceSource, returnToOrigin.distanceSource);
+  }
+
+  return {
+    stopSummaries,
+    totalDistanceMeters,
+    totalDurationSeconds,
+    distanceSource,
+  };
 }
 
 async function computeGoogleWaypointRoute(args: {
@@ -595,11 +803,7 @@ async function computeHeuristicRoute(args: {
   // waypoint node index in `nodes` array = waypointIndex + 1 (0 is origin)
   const remaining = args.waypoints.map((_, idx) => idx); // indices into args.waypoints
   const ordered: number[] = [];
-  const stopSummaries: VisitRoutePlan['stopSummaries'] = [];
   let currentNodeIndex = 0; // origin
-  let totalDistanceMeters = 0;
-  let totalDurationSeconds = 0;
-  let distanceSource: VisitRouteDistanceSource | null = null;
   const usesPriorityConstraint = hasPriorityRouteConstraint(args.waypoints);
 
   // 確定済み(ロック)訪問を入力順のまま先頭に固定する。残りは貪欲法で最適化する。
@@ -623,24 +827,7 @@ async function computeHeuristicRoute(args: {
       const forcedRemIdx = remaining.indexOf(forcedWaypointIdx);
       remaining.splice(forcedRemIdx, 1);
       ordered.push(forcedWaypointIdx);
-      const targetNodeIndex = forcedWaypointIdx + 1;
-      const cell = matrix[currentNodeIndex][targetNodeIndex];
-      const distanceMeters = cell ? cell.meters : null;
-      const durationSeconds = cell ? cell.seconds : null;
-      totalDistanceMeters += distanceMeters != null ? Math.round(distanceMeters) : 0;
-      totalDurationSeconds += durationSeconds != null ? durationSeconds : 0;
-      distanceSource = mergeRouteDistanceSource(distanceSource, cell?.distanceSource ?? null);
-      stopSummaries.push({
-        scheduleId: args.waypoints[forcedWaypointIdx].scheduleId,
-        optimizedOrder: ordered.length,
-        arrivalOffsetSeconds: totalDurationSeconds,
-        distanceFromPreviousMeters: distanceMeters != null ? Math.round(distanceMeters) : null,
-        durationFromPreviousSeconds: durationSeconds,
-        distanceSource: cell?.distanceSource ?? null,
-        ...stopServiceFields(args.waypoints[forcedWaypointIdx]),
-      });
-      totalDurationSeconds += waypointServiceDurationSeconds(args.waypoints[forcedWaypointIdx]);
-      currentNodeIndex = targetNodeIndex;
+      currentNodeIndex = forcedWaypointIdx + 1;
       continue;
     }
 
@@ -650,7 +837,6 @@ async function computeHeuristicRoute(args: {
     );
     let bestDistanceMeters = Number.POSITIVE_INFINITY;
     let bestDurationSeconds = Number.POSITIVE_INFINITY;
-    let bestDistanceSource: VisitRouteLegDistanceSource | null = null;
 
     for (let remIdx = 0; remIdx < remaining.length; remIdx++) {
       const waypointIdx = remaining[remIdx];
@@ -675,39 +861,25 @@ async function computeHeuristicRoute(args: {
         bestRemIdx = remIdx;
         bestDistanceMeters = distanceMeters;
         bestDurationSeconds = durationSeconds;
-        bestDistanceSource = cell?.distanceSource ?? null;
       }
     }
 
     const [nextWaypointIdx] = remaining.splice(bestRemIdx, 1);
     ordered.push(nextWaypointIdx);
-    const nextWaypoint = args.waypoints[nextWaypointIdx];
-    totalDistanceMeters += Number.isFinite(bestDistanceMeters) ? Math.round(bestDistanceMeters) : 0;
-    totalDurationSeconds += Number.isFinite(bestDurationSeconds) ? bestDurationSeconds : 0;
-    distanceSource = mergeRouteDistanceSource(distanceSource, bestDistanceSource);
-    stopSummaries.push({
-      scheduleId: nextWaypoint.scheduleId,
-      optimizedOrder: ordered.length,
-      arrivalOffsetSeconds: totalDurationSeconds,
-      distanceFromPreviousMeters: Number.isFinite(bestDistanceMeters)
-        ? Math.round(bestDistanceMeters)
-        : null,
-      durationFromPreviousSeconds: Number.isFinite(bestDurationSeconds)
-        ? bestDurationSeconds
-        : null,
-      distanceSource: bestDistanceSource,
-      ...stopServiceFields(nextWaypoint),
-    });
-    totalDurationSeconds += waypointServiceDurationSeconds(nextWaypoint);
     currentNodeIndex = nextWaypointIdx + 1;
   }
 
-  const returnToOrigin = matrix[currentNodeIndex]?.[0] ?? null;
-  if (returnToOrigin) {
-    totalDistanceMeters += Math.round(returnToOrigin.meters);
-    totalDurationSeconds += returnToOrigin.seconds;
-    distanceSource = mergeRouteDistanceSource(distanceSource, returnToOrigin.distanceSource);
-  }
+  const optimizedOrder = optimizeRouteOrderWithinConstraints({
+    greedyOrder: ordered,
+    waypoints: args.waypoints,
+    matrix,
+    lockedScheduleIdSet,
+  });
+  const routeSummary = summarizeHeuristicRouteOrder({
+    order: optimizedOrder,
+    waypoints: args.waypoints,
+    matrix,
+  });
 
   const baseNote = usesPriorityConstraint
     ? '優先度を優先したヒューリスティック順序を表示しています'
@@ -721,11 +893,11 @@ async function computeHeuristicRoute(args: {
     travelMode: args.travelMode,
     origin: args.origin,
     encodedPath: null,
-    orderedScheduleIds: ordered.map((idx) => args.waypoints[idx].scheduleId),
-    totalDistanceMeters,
-    totalDurationSeconds,
-    distanceSource,
-    stopSummaries,
+    orderedScheduleIds: optimizedOrder.map((idx) => args.waypoints[idx].scheduleId),
+    totalDistanceMeters: routeSummary.totalDistanceMeters,
+    totalDurationSeconds: routeSummary.totalDurationSeconds,
+    distanceSource: routeSummary.distanceSource,
+    stopSummaries: routeSummary.stopSummaries,
   };
 }
 

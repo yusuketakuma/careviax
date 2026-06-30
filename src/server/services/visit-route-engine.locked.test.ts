@@ -85,6 +85,80 @@ describe('computeOptimizedVisitRoute (lockedScheduleIds)', () => {
     expect(result.orderedScheduleIds).toEqual(['locked_x', 'free_near', 'free_far']);
   });
 
+  it('keeps the locked prefix pinned while improving the unlocked tail with 2-opt', async () => {
+    const estimateOne = vi.fn(async () => null);
+    const estimateMatrix = vi.fn(async () => [
+      [
+        null,
+        { durationMinutes: 1, distanceKm: 1 },
+        { durationMinutes: 20, distanceKm: 20 },
+        { durationMinutes: 20, distanceKm: 20 },
+        { durationMinutes: 20, distanceKm: 20 },
+        { durationMinutes: 20, distanceKm: 20 },
+      ],
+      [
+        { durationMinutes: 1, distanceKm: 1 },
+        null,
+        { durationMinutes: 10, distanceKm: 10 },
+        { durationMinutes: 20, distanceKm: 20 },
+        { durationMinutes: 20, distanceKm: 20 },
+        { durationMinutes: 20, distanceKm: 20 },
+      ],
+      [
+        { durationMinutes: 50, distanceKm: 50 },
+        { durationMinutes: 50, distanceKm: 50 },
+        null,
+        { durationMinutes: 1, distanceKm: 1 },
+        { durationMinutes: 10, distanceKm: 10 },
+        { durationMinutes: 10, distanceKm: 10 },
+      ],
+      [
+        { durationMinutes: 20, distanceKm: 20 },
+        { durationMinutes: 50, distanceKm: 50 },
+        { durationMinutes: 50, distanceKm: 50 },
+        null,
+        { durationMinutes: 1, distanceKm: 1 },
+        { durationMinutes: 1, distanceKm: 1 },
+      ],
+      [
+        { durationMinutes: 1, distanceKm: 1 },
+        { durationMinutes: 50, distanceKm: 50 },
+        { durationMinutes: 50, distanceKm: 50 },
+        { durationMinutes: 1, distanceKm: 1 },
+        null,
+        { durationMinutes: 1, distanceKm: 1 },
+      ],
+      [
+        { durationMinutes: 100, distanceKm: 100 },
+        { durationMinutes: 50, distanceKm: 50 },
+        { durationMinutes: 50, distanceKm: 50 },
+        { durationMinutes: 50, distanceKm: 50 },
+        { durationMinutes: 1, distanceKm: 1 },
+        null,
+      ],
+    ]);
+    createRoadTravelEstimatorMock.mockReturnValue(Object.assign(estimateOne, { estimateMatrix }));
+
+    const result = await computeOptimizedVisitRoute({
+      origin,
+      travelMode,
+      waypoints: [
+        { scheduleId: 'locked_x', patientName: '確定X', address: '', lat: 35.9, lng: 139.0 },
+        { scheduleId: 'free_a', patientName: '通常A', address: '', lat: 35.1, lng: 139.0 },
+        { scheduleId: 'free_b', patientName: '通常B', address: '', lat: 35.2, lng: 139.0 },
+        { scheduleId: 'free_c', patientName: '通常C', address: '', lat: 35.3, lng: 139.0 },
+        { scheduleId: 'free_d', patientName: '通常D', address: '', lat: 35.4, lng: 139.0 },
+      ],
+      lockedScheduleIds: ['locked_x'],
+    });
+
+    expect(result.status).toBe('ok');
+    expect(result.orderedScheduleIds).toEqual(['locked_x', 'free_a', 'free_b', 'free_d', 'free_c']);
+    expect(result.stopSummaries.map((stop) => stop.optimizedOrder)).toEqual([1, 2, 3, 4, 5]);
+    expect(result.totalDurationSeconds).toBe(15 * 60);
+    expect(estimateOne).not.toHaveBeenCalled();
+  });
+
   it('behaves like the default heuristic when lockedScheduleIds is empty', async () => {
     createRoadTravelEstimatorMock.mockReturnValue(
       async (_from: unknown, to: { lat: number; lng: number }) => {
