@@ -1,6 +1,8 @@
 import type { HomeLinkContext } from '@/lib/dashboard/home-link-builders';
+import { buildConferencesHref, buildExternalHref } from '@/lib/dashboard/home-link-builders';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
+import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { buildVisitHref } from '@/lib/visits/navigation';
 
 export type CommunicationEntityLink = {
@@ -66,18 +68,18 @@ export function resolveCommunicationEntityLink(input: {
         };
       case 'visit_schedule':
         return {
-          href: '/schedules',
+          href: buildScheduleFocusHref(input.entityId),
           label: 'スケジュール',
         };
       case 'conference_note':
         return {
-          href: '/conferences',
+          href: buildConferencesHref({ focus: 'notes' }),
           label: 'カンファレンス',
         };
       case 'patient_self_report':
         return {
-          href: '/external',
-          label: '外部共有',
+          href: buildExternalHref({ focus: 'self_reports' }),
+          label: '自己申告',
         };
       default:
         return null;

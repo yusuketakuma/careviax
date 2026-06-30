@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-1733 JST
+
+- current task: focus communication request related-entity links on the exact schedule row or collaboration queue instead of generic schedule/external/conference indexes.
+- files inspected: `git status --short --untracked-files=all`, `src/lib/communications/navigation.ts`, `src/lib/communications/navigation.test.ts`, `src/lib/schedules/navigation.ts`, `src/lib/schedules/navigation.test.ts`, `src/lib/dashboard/home-link-builders.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/lib/communications/navigation.ts`, `src/lib/communications/navigation.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Unrelated dirty `src/components/features/patients/patient-form.tsx` / `.test.tsx` was preserved.
+- bugs found: communication request related-entity links still sent `visit_schedule` to generic `/schedules`, `conference_note` to generic `/conferences`, and `patient_self_report` to generic `/external` with an `外部共有` label. Staff could lose the exact schedule row or self-report queue context from a collaboration follow-up.
+- security risks found: reduced wrong-workspace navigation risk by routing schedule links through `buildScheduleFocusHref()` and using existing focused queue builders for conference notes and self reports. No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- performance issues found: link construction only; no new query, dependency, network call, background job, payload expansion, broad scan, or loop changed.
+- validation commands: focused communication/schedule navigation Vitest; scoped ESLint; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused Vitest passed `2` files / `32` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- remaining work: commit only the two owned communication navigation files and ledger files for this coherent slice, then continue scanning visit/report/collaboration surfaces for generic action links or missing relation filters.
+- next action: commit `Focus communication related entity links`, send agmsg FYI, and continue the next clean slice.
+
 ### 20260630-1728 JST
 
 - current task: attach visit-record-origin tracing follow-up tasks to the generated/reused tracing report so collaboration follow-up links can resolve to the related request context.
@@ -13053,3 +13066,16 @@ Backup directory:
 - validation results: focused patient form suite passed `1` file / `18` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint` passed.
 - remaining work: the broad master-management/patient-information goal remains open. Next patient slice should inspect current patient edit/register service-area and care-team query failure handling. Do not broad-stage because the worktree remains mixed dirty.
 - next action: continue the next bounded patient information management slice after rechecking dirty ownership.
+
+### 20260630-1731 JST
+
+- current task: continue patient information management by preventing service-area and care-team master query failures from appearing as empty patient-form state.
+- files inspected: `git status --short --untracked-files=all`, `git log --oneline -n 12`, `CODEX_GOAL_PROGRESS.md`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `src/components/features/patients/patient-form.tsx`, `src/components/features/patients/patient-form.test.tsx`, `src/lib/patient/service-area.ts`, and the current unrelated dirty diff in `src/lib/communications/navigation.ts` / `src/lib/communications/navigation.test.ts`.
+- files changed: `src/components/features/patients/patient-form.tsx`, `src/components/features/patients/patient-form.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Unrelated dirty `src/lib/communications/navigation.ts` and `src/lib/communications/navigation.test.ts` were preserved.
+- bugs found: service-area query failure used `data ?? []` and suppressed coverage checks as if no configured area needed evaluation. Care-team pharmacist/staff query failures also used `data ?? []`, leaving assignment selects looking intentionally unassigned instead of failed.
+- security risks found: reduced false-empty master-data risk for patient service-area coverage and patient care-team assignment. Existing optional assignment behavior, user-entered form state, org headers, patient path helpers, and facility-unit path hardening remain intact. No auth/RLS policy, permission, PHI export, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation changed.
+- performance issues found: no new query, background job, dependency, broad scan, unbounded loop, or render-heavy path was added. Existing query state is reused for small conditional messages and disabled placeholders.
+- validation commands: `pnpm exec prettier --write src/components/features/patients/patient-form.tsx src/components/features/patients/patient-form.test.tsx`; focused `pnpm exec vitest run src/components/features/patients/patient-form.test.tsx --reporter=dot --testTimeout=60000`; scoped `pnpm exec eslint --max-warnings=0 src/components/features/patients/patient-form.tsx src/components/features/patients/patient-form.test.tsx`; scoped `pnpm exec prettier --check src/components/features/patients/patient-form.tsx src/components/features/patients/patient-form.test.tsx`; scoped `git diff --check -- src/components/features/patients/patient-form.tsx src/components/features/patients/patient-form.test.tsx`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`.
+- validation results: focused patient form suite passed `1` file / `20` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint` passed.
+- remaining work: the broad master-management/patient-information goal remains open. Next bounded slice should inspect current master-management API/list pages for false-empty/stale-state/audit gaps. Do not broad-stage because unrelated communication navigation files are dirty.
+- next action: continue the next bounded master-management or patient-information slice after rechecking dirty ownership.

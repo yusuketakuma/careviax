@@ -30,6 +30,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Communication Related Entity Focus Links - 2026-06-30 17:33 JST
+
+- Scope:
+  - Continued visit/report/collaboration navigation cleanup in the shared communication request related-entity resolver.
+  - No UI layout, schema migration, live DB operation, auth/RLS change, external send, push/deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `visit_schedule` related-entity links now use `buildScheduleFocusHref(entityId)` instead of generic `/schedules`.
+  - `conference_note` related-entity links now open `/conferences?focus=notes` instead of generic `/conferences`.
+  - `patient_self_report` related-entity links now open `/external?focus=self_reports` and label the link as `自己申告` instead of generic `外部共有`.
+  - Regression tests cover hostile schedule IDs, dot-segment schedule IDs held inside query parameters, and focused static destinations for conference/self-report entities.
+- Safety:
+  - Reduces wrong-workspace navigation from communication request detail/follow-up surfaces by preserving the related schedule context and opening the correct collaboration queues.
+  - Uses existing shared navigation builders; no raw path string concatenation for the new dynamic schedule link.
+- Performance:
+  - Link construction only. No new query, dependency, network call, background job, payload expansion, render loop, or broad scan was added.
+- Validation:
+  - `pnpm exec vitest run src/lib/communications/navigation.test.ts src/lib/schedules/navigation.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `32` tests.
+  - Scoped ESLint on communication navigation, dashboard link builder, and schedule navigation files: passed.
+  - Scoped Prettier check on communication navigation files: passed.
+  - Scoped `git diff --check` on communication navigation files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Continue scanning visit-time/report/collaboration surfaces for generic action links or missing relation filters.
+  - Unrelated dirty `src/components/features/patients/patient-form.tsx` / `.test.tsx` remains preserved and is not part of this slice.
+
 ### Visit-Record Tracing Follow-Up Relation - 2026-06-30 17:28 JST
 
 - Scope:
@@ -24879,3 +24905,27 @@ Next loop:
 - Remaining:
   - The broad master-management/patient-information goal remains open. Next patient slice should inspect whether current patient edit/register facility-service-area and care-team queries need the same false-empty/error-near-field treatment.
   - Do not broad-stage because the worktree contains many mixed dirty files from other slices.
+
+### Patient Form Service Area And Care Team False-Empty Hardening - 2026-06-30 17:31 JST
+
+- Scope:
+  - Continued patient information management by hardening the remaining master-data selectors in the current `PatientForm`.
+  - Focused on service-area coverage checks and patient-level care-team selectors, which still treated query failures as empty option sets.
+- Fixed:
+  - Service-area query failures now render a retryable inline error near the address/coverage section instead of suppressing visit-area checks.
+  - Service-area coverage warnings are only evaluated after a successful service-area query, so failed master-data loading is not presented as a real no-match/empty state.
+  - Pharmacist and staff care-team query failures now render retryable inline errors in the care-team section.
+  - Care-team selects are disabled during loading/failure and show explicit failure placeholders instead of `未設定`, preventing users from confusing a failed master lookup with an intentionally unassigned team.
+- Safety:
+  - Reduces false-empty master-data risk for patient registration/editing across service areas, pharmacists, and staff assignments.
+  - Keeps user-entered patient data intact on query failure and preserves the existing optional assignment behavior once candidate lists load successfully.
+  - No auth/RLS policy, permission, PHI export, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - No new query, background job, dependency, broad scan, or unbounded loop was added.
+  - The extra work is limited to existing query state checks and small conditional error/status rendering.
+- Validation:
+  - `pnpm exec vitest run src/components/features/patients/patient-form.test.tsx --reporter=dot --testTimeout=60000`: passed, `1` file / `20` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint`: passed.
+- Remaining:
+  - The broad master-management/patient-information goal remains open. Next slice should inspect current master-management API/list pages for the same false-empty pattern and stale-state/audit gaps.
+  - Do not broad-stage because the worktree contains unrelated dirty `communications` files from another slice.

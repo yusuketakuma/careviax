@@ -84,11 +84,24 @@ describe('communication navigation helpers', () => {
     });
   });
 
+  it('focuses visit schedule related entities on the schedule row', () => {
+    const scheduleId = '../schedule with space?x=1#frag';
+
+    expect(
+      resolveCommunicationEntityLink({
+        entityType: 'visit_schedule',
+        entityId: scheduleId,
+      }),
+    ).toEqual({
+      href: `/schedules?focus=schedule&schedule_id=${encodeURIComponent(scheduleId)}`,
+      label: 'スケジュール',
+    });
+  });
+
   it.each([
     ['tracing_report', '/reports#tracing-reports', 'トレーシング一覧'],
-    ['visit_schedule', '/schedules', 'スケジュール'],
-    ['conference_note', '/conferences', 'カンファレンス'],
-    ['patient_self_report', '/external', '外部共有'],
+    ['conference_note', '/conferences?focus=notes', 'カンファレンス'],
+    ['patient_self_report', '/external?focus=self_reports', '自己申告'],
   ])('keeps %s static destinations independent of entity ids', (entityType, href, label) => {
     expect(
       resolveCommunicationEntityLink({
@@ -166,10 +179,25 @@ describe('communication navigation helpers', () => {
         entityId: 'schedule_1',
       }),
     ).toEqual({
-      href: '/schedules',
+      href: '/schedules?focus=schedule&schedule_id=schedule_1',
       label: 'スケジュール',
     });
   });
+
+  it.each(['.', '..'])(
+    'keeps visit_schedule dot segment ids inside the schedule focus query %s',
+    (dotEntityId) => {
+      expect(
+        resolveCommunicationEntityLink({
+          entityType: 'visit_schedule',
+          entityId: dotEntityId,
+        }),
+      ).toEqual({
+        href: `/schedules?focus=schedule&schedule_id=${encodeURIComponent(dotEntityId)}`,
+        label: 'スケジュール',
+      });
+    },
+  );
 
   it('delegates dynamic hrefs to the shared guarded helpers (not a local builder)', () => {
     expect(
@@ -190,9 +218,8 @@ describe('communication navigation helpers', () => {
 
   it.each([
     ['tracing_report', '/reports#tracing-reports', 'トレーシング一覧'],
-    ['visit_schedule', '/schedules', 'スケジュール'],
-    ['conference_note', '/conferences', 'カンファレンス'],
-    ['patient_self_report', '/external', '外部共有'],
+    ['conference_note', '/conferences?focus=notes', 'カンファレンス'],
+    ['patient_self_report', '/external?focus=self_reports', '自己申告'],
   ])(
     'keeps %s static destination even when entityId is a dot segment (no over-broad pre-switch guard)',
     (entityType, href, label) => {
