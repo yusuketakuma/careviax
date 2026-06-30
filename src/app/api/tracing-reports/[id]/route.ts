@@ -5,12 +5,20 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { success, validationError, notFound, forbidden, internalError } from '@/lib/api/response';
+import {
+  success,
+  validationError,
+  notFound,
+  forbidden,
+  conflict,
+  internalError,
+} from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { buildTracingReportPdfPath } from '@/lib/reports/tracing-report-pdf-path';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
+import { z } from 'zod';
 import {
   communicationChannelSchema,
   DEFAULT_COMMUNICATION_CHANNEL,
@@ -114,6 +122,17 @@ const ALLOWED_TRACING_STATUS_TRANSITIONS: Record<
   acknowledged: [],
 };
 
+const patchTracingReportVersionSchema = z.object({
+  expected_updated_at: z.string().datetime('版情報が不正です'),
+});
+
+class TracingReportPatchRollback extends Error {
+  constructor() {
+    super('tracing report patch transaction rolled back');
+    this.name = 'TracingReportPatchRollback';
+  }
+}
+
 // チャネル未指定時は自動送信可能な既定チャネル（ph_os_share）にフォールバックする。
 // かつて存在した暗黙の 'fax' 既定（FAX ゲートウェイ未実装のため実際には送信されない
 // 幻のチャネル）は廃止した。FAX を選ぶ場合は手動送付の記録として明示指定が必要。
@@ -155,6 +174,15 @@ async function authenticatedPATCH(
       return withSensitiveNoStore(validationError('リクエストボディが不正です'));
     }
 
+    const parsedVersion = patchTracingReportVersionSchema.safeParse(payload);
+    if (!parsedVersion.success) {
+      return withSensitiveNoStore(
+        validationError('入力値が不正です', parsedVersion.error.flatten().fieldErrors),
+      );
+    }
+    const expectedUpdatedAtRaw = parsedVersion.data.expected_updated_at;
+    const expectedUpdatedAt = new Date(expectedUpdatedAtRaw);
+
     const parsedStatus = optionalTracingReportStatusSchema.safeParse(payload.status);
     const status = parsedStatus.success ? parsedStatus.data : undefined;
     const sentToPhysician =
@@ -183,6 +211,7 @@ async function authenticatedPATCH(
         sent_to_physician: true,
         sent_at: true,
         acknowledged_at: true,
+        updated_at: true,
       },
     });
 
@@ -201,6 +230,15 @@ async function authenticatedPATCH(
 
     if (existing.status === 'acknowledged') {
       return withSensitiveNoStore(forbidden('受領確認済みのトレーシングレポートは更新できません'));
+    }
+
+    if (existing.updated_at.getTime() !== expectedUpdatedAt.getTime()) {
+      return withSensitiveNoStore(
+        conflict('トレーシングレポートが更新されています。最新の内容を確認してください', {
+          expected_updated_at: expectedUpdatedAtRaw,
+          current_updated_at: existing.updated_at.toISOString(),
+        }),
+      );
     }
 
     if (status !== existing.status) {
@@ -227,8 +265,17 @@ async function authenticatedPATCH(
     const result = await withOrgContext(
       ctx.orgId,
       async (tx) => {
-        const updated = await tx.tracingReport.update({
-          where: { id },
+        const tracingClaim = await tx.tracingReport.updateMany({
+          where: {
+            id,
+            org_id: ctx.orgId,
+            patient_id: existing.patient_id,
+            case_id: existing.case_id,
+            status: existing.status,
+            sent_at: existing.sent_at,
+            acknowledged_at: existing.acknowledged_at,
+            updated_at: expectedUpdatedAt,
+          },
           data: {
             status,
             ...(physicianName ? { sent_to_physician: physicianName } : {}),
@@ -238,6 +285,14 @@ async function authenticatedPATCH(
               : {}),
             pdf_url: buildTracingReportPdfPath(id),
           },
+        });
+
+        if (tracingClaim.count !== 1) {
+          throw new TracingReportPatchRollback();
+        }
+
+        const updated = await tx.tracingReport.findFirst({
+          where: { id, org_id: ctx.orgId },
           select: {
             id: true,
             patient_id: true,
@@ -253,6 +308,9 @@ async function authenticatedPATCH(
             updated_at: true,
           },
         });
+        if (!updated) {
+          throw new TracingReportPatchRollback();
+        }
 
         const linkedRequests = await tx.communicationRequest.findMany({
           where: {
@@ -262,7 +320,15 @@ async function authenticatedPATCH(
             patient_id: updated.patient_id,
             case_id: updated.case_id ?? null,
           },
-          select: { id: true, status: true },
+          select: {
+            id: true,
+            patient_id: true,
+            case_id: true,
+            related_entity_type: true,
+            related_entity_id: true,
+            status: true,
+            updated_at: true,
+          },
         });
 
         const linkedRequestStatus =
@@ -272,13 +338,25 @@ async function authenticatedPATCH(
         if (status !== 'draft') {
           if (linkedRequests.length > 0) {
             for (const linkedRequest of linkedRequests) {
-              await tx.communicationRequest.update({
-                where: { id: linkedRequest.id },
+              const linkedRequestClaim = await tx.communicationRequest.updateMany({
+                where: {
+                  id: linkedRequest.id,
+                  org_id: ctx.orgId,
+                  patient_id: linkedRequest.patient_id,
+                  case_id: linkedRequest.case_id,
+                  related_entity_type: linkedRequest.related_entity_type,
+                  related_entity_id: linkedRequest.related_entity_id,
+                  status: linkedRequest.status,
+                  updated_at: linkedRequest.updated_at,
+                },
                 data: {
                   status: linkedRequestStatus,
                   recipient_name: physicianName,
                 },
               });
+              if (linkedRequestClaim.count !== 1) {
+                throw new TracingReportPatchRollback();
+              }
               linkedRequestIds.push(linkedRequest.id);
 
               if (status !== existing.status && linkedRequest.status !== linkedRequestStatus) {
@@ -382,6 +460,11 @@ async function authenticatedPATCH(
 
     return withSensitiveNoStore(success({ data: result }));
   } catch (err) {
+    if (err instanceof TracingReportPatchRollback) {
+      return withSensitiveNoStore(
+        conflict('トレーシングレポートが更新されています。最新の内容を確認してください'),
+      );
+    }
     unstable_rethrow(err);
     logUnhandledRouteError('PATCH', err);
     return withSensitiveNoStore(internalError());

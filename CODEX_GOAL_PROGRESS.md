@@ -30,6 +30,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Tracing Report PATCH Version Guard - 2026-07-01 01:18 JST
+
+- Scope:
+  - Continued interprofessional collaboration hardening after the communication-request tracing guards.
+  - Focused on `PATCH /api/tracing-reports/[id]` and its linked communication-request sync.
+- Fixed:
+  - Tracing-report PATCH now requires `expected_updated_at`.
+  - The report update is claimed by org, patient, case, status, sent/ack timestamps, and version.
+  - Linked communication requests are synced through guarded `updateMany` claims instead of id-only writes.
+- Safety:
+  - Reduces stale tracing-report and communication-request status sync risk under concurrent operator updates.
+  - Preserves auth, case access checks, status-transition validation, no-store wrappers, PHI/error sanitization, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Uses narrow conditional updates and one updated-report read.
+  - No new broad scan, dependency, background job, external call, render path, or unbounded loop was added.
+- Validation:
+  - `pnpm vitest run 'src/app/api/tracing-reports/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `1` file / `19` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master-management / patient-information objective remains open.
+
 ### Archived Patient Summary Propagation - 2026-07-01 01:10 JST
 
 - Scope:
@@ -49,6 +74,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - No new broad scan, dependency, background job, external call, unbounded loop, or heavy render path was added.
 - Validation:
   - Changed-test suite covering communication request PATCH, visit brief, external access, brief batch, day board, schedule team board, offline panel, schedule-day brief cache, archive helper, visit-brief cache, visit-brief card, and shared viewer: passed, `12` files / `161` tests.
+  - Current-head follow-up caught a test-only TypeScript narrowing issue where `brief-batch` fixtures inferred `patient.archive` as `null`; fixed with a `VisitBrief` fixture annotation and archive literal narrowing.
+  - Affected follow-up tests `pnpm exec vitest run src/app/api/visit-preparations/brief-batch/route.test.ts 'src/app/(dashboard)/schedules/schedule-day-visit-brief-cache.test.ts' --reporter=dot --testTimeout=60000`: passed, `2` files / `18` tests.
   - `pnpm typecheck`: passed.
   - `pnpm typecheck:no-unused`: passed.
   - `pnpm lint`: passed.

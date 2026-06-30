@@ -4,12 +4,13 @@ import { NextRequest, NextResponse } from 'next/server';
 const {
   requireAuthContextMock,
   tracingReportFindFirstMock,
-  tracingReportUpdateMock,
+  tracingReportUpdateManyMock,
+  tracingReportFindUpdatedMock,
   tracingReportDeleteMock,
   careCaseFindFirstMock,
   communicationRequestFindManyMock,
   communicationRequestCreateMock,
-  communicationRequestUpdateMock,
+  communicationRequestUpdateManyMock,
   communicationEventCreateMock,
   auditLogCreateMock,
   loggerErrorMock,
@@ -17,12 +18,13 @@ const {
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   tracingReportFindFirstMock: vi.fn(),
-  tracingReportUpdateMock: vi.fn(),
+  tracingReportUpdateManyMock: vi.fn(),
+  tracingReportFindUpdatedMock: vi.fn(),
   tracingReportDeleteMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   communicationRequestFindManyMock: vi.fn(),
   communicationRequestCreateMock: vi.fn(),
-  communicationRequestUpdateMock: vi.fn(),
+  communicationRequestUpdateManyMock: vi.fn(),
   communicationEventCreateMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   loggerErrorMock: vi.fn(),
@@ -54,6 +56,18 @@ vi.mock('@/lib/utils/logger', () => ({
 
 import { DELETE, PATCH } from './route';
 
+const CURRENT_UPDATED_AT = '2026-03-28T04:30:00.000Z';
+const STALE_UPDATED_AT = '2026-03-28T04:29:59.000Z';
+const LINKED_REQUEST_UPDATED_AT = new Date('2026-03-28T05:30:00.000Z');
+
+function withDefaultPatchVersion(body: unknown) {
+  if (body && typeof body === 'object' && !Array.isArray(body)) {
+    if (Object.prototype.hasOwnProperty.call(body, 'expected_updated_at')) return body;
+    return { expected_updated_at: CURRENT_UPDATED_AT, ...body };
+  }
+  return body;
+}
+
 function createRequest(body: unknown, headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/tracing-reports/tracing_1', {
     method: body === null ? 'DELETE' : 'PATCH',
@@ -61,7 +75,7 @@ function createRequest(body: unknown, headers?: Record<string, string>) {
       ...headers,
       ...(body === null ? {} : { 'content-type': 'application/json' }),
     },
-    body: body === null ? undefined : JSON.stringify(body),
+    body: body === null ? undefined : JSON.stringify(withDefaultPatchVersion(body)),
   });
 }
 
@@ -103,8 +117,10 @@ describe('/api/tracing-reports/[id] PATCH', () => {
       sent_to_physician: null,
       sent_at: null,
       acknowledged_at: null,
+      updated_at: new Date(CURRENT_UPDATED_AT),
     });
-    tracingReportUpdateMock.mockResolvedValue({
+    tracingReportUpdateManyMock.mockResolvedValue({ count: 1 });
+    tracingReportFindUpdatedMock.mockResolvedValue({
       id: 'tracing_1',
       patient_id: 'patient_1',
       case_id: 'case_1',
@@ -121,17 +137,18 @@ describe('/api/tracing-reports/[id] PATCH', () => {
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
     communicationRequestFindManyMock.mockResolvedValue([]);
     communicationRequestCreateMock.mockResolvedValue({ id: 'request_1' });
-    communicationRequestUpdateMock.mockResolvedValue({ id: 'request_1' });
+    communicationRequestUpdateManyMock.mockResolvedValue({ count: 1 });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         tracingReport: {
-          update: tracingReportUpdateMock,
+          updateMany: tracingReportUpdateManyMock,
+          findFirst: tracingReportFindUpdatedMock,
         },
         communicationRequest: {
           findMany: communicationRequestFindManyMock,
           create: communicationRequestCreateMock,
-          update: communicationRequestUpdateMock,
+          updateMany: communicationRequestUpdateManyMock,
         },
         communicationEvent: {
           create: communicationEventCreateMock,
@@ -166,9 +183,9 @@ describe('/api/tracing-reports/[id] PATCH', () => {
     expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(tracingReportUpdateMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();
-    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
@@ -189,13 +206,25 @@ describe('/api/tracing-reports/[id] PATCH', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    expect(tracingReportUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'tracing_1' },
+    expect(tracingReportUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'tracing_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        status: 'draft',
+        sent_at: null,
+        acknowledged_at: null,
+        updated_at: new Date(CURRENT_UPDATED_AT),
+      },
       data: expect.objectContaining({
         status: 'sent',
         sent_to_physician: '在宅主治医',
         pdf_url: '/api/tracing-reports/tracing_1/pdf',
       }),
+    });
+    expect(tracingReportFindUpdatedMock).toHaveBeenCalledWith({
+      where: { id: 'tracing_1', org_id: 'org_1' },
       select: expect.any(Object),
     });
     expect(communicationRequestCreateMock).toHaveBeenCalledWith({
@@ -251,7 +280,7 @@ describe('/api/tracing-reports/[id] PATCH', () => {
   });
 
   it('encodes only the pdf_url path segment and keeps tracing report identity raw', async () => {
-    tracingReportUpdateMock.mockResolvedValue({
+    tracingReportFindUpdatedMock.mockResolvedValue({
       id: HOSTILE_TRACING_REPORT_ID,
       patient_id: 'patient_1',
       case_id: 'case_1',
@@ -285,13 +314,16 @@ describe('/api/tracing-reports/[id] PATCH', () => {
         where: { id: HOSTILE_TRACING_REPORT_ID, org_id: 'org_1' },
       }),
     );
-    expect(tracingReportUpdateMock).toHaveBeenCalledWith({
-      where: { id: HOSTILE_TRACING_REPORT_ID },
+    expect(tracingReportUpdateManyMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: HOSTILE_TRACING_REPORT_ID,
+        org_id: 'org_1',
+        updated_at: new Date(CURRENT_UPDATED_AT),
+      }),
       data: expect.objectContaining({
         status: 'sent',
         pdf_url: HOSTILE_TRACING_REPORT_PDF_URL,
       }),
-      select: expect.any(Object),
     });
     expect(communicationRequestFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -391,9 +423,9 @@ describe('/api/tracing-reports/[id] PATCH', () => {
     });
     expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(tracingReportUpdateMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();
-    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
@@ -419,9 +451,9 @@ describe('/api/tracing-reports/[id] PATCH', () => {
     });
     expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(tracingReportUpdateMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();
-    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
@@ -435,9 +467,9 @@ describe('/api/tracing-reports/[id] PATCH', () => {
     expect(response.status).toBe(400);
     expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(tracingReportUpdateMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();
-    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
@@ -455,9 +487,9 @@ describe('/api/tracing-reports/[id] PATCH', () => {
     });
     expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(tracingReportUpdateMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();
-    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
@@ -475,6 +507,68 @@ describe('/api/tracing-reports/[id] PATCH', () => {
       message: 'ステータス変更理由は必須です',
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('requires expected_updated_at before loading the tracing report for mutation work', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          expected_updated_at: undefined,
+          status: 'sent',
+          sent_to_physician: '在宅主治医',
+          status_change_reason: '医師へ服薬情報提供書を送付',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'tracing_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { expected_updated_at: expect.any(Array) },
+    });
+    expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict for stale expected_updated_at before transaction side effects', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          expected_updated_at: STALE_UPDATED_AT,
+          status: 'sent',
+          sent_to_physician: '在宅主治医',
+          status_change_reason: '医師へ服薬情報提供書を送付',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'tracing_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        expected_updated_at: STALE_UPDATED_AT,
+        current_updated_at: CURRENT_UPDATED_AT,
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
@@ -497,9 +591,48 @@ describe('/api/tracing-reports/[id] PATCH', () => {
     expect(response.status).toBe(404);
     expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(tracingReportUpdateMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();
-    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rolls back when the tracing report claim loses the race inside the transaction', async () => {
+    tracingReportUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await PATCH(
+      createRequest(
+        {
+          status: 'sent',
+          sent_to_physician: '在宅主治医',
+          status_change_reason: '医師へ服薬情報提供書を送付',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'tracing_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+    });
+    expect(tracingReportUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'tracing_1',
+          org_id: 'org_1',
+          status: 'draft',
+          updated_at: new Date(CURRENT_UPDATED_AT),
+        }),
+      }),
+    );
+    expect(tracingReportFindUpdatedMock).not.toHaveBeenCalled();
+    expect(communicationRequestFindManyMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
@@ -513,8 +646,9 @@ describe('/api/tracing-reports/[id] PATCH', () => {
       sent_to_physician: '在宅主治医',
       sent_at: new Date('2026-03-28T05:00:00.000Z'),
       acknowledged_at: null,
+      updated_at: new Date(CURRENT_UPDATED_AT),
     });
-    tracingReportUpdateMock.mockResolvedValue({
+    tracingReportFindUpdatedMock.mockResolvedValue({
       id: 'tracing_1',
       patient_id: 'patient_1',
       case_id: 'case_1',
@@ -528,7 +662,17 @@ describe('/api/tracing-reports/[id] PATCH', () => {
       created_at: new Date('2026-03-28T04:00:00.000Z'),
       updated_at: new Date('2026-03-28T06:00:00.000Z'),
     });
-    communicationRequestFindManyMock.mockResolvedValue([{ id: 'request_1', status: 'received' }]);
+    communicationRequestFindManyMock.mockResolvedValue([
+      {
+        id: 'request_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        related_entity_type: 'tracing_report',
+        related_entity_id: 'tracing_1',
+        status: 'received',
+        updated_at: LINKED_REQUEST_UPDATED_AT,
+      },
+    ]);
 
     const response = await PATCH(
       createRequest(
@@ -540,8 +684,17 @@ describe('/api/tracing-reports/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(communicationRequestUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'request_1' },
+    expect(communicationRequestUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'request_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        related_entity_type: 'tracing_report',
+        related_entity_id: 'tracing_1',
+        status: 'received',
+        updated_at: LINKED_REQUEST_UPDATED_AT,
+      },
       data: {
         status: 'closed',
         recipient_name: '在宅主治医',
@@ -574,6 +727,61 @@ describe('/api/tracing-reports/[id] PATCH', () => {
         }),
       }),
     });
+  });
+
+  it('rolls back when a linked communication request claim loses the race', async () => {
+    communicationRequestFindManyMock.mockResolvedValue([
+      {
+        id: 'request_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        related_entity_type: 'tracing_report',
+        related_entity_id: 'tracing_1',
+        status: 'draft',
+        updated_at: LINKED_REQUEST_UPDATED_AT,
+      },
+    ]);
+    communicationRequestUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await PATCH(
+      createRequest(
+        {
+          status: 'sent',
+          sent_to_physician: '在宅主治医',
+          status_change_reason: '医師へ服薬情報提供書を送付',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'tracing_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+    });
+    expect(tracingReportUpdateManyMock).toHaveBeenCalled();
+    expect(tracingReportFindUpdatedMock).toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'request_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        related_entity_type: 'tracing_report',
+        related_entity_id: 'tracing_1',
+        status: 'draft',
+        updated_at: LINKED_REQUEST_UPDATED_AT,
+      },
+      data: {
+        status: 'sent',
+        recipient_name: '在宅主治医',
+      },
+    });
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 });
 
