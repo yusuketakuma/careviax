@@ -9,6 +9,7 @@ import { AlertTriangle, CheckCircle2, ListTodo, MessageCircle, Send, Share2 } fr
 import { toast } from 'sonner';
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { StateBadge } from '@/components/ui/state-badge';
 import { Loading } from '@/components/ui/loading';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -20,6 +21,7 @@ import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildCareReportApiPath } from '@/lib/reports/api-paths';
 import { buildReportHref } from '@/lib/reports/navigation';
+import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
 import type { CareReportActionPermissions } from '@/types/care-report-permissions';
 import {
   buildAudienceShareSections,
@@ -55,6 +57,7 @@ type ShareCareReport = {
   patient_summary?: {
     id: string;
     name: string | null;
+    archive?: PatientArchiveSummary | null;
   } | null;
   permissions?: CareReportActionPermissions;
 };
@@ -75,6 +78,31 @@ type CreateCommunicationRequestResponse = {
     status?: string;
   };
 };
+
+function ArchivedPatientShareNotice({
+  archive,
+  patientName,
+}: {
+  archive?: PatientArchiveSummary | null;
+  patientName: string | null;
+}) {
+  if (!archive?.archived) return null;
+  return (
+    <div className="rounded-lg border-l-4 border-border/70 border-l-state-blocked bg-card p-4 text-sm text-state-blocked">
+      <div className="flex flex-wrap items-center gap-2">
+        <StateBadge role="readonly" className="font-bold">
+          アーカイブ中
+        </StateBadge>
+        <p className="font-semibold">
+          {patientName ? `${patientName} 様は` : 'この患者は'}閲覧専用の患者正本です。
+        </p>
+      </div>
+      <p className="mt-1 text-xs leading-5 text-state-blocked/90">
+        復元するまで新規作業・共有・更新には使わないでください。外部共有の発行前に、対象患者と共有目的を再確認してください。
+      </p>
+    </div>
+  );
+}
 
 export function InterprofessionalShareContent({ reportId }: { reportId: string }) {
   const orgId = useOrgId();
@@ -349,6 +377,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   }
 
   const patientName = report.patient_summary?.name ?? null;
+  const patientArchive = report.patient_summary?.archive ?? null;
   const introShortcuts = [
     { href: '/reports', label: '報告書一覧' },
     ...(patientId && canViewPatient
@@ -389,6 +418,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
             shortcuts={introShortcuts}
             actions={externalShareAction}
           />
+          <ArchivedPatientShareNotice archive={patientArchive} patientName={patientName} />
           <div
             className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card p-4 text-state-confirm"
             data-testid="share-permission-warning"
@@ -419,6 +449,8 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
           shortcuts={introShortcuts}
           actions={externalShareAction}
         />
+
+        <ArchivedPatientShareNotice archive={patientArchive} patientName={patientName} />
 
         {supportingDataErrors.length > 0 ? (
           <div

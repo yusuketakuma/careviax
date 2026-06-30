@@ -152,6 +152,7 @@ describe('care-reports/[id] route', () => {
       name: '山田 太郎',
       name_kana: 'ヤマダ タロウ',
       birth_date: new Date('1940-01-01T00:00:00.000Z'),
+      archived_at: null,
     });
     visitRecordFindFirstMock.mockResolvedValue({
       id: 'visit_record_1',
@@ -243,6 +244,7 @@ describe('care-reports/[id] route', () => {
           name: '山田 太郎',
           name_kana: 'ヤマダ タロウ',
           birth_date: '1940-01-01',
+          archive: { status: 'active', archived: false, archived_at: null },
         },
         visit_summary: {
           id: 'visit_record_1',
@@ -269,6 +271,37 @@ describe('care-reports/[id] route', () => {
       },
     });
     expect(payload.data).not.toHaveProperty('org_id');
+  });
+
+  it('returns minimal archived-patient state in the report patient summary', async () => {
+    patientFindFirstMock.mockResolvedValueOnce({
+      id: 'patient_archived',
+      name: '山田 アーカイブ',
+      name_kana: 'ヤマダ アーカイブ',
+      birth_date: new Date('1940-01-01T00:00:00.000Z'),
+      archived_at: new Date('2026-06-30T09:00:00.000Z'),
+      archived_by: 'internal_user',
+    });
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const payload = await response.json();
+    expect(payload.data.patient_summary).toMatchObject({
+      id: 'patient_archived',
+      name: '山田 アーカイブ',
+      archive: {
+        status: 'archived',
+        archived: true,
+        archived_at: '2026-06-30T09:00:00.000Z',
+      },
+    });
+    expect(JSON.stringify(payload)).not.toContain('archived_by');
+    expect(JSON.stringify(payload)).not.toContain('internal_user');
   });
 
   it('returns a fixed sensitive no-store 500 when scoped report loading fails', async () => {

@@ -18,6 +18,7 @@ import { toPrismaJsonInput } from '@/lib/db/json';
 import { formatNullableDateKey } from '@/lib/date-key';
 import { z } from 'zod';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import { buildPatientArchiveSummary } from '@/lib/patient/archive-summary';
 import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
 import {
   findExternalProfessionalSuggestions,
@@ -159,6 +160,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
                 name: true,
                 name_kana: true,
                 birth_date: true,
+                archived_at: true,
               },
             })
           : Promise.resolve(null),
@@ -226,6 +228,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
                   name: patientSummary.name,
                   name_kana: patientSummary.name_kana,
                   birth_date: toDateOnlyString(patientSummary.birth_date),
+                  archive: buildPatientArchiveSummary(patientSummary.archived_at),
                 }
               : null,
             visit_summary: visitSummary

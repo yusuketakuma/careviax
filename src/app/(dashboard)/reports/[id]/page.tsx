@@ -38,6 +38,7 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 import { buildCareReportApiPath } from '@/lib/reports/api-paths';
+import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { formatDateLabel } from '@/lib/ui/date-format';
 import {
@@ -101,6 +102,7 @@ type CareReport = {
     name: string | null;
     name_kana: string | null;
     birth_date: string | null;
+    archive?: PatientArchiveSummary | null;
   } | null;
   visit_summary?: {
     id: string;
@@ -1019,6 +1021,14 @@ export default function ReportDetailPage() {
           name={patientName ?? report.patient_id}
           kana={patientKana}
           birthDate={patientBirthDate}
+          archive={
+            report.patient_summary?.archive
+              ? {
+                  archived: report.patient_summary.archive.archived,
+                  archivedAt: report.patient_summary.archive.archived_at,
+                }
+              : null
+          }
           sticky={false}
         />
         {/* p0: 報告内容の警告を本文/サイドバー前に要約再掲（モバイルで本文後に埋没させない）。 */}

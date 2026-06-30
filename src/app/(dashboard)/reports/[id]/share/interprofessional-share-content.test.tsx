@@ -8,11 +8,35 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
+import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
 import { InterprofessionalShareContent } from './interprofessional-share-content';
 
 setupDomTestEnv();
 
 const REPORT_UPDATED_AT_ISO = '2026-06-18T01:02:03.000Z';
+
+type ReportFixture = {
+  id: string;
+  patient_id: string;
+  case_id: string;
+  report_type: string;
+  updated_at: string;
+  status: string;
+  pdf_url: string | null;
+  patient_summary: {
+    id: string;
+    name: string | null;
+    archive: PatientArchiveSummary | null;
+  };
+  permissions: {
+    can_send: boolean;
+    can_create_external_share: boolean;
+    can_create_followup_task: boolean;
+    can_view_patient: boolean;
+    can_view_related_requests: boolean;
+  };
+  content: Record<string, unknown>;
+};
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
@@ -51,7 +75,7 @@ vi.mock('@/lib/reports/navigation', async (importActual) => {
   return { ...actual, buildReportHref: vi.fn(actual.buildReportHref) };
 });
 
-const REPORT = {
+const REPORT: ReportFixture = {
   id: 'rep_1',
   patient_id: 'pt_1',
   case_id: 'case_1',
@@ -59,7 +83,11 @@ const REPORT = {
   updated_at: REPORT_UPDATED_AT_ISO,
   status: 'sent',
   pdf_url: null,
-  patient_summary: { id: 'pt_1', name: '加藤 ミサ' },
+  patient_summary: {
+    id: 'pt_1',
+    name: '加藤 ミサ',
+    archive: null as PatientArchiveSummary | null,
+  },
   permissions: {
     can_send: true,
     can_create_external_share: true,
@@ -314,6 +342,27 @@ describe('InterprofessionalShareContent', () => {
     expect(screen.getByTestId('share-open-request-link').getAttribute('href')).toBe(
       '/communications/requests?status=responded&request_type=care_report_reply_request&patient_id=pt_1&request_id=req_1&related_entity_type=care_report&related_entity_id=rep_1',
     );
+  });
+
+  it('surfaces archived patient state before creating external share links', async () => {
+    stubFetch({
+      report: {
+        ...REPORT,
+        patient_summary: {
+          ...REPORT.patient_summary,
+          archive: {
+            status: 'archived',
+            archived: true,
+            archived_at: '2026-06-30T09:00:00.000Z',
+          },
+        },
+      },
+    });
+    renderShare();
+
+    expect(await screen.findByText('アーカイブ中')).toBeTruthy();
+    expect(screen.getByText('加藤 ミサ 様は閲覧専用の患者正本です。')).toBeTruthy();
+    expect(screen.getByText(/外部共有の発行前に、対象患者と共有目的を再確認/)).toBeTruthy();
   });
 
   it('uses the org header on every share GET request', async () => {

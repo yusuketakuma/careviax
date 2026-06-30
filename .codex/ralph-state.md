@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0130 JST
+
+- current task: surface archived-patient state in report detail and interprofessional share preparation surfaces.
+- files inspected: `git status --short --branch --untracked-files=all`, mapper output for PRE-06/P-08/P-12 print/share gaps, `src/app/api/care-reports/[id]/route.ts`, `src/app/api/care-reports/[id]/route.test.ts`, `src/app/(dashboard)/reports/[id]/page.tsx`, `src/app/(dashboard)/reports/[id]/page.test.tsx`, `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx`, `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx`, focused test output, scoped validation output, and full validation output.
+- files changed: `src/app/api/care-reports/[id]/route.ts`, `src/app/api/care-reports/[id]/route.test.ts`, `src/app/(dashboard)/reports/[id]/page.tsx`, `src/app/(dashboard)/reports/[id]/page.test.tsx`, `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx`, `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: care-report detail and interprofessional share preparation pages used patient identity summaries without archive state, so archived patients could look like active patients immediately before report send/share work.
+- security risks found: reduced archived-patient wrong-use and external-share preparation risk by carrying minimal archive state through `patient_summary` and showing read-only archived context in the report detail header and share-prep page. Internal archive owner fields remain excluded. Existing auth, report permissions, external-access scope checks, no-store wrappers, archive write guards, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: adds only a narrow `archived_at` select to the already-loaded patient summary and small conditional UI rendering. No new broad scans, external calls, dependencies, jobs, unbounded loops, or heavy render paths were added.
+- validation commands: `pnpm exec vitest run 'src/app/api/care-reports/[id]/route.test.ts' 'src/app/(dashboard)/reports/[id]/page.test.tsx' 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx' --reporter=dot --testTimeout=60000`; scoped ESLint on the six care-report/detail/share files; scoped Prettier check on the same files; scoped `git diff --check`; `pnpm typecheck --pretty false`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`; `git diff --check`.
+- validation results: focused Vitest passed `3` files / `79` tests; scoped ESLint, scoped Prettier check, and scoped diff-check passed. First full typecheck caught a test-only `archive: null` fixture narrowing issue in the share test; fixed with `PatientArchiveSummary | null`. Final `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and `git diff --check` passed.
+- remaining work: broad master-management / patient-information objective remains open. Mapper identified PDF common rendering and browser print pages as the next highest-value archive-state gaps. Unrelated dirty WIP remains in `src/app/api/care-reports/[id]/send/route.ts`, `src/lib/patient/operational-summary.ts`, `src/lib/patient/operational-summary.test.ts`, and `src/server/services/visit-schedule-patient-summary.ts`; preserve it outside this commit.
+- next action: commit only the care-report patient archive summary/detail/share slice plus ledgers, send agmsg FYI, then continue PDF common rendering if ownership remains clear.
+
 ### 20260701-0125 JST
 
 - current task: guard tracing-report draft deletion against stale status changes.

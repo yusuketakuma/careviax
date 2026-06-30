@@ -108,6 +108,36 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Broad master-management / patient-information objective remains open.
   - PRE-06 still has remaining patient summary unification work for print/PDF/report-specific shared surfaces and further master-management guard/refactor inventory.
 
+### Report Detail and Share Prep Archive State - 2026-07-01 01:30 JST
+
+- Scope:
+  - Continued PRE-06 / P-08 / P-12 archived-patient visibility work in report-specific shared surfaces.
+  - Focused on `GET /api/care-reports/[id]`, report detail pinned patient identity, and interprofessional share preparation UI.
+- Fixed:
+  - `patient_summary` now includes minimal `archive` metadata from `archived_at`.
+  - Report detail passes archive state into the shared `PatientHeader`.
+  - Interprofessional share preparation shows an `アーカイブ中` read-only notice before external share link creation.
+- Safety:
+  - Reduces archived-patient wrong-use risk before report send/share work.
+  - Keeps `archived_by` and internal archive ownership out of report/share payloads and UI.
+  - Preserves auth, permissions, no-store wrappers, archive write guards, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds only a narrow `archived_at` select to an existing patient summary lookup.
+  - No new broad scan, dependency, background job, external call, unbounded loop, or heavy render path was added.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/care-reports/[id]/route.test.ts' 'src/app/(dashboard)/reports/[id]/page.test.tsx' 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `3` files / `79` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` on the six care-report/detail/share files: passed.
+  - First full `pnpm typecheck --pretty false` caught a test-only `archive: null` fixture narrowing issue; fixed with `PatientArchiveSummary | null`.
+  - Final `pnpm typecheck --pretty false`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master-management / patient-information objective remains open.
+  - Mapper identified PDF common rendering and browser print pages as the next highest-value archive-state gaps.
+  - Unrelated dirty WIP remains in `src/app/api/care-reports/[id]/send/route.ts`, `src/lib/patient/operational-summary.ts`, `src/lib/patient/operational-summary.test.ts`, and `src/server/services/visit-schedule-patient-summary.ts`; preserve it outside this commit.
+
 ### Communication Request Tracing Sync Guard - 2026-07-01 01:09 JST
 
 - Scope:

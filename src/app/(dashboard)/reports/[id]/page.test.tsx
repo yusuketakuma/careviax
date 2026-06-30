@@ -187,6 +187,7 @@ function mockReport() {
       name: '佐藤 花子',
       name_kana: 'サトウ ハナコ',
       birth_date: '1940-01-01',
+      archive: { status: 'active', archived: false, archived_at: null },
     },
     visit_summary: {
       id: 'visit_record_1',
@@ -253,6 +254,41 @@ describe('ReportDetailPage send safety dialog', () => {
     // 患者識別がダイアログを開かずに fold 内へ常時表示される（取り違え防止）。
     expect(within(header).getByText('佐藤 花子 様')).toBeTruthy();
     expect(within(header).getByText('サトウ ハナコ')).toBeTruthy();
+  });
+
+  it('surfaces archived patient state in the pinned report patient header', () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      return {
+        data: {
+          data: {
+            ...mockReport(),
+            patient_summary: {
+              ...mockReport().patient_summary,
+              archive: {
+                status: 'archived',
+                archived: true,
+                archived_at: '2026-06-30T09:00:00.000Z',
+              },
+            },
+          },
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    const header = screen.getByTestId('patient-header');
+    expect(within(header).getByTestId('patient-header-archive-badge').textContent).toContain(
+      'アーカイブ中',
+    );
+    expect(within(header).getByTestId('patient-header-archive-notice').textContent).toContain(
+      '閲覧専用の患者正本です',
+    );
   });
 
   it('summarizes report content warnings above the body so they are not buried on mobile', () => {
