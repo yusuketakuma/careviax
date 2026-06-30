@@ -30,6 +30,30 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Shared Viewer Self-Report Draft Autosave - 2026-07-01 06:46 JST
+
+- Scope:
+  - Patient information intake hardening for the public external-share viewer.
+  - Focused on the patient/family self-report form in `/shared/[token]`.
+- Fixed:
+  - Same-session self-report drafts are restored from `sessionStorage` by share token.
+  - Draft autosave stores only form fields and intentionally excludes OTP, active OTP, and idempotency data.
+  - Accepted self-report submissions clear the stored draft and reset the form to defaults.
+  - Self-report draft state is consolidated into one typed object to keep field updates and autosave behavior consistent.
+- Safety:
+  - Reduces accidental loss of patient/family intake text during a same-session reload or navigation interruption.
+  - Preserves existing OTP-gated fetches, self-report idempotency-key headers, server submission contract, archive-state display redaction, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Uses one bounded sessionStorage read on initial component state and a small draft write when form state changes.
+  - Adds no DB query, network request, dependency, polling, broad render fan-out, or unbounded loop.
+- Validation:
+  - Shared viewer content Vitest passed `1` file / `5` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on the shared viewer files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+- Remaining:
+  - Broad master-management and patient-information objective remains open.
+  - This slice does not change the backend self-report API or external-access token/OTP policy.
+
 ### External Professional Linked Patient Evidence - 2026-07-01 06:34 JST
 
 - Scope:

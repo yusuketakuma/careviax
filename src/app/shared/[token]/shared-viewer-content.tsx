@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -98,6 +98,16 @@ type SelfReportFieldErrors = Partial<{
   content: string;
 }>;
 
+type SelfReportDraft = {
+  reporterName: string;
+  relation: string;
+  category: string;
+  subject: string;
+  content: string;
+  preferredContactTime: string;
+  requestedCallback: boolean;
+};
+
 const SCOPE_DISPLAY_NAMES: Record<string, string> = {
   allergy_info: 'アレルギー情報',
   medication_list: '服薬一覧',
@@ -118,6 +128,8 @@ const SELF_REPORT_CATEGORIES = [
   '医療材料・注射関連',
   'その他',
 ];
+const DEFAULT_SELF_REPORT_CATEGORY = SELF_REPORT_CATEGORIES[0] ?? 'その他';
+const SELF_REPORT_DRAFT_STORAGE_PREFIX = 'ph-os:self-report-draft:v1:';
 
 const SELF_REPORT_STATUS_LABELS: Record<string, string> = {
   pending: '未対応',
@@ -150,21 +162,117 @@ function createSelfReportIdempotencyKey() {
   return createClientIdempotencyKey('self-report');
 }
 
+function createEmptySelfReportDraft(): SelfReportDraft {
+  return {
+    reporterName: '',
+    relation: '',
+    category: DEFAULT_SELF_REPORT_CATEGORY,
+    subject: '',
+    content: '',
+    preferredContactTime: '',
+    requestedCallback: true,
+  };
+}
+
+function buildSelfReportDraftStorageKey(token: string) {
+  return `${SELF_REPORT_DRAFT_STORAGE_PREFIX}${encodeURIComponent(token)}`;
+}
+
+function readStringDraftField(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function isSelfReportDraftEmpty(draft: SelfReportDraft) {
+  return (
+    draft.reporterName.trim().length === 0 &&
+    draft.relation.trim().length === 0 &&
+    draft.subject.trim().length === 0 &&
+    draft.content.trim().length === 0 &&
+    draft.preferredContactTime.trim().length === 0 &&
+    (draft.category.trim().length === 0 || draft.category === DEFAULT_SELF_REPORT_CATEGORY) &&
+    draft.requestedCallback
+  );
+}
+
+function readSelfReportDraft(token: string): SelfReportDraft | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const rawDraft = window.sessionStorage.getItem(buildSelfReportDraftStorageKey(token));
+    if (!rawDraft) return null;
+
+    const parsed: unknown = JSON.parse(rawDraft);
+    if (!parsed || typeof parsed !== 'object') return null;
+
+    const record = parsed as Record<string, unknown>;
+    const draft: SelfReportDraft = {
+      reporterName: readStringDraftField(record.reporterName),
+      relation: readStringDraftField(record.relation),
+      category: readStringDraftField(record.category) || DEFAULT_SELF_REPORT_CATEGORY,
+      subject: readStringDraftField(record.subject),
+      content: readStringDraftField(record.content),
+      preferredContactTime: readStringDraftField(record.preferredContactTime),
+      requestedCallback:
+        typeof record.requestedCallback === 'boolean' ? record.requestedCallback : true,
+    };
+
+    return isSelfReportDraftEmpty(draft) ? null : draft;
+  } catch {
+    return null;
+  }
+}
+
+function writeSelfReportDraft(token: string, draft: SelfReportDraft) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const key = buildSelfReportDraftStorageKey(token);
+    if (isSelfReportDraftEmpty(draft)) {
+      window.sessionStorage.removeItem(key);
+      return;
+    }
+
+    window.sessionStorage.setItem(key, JSON.stringify(draft));
+  } catch {
+    return;
+  }
+}
+
+function clearSelfReportDraft(token: string) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.removeItem(buildSelfReportDraftStorageKey(token));
+  } catch {
+    return;
+  }
+}
+
 export function SharedViewerContent({ token }: { token: string }) {
   const [otpInput, setOtpInput] = useState('');
   const [activeOtp, setActiveOtp] = useState('');
-  const [reporterName, setReporterName] = useState('');
-  const [relation, setRelation] = useState('');
-  const [category, setCategory] = useState(SELF_REPORT_CATEGORIES[0] ?? 'その他');
-  const [subject, setSubject] = useState('');
-  const [content, setContent] = useState('');
-  const [preferredContactTime, setPreferredContactTime] = useState('');
-  const [requestedCallback, setRequestedCallback] = useState(true);
+  const [selfReportDraft, setSelfReportDraft] = useState<SelfReportDraft>(
+    () => readSelfReportDraft(token) ?? createEmptySelfReportDraft(),
+  );
   const [selfReportErrors, setSelfReportErrors] = useState<SelfReportFieldErrors>({});
   const selfReportSubmissionRef = useRef<{
     payloadFingerprint: string;
     idempotencyKey: string;
   } | null>(null);
+
+  useEffect(() => {
+    writeSelfReportDraft(token, selfReportDraft);
+  }, [selfReportDraft, token]);
+
+  const {
+    reporterName,
+    relation,
+    category,
+    subject,
+    content,
+    preferredContactTime,
+    requestedCallback,
+  } = selfReportDraft;
 
   const viewerQuery = useQuery({
     queryKey: ['shared-viewer', token, activeOtp],
@@ -225,10 +333,8 @@ export function SharedViewerContent({ token }: { token: string }) {
     },
     onSuccess: () => {
       selfReportSubmissionRef.current = null;
-      setSubject('');
-      setContent('');
-      setPreferredContactTime('');
-      setRequestedCallback(true);
+      clearSelfReportDraft(token);
+      setSelfReportDraft(createEmptySelfReportDraft());
       setSelfReportErrors({});
       void viewerQuery.refetch();
       toast.success('自己申告を受け付けました');
@@ -265,6 +371,16 @@ export function SharedViewerContent({ token }: { token: string }) {
       delete next[field];
       return next;
     });
+  }
+
+  function updateSelfReportDraft<Key extends keyof SelfReportDraft>(
+    field: Key,
+    value: SelfReportDraft[Key],
+  ) {
+    setSelfReportDraft((current) => ({
+      ...current,
+      [field]: value,
+    }));
   }
 
   function submitSelfReport() {
@@ -588,7 +704,7 @@ export function SharedViewerContent({ token }: { token: string }) {
                     id="reporter-name"
                     value={reporterName}
                     onChange={(event) => {
-                      setReporterName(event.target.value);
+                      updateSelfReportDraft('reporterName', event.target.value);
                       clearSelfReportError('reporterName');
                     }}
                     placeholder="例: 山田花子"
@@ -609,7 +725,7 @@ export function SharedViewerContent({ token }: { token: string }) {
                   <Input
                     id="reporter-relation"
                     value={relation}
-                    onChange={(event) => setRelation(event.target.value)}
+                    onChange={(event) => updateSelfReportDraft('relation', event.target.value)}
                     placeholder="例: 長女"
                   />
                 </div>
@@ -621,7 +737,7 @@ export function SharedViewerContent({ token }: { token: string }) {
                   id="report-category"
                   list="self-report-categories"
                   value={category}
-                  onChange={(event) => setCategory(event.target.value)}
+                  onChange={(event) => updateSelfReportDraft('category', event.target.value)}
                 />
                 <datalist id="self-report-categories">
                   {SELF_REPORT_CATEGORIES.map((item) => (
@@ -638,7 +754,7 @@ export function SharedViewerContent({ token }: { token: string }) {
                   id="report-subject"
                   value={subject}
                   onChange={(event) => {
-                    setSubject(event.target.value);
+                    updateSelfReportDraft('subject', event.target.value);
                     clearSelfReportError('subject');
                   }}
                   placeholder="例: 残薬が増えてきた"
@@ -661,7 +777,7 @@ export function SharedViewerContent({ token }: { token: string }) {
                   id="report-content"
                   value={content}
                   onChange={(event) => {
-                    setContent(event.target.value);
+                    updateSelfReportDraft('content', event.target.value);
                     clearSelfReportError('content');
                   }}
                   placeholder="服薬の困りごと、残薬、体調変化、連絡事項を入力してください"
@@ -683,7 +799,9 @@ export function SharedViewerContent({ token }: { token: string }) {
                   <Input
                     id="preferred-contact-time"
                     value={preferredContactTime}
-                    onChange={(event) => setPreferredContactTime(event.target.value)}
+                    onChange={(event) =>
+                      updateSelfReportDraft('preferredContactTime', event.target.value)
+                    }
                     placeholder="例: 平日18時以降"
                   />
                 </div>
@@ -691,7 +809,9 @@ export function SharedViewerContent({ token }: { token: string }) {
                   <input
                     type="checkbox"
                     checked={requestedCallback}
-                    onChange={(event) => setRequestedCallback(event.target.checked)}
+                    onChange={(event) =>
+                      updateSelfReportDraft('requestedCallback', event.target.checked)
+                    }
                   />
                   薬局からの折返しを希望する
                 </label>

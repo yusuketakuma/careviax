@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0646 JST
+
+- current task: commit pending shared-viewer self-report draft autosave changes as a validated group.
+- files inspected: `git status --short --untracked-files=all`, `git log --oneline -n 8`, current shared-viewer diffs, `src/app/shared/[token]/shared-viewer-content.tsx`, `src/app/shared/[token]/shared-viewer-content.test.tsx`, `src/app/shared/[token]/page.tsx`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, and validation output.
+- files changed: `src/app/shared/[token]/shared-viewer-content.tsx`, `src/app/shared/[token]/shared-viewer-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: the public shared-viewer self-report form had no same-session draft persistence, so patient/family intake text could be lost before accepted submission during a reload or interruption.
+- security risks found: reduced intake-loss risk while keeping OTP and idempotency material out of `sessionStorage`; existing OTP-gated reads, idempotency-key header behavior, external-access API contracts, archive ownership redaction, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: no meaningful performance issue was introduced. The patch uses one initial `sessionStorage` read and small draft writes on form state changes; it adds no DB query, network request, polling, broad render fan-out, dependency, or unbounded loop.
+- validation commands: `pnpm exec vitest run 'src/app/shared/[token]/shared-viewer-content.test.tsx' --reporter=dot --testTimeout=60000`; `pnpm exec eslint --max-warnings=0 'src/app/shared/[token]/shared-viewer-content.tsx' 'src/app/shared/[token]/shared-viewer-content.test.tsx'`; `pnpm exec prettier --check 'src/app/shared/[token]/shared-viewer-content.tsx' 'src/app/shared/[token]/shared-viewer-content.test.tsx'`; `git diff --check -- 'src/app/shared/[token]/shared-viewer-content.tsx' 'src/app/shared/[token]/shared-viewer-content.test.tsx'`; `pnpm typecheck --pretty false`.
+- validation results: initial scoped ESLint failed on `react-hooks/set-state-in-effect` and scoped Prettier check failed on the test file; after consolidating self-report draft fields into one typed state object and formatting, focused shared-viewer Vitest passed `1` file / `5` tests, scoped ESLint passed, scoped Prettier check passed, scoped diff-check passed, and full typecheck passed.
+- remaining work: broad master-management and patient-information objective remains active. Backend self-report API behavior, OTP policy, live DB data, migrations, push/deploy, and destructive operations were not changed in this slice.
+- next action: stage only the shared-viewer code/tests and matching progress-ledger hunks, commit the group, then re-check status for any remaining uncommitted changes.
+
 ### 20260701-0634 JST
 
 - current task: surface external-professional linked patients inside the real admin master editor.
