@@ -25113,3 +25113,32 @@ Next loop:
 - Remaining:
   - The broad visit/report/interprofessional collaboration goal remains open.
   - Current dirty paths outside this slice are operating-hours, service-areas, patient form, ledger, and `.codex` progress from other agents; keep staging exact.
+
+### Visits Today Schedule Focus Links - 2026-06-30 18:14 JST
+
+- Scope:
+  - Continued visit-time UI navigation hardening on the "今日の訪問" preparation workspace.
+  - Focused on route, cold-bag, facility-packet, and no-audit route actions that had concrete `schedule_id` context but still opened the broad schedules hub.
+- Fixed:
+  - Imported `buildScheduleFocusHref` into `visits-today`.
+  - Converted card actions whose API href is `/schedules` into the card's focused schedule href.
+  - Converted route/cold-bag evidence links to the first schedule's focused href.
+  - Converted the no-audit "今日のルートを確認する" next action to the first schedule's focused href when a visit exists.
+  - Added regression coverage for route detail, facility packet, evidence links, and no-audit next-action focus.
+- Safety:
+  - Reduces wrong-schedule navigation risk during departure preparation.
+  - Keeps API-provided non-schedule actions unchanged and uses the existing schedule navigation helper for hostile ID encoding.
+  - No auth/RLS policy, permission, PHI export, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - No new query, network call, dependency, background job, broad scan, unbounded loop, or render-heavy path was added.
+- Validation:
+  - Read `docs/ui-ux-design-guidelines.md` and Next Link/navigation docs earlier in the UI slice before this change.
+  - `pnpm exec prettier --write 'src/app/(dashboard)/visits/visits-today.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx'`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/visits/visits-today.test.tsx' src/lib/schedules/navigation.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `12` tests.
+  - Scoped ESLint on visits-today files plus schedule navigation helper: passed.
+  - Scoped Prettier check and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - The broad visit/report/interprofessional collaboration goal remains open.
+  - Current unrelated dirty paths include operating-hours, service-areas, facilities, patient form, schedule planner, ledgers, and `.codex`; keep staging exact.

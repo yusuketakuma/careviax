@@ -22,6 +22,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
+import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { cn } from '@/lib/utils';
 import type {
   VisitPrepCheck,
@@ -77,6 +78,10 @@ const PATIENT_SAFETY_TAGS: Record<string, { label: string; className: string }> 
 
 /** 経過分 → 「30分」「2時間」「1日」(止まっている理由の経過時間)。 */
 const formatAgeLabel = formatElapsedLabel;
+
+function buildVisitCardActionHref(card: VisitPreparationCard, href: string) {
+  return href === '/schedules' ? buildScheduleFocusHref(card.schedule_id) : href;
+}
 
 function CheckChip({ check }: { check: VisitPrepCheck }) {
   return (
@@ -184,7 +189,7 @@ function VisitPrepCardItem({ card }: { card: VisitPreparationCard }) {
         {card.actions.map((action) => (
           <Link
             key={action.label}
-            href={action.href}
+            href={buildVisitCardActionHref(card, action.href)}
             className={buttonVariants({ variant: 'outline', size: 'sm' })}
           >
             → {action.label}
@@ -211,7 +216,9 @@ function buildNextAction(data: VisitPreparationBoardResponse): NextActionPanelPr
   return {
     actionLabel: '今日のルートを確認する',
     description: 'いま期限で止まっている作業はありません。出発前確認に進めます。',
-    actionHref: '/schedules',
+    actionHref: data.cards[0]?.schedule_id
+      ? buildScheduleFocusHref(data.cards[0].schedule_id)
+      : '/schedules',
   };
 }
 
@@ -248,6 +255,9 @@ export function VisitsToday() {
   const data = boardQuery.data ?? null;
   const dateLabel = `${format(now, 'M/d(EEE)', { locale: ja })} — 出発前の最終確認`;
   const firstVisitHref = data?.cards[0]?.visit_mode_href ?? null;
+  const firstScheduleHref = data?.cards[0]?.schedule_id
+    ? buildScheduleFocusHref(data.cards[0].schedule_id)
+    : '/schedules';
 
   const blockedReasons: BlockedReason[] = (data?.blocked_reasons ?? []).map((reason) => ({
     id: reason.id,
@@ -267,13 +277,13 @@ export function VisitsToday() {
           meta: data.evidence.route_calculated_at
             ? `計算 ${formatTimeOfDay(data.evidence.route_calculated_at)}`
             : '未計算',
-          href: '/schedules',
+          href: firstScheduleHref,
         },
         {
           id: 'cold-bag',
           label: '保冷バッグ',
           meta: data.evidence.vehicle_label ? `車両: ${data.evidence.vehicle_label}` : '車載',
-          href: '/schedules',
+          href: firstScheduleHref,
         },
         {
           id: 'prior-records',

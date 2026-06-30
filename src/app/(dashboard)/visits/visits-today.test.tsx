@@ -206,7 +206,9 @@ describe('VisitsToday', () => {
     expect(cards[0].getAttribute('data-accent')).toBe('ready');
     expect(within(cards[0]).getByText('前回からの変化を確認済')).toBeTruthy();
     expect(within(cards[0]).getByRole('link', { name: '→ カードへ' })).toBeTruthy();
-    expect(within(cards[0]).getByRole('link', { name: '→ ルート詳細' })).toBeTruthy();
+    expect(within(cards[0]).getByRole('link', { name: '→ ルート詳細' }).getAttribute('href')).toBe(
+      '/schedules?focus=schedule&schedule_id=sch_ito',
+    );
 
     // 2枚目: 危険タグを隠さない + 未完アラート + 繰り下げ注記 + 監査導線
     expect(within(cards[1]).getByText('田中 一郎 様')).toBeTruthy();
@@ -231,7 +233,9 @@ describe('VisitsToday', () => {
     expect(within(cards[2]).getByText('アレルギー')).toBeTruthy();
     expect(within(cards[2]).getByText('TPN')).toBeTruthy();
     expect(within(cards[2]).getByRole('link', { name: '→ セットへ' })).toBeTruthy();
-    expect(within(cards[2]).getByRole('link', { name: '→ 施設パケット' })).toBeTruthy();
+    expect(
+      within(cards[2]).getByRole('link', { name: '→ 施設パケット' }).getAttribute('href'),
+    ).toBe('/schedules?focus=schedule&schedule_id=sch_gh');
 
     // フッターのオフライン注記
     expect(screen.getByTestId('visits-today-offline-note').textContent).toContain(
@@ -261,6 +265,35 @@ describe('VisitsToday', () => {
     expect(within(evidence).getByText('車両: 軽バン1号')).toBeTruthy();
     expect(within(evidence).getByText('前回訪問記録')).toBeTruthy();
     expect(within(evidence).getByText('3件')).toBeTruthy();
+    const evidenceLinks = within(evidence).getAllByRole('link', { name: '開く' });
+    expect(evidenceLinks[0].getAttribute('href')).toBe(
+      '/schedules?focus=schedule&schedule_id=sch_ito',
+    );
+    expect(evidenceLinks[1].getAttribute('href')).toBe(
+      '/schedules?focus=schedule&schedule_id=sch_ito',
+    );
+    expect(evidenceLinks[2].getAttribute('href')).toBe('/visits/sch_ito/record');
+  });
+
+  it('focuses the route next action on the first schedule when no audit is pending', () => {
+    useRealtimeQueryMock.mockReturnValue({
+      data: {
+        ...buildFixture(),
+        next_action: null,
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchMock,
+    });
+
+    render(<VisitsToday />);
+
+    expect(
+      within(screen.getByTestId('next-action-panel'))
+        .getByRole('link', { name: '今日のルートを確認する' })
+        .getAttribute('href'),
+    ).toBe('/schedules?focus=schedule&schedule_id=sch_ito');
   });
 
   it('disables the primary action and shows the empty state when no visits exist', () => {
