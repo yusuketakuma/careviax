@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { formatCommunicationRequestTypeLabel } from '@/lib/communications/request-labels';
+import { buildExternalHref } from '@/lib/dashboard/home-link-builders';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { buildExternalAccessGrantVisibilityWhere } from './external-access';
 
@@ -783,7 +784,7 @@ export async function listCommunicationQueue(
       patient_id: report.patient_id,
       patient_name: patientNameById.get(report.patient_id) ?? null,
       due_at: report.created_at.toISOString(),
-      action_href: '/external',
+      action_href: buildExternalHref({ focus: 'self_reports' }),
       action_label: '自己申告を確認',
     })),
     ...callbackLogs.map((log) => ({
@@ -854,7 +855,7 @@ export async function listCommunicationQueue(
       patient_id: grant.patient_id,
       patient_name: patientNameById.get(grant.patient_id) ?? null,
       due_at: grant.expires_at.toISOString(),
-      action_href: '/external',
+      action_href: buildExternalHref({ focus: 'shares' }),
       action_label: '共有状況を確認',
     })),
   ]

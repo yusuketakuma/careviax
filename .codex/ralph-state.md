@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-1737 JST
+
+- current task: focus communication queue self-report and external-share actions on the matching external collaboration queue instead of the generic external workspace.
+- files inspected: agmsg inbox/status, generic link scan, `src/server/services/communication-queue.ts`, `src/server/services/communication-queue.test.ts`, `src/lib/dashboard/home-link-builders.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/server/services/communication-queue.ts`, `src/server/services/communication-queue.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Unrelated dirty operating-hours, patient-form, and schedule/routing files were preserved.
+- bugs found: communication queue self-report and expiring external-share items both used generic `/external`, making staff choose the correct queue manually after opening from a specific evidence row.
+- security risks found: reduced wrong-queue follow-up risk by routing through existing `buildExternalHref()` focus links for `self_reports` and `shares`. No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- performance issues found: link construction only; no new query, dependency, network call, background job, payload expansion, broad scan, or loop changed.
+- validation commands: focused communication-queue/dashboard-link Vitest; scoped ESLint; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused Vitest passed `2` files / `19` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, and `pnpm typecheck` passed. `pnpm typecheck:no-unused` failed only on unrelated dirty schedule/routing WIP: `src/server/services/visit-schedule-planner.test.ts(616,63)` mock return type `Promise<{ durationMinutes; distanceKm }>` not assignable to `Promise<null>`. Codex was notified via agmsg and this slice did not touch those files.
+- remaining work: commit only the two owned communication queue files and ledger files, then continue scanning visit/report/collaboration surfaces for generic action links or missing relation filters.
+- next action: commit `Focus communication queue external links`, send agmsg FYI, and continue the next clean slice.
+
 ### 20260630-1733 JST
 
 - current task: focus communication request related-entity links on the exact schedule row or collaboration queue instead of generic schedule/external/conference indexes.

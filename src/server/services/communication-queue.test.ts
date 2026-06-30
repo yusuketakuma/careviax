@@ -108,6 +108,7 @@ describe('listCommunicationQueue', () => {
     expect(result.items[0].queue_type).toBe('self_report');
     expect(result.items[0].priority).toBe('urgent'); // has callback
     expect(result.items[0].patient_name).toBe('田中太郎');
+    expect(result.items[0].action_href).toBe('/external?focus=self_reports');
   });
 
   it('includes communication requests as queue items', async () => {
@@ -538,6 +539,7 @@ describe('listCommunicationQueue', () => {
       expect.objectContaining({
         id: 'external_share:visible-1',
         patient_id: 'p-1',
+        action_href: '/external?focus=shares',
       }),
     ]);
   });

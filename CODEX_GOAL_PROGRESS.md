@@ -30,6 +30,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Communication Queue External Focus Links - 2026-06-30 17:37 JST
+
+- Scope:
+  - Continued report/collaboration queue navigation cleanup in `listCommunicationQueue`.
+  - No UI layout, schema migration, live DB operation, auth/RLS change, external send, push/deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Self-report queue items now use `/external?focus=self_reports` instead of generic `/external`.
+  - Expiring external-share queue items now use `/external?focus=shares` instead of generic `/external`.
+  - Regression tests assert the focused queue action hrefs for both item types.
+- Safety:
+  - Reduces wrong-queue navigation risk from the communication workbench by taking staff directly to the self-report or share-management queue that matches the evidence row.
+  - Uses the existing `buildExternalHref()` helper instead of local query-string construction.
+- Performance:
+  - Link construction only. No new query, dependency, network call, background job, payload expansion, render loop, or broad scan was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/communication-queue.test.ts src/lib/dashboard/home-link-builders.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `19` tests.
+  - Scoped ESLint on communication queue and dashboard link builder files: passed.
+  - Scoped Prettier check on communication queue files: passed.
+  - Scoped `git diff --check` on communication queue files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: blocked by unrelated dirty schedule/routing WIP in `src/server/services/visit-schedule-planner.test.ts(616,63)` (`Promise<{ durationMinutes; distanceKm }>` not assignable to `Promise<null>`). Codex was notified via agmsg; this slice did not touch schedule planner files.
+- Remaining:
+  - Continue scanning visit-time/report/collaboration surfaces for generic action links or missing relation filters.
+  - Preserve unrelated dirty operating-hours, patient-form, and schedule/routing files.
+
 ### Communication Related Entity Focus Links - 2026-06-30 17:33 JST
 
 - Scope:
@@ -24929,3 +24954,26 @@ Next loop:
 - Remaining:
   - The broad master-management/patient-information goal remains open. Next slice should inspect current master-management API/list pages for the same false-empty pattern and stale-state/audit gaps.
   - Do not broad-stage because the worktree contains unrelated dirty `communications` files from another slice.
+
+### Operating Hours Calendar False-Zero Hardening - 2026-06-30 17:37 JST
+
+- Scope:
+  - Continued master-management hardening by inspecting the operating-hours admin page for master-data false-empty/false-zero behavior.
+  - Focused on the resolved operating-day calendar that depends on pharmacy-site operating-hours master data.
+- Fixed:
+  - The calendar section now renders loading/error state before summary statistics and the month grid.
+  - Operating-hours fetch failures no longer show `営業日 0日` / `定休 0日` / `休業日 0日` or the legend as if the pharmacy calendar had no operating days.
+  - Added a regression proving failed operating-hours fetches show retryable errors without false-zero calendar stats.
+- Safety:
+  - Reduces schedule/master-management risk where staff could read a failed calendar fetch as all-zero operating-day data.
+  - Preserves existing pharmacy-site selection, weekly editor error state, org-header helpers, save behavior, and retry action.
+  - No auth/RLS policy, permission, PHI export, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - No new query, dependency, background job, broad scan, or unbounded loop was added.
+  - Rendering now gates existing summary components behind the successful operating-hours query state.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/operating-hours/operating-hours-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `1` file / `7` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint`: passed after the operating-hours change.
+- Remaining:
+  - The broad master-management/patient-information goal remains open.
+  - Do not broad-stage because the worktree also contains unrelated dirty communication-queue and schedule/routing files.
