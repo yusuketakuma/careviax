@@ -3,7 +3,11 @@ import {
   type ShareSection,
   type ShareSectionKey,
 } from '@/app/(dashboard)/reports/[id]/share/interprofessional-share.helpers';
-import type { ShareAudienceKey } from '@/lib/communications/share-audience';
+import {
+  recipientRoleForShareAudience,
+  shareAudienceLabel,
+  type ShareAudienceKey,
+} from '@/lib/communications/share-audience';
 
 /**
  * p1_05「他職種向け共有ページ」(患者文脈 /patients/[id]/share)の表示射影(純関数)。
@@ -73,6 +77,10 @@ function formatShareDate(value: string): string | null {
 function joinLines(parts: Array<string | null | undefined>): string | null {
   const filled = parts.map((part) => part?.trim()).filter((part): part is string => Boolean(part));
   return filled.length > 0 ? filled.join('\n') : null;
+}
+
+function truncate(value: string, max: number): string {
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 
 // ---------------------------------------------------------------------------
@@ -161,4 +169,76 @@ export function buildPatientShareSections(
       (section.key === 'attachments' ? '添付資料はまだありません。' : SHARE_SECTION_EMPTY_BODY),
     isEmpty: section.body == null,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// 返信依頼を起票する(POST /api/communication-requests の入力)
+// ---------------------------------------------------------------------------
+
+export type PatientShareCommunicationRequestInput = {
+  patient_id: string;
+  request_type: string;
+  template_key: string;
+  recipient_name: string;
+  recipient_role: string;
+  related_entity_type: 'patient';
+  related_entity_id: string;
+  context_snapshot: Record<string, string | string[]>;
+  status: 'sent';
+  subject: string;
+  content: string;
+};
+
+const REQUEST_SUBJECT_MAX = 200;
+const REQUEST_CONTENT_MAX = 4000;
+
+function buildPatientShareRequestContent(args: {
+  audienceLabel: string;
+  sections: readonly ShareSection[];
+}): string {
+  return truncate(
+    [
+      `${args.audienceLabel}向けに共有する患者情報です。確認後、必要な返信をPH-OSの連携依頼へ記録してください。`,
+      '',
+      ...args.sections.map((section) => `【${section.title}】\n${section.body}`),
+    ].join('\n'),
+    REQUEST_CONTENT_MAX,
+  );
+}
+
+export function buildPatientShareCommunicationRequestInput(args: {
+  audience: ShareAudienceKey;
+  patientId: string;
+  patientName: string | null;
+  recipientName: string;
+  recipientOrganizationName: string | null;
+  sections: readonly ShareSection[];
+}): PatientShareCommunicationRequestInput {
+  const audienceLabel = shareAudienceLabel(args.audience);
+  const patientLabel = args.patientName ? `${args.patientName} 様` : '対象患者';
+
+  return {
+    patient_id: args.patientId,
+    request_type: 'patient_share_reply_request',
+    template_key: 'patient_share_reply_request',
+    recipient_name: args.recipientName,
+    recipient_role: recipientRoleForShareAudience(args.audience),
+    related_entity_type: 'patient',
+    related_entity_id: args.patientId,
+    context_snapshot: {
+      source: 'patient_external_share',
+      patient_id: args.patientId,
+      audience: args.audience,
+      ...(args.recipientOrganizationName
+        ? { recipient_organization_name: args.recipientOrganizationName }
+        : {}),
+      section_keys: args.sections.map((section) => section.key),
+    },
+    status: 'sent',
+    subject: truncate(
+      `返信依頼: ${audienceLabel}向け患者共有(${patientLabel})`,
+      REQUEST_SUBJECT_MAX,
+    ),
+    content: buildPatientShareRequestContent({ audienceLabel, sections: args.sections }),
+  };
 }

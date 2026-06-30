@@ -6,11 +6,13 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
+const invalidateQueriesMock = vi.hoisted(() => vi.fn());
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@tanstack/react-query', () => ({
   useMutation: useMutationMock,
   useQuery: useQueryMock,
+  useQueryClient: () => ({ invalidateQueries: invalidateQueriesMock }),
 }));
 
 vi.mock('sonner', () => ({
@@ -32,6 +34,12 @@ type QueryConfig = {
   queryKey?: unknown[];
   queryFn?: () => Promise<unknown>;
   enabled?: boolean;
+};
+
+type MutationConfig = {
+  mutationFn?: () => Promise<unknown>;
+  onSuccess?: () => Promise<void> | void;
+  onError?: (error: Error) => void;
 };
 
 afterEach(() => {
@@ -241,6 +249,172 @@ describe('ExternalShareContent', () => {
     const params = new URLSearchParams(requestListUrl?.split('?')[1]);
     expect(params.get('related_entity_id')).toBe(patientId);
     expect(requestListUrl).toContain(`related_entity_id=${encodeURIComponent(patientId)}`);
+  });
+
+  it('creates a patient-scoped reply request for the selected audience', async () => {
+    const mutationConfigs: MutationConfig[] = [];
+    const createReplyMutate = vi.fn();
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input) === '/api/communication-requests' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ data: { id: 'request_new', status: 'sent' } }), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`unexpected fetch: ${String(input)}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return {
+        mutate: mutationConfigs.length === 3 ? createReplyMutate : vi.fn(),
+        isPending: false,
+      };
+    });
+    useQueryMock.mockImplementation((config: QueryConfig) => {
+      const scope = config.queryKey?.[0];
+      if (scope === 'patient-care-team') {
+        return {
+          data: {
+            data: [
+              {
+                role: 'care_manager',
+                name: '田中ケアマネ',
+                organization_name: '北区ケアプラン',
+                is_primary: true,
+              },
+            ],
+          },
+          isLoading: false,
+          isError: false,
+        };
+      }
+      if (scope === 'patient-contacts') {
+        return { data: { data: [] }, isLoading: false, isError: false };
+      }
+      if (scope === 'communication-requests') {
+        return { data: { data: [] }, isLoading: false, isError: false };
+      }
+      return {
+        data: {
+          name: '佐藤 花子',
+          external_shares: [],
+          self_reports: [],
+          current_medications: [
+            { drug_name: 'アムロジピン錠5mg', dose: '1錠', frequency: '朝食後' },
+          ],
+          visit_schedules: [
+            { scheduled_date: '2026-06-20T09:00:00.000Z', schedule_status: 'planned' },
+          ],
+          care_reports: [
+            {
+              report_type: 'care_manager_report',
+              created_at: '2026-06-10T08:00:00.000Z',
+              status: 'sent',
+            },
+          ],
+        },
+        isLoading: false,
+        isError: false,
+      };
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+
+    const button = screen.getByTestId('share-create-request-button') as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+    expect(createReplyMutate).toHaveBeenCalledTimes(1);
+
+    await mutationConfigs[2]?.mutationFn?.();
+    const requestCall = fetchMock.mock.calls.find(
+      ([input, init]) => String(input) === '/api/communication-requests' && init?.method === 'POST',
+    );
+    expect(requestCall?.[1]?.headers).toEqual({
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+    });
+    const body = JSON.parse(String(requestCall?.[1]?.body)) as {
+      patient_id: string;
+      request_type: string;
+      template_key: string;
+      recipient_name: string;
+      recipient_role: string;
+      related_entity_type: string;
+      related_entity_id: string;
+      status: string;
+      subject: string;
+      content: string;
+      context_snapshot: Record<string, unknown>;
+    };
+    expect(body).toMatchObject({
+      patient_id: 'patient_1',
+      request_type: 'patient_share_reply_request',
+      template_key: 'patient_share_reply_request',
+      recipient_name: '田中ケアマネ',
+      recipient_role: 'care_manager',
+      related_entity_type: 'patient',
+      related_entity_id: 'patient_1',
+      status: 'sent',
+      subject: '返信依頼: ケアマネ向け患者共有(佐藤 花子 様)',
+      context_snapshot: {
+        source: 'patient_external_share',
+        patient_id: 'patient_1',
+        audience: 'care_manager',
+        recipient_organization_name: '北区ケアプラン',
+      },
+    });
+    expect(body.content).toContain('ケアマネ向けに共有する患者情報です');
+
+    await mutationConfigs[2]?.onSuccess?.();
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({
+      queryKey: ['communication-requests', 'patient', 'patient_1', 'org_1'],
+    });
+  });
+
+  it('does not create a reply request when the selected audience has no registered recipient', () => {
+    const createReplyMutate = vi.fn();
+    let mutationCount = 0;
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockImplementation(() => {
+      mutationCount += 1;
+      return {
+        mutate: mutationCount === 3 ? createReplyMutate : vi.fn(),
+        isPending: false,
+      };
+    });
+    useQueryMock.mockImplementation((config: QueryConfig) => {
+      const scope = config.queryKey?.[0];
+      if (scope === 'patient-care-team' || scope === 'patient-contacts') {
+        return { data: { data: [] }, isLoading: false, isError: false };
+      }
+      if (scope === 'communication-requests') {
+        return { data: { data: [] }, isLoading: false, isError: false };
+      }
+      return {
+        data: {
+          name: '佐藤 花子',
+          external_shares: [],
+          self_reports: [],
+          current_medications: [],
+          visit_schedules: [],
+          care_reports: [],
+        },
+        isLoading: false,
+        isError: false,
+      };
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+
+    const button = screen.getByTestId('share-create-request-button') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(
+      screen.getByText('ケアチームまたは連絡先に共有相手を登録すると、返信依頼を起票できます。'),
+    ).toBeTruthy();
+    fireEvent.click(button);
+    expect(createReplyMutate).not.toHaveBeenCalled();
   });
 
   it('shows a retryable error instead of a false-empty overview when the fetch fails', () => {

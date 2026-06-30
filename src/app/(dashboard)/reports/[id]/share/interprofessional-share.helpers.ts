@@ -3,6 +3,7 @@ import type { AudienceReportContent } from '@/types/care-report-content';
 import {
   audienceKeyFromRecipientRole,
   defaultAudienceForReportType,
+  recipientRoleForShareAudience,
   SHARE_AUDIENCES,
   shareAudienceLabel,
   type ShareAudience,
@@ -353,14 +354,6 @@ export type ShareCommunicationRequestInput = {
 const REQUEST_SUBJECT_MAX = 200;
 const REQUEST_CONTENT_MAX = 4000;
 
-const COMMUNICATION_RECIPIENT_ROLE_BY_AUDIENCE: Record<ShareAudienceKey, string> = {
-  physician: 'physician',
-  care_manager: 'care_manager',
-  visiting_nurse: 'visiting_nurse',
-  facility: 'facility',
-  family: 'family',
-};
-
 function formatPatientLabel(patientName: string | null): string {
   return patientName ? `${patientName} 様` : '対象患者';
 }
@@ -402,7 +395,7 @@ export function buildShareCommunicationRequestInput(args: {
     request_type: 'care_report_reply_request',
     template_key: 'interprofessional_share_reply_request',
     recipient_name: args.recipientName,
-    recipient_role: COMMUNICATION_RECIPIENT_ROLE_BY_AUDIENCE[args.audience],
+    recipient_role: recipientRoleForShareAudience(args.audience),
     related_entity_type: 'care_report',
     related_entity_id: args.reportId,
     context_snapshot: {

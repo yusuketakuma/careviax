@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
@@ -12,6 +12,7 @@ import {
   Link2,
   ListTodo,
   MessageCircle,
+  Send,
   ShieldAlert,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -35,6 +36,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   buildNextCheckTaskInput,
   buildShareAudienceCards,
+  pickLatestAudienceRequest,
   pickLatestAudienceReplyRequest,
   type CareTeamMemberSummary,
   type ContactPartySummary,
@@ -47,7 +49,11 @@ import {
 } from '@/lib/communications/share-audience';
 import { buildCommunicationRequestApiPath } from '@/lib/communications/api-paths';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
-import { buildPatientShareSections, type PatientShareSnapshot } from './patient-share.helpers';
+import {
+  buildPatientShareCommunicationRequestInput,
+  buildPatientShareSections,
+  type PatientShareSnapshot,
+} from './patient-share.helpers';
 
 /**
  * p1_05「他職種向け共有ページ」(患者文脈 /patients/[id]/share)。
@@ -142,6 +148,7 @@ const EXPIRY_OPTIONS = [
 
 export function ExternalShareContent({ patientId }: { patientId: string }) {
   const orgId = useOrgId();
+  const queryClient = useQueryClient();
   const isBootstrappingOrg = !orgId;
   const [selectedAudience, setSelectedAudience] = useState<ShareAudienceKey>('care_manager');
   const [grantedToName, setGrantedToName] = useState('');
@@ -150,6 +157,9 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
   const [selectedScope, setSelectedScope] = useState<Set<string>>(new Set(['medication_list']));
   const [generated, setGenerated] = useState<GeneratedGrant | null>(null);
   const [createdResponseIds, setCreatedResponseIds] = useState<readonly string[]>([]);
+  const [createdRequestAudiences, setCreatedRequestAudiences] = useState<
+    readonly ShareAudienceKey[]
+  >([]);
   const [shareFormErrors, setShareFormErrors] = useState<ShareFormErrors>({});
 
   const overviewQuery = useQuery<ExternalShareOverview>({
@@ -268,6 +278,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
     () => buildShareAudienceCards(careTeamQuery.data?.data ?? [], contactsQuery.data?.data ?? []),
     [careTeamQuery.data?.data, contactsQuery.data?.data],
   );
+  const selectedAudienceCard = audienceCards.find((card) => card.key === audience) ?? null;
 
   const snapshot = useMemo<PatientShareSnapshot>(() => {
     const overview = overviewQuery.data;
@@ -304,6 +315,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
     [snapshot, audience],
   );
 
+  const audienceRequest = pickLatestAudienceRequest(requestsQuery.data?.data ?? [], audience);
   const replyRequest = pickLatestAudienceReplyRequest(requestsQuery.data?.data ?? [], audience);
 
   // 一覧 API の responses は本文を含まないため、対象依頼のみ詳細を取得する。
@@ -322,6 +334,8 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
   });
   const latestReply = replyDetailQuery.data?.data?.responses?.[0] ?? null;
   const taskCreated = Boolean(latestReply && createdResponseIds.includes(latestReply.id));
+  const requestCreated = createdRequestAudiences.includes(audience);
+  const hasActiveAudienceRequest = Boolean(audienceRequest && audienceRequest.status !== 'closed');
 
   const createTaskMutation = useMutation({
     mutationFn: async () => {
@@ -355,6 +369,48 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
         setCreatedResponseIds((prev) => [...prev, latestReply.id]);
       }
       toast.success('次回訪問の確認タスクを作成しました');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const createReplyRequestMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedAudienceCard?.recipientName) {
+        throw new Error('共有相手が未登録です');
+      }
+      if (requestsQuery.isLoading || requestsQuery.isError) {
+        throw new Error('返信状況を確認してから起票してください');
+      }
+      if (hasActiveAudienceRequest || requestCreated) {
+        throw new Error('この相手への返信依頼は既に起票されています');
+      }
+      const input = buildPatientShareCommunicationRequestInput({
+        audience,
+        patientId,
+        patientName: overviewQuery.data?.name ?? null,
+        recipientName: selectedAudienceCard.recipientName,
+        recipientOrganizationName: selectedAudienceCard.recipientOrganizationName,
+        sections,
+      });
+      const res = await fetch('/api/communication-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify(input),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(
+          (err as { message?: string } | null)?.message ?? '返信依頼の起票に失敗しました',
+        );
+      }
+      return res.json();
+    },
+    onSuccess: async () => {
+      setCreatedRequestAudiences((prev) => [...prev, audience]);
+      toast.success('返信依頼を起票しました');
+      await queryClient.invalidateQueries({
+        queryKey: ['communication-requests', 'patient', patientId, orgId],
+      });
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -743,6 +799,43 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
                 </p>
               </div>
             )}
+
+            <Button
+              type="button"
+              variant="outline"
+              data-testid="share-create-request-button"
+              className="mt-4 w-full bg-background"
+              disabled={
+                !selectedAudienceCard?.recipientName ||
+                requestsQuery.isLoading ||
+                requestsQuery.isError ||
+                createReplyRequestMutation.isPending ||
+                hasActiveAudienceRequest ||
+                requestCreated
+              }
+              onClick={() => createReplyRequestMutation.mutate()}
+            >
+              {hasActiveAudienceRequest || requestCreated ? (
+                <>
+                  <CheckCircle2 className="mr-1.5 size-4" aria-hidden="true" />
+                  返信依頼起票済み
+                </>
+              ) : (
+                <>
+                  <Send className="mr-1.5 size-4" aria-hidden="true" />
+                  {createReplyRequestMutation.isPending ? '起票中...' : '返信依頼を起票'}
+                </>
+              )}
+            </Button>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+              {!selectedAudienceCard?.recipientName
+                ? 'ケアチームまたは連絡先に共有相手を登録すると、返信依頼を起票できます。'
+                : requestsQuery.isError
+                  ? '返信状況を取得できないため、重複防止のため起票を停止しています。'
+                  : hasActiveAudienceRequest || requestCreated
+                    ? 'この相手への返信依頼は既に連携依頼キューにあります。'
+                    : '選択中の相手に、表示中の患者共有内容を確認してもらう返信待ち依頼を作成します。'}
+            </p>
 
             <Button
               type="button"

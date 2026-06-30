@@ -51,6 +51,18 @@ export function shareAudienceLabel(key: ShareAudienceKey): string {
   return SHARE_AUDIENCES.find((audience) => audience.key === key)?.label ?? key;
 }
 
+const SHARE_AUDIENCE_RECIPIENT_ROLES: Record<ShareAudienceKey, string> = {
+  physician: 'physician',
+  care_manager: 'care_manager',
+  visiting_nurse: 'visiting_nurse',
+  facility: 'facility',
+  family: 'family',
+};
+
+export function recipientRoleForShareAudience(key: ShareAudienceKey): string {
+  return SHARE_AUDIENCE_RECIPIENT_ROLES[key];
+}
+
 /** 報告書タイプ → 初期選択する相手(デザインはケアマネ選択中) */
 export function defaultAudienceForReportType(reportType: string | null): ShareAudienceKey {
   const table: Record<string, ShareAudienceKey> = {
