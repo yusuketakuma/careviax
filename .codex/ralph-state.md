@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0754 JST
+
+- current task: harden admin UAT feedback list/create/update API boundaries.
+- files inspected: `git status --short --branch --untracked-files=all`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, memory quick pass in `MEMORY.md`, `gbrain search "CareViaX patient form org headers API helpers stale write master management seed data" --limit 8`, local Next route-handler docs, `src/app/api/admin/uat-feedback/route.ts`, `src/app/api/admin/uat-feedback/route.test.ts`, `src/app/api/admin/uat-feedback/[id]/route.ts`, `src/app/api/admin/uat-feedback/[id]/route.test.ts`, `src/app/api/admin/uat-feedback/summary/route.test.ts`, `prisma/schema/admin.prisma`, `src/lib/audit/audit-entry.ts`, focused diffs, and validation output.
+- files changed: `src/app/api/admin/uat-feedback/route.ts`, `src/app/api/admin/uat-feedback/route.test.ts`, `src/app/api/admin/uat-feedback/[id]/route.ts`, `src/app/api/admin/uat-feedback/[id]/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: UAT feedback list/create/update responses lacked the same sensitive no-store/sanitized unexpected-error boundary now used by adjacent admin master routes. Create and update also lacked same-transaction audit evidence, and update still performed direct Prisma lookups/writes instead of an org RLS transaction.
+- security risks found: reduced audit gaps, tenant-boundary drift, cache ambiguity, and raw route-error leakage by wrapping list/create/update responses with sensitive no-store, moving create/update into `withOrgContext`, validating assigned owners inside the transaction, and writing `uat_feedback_created` / `uat_feedback_updated` audit entries without persisting free-text feedback content into audit changes. Existing canAdmin permission, fixed list limit, status/resolution timestamp behavior, same-org owner validation, response shapes, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: no meaningful performance issue was introduced. Create/update add one audit write per successful mutation and no new read path, dependency, polling, background job, broad scan, render fan-out, or unbounded loop.
+- validation commands: `pnpm exec vitest run src/app/api/admin/uat-feedback/route.test.ts src/app/api/admin/uat-feedback/'[id]'/route.test.ts src/app/api/admin/uat-feedback/summary/route.test.ts --reporter=dot --testTimeout=60000`; scoped `pnpm exec prettier --check`; scoped `pnpm exec eslint`; scoped `git diff --check -- ...uat-feedback files`; `pnpm typecheck --pretty false`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`; `pnpm lint`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: focused UAT feedback API suite passed `3` files / `16` tests; scoped Prettier check passed; scoped ESLint passed; scoped diff-check passed; full typecheck passed; no-unused passed; full lint passed; full format check passed; full diff-check passed.
+- remaining work: broad master-management and patient-information objective remains active. Continue patient information form/helper convergence and remaining patient-facing raw org-header/path cleanup.
+- next action: stage only UAT feedback route/test files plus matching progress ledger hunks, commit the validated UAT feedback boundary slice, send agmsg FYI, then re-check status before selecting the next patient-management gap.
+
 ### 20260701-0740 JST
 
 - current task: harden facility unit master create/update/delete boundaries.

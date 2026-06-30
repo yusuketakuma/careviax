@@ -30,6 +30,36 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### UAT Feedback Admin Boundary - 2026-07-01 07:54 JST
+
+- Scope:
+  - Continued admin/master-management hardening for `/api/admin/uat-feedback` and `/api/admin/uat-feedback/[id]`.
+  - Focused on UAT feedback records used during final product-readiness review and pilot pharmacy issue triage.
+- Fixed:
+  - UAT feedback list/create/update responses now consistently carry sensitive no-store headers.
+  - Unexpected list/create/update failures return sanitized `INTERNAL_ERROR` envelopes instead of leaking raw route failures.
+  - Feedback create now runs inside `withOrgContext` and writes `uat_feedback_created` audit evidence in the same transaction.
+  - Feedback update now runs org-scoped lookup, owner validation, mutation, and `uat_feedback_updated` audit evidence inside one `withOrgContext` transaction.
+  - Update audit payloads record triage metadata deltas while intentionally excluding free-text feedback body content.
+  - Tests lock RLS transaction delegation, audit payloads, PHI-safe audit body omission, no-store headers, fail-fast validation, not-found behavior, and sanitized internal errors.
+- Safety:
+  - Reduces audit gaps, tenant-boundary drift, cache ambiguity, and raw error leakage for final-stage UAT/admin operational feedback.
+  - Preserves existing canAdmin permission, fixed list limit, status/resolution timestamp behavior, same-org owner validation, response shapes, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds no new read path, polling, dependency, background job, broad scan, or render fan-out.
+  - Create/update mutations move existing writes into the org RLS transaction and add one audit write per successful mutation.
+- Validation:
+  - `pnpm exec vitest run src/app/api/admin/uat-feedback/route.test.ts src/app/api/admin/uat-feedback/'[id]'/route.test.ts src/app/api/admin/uat-feedback/summary/route.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `16` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on UAT feedback route files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master-management and patient-information objective remains open.
+  - Next high-value follow-up remains patient information form/helper convergence and remaining patient-facing raw org-header/path cleanup.
+
 ### Facility Unit Master Mutation Boundary - 2026-07-01 07:40 JST
 
 - Scope:
