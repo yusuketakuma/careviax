@@ -37,7 +37,7 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Focused on route insertion scoring, which repeatedly asked the road estimator for adjacent pair costs while evaluating the same shift/candidate insertion positions.
 - Fixed:
   - Added a route-insertion travel-cost lookup that asks the existing road estimator `estimateMatrix` once for the site, ordered shift points, and candidate point.
-  - Route insertion scoring now reads candidate previous/next/bypass costs from that one-shot matrix when available, and falls back to the existing pair estimator/fallback distance path when matrix data is unavailable.
+  - Route insertion scoring now reads candidate previous/next/bypass costs from that one-shot matrix when available, falls back to the existing pair estimator path when the matrix provider is unavailable, and uses the existing fallback travel cost for missing matrix cells.
   - Shared road-estimate-to-cost formatting now keeps the existing travel summary and fallback semantics.
   - Regression coverage proves matrix use for a single existing visit and for multi-point insertion scoring, including route order, score, summary, and avoiding single-pair estimator calls when a matrix is available.
 - Safety:
@@ -50,6 +50,7 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation:
   - Planner focused Vitest passed `1` file / `44` tests.
   - Proposal API + planner Vitest passed `2` files / `133` tests with the expected sanitized-500 route log.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on planner files: passed.
   - `pnpm typecheck --pretty false`: passed.
   - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
   - `pnpm lint`: passed.
