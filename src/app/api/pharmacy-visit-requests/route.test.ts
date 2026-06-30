@@ -313,6 +313,8 @@ describe('/api/pharmacy-visit-requests', () => {
     );
 
     expect(response.status).toBe(201);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(pharmacyVisitRequestCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -352,6 +354,42 @@ describe('/api/pharmacy-visit-requests', () => {
     expect(responseText).not.toContain('山田花子');
     expect(responseText).not.toContain('血圧確認');
     expect(responseText).not.toContain('1234');
+  });
+
+  it('returns a sanitized no-store 500 when visit request creation fails unexpectedly', async () => {
+    pharmacyVisitRequestCreateMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 090-1234-5678 raw pharmacy visit create detail'),
+    );
+
+    const response = await POST(
+      createRequest({
+        share_case_id: 'share_case_1',
+        urgency: 'urgent',
+        desired_start_at: '2026-06-20T01:00:00.000Z',
+        desired_end_at: '2026-06-20T02:00:00.000Z',
+        visit_type: 'emergency',
+        request_reason: '患者名 山田花子: 発熱と残薬確認',
+        physician_instruction: '医師指示: 血圧確認',
+        patient_home_notes: '玄関暗証番号 1234',
+        carry_items: { medication: ['A薬'] },
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('山田花子');
+    expect(bodyText).not.toContain('090-1234-5678');
+    expect(bodyText).not.toContain('raw pharmacy visit create detail');
+    expect(bodyText).not.toContain('血圧確認');
+    expect(bodyText).not.toContain('1234');
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('rejects inactive share cases before create or audit side effects', async () => {
