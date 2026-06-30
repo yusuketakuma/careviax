@@ -14,6 +14,7 @@ import {
 import { listCommunicationQueue } from '@/server/services/communication-queue';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { formatCommunicationRequestTypeLabel } from '@/lib/communications/request-labels';
+import { describeOperationalTask } from '@/lib/tasks/operational-task-presentation';
 import { generateVisitBriefAiSummary } from '@/server/services/visit-brief-ai';
 import { buildPatientStateSnapshot } from '@/server/services/patient-state-snapshot';
 import { diffPatientStateSnapshots } from '@/server/services/visit-brief-patient-diff';
@@ -155,9 +156,12 @@ type VisitBriefDataReader = BillingEvidenceBlockersReader & {
     audits?: Array<{ result: string }>;
   }>;
   task: FindManyDelegate<{
+    task_type: string;
     title: string;
     description: string | null;
     priority: string;
+    related_entity_type: string | null;
+    related_entity_id: string | null;
   }>;
   visitScheduleContactLog: FindManyDelegate<{
     outcome: string;
@@ -796,9 +800,12 @@ function buildCommunicationItems(args: {
 
 function buildUnresolvedItems(args: {
   tasks: Array<{
+    task_type: string;
     title: string;
     description: string | null;
     priority: string;
+    related_entity_type: string | null;
+    related_entity_id: string | null;
   }>;
   medicationIssues: Array<{
     title: string;
@@ -821,13 +828,16 @@ function buildUnresolvedItems(args: {
   }>;
 }): VisitBriefUnresolvedItem[] {
   return [
-    ...args.tasks.map((item) => ({
-      source_type: 'task' as const,
-      title: item.title,
-      summary: item.description ?? `優先度: ${item.priority}`,
-      severity: severityFromPriority(item.priority),
-      href: '/workflow',
-    })),
+    ...args.tasks.map((item) => {
+      const presentation = describeOperationalTask(item);
+      return {
+        source_type: 'task' as const,
+        title: item.title,
+        summary: item.description ?? `優先度: ${item.priority}`,
+        severity: severityFromPriority(item.priority),
+        href: presentation.actionHref,
+      };
+    }),
     ...args.medicationIssues.map((item) => ({
       source_type: 'issue' as const,
       title: item.title,
@@ -1365,9 +1375,12 @@ export async function getPatientVisitBrief(
       orderBy: [{ sla_due_at: 'asc' }, { due_date: 'asc' }, { created_at: 'asc' }],
       take: 4,
       select: {
+        task_type: true,
         title: true,
         description: true,
         priority: true,
+        related_entity_type: true,
+        related_entity_id: true,
       },
     }),
     db.medicationIssue.findMany({

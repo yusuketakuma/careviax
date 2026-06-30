@@ -340,9 +340,12 @@ describe('getPatientVisitBrief', () => {
       task: {
         findMany: vi.fn().mockResolvedValue([
           {
+            task_type: 'report_delivery_followup',
             title: '訪問前確認',
             description: '残薬チェックを完了してください',
             priority: 'high',
+            related_entity_type: 'care_report',
+            related_entity_id: 'report/2?x=y#frag',
           },
         ]),
       },
@@ -589,6 +592,7 @@ describe('getPatientVisitBrief', () => {
         expect.objectContaining({
           source_type: 'task',
           title: '訪問前確認',
+          href: '/reports/report%2F2%3Fx%3Dy%23frag',
         }),
         expect.objectContaining({
           source_type: 'inquiry',

@@ -545,6 +545,13 @@ export function VisitBriefCard({
                     </span>
                   </div>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.summary}</p>
+                  <Link
+                    href={item.href}
+                    className="mt-2 inline-flex min-h-10 items-center gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    確認する
+                    <ArrowUpRight className="size-3.5" aria-hidden="true" />
+                  </Link>
                 </div>
               ))}
             </div>

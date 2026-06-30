@@ -300,4 +300,30 @@ describe('VisitBriefCard', () => {
     const link = screen.getByRole('link', { name: /共有を確認/ });
     expect(link.getAttribute('href')).toBe(href);
   });
+
+  it('renders unresolved item actions beside the blocker evidence', () => {
+    const queryClient = new QueryClient();
+    const href = '/reports/report_2';
+    const brief: VisitBrief = {
+      ...buildBrief(),
+      unresolved_items: [
+        {
+          source_type: 'task',
+          title: '報告送達フォロー',
+          summary: '未確認報告を確認してください',
+          severity: 'high',
+          href,
+        },
+      ],
+    };
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VisitBriefCard brief={brief} />
+      </QueryClientProvider>,
+    );
+
+    const link = screen.getByRole('link', { name: /確認する/ });
+    expect(link.getAttribute('href')).toBe(href);
+  });
 });
