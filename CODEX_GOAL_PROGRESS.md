@@ -25539,3 +25539,33 @@ Next loop:
   - The broad master-management/patient-information goal remains open.
   - Continue scanning capped admin master APIs such as external professionals, escalation rules/webhooks, shifts/templates, and patient-linked selectors for count metadata, stale preconditions, audit-near-action gaps, and false-empty states.
   - Unrelated dirty `src/server/services/communication-queue*` changes remain preserved outside the owned commit scope.
+
+### External Professional Selector Counted Metadata - 2026-06-30 18:51 JST
+
+- Scope:
+  - Continued master-management and patient-information hardening for the external professional master used by patient care-team editing, conferences, reports, and interprofessional communication.
+  - Focused on q-filtered `/api/admin/external-professionals` results and the patient care-team selector that consumes this master.
+- Fixed:
+  - `GET /api/admin/external-professionals` now returns `total_count`, `visible_count`, `hidden_count`, `truncated`, `count_basis`, `filters_applied`, and `limit` for q-filtered bounded searches.
+  - q-filtered searches now use an exact `externalProfessional.count` with the same org/filter predicate and fetch only `take: limit`, instead of fetching `limit + 1` and only returning `meta.has_more`.
+  - q-absent full selector responses remain complete/unbounded for compatibility, but now include count metadata with `hidden_count: 0` and no `meta`.
+  - The patient care-team panel now consumes the extended response and shows a visible warning if the external professional selector options are truncated.
+- Safety:
+  - Reduces false-complete external-professional master risk when a patient care team or report workflow can only see part of the registered external professional candidates.
+  - Hidden external professional names, organizations, contact details, patient associations, PHI, raw internals, and secrets are not exposed; metadata contains only counts, count basis, filters, and limit.
+  - Existing `canReport` read authorization, `canAdmin` create authorization, no-store response wrapping, org scoping, facility reference validation, sanitized 500 behavior, and non-q complete selector compatibility remain intact.
+  - No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - q-filtered mode replaces one-row-overfetch with one scoped count query plus a bounded row query using the same predicate.
+  - q-absent mode does not add an extra count query and keeps the previous selector completeness behavior.
+  - No new dependency, background job, broad scan beyond the existing full selector mode, unbounded loop, network call, or render-heavy path was added.
+- Validation:
+  - Read `docs/ui-ux-design-guidelines.md` and Next route-handler docs before the API/UI-facing change.
+  - `pnpm exec vitest run src/app/api/admin/external-professionals/route.test.ts 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx' --reporter=dot --testTimeout=60000`: passed, `2` files / `28` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` on external-professionals API and patient care-team panel files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - The broad master-management/patient-information goal remains open.
+  - Continue scanning escalation rules/webhooks, shifts/templates, contact profiles, and other patient-linked selector APIs for count metadata, stale preconditions, audit-near-action gaps, and false-empty states.

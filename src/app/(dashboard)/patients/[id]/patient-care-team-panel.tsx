@@ -61,6 +61,17 @@ type ExternalProfessionalOption = {
   notes: string | null;
 };
 
+type ExternalProfessionalOptionsResponse = {
+  data: ExternalProfessionalOption[];
+  total_count?: number;
+  visible_count?: number;
+  hidden_count?: number;
+  truncated?: boolean;
+  count_basis?: 'external_professionals';
+  filters_applied?: Record<string, unknown>;
+  limit?: number;
+};
+
 type ExternalProfessionalDraft = {
   profession_type: string;
   name: string;
@@ -171,11 +182,21 @@ export function PatientCareTeamPanel({
         headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('他職種マスターの取得に失敗しました');
-      return response.json() as Promise<{ data: ExternalProfessionalOption[] }>;
+      return response.json() as Promise<ExternalProfessionalOptionsResponse>;
     },
     enabled: !!orgId,
   });
   const professionalOptions = professionalOptionsResponse?.data ?? [];
+  const professionalOptionsHiddenCount =
+    professionalOptionsResponse?.hidden_count ??
+    Math.max(
+      (professionalOptionsResponse?.total_count ?? professionalOptions.length) -
+        professionalOptions.length,
+      0,
+    );
+  const isProfessionalOptionsTruncated = Boolean(
+    professionalOptionsResponse?.truncated || professionalOptionsHiddenCount > 0,
+  );
 
   const quickCreateMutation = useMutation({
     mutationFn: async () => {
@@ -344,6 +365,11 @@ export function PatientCareTeamPanel({
             description="「登録済みなし」ではなく取得エラーです。手入力は可能ですが、重複登録を避けるため再読み込みしてください。"
             action={{ label: '再読み込み', onClick: () => void refetchProfessionalOptions() }}
           />
+        ) : null}
+        {isProfessionalOptionsTruncated ? (
+          <p className="rounded-md border border-state-confirm/40 bg-state-confirm/5 px-3 py-2 text-xs text-state-confirm">
+            {`他職種マスターの候補は先頭${(professionalOptionsResponse?.visible_count ?? professionalOptions.length).toLocaleString()}件のみ表示中です。他${professionalOptionsHiddenCount.toLocaleString()}件は検索条件を絞って確認してください。`}
+          </p>
         ) : null}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm text-muted-foreground">

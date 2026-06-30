@@ -1,4 +1,5 @@
 import { unstable_rethrow } from 'next/navigation';
+import type { Prisma } from '@prisma/client';
 import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import { parseBoundedInteger } from '@/lib/api/pagination';
@@ -116,24 +117,25 @@ const authenticatedGET = withAuthContext(
     );
     if (!parsedPreferredContactMethod.ok) return parsedPreferredContactMethod.response;
 
-    const items = await prisma.externalProfessional.findMany({
-      where: {
-        org_id: ctx.orgId,
-        ...(parsedProfessionType.data ? { profession_type: parsedProfessionType.data } : {}),
-        ...(parsedFacilityId.data ? { facility_id: parsedFacilityId.data } : {}),
-        ...(parsedPreferredContactMethod.data
-          ? { preferred_contact_method: parsedPreferredContactMethod.data }
-          : {}),
-        ...(query
-          ? {
-              OR: [
-                { name: { contains: query, mode: 'insensitive' } },
-                { organization_name: { contains: query, mode: 'insensitive' } },
-                { facility: { name: { contains: query, mode: 'insensitive' } } },
-              ],
-            }
-          : {}),
-      },
+    const where = {
+      org_id: ctx.orgId,
+      ...(parsedProfessionType.data ? { profession_type: parsedProfessionType.data } : {}),
+      ...(parsedFacilityId.data ? { facility_id: parsedFacilityId.data } : {}),
+      ...(parsedPreferredContactMethod.data
+        ? { preferred_contact_method: parsedPreferredContactMethod.data }
+        : {}),
+      ...(query
+        ? {
+            OR: [
+              { name: { contains: query, mode: 'insensitive' as const } },
+              { organization_name: { contains: query, mode: 'insensitive' as const } },
+              { facility: { name: { contains: query, mode: 'insensitive' as const } } },
+            ],
+          }
+        : {}),
+    };
+    const queryOptions = {
+      where,
       include: {
         facility: {
           select: {
@@ -147,16 +149,53 @@ const authenticatedGET = withAuthContext(
         },
       },
       orderBy: [{ profession_type: 'asc' }, { name: 'asc' }],
-      ...(query ? { take: limit + 1 } : {}),
-    });
+    } satisfies Prisma.ExternalProfessionalFindManyArgs;
+
+    const [items, totalCount] = query
+      ? await Promise.all([
+          prisma.externalProfessional.findMany({
+            ...queryOptions,
+            take: limit,
+          }),
+          prisma.externalProfessional.count({ where }),
+        ])
+      : [await prisma.externalProfessional.findMany(queryOptions), undefined];
 
     if (!query) {
-      return success({ data: items.map(toResponse) });
+      return success({
+        data: items.map(toResponse),
+        total_count: items.length,
+        visible_count: items.length,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'external_professionals',
+        filters_applied: {
+          q: null,
+          profession_type: parsedProfessionType.data ?? null,
+          facility_id: parsedFacilityId.data ?? null,
+          preferred_contact_method: parsedPreferredContactMethod.data ?? null,
+        },
+      });
     }
 
+    const visibleCount = items.length;
+    const hiddenCount = Math.max((totalCount ?? visibleCount) - visibleCount, 0);
+
     return success({
-      data: items.slice(0, limit).map(toResponse),
-      meta: { limit, has_more: items.length > limit },
+      data: items.map(toResponse),
+      total_count: totalCount ?? visibleCount,
+      visible_count: visibleCount,
+      hidden_count: hiddenCount,
+      truncated: hiddenCount > 0,
+      count_basis: 'external_professionals',
+      filters_applied: {
+        q: query,
+        profession_type: parsedProfessionType.data ?? null,
+        facility_id: parsedFacilityId.data ?? null,
+        preferred_contact_method: parsedPreferredContactMethod.data ?? null,
+      },
+      limit,
+      meta: { limit, has_more: hiddenCount > 0 },
     });
   },
   {

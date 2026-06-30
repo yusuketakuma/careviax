@@ -3,11 +3,13 @@ import { NextRequest } from 'next/server';
 
 const {
   externalProfessionalFindManyMock,
+  externalProfessionalCountMock,
   externalProfessionalCreateMock,
   withOrgContextMock,
   assertFacilityReferenceMock,
 } = vi.hoisted(() => ({
   externalProfessionalFindManyMock: vi.fn(),
+  externalProfessionalCountMock: vi.fn(),
   externalProfessionalCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   assertFacilityReferenceMock: vi.fn(),
@@ -39,6 +41,7 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     externalProfessional: {
       findMany: externalProfessionalFindManyMock,
+      count: externalProfessionalCountMock,
     },
   },
 }));
@@ -115,6 +118,7 @@ describe('/api/admin/external-professionals', () => {
     externalProfessionalFindManyMock.mockResolvedValue([
       createExternalProfessionalFixture('external_1'),
     ]);
+    externalProfessionalCountMock.mockResolvedValue(1);
     externalProfessionalCreateMock.mockResolvedValue({
       id: 'external_2',
       profession_type: 'care_manager',
@@ -178,7 +182,19 @@ describe('/api/admin/external-professionals', () => {
         },
       },
       orderBy: [{ profession_type: 'asc' }, { name: 'asc' }],
-      take: 501,
+      take: 500,
+    });
+    expect(externalProfessionalCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        profession_type: 'nurse',
+        facility_id: 'facility_1',
+        OR: [
+          { name: { contains: '訪看', mode: 'insensitive' } },
+          { organization_name: { contains: '訪看', mode: 'insensitive' } },
+          { facility: { name: { contains: '訪看', mode: 'insensitive' } } },
+        ],
+      },
     });
     await expect(response.json()).resolves.toMatchObject({
       data: [
@@ -188,6 +204,18 @@ describe('/api/admin/external-professionals', () => {
           patient_count: 2,
         },
       ],
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'external_professionals',
+      filters_applied: {
+        q: '訪看',
+        profession_type: 'nurse',
+        facility_id: 'facility_1',
+        preferred_contact_method: null,
+      },
+      limit: 500,
       meta: {
         limit: 500,
         has_more: false,
@@ -216,7 +244,21 @@ describe('/api/admin/external-professionals', () => {
     expect(query).not.toHaveProperty('take');
     const body = await response.json();
     expect(body.data).toHaveLength(2);
+    expect(body).toMatchObject({
+      total_count: 2,
+      visible_count: 2,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'external_professionals',
+      filters_applied: {
+        q: null,
+        profession_type: null,
+        facility_id: null,
+        preferred_contact_method: null,
+      },
+    });
     expect(body).not.toHaveProperty('meta');
+    expect(externalProfessionalCountMock).not.toHaveBeenCalled();
   });
 
   it('treats blank q as an unfiltered full-list request', async () => {
@@ -227,7 +269,15 @@ describe('/api/admin/external-professionals', () => {
 
     expect(response.status).toBe(200);
     expect(externalProfessionalFindManyMock.mock.calls[0]?.[0]).not.toHaveProperty('take');
-    await expect(response.json()).resolves.not.toHaveProperty('meta');
+    await expect(response.json()).resolves.toMatchObject({
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      filters_applied: {
+        q: null,
+      },
+    });
+    expect(externalProfessionalCountMock).not.toHaveBeenCalled();
   });
 
   it('rejects invalid profession_type before querying external professionals', async () => {
@@ -246,6 +296,7 @@ describe('/api/admin/external-professionals', () => {
       },
     });
     expect(externalProfessionalFindManyMock).not.toHaveBeenCalled();
+    expect(externalProfessionalCountMock).not.toHaveBeenCalled();
   });
 
   it('rejects trimmed invalid profession_type before querying external professionals', async () => {
@@ -264,6 +315,7 @@ describe('/api/admin/external-professionals', () => {
       },
     });
     expect(externalProfessionalFindManyMock).not.toHaveBeenCalled();
+    expect(externalProfessionalCountMock).not.toHaveBeenCalled();
   });
 
   it('rejects invalid preferred_contact_method before querying external professionals', async () => {
@@ -282,6 +334,7 @@ describe('/api/admin/external-professionals', () => {
       },
     });
     expect(externalProfessionalFindManyMock).not.toHaveBeenCalled();
+    expect(externalProfessionalCountMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank facility_id before querying external professionals', async () => {
@@ -298,6 +351,7 @@ describe('/api/admin/external-professionals', () => {
       },
     });
     expect(externalProfessionalFindManyMock).not.toHaveBeenCalled();
+    expect(externalProfessionalCountMock).not.toHaveBeenCalled();
   });
 
   it('applies valid trimmed filters without q pagination metadata', async () => {
@@ -330,15 +384,26 @@ describe('/api/admin/external-professionals', () => {
       },
       orderBy: [{ profession_type: 'asc' }, { name: 'asc' }],
     });
-    await expect(response.json()).resolves.not.toHaveProperty('meta');
+    await expect(response.json()).resolves.toMatchObject({
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      filters_applied: {
+        q: null,
+        profession_type: 'nurse',
+        facility_id: 'facility_1',
+        preferred_contact_method: 'phone',
+      },
+    });
+    expect(externalProfessionalCountMock).not.toHaveBeenCalled();
   });
 
   it('trims q-filtered results and reports has_more', async () => {
     externalProfessionalFindManyMock.mockResolvedValue([
       createExternalProfessionalFixture('external_1', '訪問 看護'),
       createExternalProfessionalFixture('external_2', '訪看 ステーション'),
-      createExternalProfessionalFixture('external_3', '訪看 連携室'),
     ]);
+    externalProfessionalCountMock.mockResolvedValue(3);
 
     const response = (await GET(
       createAuthRequest('http://localhost/api/admin/external-professionals?q=訪看&limit=2'),
@@ -348,11 +413,16 @@ describe('/api/admin/external-professionals', () => {
     expect(response.status).toBe(200);
     expect(externalProfessionalFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        take: 3,
+        take: 2,
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'external_1' }, { id: 'external_2' }],
+      total_count: 3,
+      visible_count: 2,
+      hidden_count: 1,
+      truncated: true,
+      count_basis: 'external_professionals',
       meta: {
         limit: 2,
         has_more: true,
@@ -361,9 +431,9 @@ describe('/api/admin/external-professionals', () => {
   });
 
   it.each([
-    ['9999', 501],
-    ['0', 2],
-    ['abc', 501],
+    ['9999', 500],
+    ['0', 1],
+    ['abc', 500],
   ])('bounds q-filtered limit "%s" to take %i', async (limit, expectedTake) => {
     const response = (await GET(
       createAuthRequest(`http://localhost/api/admin/external-professionals?q=訪看&limit=${limit}`),

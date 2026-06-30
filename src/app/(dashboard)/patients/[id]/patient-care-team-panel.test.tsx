@@ -165,6 +165,54 @@ describe('PatientCareTeamPanel', () => {
     );
   });
 
+  it('shows when external professional master options are truncated', () => {
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useQueryMock.mockReturnValue({
+      data: {
+        data: [
+          {
+            id: 'external_1',
+            profession_type: 'nurse',
+            name: '訪問 看護',
+            organization_name: 'あおば訪看',
+            department: null,
+            phone: null,
+            email: null,
+            fax: null,
+            address: null,
+            notes: null,
+          },
+        ],
+        total_count: 3,
+        visible_count: 1,
+        hidden_count: 2,
+        truncated: true,
+        count_basis: 'external_professionals',
+      },
+    });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+
+    render(
+      <PatientCareTeamPanel
+        patientId="patient_1"
+        orgId="org_1"
+        cases={[
+          {
+            id: 'case_active_123456',
+            status: 'active',
+            care_team_links: [],
+          },
+        ]}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        '他職種マスターの候補は先頭1件のみ表示中です。他2件は検索条件を絞って確認してください。',
+      ),
+    ).toBeTruthy();
+  });
+
   type CapturedConfig = {
     queryKey?: unknown[];
     queryFn?: () => Promise<unknown>;
