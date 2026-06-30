@@ -713,7 +713,7 @@ export default function ReportDetailPage() {
     report.patient_id ?? null,
     report.id,
   ).filter((shortcut) => {
-    if (report.patient_id && shortcut.href === `/patients/${report.patient_id}`) {
+    if (shortcut.label === '患者詳細') {
       return canViewPatientShortcut;
     }
     if (shortcut.label === '関連依頼') {

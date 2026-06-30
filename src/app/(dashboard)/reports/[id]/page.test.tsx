@@ -1194,6 +1194,16 @@ describe('ReportDetailPage send safety dialog', () => {
   });
 
   it('filters report detail shortcuts by the route permission metadata', () => {
+    const hostilePatientId = 'patient/1?x=y#frag';
+    getReportDetailShortcutLinksMock.mockReturnValue([
+      { href: '/reports', label: '報告書一覧' },
+      { href: `/patients/${encodeURIComponent(hostilePatientId)}`, label: '患者詳細' },
+      {
+        href: `/communications/requests?patient_id=${encodeURIComponent(hostilePatientId)}&related_entity_id=report_1`,
+        label: '関連依頼',
+      },
+      { href: '/external', label: '外部連携' },
+    ]);
     useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
       const scope = options.queryKey?.[0];
       if (scope === 'care-report-external-professionals') {
@@ -1207,6 +1217,7 @@ describe('ReportDetailPage send safety dialog', () => {
         data: {
           data: {
             ...mockReport(),
+            patient_id: hostilePatientId,
             permissions: {
               can_edit: false,
               can_send: false,
