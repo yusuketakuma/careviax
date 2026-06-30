@@ -21393,3 +21393,34 @@ Next loop:
   - Broader master-management work can continue into other admin/import surfaces.
   - Commit only the six drug-master helper/content files plus ledger hunks after codex2 review.
   - Preserve unrelated patient-share-case WIP owned by codex2.
+
+### Patient Share Case Scope Response Boundary Slice — 2026-06-30 10:19 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration scope in `/api/patient-share-cases/[id]` PATCH.
+  - Kept share-scope validation, active-consent coverage checks, update payloads, audit behavior, and response data shape unchanged.
+- Fixed:
+  - Split the handler into `authenticatedPATCH` plus an exported wrapper.
+  - Wrapped all exported PATCH responses in `withSensitiveNoStore`.
+  - Converted exported-route plumbing and unexpected handler failures to fixed `INTERNAL_ERROR` responses after `unstable_rethrow`.
+  - Added regression tests for no-store headers on success, validation, and conflict responses.
+  - Added regression tests proving update failures and auth plumbing failures return sanitized no-store 500 bodies without raw patient names, token text, or memo content.
+- Safety:
+  - Reduces browser/proxy cache leakage and raw-error leakage risk for patient-share scope changes and active-consent-scope conflicts.
+  - Auth/plumbing failures before body parsing now avoid DB side effects in the test harness.
+  - No database migration, live data operation, external send, authorization change, or audit payload expansion was run.
+- Review:
+  - Independent `codex exec` review attempt timed out after 330s with no findings returned.
+  - agmsg codex review approved the slice after inspecting route/test diff and rerunning focused validation.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/patient-share-cases/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests.
+  - Scoped ESLint on the two owned route/test files: passed.
+  - Scoped Prettier check on the two owned route/test files: passed.
+  - Scoped `git diff --check` on the two owned route/test files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the two patient-share route/test files plus these ledger updates.
+  - Continue the next non-overlapping visit/report/interprofessional candidate.

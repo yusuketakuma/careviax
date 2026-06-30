@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
+  authPlumbingFailureRef,
   withOrgContextMock,
   patientShareCaseFindFirstMock,
   patientShareCaseUpdateMock,
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
+  authPlumbingFailureRef: { current: null as Error | null },
   withOrgContextMock: vi.fn(),
   patientShareCaseFindFirstMock: vi.fn(),
   patientShareCaseUpdateMock: vi.fn(),
@@ -15,8 +17,12 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => Promise<Response>) => {
-    return (req: NextRequest, routeContext?: unknown) =>
-      handler(
+    return (req: NextRequest, routeContext?: unknown) => {
+      if (authPlumbingFailureRef.current) {
+        throw authPlumbingFailureRef.current;
+      }
+
+      return handler(
         req,
         {
           orgId: 'org_1',
@@ -26,6 +32,7 @@ vi.mock('@/lib/auth/context', () => ({
         },
         routeContext,
       );
+    };
   },
 }));
 
@@ -49,11 +56,17 @@ function createPatchRequest(body: unknown) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/patient-share-cases/[id] PATCH', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-19T00:00:00.000Z'));
     vi.clearAllMocks();
+    authPlumbingFailureRef.current = null;
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
       base_patient_id: 'patient_1',
@@ -110,7 +123,7 @@ describe('/api/patient-share-cases/[id] PATCH', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expectSensitiveNoStore(response);
     expect(patientShareCaseUpdateMock).toHaveBeenCalledWith({
       where: { id_org_id: { id: 'share_case_1', org_id: 'org_1' } },
       data: {
@@ -217,7 +230,7 @@ describe('/api/patient-share-cases/[id] PATCH', () => {
     );
 
     expect(response.status).toBe(409);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       details: { blocker: 'active_consent_scope_missing' },
     });
@@ -281,6 +294,7 @@ describe('/api/patient-share-cases/[id] PATCH', () => {
     );
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(patientShareCaseUpdateMock).toHaveBeenCalled();
     expect(createAuditLogEntryMock).toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
@@ -303,7 +317,7 @@ describe('/api/patient-share-cases/[id] PATCH', () => {
     );
 
     expect(response.status).toBe(409);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expectSensitiveNoStore(response);
     expect(patientShareCaseUpdateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
@@ -312,7 +326,63 @@ describe('/api/patient-share-cases/[id] PATCH', () => {
     const response = await rawPATCH(createPatchRequest({}), routeContext);
 
     expect(response.status).toBe(400);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientShareCaseUpdateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when share-scope update fails unexpectedly', async () => {
+    patientShareCaseUpdateMock.mockRejectedValueOnce(
+      new Error('raw share scope update patient 山田 花子 token secret memo'),
+    );
+
+    const response = await rawPATCH(
+      createPatchRequest({
+        share_scope: {
+          attachments: true,
+          pdf_output: true,
+          memo: '患者名 山田 花子 token secret',
+        },
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw share scope');
+    expect(bodyText).not.toContain('山田 花子');
+    expect(bodyText).not.toContain('token secret');
+    expect(bodyText).not.toContain('memo');
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when auth plumbing fails before body parsing', async () => {
+    authPlumbingFailureRef.current = new Error(
+      'raw auth share scope patient 山田 花子 token secret',
+    );
+
+    const response = await rawPATCH(createPatchRequest({}), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw auth');
+    expect(bodyText).not.toContain('山田 花子');
+    expect(bodyText).not.toContain('token secret');
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientShareCaseUpdateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
