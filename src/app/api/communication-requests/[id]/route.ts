@@ -180,6 +180,13 @@ const patchCommunicationRequestSchema = z.object({
     .optional(),
 });
 
+class CommunicationRequestPatchRollback extends Error {
+  constructor(readonly result: { error: 'state_changed' }) {
+    super('communication request patch transaction rolled back');
+    this.name = 'CommunicationRequestPatchRollback';
+  }
+}
+
 async function authenticatedPATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -221,6 +228,7 @@ async function authenticatedPATCH(
       case_id: true,
       status: true,
       updated_at: true,
+      recipient_name: true,
       related_entity_type: true,
       related_entity_id: true,
     },
@@ -396,6 +404,47 @@ async function authenticatedPATCH(
         }
       }
 
+      const tracingStatus =
+        linkedTracingReport && nextStatus
+          ? nextStatus === 'draft'
+            ? 'draft'
+            : nextStatus === 'sent'
+              ? 'sent'
+              : ['received', 'in_progress', 'escalated'].includes(nextStatus)
+                ? 'received'
+                : ['responded', 'closed'].includes(nextStatus)
+                  ? 'acknowledged'
+                  : null
+          : null;
+
+      if (linkedTracingReport && tracingStatus) {
+        const tracingClaim = await tx.tracingReport.updateMany({
+          where: {
+            id: linkedTracingReport.id,
+            org_id: orgId,
+            patient_id: linkedTracingReport.patient_id,
+            case_id: linkedTracingReport.case_id,
+            status: linkedTracingReport.status,
+            sent_at: linkedTracingReport.sent_at,
+            acknowledged_at: linkedTracingReport.acknowledged_at,
+          },
+          data: {
+            status: tracingStatus,
+            sent_to_physician: existing.recipient_name,
+            pdf_url: buildTracingReportPdfPath(linkedTracingReport.id),
+            ...(tracingStatus === 'sent' && !linkedTracingReport.sent_at
+              ? { sent_at: new Date() }
+              : {}),
+            ...(tracingStatus === 'acknowledged' && !linkedTracingReport.acknowledged_at
+              ? { acknowledged_at: new Date() }
+              : {}),
+          },
+        });
+        if (tracingClaim.count !== 1) {
+          throw new CommunicationRequestPatchRollback({ error: 'state_changed' });
+        }
+      }
+
       let responseId: string | null = null;
       let responseRespondedAt: Date | null = null;
       let responseRecord: Awaited<ReturnType<typeof upsertCommunicationResponseByIntent>> | null =
@@ -518,56 +567,31 @@ async function authenticatedPATCH(
         });
       }
 
-      if (linkedTracingReport && nextStatus) {
-        const tracingStatus =
-          nextStatus === 'draft'
-            ? 'draft'
-            : nextStatus === 'sent'
-              ? 'sent'
-              : ['received', 'in_progress', 'escalated'].includes(nextStatus)
-                ? 'received'
-                : ['responded', 'closed'].includes(nextStatus)
-                  ? 'acknowledged'
-                  : null;
-
-        if (tracingStatus) {
-          await tx.tracingReport.update({
-            where: { id: linkedTracingReport.id },
-            data: {
-              status: tracingStatus,
-              sent_to_physician: updated.recipient_name,
-              pdf_url: buildTracingReportPdfPath(linkedTracingReport.id),
-              ...(tracingStatus === 'sent' && !linkedTracingReport.sent_at
-                ? { sent_at: new Date() }
-                : {}),
-              ...(tracingStatus === 'acknowledged' && !linkedTracingReport.acknowledged_at
-                ? { acknowledged_at: new Date() }
-                : {}),
-            },
-          });
-
-          if (tracingStatus !== linkedTracingReport.status) {
-            await createAuditLogEntry(tx, ctx, {
-              action: 'tracing_report_status_changed',
-              targetType: 'tracing_report',
-              targetId: linkedTracingReport.id,
-              changes: {
-                from_status: linkedTracingReport.status,
-                to_status: tracingStatus,
-                reason: statusChangeReason ?? 'communication_response_recorded',
-                status_change_reason: statusChangeReason ?? null,
-                linked_communication_request_id: updated.id,
-                actor_id: ctx.userId,
-              },
-            });
-          }
-        }
+      if (linkedTracingReport && tracingStatus && tracingStatus !== linkedTracingReport.status) {
+        await createAuditLogEntry(tx, ctx, {
+          action: 'tracing_report_status_changed',
+          targetType: 'tracing_report',
+          targetId: linkedTracingReport.id,
+          changes: {
+            from_status: linkedTracingReport.status,
+            to_status: tracingStatus,
+            reason: statusChangeReason ?? 'communication_response_recorded',
+            status_change_reason: statusChangeReason ?? null,
+            linked_communication_request_id: updated.id,
+            actor_id: ctx.userId,
+          },
+        });
       }
 
       return updated;
     },
     { requestContext: ctx },
-  );
+  ).catch((cause: unknown) => {
+    if (cause instanceof CommunicationRequestPatchRollback) {
+      return cause.result;
+    }
+    throw cause;
+  });
 
   if ('error' in result) {
     return conflict('連携依頼が同時に更新されました。再読み込みしてください');

@@ -10,7 +10,7 @@ const {
   communicationResponseFindFirstMock,
   communicationResponseCreateMock,
   tracingReportFindFirstMock,
-  tracingReportUpdateMock,
+  tracingReportUpdateManyMock,
   auditLogCreateMock,
   careCaseFindFirstMock,
   patientFindFirstMock,
@@ -24,7 +24,7 @@ const {
   communicationResponseFindFirstMock: vi.fn(),
   communicationResponseCreateMock: vi.fn(),
   tracingReportFindFirstMock: vi.fn(),
-  tracingReportUpdateMock: vi.fn(),
+  tracingReportUpdateManyMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
@@ -321,6 +321,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
       case_id: 'case_1',
       status: 'received',
       updated_at: CURRENT_UPDATED_AT_DATE,
+      recipient_name: '在宅主治医',
       related_entity_type: null,
       related_entity_id: null,
     });
@@ -342,6 +343,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
     communicationRequestUpdateManyMock.mockResolvedValue({ count: 1 });
     communicationResponseFindFirstMock.mockResolvedValue(null);
     communicationResponseCreateMock.mockResolvedValue({ id: 'response_1' });
+    tracingReportUpdateManyMock.mockResolvedValue({ count: 1 });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -354,7 +356,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
           create: communicationResponseCreateMock,
         },
         tracingReport: {
-          update: tracingReportUpdateMock,
+          updateMany: tracingReportUpdateManyMock,
         },
         auditLog: {
           create: auditLogCreateMock,
@@ -780,7 +782,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(communicationResponseCreateMock).not.toHaveBeenCalled();
     expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
-    expect(tracingReportUpdateMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
@@ -864,7 +866,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
     });
     expect(communicationResponseCreateMock).not.toHaveBeenCalled();
     expect(communicationRequestTxFindFirstMock).not.toHaveBeenCalled();
-    expect(tracingReportUpdateMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
@@ -1114,6 +1116,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
       case_id: 'case_1',
       status: 'received',
       updated_at: CURRENT_UPDATED_AT_DATE,
+      recipient_name: '在宅主治医',
       related_entity_type: 'tracing_report',
       related_entity_id: 'tracing_1',
     });
@@ -1157,8 +1160,16 @@ describe('/api/communication-requests/[id] PATCH', () => {
         acknowledged_at: true,
       },
     });
-    expect(tracingReportUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'tracing_1' },
+    expect(tracingReportUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'tracing_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        status: 'received',
+        sent_at: new Date('2026-03-28T05:00:00.000Z'),
+        acknowledged_at: null,
+      },
       data: expect.objectContaining({
         status: 'acknowledged',
         sent_to_physician: '在宅主治医',
@@ -1188,6 +1199,68 @@ describe('/api/communication-requests/[id] PATCH', () => {
     });
   });
 
+  it('returns conflict before response or audit side effects when the linked tracing report changes concurrently', async () => {
+    communicationRequestFindFirstMock.mockResolvedValue({
+      id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'received',
+      updated_at: CURRENT_UPDATED_AT_DATE,
+      recipient_name: '在宅主治医',
+      related_entity_type: 'tracing_report',
+      related_entity_id: 'tracing_1',
+    });
+    tracingReportUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await PATCH(
+      createRequest(
+        {
+          response: {
+            responder_name: '在宅主治医',
+            content: '現行処方で継続',
+          },
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '連携依頼が同時に更新されました。再読み込みしてください',
+    });
+    expect(communicationRequestUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'request_1',
+        org_id: 'org_1',
+        status: 'received',
+        updated_at: CURRENT_UPDATED_AT_DATE,
+      },
+      data: { status: 'responded' },
+    });
+    expect(tracingReportUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'tracing_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        status: 'received',
+        sent_at: new Date('2026-03-28T05:00:00.000Z'),
+        acknowledged_at: null,
+      },
+      data: expect.objectContaining({
+        status: 'acknowledged',
+        sent_to_physician: '在宅主治医',
+        pdf_url: '/api/tracing-reports/tracing_1/pdf',
+      }),
+    });
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestTxFindFirstMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('encodes only the linked tracing report pdf_url and keeps identity fields raw', async () => {
     communicationRequestFindFirstMock.mockResolvedValue({
       id: 'request_1',
@@ -1195,6 +1268,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
       case_id: 'case_1',
       status: 'received',
       updated_at: CURRENT_UPDATED_AT_DATE,
+      recipient_name: '在宅主治医',
       related_entity_type: 'tracing_report',
       related_entity_id: HOSTILE_TRACING_REPORT_ID,
     });
@@ -1246,8 +1320,16 @@ describe('/api/communication-requests/[id] PATCH', () => {
         acknowledged_at: true,
       },
     });
-    expect(tracingReportUpdateMock).toHaveBeenCalledWith({
-      where: { id: HOSTILE_TRACING_REPORT_ID },
+    expect(tracingReportUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: HOSTILE_TRACING_REPORT_ID,
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        status: 'received',
+        sent_at: new Date('2026-03-28T05:00:00.000Z'),
+        acknowledged_at: null,
+      },
       data: expect.objectContaining({
         status: 'acknowledged',
         sent_to_physician: '在宅主治医',
@@ -1306,7 +1388,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(communicationResponseCreateMock).not.toHaveBeenCalled();
     expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
-    expect(tracingReportUpdateMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
@@ -1317,6 +1399,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
       case_id: null,
       status: 'received',
       updated_at: CURRENT_UPDATED_AT_DATE,
+      recipient_name: '在宅主治医',
       related_entity_type: 'tracing_report',
       related_entity_id: 'tracing_2',
     });

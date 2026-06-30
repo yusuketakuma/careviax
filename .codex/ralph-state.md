@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0109 JST
+
+- current task: guard communication request PATCH linked tracing-report status sync against stale tracing-report state.
+- files inspected: `git status --short --branch --untracked-files=all`, agmsg inbox, `src/app/api/communication-requests/[id]/route.ts`, `src/app/api/communication-requests/[id]/route.test.ts`, prior `resolve-followup` guard implementation, verifier output, and validation output.
+- files changed: `src/app/api/communication-requests/[id]/route.ts`, `src/app/api/communication-requests/[id]/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: normal communication request PATCH could update a linked tracing report by id only after the communication request status claim, so a concurrently changed tracing report could receive stale status/physician/pdf metadata while response and audit side effects continued.
+- security risks found: reduced stale interprofessional response and tracing-report status sync risk by claiming the linked tracing report with `org_id`, `patient_id`, `case_id`, `status`, `sent_at`, and `acknowledged_at` before response upsert and audit writes. Existing auth, report communication permission, patient/archive writability checks, idempotent response replay, response-content digest audit minimization, no-store wrappers, PHI/error sanitization, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: adds one narrow conditional `updateMany` claim for linked tracing reports that were already loaded for status sync. No new broad scans, external calls, dependencies, background jobs, render paths, or unbounded loops were added.
+- validation commands: `pnpm vitest run 'src/app/api/communication-requests/[id]/route.test.ts' --reporter=dot --testTimeout=60000`; `pnpm exec eslint --max-warnings=0 'src/app/api/communication-requests/[id]/route.ts' 'src/app/api/communication-requests/[id]/route.test.ts'`; scoped Prettier check; scoped `git diff --check`; verifier focused Vitest and `git diff --check`; `pnpm typecheck --pretty false`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`; `git diff --check`.
+- validation results: focused Vitest passed `1` file / `32` tests after adding the default `tracingReportUpdateManyMock` success result; scoped ESLint, Prettier check, and diff-check passed; verifier found no blockers and reran focused Vitest / diff-check successfully; `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and `git diff --check` passed. Verifier noted the unit mock does not itself prove real DB rollback, but `withOrgContext` uses Prisma `$transaction`.
+- remaining work: broad visit/report/interprofessional collaboration objective remains open. Unrelated patient archive WIP is present across schedule/visit-brief/shared-viewer files and must remain outside this commit.
+- next action: commit only the communication request PATCH tracing-report claim guard plus ledgers, send agmsg FYI, then continue the next bounded visit/report/collaboration gap.
+
 ### 20260701-0059 JST
 
 - current task: guard communication follow-up resolution against stale linked tracing-report acknowledgment.

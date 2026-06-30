@@ -30,6 +30,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Communication Request Tracing Sync Guard - 2026-07-01 01:09 JST
+
+- Scope:
+  - Continued codex2's visit/report/interprofessional collaboration objective.
+  - Focused on normal `PATCH /api/communication-requests/[id]`, complementing the follow-up resolution guard below.
+- Fixed:
+  - Linked tracing-report status sync now uses a guarded `updateMany` claim scoped by `org_id`, `patient_id`, `case_id`, current `status`, `sent_at`, and `acknowledged_at`.
+  - If the linked tracing report changes concurrently, the route throws a rollback sentinel and returns `409 WORKFLOW_CONFLICT`.
+  - Regression coverage asserts the stale linked-tracing-report path does not create a response, fetch the final request, or write audit rows.
+- Safety:
+  - Reduces stale interprofessional response and tracing-report status sync risk when another user changes the tracing report after the communication request was opened.
+  - Preserves auth, report communication permission, patient/archive writability checks, idempotent response replay, response-content digest audit minimization, no-store wrappers, PHI/error sanitization, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds one narrow conditional update for already-loaded linked tracing reports.
+  - No new broad scan, dependency, background job, external call, render path, or unbounded loop was added.
+- Validation:
+  - `pnpm vitest run 'src/app/api/communication-requests/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `1` file / `32` tests.
+  - Scoped ESLint on the two communication-request PATCH files: passed.
+  - Scoped Prettier check and scoped `git diff --check`: passed.
+  - Verifier subagent found no blocker and reran focused Vitest plus scoped `git diff --check`: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit/report/interprofessional collaboration objective remains open.
+  - Unrelated patient archive WIP is present across schedule/visit-brief/shared-viewer files and is preserved outside this commit.
+
 ### Communication Follow-up Tracing Guard - 2026-07-01 00:59 JST
 
 - Scope:
