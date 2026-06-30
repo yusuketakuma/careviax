@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   PCA_PUMPS_API_PATH,
   PCA_PUMP_RENTALS_API_PATH,
@@ -11,6 +12,7 @@ import {
   buildPcaPumpRentalsApiPath,
   buildPcaPumpsApiPath,
 } from '@/lib/pca-pumps/api-paths';
+import { PRESCRIBER_INSTITUTIONS_API_PATH } from '@/lib/prescriber-institutions/api-paths';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import {
   buildPcaPumpStatusUpdatePayload,
@@ -53,6 +55,20 @@ function queryState(key: string) {
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
+}));
+
+vi.mock('@/lib/api/org-headers', () => ({
+  buildOrgHeaders: vi.fn((orgId: string, extra?: Record<string, string>) => ({
+    'x-org-id': orgId,
+    'x-test-helper': 'orgHeaders',
+    ...extra,
+  })),
+  buildOrgJsonHeaders: vi.fn((orgId: string, extra?: Record<string, string>) => ({
+    'Content-Type': 'application/json',
+    'x-org-id': orgId,
+    'x-test-helper': 'orgJsonHeaders',
+    ...extra,
+  })),
 }));
 
 vi.mock('@/lib/pca-pumps/api-paths', async (importActual) => {
@@ -431,13 +447,14 @@ describe('PcaPumpsContent', () => {
     expect(pcaPumpQueryKeysMock.at(-1)?.[2]).toBe('');
   });
 
-  it('list query functions delegate PCA pump and rental path construction to shared helpers', async () => {
+  it('list query functions delegate PCA pump/rental paths and org headers to shared helpers', async () => {
     const fetchMock = stubFetchOk();
     render(<PcaPumpsContent />);
 
     await queryFnAt(0)();
     await queryFnAt(1)();
     await queryFnAt(2)();
+    await queryFnAt(3)();
 
     expect(buildPcaPumpsApiPath).toHaveBeenCalledWith(expect.any(URLSearchParams));
     expect(buildPcaPumpRentalsApiPath).toHaveBeenNthCalledWith(1, { status: 'open' });
@@ -445,27 +462,36 @@ describe('PcaPumpsContent', () => {
       status: 'returned',
       inspection_status: 'pending',
     });
+    expect(buildOrgHeaders).toHaveBeenNthCalledWith(1, 'org_1');
+    expect(buildOrgHeaders).toHaveBeenNthCalledWith(2, 'org_1');
+    expect(buildOrgHeaders).toHaveBeenNthCalledWith(3, 'org_1');
+    expect(buildOrgHeaders).toHaveBeenNthCalledWith(4, 'org_1');
     expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/pca-pumps?', {
-      headers: { 'x-org-id': 'org_1' },
+      headers: { 'x-org-id': 'org_1', 'x-test-helper': 'orgHeaders' },
     });
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/pca-pump-rentals?status=open', {
-      headers: { 'x-org-id': 'org_1' },
+      headers: { 'x-org-id': 'org_1', 'x-test-helper': 'orgHeaders' },
     });
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
       '/api/pca-pump-rentals?status=returned&inspection_status=pending',
       {
-        headers: { 'x-org-id': 'org_1' },
+        headers: { 'x-org-id': 'org_1', 'x-test-helper': 'orgHeaders' },
       },
     );
+    expect(fetchMock).toHaveBeenNthCalledWith(4, PRESCRIBER_INSTITUTIONS_API_PATH, {
+      headers: { 'x-org-id': 'org_1', 'x-test-helper': 'orgHeaders' },
+    });
   });
 
-  it('create mutations use the shared static collection paths without changing payloads', async () => {
+  it('create mutations use shared collection paths and org JSON headers without changing payloads', async () => {
     const fetchMock = stubFetchOk();
     render(<PcaPumpsContent />);
 
     await latestMutationFn(0)();
 
+    expect(buildPcaPumpsApiPath).toHaveBeenCalledWith();
+    expect(buildOrgJsonHeaders).toHaveBeenNthCalledWith(1, 'org_1');
     expect(fetchMock).toHaveBeenCalledWith(
       PCA_PUMPS_API_PATH,
       expect.objectContaining({
@@ -473,6 +499,7 @@ describe('PcaPumpsContent', () => {
         headers: {
           'Content-Type': 'application/json',
           'x-org-id': 'org_1',
+          'x-test-helper': 'orgJsonHeaders',
         },
       }),
     );
@@ -486,6 +513,8 @@ describe('PcaPumpsContent', () => {
 
     await latestMutationFn(1)();
 
+    expect(buildPcaPumpRentalsApiPath).toHaveBeenCalledWith();
+    expect(buildOrgJsonHeaders).toHaveBeenNthCalledWith(2, 'org_1');
     expect(fetchMock).toHaveBeenCalledWith(
       PCA_PUMP_RENTALS_API_PATH,
       expect.objectContaining({
@@ -493,6 +522,7 @@ describe('PcaPumpsContent', () => {
         headers: {
           'Content-Type': 'application/json',
           'x-org-id': 'org_1',
+          'x-test-helper': 'orgJsonHeaders',
         },
       }),
     );
@@ -522,20 +552,44 @@ describe('PcaPumpsContent', () => {
     expect(buildPcaPumpRentalApiPath).toHaveBeenCalledWith('rental/a b');
     expect(buildPcaPumpApiPath).toHaveBeenCalledWith('pump/a b');
     expect(buildPcaPumpRentalApiPath).toHaveBeenCalledWith('rental_returned_pending');
+    expect(buildOrgJsonHeaders).toHaveBeenNthCalledWith(1, 'org_1');
+    expect(buildOrgJsonHeaders).toHaveBeenNthCalledWith(2, 'org_1');
+    expect(buildOrgJsonHeaders).toHaveBeenNthCalledWith(3, 'org_1');
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       '/api/pca-pump-rentals/rental%2Fa%20b',
-      expect.objectContaining({ method: 'PATCH' }),
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': 'org_1',
+          'x-test-helper': 'orgJsonHeaders',
+        },
+      }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       '/api/pca-pumps/pump%2Fa%20b',
-      expect.objectContaining({ method: 'PATCH' }),
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': 'org_1',
+          'x-test-helper': 'orgJsonHeaders',
+        },
+      }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
       '/api/pca-pump-rentals/rental_returned_pending',
-      expect.objectContaining({ method: 'PATCH' }),
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': 'org_1',
+          'x-test-helper': 'orgJsonHeaders',
+        },
+      }),
     );
   });
 
