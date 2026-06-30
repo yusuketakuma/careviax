@@ -11,6 +11,7 @@ import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { ReportShareWorkspace } from './report-share-workspace';
 import {
+  buildReportEvidence,
   buildHeaderMeta,
   buildWorkspaceNextAction,
   waitingBadgeLabel,
@@ -673,6 +674,17 @@ describe('report-share-workspace helpers', () => {
   it('builds header meta with counts', () => {
     expect(buildHeaderMeta(new Date(2026, 5, 11), TODAY_WORKSPACE.counts)).toMatch(
       /^6\/11\(木\) — 書く3件・課題2件・作成済み3件・待つ2件・解決1件$/,
+    );
+  });
+
+  it('focuses read receipt evidence on the external share queue', () => {
+    expect(buildReportEvidence(TODAY_WORKSPACE)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'read-receipt',
+          href: '/external?focus=shares',
+        }),
+      ]),
     );
   });
 

@@ -24977,3 +24977,28 @@ Next loop:
 - Remaining:
   - The broad master-management/patient-information goal remains open.
   - Do not broad-stage because the worktree also contains unrelated dirty communication-queue and schedule/routing files.
+
+### Report Share Evidence Link Focus - 2026-06-30 17:44 JST
+
+- Scope:
+  - Continued the report and interprofessional collaboration slice by tightening the report share workspace evidence links.
+  - Focused on the read-receipt evidence row, which sent users to the broad external collaboration hub instead of the share/read-receipt queue.
+- Fixed:
+  - `buildReportEvidence` now builds the read-receipt evidence link through `buildExternalHref({ focus: 'shares' })`.
+  - Added a regression asserting read-receipt evidence routes to `/external?focus=shares`.
+- Safety:
+  - Reduces wrong-queue navigation risk for report share/read-receipt follow-up.
+  - Keeps the existing external link helper as the single focus-query builder for external collaboration pages.
+  - No auth/RLS policy, permission, PHI export, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - No new query, network call, dependency, background job, broad scan, unbounded loop, or render-heavy path was added.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/reports/report-share-workspace.helpers.ts' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`: passed with no changes.
+  - `pnpm exec vitest run 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' src/lib/dashboard/home-link-builders.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `20` tests.
+  - Scoped ESLint on report helper/test and `src/lib/dashboard/home-link-builders.ts`: passed.
+  - Scoped Prettier check and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - The broad visit/report/interprofessional collaboration goal remains open.
+  - `.codex/ralph-state.md` already contains unrelated dirty operating-hours progress from another agent; do not broad-stage it with this report evidence slice.

@@ -5,6 +5,7 @@ import type {
   EvidenceItem,
   NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
+import { buildExternalHref } from '@/lib/dashboard/home-link-builders';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { familyNameOf as sharedFamilyNameOf } from '@/lib/utils/person-name';
@@ -116,7 +117,7 @@ export function buildReportEvidence(
       id: 'read-receipt',
       label: '既読確認',
       meta: 'ポータル連携',
-      href: '/external',
+      href: buildExternalHref({ focus: 'shares' }),
     },
   ];
 }
