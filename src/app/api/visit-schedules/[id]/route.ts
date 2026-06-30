@@ -21,7 +21,7 @@ import {
 } from '@/lib/visits/schedule-reason';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { withOrgContext } from '@/lib/db/rls';
-import { SCHEDULE_DETAIL_INCLUDE } from '@/lib/db/schedule-includes';
+import { buildScheduleDetailInclude } from '@/lib/db/schedule-includes';
 import {
   success,
   validationError,
@@ -36,6 +36,7 @@ import { updateVisitScheduleSchema, type ScheduleStatus } from '@/lib/validation
 import { findVisitRouteOrderConflict } from '@/lib/visits/route-order-conflicts';
 import { prisma } from '@/lib/db/client';
 import { resolveOperationalTasks } from '@/server/services/operational-tasks';
+import { attachVisitSchedulePatientSummary } from '@/server/services/visit-schedule-patient-summary';
 import { validateScheduleTimeStringsFitShift } from '@/server/services/visit-schedule-shift';
 import {
   findVisitScheduleTimeConflict,
@@ -173,7 +174,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
 
   const schedule = await prisma.visitSchedule.findFirst({
     where: { id, org_id: ctx.orgId },
-    include: SCHEDULE_DETAIL_INCLUDE,
+    include: buildScheduleDetailInclude(ctx.orgId),
   });
 
   if (!schedule) return notFound('訪問予定が見つかりません');
@@ -192,8 +193,10 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   });
   if (!careCase) return notFound('訪問予定に紐づくケースが見つかりません');
 
+  const safeSchedule = attachVisitSchedulePatientSummary(schedule);
+
   return success({
-    ...schedule,
+    ...safeSchedule,
     patient_id: careCase.patient_id,
     cycle_id: schedule.cycle_id,
   });

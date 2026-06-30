@@ -6,13 +6,11 @@ import {
 
 type VisitSchedulePatientSummarySource = {
   case_: {
-    patient?: (PatientOperationalSummaryInput & Record<string, unknown>) | null;
+    patient?: Record<string, unknown> | null;
   };
 };
 
-function stripSummarySourceFields<
-  T extends PatientOperationalSummaryInput & Record<string, unknown>,
->(patient: T) {
+function stripSummarySourceFields<T extends Record<string, unknown>>(patient: T) {
   const {
     archived_at: _archivedAt,
     allergy_info: _allergyInfo,
@@ -27,17 +25,34 @@ function stripSummarySourceFields<
   return safePatient;
 }
 
+function isPatientOperationalSummaryInput(
+  patient: Record<string, unknown>,
+): patient is PatientOperationalSummaryInput & Record<string, unknown> {
+  return typeof patient.id === 'string' && typeof patient.name === 'string';
+}
+
 export function attachVisitSchedulePatientSummary<T extends VisitSchedulePatientSummarySource>(
   schedule: T,
 ): T & { patient_summary: PatientOperationalSummary | null } {
   const patient = schedule.case_.patient;
   if (!patient) return { ...schedule, patient_summary: null };
+  const safePatient = stripSummarySourceFields(patient);
+  if (!isPatientOperationalSummaryInput(patient)) {
+    return {
+      ...schedule,
+      case_: {
+        ...schedule.case_,
+        patient: safePatient,
+      },
+      patient_summary: null,
+    };
+  }
 
   return {
     ...schedule,
     case_: {
       ...schedule.case_,
-      patient: stripSummarySourceFields(patient),
+      patient: safePatient,
     },
     patient_summary: buildPatientOperationalSummary(patient),
   };

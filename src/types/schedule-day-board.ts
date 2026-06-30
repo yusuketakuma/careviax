@@ -6,12 +6,14 @@
  */
 
 import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
+import type { PatientOperationalSummary } from '@/lib/patient/operational-summary';
 
 export type DayBoardVisit = {
   id: string;
   patient_id?: string;
   patient_name: string;
   patient_archive?: PatientArchiveSummary | null;
+  patient_summary?: PatientOperationalSummary | null;
   visit_type: string;
   schedule_status: string;
   priority: string;
@@ -99,6 +101,7 @@ export type DayBoardPendingProposal = {
   patient_id?: string;
   patient_name: string;
   patient_archive?: PatientArchiveSummary | null;
+  patient_summary?: PatientOperationalSummary | null;
   pharmacist_name: string | null;
   patient_contact_status: DayBoardPatientContactStatus;
   /** YYYY-MM-DD */

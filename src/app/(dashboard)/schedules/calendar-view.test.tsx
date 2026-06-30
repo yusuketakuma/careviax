@@ -28,6 +28,13 @@ function renderCalendar() {
 // カレンダーの日セルは aria-label="M月d日(件数)" を持つ。月ナビ(前月/翌月/今月)は「日」を含まない。
 const DAY_CELL_NAME = /月.+日/;
 
+function currentDateKey() {
+  const today = new Date();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${today.getFullYear()}-${month}-${day}`;
+}
+
 describe('CalendarView false-empty', () => {
   beforeEach(() => {
     realtimeQueryMock.mockReset();
@@ -151,5 +158,74 @@ describe('CalendarView false-empty', () => {
 
     expect(await screen.findByText('算定プレビューを読み込めませんでした')).toBeTruthy();
     expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it('shows patient operational summary chips in the selected day panel', () => {
+    const todayKey = currentDateKey();
+    realtimeQueryMock.mockReturnValue({
+      data: [
+        {
+          id: 'sch_1',
+          scheduled_date: todayKey,
+          schedule_status: 'planned',
+          visit_type: 'regular',
+          pharmacist_id: 'ph_1',
+          case_id: 'case_1',
+          cycle_id: null,
+          time_window_start: '1970-01-01T09:00:00.000Z',
+          time_window_end: '1970-01-01T10:00:00.000Z',
+          case_: { patient: { id: 'p1', name: '患者 太郎' } },
+          patient_summary: {
+            patient_id: 'p1',
+            name: '患者 太郎',
+            archive: {
+              status: 'archived',
+              archived: true,
+              archived_at: '2026-06-01T00:00:00.000Z',
+            },
+            insurance: {
+              current: [],
+              current_count: 0,
+              missing: true,
+              expires_soon_count: 0,
+            },
+            safety: {
+              has_allergy: true,
+              allergy_label: 'アレルギーあり',
+              critical_lab_count: 1,
+              stale_lab_count: 0,
+              lab_flags: [],
+            },
+          },
+        },
+      ],
+      isLoading: false,
+      isError: false,
+      refetch: refetchMock,
+      connected: true,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: async () => ({ data: {} }),
+        } as Response),
+      ),
+    );
+
+    renderCalendar();
+
+    const today = new Date();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `${today.getMonth() + 1}月${today.getDate()}日 1件`,
+      }),
+    );
+
+    expect(screen.getByText('アーカイブ中')).toBeTruthy();
+    expect(screen.getByText('アレルギー')).toBeTruthy();
+    expect(screen.getByText('検査値要確認')).toBeTruthy();
+    expect(screen.getByText('保険未確認')).toBeTruthy();
   });
 });

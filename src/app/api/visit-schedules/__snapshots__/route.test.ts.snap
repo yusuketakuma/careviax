@@ -32,6 +32,46 @@ exports[`/api/visit-schedules > lists visit schedules with workload and facility
       "id": "schedule_1",
       "org_id": "org_1",
       "override_request": null,
+      "patient_summary": {
+        "archive": {
+          "archived": true,
+          "archived_at": "2026-03-01T00:00:00.000Z",
+          "status": "archived",
+        },
+        "insurance": {
+          "current": [
+            {
+              "copay_label": "30%",
+              "expires_soon": false,
+              "insurance_type": "医療",
+              "period_label": "2020-01-01 - 2099-12-31",
+              "status_label": "確定済み",
+            },
+          ],
+          "current_count": 1,
+          "expires_soon_count": 0,
+          "missing": false,
+        },
+        "name": "患者A",
+        "patient_id": "patient_1",
+        "safety": {
+          "allergy_label": "アレルギーあり",
+          "critical_lab_count": 1,
+          "has_allergy": true,
+          "lab_flags": [
+            {
+              "abnormal": true,
+              "abnormal_flag": "L",
+              "analyte_code": "egfr",
+              "analyte_label": "eGFR",
+              "measured_at": "2026-03-20",
+              "stale": true,
+              "value_label": "29 mL/min/1.73m2",
+            },
+          ],
+          "stale_lab_count": 1,
+        },
+      },
       "pharmacist_id": "user_2",
       "preparation": null,
       "priority": "urgent",

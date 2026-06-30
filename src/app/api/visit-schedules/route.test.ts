@@ -178,6 +178,30 @@ describe('/api/visit-schedules', () => {
           patient: {
             id: 'patient_1',
             name: '患者A',
+            archived_at: new Date('2026-03-01T00:00:00.000Z'),
+            allergy_info: [{ substance: 'ペニシリン' }],
+            insurances: [
+              {
+                insurance_type: 'medical',
+                application_status: 'confirmed',
+                public_program_code: null,
+                copay_ratio: 30,
+                valid_from: new Date('2020-01-01T00:00:00.000Z'),
+                valid_until: new Date('2099-12-31T00:00:00.000Z'),
+                is_active: true,
+                insurer_number: 'raw-insurer-number',
+              },
+            ],
+            lab_observations: [
+              {
+                analyte_code: 'egfr',
+                value_numeric: 29,
+                value_text: null,
+                unit: 'mL/min/1.73m2',
+                measured_at: new Date('2026-03-20T00:00:00.000Z'),
+                abnormal_flag: 'L',
+              },
+            ],
             residences: [{ address: '施設A', building_id: 'facility_1' }],
           },
         },
@@ -296,6 +320,21 @@ describe('/api/visit-schedules', () => {
           workload_hint: expect.objectContaining({
             daily_visit_count: 1,
           }),
+          patient_summary: expect.objectContaining({
+            patient_id: 'patient_1',
+            name: '患者A',
+            archive: expect.objectContaining({
+              status: 'archived',
+            }),
+            insurance: expect.objectContaining({
+              missing: false,
+              current_count: 1,
+            }),
+            safety: expect.objectContaining({
+              has_allergy: true,
+              critical_lab_count: 1,
+            }),
+          }),
           vehicle_resource: expect.objectContaining({
             id: 'vehicle_1',
             label: '社用車A',
@@ -308,6 +347,15 @@ describe('/api/visit-schedules', () => {
         take: 2,
       }),
     );
+    const patientSelect =
+      visitScheduleFindManyMock.mock.calls[0]?.[0]?.include.case_.select.patient.select;
+    expect(patientSelect.insurances.where).toMatchObject({ org_id: 'org_1' });
+    expect(patientSelect.lab_observations.where).toMatchObject({ org_id: 'org_1' });
+    expect(payload.data[0].case_.patient).not.toHaveProperty('archived_at');
+    expect(payload.data[0].case_.patient).not.toHaveProperty('allergy_info');
+    expect(payload.data[0].case_.patient).not.toHaveProperty('insurances');
+    expect(payload.data[0].case_.patient).not.toHaveProperty('lab_observations');
+    expect(JSON.stringify(payload)).not.toContain('raw-insurer-number');
     expect(payload).toMatchSnapshot();
   });
 

@@ -47,6 +47,7 @@ export type BoardBlock = {
   /** 麻薬監査未完などのリスク(⚠) */
   risk: boolean;
   patientArchive?: DayBoardVisit['patient_archive'];
+  patientSummary?: DayBoardVisit['patient_summary'];
   preparationSummary?: DayBoardVisit['preparation_summary'];
   aggregateScheduleIds?: string[];
 };
@@ -303,6 +304,7 @@ export function buildStaffLane({
       locked: window.visit.confirmed,
       risk: riskPatientNames?.has(window.visit.patient_name) ?? false,
       patientArchive: window.visit.patient_archive,
+      patientSummary: window.aggregateScheduleIds ? undefined : window.visit.patient_summary,
       preparationSummary: window.visit.preparation_summary,
       aggregateScheduleIds: window.aggregateScheduleIds,
     });

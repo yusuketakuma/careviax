@@ -328,6 +328,49 @@ describe('/api/visit-schedules/[id] GET', () => {
   });
 
   it('returns the patient_id derived from the scheduled case', async () => {
+    visitScheduleFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      cycle_id: 'cycle_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      schedule_status: 'planned',
+      scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+      time_window_start: null,
+      time_window_end: null,
+      route_order: 1,
+      recurrence_rule: null,
+      version: 1,
+      confirmed_at: null,
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      vehicle_resource_id: null,
+      visit_record: null,
+      preparation: null,
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+        patient: {
+          id: 'patient_1',
+          name: '患者A',
+          archived_at: null,
+          allergy_info: [{ substance: 'ペニシリン' }],
+          insurances: [],
+          lab_observations: [
+            {
+              analyte_code: 'k',
+              value_numeric: 5.8,
+              value_text: null,
+              unit: 'mEq/L',
+              measured_at: new Date('2026-03-20T00:00:00.000Z'),
+              abnormal_flag: 'H',
+            },
+          ],
+          residences: [{ address: '東京都', building_id: null, unit_name: null }],
+        },
+      },
+    });
+
     const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
       params: Promise.resolve({ id: 'schedule_1' }),
     });
@@ -336,12 +379,32 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       id: 'schedule_1',
       case_id: 'case_1',
       cycle_id: 'cycle_1',
       patient_id: 'patient_1',
+      patient_summary: expect.objectContaining({
+        patient_id: 'patient_1',
+        name: '患者A',
+        insurance: expect.objectContaining({
+          missing: true,
+        }),
+        safety: expect.objectContaining({
+          has_allergy: true,
+          critical_lab_count: 1,
+        }),
+      }),
     });
+    expect(body.case_.patient).not.toHaveProperty('allergy_info');
+    expect(body.case_.patient).not.toHaveProperty('insurances');
+    expect(body.case_.patient).not.toHaveProperty('lab_observations');
+    expect(body.case_.patient).not.toHaveProperty('archived_at');
+    const patientSelect =
+      visitScheduleFindFirstMock.mock.calls[0]?.[0]?.include.case_.select.patient.select;
+    expect(patientSelect.insurances.where).toMatchObject({ org_id: 'org_1' });
+    expect(patientSelect.lab_observations.where).toMatchObject({ org_id: 'org_1' });
   });
 
   it('rejects blank schedule ids before loading schedule details', async () => {

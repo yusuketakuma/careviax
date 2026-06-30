@@ -6,7 +6,7 @@ import {
   type VisitScheduleAccessContext,
 } from '@/lib/auth/visit-schedule-access';
 import { withOrgContext } from '@/lib/db/rls';
-import { SCHEDULE_LIST_INCLUDE } from '@/lib/db/schedule-includes';
+import { buildScheduleListInclude } from '@/lib/db/schedule-includes';
 import { ACTIVE_VISIT_SCHEDULE_STATUSES } from '@/lib/constants/visit';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { conflict, forbiddenResponse, validationError } from '@/lib/api/response';
@@ -21,6 +21,7 @@ import {
   evaluateVisitWorkflowGate,
   formatVisitWorkflowGateIssues,
 } from '@/server/services/management-plans';
+import { attachVisitSchedulePatientSummary } from '@/server/services/visit-schedule-patient-summary';
 import { validateVisitScheduleBlockingBillingRequirements } from '@/server/services/visit-schedule-billing-guard';
 import { validateScheduleTimeStringsFitShift } from '@/server/services/visit-schedule-shift';
 import { createRoadTravelEstimator } from '@/server/services/road-routing';
@@ -170,14 +171,14 @@ export async function listSchedules(
       filters.sort === 'time_window_start'
         ? [primarySort ?? { time_window_start: 'asc' }, { scheduled_date: 'asc' }, { id: 'asc' }]
         : [primarySort ?? { scheduled_date: 'asc' }, { time_window_start: 'asc' }, { id: 'asc' }],
-    include: SCHEDULE_LIST_INCLUDE,
+    include: buildScheduleListInclude(orgId),
   });
 
   const hasMore = schedules.length > limit;
   const data = hasMore ? schedules.slice(0, limit) : schedules;
 
   return {
-    data: enrichSchedulesWithHints(data),
+    data: enrichSchedulesWithHints(data).map(attachVisitSchedulePatientSummary),
     hasMore,
     nextCursor: hasMore ? data[data.length - 1]?.id : undefined,
   };

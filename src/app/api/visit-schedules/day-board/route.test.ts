@@ -404,6 +404,30 @@ describe('/api/visit-schedules/day-board', () => {
             name: '伊藤 アーカイブ',
             archived_at: archivedAt,
             archived_by: 'internal_user',
+            allergy_info: [{ substance: 'ペニシリン詳細' }],
+            insurances: [
+              {
+                insurance_type: 'medical',
+                application_status: 'confirmed',
+                public_program_code: null,
+                copay_ratio: 30,
+                valid_from: new Date('2026-01-01T00:00:00.000Z'),
+                valid_until: new Date('2026-06-20T00:00:00.000Z'),
+                is_active: true,
+                number: 'RAW-INSURANCE-NUMBER',
+              },
+            ],
+            lab_observations: [
+              {
+                analyte_code: 'egfr',
+                value_numeric: 42,
+                value_text: null,
+                unit: 'mL/min',
+                measured_at: new Date('2026-06-01T00:00:00.000Z'),
+                abnormal_flag: 'L',
+                note: 'RAW-LAB-NOTE',
+              },
+            ],
             contacts: [],
             residences: [],
           },
@@ -427,6 +451,9 @@ describe('/api/visit-schedules/day-board', () => {
             name: '鈴木 アーカイブ',
             archived_at: archivedAt,
             archived_by: 'internal_user',
+            allergy_info: null,
+            insurances: [],
+            lab_observations: [],
           },
         },
       },
@@ -447,6 +474,20 @@ describe('/api/visit-schedules/day-board', () => {
         archived: true,
         archived_at: '2026-06-30T09:00:00.000Z',
       },
+      patient_summary: {
+        patient_id: 'patient_archived',
+        name: '伊藤 アーカイブ',
+        insurance: {
+          current_count: 1,
+          missing: false,
+          expires_soon_count: 1,
+        },
+        safety: {
+          has_allergy: true,
+          allergy_label: 'アレルギーあり',
+          critical_lab_count: 1,
+        },
+      },
     });
     expect(json.data.pending_proposals[0]).toMatchObject({
       id: 'proposal_archived',
@@ -456,9 +497,61 @@ describe('/api/visit-schedules/day-board', () => {
         archived: true,
         archived_at: '2026-06-30T09:00:00.000Z',
       },
+      patient_summary: {
+        patient_id: 'patient_pending_archived',
+        name: '鈴木 アーカイブ',
+        insurance: {
+          current_count: 0,
+          missing: true,
+        },
+        safety: {
+          has_allergy: false,
+          critical_lab_count: 0,
+        },
+      },
     });
+    expect(json.data.staff[0].visits[0].patient_summary.safety.lab_flags[0]).toMatchObject({
+      analyte_code: 'egfr',
+      value_label: '42 mL/min',
+      measured_at: '2026-06-01',
+      abnormal: true,
+    });
+    const schedulePatientSelect =
+      visitScheduleFindManyMock.mock.calls[0]?.[0]?.select.case_.select.patient.select;
+    expect(schedulePatientSelect).toMatchObject({
+      allergy_info: true,
+      insurances: expect.objectContaining({
+        select: expect.objectContaining({
+          insurance_type: true,
+          application_status: true,
+          public_program_code: true,
+          copay_ratio: true,
+          valid_from: true,
+          valid_until: true,
+          is_active: true,
+        }),
+      }),
+      lab_observations: expect.objectContaining({
+        select: expect.objectContaining({
+          analyte_code: true,
+          value_numeric: true,
+          value_text: true,
+          unit: true,
+          measured_at: true,
+          abnormal_flag: true,
+        }),
+      }),
+    });
+    expect(schedulePatientSelect.insurances.where).toMatchObject({ org_id: 'org_1' });
+    expect(schedulePatientSelect.lab_observations.where).toMatchObject({ org_id: 'org_1' });
+    expect(schedulePatientSelect.insurances.select).not.toHaveProperty('number');
+    expect(schedulePatientSelect.insurances.select).not.toHaveProperty('insurer_number');
+    expect(schedulePatientSelect.lab_observations.select).not.toHaveProperty('note');
     expect(JSON.stringify(json.data)).not.toContain('archived_by');
     expect(JSON.stringify(json.data)).not.toContain('internal_user');
+    expect(JSON.stringify(json.data)).not.toContain('ペニシリン詳細');
+    expect(JSON.stringify(json.data)).not.toContain('RAW-INSURANCE-NUMBER');
+    expect(JSON.stringify(json.data)).not.toContain('RAW-LAB-NOTE');
   });
 
   it('applies personal dashboard assignment scope to hidden proposal task counts', async () => {

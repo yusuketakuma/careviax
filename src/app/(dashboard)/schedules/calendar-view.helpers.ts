@@ -1,4 +1,5 @@
 import { timeIsoToMinutes } from '@/lib/visits/time-of-day';
+import type { PatientOperationalSummary } from '@/lib/patient/operational-summary';
 import { fetchVisitSchedulesWindow } from './visit-schedule-fetch.helpers';
 
 export type ScheduleStatus =
@@ -28,6 +29,7 @@ export type CalendarVisitSchedule = {
       name: string;
     };
   };
+  patient_summary?: PatientOperationalSummary | null;
 };
 
 function timeSortValue(value: string | null | undefined) {

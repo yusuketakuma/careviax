@@ -7,7 +7,7 @@ import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { formatUtcDateKey } from '@/lib/date-key';
-import { buildPatientArchiveSummary } from '@/lib/patient/archive-summary';
+import { buildPatientOperationalSummarySelect } from '@/lib/db/patient-operational-summary-select';
 import { withOrgContext } from '@/lib/db/rls';
 import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import { addUtcDays, japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
@@ -15,6 +15,7 @@ import { timeDateToMinutes } from '@/lib/visits/time-of-day';
 import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
 import { createRoadTravelEstimator } from '@/server/services/road-routing';
 import { buildVehicleRoutePoint } from '@/server/services/visit-schedule-service';
+import { attachVisitSchedulePatientSummary } from '@/server/services/visit-schedule-patient-summary';
 import {
   estimateVehicleRouteDurationWithCandidate,
   type VehicleRouteDurationPoint,
@@ -704,6 +705,7 @@ const authenticatedGET = withAuthContext(
     const responseData = await withOrgContext(
       ctx.orgId,
       async (db) => {
+        const patientOperationalSummarySelect = buildPatientOperationalSummarySelect(ctx.orgId);
         const [
           memberships,
           schedules,
@@ -776,7 +778,7 @@ const authenticatedGET = withAuthContext(
                     select: {
                       id: true,
                       name: true,
-                      archived_at: true,
+                      ...patientOperationalSummarySelect,
                       contacts: {
                         where: { org_id: ctx.orgId, is_emergency_contact: true },
                         select: { id: true },
@@ -859,7 +861,7 @@ const authenticatedGET = withAuthContext(
                     select: {
                       id: true,
                       name: true,
-                      archived_at: true,
+                      ...patientOperationalSummarySelect,
                     },
                   },
                 },
@@ -937,34 +939,39 @@ const authenticatedGET = withAuthContext(
           schedules,
         );
 
-        const toBoardVisit = (schedule: (typeof schedules)[number]): DayBoardVisit => ({
-          id: schedule.id,
-          patient_id: schedule.case_.patient.id,
-          patient_name: schedule.case_.patient.name,
-          patient_archive: buildPatientArchiveSummary(schedule.case_.patient.archived_at),
-          visit_type: schedule.visit_type,
-          schedule_status: schedule.schedule_status,
-          priority: schedule.priority,
-          site_id: schedule.site_id,
-          route_order: schedule.route_order,
-          time_start: schedule.time_window_start?.toISOString() ?? null,
-          time_end: schedule.time_window_end?.toISOString() ?? null,
-          vehicle_resource_id: schedule.vehicle_resource_id,
-          vehicle_label: schedule.vehicle_resource?.label ?? null,
-          vehicle_travel_mode: schedule.vehicle_resource?.travel_mode ?? null,
-          confirmed: schedule.confirmed_at != null,
-          facility_label: schedule.facility_batch
-            ? (facilityNameById.get(schedule.facility_batch.facility_id) ?? '施設')
-            : null,
-          facility_batch_id: schedule.facility_batch_id,
-          facility_patient_count: schedule.facility_batch_id
-            ? (batchPatientCounts.get(schedule.facility_batch_id) ?? 1)
-            : 1,
-          preparation_summary: buildPreparationSummary({
-            ...schedule,
-            ready_blocker_summary: readyBlockerSummaryByScheduleId.get(schedule.id),
-          }),
-        });
+        const toBoardVisit = (schedule: (typeof schedules)[number]): DayBoardVisit => {
+          const summarizedSchedule = attachVisitSchedulePatientSummary(schedule);
+          const patient = summarizedSchedule.case_.patient;
+          return {
+            id: schedule.id,
+            patient_id: patient.id,
+            patient_name: patient.name,
+            patient_archive: summarizedSchedule.patient_summary?.archive ?? null,
+            patient_summary: summarizedSchedule.patient_summary,
+            visit_type: schedule.visit_type,
+            schedule_status: schedule.schedule_status,
+            priority: schedule.priority,
+            site_id: schedule.site_id,
+            route_order: schedule.route_order,
+            time_start: schedule.time_window_start?.toISOString() ?? null,
+            time_end: schedule.time_window_end?.toISOString() ?? null,
+            vehicle_resource_id: schedule.vehicle_resource_id,
+            vehicle_label: schedule.vehicle_resource?.label ?? null,
+            vehicle_travel_mode: schedule.vehicle_resource?.travel_mode ?? null,
+            confirmed: schedule.confirmed_at != null,
+            facility_label: schedule.facility_batch
+              ? (facilityNameById.get(schedule.facility_batch.facility_id) ?? '施設')
+              : null,
+            facility_batch_id: schedule.facility_batch_id,
+            facility_patient_count: schedule.facility_batch_id
+              ? (batchPatientCounts.get(schedule.facility_batch_id) ?? 1)
+              : 1,
+            preparation_summary: buildPreparationSummary({
+              ...schedule,
+              ready_blocker_summary: readyBlockerSummaryByScheduleId.get(schedule.id),
+            }),
+          };
+        };
 
         // 同一ユーザーの重複 membership を除去しつつ、訪問のある担当者を優先して行数を絞る。
         // 当日シフトで不在(available=false)のメンバーはボードに出さない(デザイン 03: 休みはレーン非表示)
@@ -1070,6 +1077,8 @@ const authenticatedGET = withAuthContext(
         }
 
         const pendingProposals: DayBoardPendingProposal[] = proposals.map((proposal) => {
+          const summarizedProposal = attachVisitSchedulePatientSummary(proposal);
+          const patient = summarizedProposal.case_.patient;
           const proposedDateTime = proposal.proposed_date.getTime();
           // @db.Date is stored at UTC midnight, so use the canonical UTC date key.
           const proposedDateKey = formatUtcDateKey(proposal.proposed_date);
@@ -1098,9 +1107,10 @@ const authenticatedGET = withAuthContext(
 
           return {
             id: proposal.id,
-            patient_id: proposal.case_.patient.id,
-            patient_name: proposal.case_.patient.name,
-            patient_archive: buildPatientArchiveSummary(proposal.case_.patient.archived_at),
+            patient_id: patient.id,
+            patient_name: patient.name,
+            patient_archive: summarizedProposal.patient_summary?.archive ?? null,
+            patient_summary: summarizedProposal.patient_summary,
             pharmacist_name: pharmacistNameById.get(proposal.proposed_pharmacist_id) ?? null,
             patient_contact_status: proposal.patient_contact_status,
             proposed_date: proposedDateKey,

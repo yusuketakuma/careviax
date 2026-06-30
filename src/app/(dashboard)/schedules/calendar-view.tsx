@@ -103,6 +103,62 @@ function formatVisitTypeLabel(visitType: string) {
   return VISIT_TYPE_LABELS[visitType as keyof typeof VISIT_TYPE_LABELS] ?? visitType;
 }
 
+function PatientSummaryChips({ schedule }: { schedule: CalendarVisitSchedule }) {
+  const summary = schedule.patient_summary;
+  if (!summary) return null;
+
+  const chips: Array<{ key: string; label: string; className: string }> = [];
+  if (summary.archive.status === 'archived') {
+    chips.push({
+      key: 'archived',
+      label: 'アーカイブ中',
+      className: 'border-state-readonly/30 bg-state-readonly/10 text-state-readonly',
+    });
+  }
+  if (summary.safety.has_allergy) {
+    chips.push({
+      key: 'allergy',
+      label: 'アレルギー',
+      className: 'border-state-blocked/30 bg-state-blocked/10 text-state-blocked',
+    });
+  }
+  if (summary.safety.critical_lab_count > 0) {
+    chips.push({
+      key: 'critical-lab',
+      label: '検査値要確認',
+      className: 'border-state-blocked/30 bg-state-blocked/10 text-state-blocked',
+    });
+  }
+  if (summary.insurance.missing) {
+    chips.push({
+      key: 'insurance-missing',
+      label: '保険未確認',
+      className: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
+    });
+  } else if (summary.insurance.expires_soon_count > 0) {
+    chips.push({
+      key: 'insurance-expires-soon',
+      label: '保険期限注意',
+      className: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
+    });
+  }
+
+  if (chips.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-1" aria-label={`${summary.name} の患者注意情報`}>
+      {chips.map((chip) => (
+        <span
+          key={chip.key}
+          className={`rounded border px-1.5 py-0.5 text-[10px] font-medium leading-tight ${chip.className}`}
+        >
+          {chip.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function DayPanel({
   date,
   schedules,
@@ -151,6 +207,9 @@ function DayPanel({
                       {formatVisitTypeLabel(schedule.visit_type)}
                       {schedule.route_order != null ? ` / 順路 ${schedule.route_order}` : ''}
                     </p>
+                    <div className="mt-1">
+                      <PatientSummaryChips schedule={schedule} />
+                    </div>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs">

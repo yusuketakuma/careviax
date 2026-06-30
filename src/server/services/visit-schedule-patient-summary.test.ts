@@ -56,4 +56,25 @@ describe('attachVisitSchedulePatientSummary', () => {
     expect(enriched.case_.patient).not.toHaveProperty('lab_observations');
     expect(JSON.stringify(enriched)).not.toMatch(/raw-insurer|raw-number|insurer_number/);
   });
+
+  it('strips raw source fields even when the patient shape cannot build a summary', () => {
+    const enriched = attachVisitSchedulePatientSummary({
+      id: 'schedule_missing_patient_identity',
+      case_: {
+        patient: {
+          residences: [],
+          archived_at: new Date('2026-06-30T09:00:00.000Z'),
+          allergy_info: [{ substance: 'ペニシリン詳細' }],
+          insurances: [{ number: 'raw-number' }],
+          lab_observations: [{ note: 'raw-lab-note' }],
+        },
+      },
+    });
+
+    expect(enriched.patient_summary).toBeNull();
+    expect(enriched.case_.patient).toEqual({ residences: [] });
+    expect(JSON.stringify(enriched)).not.toMatch(
+      /archived_at|allergy_info|insurances|lab_observations|raw-number|raw-lab-note/,
+    );
+  });
 });

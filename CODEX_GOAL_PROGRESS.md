@@ -30,6 +30,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Schedule Patient Operational Summary Wiring - 2026-07-01 02:20 JST
+
+- Scope:
+  - Continued PRE-06 / P-12 patient summary contract work from the foundation slice.
+  - Focused on schedule list/detail APIs, day-board API, calendar day panel, and schedule team-board surfaces.
+- Fixed:
+  - Added shared `buildPatientOperationalSummarySelect`, `buildScheduleListInclude`, and `buildScheduleDetailInclude` builders for narrow org-scoped schedule-safe patient source fields.
+  - `GET /api/visit-schedules`, `GET /api/visit-schedules/[id]`, and `GET /api/visit-schedules/day-board` now attach compact `patient_summary` payloads.
+  - Raw `archived_at`, `allergy_info`, `insurances`, and `lab_observations` are stripped from returned schedule patient payloads after summary construction.
+  - Calendar day panel and schedule team-board surfaces now show compact archive/insurance/allergy/lab-risk badges without exposing raw insurance numbers, allergy details, lab notes, or raw lab values in proposal rows.
+- Safety:
+  - Reduces archived-patient wrong-use and patient-source-field leakage risk in schedule workflows.
+  - Summary source select excludes raw insurance identifiers and lab notes; tests assert raw fields are not returned.
+- Performance:
+  - Reuses existing schedule/day-board queries with bounded org-scoped insurance and key-lab selects.
+  - No new dependency, background job, external call, broad scan, or unbounded loop was added.
+- Validation:
+  - Focused Vitest suite passed `7` files / `180` tests.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed after clearing stale interrupted verifier tsc processes and rerunning cleanly.
+- Remaining:
+  - Broad master-management / patient-information objective remains open.
+  - Continue patient-information inventory and master-management guard/refactor work after this commit.
+
 ### Care Report Delivery Record Claim Guard - 2026-07-01 01:46 JST
 
 - Scope:

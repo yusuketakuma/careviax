@@ -67,6 +67,40 @@ const ARCHIVED_PATIENT_ARCHIVE = {
   archived: true,
   archived_at: '2026-06-30T09:00:00.000Z',
 } as const;
+const ACTIVE_PATIENT_ARCHIVE = {
+  status: 'active',
+  archived: false,
+  archived_at: null,
+} as const;
+const PATIENT_OPERATIONAL_SUMMARY: NonNullable<DayBoardStaff['visits'][number]['patient_summary']> =
+  {
+    patient_id: 'patient_summary_1',
+    name: '伊藤 キヨ',
+    archive: ACTIVE_PATIENT_ARCHIVE,
+    insurance: {
+      current: [],
+      current_count: 0,
+      missing: true,
+      expires_soon_count: 0,
+    },
+    safety: {
+      has_allergy: true,
+      allergy_label: 'アレルギーあり',
+      critical_lab_count: 1,
+      stale_lab_count: 0,
+      lab_flags: [
+        {
+          analyte_code: 'egfr',
+          analyte_label: 'eGFR',
+          value_label: '42 mL/min',
+          measured_at: '2026-06-01',
+          abnormal: true,
+          stale: false,
+          abnormal_flag: 'L',
+        },
+      ],
+    },
+  };
 
 function dateKeyOf(date: Date) {
   return `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')}`;
@@ -526,6 +560,43 @@ describe('buildStaffLane', () => {
     expect(lane.blocks.find((block) => block.id === 'visit:visit_1')?.patientArchive).toEqual(
       ARCHIVED_PATIENT_ARCHIVE,
     );
+  });
+
+  it('preserves patient operational summary on individual visit blocks only', () => {
+    const pharmacist = buildPharmacist();
+    const lane = buildStaffLane({
+      staff: {
+        ...pharmacist,
+        visits: [
+          {
+            ...pharmacist.visits[0],
+            patient_summary: PATIENT_OPERATIONAL_SUMMARY,
+          },
+        ],
+      },
+    });
+
+    expect(lane.blocks.find((block) => block.id === 'visit:visit_1')?.patientSummary).toEqual(
+      PATIENT_OPERATIONAL_SUMMARY,
+    );
+
+    const facilityLane = buildStaffLane({
+      staff: buildPharmacist({
+        visits: [
+          {
+            ...pharmacist.visits[2],
+            patient_summary: PATIENT_OPERATIONAL_SUMMARY,
+          },
+          {
+            ...pharmacist.visits[3],
+            patient_summary: PATIENT_OPERATIONAL_SUMMARY,
+          },
+        ],
+      }),
+    });
+    expect(
+      facilityLane.blocks.find((block) => block.label === '施設グリーンヒル 12名')?.patientSummary,
+    ).toBeUndefined();
   });
 
   it('aggregates facility visits with full-ready blockers as departure blockers', () => {
@@ -1019,6 +1090,59 @@ describe('ScheduleTeamBoard', () => {
     expect(
       within(screen.getByTestId('schedule-pending-proposals')).getByText('アーカイブ中'),
     ).toBeTruthy();
+  });
+
+  it('surfaces patient operational safety badges on individual visits and pending proposals', () => {
+    const board = buildBoardFixture();
+    const firstStaff = board.staff[0];
+    firstStaff.visits[0] = {
+      ...firstStaff.visits[0],
+      patient_summary: PATIENT_OPERATIONAL_SUMMARY,
+    };
+    board.pending_proposals[0] = {
+      ...board.pending_proposals[0],
+      patient_summary: {
+        ...PATIENT_OPERATIONAL_SUMMARY,
+        patient_id: 'patient_pending_summary',
+        name: '鈴木 新',
+        safety: {
+          ...PATIENT_OPERATIONAL_SUMMARY.safety,
+          has_allergy: false,
+          allergy_label: null,
+          critical_lab_count: 0,
+          stale_lab_count: 1,
+          lab_flags: [
+            {
+              analyte_code: 'scr',
+              analyte_label: '血清Cr',
+              value_label: '1.2 mg/dL',
+              measured_at: '2026-01-01',
+              abnormal: false,
+              stale: true,
+              abnormal_flag: null,
+            },
+          ],
+        },
+      },
+    };
+    mockQueries({ board });
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    const gantt = screen.getByTestId('schedule-team-gantt');
+    expect(within(gantt).getAllByText('保険未確認').length).toBeGreaterThan(0);
+    expect(within(gantt).getAllByText('アレルギーあり').length).toBeGreaterThan(0);
+    expect(within(gantt).getAllByText('検査注意1件').length).toBeGreaterThan(0);
+
+    const routePreview = screen.getByTestId('schedule-route-preview');
+    expect(within(routePreview).getAllByText('保険未確認').length).toBeGreaterThan(0);
+    expect(within(routePreview).getAllByText('アレルギーあり').length).toBeGreaterThan(0);
+    expect(within(routePreview).getAllByText('検査注意1件').length).toBeGreaterThan(0);
+
+    const pending = screen.getByTestId('schedule-pending-proposals');
+    expect(within(pending).getAllByText('保険未確認').length).toBeGreaterThan(0);
+    expect(within(pending).getAllByText('検査未更新1件').length).toBeGreaterThan(0);
+    expect(within(pending).queryByText('血清Cr')).toBeNull();
+    expect(within(pending).queryByText('1.2 mg/dL')).toBeNull();
   });
 
   it('renders total pending proposal count while keeping only visible proposal rows', () => {

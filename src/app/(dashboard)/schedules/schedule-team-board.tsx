@@ -296,6 +296,75 @@ function PatientArchiveBadge({
   );
 }
 
+function PatientOperationalSummaryBadges({
+  summary,
+  className,
+  variant = 'surface',
+}: {
+  summary: DayBoardVisit['patient_summary'] | DayBoardPendingProposal['patient_summary'];
+  className?: string;
+  variant?: 'surface' | 'inverted';
+}) {
+  if (!summary) return null;
+
+  const badges: Array<{ key: string; label: string; role: StatusRole }> = [];
+  if (summary.insurance.missing) {
+    badges.push({ key: 'insurance-missing', label: '保険未確認', role: 'confirm' });
+  } else if (summary.insurance.expires_soon_count > 0) {
+    badges.push({ key: 'insurance-expiring', label: '保険期限確認', role: 'confirm' });
+  }
+  if (summary.safety.has_allergy) {
+    badges.push({
+      key: 'allergy',
+      label: summary.safety.allergy_label ?? 'アレルギーあり',
+      role: 'blocked',
+    });
+  }
+  if (summary.safety.critical_lab_count > 0) {
+    badges.push({
+      key: 'critical-lab',
+      label: `検査注意${summary.safety.critical_lab_count}件`,
+      role: 'blocked',
+    });
+  } else if (summary.safety.stale_lab_count > 0) {
+    badges.push({
+      key: 'stale-lab',
+      label: `検査未更新${summary.safety.stale_lab_count}件`,
+      role: 'confirm',
+    });
+  }
+
+  if (badges.length === 0) return null;
+
+  if (variant === 'inverted') {
+    return (
+      <>
+        {badges.map((badge) => (
+          <span
+            key={badge.key}
+            className={cn(
+              'shrink-0 rounded bg-white/20 px-1 py-0.5 text-[10px] leading-none',
+              className,
+            )}
+          >
+            {badge.label}
+          </span>
+        ))}
+      </>
+    );
+  }
+
+  return (
+    <div className={cn('flex flex-wrap items-center gap-1', className)}>
+      {badges.map((badge) => (
+        <StateBadge key={badge.key} role={badge.role} className="text-[11px] font-bold">
+          {badge.label}
+        </StateBadge>
+      ))}
+    </div>
+  );
+}
+
 function blockClassName(block: BoardBlock): string {
   if (block.kind === 'visit') {
     const statusClass =
@@ -350,6 +419,7 @@ function GanttBlock({ block }: { block: BoardBlock }) {
           アーカイブ中
         </span>
       ) : null}
+      <PatientOperationalSummaryBadges summary={block.patientSummary} variant="inverted" />
       {preparationSummary ? <PreparationSummaryChip summary={preparationSummary} compact /> : null}
       <span className={cn('truncate', block.kind === 'travel' && 'sr-only')}>{block.label}</span>
       {block.risk ? <AlertTriangle className="size-3 shrink-0" aria-hidden="true" /> : null}
@@ -442,6 +512,10 @@ function ScheduleStatusControlPanel({
                         {scheduleStatusLabel(status)}
                       </StateBadge>
                       <PatientArchiveBadge archive={block.patientArchive} className="mt-1" />
+                      <PatientOperationalSummaryBadges
+                        summary={block.patientSummary}
+                        className="mt-1"
+                      />
                     </div>
                     <select
                       aria-label={`${block.label}のステータスを変更`}
@@ -901,6 +975,7 @@ function VehicleRoutePanel({
                           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                             <p className="font-medium text-foreground">{visit.patient_name}様</p>
                             <PatientArchiveBadge archive={visit.patient_archive} />
+                            <PatientOperationalSummaryBadges summary={visit.patient_summary} />
                           </div>
                           <p className="text-xs font-semibold text-foreground">
                             順路 {visit.route_order ?? '-'}
@@ -976,6 +1051,7 @@ function RouteStaffList({ member, visits }: { member: DayBoardStaff; visits: Day
                 {visit.patient_name}様
               </p>
               <PatientArchiveBadge archive={visit.patient_archive} className="mt-1" />
+              <PatientOperationalSummaryBadges summary={visit.patient_summary} className="mt-1" />
               <p className="text-xs text-muted-foreground">
                 {visit.time_start ? formatScheduleTimeIso(visit.time_start) : '時間未定'} /{' '}
                 {visit.vehicle_label ?? '車両未割当'}
@@ -1287,6 +1363,7 @@ function PendingProposalRow({
           {proposal.patient_name}様 — {dateLabel} {timeLabel} {pharmacistLabel}
         </p>
         <PatientArchiveBadge archive={proposal.patient_archive} />
+        <PatientOperationalSummaryBadges summary={proposal.patient_summary} />
         {proposal.response_due_at ? (
           <span className="shrink-0 text-sm font-bold text-state-confirm">
             返答期限 {formatTimeOfDayIso(proposal.response_due_at)}

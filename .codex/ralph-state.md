@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0220 JST
+
+- current task: wire patient operational summaries into schedule list/detail/day-board APIs and schedule UI surfaces.
+- files inspected: `git status --short --branch --untracked-files=all`, `docs/ui-ux-design-guidelines.md`, local Next route-handler docs, schedule include/service/detail/day-board routes, calendar/team-board UI and tests, patient operational summary helpers, and validation output.
+- files changed: `src/lib/db/patient-operational-summary-select.ts`, `src/lib/db/schedule-includes.ts`, `src/server/services/visit-schedule-service.ts`, `src/server/services/visit-schedule-patient-summary.ts`, `src/server/services/visit-schedule-patient-summary.test.ts`, `src/app/api/visit-schedules/[id]/route.ts`, `src/app/api/visit-schedules/[id]/route.test.ts`, `src/app/api/visit-schedules/route.test.ts`, `src/app/api/visit-schedules/__snapshots__/route.test.ts.snap`, `src/app/api/visit-schedules/day-board/route.ts`, `src/app/api/visit-schedules/day-board/route.test.ts`, `src/app/(dashboard)/schedules/calendar-view.helpers.ts`, `src/app/(dashboard)/schedules/calendar-view.tsx`, `src/app/(dashboard)/schedules/calendar-view.test.tsx`, `src/app/(dashboard)/schedules/day-view.shared.ts`, `src/app/(dashboard)/schedules/schedule-team-board.helpers.ts`, `src/app/(dashboard)/schedules/schedule-team-board.tsx`, `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`, `src/types/schedule-day-board.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: schedule list/detail/day-board APIs still lacked the compact PRE-06/P-12 patient operational summary, so archive, insurance, allergy, and key lab-risk state could be absent from schedule decisions or require leaking raw patient source fields to UI consumers.
+- security risks found: reduced PHI/internal-field leakage risk by centralizing a narrow Prisma select that excludes raw insurance identifiers and lab notes, attaching compact `patient_summary`, stripping raw `archived_at`/`allergy_info`/`insurances`/`lab_observations` from returned patient payloads, and adding regression tests for malformed patient shapes.
+- performance issues found: shared org-scoped select builders limit insurance records and key lab observations, reuse existing schedule/day-board queries, and cap display lab flags through the existing summary helper. No new dependency, background job, external call, broad scan, or unbounded loop was added.
+- validation commands: `pnpm exec vitest run src/app/api/visit-schedules/day-board/route.test.ts 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' 'src/app/(dashboard)/schedules/calendar-view.test.tsx' src/app/api/visit-schedules/route.test.ts 'src/app/api/visit-schedules/[id]/route.test.ts' src/lib/patient/operational-summary.test.ts src/server/services/visit-schedule-patient-summary.test.ts --reporter=dot --testTimeout=60000`; `pnpm lint`; `pnpm format:check`; `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused Vitest passed `7` files / `180` tests; lint passed; format check passed; diff-check passed; typecheck passed; no-unused passed after terminating stale orphaned tsc processes from an interrupted verifier run and rerunning cleanly.
+- remaining work: broad master-management / patient-information objective remains open. Continue patient-information inventory and master-management guard/refactor work after this schedule summary slice is committed.
+- next action: commit this schedule patient-summary API/UI slice, then re-check status and continue the next highest-risk patient/master gap.
+
 ### 20260701-0146 JST
 
 - current task: guard care-report delivery-record retry and final status claims.

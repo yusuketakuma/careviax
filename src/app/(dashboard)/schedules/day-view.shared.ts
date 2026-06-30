@@ -1,6 +1,7 @@
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { STATUS_TOKENS } from '@/lib/constants/status-tokens';
+import type { PatientOperationalSummary } from '@/lib/patient/operational-summary';
 import type { HomeVisit2026BillingBlocker } from '@/lib/visits/home-visit-2026-evidence';
 import type { VisitPriority, VisitType } from '@/lib/validations/visit-schedule';
 import {
@@ -475,6 +476,7 @@ export type VisitSchedule = {
   handoff_hint: {
     summary: string;
   } | null;
+  patient_summary?: PatientOperationalSummary | null;
 };
 
 export const VISIT_TYPE_LABELS: Record<VisitType, string> = {
