@@ -351,6 +351,9 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       id: 'override_1',
       status: 'pending',
       approved_at: new Date('2026-03-26T10:00:00.000Z'),
+      source_schedule: {
+        schedule_status: 'rescheduled',
+      },
     });
     overrideUpdateMock.mockResolvedValue({ id: 'override_1' });
     overrideUpdateManyMock.mockResolvedValue({ count: 1 });
@@ -1718,6 +1721,141 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it.each(['planned', 'cancelled'] as const)(
+    'returns conflict when approving a reschedule proposal after the source schedule drifted to %s',
+    async (sourceStatus) => {
+      proposalFindFirstMock.mockResolvedValue(
+        buildProposal({
+          proposal_status: 'reschedule_pending',
+          patient_contact_status: 'pending',
+          reschedule_source_schedule_id: 'schedule_source_1',
+        }),
+      );
+      overrideFindFirstMock.mockResolvedValueOnce({
+        id: 'override_1',
+        status: 'pending',
+        approved_at: new Date('2026-03-26T10:00:00.000Z'),
+        source_schedule: {
+          schedule_status: sourceStatus,
+        },
+      });
+
+      const response = await PATCH(createRequest({ action: 'approve' }, { 'x-org-id': 'org_1' }), {
+        params: Promise.resolve({ id: 'proposal_1' }),
+      });
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'WORKFLOW_CONFLICT',
+        message: '元の訪問予定が変更済みです。再読み込みしてください',
+      });
+      expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+      expect(auditLogCreateMock).not.toHaveBeenCalled();
+      expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+      expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['planned', 'cancelled'] as const)(
+    'returns conflict when a reschedule source drifts to %s between approval precheck and state claim',
+    async (sourceStatus) => {
+      proposalFindFirstMock.mockResolvedValue(
+        buildProposal({
+          proposal_status: 'reschedule_pending',
+          patient_contact_status: 'pending',
+          reschedule_source_schedule_id: 'schedule_source_1',
+        }),
+      );
+      overrideFindFirstMock
+        .mockResolvedValueOnce({
+          id: 'override_1',
+          status: 'pending',
+          approved_at: new Date('2026-03-26T10:00:00.000Z'),
+          source_schedule: {
+            schedule_status: 'rescheduled',
+          },
+        })
+        .mockResolvedValueOnce({
+          id: 'override_1',
+          status: 'pending',
+          approved_at: new Date('2026-03-26T10:00:00.000Z'),
+          source_schedule: {
+            schedule_status: sourceStatus,
+          },
+        });
+
+      const response = await PATCH(createRequest({ action: 'approve' }, { 'x-org-id': 'org_1' }), {
+        params: Promise.resolve({ id: 'proposal_1' }),
+      });
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'WORKFLOW_CONFLICT',
+        message: '元の訪問予定が変更済みです。再読み込みしてください',
+      });
+      expect(withOrgContextMock).toHaveBeenCalledTimes(1);
+      expect(overrideFindFirstMock).toHaveBeenCalledTimes(2);
+      expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+      expect(auditLogCreateMock).not.toHaveBeenCalled();
+      expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+      expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps the reschedule source status guard on the approval state claim', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'reschedule_pending',
+        patient_contact_status: 'pending',
+        reschedule_source_schedule_id: 'schedule_source_1',
+      }),
+    );
+    proposalUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+    overrideFindFirstMock.mockResolvedValue({
+      id: 'override_1',
+      status: 'pending',
+      approved_at: new Date('2026-03-26T10:00:00.000Z'),
+      source_schedule: {
+        schedule_status: 'rescheduled',
+      },
+    });
+
+    const response = await PATCH(createRequest({ action: 'approve' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'この候補はすでに確定または変更されています。再読み込みしてください',
+    });
+    expect(proposalUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'proposal_1',
+        org_id: 'org_1',
+        proposal_status: { in: ['proposed', 'reschedule_pending'] },
+        finalized_schedule_id: null,
+        reschedule_source_schedule_id: 'schedule_source_1',
+        reschedule_source_schedule: {
+          is: {
+            schedule_status: 'rescheduled',
+          },
+        },
+      },
+      data: expect.objectContaining({
+        proposal_status: 'patient_contact_pending',
+        approved_by: 'user_1',
+      }),
+    });
+    expect(overrideFindFirstMock).toHaveBeenCalledTimes(2);
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('returns conflict when rejection loses the state claim race', async () => {
     proposalFindFirstMock.mockResolvedValue(
       buildProposal({
@@ -1853,6 +1991,47 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it.each(['planned', 'cancelled'] as const)(
+    'returns conflict when finalizing a reschedule proposal after the source schedule drifted to %s',
+    async (sourceStatus) => {
+      proposalFindFirstMock.mockResolvedValue(
+        buildProposal({
+          proposal_status: 'patient_contact_pending',
+          patient_contact_status: 'confirmed',
+          reschedule_source_schedule_id: 'schedule_source_1',
+        }),
+      );
+      overrideFindFirstMock.mockResolvedValueOnce({
+        id: 'override_1',
+        status: 'pending',
+        approved_at: new Date('2026-03-26T10:00:00.000Z'),
+        source_schedule: {
+          schedule_status: sourceStatus,
+        },
+      });
+
+      const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+        params: Promise.resolve({ id: 'proposal_1' }),
+      });
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'WORKFLOW_CONFLICT',
+        message: '元の訪問予定が変更済みです。再読み込みしてください',
+      });
+      expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+      expect(scheduleUpdateManyMock).not.toHaveBeenCalled();
+      expect(scheduleCreateMock).not.toHaveBeenCalled();
+      expect(proposalUpdateMock).not.toHaveBeenCalled();
+      expect(contactLogUpdateManyMock).not.toHaveBeenCalled();
+      expect(overrideUpdateManyMock).not.toHaveBeenCalled();
+      expect(auditLogCreateMock).not.toHaveBeenCalled();
+      expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+      expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    },
+  );
+
   it('completes a reschedule override only while it is still pending', async () => {
     proposalFindFirstMock.mockResolvedValue(
       buildProposal({
@@ -1882,6 +2061,11 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         source_schedule_id: 'schedule_source_1',
         status: 'pending',
         approved_at: { not: null },
+        source_schedule: {
+          is: {
+            schedule_status: 'rescheduled',
+          },
+        },
       },
       data: expect.objectContaining({
         status: 'completed',
@@ -1917,6 +2101,11 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         source_schedule_id: 'schedule_source_1',
         status: 'pending',
         approved_at: { not: null },
+        source_schedule: {
+          is: {
+            schedule_status: 'rescheduled',
+          },
+        },
       },
       data: expect.objectContaining({
         status: 'completed',

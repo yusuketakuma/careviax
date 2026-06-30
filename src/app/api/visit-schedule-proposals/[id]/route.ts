@@ -179,6 +179,25 @@ class VisitProposalConfirmDuplicateActiveScheduleError extends Error {
   }
 }
 
+type RescheduleOverrideReadiness = {
+  approved_at: Date | null;
+  status: string;
+  source_schedule?: {
+    schedule_status: string;
+  } | null;
+} | null;
+
+function isApprovedPendingRescheduleOverride(override: RescheduleOverrideReadiness) {
+  return override?.approved_at != null && override.status === 'pending';
+}
+
+function isApprovedRescheduleSourceStillHeld(override: RescheduleOverrideReadiness) {
+  return (
+    isApprovedPendingRescheduleOverride(override) &&
+    override?.source_schedule?.schedule_status === 'rescheduled'
+  );
+}
+
 function isSerializableTransactionConflict(cause: unknown) {
   return cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
 }
@@ -912,21 +931,63 @@ async function authenticatedPATCH(
         select: {
           approved_at: true,
           status: true,
+          source_schedule: {
+            select: {
+              schedule_status: true,
+            },
+          },
         },
       });
-      if (!override?.approved_at || override.status !== 'pending') {
+      if (!isApprovedPendingRescheduleOverride(override)) {
         return validationError('確定済み訪問の変更は管理者承認後に進めてください');
+      }
+      if (!isApprovedRescheduleSourceStillHeld(override)) {
+        return conflict('元の訪問予定が変更済みです。再読み込みしてください');
       }
     }
 
     const approvalResult = await withOrgContext(ctx.orgId, async (tx) => {
       const approvedAt = new Date();
+      if (existing.reschedule_source_schedule_id) {
+        const override = await tx.visitScheduleOverride.findFirst({
+          where: {
+            org_id: ctx.orgId,
+            source_schedule_id: existing.reschedule_source_schedule_id,
+          },
+          select: {
+            approved_at: true,
+            status: true,
+            source_schedule: {
+              select: {
+                schedule_status: true,
+              },
+            },
+          },
+        });
+        if (!isApprovedPendingRescheduleOverride(override)) {
+          return { kind: 'override_not_approved' as const };
+        }
+        if (!isApprovedRescheduleSourceStillHeld(override)) {
+          return { kind: 'source_schedule_state_changed' as const };
+        }
+      }
+
       const claim = await tx.visitScheduleProposal.updateMany({
         where: {
           id,
           org_id: ctx.orgId,
           proposal_status: { in: ['proposed', 'reschedule_pending'] },
           finalized_schedule_id: null,
+          ...(existing.reschedule_source_schedule_id
+            ? {
+                reschedule_source_schedule_id: existing.reschedule_source_schedule_id,
+                reschedule_source_schedule: {
+                  is: {
+                    schedule_status: 'rescheduled',
+                  },
+                },
+              }
+            : {}),
         },
         data: {
           proposal_status: 'patient_contact_pending',
@@ -955,6 +1016,12 @@ async function authenticatedPATCH(
 
     if (approvalResult.kind === 'conflict') {
       return conflict('この候補はすでに確定または変更されています。再読み込みしてください');
+    }
+    if (approvalResult.kind === 'override_not_approved') {
+      return validationError('確定済み訪問の変更は管理者承認後に進めてください');
+    }
+    if (approvalResult.kind === 'source_schedule_state_changed') {
+      return conflict('元の訪問予定が変更済みです。再読み込みしてください');
     }
 
     await notifyWorkflowMutation({
@@ -1358,11 +1425,21 @@ async function authenticatedPATCH(
         select: {
           approved_at: true,
           status: true,
+          source_schedule: {
+            select: {
+              schedule_status: true,
+            },
+          },
         },
       });
-      if (!override?.approved_at || override.status !== 'pending') {
+      if (!isApprovedPendingRescheduleOverride(override)) {
         return {
           error: 'override_not_approved' as const,
+        };
+      }
+      if (!isApprovedRescheduleSourceStillHeld(override)) {
+        return {
+          error: 'source_schedule_state_changed' as const,
         };
       }
     }
@@ -1812,6 +1889,11 @@ async function authenticatedPATCH(
           source_schedule_id: confirmedProposal.reschedule_source_schedule_id,
           status: 'pending',
           approved_at: { not: null },
+          source_schedule: {
+            is: {
+              schedule_status: 'rescheduled',
+            },
+          },
         },
         data: {
           status: 'completed',
@@ -1896,6 +1978,9 @@ async function authenticatedPATCH(
     }
     if (result.error === 'override_state_changed') {
       return conflict('確定済み訪問の変更承認が同時に更新されました。再読み込みしてください');
+    }
+    if (result.error === 'source_schedule_state_changed') {
+      return conflict('元の訪問予定が変更済みです。再読み込みしてください');
     }
     if (result.error === 'state_changed') {
       return conflict('この候補はすでに確定または変更されています。再読み込みしてください');
