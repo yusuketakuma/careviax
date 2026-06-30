@@ -41,13 +41,15 @@ type GenerateProposalParams = {
   operatingDayOverrideReason?: string;
 };
 
-type SchedulePoint = {
+export type VehicleRouteDurationPoint = {
   routeOrder: number | null;
   lat: number | null;
   lng: number | null;
   address: string | null;
   startsAt: Date | null;
 };
+
+type SchedulePoint = VehicleRouteDurationPoint;
 
 type RouteOrderSchedule = {
   route_order: number | null;
@@ -105,7 +107,9 @@ export type ProposalCandidateRejectionCode =
   | 'daily_capacity'
   | 'weekly_capacity'
   | 'vehicle_site_mismatch'
+  | 'vehicle_travel_mode_mismatch'
   | 'vehicle_capacity'
+  | 'vehicle_route_duration'
   | 'no_slot'
   | 'travel_limit'
   | 'travel_limit_unverified'
@@ -165,6 +169,12 @@ type PlannerVehicleResource = {
   label: string;
   travel_mode: VisitRouteTravelMode;
   max_stops: number | null;
+  max_route_duration_minutes: number | null;
+};
+
+type PlannerVehicleCandidate = {
+  vehicleResource: PlannerVehicleResource;
+  vehicleLoad: number;
 };
 
 const REJECTION_REASON_LABELS: Record<ProposalCandidateRejectionCode, string> = {
@@ -176,7 +186,9 @@ const REJECTION_REASON_LABELS: Record<ProposalCandidateRejectionCode, string> = 
   daily_capacity: '日次上限超過',
   weekly_capacity: '週次上限超過',
   vehicle_site_mismatch: '車両拠点不一致',
+  vehicle_travel_mode_mismatch: '車両移動手段不一致',
   vehicle_capacity: '車両上限超過',
+  vehicle_route_duration: '車両稼働時間超過',
   no_slot: '空き枠なし',
   travel_limit: '移動上限超過',
   travel_limit_unverified: '移動上限未検証',
@@ -345,6 +357,22 @@ function sortRoutePoints(points: SchedulePoint[]) {
   });
 }
 
+function sortVehicleRoutePoints(points: SchedulePoint[]) {
+  return [...points].sort((left, right) => {
+    if (left.startsAt && right.startsAt) {
+      const diff = left.startsAt.getTime() - right.startsAt.getTime();
+      if (diff !== 0) return diff;
+    }
+    if (left.startsAt) return -1;
+    if (right.startsAt) return 1;
+
+    const leftOrder = left.routeOrder ?? Number.MAX_SAFE_INTEGER;
+    const rightOrder = right.routeOrder ?? Number.MAX_SAFE_INTEGER;
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+    return 0;
+  });
+}
+
 async function getTravelCost(
   a: SchedulePoint,
   b: SchedulePoint,
@@ -440,6 +468,74 @@ async function computeRouteInsertion(
     travelSummary: bestSummary,
   };
 }
+
+async function computeRouteTotalDurationMinutes(
+  sitePoint: SchedulePoint | null,
+  routePoints: SchedulePoint[],
+  estimateRoadTravel: ReturnType<typeof createRoadTravelEstimator>,
+  travelMode: VisitRouteTravelMode,
+) {
+  if (!sitePoint) {
+    return {
+      durationMinutes: null,
+      summary: '拠点座標未設定のため車両稼働上限を検証できません',
+    };
+  }
+  if (routePoints.length === 0) {
+    return { durationMinutes: 0, summary: '訪問予定なし' };
+  }
+
+  let totalMinutes = 0;
+  let previousPoint = sitePoint;
+  for (let index = 0; index < routePoints.length; index++) {
+    const point = routePoints[index];
+    const cost = await getTravelCost(previousPoint, point, estimateRoadTravel, travelMode);
+    if (cost.limitMinutes == null) {
+      return {
+        durationMinutes: null,
+        summary: `第${index + 1}訪問までの移動時間を検証できません（${cost.summary}）`,
+      };
+    }
+    totalMinutes += cost.limitMinutes;
+    previousPoint = point;
+  }
+
+  const returnCost = await getTravelCost(previousPoint, sitePoint, estimateRoadTravel, travelMode);
+  if (returnCost.limitMinutes == null) {
+    return {
+      durationMinutes: null,
+      summary: `拠点へ戻る移動時間を検証できません（${returnCost.summary}）`,
+    };
+  }
+  totalMinutes += returnCost.limitMinutes;
+  return {
+    durationMinutes: totalMinutes,
+    summary: `拠点発着の総移動時間 約${Math.round(totalMinutes)}分`,
+  };
+}
+
+async function computeBestRouteDurationWithCandidate(
+  sitePoint: SchedulePoint | null,
+  existingPoints: SchedulePoint[],
+  candidatePoint: SchedulePoint,
+  estimateRoadTravel: ReturnType<typeof createRoadTravelEstimator>,
+  travelMode: VisitRouteTravelMode,
+) {
+  const routePoints = sortVehicleRoutePoints([...existingPoints, candidatePoint]);
+  const estimate = await computeRouteTotalDurationMinutes(
+    sitePoint,
+    routePoints,
+    estimateRoadTravel,
+    travelMode,
+  );
+
+  return {
+    durationMinutes: estimate.durationMinutes,
+    summary: estimate.summary,
+  };
+}
+
+export const estimateVehicleRouteDurationWithCandidate = computeBestRouteDurationWithCandidate;
 
 function findAvailableSlot(args: {
   baseDate: Date;
@@ -685,8 +781,17 @@ function selectVehicleResourceForCandidate(args: {
   }>;
   vehicleResources: PlannerVehicleResource[];
 }):
-  | { ok: true; vehicleResource: PlannerVehicleResource | null; vehicleLoad: number }
-  | { ok: false; reasonCode: 'vehicle_site_mismatch' | 'vehicle_capacity'; detail: string } {
+  | {
+      ok: true;
+      vehicleResource: PlannerVehicleResource | null;
+      vehicleLoad: number;
+      vehicleCandidates: PlannerVehicleCandidate[];
+    }
+  | {
+      ok: false;
+      reasonCode: 'vehicle_site_mismatch' | 'vehicle_travel_mode_mismatch' | 'vehicle_capacity';
+      detail: string;
+    } {
   const matchingSiteVehicles = args.vehicleResources.filter(
     (vehicle) => vehicle.site_id === args.shiftSiteId && vehicle.travel_mode === args.travelMode,
   );
@@ -705,9 +810,16 @@ function selectVehicleResourceForCandidate(args: {
       detail: '選択した車両リソースは候補日の勤務拠点では利用できません',
     };
   }
+  if (args.requestedVehicleResourceId && requestedVehicle?.travel_mode !== args.travelMode) {
+    return {
+      ok: false,
+      reasonCode: 'vehicle_travel_mode_mismatch',
+      detail: `選択した車両リソース ${requestedVehicle?.label ?? ''} は ${args.travelMode} では利用できません`,
+    };
+  }
 
   if (selectedVehicles.length === 0) {
-    return { ok: true, vehicleResource: null, vehicleLoad: 0 };
+    return { ok: true, vehicleResource: null, vehicleLoad: 0, vehicleCandidates: [] };
   }
 
   const candidates = selectedVehicles
@@ -725,7 +837,15 @@ function selectVehicleResourceForCandidate(args: {
 
   const [best] = candidates;
   if (best) {
-    return { ok: true, vehicleResource: best.vehicle, vehicleLoad: best.load };
+    return {
+      ok: true,
+      vehicleResource: best.vehicle,
+      vehicleLoad: best.load,
+      vehicleCandidates: candidates.map(({ vehicle, load }) => ({
+        vehicleResource: vehicle,
+        vehicleLoad: load,
+      })),
+    };
   }
 
   const label = requestedVehicle?.label ?? '利用可能な車両';
@@ -738,6 +858,71 @@ function selectVehicleResourceForCandidate(args: {
         ? `${label} の車両リソース容量に空きがありません`
         : `${label} で訪問できる件数は最大 ${maxStops} 件です`,
   };
+}
+
+async function chooseVehicleResourceByRouteDuration(args: {
+  requestedVehicleResourceId?: string;
+  vehicleCandidates: PlannerVehicleCandidate[];
+  sitePoint: SchedulePoint | null;
+  candidatePoint: SchedulePoint;
+  existingPointsByVehicleResourceId: (vehicleResourceId: string) => SchedulePoint[];
+  estimateRoadTravel: ReturnType<typeof createRoadTravelEstimator>;
+  travelMode: VisitRouteTravelMode;
+}): Promise<
+  | {
+      ok: true;
+      vehicleResource: PlannerVehicleResource | null;
+      vehicleLoad: number;
+      routeDurationMinutes: number | null;
+    }
+  | { ok: false; reasonCode: 'vehicle_route_duration'; detail: string }
+> {
+  if (args.vehicleCandidates.length === 0) {
+    return { ok: true, vehicleResource: null, vehicleLoad: 0, routeDurationMinutes: null };
+  }
+
+  const rejectionDetails: string[] = [];
+  for (const candidate of args.vehicleCandidates) {
+    const maxRouteDurationMinutes = candidate.vehicleResource.max_route_duration_minutes;
+    if (maxRouteDurationMinutes == null) {
+      return {
+        ok: true,
+        vehicleResource: candidate.vehicleResource,
+        vehicleLoad: candidate.vehicleLoad,
+        routeDurationMinutes: null,
+      };
+    }
+
+    const estimate = await computeBestRouteDurationWithCandidate(
+      args.sitePoint,
+      args.existingPointsByVehicleResourceId(candidate.vehicleResource.id),
+      args.candidatePoint,
+      args.estimateRoadTravel,
+      args.travelMode,
+    );
+    if (estimate.durationMinutes == null) {
+      rejectionDetails.push(
+        `${candidate.vehicleResource.label} の稼働上限 ${maxRouteDurationMinutes}分を検証できません（${estimate.summary}）`,
+      );
+      continue;
+    }
+    if (estimate.durationMinutes <= maxRouteDurationMinutes) {
+      return {
+        ok: true,
+        vehicleResource: candidate.vehicleResource,
+        vehicleLoad: candidate.vehicleLoad,
+        routeDurationMinutes: estimate.durationMinutes,
+      };
+    }
+    rejectionDetails.push(
+      `${candidate.vehicleResource.label} の候補追加後の推定稼働時間 ${estimate.durationMinutes.toFixed(1)}分 が上限 ${maxRouteDurationMinutes}分を超えます`,
+    );
+  }
+
+  const detail = args.requestedVehicleResourceId
+    ? (rejectionDetails[0] ?? '選択した車両の稼働時間上限を満たせません')
+    : `利用可能な車両の稼働時間上限を満たせません（${rejectionDetails.slice(0, 3).join(' / ')}）`;
+  return { ok: false, reasonCode: 'vehicle_route_duration', detail };
 }
 
 export async function generateVisitScheduleProposalDrafts(
@@ -1007,6 +1192,7 @@ export async function generateVisitScheduleProposalDrafts(
       label: true,
       travel_mode: true,
       max_stops: true,
+      max_route_duration_minutes: true,
     },
   });
   const operatingCalendarBySite = new Map<
@@ -1033,6 +1219,9 @@ export async function generateVisitScheduleProposalDrafts(
         gte: planningStart,
         lte: planningEnd,
       },
+      ...(params.rescheduleSourceScheduleId
+        ? { id: { not: params.rescheduleSourceScheduleId } }
+        : {}),
       schedule_status: {
         in: ACTIVE_BILLING_SCHEDULE_STATUSES,
       },
@@ -1120,6 +1309,18 @@ export async function generateVisitScheduleProposalDrafts(
     };
   }
 
+  function scheduleToPoint(schedule: (typeof confirmedSchedules)[number]): SchedulePoint {
+    return {
+      routeOrder: schedule.route_order ?? null,
+      lat: schedule.case_.patient.residences[0]?.lat ?? null,
+      lng: schedule.case_.patient.residences[0]?.lng ?? null,
+      address: schedule.case_.patient.residences[0]?.address ?? null,
+      startsAt: schedule.time_window_start
+        ? setTime(schedule.scheduled_date, schedule.time_window_start, DEFAULT_SHIFT_START)
+        : null,
+    };
+  }
+
   const evaluatedCandidates = await Promise.all(
     shifts.map(async (shift) => {
       if (lockedDate && toDateKey(shift.date) !== toDateKey(lockedDate)) {
@@ -1178,9 +1379,10 @@ export async function generateVisitScheduleProposalDrafts(
       }
 
       try {
+        const shiftDateKey = toDateKey(shift.date);
+        const schedulesForDay = confirmedSchedulesByDay.get(shiftDateKey) ?? [];
         const schedulesForShift =
-          confirmedSchedulesByDayAndPharmacist.get(`${shift.user_id}:${toDateKey(shift.date)}`) ??
-          [];
+          confirmedSchedulesByDayAndPharmacist.get(`${shift.user_id}:${shiftDateKey}`) ?? [];
         const schedulesForWeek =
           confirmedSchedulesByWeekAndPharmacist.get(
             `${shift.user_id}:${buildWeekKey(shift.date)}`,
@@ -1215,7 +1417,7 @@ export async function generateVisitScheduleProposalDrafts(
           requestedVehicleResourceId: params.vehicleResourceId,
           shiftSiteId: shift.site_id ?? null,
           travelMode,
-          existingSchedules: confirmedSchedulesByDay.get(toDateKey(shift.date)) ?? [],
+          existingSchedules: schedulesForDay,
           vehicleResources,
         });
         if (!vehicleSelection.ok) {
@@ -1228,6 +1430,15 @@ export async function generateVisitScheduleProposalDrafts(
             }),
           };
         }
+        const sitePoint = shift.site
+          ? {
+              routeOrder: 0,
+              lat: shift.site.lat,
+              lng: shift.site.lng,
+              address: shift.site.address,
+              startsAt: null,
+            }
+          : null;
         const shiftStart = setTime(shift.date, shift.available_from, DEFAULT_SHIFT_START);
         const shiftEnd = setTime(shift.date, shift.available_to, DEFAULT_SHIFT_END);
         const slot = findAvailableSlot({
@@ -1249,26 +1460,36 @@ export async function generateVisitScheduleProposalDrafts(
             }),
           };
         }
+        const candidatePointForSlot: SchedulePoint = {
+          ...candidatePoint,
+          startsAt: slot.start,
+        };
+        const vehicleRouteSelection = await chooseVehicleResourceByRouteDuration({
+          requestedVehicleResourceId: params.vehicleResourceId,
+          vehicleCandidates: vehicleSelection.vehicleCandidates,
+          sitePoint,
+          candidatePoint: candidatePointForSlot,
+          existingPointsByVehicleResourceId: (vehicleResourceId) =>
+            schedulesForDay
+              .filter((schedule) => schedule.vehicle_resource_id === vehicleResourceId)
+              .map(scheduleToPoint),
+          estimateRoadTravel,
+          travelMode,
+        });
+        if (!vehicleRouteSelection.ok) {
+          return {
+            kind: 'rejected' as const,
+            diagnostic: buildRejectedDiagnostic({
+              shift,
+              reasonCode: vehicleRouteSelection.reasonCode,
+              detail: vehicleRouteSelection.detail,
+            }),
+          };
+        }
 
         const routeInsertion = await computeRouteInsertion(
-          shift.site
-            ? {
-                routeOrder: 0,
-                lat: shift.site.lat,
-                lng: shift.site.lng,
-                address: shift.site.address,
-                startsAt: null,
-              }
-            : null,
-          schedulesForShift.map((schedule) => ({
-            routeOrder: schedule.route_order ?? null,
-            lat: schedule.case_.patient.residences[0]?.lat ?? null,
-            lng: schedule.case_.patient.residences[0]?.lng ?? null,
-            address: schedule.case_.patient.residences[0]?.address ?? null,
-            startsAt: schedule.time_window_start
-              ? setTime(schedule.scheduled_date, schedule.time_window_start, DEFAULT_SHIFT_START)
-              : null,
-          })),
+          sitePoint,
+          schedulesForShift.map(scheduleToPoint),
           candidatePoint,
           estimateRoadTravel,
           travelMode,
@@ -1373,8 +1594,8 @@ export async function generateVisitScheduleProposalDrafts(
         const cadencePenalty =
           (monthlyCountForCandidate >= monthlyCap ? 120 : 0) +
           (weeklyCap != null && weeklyCountForCandidate >= weeklyCap ? 80 : 0);
-        const vehiclePenalty = vehicleSelection.vehicleResource
-          ? vehicleSelection.vehicleLoad * 3
+        const vehiclePenalty = vehicleRouteSelection.vehicleResource
+          ? vehicleRouteSelection.vehicleLoad * 3
           : 0;
         const scoreBreakdown: CandidateScoreBreakdown = {
           geocodePenalty,
@@ -1413,8 +1634,8 @@ export async function generateVisitScheduleProposalDrafts(
           existingDailyVisits: schedulesForShift.length,
           lockedSchedules,
           remainingSlackMinutes,
-          vehicleResource: vehicleSelection.vehicleResource,
-          vehicleLoad: vehicleSelection.vehicleLoad,
+          vehicleResource: vehicleRouteSelection.vehicleResource,
+          vehicleLoad: vehicleRouteSelection.vehicleLoad,
           priorityAwareRouteOrder: resolvePriorityAwareRouteOrder({
             baseRouteOrder: routeInsertion.routeOrder,
             priority: effectivePriority,

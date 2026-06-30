@@ -157,6 +157,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
         label: '社用車A',
         travel_mode: 'DRIVE',
         max_stops: 8,
+        max_route_duration_minutes: null,
       },
     ]);
     evaluateVisitWorkflowGateMock.mockResolvedValue({
@@ -956,6 +957,401 @@ describe('generateVisitScheduleProposalDrafts', () => {
     });
   });
 
+  it('rejects vehicle route duration caps using the site-to-candidate-to-site round trip', async () => {
+    const calls: string[] = [];
+    createRoadTravelEstimatorMock.mockReturnValue(
+      async (from: { address?: string | null }, to: { address?: string | null }) => {
+        const key = `${from.address}->${to.address}`;
+        calls.push(key);
+        const durations = new Map<string, number>([
+          ['東京都港区2-2-2->東京都港区1-1-1', 20],
+          ['東京都港区1-1-1->東京都港区2-2-2', 20],
+        ]);
+        const durationMinutes = durations.get(key);
+        return durationMinutes == null ? null : { durationMinutes, distanceKm: 1 };
+      },
+    );
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        date: new Date('2026-03-28T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_primary',
+          name: '主担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: [],
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+    visitVehicleResourceFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'vehicle_1',
+        site_id: 'site_1',
+        label: '社用車A',
+        travel_mode: 'DRIVE',
+        max_stops: 8,
+        max_route_duration_minutes: 30,
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(result.drafts).toHaveLength(0);
+    expect(calls).toEqual(
+      expect.arrayContaining([
+        '東京都港区2-2-2->東京都港区1-1-1',
+        '東京都港区1-1-1->東京都港区2-2-2',
+      ]),
+    );
+    expect(result.diagnostics.rejected).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reason_code: 'vehicle_route_duration',
+          reason_label: '車両稼働時間超過',
+          detail: expect.stringContaining('社用車A'),
+        }),
+      ]),
+    );
+    expect(result.diagnostics.rejected[0]?.detail).toContain('推定稼働時間 40.0分');
+    expect(result.diagnostics.rejected[0]?.detail).toContain('上限 30分');
+  });
+
+  it('rejects candidates when same-day assigned vehicle route total exceeds the vehicle cap', async () => {
+    const calls: string[] = [];
+    createRoadTravelEstimatorMock.mockReturnValue(
+      async (from: { address?: string | null }, to: { address?: string | null }) => {
+        const key = `${from.address}->${to.address}`;
+        calls.push(key);
+        const durations = new Map<string, number>([
+          ['東京都港区2-2-2->既存A', 10],
+          ['既存A->東京都港区1-1-1', 15],
+          ['東京都港区1-1-1->既存B', 15],
+          ['既存B->東京都港区2-2-2', 20],
+          ['既存A->既存B', 20],
+          ['東京都港区2-2-2->東京都港区1-1-1', 100],
+          ['東京都港区1-1-1->東京都港区2-2-2', 100],
+          ['東京都港区2-2-2->既存B', 100],
+          ['既存A->東京都港区2-2-2', 100],
+        ]);
+        const durationMinutes = durations.get(key);
+        return durationMinutes == null
+          ? { durationMinutes: 100, distanceKm: 1 }
+          : { durationMinutes, distanceKm: 1 };
+      },
+    );
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        date: new Date('2026-03-28T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_primary',
+          name: '主担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: [],
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+    visitVehicleResourceFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'vehicle_1',
+        site_id: 'site_1',
+        label: '社用車A',
+        travel_mode: 'DRIVE',
+        max_stops: 8,
+        max_route_duration_minutes: 50,
+      },
+    ]);
+    visitScheduleFindManyMock.mockResolvedValueOnce([
+      {
+        pharmacist_id: 'pharmacist_primary',
+        vehicle_resource_id: 'vehicle_1',
+        route_order: 1,
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        time_window_start: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        time_window_end: new Date(Date.UTC(1970, 0, 1, 10, 0, 0, 0)),
+        schedule_status: 'planned',
+        confirmed_at: null,
+        case_: {
+          patient: {
+            id: 'existing_a',
+            residences: [{ address: '既存A', lat: 35.02, lng: 139.02 }],
+          },
+        },
+        site: {
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+      {
+        pharmacist_id: 'pharmacist_backup',
+        vehicle_resource_id: 'vehicle_1',
+        route_order: 2,
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        time_window_start: new Date(Date.UTC(1970, 0, 1, 11, 0, 0, 0)),
+        time_window_end: new Date(Date.UTC(1970, 0, 1, 12, 0, 0, 0)),
+        schedule_status: 'planned',
+        confirmed_at: null,
+        case_: {
+          patient: {
+            id: 'existing_b',
+            residences: [{ address: '既存B', lat: 35.03, lng: 139.03 }],
+          },
+        },
+        site: {
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(result.drafts).toHaveLength(0);
+    expect(calls).toContain('既存B->東京都港区2-2-2');
+    expect(result.diagnostics.rejected).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reason_code: 'vehicle_route_duration',
+          detail: expect.stringContaining('推定稼働時間 60.0分'),
+        }),
+      ]),
+    );
+    expect(result.diagnostics.rejected[0]?.detail).toContain('上限 50分');
+  });
+
+  it('fails closed when a configured vehicle route duration cap cannot be verified', async () => {
+    createRoadTravelEstimatorMock.mockReturnValue(async () => null);
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      id: 'case_1',
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'pharmacist_primary',
+      backup_pharmacist_id: null,
+      patient: {
+        scheduling_preference: null,
+        residences: [
+          {
+            address: '東京都港区1-1-1',
+            lat: null,
+            lng: null,
+            building_id: null,
+          },
+        ],
+      },
+    });
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        date: new Date('2026-03-28T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_primary',
+          name: '主担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: [],
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+    visitVehicleResourceFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'vehicle_1',
+        site_id: 'site_1',
+        label: '社用車A',
+        travel_mode: 'DRIVE',
+        max_stops: 8,
+        max_route_duration_minutes: 30,
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(result.drafts).toHaveLength(0);
+    expect(result.diagnostics.rejected).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reason_code: 'vehicle_route_duration',
+          detail: expect.stringContaining('社用車A の稼働上限 30分を検証できません'),
+        }),
+      ]),
+    );
+  });
+
+  it('rejects a requested vehicle resource whose travel mode does not match the proposal mode', async () => {
+    visitVehicleResourceFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'vehicle_1',
+        site_id: 'site_1',
+        label: '電動自転車A',
+        travel_mode: 'BICYCLE',
+        max_stops: 8,
+        max_route_duration_minutes: null,
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      travelMode: 'DRIVE',
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+      vehicleResourceId: 'vehicle_1',
+    });
+
+    expect(result.drafts).toHaveLength(0);
+    expect(result.diagnostics.rejected).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reason_code: 'vehicle_travel_mode_mismatch',
+          reason_label: '車両移動手段不一致',
+          detail: expect.stringContaining('電動自転車A'),
+        }),
+      ]),
+    );
+  });
+
+  it('excludes the reschedule source schedule before checking vehicle route duration caps', async () => {
+    createRoadTravelEstimatorMock.mockReturnValue(
+      async (from: { address?: string | null }, to: { address?: string | null }) => {
+        const durations = new Map<string, number>([
+          ['東京都港区2-2-2->東京都港区1-1-1', 10],
+          ['東京都港区1-1-1->東京都港区2-2-2', 10],
+        ]);
+        const durationMinutes = durations.get(`${from.address}->${to.address}`);
+        return durationMinutes == null
+          ? { durationMinutes: 100, distanceKm: 1 }
+          : { durationMinutes, distanceKm: 1 };
+      },
+    );
+    visitVehicleResourceFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'vehicle_1',
+        site_id: 'site_1',
+        label: '社用車A',
+        travel_mode: 'DRIVE',
+        max_stops: 8,
+        max_route_duration_minutes: 30,
+      },
+    ]);
+    visitScheduleFindManyMock.mockImplementationOnce(async (args: { where?: { id?: unknown } }) => {
+      if (JSON.stringify(args.where?.id) === JSON.stringify({ not: 'schedule_source' })) {
+        return [];
+      }
+      return [
+        {
+          id: 'schedule_source',
+          pharmacist_id: 'pharmacist_primary',
+          vehicle_resource_id: 'vehicle_1',
+          route_order: 1,
+          scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+          time_window_start: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+          time_window_end: new Date(Date.UTC(1970, 0, 1, 10, 0, 0, 0)),
+          schedule_status: 'planned',
+          confirmed_at: null,
+          case_: {
+            patient: {
+              id: 'patient_1',
+              residences: [{ address: '既存A', lat: 35.02, lng: 139.02 }],
+            },
+          },
+          site: {
+            address: '東京都港区2-2-2',
+            lat: 35.01,
+            lng: 139.01,
+          },
+        },
+      ];
+    });
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+      rescheduleSourceScheduleId: 'schedule_source',
+    });
+
+    expect(result.drafts).toHaveLength(1);
+    expect(result.drafts[0]).toMatchObject({
+      proposal_status: 'reschedule_pending',
+      reschedule_source_schedule_id: 'schedule_source',
+      vehicle_resource_id: 'vehicle_1',
+    });
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { not: 'schedule_source' },
+        }),
+      }),
+    );
+  });
+
   it('rejects candidates when the requested vehicle resource is at capacity', async () => {
     visitVehicleResourceFindManyMock.mockResolvedValueOnce([
       {
@@ -964,6 +1360,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
         label: '社用車A',
         travel_mode: 'DRIVE',
         max_stops: 1,
+        max_route_duration_minutes: null,
       },
     ]);
     visitScheduleFindManyMock.mockResolvedValueOnce([
@@ -1064,6 +1461,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
         label: '社用車A',
         travel_mode: 'DRIVE',
         max_stops: 1,
+        max_route_duration_minutes: null,
       },
     ]);
     visitScheduleFindManyMock.mockResolvedValueOnce([

@@ -50,6 +50,11 @@ import {
   getVisitScheduleTimeConflictMessage,
   type VisitScheduleTimeConflictKind,
 } from '@/server/services/visit-schedule-service';
+import { createRoadTravelEstimator } from '@/server/services/road-routing';
+import {
+  estimateVehicleRouteDurationWithCandidate,
+  type VehicleRouteDurationPoint,
+} from '@/server/services/visit-schedule-planner';
 import { buildProposalRejectAuditChanges } from '@/lib/audit-logs/proposal-rejection';
 import {
   omitProposalRejectReason,
@@ -942,7 +947,12 @@ async function authenticatedPATCH(
                 residences: {
                   where: { is_primary: true },
                   take: 1,
-                  select: { facility_unit_id: true },
+                  select: {
+                    facility_unit_id: true,
+                    address: true,
+                    lat: true,
+                    lng: true,
+                  },
                 },
               },
             },
@@ -1405,7 +1415,12 @@ async function authenticatedPATCH(
                 residences: {
                   where: { is_primary: true },
                   take: 1,
-                  select: { facility_unit_id: true },
+                  select: {
+                    facility_unit_id: true,
+                    address: true,
+                    lat: true,
+                    lng: true,
+                  },
                 },
               },
             },
@@ -1530,7 +1545,9 @@ async function authenticatedPATCH(
         select: {
           site_id: true,
           label: true,
+          travel_mode: true,
           max_stops: true,
+          max_route_duration_minutes: true,
         },
       });
       if (!vehicleResource) {
@@ -1552,6 +1569,9 @@ async function authenticatedPATCH(
             org_id: ctx.orgId,
             vehicle_resource_id: currentProposal.vehicle_resource_id,
             scheduled_date: currentProposal.proposed_date,
+            ...(currentProposal.reschedule_source_schedule_id
+              ? { id: { not: currentProposal.reschedule_source_schedule_id } }
+              : {}),
             schedule_status: {
               notIn: ['cancelled', 'rescheduled'],
             },
@@ -1561,6 +1581,96 @@ async function authenticatedPATCH(
           return {
             error: 'vehicle_resource_unavailable' as const,
             message: `${vehicleResource.label} で訪問できる件数は最大 ${vehicleResource.max_stops} 件です`,
+          };
+        }
+      }
+      if (vehicleResource.max_route_duration_minutes != null) {
+        const site = await tx.pharmacySite.findFirst({
+          where: {
+            org_id: ctx.orgId,
+            id: targetSiteId ?? vehicleResource.site_id,
+          },
+          select: {
+            address: true,
+            lat: true,
+            lng: true,
+          },
+        });
+        const existingVehicleSchedules = await tx.visitSchedule.findMany({
+          where: {
+            org_id: ctx.orgId,
+            vehicle_resource_id: currentProposal.vehicle_resource_id,
+            scheduled_date: currentProposal.proposed_date,
+            ...(currentProposal.reschedule_source_schedule_id
+              ? { id: { not: currentProposal.reschedule_source_schedule_id } }
+              : {}),
+            schedule_status: {
+              notIn: ['cancelled', 'rescheduled'],
+            },
+          },
+          select: {
+            route_order: true,
+            time_window_start: true,
+            case_: {
+              select: {
+                patient: {
+                  select: {
+                    residences: {
+                      where: { is_primary: true },
+                      take: 1,
+                      select: {
+                        address: true,
+                        lat: true,
+                        lng: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        });
+        const existingPoints: VehicleRouteDurationPoint[] = existingVehicleSchedules.map(
+          (schedule) => ({
+            routeOrder: schedule.route_order ?? null,
+            lat: schedule.case_.patient.residences[0]?.lat ?? null,
+            lng: schedule.case_.patient.residences[0]?.lng ?? null,
+            address: schedule.case_.patient.residences[0]?.address ?? null,
+            startsAt: schedule.time_window_start ?? null,
+          }),
+        );
+        const proposalResidence = currentProposal.case_.patient.residences[0] ?? null;
+        const routeDuration = await estimateVehicleRouteDurationWithCandidate(
+          site
+            ? {
+                routeOrder: 0,
+                lat: site.lat,
+                lng: site.lng,
+                address: site.address,
+                startsAt: null,
+              }
+            : null,
+          existingPoints,
+          {
+            routeOrder: currentProposal.route_order ?? null,
+            lat: proposalResidence?.lat ?? null,
+            lng: proposalResidence?.lng ?? null,
+            address: proposalResidence?.address ?? null,
+            startsAt: currentProposal.time_window_start ?? null,
+          },
+          createRoadTravelEstimator(vehicleResource.travel_mode),
+          vehicleResource.travel_mode,
+        );
+        if (routeDuration.durationMinutes == null) {
+          return {
+            error: 'vehicle_resource_unavailable' as const,
+            message: `${vehicleResource.label} の稼働上限 ${vehicleResource.max_route_duration_minutes}分を検証できません。訪問先と拠点の住所座標を整備してから確定してください`,
+          };
+        }
+        if (routeDuration.durationMinutes > vehicleResource.max_route_duration_minutes) {
+          return {
+            error: 'vehicle_resource_unavailable' as const,
+            message: `${vehicleResource.label} の候補確定後の推定稼働時間 ${routeDuration.durationMinutes.toFixed(1)}分 が上限 ${vehicleResource.max_route_duration_minutes}分を超えます`,
           };
         }
       }
