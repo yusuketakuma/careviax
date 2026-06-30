@@ -237,7 +237,26 @@ function readSearchableReportText(contentValue: Prisma.JsonValue) {
 
 function readSelectedReportContent(report: CareReportListRow, shouldReadContent: boolean) {
   if (!shouldReadContent || !('content' in report)) return null;
-  return report.content;
+  return report.content ?? null;
+}
+
+function buildCareReportContentSummary(contentValue: Prisma.JsonValue) {
+  const content = readJsonObject(contentValue);
+  if (!content) {
+    return {
+      title: null,
+      summary: null,
+      assessment: null,
+      plan: null,
+    };
+  }
+
+  return {
+    title: readJsonObjectString(content, 'title'),
+    summary: readJsonObjectString(content, 'summary'),
+    assessment: readJsonObjectString(content, 'assessment'),
+    plan: readJsonObjectString(content, 'plan'),
+  };
 }
 
 function appendCareReportWhereAnd(
@@ -843,7 +862,7 @@ async function authenticatedGET(req: NextRequest) {
         created_at: report.created_at,
         updated_at: report.updated_at,
         ...(includeContent && canOutputReport && reportContent !== null
-          ? { content: reportContent }
+          ? { content_summary: buildCareReportContentSummary(reportContent) }
           : {}),
         delivery_records: report.delivery_records,
         _searchable_report_text: reportContent ? readSearchableReportText(reportContent) : '',

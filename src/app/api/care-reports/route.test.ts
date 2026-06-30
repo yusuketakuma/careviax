@@ -818,7 +818,7 @@ describe('/api/care-reports GET', () => {
     expect(careReportFindManyMock).not.toHaveBeenCalled();
   });
 
-  it('returns report content only when explicitly requested for print workflows', async () => {
+  it('returns only a report content summary for list include_content requests', async () => {
     const response = await getCareReports(
       createAuthenticatedRequest('http://localhost/api/care-reports?include_content=1'),
     );
@@ -829,12 +829,14 @@ describe('/api/care-reports GET', () => {
       content: true,
     });
     const payload = await response.json();
-    expect(payload.data[0].content).toMatchObject({
+    expect(payload.data[0]).not.toHaveProperty('content');
+    expect(payload.data[0].content_summary).toMatchObject({
+      title: null,
       summary: '服薬状況は安定。夜間の眠気について経過観察。',
-      source_provenance: {
-        visit_record_id: 'hidden_visit_record_1',
-      },
+      assessment: null,
+      plan: null,
     });
+    expect(JSON.stringify(payload.data[0])).not.toContain('hidden_visit_record_1');
   });
 
   it('does not return report content for include_content requests without output permission', async () => {
@@ -851,6 +853,7 @@ describe('/api/care-reports GET', () => {
     expect(careReportFindManyMock.mock.calls[0]?.[0].select).not.toHaveProperty('content');
     const payload = await response.json();
     expect(payload.data[0]).not.toHaveProperty('content');
+    expect(payload.data[0]).not.toHaveProperty('content_summary');
   });
 
   it('rejects keyword body search without report output permission', async () => {

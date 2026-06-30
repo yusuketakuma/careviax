@@ -30,6 +30,63 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### VisitSchedule PATCH Audit Shape - 2026-07-01 05:45 JST
+
+- Scope:
+  - Continued schedule-route P8 operation-log compliance.
+  - Focused on `PATCH /api/visit-schedules/[id]` audit evidence for edit/status/reassignment changes.
+- Fixed:
+  - `visit_schedule_updated` audit entries now use `field_name: { from, to }` deltas instead of flat `fieldFrom/fieldTo` keys.
+  - The audit helper records structured deltas for schedule fields including `scheduled_date`, `time_window_start`, `time_window_end`, `site_id`, `case_id`, `vehicle_resource_id`, `route_order`, and `schedule_status`, while preserving existing before/after comparison for other mutable schedule fields.
+  - Regression coverage now asserts structured time-window, status, vehicle assignment, and route-order audit payloads.
+  - `docs/schedule-route-build-plan.md` now marks P8 audit-1 complete with the validation evidence.
+- Safety:
+  - Improves 3省2GL-style operation-log readability and consistency with schedule cancel/reopen audit entries.
+  - Preserves existing canVisit permission checks, assignment authorization, status locks, optimistic guarded writes, route-order duplicate checks, vehicle validation, RLS transaction context, no-store/sanitized error boundary, workflow notifications, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - No meaningful performance issue was changed. The patch only reshapes an already-written in-memory audit JSON object and adds no DB query, external call, dependency, broad scan, render path, or unbounded loop.
+- Validation:
+  - Focused VisitSchedule route Vitest passed `1` file / `83` tests.
+  - Scoped ESLint and scoped Prettier check on VisitSchedule route/test files: passed.
+  - Scoped `git diff --check` on VisitSchedule route/test files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Broad master-management, patient-information, report, schedule, and multi-professional cooperation objective remains open.
+  - P8 still has follow-ups for reschedule approval, facility-visit-batch mutations, and vehicle-resource create/update audit coverage.
+  - Concurrent dirty care-report and admin-facility files remain outside this slice.
+
+### CareReport List Content Summary Contract - 2026-07-01 05:43 JST
+
+- Scope:
+  - Continued report-function hardening under `docs/high-roi-functional-proposals-2026-06-18.md` item 27.
+  - Focused on `GET /api/care-reports` list responses when callers pass `include_content=1`.
+- Fixed:
+  - CareReport list responses no longer return raw persisted `content` JSON.
+  - Explicit list content requests now return `content_summary` with only `title`, `summary`, `assessment`, and `plan`.
+  - Internal/server-managed fields such as `source_provenance`, `billing_context`, delivery targets, and warnings stay out of list responses.
+  - The detail route and print-audit route remain the full-content access points for authorized workflows.
+- Safety:
+  - Reduces raw report-body and internal provenance leakage from report lists.
+  - Preserves report access scoping, output-permission gates, keyword-search permission gates, no-store responses, PDF URL masking, detail editable-content behavior, print-audit behavior, live DB safety, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Projects a constant-size summary from already selected content when explicit summary/search/billing metadata requires content access.
+  - No new DB query, dependency, external call, background job, render path, broad scan, or unbounded loop was added.
+- Validation:
+  - CareReport list route Vitest passed `1` file / `62` tests.
+  - Related list/detail/print-hub suite passed `3` files / `108` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on CareReport list files: passed.
+  - Initial full typecheck failed on the new optional content type; after normalizing undefined content to null, `pnpm typecheck --pretty false` passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit-time, report, and multi-professional cooperation objective remains open.
+  - Further report/share follow-ups include short-lived report PDF grants/tokens and document-scope external access.
+
 ### Visit Planner Candidate-Scoped Confirmed Schedule Reads - 2026-07-01 05:32 JST
 
 - Scope:
