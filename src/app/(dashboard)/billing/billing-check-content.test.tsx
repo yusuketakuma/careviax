@@ -68,7 +68,7 @@ function buildFixture(): BillingCheckResponse {
         evidence_label: '算定要件',
         evidence_href: '/admin/billing-rules',
         action_label: '→ 訪問へ',
-        action_href: '/visits',
+        action_href: '/patients/patient_tanaka/safety-check',
       },
     ],
     records: {
@@ -209,7 +209,9 @@ describe('BillingCheckContent', () => {
 
     // 危険語(麻薬)を隠さない
     expect(within(table).getByText('麻薬管理指導加算')).toBeTruthy();
-    expect(within(table).getByRole('link', { name: '→ 訪問へ' })).toBeTruthy();
+    expect(within(table).getByRole('link', { name: '→ 訪問へ' }).getAttribute('href')).toBe(
+      '/patients/patient_tanaka/safety-check',
+    );
 
     expect(
       screen.getByText(

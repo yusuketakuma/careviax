@@ -41,11 +41,33 @@ const TODAY_PENDING_SCHEDULE_STATUSES = [
  * 疑義行の戻り先アクション。SSOT 算定項目ごとの確認先(現場語)を既定で割り当てる。
  * 該当しない場合は患者カード(または候補一覧)へ戻す。
  */
-const CHECK_ACTION_PRESETS: Array<{ pattern: RegExp; label: string; href: string }> = [
+type CheckActionPresetContext = {
+  patientSafetyHref: string | null;
+};
+
+type CheckActionPreset = {
+  pattern: RegExp;
+  label: string;
+  href: string | ((context: CheckActionPresetContext) => string);
+};
+
+const CHECK_ACTION_PRESETS: CheckActionPreset[] = [
   { pattern: /退院時共同指導/, label: '病院へ確認', href: '/admin/institutions' },
   { pattern: /在宅移行初期/, label: '→ ダッシュボードへ', href: '/dashboard' },
-  { pattern: /麻薬管理指導/, label: '→ 訪問へ', href: '/visits' },
+  {
+    pattern: /麻薬管理指導/,
+    label: '→ 訪問へ',
+    href: ({ patientSafetyHref }) => patientSafetyHref ?? '/visits',
+  },
 ];
+
+function resolveCheckActionPresetHref(
+  preset: CheckActionPreset | undefined,
+  context: CheckActionPresetContext,
+): string | null {
+  if (!preset) return null;
+  return typeof preset.href === 'function' ? preset.href(context) : preset.href;
+}
 
 function previousUtcMonth(monthStart: Date): Date {
   return new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() - 1, 1));
@@ -247,9 +269,13 @@ async function authenticatedGET(req: NextRequest) {
           item.pattern.test(candidate.billing_name),
         );
         const patientHref = candidate.patient_id ? buildPatientHref(candidate.patient_id) : null;
+        const patientSafetyHref = candidate.patient_id
+          ? buildPatientHref(candidate.patient_id, '/safety-check')
+          : null;
         const fallbackAction = patientHref
           ? { label: '→ カードへ', href: patientHref }
           : { label: '→ 候補一覧へ', href: '/billing/candidates' };
+        const presetHref = resolveCheckActionPresetHref(preset, { patientSafetyHref });
 
         return {
           id: candidate.id,
@@ -260,7 +286,7 @@ async function authenticatedGET(req: NextRequest) {
           evidence_label: rule?.source_note?.trim() || '算定要件',
           evidence_href: rule?.source_url?.trim() || '/admin/billing-rules',
           action_label: preset?.label ?? fallbackAction.label,
-          action_href: preset?.href ?? fallbackAction.href,
+          action_href: presetHref ?? fallbackAction.href,
         };
       });
 

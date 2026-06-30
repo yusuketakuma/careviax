@@ -257,6 +257,45 @@ describe('/api/billing-evidence/check GET', () => {
     ]);
   });
 
+  it('routes narcotic management review rows to the patient safety-check workspace', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPatientHref = `/patients/${encodeURIComponent(rawPatientId)}`;
+
+    txMock.billingCandidate.findMany.mockResolvedValue([
+      {
+        id: 'candidate_narcotic',
+        patient_id: rawPatientId,
+        cycle_id: null,
+        rule_id: null,
+        billing_name: '麻薬管理指導加算',
+        billing_target_name: null,
+        exclusion_reason: '麻薬管理の訪問時安全確認が必要です',
+      },
+    ]);
+    txMock.patient.findMany.mockResolvedValue([{ id: rawPatientId, name: '山田太郎' }]);
+
+    const response = await GET(createRequest());
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(txMock.patient.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { org_id: 'org_1', id: { in: [rawPatientId] } },
+      }),
+    );
+    expect(json.data.review_rows).toEqual([
+      expect.objectContaining({
+        id: 'candidate_narcotic',
+        patient_href: encodedPatientHref,
+        billing_name: '麻薬管理指導加算',
+        confirm_text: '麻薬管理の訪問時安全確認が必要です',
+        action_label: '→ 訪問へ',
+        action_href: `${encodedPatientHref}/safety-check`,
+      }),
+    ]);
+    expect(json.data.review_rows[0].action_href).not.toContain(rawPatientId);
+  });
+
   it('uses the previous billing month when requested', async () => {
     const response = await GET(createRequest('?month=previous'));
 
