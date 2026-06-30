@@ -4,12 +4,16 @@ import { NextRequest } from 'next/server';
 const {
   authMock,
   membershipFindFirstMock,
+  withOrgContextMock,
+  createAuditLogEntryMock,
   escalationRuleCountMock,
   escalationRuleFindManyMock,
   escalationRuleCreateMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+  createAuditLogEntryMock: vi.fn(),
   escalationRuleCountMock: vi.fn(),
   escalationRuleFindManyMock: vi.fn(),
   escalationRuleCreateMock: vi.fn(),
@@ -30,6 +34,14 @@ vi.mock('@/lib/db/client', () => ({
       create: escalationRuleCreateMock,
     },
   },
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
 }));
 
 import { GET, POST } from './route';
@@ -69,6 +81,17 @@ describe('/api/admin/escalation-rules', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     escalationRuleCountMock.mockResolvedValue(0);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        escalationRule: {
+          create: escalationRuleCreateMock,
+        },
+        auditLog: {
+          create: vi.fn(),
+        },
+      }),
+    );
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
   });
 
   it('returns escalation rules for admins', async () => {
@@ -95,6 +118,7 @@ describe('/api/admin/escalation-rules', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     await expect(response.json()).resolves.toEqual({
       data: [
         {
@@ -222,6 +246,8 @@ describe('/api/admin/escalation-rules', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
     expect(escalationRuleCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -231,6 +257,27 @@ describe('/api/admin/escalation-rules', () => {
         notify_role: 'manager',
       }),
     });
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        escalationRule: expect.any(Object),
+      }),
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+      }),
+      expect.objectContaining({
+        action: 'escalation_rule_created',
+        targetType: 'EscalationRule',
+        targetId: 'rule_2',
+        changes: expect.objectContaining({
+          trigger_type: 'billing_review_stalled',
+          condition: { threshold_hours: 24, severity: 'high' },
+          action: 'conference_task',
+          notify_role: 'manager',
+          is_active: true,
+        }),
+      }),
+    );
   });
 
   it.each(['1e2', '10.0', '6abc', ' ', true, 0, 721])(
@@ -255,10 +302,12 @@ describe('/api/admin/escalation-rules', () => {
 
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
       await expect(response.json()).resolves.toMatchObject({
         message: '入力値が不正です',
       });
       expect(escalationRuleCreateMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
     },
   );
 
@@ -273,7 +322,9 @@ describe('/api/admin/escalation-rules', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(escalationRuleCreateMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON create payloads before writing the escalation rule', async () => {
@@ -287,9 +338,11 @@ describe('/api/admin/escalation-rules', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
     expect(escalationRuleCreateMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 });

@@ -1,12 +1,15 @@
 import { Prisma } from '@prisma/client';
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
+import { withOrgContext } from '@/lib/db/rls';
 import { createEscalationRuleSchema } from '@/lib/validations/escalation-rule';
 
 const DEFAULT_ESCALATION_RULE_LIMIT = 100;
@@ -75,7 +78,7 @@ export async function GET(
   }
 }
 
-export const POST = withAuthContext(
+const authenticatedPOST = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -85,15 +88,32 @@ export const POST = withAuthContext(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const created = await prisma.escalationRule.create({
-      data: {
-        org_id: ctx.orgId,
-        trigger_type: parsed.data.trigger_type,
-        condition: toPrismaJsonInput(parsed.data.condition),
-        action: parsed.data.action,
-        notify_role: parsed.data.notify_role ?? null,
-        is_active: parsed.data.is_active,
-      },
+    const created = await withOrgContext(ctx.orgId, async (tx) => {
+      const rule = await tx.escalationRule.create({
+        data: {
+          org_id: ctx.orgId,
+          trigger_type: parsed.data.trigger_type,
+          condition: toPrismaJsonInput(parsed.data.condition),
+          action: parsed.data.action,
+          notify_role: parsed.data.notify_role ?? null,
+          is_active: parsed.data.is_active,
+        },
+      });
+
+      await createAuditLogEntry(tx, ctx, {
+        action: 'escalation_rule_created',
+        targetType: 'EscalationRule',
+        targetId: rule.id,
+        changes: {
+          trigger_type: rule.trigger_type,
+          condition: serializeCondition(rule.condition),
+          action: rule.action,
+          notify_role: rule.notify_role,
+          is_active: rule.is_active,
+        },
+      });
+
+      return rule;
     });
 
     return success(
@@ -117,3 +137,12 @@ export const POST = withAuthContext(
     message: 'エスカレーションルールの更新権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

@@ -176,6 +176,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Broad master-management and patient-information objective remains open.
   - Next high-value follow-ups include auditing remaining admin master detail routes for no-store/audit/RLS parity and patient-detail stale-write preconditions.
 
+### Escalation Rule Master Mutation Boundary - 2026-07-01 07:43 JST
+
+- Scope:
+  - Continued admin master-management hardening for `/api/admin/escalation-rules`.
+  - Focused on mutation safety for escalation rules that control operational notifications and follow-up task escalation behavior.
+- Fixed:
+  - `POST`, `PATCH`, and `DELETE` for escalation rules now run their writes inside `withOrgContext`.
+  - Escalation rule create/update/delete now write `escalation_rule_created`, `escalation_rule_updated`, and `escalation_rule_deleted` audit entries in the same transaction as the mutation.
+  - Escalation rule mutation responses, including validation errors, now consistently carry sensitive no-store headers.
+  - Unexpected mutation errors are returned through sanitized `INTERNAL_ERROR` envelopes instead of leaking raw route failures.
+  - Tests lock RLS transaction delegation, audit payloads, no-store headers, and validation fail-fast behavior before DB work.
+- Safety:
+  - Reduces audit gaps, tenant-boundary drift, and cache ambiguity for a master that affects stalled workflow, report delivery, billing review, and reschedule escalation behavior.
+  - Preserves existing canAdmin permission, route-param validation, escalation condition normalization, response shape, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds no read path, polling, dependency, background job, or broad scan.
+  - Mutation paths move existing writes into one RLS transaction and add one audit write per successful mutation.
+- Validation:
+  - `pnpm exec vitest run src/app/api/admin/escalation-rules/'[id]'/route.test.ts src/app/api/admin/escalation-rules/route.test.ts src/lib/audit/audit-entry.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `27` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` on escalation-rule files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master-management and patient-information objective remains open.
+  - `.codex/ralph-state.md` update is deferred until the concurrent report-share ledger hunk is committed or released by its owner, to avoid staging another agent's progress entry.
+
 ### Workflow Emergency Draft Idempotency - 2026-07-01 06:57 JST
 
 - Scope:
