@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createRoadTravelEstimator, estimateFallbackTravelMinutes } from './road-routing';
+import {
+  createRoadTravelEstimator,
+  estimateFallbackTravelMinutes,
+  resolveGoogleRoutesApiKey,
+} from './road-routing';
 
 const originalEnv = { ...process.env };
 
@@ -230,6 +234,35 @@ describe('createRoadTravelEstimator', () => {
     });
   });
 
+  it('uses the shared Google Maps server key alias for road estimates', async () => {
+    process.env.ROUTING_API_PROVIDER = 'google';
+    delete process.env.GOOGLE_ROUTES_API_KEY;
+    process.env.GOOGLE_MAPS_SERVER_API_KEY = 'server-key';
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          routes: [{ duration: '300s', distanceMeters: 800 }],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const estimateTravel = createRoadTravelEstimator('DRIVE');
+
+    await expect(
+      estimateTravel({ lat: 35.0, lng: 139.0 }, { lat: 35.1, lng: 139.1 }),
+    ).resolves.toEqual({
+      durationMinutes: 5,
+      distanceKm: 0.8,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://routes.googleapis.com/directions/v2:computeRoutes',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'X-Goog-Api-Key': 'server-key' }),
+      }),
+    );
+  });
+
   it('unrefs Google Routes timeout timers and passes an abort signal to fetch', async () => {
     process.env.ROUTING_API_PROVIDER = 'google';
     process.env.GOOGLE_ROUTES_API_KEY = 'routes-key';
@@ -311,5 +344,31 @@ describe('estimateFallbackTravelMinutes', () => {
   it('rejects invalid fallback distances', () => {
     expect(estimateFallbackTravelMinutes(Number.NaN, 'DRIVE')).toBeNaN();
     expect(estimateFallbackTravelMinutes(-1, 'DRIVE')).toBeNaN();
+  });
+});
+
+describe('resolveGoogleRoutesApiKey', () => {
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it('keeps GOOGLE_ROUTES_API_KEY as the first-priority server key', () => {
+    process.env.GOOGLE_ROUTES_API_KEY = 'routes-key';
+    process.env.GOOGLE_MAPS_SERVER_API_KEY = 'maps-server-key';
+
+    expect(resolveGoogleRoutesApiKey()).toBe('routes-key');
+  });
+
+  it('falls back through the existing Google Maps key aliases', () => {
+    delete process.env.GOOGLE_ROUTES_API_KEY;
+    delete process.env.GOOGLE_MAPS_SERVER_API_KEY;
+    process.env.GOOGLE_MAPS_API_KEY = 'maps-key';
+
+    expect(resolveGoogleRoutesApiKey()).toBe('maps-key');
+
+    delete process.env.GOOGLE_MAPS_API_KEY;
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = 'public-maps-key';
+
+    expect(resolveGoogleRoutesApiKey()).toBe('public-maps-key');
   });
 });

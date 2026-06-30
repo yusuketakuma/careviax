@@ -305,6 +305,16 @@ class GoogleRoutesProvider implements RoutingProvider {
 
 // ─── Provider factory ─────────────────────────────────────────────────────────
 
+export function resolveGoogleRoutesApiKey() {
+  return (
+    process.env.GOOGLE_ROUTES_API_KEY ??
+    process.env.GOOGLE_MAPS_SERVER_API_KEY ??
+    process.env.GOOGLE_MAPS_API_KEY ??
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ??
+    null
+  );
+}
+
 function createProvider(): RoutingProvider | null {
   const providerName = process.env.ROUTING_API_PROVIDER ?? 'osrm';
   const timeoutMs = normalizePositiveTimeoutMs(process.env.ROUTING_API_TIMEOUT_MS, {
@@ -312,7 +322,7 @@ function createProvider(): RoutingProvider | null {
   });
 
   if (providerName === 'google') {
-    const apiKey = process.env.GOOGLE_ROUTES_API_KEY;
+    const apiKey = resolveGoogleRoutesApiKey();
     if (!apiKey) return null;
     return new GoogleRoutesProvider(apiKey, timeoutMs);
   }

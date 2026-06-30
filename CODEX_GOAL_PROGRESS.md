@@ -29211,3 +29211,31 @@ Next loop:
 - Remaining:
   - Broad master/patient/collaboration objective remains open.
   - External-professional patient-link management and report-send recipient selection from the master remain follow-ups.
+
+### Google Routes Key Resolver Unification - 2026-07-01 06:18 JST
+
+- Scope:
+  - Continued route/planner configuration hardening.
+  - Focused on keeping route optimization and road-estimate providers aligned when `ROUTING_API_PROVIDER=google`.
+- Fixed:
+  - Added shared `resolveGoogleRoutesApiKey()` in `src/server/services/road-routing.ts`.
+  - `road-routing` now accepts `GOOGLE_ROUTES_API_KEY`, `GOOGLE_MAPS_SERVER_API_KEY`, `GOOGLE_MAPS_API_KEY`, and `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` in one priority order.
+  - `visit-route-engine` now uses the same resolver for Google waypoint optimization.
+  - Tests cover the server-key alias path for road estimates and delete `GOOGLE_ROUTES_API_KEY` in the missing-key route fallback case.
+- Safety:
+  - Reduces route-planning configuration drift where planner road estimates and visit-route optimization could disagree about whether Google routing was configured.
+  - No auth, RLS, PHI projection, logging, migrations, live DB data, external sends, push/deploy, secret persistence, or destructive operations were changed.
+- Performance:
+  - Constant-time env-var lookup only.
+  - No new DB query, external request beyond the already selected provider, dependency, background job, broad scan, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/road-routing.test.ts src/server/services/google-routes.test.ts src/server/services/visit-route-engine.test.ts src/server/services/visit-route-engine.locked.test.ts --reporter=dot --testTimeout=60000`: passed, `4` files / `43` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad schedule/prescription/route-management objective remains open.
+  - Next route follow-ups include route freshness/OCC on apply/confirmation and planner/engine feasibility scoring convergence.

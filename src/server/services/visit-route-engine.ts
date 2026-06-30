@@ -16,6 +16,7 @@ import { createFetchTimeout } from './fetch-timeout';
 import {
   createRoadTravelEstimator,
   estimateFallbackTravelMinutes,
+  resolveGoogleRoutesApiKey,
   type RoadTravelEstimator,
   type TravelEstimate,
 } from './road-routing';
@@ -206,15 +207,6 @@ function unavailableGoogleRoutePlan(args: {
       distanceSource: null,
     })),
   };
-}
-
-function resolveGoogleMapsServerApiKey() {
-  return (
-    process.env.GOOGLE_MAPS_SERVER_API_KEY ??
-    process.env.GOOGLE_MAPS_API_KEY ??
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ??
-    null
-  );
 }
 
 function routePriorityRank(priority: string | null | undefined) {
@@ -954,7 +946,7 @@ export async function computeOptimizedVisitRoute(args: {
   }
 
   const providerName = process.env.ROUTING_API_PROVIDER ?? 'osrm';
-  const googleApiKey = resolveGoogleMapsServerApiKey();
+  const googleApiKey = resolveGoogleRoutesApiKey();
   if (
     providerName === 'google' &&
     googleApiKey &&

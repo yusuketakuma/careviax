@@ -15,6 +15,7 @@ describe('google-routes', () => {
   // visit-route-engine refactor. Callers (api/visit-routes/route.ts) pass through
   // the result without special-casing a missing key.
   it('falls back to heuristic route when the API key is not configured', async () => {
+    delete process.env.GOOGLE_ROUTES_API_KEY;
     delete process.env.GOOGLE_MAPS_SERVER_API_KEY;
     delete process.env.GOOGLE_MAPS_API_KEY;
     delete process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
