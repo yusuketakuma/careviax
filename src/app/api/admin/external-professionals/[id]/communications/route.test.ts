@@ -53,9 +53,12 @@ describe('/api/admin/external-professionals/[id]/communications', () => {
     communicationRequestFindManyMock.mockResolvedValue([
       {
         id: 'request_1',
+        patient_id: 'patient_1',
         request_type: 'care_report_followup',
         recipient_name: '佐藤医師',
         recipient_role: 'physician',
+        related_entity_type: 'care_report',
+        related_entity_id: 'report_1',
         subject: '報告書確認',
         status: 'sent',
         requested_at: new Date('2026-03-30T00:00:00.000Z'),
@@ -90,9 +93,12 @@ describe('/api/admin/external-professionals/[id]/communications', () => {
       take: 20,
       select: {
         id: true,
+        patient_id: true,
         request_type: true,
         recipient_name: true,
         recipient_role: true,
+        related_entity_type: true,
+        related_entity_id: true,
         subject: true,
         status: true,
         requested_at: true,
@@ -117,7 +123,16 @@ describe('/api/admin/external-professionals/[id]/communications', () => {
     });
     await expect(response.json()).resolves.toMatchObject({
       data: {
-        requests: [{ id: 'request_1' }],
+        requests: [
+          {
+            id: 'request_1',
+            patient_id: 'patient_1',
+            related_entity_type: 'care_report',
+            related_entity_id: 'report_1',
+            action_href:
+              '/communications/requests?status=sent&request_type=care_report_followup&patient_id=patient_1&request_id=request_1&related_entity_type=care_report&related_entity_id=report_1',
+          },
+        ],
         events: [{ id: 'event_1' }],
       },
     });

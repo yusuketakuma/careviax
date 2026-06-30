@@ -13989,3 +13989,16 @@ Backup directory:
 - validation results: patient/report share focused suite passed `2` files / `31` tests; related communication request-type suite passed `7` files / `109` tests. Scoped ESLint, scoped Prettier check, `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and `git diff --check` passed.
 - remaining work: broad schedule/prescription/route objective remains open. Continue scanning schedule/route and communication follow-up surfaces where a focused queue href has request type but the source list fetch does not.
 - next action: inspect remaining `buildCommunicationRequestsHref({ requestType: ... })` callers against their source fetches, then return to schedule/route mutation surfaces.
+
+### 20260630-2256 JST
+
+- current task: make external-professional communication timeline rows link back to the exact communication request.
+- files inspected: `src/app/api/admin/external-professionals/[id]/communications/route.ts`, admin/external route tests, `src/app/api/__tests__/protected-get-routes.test.ts`, `src/lib/communications/navigation.ts`, current dirty tree, agmsg inbox, and validation output.
+- files changed: external-professional communications route and tests plus protected GET smoke fixture, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Concurrent dirty communication-request and reschedule-approve API WIP was preserved and not staged.
+- bugs found: external-professional communication history returned request type/status but not patient or related-entity context, and did not provide a focused queue href. Consumers could show a request but could not reliably open the exact request in the communication queue.
+- security risks found: reduced wrong-request navigation risk by returning a shared-helper `action_href` with status, request type, patient, request id, and related entity filters. Existing auth, org scope, assignment filtering, no-store responses, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: adds only scalar fields already on the communication request row and local href construction; no extra query, dependency, fan-out, or broad scan was added.
+- validation commands: focused external-professional communications Vitest; protected GET route smoke Vitest; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `git diff --check`.
+- validation results: external-professional focused suite passed `2` files / `5` tests; protected GET smoke passed `1` file / `372` tests; `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `git diff --check` passed.
+- remaining work: broad visit/report/collaboration objective remains open. Continue preserving unrelated API WIP and scanning remaining communication/schedule surfaces.
+- next action: commit the external-professional timeline link slice and notify `phos`.

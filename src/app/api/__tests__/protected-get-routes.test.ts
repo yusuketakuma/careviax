@@ -355,9 +355,12 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       prismaMock.communicationRequest.findMany.mockResolvedValueOnce([
         {
           id: 'request_1',
+          patient_id: 'patient_1',
           request_type: 'care_report_followup',
           recipient_name: '佐藤医師',
           recipient_role: 'physician',
+          related_entity_type: 'care_report',
+          related_entity_id: 'report_1',
           subject: '報告書確認',
           status: 'sent',
           requested_at: new Date('2026-03-30T00:00:00.000Z'),
@@ -1009,9 +1012,12 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       prismaMock.communicationRequest.findMany.mockResolvedValueOnce([
         {
           id: 'request_1',
+          patient_id: 'patient_1',
           request_type: 'care_report_followup',
           recipient_name: '佐藤医師',
           recipient_role: 'physician',
+          related_entity_type: 'care_report',
+          related_entity_id: 'report_1',
           subject: '報告書確認',
           status: 'sent',
           requested_at: new Date('2026-03-30T00:00:00.000Z'),

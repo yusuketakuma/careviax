@@ -4,6 +4,7 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import type { Prisma } from '@prisma/client';
 
 function buildCommunicationRequestAssignmentWhere(args: {
@@ -95,9 +96,12 @@ const authenticatedGET = withAuthContext<{ id: string }>(
         take: 20,
         select: {
           id: true,
+          patient_id: true,
           request_type: true,
           recipient_name: true,
           recipient_role: true,
+          related_entity_type: true,
+          related_entity_id: true,
           subject: true,
           status: true,
           requested_at: true,
@@ -128,12 +132,23 @@ const authenticatedGET = withAuthContext<{ id: string }>(
         requests: requests.map((item) => ({
           id: item.id,
           kind: 'request',
+          patient_id: item.patient_id,
           request_type: item.request_type,
           recipient_name: item.recipient_name,
           recipient_role: item.recipient_role,
+          related_entity_type: item.related_entity_type,
+          related_entity_id: item.related_entity_id,
           subject: item.subject,
           status: item.status,
           occurred_at: item.requested_at.toISOString(),
+          action_href: buildCommunicationRequestsHref({
+            status: item.status,
+            requestType: item.request_type,
+            patientId: item.patient_id,
+            requestId: item.id,
+            relatedEntityType: item.related_entity_type,
+            relatedEntityId: item.related_entity_id,
+          }),
         })),
         events: events.map((item) => ({
           id: item.id,

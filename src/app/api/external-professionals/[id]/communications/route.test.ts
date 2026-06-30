@@ -68,9 +68,12 @@ describe('/api/external-professionals/[id]/communications', () => {
     communicationRequestFindManyMock.mockResolvedValue([
       {
         id: 'req_1',
+        patient_id: 'patient_1',
         request_type: 'tracing_report',
         recipient_name: '田中医師',
         recipient_role: 'doctor',
+        related_entity_type: 'tracing_report',
+        related_entity_id: 'tracing_1',
         subject: 'トレーシングレポート',
         status: 'completed',
         requested_at: new Date('2026-03-01'),
@@ -120,7 +123,16 @@ describe('/api/external-professionals/[id]/communications', () => {
       }),
     );
     const body = await response.json();
-    expect(body.data.requests).toHaveLength(1);
+    expect(body.data.requests).toEqual([
+      expect.objectContaining({
+        id: 'req_1',
+        patient_id: 'patient_1',
+        related_entity_type: 'tracing_report',
+        related_entity_id: 'tracing_1',
+        action_href:
+          '/communications/requests?status=completed&request_type=tracing_report&patient_id=patient_1&request_id=req_1&related_entity_type=tracing_report&related_entity_id=tracing_1',
+      }),
+    ]);
     expect(body.data.events).toHaveLength(0);
   });
 
