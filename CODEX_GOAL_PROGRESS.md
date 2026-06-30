@@ -29297,3 +29297,33 @@ Next loop:
 - Remaining:
   - Broad schedule/prescription/route-management objective remains open.
   - Next route follow-ups include route freshness/OCC on apply/confirmation and planner/engine feasibility scoring convergence.
+
+### Vehicle Master Real Editor - 2026-07-01 06:37 JST
+
+- Scope:
+  - Continued master-management hardening.
+  - Focused on `/admin/vehicles`, the VisitVehicleResource master used by visit routes, shared vehicle capacity, and schedule proposals.
+- Fixed:
+  - Replaced the fabricated disabled `MasterEditorView` vehicle page with a real API-backed vehicle master editor.
+  - Added vehicle list/search/count badges, create/update sheet, availability enable/disable confirmation, point-in-time inspection-date display, PH-OS 44px touch targets, and fetch-error vs empty-state separation.
+  - Added shared visit-vehicle-resource API path helpers that preserve the empty query path shape and fail closed on exact dot-segment ids.
+  - Shared `next_inspection_date` validation across POST/PATCH and allowed create-time inspection dates; PATCH can now update or clear only the inspection date without being rejected as an empty update.
+- Safety:
+  - Reduces false-operational master risk for the route/capacity source of truth.
+  - Avoids hard deletion of vehicle resources; existing schedules/proposals keep references while operators disable vehicles from future planning.
+  - Preserves existing canVisit/canAdmin permissions, org/RLS scoping, site reference validation, audit creation, sensitive no-store responses, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Uses one bounded vehicle-resource query (`limit=200`) and one bounded pharmacy-site option query, with local filtering only.
+  - No new dependency, polling, external call, background job, broad fan-out, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/vehicles/vehicles-content.test.tsx' 'src/app/(dashboard)/admin/vehicles/page.test.tsx' src/lib/visit-vehicle-resources/api-paths.test.ts src/app/api/visit-vehicle-resources/route.test.ts 'src/app/api/visit-vehicle-resources/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `5` files / `38` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on the vehicle/API/path files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master/patient objective remains open.
+  - `/admin/staff` still uses the fabricated `MasterEditorView` and remains a high-value master-management follow-up.
+  - Concurrent dirty route-compare and external-professionals slices were observed and preserved outside this vehicle commit.
