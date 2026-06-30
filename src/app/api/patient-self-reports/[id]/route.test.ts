@@ -418,6 +418,37 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     expect(bodyText).not.toContain('raw self report detail secret');
   });
 
+  it('returns a sanitized no-store 500 when self report update fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('家族A 夕食後を飲み忘れ raw self report update secret'),
+    );
+
+    const response = (await PATCH(
+      createPatchRequest('report_1', {
+        status: 'resolved',
+        updated_at: CURRENT_UPDATED_AT,
+      }),
+      {
+        params: Promise.resolve({ id: 'report_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('家族A');
+    expect(bodyText).not.toContain('夕食後を飲み忘れ');
+    expect(bodyText).not.toContain('raw self report update secret');
+    expect(patientSelfReportUpdateManyMock).not.toHaveBeenCalled();
+    expect(patientSelfReportFindUniqueMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects blank self report ids before parsing or updating', async () => {
     const response = (await PATCH(createMalformedJsonPatchRequest('report_1'), {
       params: Promise.resolve({ id: '   ' }),

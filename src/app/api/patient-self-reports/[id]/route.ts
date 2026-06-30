@@ -87,7 +87,7 @@ export async function GET(req: NextRequest, routeContext: { params: Promise<{ id
   }
 }
 
-export const PATCH = withAuthContext<{ id: string }>(
+const authenticatedPATCH = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
     const { id: rawId } = await routeContext.params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -218,3 +218,12 @@ export const PATCH = withAuthContext<{ id: string }>(
     message: '患者自己申告の更新権限がありません',
   },
 );
+
+export const PATCH: typeof authenticatedPATCH = async (req, routeContext) => {
+  try {
+    return sensitiveResponse(await authenticatedPATCH(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return sensitiveResponse(internalError());
+  }
+};
