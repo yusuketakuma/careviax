@@ -1598,10 +1598,112 @@ describe('/api/visit-schedules/generate POST', () => {
         overall_status: { in: ['audited', 'setting', 'set_audited', 'visit_ready'] },
       },
       orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }],
-      select: { id: true, overall_status: true },
+      include: {
+        prescription_intakes: {
+          include: {
+            lines: {
+              select: expect.objectContaining({
+                drug_name: true,
+                end_date: true,
+                start_date: true,
+                days: true,
+                frequency: true,
+                route: true,
+                notes: true,
+              }),
+            },
+          },
+        },
+      },
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('persists medication deadline metadata from the schedulable cycle', async () => {
+    medicationCycleFindFirstMock.mockResolvedValueOnce({
+      id: 'cycle_1',
+      overall_status: 'set_audited',
+      prescription_intakes: [
+        {
+          refill_next_dispense_date: null,
+          split_next_dispense_date: null,
+          lines: [
+            {
+              drug_name: '継続薬',
+              frequency: '朝食後',
+              end_date: new Date('2026-04-07T00:00:00.000Z'),
+            },
+          ],
+        },
+      ],
+    });
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-07',
+        end_date: '2026-04-07',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(visitScheduleCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          cycle_id: 'cycle_1',
+          scheduled_date: new Date('2026-04-07T00:00:00.000Z'),
+          medication_end_date: new Date('2026-04-07T00:00:00.000Z'),
+          visit_deadline_date: new Date('2026-04-07T00:00:00.000Z'),
+        }),
+      }),
+    );
+  });
+
+  it('rejects recurring generation beyond the medication visit deadline before creation side effects', async () => {
+    medicationCycleFindFirstMock.mockResolvedValueOnce({
+      id: 'cycle_1',
+      overall_status: 'set_audited',
+      prescription_intakes: [
+        {
+          refill_next_dispense_date: null,
+          split_next_dispense_date: null,
+          lines: [
+            {
+              drug_name: '継続薬',
+              frequency: '朝食後',
+              end_date: new Date('2026-04-07T00:00:00.000Z'),
+            },
+          ],
+        },
+      ],
+    });
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-14',
+        end_date: '2026-04-14',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '2026-04-14: 訪問期限 2026-04-07 を超えるため定期訪問を生成できません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 

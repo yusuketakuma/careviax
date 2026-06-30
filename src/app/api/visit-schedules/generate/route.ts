@@ -42,6 +42,7 @@ import {
   estimateVehicleRouteDurationWithCandidate,
   type VehicleRouteDurationPoint,
 } from '@/server/services/visit-schedule-planner';
+import { resolveMedicationDeadlineSummary } from '@/server/services/visit-medication-deadline';
 import type { BillingCadenceScheduleRow } from '@/server/services/billing-requirement-validator';
 import type { VisitRouteTravelMode } from '@/types/visit-route';
 
@@ -608,12 +609,45 @@ const authenticatedPOST = withAuthContext(
         overall_status: { in: [...SCHEDULABLE_CYCLE_STATUSES] },
       },
       orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }],
-      select: { id: true, overall_status: true },
+      include: {
+        prescription_intakes: {
+          include: {
+            lines: {
+              select: {
+                drug_name: true,
+                end_date: true,
+                start_date: true,
+                days: true,
+                dosage_form: true,
+                frequency: true,
+                route: true,
+                packaging_instruction_tags: true,
+                packaging_instructions: true,
+                notes: true,
+                unit: true,
+              },
+            },
+          },
+        },
+      },
     });
     if (!medicationCycle) {
       return validationError(
         '訪問予定に紐付けられる処方サイクルがありません。セット監査まで完了した処方を確認してください',
       );
+    }
+    const medicationDeadlineSummary = resolveMedicationDeadlineSummary(
+      medicationCycle.prescription_intakes,
+    );
+    const medicationEndDate = medicationDeadlineSummary.medicationEndDate;
+    const visitDeadlineDate = medicationDeadlineSummary.visitDeadlineDate;
+    if (visitDeadlineDate) {
+      const beyondDeadlineDate = candidateDates.find((date) => date > visitDeadlineDate);
+      if (beyondDeadlineDate) {
+        return validationError(
+          `${buildDateKey(beyondDeadlineDate)}: 訪問期限 ${buildDateKey(visitDeadlineDate)} を超えるため定期訪問を生成できません`,
+        );
+      }
     }
 
     const schedulingPreference = careCase.patient.scheduling_preference;
@@ -968,6 +1002,8 @@ const authenticatedPOST = withAuthContext(
                   ? 'primary'
                   : 'fallback',
               scheduled_date: date,
+              medication_end_date: medicationEndDate,
+              visit_deadline_date: visitDeadlineDate,
               route_order: routeOrder,
               recurrence_rule,
               ...(mergedTimeWindow?.from
