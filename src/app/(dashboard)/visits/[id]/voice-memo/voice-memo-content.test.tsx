@@ -2,7 +2,7 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { VoiceMemoContent } from './voice-memo-content';
 
@@ -37,6 +37,10 @@ function renderContent() {
   );
 }
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe('VoiceMemoContent', () => {
   it('reflects a manual transcript into the same transcript/append workflow used by STT results', async () => {
     renderContent();
@@ -58,5 +62,52 @@ describe('VoiceMemoContent', () => {
       '夕食後は家族の声かけで飲めている。',
     );
     expect(screen.getByTestId('voice-memo-append-button')).toBeTruthy();
+  });
+
+  it('disables append after a transcript has been written to the visit record', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/visit-schedules/visit_1') {
+        return new Response(JSON.stringify({ visit_record: { id: 'record_1' } }), { status: 200 });
+      }
+      if (url === '/api/visit-records/record_1' && init?.method !== 'PATCH') {
+        return new Response(JSON.stringify({ version: 3, soap_subjective: '既存メモ' }), {
+          status: 200,
+        });
+      }
+      if (url === '/api/visit-records/record_1' && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ data: { id: 'record_1' } }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderContent();
+
+    const textarea = await screen.findByTestId('voice-memo-manual-transcript');
+    fireEvent.change(textarea, {
+      target: {
+        value: '夕食後は家族の声かけで飲めている。',
+      },
+    });
+    fireEvent.click(screen.getByTestId('voice-memo-manual-apply-button'));
+
+    const appendButton = await screen.findByTestId('voice-memo-append-button');
+    fireEvent.click(appendButton);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('voice-memo-append-button').textContent).toBe('記録へ反映済み');
+    });
+    expect((screen.getByTestId('voice-memo-append-button') as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+
+    fireEvent.click(screen.getByTestId('voice-memo-append-button'));
+
+    expect(
+      fetchMock.mock.calls.filter(
+        ([input, init]) =>
+          String(input) === '/api/visit-records/record_1' && init?.method === 'PATCH',
+      ),
+    ).toHaveLength(1);
   });
 });

@@ -526,11 +526,15 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
               <Button
                 type="button"
                 className="min-h-11 min-w-56 text-[15px] font-bold"
-                disabled={appendMutation.isPending || !orgId}
+                disabled={appendMutation.isPending || !orgId || Boolean(appendedRecordId)}
                 onClick={() => appendMutation.mutate()}
                 data-testid="voice-memo-append-button"
               >
-                {appendMutation.isPending ? '追記中...' : '訪問記録へ入れる'}
+                {appendedRecordId
+                  ? '記録へ反映済み'
+                  : appendMutation.isPending
+                    ? '追記中...'
+                    : '訪問記録へ入れる'}
               </Button>
               <p className="mt-3 text-xs leading-5 text-muted-foreground">
                 S: 患者の訴えの下書きメモへ追記します。反映前に要点と原文を確認してください。
