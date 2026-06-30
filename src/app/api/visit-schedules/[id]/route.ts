@@ -283,6 +283,8 @@ async function authenticatedPATCH(
     time_window_end,
     notes: _notes,
     vehicle_resource_id,
+    schedule_status: targetScheduleStatus,
+    expected_schedule_status: expectedScheduleStatus,
     ...rest
   } = parsed.data;
   void _notes;
@@ -311,8 +313,13 @@ async function authenticatedPATCH(
     return forbiddenResponse('訪問予定のケースまたは担当薬剤師を変更する権限がありません');
   }
 
-  const targetScheduleStatus = rest.schedule_status;
   const existingScheduleStatus = existing.schedule_status as ScheduleStatus;
+  if (expectedScheduleStatus && expectedScheduleStatus !== existingScheduleStatus) {
+    return conflict('訪問予定が同時に更新されました。再読み込みしてください', {
+      expected_schedule_status: expectedScheduleStatus,
+      current_schedule_status: existingScheduleStatus,
+    });
+  }
   const effectiveScheduleStatus = targetScheduleStatus ?? existingScheduleStatus;
   const changesActiveOccupancyStatus =
     targetScheduleStatus !== undefined &&
@@ -705,6 +712,7 @@ async function authenticatedPATCH(
         ...(vehicle_resource_id !== undefined
           ? { vehicle_resource_id: vehicle_resource_id || null }
           : {}),
+        ...(targetScheduleStatus !== undefined ? { schedule_status: targetScheduleStatus } : {}),
         ...rest,
         version: { increment: 1 },
       },

@@ -406,6 +406,7 @@ type MutationConfig<TPayload = unknown> = {
 type VisitStatusPayload = {
   scheduleId: string;
   status: 'in_progress';
+  expectedStatus: 'planned';
 };
 
 type TaskStatusPayload = {
@@ -693,7 +694,11 @@ describe('ScheduleTeamBoard', () => {
     const statusMutation = mutationConfigs[0] as MutationConfig<VisitStatusPayload>;
     const taskStatusMutation = mutationConfigs[1] as MutationConfig<TaskStatusPayload>;
 
-    await statusMutation.mutationFn({ scheduleId, status: 'in_progress' });
+    await statusMutation.mutationFn({
+      scheduleId,
+      status: 'in_progress',
+      expectedStatus: 'planned',
+    });
     await taskStatusMutation.mutationFn({ taskId, status: 'in_progress' });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -704,6 +709,7 @@ describe('ScheduleTeamBoard', () => {
     expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).toBe(orgJsonHeaders);
     expect(JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string)).toEqual({
       schedule_status: 'in_progress',
+      expected_schedule_status: 'planned',
     });
     expect(fetchMock.mock.calls[1]?.[0]).toBe(`/api/tasks/${encodeURIComponent(taskId)}`);
     expect((fetchMock.mock.calls[1]?.[1] as RequestInit).method).toBe('PATCH');
@@ -740,7 +746,11 @@ describe('ScheduleTeamBoard', () => {
     const taskStatusMutation = mutationConfigs[1] as MutationConfig<TaskStatusPayload>;
 
     await expect(
-      statusMutation.mutationFn({ scheduleId: dotId, status: 'in_progress' }),
+      statusMutation.mutationFn({
+        scheduleId: dotId,
+        status: 'in_progress',
+        expectedStatus: 'planned',
+      }),
     ).rejects.toThrow(RangeError);
     await expect(
       taskStatusMutation.mutationFn({ taskId: dotId, status: 'in_progress' }),
@@ -1102,6 +1112,7 @@ describe('ScheduleTeamBoard', () => {
     expect(mutate).toHaveBeenCalledWith({
       scheduleId: 'visit_1',
       status: 'in_progress',
+      expectedStatus: 'planned',
     });
   });
 

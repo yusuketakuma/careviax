@@ -113,8 +113,13 @@ async function updateVisitScheduleStatus({
   orgId,
   scheduleId,
   status,
+  expectedStatus,
 }: StatusChangePayload & { orgId: string }) {
-  await patchVisitSchedule({ orgId, scheduleId, payload: { schedule_status: status } });
+  await patchVisitSchedule({
+    orgId,
+    scheduleId,
+    payload: { schedule_status: status, expected_schedule_status: expectedStatus },
+  });
 }
 
 async function patchVisitSchedule({
@@ -351,6 +356,7 @@ type VisitStatusBlock = BoardBlock & {
 type StatusChangePayload = {
   scheduleId: string;
   status: ScheduleStatus;
+  expectedStatus: ScheduleStatus;
 };
 
 type ApplyRecommendedVehiclePayload = {
@@ -425,6 +431,7 @@ function ScheduleStatusControlPanel({
                         onStatusChange({
                           scheduleId,
                           status: event.target.value as ScheduleStatus,
+                          expectedStatus: status,
                         })
                       }
                     >

@@ -487,6 +487,34 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(pharmacistShiftFindFirstMock).not.toHaveBeenCalled();
   });
 
+  it('rejects stale patch requests before update side effects when expected status changed', async () => {
+    const response = await PATCH(
+      createPatchRequest({
+        schedule_status: 'in_progress',
+        expected_schedule_status: 'ready',
+      }),
+      {
+        params: Promise.resolve({ id: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        expected_schedule_status: 'ready',
+        current_schedule_status: 'planned',
+      },
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('stores patched time windows as UTC @db.Time sentinel dates', async () => {
     visitScheduleTxFindFirstMock.mockResolvedValueOnce(null).mockResolvedValueOnce({
       id: 'schedule_1',
