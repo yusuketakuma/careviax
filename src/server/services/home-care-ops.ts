@@ -315,12 +315,34 @@ function buildFeatureState(args: {
   };
 }
 
+type MultidisciplinaryShareRequest = {
+  id: string;
+  patient_id?: string | null;
+  status?: string | null;
+  related_entity_type?: string | null;
+  related_entity_id?: string | null;
+};
+
 function buildMultidisciplinaryShareAction(args: {
-  requestCount: number;
+  requests: MultidisciplinaryShareRequest[];
   stalledReportIds: string[];
   patientId?: string;
 }) {
-  if (args.requestCount > 0) {
+  if (args.requests.length > 0) {
+    if (args.requests.length === 1) {
+      const request = args.requests[0];
+      return {
+        actionHref: buildCommunicationRequestsHref({
+          status: request.status ?? null,
+          patientId: request.patient_id ?? args.patientId,
+          requestId: request.id,
+          relatedEntityType: request.related_entity_type ?? null,
+          relatedEntityId: request.related_entity_id ?? null,
+        }),
+        actionLabel: '連携依頼を確認',
+      };
+    }
+
     return {
       actionHref: buildCommunicationRequestsHref({ patientId: args.patientId }),
       actionLabel: '連携依頼を確認',
@@ -604,7 +626,10 @@ export async function getHomeCareFeatureSummary(
       select: {
         id: true,
         patient_id: true,
+        status: true,
         request_type: true,
+        related_entity_type: true,
+        related_entity_id: true,
       },
     }),
     db.externalAccessGrant.findMany({
@@ -910,7 +935,7 @@ export async function getHomeCareFeatureSummary(
           : '多職種共有の滞留は少ない状態です。',
       evidence: [`報告滞留 ${stalledReports.length}件`, `連携依頼 ${openRequests.length}件`],
       ...buildMultidisciplinaryShareAction({
-        requestCount: openRequests.length,
+        requests: openRequests,
         stalledReportIds: stalledReports.map((report) => report.id),
       }),
     }),
@@ -1190,7 +1215,13 @@ export async function getPatientHomeCareFeatureSummary(
         patient_id: args.patientId,
         status: { in: [...OPEN_REQUEST_STATUSES] },
       },
-      select: { id: true },
+      select: {
+        id: true,
+        patient_id: true,
+        status: true,
+        related_entity_type: true,
+        related_entity_id: true,
+      },
     }),
     db.externalAccessGrant.findMany({
       where: {
@@ -1409,7 +1440,7 @@ export async function getPatientHomeCareFeatureSummary(
           : '多職種共有は回っています。',
       evidence: [`報告滞留 ${stalledReports.length}件`, `連携依頼 ${requests.length}件`],
       ...buildMultidisciplinaryShareAction({
-        requestCount: requests.length,
+        requests,
         stalledReportIds: stalledReports.map((report) => report.id),
         patientId: args.patientId,
       }),

@@ -16,6 +16,7 @@ import {
   countHomeCareFacilityClusters,
   countHomeCareHolidayCoverageGaps,
   finalizeHomeCareFeatureSummary,
+  getHomeCareFeatureSummary,
   getPatientHomeCareFeatureSummary,
   selectScheduleHomeCareFeatureHighlights,
 } from './home-care-ops';
@@ -67,6 +68,23 @@ function makePatientSummaryDb(patientId: string) {
     externalAccessGrant: { findMany: vi.fn().mockResolvedValue([{ id: 'grant_1' }]) },
     consentRecord: { findMany: vi.fn().mockResolvedValue([{ id: 'consent_1' }]) },
     firstVisitDocument: { findMany: vi.fn().mockResolvedValue([{ id: 'first_visit_doc_1' }]) },
+  };
+}
+
+function makeOrgSummaryDb() {
+  return {
+    careCase: { findMany: vi.fn().mockResolvedValue([]) },
+    task: { groupBy: vi.fn().mockResolvedValue([]) },
+    patientSelfReport: { findMany: vi.fn().mockResolvedValue([]) },
+    medicationIssue: { findMany: vi.fn().mockResolvedValue([]) },
+    careReport: { findMany: vi.fn().mockResolvedValue([]) },
+    communicationRequest: { findMany: vi.fn().mockResolvedValue([]) },
+    externalAccessGrant: { findMany: vi.fn().mockResolvedValue([]) },
+    businessHoliday: { findMany: vi.fn().mockResolvedValue([]) },
+    pharmacistShift: { findMany: vi.fn().mockResolvedValue([]) },
+    pharmacySite: { findMany: vi.fn().mockResolvedValue([]) },
+    prescriptionIntake: { findMany: vi.fn().mockResolvedValue([]) },
+    visitScheduleOverride: { count: vi.fn().mockResolvedValue(0) },
   };
 }
 
@@ -265,8 +283,18 @@ describe('home-care-ops', () => {
 
   it('focuses patient multidisciplinary share actions on patient communication requests', async () => {
     const patientId = 'patient 1/../x?y=#frag';
+    const requestId = 'request 1/../x?y=#frag';
+    const reportId = 'report/1?x=y#frag';
     const db = makePatientSummaryDb(patientId);
-    db.communicationRequest.findMany.mockResolvedValue([{ id: 'request_1' }]);
+    db.communicationRequest.findMany.mockResolvedValue([
+      {
+        id: requestId,
+        patient_id: patientId,
+        status: 'escalated',
+        related_entity_type: 'care_report',
+        related_entity_id: reportId,
+      },
+    ]);
 
     const summary = await getPatientHomeCareFeatureSummary(
       db as unknown as Parameters<typeof getPatientHomeCareFeatureSummary>[0],
@@ -276,9 +304,96 @@ describe('home-care-ops', () => {
     const feature = summary.features.find((item) => item.key === 'multidisciplinary_share_summary');
     expect(feature).toMatchObject({
       count: 1,
-      action_href: '/communications/requests?patient_id=patient+1%2F..%2Fx%3Fy%3D%23frag',
+      action_href: `/communications/requests?${new URLSearchParams({
+        status: 'escalated',
+        patient_id: patientId,
+        request_id: requestId,
+        related_entity_type: 'care_report',
+        related_entity_id: reportId,
+      }).toString()}`,
       action_label: '連携依頼を確認',
     });
+  });
+
+  it('keeps patient multidisciplinary share actions aggregated when multiple requests are open', async () => {
+    const patientId = 'patient 1/../x?y=#frag';
+    const db = makePatientSummaryDb(patientId);
+    db.communicationRequest.findMany.mockResolvedValue([
+      {
+        id: 'request_1',
+        patient_id: patientId,
+        status: 'sent',
+        related_entity_type: null,
+        related_entity_id: null,
+      },
+      {
+        id: 'request_2',
+        patient_id: patientId,
+        status: 'received',
+        related_entity_type: 'care_report',
+        related_entity_id: 'report_2',
+      },
+    ]);
+
+    const summary = await getPatientHomeCareFeatureSummary(
+      db as unknown as Parameters<typeof getPatientHomeCareFeatureSummary>[0],
+      { orgId: 'org_1', patientId },
+    );
+
+    const feature = summary.features.find((item) => item.key === 'multidisciplinary_share_summary');
+    expect(feature).toMatchObject({
+      count: 2,
+      action_href: `/communications/requests?${new URLSearchParams({
+        patient_id: patientId,
+      }).toString()}`,
+      action_label: '連携依頼を確認',
+    });
+  });
+
+  it('focuses organization multidisciplinary share actions on the single open request', async () => {
+    const patientId = 'patient 1/../x?y=#frag';
+    const requestId = 'request 1/../x?y=#frag';
+    const reportId = 'report/1?x=y#frag';
+    const db = makeOrgSummaryDb();
+    db.communicationRequest.findMany.mockResolvedValue([
+      {
+        id: requestId,
+        patient_id: patientId,
+        status: 'in_progress',
+        request_type: 'care_report_reply_request',
+        related_entity_type: 'care_report',
+        related_entity_id: reportId,
+      },
+    ]);
+
+    const summary = await getHomeCareFeatureSummary(
+      db as unknown as Parameters<typeof getHomeCareFeatureSummary>[0],
+      { orgId: 'org_1' },
+    );
+
+    const feature = summary.features.find((item) => item.key === 'multidisciplinary_share_summary');
+    expect(feature).toMatchObject({
+      count: 1,
+      action_href: `/communications/requests?${new URLSearchParams({
+        status: 'in_progress',
+        patient_id: patientId,
+        request_id: requestId,
+        related_entity_type: 'care_report',
+        related_entity_id: reportId,
+      }).toString()}`,
+      action_label: '連携依頼を確認',
+    });
+    expect(db.communicationRequest.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          id: true,
+          patient_id: true,
+          status: true,
+          related_entity_type: true,
+          related_entity_id: true,
+        }),
+      }),
+    );
   });
 
   it('focuses patient caregiver share gap actions on the patient share workspace', async () => {
