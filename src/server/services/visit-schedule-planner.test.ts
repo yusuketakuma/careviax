@@ -624,6 +624,69 @@ describe('generateVisitScheduleProposalDrafts', () => {
     );
   });
 
+  it('bounds per-shift route evaluation concurrency', async () => {
+    const previousConcurrency = process.env.VISIT_SCHEDULE_PLANNER_CONCURRENCY;
+    process.env.VISIT_SCHEDULE_PLANNER_CONCURRENCY = '8';
+    let activeRouteEstimates = 0;
+    let maxActiveRouteEstimates = 0;
+    createRoadTravelEstimatorMock.mockReturnValue(async () => {
+      activeRouteEstimates += 1;
+      maxActiveRouteEstimates = Math.max(maxActiveRouteEstimates, activeRouteEstimates);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return { durationMinutes: 5, distanceKm: 1 };
+      } finally {
+        activeRouteEstimates -= 1;
+      }
+    });
+    pharmacistShiftFindManyMock.mockResolvedValueOnce(
+      Array.from({ length: 12 }, (_, index) => ({
+        date: new Date('2026-03-28T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: `pharmacist_${index}`,
+        site_id: 'site_1',
+        user: {
+          id: `pharmacist_${index}`,
+          name: `候補薬剤師${index + 1}`,
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: [],
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      })),
+    );
+
+    try {
+      const result = await generateVisitScheduleProposalDrafts({
+        orgId: 'org_1',
+        caseId: 'case_1',
+        visitType: 'regular',
+        priority: 'normal',
+        candidateCount: 12,
+        startDate: new Date('2026-03-27T00:00:00.000Z'),
+      });
+
+      expect(result.drafts).toHaveLength(12);
+      expect(maxActiveRouteEstimates).toBeLessThanOrEqual(8);
+    } finally {
+      if (previousConcurrency === undefined) {
+        delete process.env.VISIT_SCHEDULE_PLANNER_CONCURRENCY;
+      } else {
+        process.env.VISIT_SCHEDULE_PLANNER_CONCURRENCY = previousConcurrency;
+      }
+    }
+  });
+
   it('rejects every candidate on an org-wide business holiday', async () => {
     businessHolidayFindManyMock.mockResolvedValueOnce([
       {

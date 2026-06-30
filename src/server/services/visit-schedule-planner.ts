@@ -4,6 +4,7 @@ import { buildOperatingCalendarFromDbRows } from '@/lib/calendar/operating-day-a
 import { resolveOperatingState } from '@/lib/calendar/operating-day';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
+import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { getHomeVisitSpecialMedicalProcedures } from '@/lib/patient/home-visit-intake';
 import { applyTimeDateToDate, timeDateToString } from '@/lib/visits/time-of-day';
@@ -26,6 +27,15 @@ const OVERDUE_ASAP_SEARCH_DAYS = 3;
 const SPECIALTY_MISMATCH_BASE_PENALTY = 20;
 const SPECIALTY_MISMATCH_PER_REQUIREMENT_PENALTY = 20;
 const MAX_SPECIALTY_MISMATCH_PENALTY = 60;
+const DEFAULT_PLANNER_CANDIDATE_EVALUATION_CONCURRENCY = 8;
+const MAX_PLANNER_CANDIDATE_EVALUATION_CONCURRENCY = 16;
+
+function normalizePlannerCandidateEvaluationConcurrency(value: unknown) {
+  return normalizeConcurrencyLimit(value, {
+    defaultValue: DEFAULT_PLANNER_CANDIDATE_EVALUATION_CONCURRENCY,
+    max: MAX_PLANNER_CANDIDATE_EVALUATION_CONCURRENCY,
+  });
+}
 
 type GenerateProposalParams = {
   orgId: string;
@@ -1523,8 +1533,10 @@ export async function generateVisitScheduleProposalDrafts(
     };
   }
 
-  const evaluatedCandidates = await Promise.all(
-    shifts.map(async (shift) => {
+  const evaluatedCandidates = await mapWithConcurrency(
+    shifts,
+    normalizePlannerCandidateEvaluationConcurrency(process.env.VISIT_SCHEDULE_PLANNER_CONCURRENCY),
+    async (shift) => {
       if (lockedDate && toDateKey(shift.date) !== toDateKey(lockedDate)) {
         return {
           kind: 'rejected' as const,
@@ -1895,7 +1907,7 @@ export async function generateVisitScheduleProposalDrafts(
           }),
         };
       }
-    }),
+    },
   );
 
   const acceptedCandidates = evaluatedCandidates

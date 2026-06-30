@@ -30,6 +30,37 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Visit Planner Candidate Evaluation Concurrency Cap - 2026-07-01 04:41 JST
+
+- Scope:
+  - Continued visit-time scheduling and route-decision performance hardening under `docs/schedule-route-build-plan.md` P7 perf-1.
+  - Focused on the outer per-shift candidate evaluation fan-out in `generateVisitScheduleProposalDrafts`.
+- Fixed:
+  - Replaced raw `Promise.all(shifts.map(...))` with shared `mapWithConcurrency`.
+  - Planner candidate evaluation now defaults to concurrency `8`, caps configured values at `16`, and reads `VISIT_SCHEDULE_PLANNER_CONCURRENCY`.
+  - Added a 12-shift regression test that tracks active road-estimator calls and proves the outer route-evaluation fan-out does not exceed `8` when configured that way.
+  - Independent verifier review found no ordering, env-restore, routing, or concurrency blocker in the two changed planner files.
+- Safety:
+  - Reduces route-planner socket/latency pressure during large candidate searches without changing candidate scoring semantics.
+  - Shared helper preserves input result order, while accepted candidates continue to be sorted by score as before.
+  - Preserves workflow gate, auth/RLS callers, capacity checks, operating-hour guards, vehicle constraints, specialty scoring, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Bounds expensive per-shift route insertion and vehicle route-duration evaluation fan-out.
+  - No new dependency, DB query, external call type, background job, render path, or broad scan was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `40` tests.
+  - `pnpm exec vitest run src/app/api/visit-schedule-proposals/route.test.ts src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `129` tests with the expected sanitized-500 route log.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on the planner code/test: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `git diff --check`: passed.
+  - `pnpm typecheck --pretty false`: failed on unrelated dirty facility OCC files, where three route handlers can infer `undefined` returns.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: failed on unrelated dirty `src/lib/validations/facility.ts`.
+- Remaining:
+  - Broad visit-time, report, and multi-professional cooperation objective remains open.
+  - P7 still has follow-ups for route matrix batching, candidate-scope confirmed schedule queries, and cadence precomputation.
+  - Unowned facility OCC dirty files remain outside this planner slice and currently block full typecheck/format gates.
+
 ### Visit Proposal Specialty Match Scoring - 2026-07-01 04:20 JST
 
 - Scope:
