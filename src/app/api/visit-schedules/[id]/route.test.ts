@@ -171,6 +171,34 @@ function expectSensitiveNoStore(response: Response) {
   expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
+function buildPatchScheduleFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'schedule_1',
+    case_id: 'case_1',
+    cycle_id: 'cycle_1',
+    visit_type: 'regular',
+    priority: 'normal',
+    schedule_status: 'planned',
+    scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+    time_window_start: null,
+    time_window_end: null,
+    route_order: 1,
+    recurrence_rule: null,
+    version: 1,
+    confirmed_at: null,
+    pharmacist_id: 'user_1',
+    site_id: 'site_1',
+    vehicle_resource_id: null,
+    visit_record: null,
+    preparation: null,
+    case_: {
+      primary_pharmacist_id: 'user_primary',
+      backup_pharmacist_id: null,
+    },
+    ...overrides,
+  };
+}
+
 describe('/api/visit-schedules/[id] GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -979,6 +1007,117 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
   });
 
+  it.each(['completed', 'cancelled'] as const)(
+    'rejects reopening %s schedules through generic PATCH',
+    async (scheduleStatus) => {
+      visitScheduleFindFirstMock.mockResolvedValueOnce(
+        buildPatchScheduleFixture({ schedule_status: scheduleStatus }),
+      );
+
+      const response = await PATCH(createPatchRequest({ schedule_status: 'planned' }), {
+        params: Promise.resolve({ id: 'schedule_1' }),
+      });
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '終了済みまたは中止済みの訪問予定は変更できません',
+      });
+      expect(evaluateReadyTransitionMock).not.toHaveBeenCalled();
+      expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+      expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+      expect(auditLogCreateMock).not.toHaveBeenCalled();
+      expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['completed', 'cancelled', 'postponed', 'rescheduled', 'no_show'] as const)(
+    'rejects %s schedule mutations through generic PATCH',
+    async (scheduleStatus) => {
+      visitScheduleFindFirstMock.mockResolvedValueOnce(
+        buildPatchScheduleFixture({ schedule_status: scheduleStatus }),
+      );
+
+      const response = await PATCH(createPatchRequest({ priority: 'urgent' }), {
+        params: Promise.resolve({ id: 'schedule_1' }),
+      });
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '終了済みまたは中止済みの訪問予定は変更できません',
+      });
+      expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+      expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+      expect(auditLogCreateMock).not.toHaveBeenCalled();
+      expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps no-op PATCH responses available for terminal schedules', async () => {
+    const completedSchedule = buildPatchScheduleFixture({ schedule_status: 'completed' });
+    visitScheduleFindFirstMock
+      .mockResolvedValueOnce(completedSchedule)
+      .mockResolvedValueOnce(completedSchedule);
+
+    const response = await PATCH(createPatchRequest({ schedule_status: 'completed' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('allows active schedules to transition to cancelled through generic PATCH', async () => {
+    const cancelledSchedule = buildPatchScheduleFixture({
+      schedule_status: 'cancelled',
+      version: 2,
+    });
+    visitScheduleTxFindFirstMock.mockResolvedValueOnce(cancelledSchedule);
+
+    const response = await PATCH(createPatchRequest({ schedule_status: 'cancelled' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: EXPECTED_PATCH_GUARD,
+        data: expect.objectContaining({
+          schedule_status: 'cancelled',
+          version: { increment: 1 },
+        }),
+      }),
+    );
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'visit_schedule_updated',
+        target_type: 'VisitSchedule',
+        target_id: 'schedule_1',
+        changes: {
+          scheduleStatusFrom: 'planned',
+          scheduleStatusTo: 'cancelled',
+        },
+      }),
+    });
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: { source: 'visit_schedules_update', schedule_id: 'schedule_1' },
+    });
+  });
+
   it('assigns selected vehicle resources during schedule PATCH', async () => {
     const response = await PATCH(createPatchRequest({ vehicle_resource_id: 'vehicle_1' }), {
       params: Promise.resolve({ id: 'schedule_1' }),
@@ -1602,7 +1741,7 @@ describe('/api/visit-schedules/[id] GET', () => {
       expect(response.status).toBe(400);
       await expect(response.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
-        message: '完了済みまたは中止済みの訪問予定は順路を変更できません',
+        message: '終了済みまたは中止済みの訪問予定は変更できません',
       });
       expect(visitScheduleFindFirstMock).toHaveBeenCalledTimes(1);
       expect(visitScheduleProposalFindFirstMock).not.toHaveBeenCalled();

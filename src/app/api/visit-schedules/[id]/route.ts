@@ -410,7 +410,11 @@ async function authenticatedPATCH(
       site_id !== undefined ||
       changesActiveOccupancyStatus);
   const projectedAuditChanges = schedulePatchAuditChanges(existing, projectedSchedule);
-  if (Object.keys(projectedAuditChanges).length === 0) {
+  const hasProjectedChanges = Object.keys(projectedAuditChanges).length > 0;
+  if (isTerminalScheduleStatus(existingScheduleStatus) && hasProjectedChanges) {
+    return validationError('終了済みまたは中止済みの訪問予定は変更できません');
+  }
+  if (!hasProjectedChanges) {
     const currentSchedule = await prisma.visitSchedule.findFirst({
       where: { id, org_id: ctx.orgId },
     });
