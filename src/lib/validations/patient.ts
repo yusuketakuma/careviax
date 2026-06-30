@@ -293,6 +293,7 @@ export const updatePatientSchema = createPatientSchema.partial().extend({
 });
 
 export const updatePatientConditionsSchema = z.object({
+  expected_updated_at: z.string().datetime('患者病名・問題の版情報が不正です'),
   conditions: z.array(patientConditionSchema),
 });
 
