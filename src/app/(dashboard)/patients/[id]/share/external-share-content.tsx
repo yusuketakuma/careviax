@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -17,7 +18,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ActionRail } from '@/components/ui/action-rail';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -48,6 +49,7 @@ import {
   type ShareAudienceKey,
 } from '@/lib/communications/share-audience';
 import { buildCommunicationRequestApiPath } from '@/lib/communications/api-paths';
+import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import {
   buildPatientShareCommunicationRequestInput,
@@ -124,6 +126,13 @@ type ShareReplyDetail = {
   }>;
 };
 
+type CreateCommunicationRequestResponse = {
+  data?: {
+    id?: string;
+    status?: string;
+  };
+};
+
 type ShareFormErrors = {
   grantedToName?: string;
   scope?: string;
@@ -160,6 +169,9 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
   const [createdRequestAudiences, setCreatedRequestAudiences] = useState<
     readonly ShareAudienceKey[]
   >([]);
+  const [createdRequestIdsByAudience, setCreatedRequestIdsByAudience] = useState<
+    Partial<Record<ShareAudienceKey, string>>
+  >({});
   const [shareFormErrors, setShareFormErrors] = useState<ShareFormErrors>({});
 
   const overviewQuery = useQuery<ExternalShareOverview>({
@@ -335,7 +347,20 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
   const latestReply = replyDetailQuery.data?.data?.responses?.[0] ?? null;
   const taskCreated = Boolean(latestReply && createdResponseIds.includes(latestReply.id));
   const requestCreated = createdRequestAudiences.includes(audience);
-  const hasActiveAudienceRequest = Boolean(audienceRequest && audienceRequest.status !== 'closed');
+  const activeAudienceRequest =
+    audienceRequest && audienceRequest.status !== 'closed' ? audienceRequest : null;
+  const hasActiveAudienceRequest = Boolean(activeAudienceRequest);
+  const focusedReplyRequestId =
+    activeAudienceRequest?.id ?? createdRequestIdsByAudience[audience] ?? null;
+  const replyRequestQueueHref = focusedReplyRequestId
+    ? buildCommunicationRequestsHref({
+        status: activeAudienceRequest?.status ?? 'sent',
+        patientId,
+        requestId: focusedReplyRequestId,
+        relatedEntityType: 'patient',
+        relatedEntityId: patientId,
+      })
+    : null;
   const supportingDataErrors = [
     careTeamQuery.isError ? 'ケアチーム' : null,
     contactsQuery.isError ? '患者連絡先' : null,
@@ -409,10 +434,17 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
           (err as { message?: string } | null)?.message ?? '返信依頼の起票に失敗しました',
         );
       }
-      return res.json();
+      return res.json() as Promise<CreateCommunicationRequestResponse>;
     },
-    onSuccess: async () => {
+    onSuccess: async (result?: CreateCommunicationRequestResponse) => {
       setCreatedRequestAudiences((prev) => [...prev, audience]);
+      const createdRequestId = result?.data?.id?.trim();
+      if (createdRequestId) {
+        setCreatedRequestIdsByAudience((prev) => ({
+          ...prev,
+          [audience]: createdRequestId,
+        }));
+      }
       toast.success('返信依頼を起票しました');
       await queryClient.invalidateQueries({
         queryKey: ['communication-requests', 'patient', patientId, orgId],
@@ -878,6 +910,19 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
                     ? 'この相手への返信依頼は既に連携依頼キューにあります。'
                     : '選択中の相手に、表示中の患者共有内容を確認してもらう返信待ち依頼を作成します。'}
             </p>
+            {replyRequestQueueHref ? (
+              <Link
+                href={replyRequestQueueHref}
+                data-testid="share-open-request-link"
+                className={cn(
+                  buttonVariants({ variant: 'outline', size: 'sm' }),
+                  'mt-3 w-full bg-background',
+                )}
+              >
+                <MessageCircle className="mr-1.5 size-4" aria-hidden="true" />
+                連携依頼を開く
+              </Link>
+            ) : null}
 
             <Button
               type="button"

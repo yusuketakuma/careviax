@@ -307,6 +307,9 @@ describe('InterprofessionalShareContent', () => {
         'ヘルパーへ声かけ依頼済み',
       );
     });
+    expect(screen.getByTestId('share-open-request-link').getAttribute('href')).toBe(
+      '/communications/requests?status=responded&patient_id=pt_1&request_id=req_1&related_entity_type=care_report&related_entity_id=rep_1',
+    );
   });
 
   it('uses the org header on every share GET request', async () => {

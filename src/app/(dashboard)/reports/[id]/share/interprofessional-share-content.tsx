@@ -15,6 +15,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildCommunicationRequestApiPath } from '@/lib/communications/api-paths';
+import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildCareReportApiPath } from '@/lib/reports/api-paths';
@@ -67,6 +68,13 @@ type ShareReplyDetail = {
   }>;
 };
 
+type CreateCommunicationRequestResponse = {
+  data?: {
+    id?: string;
+    status?: string;
+  };
+};
+
 export function InterprofessionalShareContent({ reportId }: { reportId: string }) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
@@ -77,6 +85,9 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   const [createdRequestAudiences, setCreatedRequestAudiences] = useState<
     readonly ShareAudienceKey[]
   >([]);
+  const [createdRequestIdsByAudience, setCreatedRequestIdsByAudience] = useState<
+    Partial<Record<ShareAudienceKey, string>>
+  >({});
 
   const reportQuery = useQuery({
     queryKey: ['care-report', reportId, orgId],
@@ -178,7 +189,20 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   const latestReply = replyDetailQuery.data?.data.responses[0] ?? null;
   const taskCreated = Boolean(latestReply && createdResponseIds.includes(latestReply.id));
   const requestCreated = createdRequestAudiences.includes(audience);
-  const hasActiveAudienceRequest = Boolean(audienceRequest && audienceRequest.status !== 'closed');
+  const activeAudienceRequest =
+    audienceRequest && audienceRequest.status !== 'closed' ? audienceRequest : null;
+  const hasActiveAudienceRequest = Boolean(activeAudienceRequest);
+  const focusedReplyRequestId =
+    activeAudienceRequest?.id ?? createdRequestIdsByAudience[audience] ?? null;
+  const replyRequestQueueHref = focusedReplyRequestId
+    ? buildCommunicationRequestsHref({
+        status: activeAudienceRequest?.status ?? 'sent',
+        patientId,
+        requestId: focusedReplyRequestId,
+        relatedEntityType: 'care_report',
+        relatedEntityId: report?.id ?? reportId,
+      })
+    : null;
   const supportingDataErrors = [
     careTeamQuery.isError ? 'ケアチーム' : null,
     contactsQuery.isError ? '患者連絡先' : null,
@@ -260,10 +284,17 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
           (err as { message?: string } | null)?.message ?? '返信依頼の起票に失敗しました',
         );
       }
-      return res.json();
+      return res.json() as Promise<CreateCommunicationRequestResponse>;
     },
-    onSuccess: async () => {
+    onSuccess: async (result?: CreateCommunicationRequestResponse) => {
       setCreatedRequestAudiences((prev) => [...prev, audience]);
+      const createdRequestId = result?.data?.id?.trim();
+      if (createdRequestId) {
+        setCreatedRequestIdsByAudience((prev) => ({
+          ...prev,
+          [audience]: createdRequestId,
+        }));
+      }
       toast.success('返信依頼を起票しました');
       await queryClient.invalidateQueries({
         queryKey: ['communication-requests', 'care_report', reportId, orgId],
@@ -573,6 +604,19 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
                     ? 'この相手への返信依頼は既に連携依頼キューにあります。'
                     : '選択中の相手に、表示中の共有内容を確認してもらう返信待ち依頼を作成します。'}
             </p>
+            {replyRequestQueueHref ? (
+              <Link
+                href={replyRequestQueueHref}
+                data-testid="share-open-request-link"
+                className={cn(
+                  buttonVariants({ variant: 'outline', size: 'sm' }),
+                  'mt-3 w-full bg-background',
+                )}
+              >
+                <MessageCircle className="mr-1.5 size-4" aria-hidden="true" />
+                連携依頼を開く
+              </Link>
+            ) : null}
 
             <Button
               type="button"

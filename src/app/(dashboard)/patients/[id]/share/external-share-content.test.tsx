@@ -373,6 +373,73 @@ describe('ExternalShareContent', () => {
     });
   });
 
+  it('links an active patient-share reply request back to the exact communication request', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockImplementation((config: QueryConfig) => {
+      const scope = config.queryKey?.[0];
+      if (scope === 'patient-care-team') {
+        return {
+          data: {
+            data: [
+              {
+                role: 'care_manager',
+                name: '田中ケアマネ',
+                organization_name: '北区ケアプラン',
+                is_primary: true,
+              },
+            ],
+          },
+          isLoading: false,
+          isError: false,
+        };
+      }
+      if (scope === 'patient-contacts') {
+        return { data: { data: [] }, isLoading: false, isError: false };
+      }
+      if (scope === 'communication-requests') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'request_1',
+                recipient_role: 'care_manager',
+                recipient_name: '田中ケアマネ',
+                status: 'sent',
+                subject: '共有確認',
+                requested_at: '2026-06-01T00:00:00.000Z',
+                responses: [],
+              },
+            ],
+          },
+          isLoading: false,
+          isError: false,
+        };
+      }
+      if (scope === 'communication-request') {
+        return { data: undefined, isLoading: false, isError: false };
+      }
+      return {
+        data: {
+          name: '佐藤 花子',
+          external_shares: [],
+          self_reports: [],
+          current_medications: [],
+          visit_schedules: [],
+          care_reports: [],
+        },
+        isLoading: false,
+        isError: false,
+      };
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+
+    expect(screen.getByTestId('share-open-request-link').getAttribute('href')).toBe(
+      '/communications/requests?status=sent&patient_id=patient_1&request_id=request_1&related_entity_type=patient&related_entity_id=patient_1',
+    );
+  });
+
   it('does not create a reply request when the selected audience has no registered recipient', () => {
     const createReplyMutate = vi.fn();
     let mutationCount = 0;
