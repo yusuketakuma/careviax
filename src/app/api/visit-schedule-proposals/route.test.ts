@@ -505,6 +505,29 @@ describe('/api/visit-schedule-proposals', () => {
     expect(listCall?.[0]?.where).not.toHaveProperty('AND');
   });
 
+  it('returns a sanitized no-store 500 when proposal list auth lookup fails unexpectedly', async () => {
+    authMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 090-1234-5678 raw proposal list auth detail'),
+    );
+
+    const response = (await GET(
+      createRequest('http://localhost/api/visit-schedule-proposals?case_id=case_1'),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('raw proposal list auth detail');
+    expect(visitScheduleProposalFindManyMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('filters proposals by patient_id when provided', async () => {
     const response = (await GET(
       createRequest('http://localhost/api/visit-schedule-proposals?patient_id=patient_1'),
@@ -789,6 +812,7 @@ describe('/api/visit-schedule-proposals', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
       case_id: 'case_1',
     });
@@ -1450,6 +1474,34 @@ describe('/api/visit-schedule-proposals', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('returns a sanitized no-store 500 when proposal generation fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 090-1234-5678 raw proposal generation detail'),
+    );
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+      }),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('raw proposal generation detail');
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('rejects generated proposals that collide with an active schedule before batch or supersede side effects', async () => {
     visitScheduleFindFirstMock.mockResolvedValueOnce({ id: 'schedule_existing' });
 
@@ -1583,6 +1635,39 @@ describe('/api/visit-schedule-proposals', () => {
     expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when draft proposal auth lookup fails unexpectedly', async () => {
+    authMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 090-1234-5678 raw draft proposal auth detail'),
+    );
+
+    const response = (await PUT(
+      createPutRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        priority: 'normal',
+        proposed_date: '2026-04-03',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+        proposed_pharmacist_id: 'user_2',
+        travel_mode: 'DRIVE',
+        submit_for_contact: false,
+      }),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('raw draft proposal auth detail');
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('retries draft drawer proposal conflicts and rejects a retry-time duplicate open proposal', async () => {

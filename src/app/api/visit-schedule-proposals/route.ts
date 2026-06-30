@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
@@ -6,7 +7,7 @@ import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { hhmmToTimeDate } from '@/lib/datetime/time-of-day';
 import { timeDateToString } from '@/lib/visits/time-of-day';
@@ -757,10 +758,16 @@ const authenticatedGET = withAuthContext(
   },
 );
 
-export const GET: typeof authenticatedGET = async (req, routeContext) =>
-  withSensitiveNoStore(await authenticatedGET(req, routeContext));
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
 
-export const POST = withAuthContext(
+const authenticatedPOST = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -1433,6 +1440,15 @@ export const POST = withAuthContext(
   },
 );
 
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
+
 // ── 単一レコードの「予定を作成・編集」ドロワー用 (p0_18) ──
 // 既存の VisitProposalStatus を使い、下書き = proposed / 確認待ち = patient_contact_pending を表現する。
 // スキーマフィールドは追加しない。
@@ -1602,7 +1618,7 @@ function proposalDraftAuditChanges(input: {
  * 下書き = proposal_status 'proposed' / 確認待ち = 'patient_contact_pending' を
  * 既存の enum で表現し、スキーマフィールドは追加しない。
  */
-export const PUT = withAuthContext(
+const authenticatedPUT = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -1849,3 +1865,12 @@ export const PUT = withAuthContext(
     message: '訪問予定の作成・編集権限がありません',
   },
 );
+
+export const PUT: typeof authenticatedPUT = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPUT(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
