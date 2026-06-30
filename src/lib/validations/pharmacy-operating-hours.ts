@@ -99,6 +99,7 @@ export const pharmacyOperatingHoursRowSchema = z
 export const pharmacyOperatingHoursPutSchema = z
   .object({
     site_id: optionalTrimmedIdSchema,
+    expected_weekly_updated_at: z.string().datetime('営業時間設定の版情報が不正です').nullable(),
     rows: z.array(pharmacyOperatingHoursRowSchema).length(7, '営業時間は7曜日分を指定してください'),
   })
   .superRefine((value, ctx) => {

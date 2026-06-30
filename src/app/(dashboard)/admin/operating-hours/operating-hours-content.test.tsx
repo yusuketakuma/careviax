@@ -69,6 +69,7 @@ function stubFetch() {
           data: {
             site_id: 'site_1',
             weekly: weeklyFixture(),
+            weekly_updated_at: '2026-06-27T00:00:00.000Z',
             resolved_days: [
               {
                 date: dateFrom,
@@ -95,7 +96,13 @@ function stubFetch() {
 
     if (url === '/api/pharmacy-operating-hours' && init?.method === 'PUT') {
       return new Response(
-        JSON.stringify({ data: { site_id: 'site_1', weekly: weeklyFixture() } }),
+        JSON.stringify({
+          data: {
+            site_id: 'site_1',
+            weekly: weeklyFixture(),
+            weekly_updated_at: '2026-06-28T00:00:00.000Z',
+          },
+        }),
         { status: 200 },
       );
     }
@@ -186,12 +193,72 @@ describe('OperatingHoursContent', () => {
     );
     const body = JSON.parse(String((putCall?.[1] as RequestInit | undefined)?.body));
     expect(body.site_id).toBe('site_1');
+    expect(body.expected_weekly_updated_at).toBe('2026-06-27T00:00:00.000Z');
     expect(body.rows).toHaveLength(7);
     const monday = body.rows.find((row: { weekday: number }) => row.weekday === 1);
     expect(monday).toMatchObject({ is_open: true, open_time: '10:00', close_time: '18:00' });
     // closed day sends null times
     const sunday = body.rows.find((row: { weekday: number }) => row.weekday === 0);
     expect(sunday).toMatchObject({ is_open: false, open_time: null, close_time: null });
+  });
+
+  it('surfaces stale save conflicts and blocks another submit with the stale version', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-sites') {
+        return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+          status: 200,
+        });
+      }
+      if (url.startsWith('/api/pharmacy-operating-hours?')) {
+        return new Response(
+          JSON.stringify({
+            data: {
+              site_id: 'site_1',
+              weekly: weeklyFixture(),
+              weekly_updated_at: '2026-06-27T00:00:00.000Z',
+              resolved_days: [],
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/pharmacy-operating-hours' && init?.method === 'PUT') {
+        return new Response(
+          JSON.stringify({
+            code: 'WORKFLOW_CONFLICT',
+            message:
+              '営業時間設定が他の操作で更新されています。画面を再読み込みしてから保存してください',
+          }),
+          { status: 409 },
+        );
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+
+    const mondayOpen = (await screen.findByLabelText('月曜日の開始時刻')) as HTMLInputElement;
+    fireEvent.change(mondayOpen, { target: { value: '10:00' } });
+
+    const saveButton = await screen.findByRole('button', { name: '保存' });
+    await waitFor(() => expect((saveButton as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(saveButton);
+
+    expect(
+      await screen.findByText(
+        '営業時間設定が他の操作で更新されています。画面を再読み込みしてから保存してください',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: '画面を再読み込み' })).toBeTruthy();
+    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
+
+    const putCalls = fetchMock.mock.calls.filter(
+      ([input, init]) =>
+        String(input) === '/api/pharmacy-operating-hours' && init?.method === 'PUT',
+    );
+    expect(putCalls).toHaveLength(1);
   });
 
   it('treats an all-day open row (null times) as valid and clean, not an error', async () => {
@@ -208,7 +275,14 @@ describe('OperatingHoursContent', () => {
           row.weekday === 1 ? { ...row, open_time: null, close_time: null } : row,
         );
         return new Response(
-          JSON.stringify({ data: { site_id: 'site_1', weekly, resolved_days: [] } }),
+          JSON.stringify({
+            data: {
+              site_id: 'site_1',
+              weekly,
+              weekly_updated_at: '2026-06-27T00:00:00.000Z',
+              resolved_days: [],
+            },
+          }),
           { status: 200 },
         );
       }
@@ -246,5 +320,31 @@ describe('OperatingHoursContent', () => {
     // '休業'/'定休' also appear in the legend, so assert at least one match each.
     await waitFor(() => expect(screen.getAllByText('休業').length).toBeGreaterThan(0));
     expect(screen.getAllByText('定休').length).toBeGreaterThan(0);
+  });
+
+  it('does not show false-zero calendar stats when operating-hours fetch fails', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-sites') {
+        return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+          status: 200,
+        });
+      }
+      if (url.startsWith('/api/pharmacy-operating-hours?')) {
+        return new Response(JSON.stringify({ message: '営業時間設定の取得に失敗しました' }), {
+          status: 500,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+
+    expect(await screen.findByText('営業時間設定を取得できませんでした。')).toBeTruthy();
+    expect(screen.getByText('稼働日カレンダーを取得できませんでした。')).toBeTruthy();
+    expect(screen.queryByText('営業日')).toBeNull();
+    expect(screen.queryByText('休業日')).toBeNull();
+    expect(screen.queryByText('臨時/短縮営業')).toBeNull();
   });
 });

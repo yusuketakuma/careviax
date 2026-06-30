@@ -54,6 +54,7 @@ type OperatingHoursResponse = {
   data: {
     site_id: string;
     weekly: WeeklyRow[];
+    weekly_updated_at: string | null;
     resolved_days?: ResolvedDay[];
   };
 };
@@ -65,6 +66,16 @@ type EditableRow = {
   close_time: string;
   note: string;
 };
+
+class OperatingHoursSaveError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'OperatingHoursSaveError';
+  }
+}
 
 const EMPTY_SITES: SiteOption[] = [];
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -143,6 +154,8 @@ export function OperatingHoursContent() {
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [draft, setDraft] = useState<EditableRow[]>([]);
   const [baseline, setBaseline] = useState<string>('');
+  const [baselineWeeklyUpdatedAt, setBaselineWeeklyUpdatedAt] = useState<string | null>(null);
+  const [saveConflictMessage, setSaveConflictMessage] = useState<string | null>(null);
   const [syncedFor, setSyncedFor] = useState<string | null>(null);
 
   const sitesQuery = useQuery({
@@ -188,6 +201,7 @@ export function OperatingHoursContent() {
     setSyncedFor(syncKey);
     setDraft(editable);
     setBaseline(serializeDraft(editable));
+    setBaselineWeeklyUpdatedAt(operatingQuery.data?.data.weekly_updated_at ?? null);
   }
 
   const saveMutation = useMutation({
@@ -197,6 +211,7 @@ export function OperatingHoursContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           site_id: activeSiteId,
+          expected_weekly_updated_at: baselineWeeklyUpdatedAt,
           rows: rows.map((row) => ({
             weekday: row.weekday,
             is_open: row.is_open,
@@ -211,20 +226,31 @@ export function OperatingHoursContent() {
           .json()
           .then((body) => body?.message as string | undefined)
           .catch(() => undefined);
-        throw new Error(message ?? '営業時間設定の保存に失敗しました');
+        throw new OperatingHoursSaveError(
+          message ?? '営業時間設定の保存に失敗しました',
+          response.status,
+        );
       }
-      return response.json() as Promise<{ data: { site_id: string; weekly: WeeklyRow[] } }>;
+      return response.json() as Promise<OperatingHoursResponse>;
+    },
+    onMutate: () => {
+      setSaveConflictMessage(null);
     },
     onSuccess: (result) => {
       const editable = result.data.weekly.map(toEditableRow);
       setDraft(editable);
       setBaseline(serializeDraft(editable));
+      setBaselineWeeklyUpdatedAt(result.data.weekly_updated_at ?? null);
+      setSaveConflictMessage(null);
       toast.success('営業時間設定を保存しました');
       void queryClient.invalidateQueries({
         queryKey: ['pharmacy-operating-hours', orgId, activeSiteId],
       });
     },
     onError: (error: Error) => {
+      if (error instanceof OperatingHoursSaveError && error.status === 409) {
+        setSaveConflictMessage(error.message);
+      }
       toast.error(error.message);
     },
   });
@@ -288,7 +314,8 @@ export function OperatingHoursContent() {
   const hasError = rowErrors.some((error) => error !== null);
   const isSynced = syncedFor === syncKey && draft.length > 0;
   const isDirty = isSynced && serializeDraft(draft) !== baseline;
-  const canSave = isSynced && isDirty && !hasError && !saveMutation.isPending;
+  const canSave =
+    isSynced && isDirty && !hasError && !saveConflictMessage && !saveMutation.isPending;
 
   const resolvedDays = operatingQuery.data?.data.resolved_days ?? [];
   const resolvedByDate = new Map(resolvedDays.map((day) => [day.date, day]));
@@ -340,6 +367,22 @@ export function OperatingHoursContent() {
           />
         ) : (
           <div className="space-y-2">
+            {saveConflictMessage ? (
+              <div
+                className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-state-blocked/40 bg-state-blocked/5 p-3 text-sm text-state-blocked"
+                role="alert"
+              >
+                <span>{saveConflictMessage}</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.location.reload()}
+                >
+                  画面を再読み込み
+                </Button>
+              </div>
+            ) : null}
             {draft.map((row) => {
               const error = rowErrors[row.weekday];
               return (
@@ -412,23 +455,9 @@ export function OperatingHoursContent() {
           <MonthGridNav year={viewYear} month={viewMonth} onPrev={prevMonth} onNext={nextMonth} />
         }
       >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <StatCard label="営業日" value={openCount} unit="日" role="done" />
-          <StatCard label="定休" value={regularClosedCount} unit="日" role="readonly" />
-          <StatCard label="休業日" value={holidayClosedCount} unit="日" role="blocked" />
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-4 text-xs text-muted-foreground">
-          <StatusDot role="readonly" label="定休" />
-          <StatusDot role="blocked" label="休業" />
-          <StatusDot role="confirm" label="臨時/短縮営業" />
-          <span className="inline-flex items-center gap-1.5">
-            <span className="size-2 rounded-full bg-muted-foreground/40" />
-            営業
-          </span>
-        </div>
-
-        {operatingQuery.isError ? (
+        {operatingQuery.isLoading ? (
+          <Loading />
+        ) : operatingQuery.isError ? (
           <ErrorState
             variant="server"
             size="inline"
@@ -436,50 +465,68 @@ export function OperatingHoursContent() {
             action={{ label: '再読み込み', onClick: () => void operatingQuery.refetch() }}
           />
         ) : (
-          <div className="mt-4">
-            <MonthGrid
-              year={viewYear}
-              month={viewMonth}
-              ariaLabel="稼働日カレンダー"
-              getDayCellProps={(cell) => {
-                const resolved = resolvedByDate.get(cell.dateKey);
-                const role = resolved ? resolvedRole(resolved) : null;
-                const borderClass =
-                  role === 'blocked'
-                    ? 'border-l-4 border-l-state-blocked'
-                    : role === 'readonly'
-                      ? 'border-l-4 border-l-state-readonly'
-                      : role === 'confirm'
-                        ? 'border-l-4 border-l-state-confirm'
-                        : undefined;
-                return borderClass ? { className: borderClass } : {};
-              }}
-              renderDay={(cell) => {
-                const resolved = resolvedByDate.get(cell.dateKey);
-                const role = resolved ? resolvedRole(resolved) : null;
-                return (
-                  <>
-                    <time dateTime={cell.dateKey} className="block text-xs font-medium">
-                      {cell.day}
-                    </time>
-                    {resolved ? (
-                      <div
-                        className={`mt-1 text-[11px] ${
-                          role === 'blocked'
-                            ? 'text-state-blocked'
-                            : role === 'confirm'
-                              ? 'text-state-confirm'
-                              : 'text-muted-foreground'
-                        }`}
-                      >
-                        {resolvedLabel(resolved)}
-                      </div>
-                    ) : null}
-                  </>
-                );
-              }}
-            />
-          </div>
+          <>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <StatCard label="営業日" value={openCount} unit="日" role="done" />
+              <StatCard label="定休" value={regularClosedCount} unit="日" role="readonly" />
+              <StatCard label="休業日" value={holidayClosedCount} unit="日" role="blocked" />
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-4 text-xs text-muted-foreground">
+              <StatusDot role="readonly" label="定休" />
+              <StatusDot role="blocked" label="休業" />
+              <StatusDot role="confirm" label="臨時/短縮営業" />
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-muted-foreground/40" />
+                営業
+              </span>
+            </div>
+
+            <div className="mt-4">
+              <MonthGrid
+                year={viewYear}
+                month={viewMonth}
+                ariaLabel="稼働日カレンダー"
+                getDayCellProps={(cell) => {
+                  const resolved = resolvedByDate.get(cell.dateKey);
+                  const role = resolved ? resolvedRole(resolved) : null;
+                  const borderClass =
+                    role === 'blocked'
+                      ? 'border-l-4 border-l-state-blocked'
+                      : role === 'readonly'
+                        ? 'border-l-4 border-l-state-readonly'
+                        : role === 'confirm'
+                          ? 'border-l-4 border-l-state-confirm'
+                          : undefined;
+                  return borderClass ? { className: borderClass } : {};
+                }}
+                renderDay={(cell) => {
+                  const resolved = resolvedByDate.get(cell.dateKey);
+                  const role = resolved ? resolvedRole(resolved) : null;
+                  return (
+                    <>
+                      <time dateTime={cell.dateKey} className="block text-xs font-medium">
+                        {cell.day}
+                      </time>
+                      {resolved ? (
+                        <div
+                          className={`mt-1 text-[11px] ${
+                            role === 'blocked'
+                              ? 'text-state-blocked'
+                              : role === 'confirm'
+                                ? 'text-state-confirm'
+                                : 'text-muted-foreground'
+                          }`}
+                        >
+                          {resolvedLabel(resolved)}
+                        </div>
+                      ) : null}
+                    </>
+                  );
+                }}
+              />
+            </div>
+          </>
         )}
       </PageSection>
     </div>

@@ -1,6 +1,6 @@
 import { unstable_rethrow } from 'next/navigation';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { internalError, success, validationError } from '@/lib/api/response';
+import { conflict, internalError, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -43,6 +43,18 @@ function collectDateKeys(dateFrom: string, dateTo: string) {
     cursor = shiftDateKey(cursor, 1);
   }
   return null;
+}
+
+function latestWeeklyUpdatedAt(rows: Array<{ updated_at?: Date | null }>) {
+  let latest: Date | null = null;
+  for (const row of rows) {
+    const updatedAt = row.updated_at;
+    if (!updatedAt || Number.isNaN(updatedAt.getTime())) continue;
+    if (!latest || updatedAt.getTime() > latest.getTime()) {
+      latest = updatedAt;
+    }
+  }
+  return latest?.toISOString() ?? null;
 }
 
 const authenticatedGET = withAuthContext(
@@ -93,6 +105,7 @@ const authenticatedGET = withAuthContext(
       : [];
 
     const weekly = materializeOperatingHoursRows(parsed.data.site_id, weeklyRows);
+    const weeklyUpdatedAt = latestWeeklyUpdatedAt(weeklyRows);
     const holidays = holidayRows.map(serializeHolidayRow);
     const calendar = shouldResolve
       ? buildOperatingCalendarFromDbRows(parsed.data.site_id, weeklyRows, holidayRows)
@@ -125,6 +138,7 @@ const authenticatedGET = withAuthContext(
       data: {
         site_id: parsed.data.site_id,
         weekly,
+        weekly_updated_at: weeklyUpdatedAt,
         holidays,
         ...(resolvedDays ? { resolved_days: resolvedDays } : {}),
       },
@@ -164,6 +178,14 @@ const authenticatedPUT = withAuthContext(
         orderBy: [{ weekday: 'asc' }],
       });
 
+      const currentWeeklyUpdatedAt = latestWeeklyUpdatedAt(before);
+      if (currentWeeklyUpdatedAt !== parsed.data.expected_weekly_updated_at) {
+        return {
+          kind: 'conflict' as const,
+          currentWeeklyUpdatedAt,
+        };
+      }
+
       await Promise.all(
         parsed.data.rows.map((row) =>
           tx.pharmacyOperatingHours.upsert({
@@ -199,6 +221,7 @@ const authenticatedPUT = withAuthContext(
 
       const beforeRows = materializeOperatingHoursRows(parsed.data.site_id, before);
       const afterRows = materializeOperatingHoursRows(parsed.data.site_id, after);
+      const afterWeeklyUpdatedAt = latestWeeklyUpdatedAt(after);
 
       await createAuditLogEntry(tx, ctx, {
         action: 'pharmacy_operating_hours_updated',
@@ -211,13 +234,25 @@ const authenticatedPUT = withAuthContext(
         },
       });
 
-      return afterRows;
+      return { kind: 'ok' as const, weekly: afterRows, weeklyUpdatedAt: afterWeeklyUpdatedAt };
     });
+
+    if (result.kind === 'conflict') {
+      return conflict(
+        '営業時間設定が他の操作で更新されています。画面を再読み込みしてから保存してください',
+        {
+          conflict_type: 'stale_operating_hours',
+          expected_weekly_updated_at: parsed.data.expected_weekly_updated_at,
+          current_weekly_updated_at: result.currentWeeklyUpdatedAt,
+        },
+      );
+    }
 
     return success({
       data: {
         site_id: parsed.data.site_id,
-        weekly: result,
+        weekly: result.weekly,
+        weekly_updated_at: result.weeklyUpdatedAt,
       },
     });
   },

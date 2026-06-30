@@ -148,6 +148,7 @@ describe('/api/pharmacy-operating-hours', () => {
     });
     expect(businessHolidayFindManyMock).not.toHaveBeenCalled();
     const body = await response.json();
+    expect(body.data.weekly_updated_at).toBe('2026-06-27T00:00:00.000Z');
     expect(body.data.weekly).toHaveLength(7);
     expect(body.data.weekly[0]).toMatchObject({
       site_id: 'site_1',
@@ -291,7 +292,9 @@ describe('/api/pharmacy-operating-hours', () => {
   });
 
   it('upserts exactly seven rows, converts HH:mm to DB time, and records one audit entry', async () => {
-    const response = (await PUT(createPutRequest({ site_id: 'site_1', rows: weeklyRows() })))!;
+    const response = (await PUT(
+      createPutRequest({ site_id: 'site_1', expected_weekly_updated_at: null, rows: weeklyRows() }),
+    ))!;
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
@@ -338,6 +341,7 @@ describe('/api/pharmacy-operating-hours', () => {
     await expect(response.json()).resolves.toMatchObject({
       data: {
         site_id: 'site_1',
+        weekly_updated_at: '2026-06-27T00:00:00.000Z',
         weekly: expect.arrayContaining([
           expect.objectContaining({
             weekday: 1,
@@ -350,6 +354,28 @@ describe('/api/pharmacy-operating-hours', () => {
     });
   });
 
+  it('rejects stale PUT versions before upsert or audit writes', async () => {
+    txPharmacyOperatingHoursFindManyMock.mockReset();
+    txPharmacyOperatingHoursFindManyMock.mockResolvedValueOnce([dbRow(1)]);
+
+    const response = (await PUT(
+      createPutRequest({ site_id: 'site_1', expected_weekly_updated_at: null, rows: weeklyRows() }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        conflict_type: 'stale_operating_hours',
+        expected_weekly_updated_at: null,
+        current_weekly_updated_at: '2026-06-27T00:00:00.000Z',
+      },
+    });
+    expect(txPharmacyOperatingHoursUpsertMock).not.toHaveBeenCalled();
+    expect(txAuditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects invalid PUT rows before reference checks or writes', async () => {
     const invalidRows = weeklyRows();
     invalidRows[1] = {
@@ -360,7 +386,9 @@ describe('/api/pharmacy-operating-hours', () => {
       note: null,
     };
 
-    const response = (await PUT(createPutRequest({ site_id: 'site_1', rows: invalidRows })))!;
+    const response = (await PUT(
+      createPutRequest({ site_id: 'site_1', expected_weekly_updated_at: null, rows: invalidRows }),
+    ))!;
 
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
@@ -378,7 +406,13 @@ describe('/api/pharmacy-operating-hours', () => {
     const duplicateRows = weeklyRows();
     duplicateRows[6] = { ...duplicateRows[6]!, weekday: 5 };
 
-    const response = (await PUT(createPutRequest({ site_id: 'site_1', rows: duplicateRows })))!;
+    const response = (await PUT(
+      createPutRequest({
+        site_id: 'site_1',
+        expected_weekly_updated_at: null,
+        rows: duplicateRows,
+      }),
+    ))!;
 
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
