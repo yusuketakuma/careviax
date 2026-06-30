@@ -55,6 +55,7 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
   - `pnpm lint`: passed.
   - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - Ledger-inclusive scoped Prettier without raised heap aborted with Node OOM, then `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --check .codex/ralph-state.md CODEX_GOAL_PROGRESS.md src/server/services/visit-schedule-service.ts src/app/api/visit-schedules/route.test.ts` passed.
 - Remaining:
   - Broad schedule-management / prescription-to-schedule / route-decision objective remains open.
 
