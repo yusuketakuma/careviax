@@ -71,14 +71,13 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Adds only scalar fields to the existing schedule lookup and guarded `updateMany` predicates.
   - No new DB round trip, broad scan, dependency, external call, background job, or unbounded loop was added.
 - Validation:
-  - `pnpm exec vitest run src/app/api/visit-routes/reorder/route.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `17` tests.
+  - `pnpm vitest run src/app/api/visit-routes/reorder/route.test.ts src/app/api/visit-routes/route.test.ts src/server/services/visit-route-engine.test.ts src/server/services/visit-route-engine.locked.test.ts src/app/api/visit-schedules/reorder/route.test.ts --reporter=dot --testTimeout=60000`: passed, `5` files / `89` tests.
   - Scoped ESLint on the changed route/test: passed.
   - Scoped Prettier check on the changed route/test: passed.
+  - Scoped `git diff --check`: passed.
   - `pnpm typecheck --pretty false`: passed.
-  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
   - `pnpm lint`: passed.
-  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
-  - `git diff --check`: passed.
+  - `pnpm typecheck:no-unused`: passed.
 - Remaining:
   - Broad visit-time, report, and interprofessional collaboration objective remains open.
   - Continue with report workspace / conference-note collaboration gaps after committing this visit-route safety slice.
