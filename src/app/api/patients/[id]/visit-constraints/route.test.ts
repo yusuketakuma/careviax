@@ -207,6 +207,45 @@ describe('/api/patients/[id]/visit-constraints', () => {
     expect(residenceUpdateMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [
+      'out-of-range latitude',
+      { residence_lat: 91, residence_lng: 139 },
+      { residence_lat: ['緯度は-90から90の範囲で入力してください'] },
+    ],
+    [
+      'out-of-range longitude',
+      { residence_lat: 35, residence_lng: 181 },
+      { residence_lng: ['経度は-180から180の範囲で入力してください'] },
+    ],
+    [
+      'zero placeholder coordinates',
+      { residence_lat: 0, residence_lng: 0 },
+      {
+        residence_lat: ['緯度・経度に0/0の仮座標は登録できません'],
+        residence_lng: ['緯度・経度に0/0の仮座標は登録できません'],
+      },
+    ],
+    [
+      'copied latitude into longitude',
+      { residence_lat: 35.123456, residence_lng: 35.123456 },
+      { residence_lng: ['緯度と経度が同じ値です。座標を確認してください'] },
+    ],
+  ])('rejects %s before loading the patient', async (_caseName, payload, details) => {
+    const response = (await PUT(createPutRequest(payload), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details,
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientSchedulePreferenceUpsertMock).not.toHaveBeenCalled();
+    expect(residenceUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects impossible visit constraint times before loading the patient', async () => {
     const response = (await PUT(
       createPutRequest({
