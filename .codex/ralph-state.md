@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0503 JST
+
+- current task: restrict CareReport email PDF links to configured PH-OS shared-viewer URLs.
+- files inspected: `git status --short --branch --untracked-files=all`, agmsg inbox output, `docs/high-roi-functional-proposals-2026-06-18.md` PDF/shared item 30, `src/server/services/report-delivery.ts`, `src/server/services/report-delivery.test.ts`, relevant `src/app/api/care-reports/[id]/send/route.ts` send path, external share URL construction in `src/app/(dashboard)/patients/[id]/share/external-share-content.tsx`, focused diffs, and validation output. Concurrent dirty patient-detail/card-workspace files were observed and preserved outside this slice.
+- files changed: `src/server/services/report-delivery.ts`, `src/server/services/report-delivery.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: `sendCareReportEmail` omitted relative internal file URLs, but still embedded any absolute `http:` or `https:` URL in external email bodies. A persisted direct PDF URL or unintended third-party URL could therefore be sent as an external CareReport PDF reference instead of a PH-OS shared-viewer grant URL.
+- security risks found: reduced direct-PDF-link and unsafe external-link leakage risk by allowing email PDF references only when the URL is HTTPS, matches the configured PH-OS app origin, has exactly `/shared/{token}` shape, and contains no username, password, query, or fragment. Existing send-route permission/idempotency/freshness gates, delivery record/audit ordering, SES error handling, body HTML escaping, live DB data, migrations, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: no meaningful performance issue was changed. The new check is constant-time URL parsing/string validation in the email helper and adds no DB query, dependency, external call, background job, broad scan, render-heavy path, or unbounded loop.
+- validation commands: `pnpm exec vitest run src/server/services/report-delivery.test.ts 'src/app/api/care-reports/[id]/send/route.test.ts' --reporter=dot --testTimeout=60000`; `pnpm exec eslint --max-warnings=0 src/server/services/report-delivery.ts src/server/services/report-delivery.test.ts`; `pnpm exec prettier --check src/server/services/report-delivery.ts src/server/services/report-delivery.test.ts`; `git diff --check -- src/server/services/report-delivery.ts src/server/services/report-delivery.test.ts`; `pnpm typecheck --pretty false`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`; `pnpm lint`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: focused report-delivery + CareReport send-route Vitest passed `2` files / `70` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed; full typecheck passed; no-unused passed; full lint passed; full format check passed; full diff-check passed.
+- remaining work: broad visit-time, report, and multi-professional cooperation objective remains active. This narrows what the email helper will include, but the larger item remains to mint a dedicated short-lived report PDF grant/token during report send rather than relying on a stored `pdf_url`. Concurrent dirty patient-detail/card-workspace contact integration files remain outside this commit.
+- next action: stage only report-delivery code/test plus owned ledger hunks, commit the email shared-URL gate, send agmsg FYI, then re-check status before selecting the next bounded visit/report/cooperation gap.
+
 ### 20260701-0459 JST
 
 - current task: guard patient contact replacement writes with patient row-version OCC and client precondition support.

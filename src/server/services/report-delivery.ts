@@ -23,9 +23,28 @@ function isExternalShareableUrl(value: string | null | undefined) {
   if (!value) return false;
   try {
     const url = new URL(value);
-    return url.protocol === 'https:' || url.protocol === 'http:';
+    const allowedOrigin = getConfiguredAppOrigin();
+    if (!allowedOrigin) return false;
+    if (url.protocol !== 'https:' || url.origin !== allowedOrigin) return false;
+    if (url.username || url.password || url.search || url.hash) return false;
+    const pathSegments = url.pathname.split('/').filter(Boolean);
+    return pathSegments.length === 2 && pathSegments[0] === 'shared' && pathSegments[1].length > 0;
   } catch {
     return false;
+  }
+}
+
+function getConfiguredAppOrigin() {
+  const rawUrl =
+    process.env.NEXT_PUBLIC_APP_URL ??
+    process.env.APP_URL ??
+    process.env.NEXTAUTH_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
+  if (!rawUrl) return null;
+  try {
+    return new URL(rawUrl).origin;
+  } catch {
+    return null;
   }
 }
 

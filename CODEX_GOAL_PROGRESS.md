@@ -30,6 +30,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### CareReport Email Shared URL Gate - 2026-07-01 05:03 JST
+
+- Scope:
+  - Continued report-delivery and PDF/shared-output hardening under `docs/high-roi-functional-proposals-2026-06-18.md` item 30.
+  - Focused on the email helper that decides whether a CareReport PDF URL may be placed in an external email body.
+- Fixed:
+  - `sendCareReportEmail` now includes a PDF reference only when the URL is HTTPS, matches the configured PH-OS app origin, has the exact `/shared/{token}` public-viewer path shape, and has no username, password, query, or fragment.
+  - Direct absolute PDF URLs, cross-origin shared paths, `http:` shared paths, query-bearing shared links, and internal file download paths are omitted from text and HTML email bodies.
+  - Regression coverage fixes the allowed shared-link case and the rejected direct/cross-origin/http/query/internal cases.
+- Safety:
+  - Reduces accidental direct PDF link leakage in report emails and keeps the helper aligned with the external shared-viewer grant boundary.
+  - Preserves CareReport send-route auth, idempotency, source freshness, delivery audit/record ordering, SES failure handling, HTML escaping, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds only constant-time URL parsing and string checks in the email helper.
+  - No new DB query, dependency, external call, background job, broad scan, render-heavy path, or unbounded loop was added.
+- Validation:
+  - Report-delivery + CareReport send-route Vitest passed `2` files / `70` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on report-delivery files: passed.
+  - Full `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - The larger short-lived report PDF grant/token flow is still a follow-up; this slice prevents direct links from being emitted until that flow exists.
+  - Broad visit-time, report, and multi-professional cooperation objective remains open.
+
 ### Patient Contacts OCC - 2026-07-01 04:59 JST
 
 - Scope:
