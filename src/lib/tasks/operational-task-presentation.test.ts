@@ -118,6 +118,56 @@ describe('describeOperationalTask', () => {
     ).toBe(`/prescriptions/${encodeURIComponent(intakeId)}`);
   });
 
+  it('focuses initial home visit assessment tasks on the related patient', () => {
+    const patientId = 'patient/1?x=y#frag';
+
+    expect(
+      describeOperationalTask({
+        task_type: 'initial_home_visit_assessment',
+        related_entity_type: 'patient',
+        related_entity_id: patientId,
+      }).actionHref,
+    ).toBe(`/patients/${encodeURIComponent(patientId)}`);
+  });
+
+  it('focuses emergency contact review tasks on the patient visit-contact editor', () => {
+    const patientId = 'patient/1?x=y#frag';
+
+    expect(
+      describeOperationalTask({
+        task_type: 'emergency_contact_review',
+        related_entity_type: 'patient',
+        related_entity_id: patientId,
+      }).actionHref,
+    ).toBe(
+      `/patients/${encodeURIComponent(patientId)}/edit?section=visit#intake.emergency_contact.name`,
+    );
+  });
+
+  it('focuses visit record retention tasks on the originating visit record', () => {
+    const visitRecordId = 'visit/1?x=y#frag';
+
+    expect(
+      describeOperationalTask({
+        task_type: 'visit_record_retention',
+        related_entity_type: 'visit_record',
+        related_entity_id: visitRecordId,
+      }).actionHref,
+    ).toBe(`/visits/${encodeURIComponent(visitRecordId)}`);
+  });
+
+  it('focuses prescription original retention tasks on the originating prescription intake', () => {
+    const intakeId = 'intake/1?x=y#frag';
+
+    expect(
+      describeOperationalTask({
+        task_type: 'prescription_original_retention',
+        related_entity_type: 'prescription_intake',
+        related_entity_id: intakeId,
+      }).actionHref,
+    ).toBe(`/prescriptions/${encodeURIComponent(intakeId)}`);
+  });
+
   it.each([
     'visit_demand',
     'visit_contact_followup',
@@ -268,4 +318,19 @@ describe('describeOperationalTask', () => {
       ).toThrow(RangeError);
     },
   );
+
+  it.each([
+    ['initial_home_visit_assessment', 'patient'],
+    ['emergency_contact_review', 'patient'],
+    ['visit_record_retention', 'visit_record'],
+    ['prescription_original_retention', 'prescription_intake'],
+  ])('rejects exact dot-segment related id for %s tasks', (taskType, relatedEntityType) => {
+    expect(() =>
+      describeOperationalTask({
+        task_type: taskType,
+        related_entity_type: relatedEntityType,
+        related_entity_id: '.',
+      }),
+    ).toThrow(RangeError);
+  });
 });

@@ -99,7 +99,10 @@ export function describeOperationalTask(
       };
     case 'initial_home_visit_assessment':
       return {
-        actionHref: '/patients',
+        actionHref:
+          task.related_entity_type === 'patient' && task.related_entity_id
+            ? buildPatientHref(task.related_entity_id)
+            : '/patients',
         actionLabel: '患者記録を確認',
         queueLabel: '初回算定',
       };
@@ -147,7 +150,13 @@ export function describeOperationalTask(
       };
     case 'emergency_contact_review':
       return {
-        actionHref: '/patients',
+        actionHref:
+          task.related_entity_type === 'patient' && task.related_entity_id
+            ? buildPatientHref(
+                task.related_entity_id,
+                '/edit?section=visit#intake.emergency_contact.name',
+              )
+            : '/patients',
         actionLabel: '連絡先と文書を確認',
         queueLabel: '初回整備',
       };
@@ -192,13 +201,19 @@ export function describeOperationalTask(
       };
     case 'visit_record_retention':
       return {
-        actionHref: '/visits',
+        actionHref:
+          task.related_entity_type === 'visit_record' && task.related_entity_id
+            ? buildVisitHref(task.related_entity_id)
+            : '/visits',
         actionLabel: '薬歴を確認',
         queueLabel: '保存期限',
       };
     case 'prescription_original_retention':
       return {
-        actionHref: '/workflow',
+        actionHref:
+          task.related_entity_type === 'prescription_intake' && task.related_entity_id
+            ? buildPrescriptionHref(task.related_entity_id)
+            : '/workflow',
         actionLabel: '原本保全を確認',
         queueLabel: '原本保存',
       };
