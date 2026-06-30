@@ -61,6 +61,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Broad visit-time, report, and multi-professional cooperation objective remains open.
   - UI controls for per-row snooze were not added in this backend/API slice; the API contract is now ready for a focused UI follow-up.
 
+### CareReport Reminder Row Snooze UI - 2026-07-01 07:17 JST
+
+- Scope:
+  - Connected the backend `delivery_ids` + `snooze_until` report reminder API to the report-delivery dashboard.
+  - Focused on the overdue report list in `ReportDeliveryDashboard`.
+- Fixed:
+  - Each overdue report delivery row now has a scoped `3日後に再通知` action.
+  - The row action sends only the selected delivery id plus a future `snooze_until`, avoiding broad reminder queueing from a per-row defer action.
+  - Bulk `リマインドタスク起票` still sends only `{ overdue_days }`.
+  - Successful reminder/snooze mutations now invalidate care-report analytics, care-report list queries, and `['tasks', orgId]`.
+- Safety:
+  - Keeps reminder action beside the affected overdue report evidence, matching `docs/ui-ux-design-guidelines.md` action-beside-evidence guidance.
+  - Does not expose raw PHI beyond already displayed row data; the snooze payload contains only delivery id and timestamp.
+  - Existing analytics loading/error false-empty behavior, org JSON headers, patient/report/shared href helpers, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- Performance:
+  - Adds no new query, background polling, dependency, broad render fan-out, or unbounded loop.
+  - Reuses the existing reminder mutation and invalidation flow.
+- Validation:
+  - Focused report-delivery dashboard Vitest passed `1` file / `9` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on report-delivery dashboard files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+- Remaining:
+  - Broad visit-time, report, and multi-professional cooperation objective remains open.
+  - Analytics still represents overdue deliveries as overdue even after snooze, because snooze controls follow-up task timing rather than external recipient response state.
+
 ### Workflow Emergency Draft Idempotency - 2026-07-01 06:57 JST
 
 - Scope:
@@ -29550,3 +29575,28 @@ Next loop:
 - Remaining:
   - Broad master/patient/report objective remains open.
   - Additional follow-ups include UI-level bulk snooze controls and audit visibility for grouped report-response reminders.
+
+### Report Delivery Reminder Snooze UI - 2026-07-01 07:18 JST
+
+- Scope:
+  - Connected the report delivery dashboard UI to the selected-delivery reminder snooze API.
+  - Focused on `/reports` delivery analytics and overdue waiting report rows.
+- Fixed:
+  - Added a per-row `3日後に再通知` action for overdue care-report deliveries.
+  - The row action sends only the selected `delivery_id` with a future `snooze_until`, avoiding broad reminder queueing from a single-row defer operation.
+  - Bulk reminder creation still sends only `overdue_days` and keeps its existing queued-count toast.
+  - Added UI tests for the row button, exact snooze payload, and unchanged broad reminder payload.
+- Safety:
+  - Reduces accidental all-overdue requeueing when an operator only wants to defer one patient/report follow-up.
+  - Keeps the operation next to the specific overdue row and preserves existing org header helpers, analytics error/empty separation, link helper usage, auth/API boundaries, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds no new query, polling, dependency, background job, or render fan-out.
+  - Uses the existing reminder mutation and query invalidation path.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx' --reporter=dot --testTimeout=60000`: passed, `1` file / `9` tests.
+  - Scoped ESLint, scoped Prettier check, and `git diff --check`: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+- Remaining:
+  - Broad master/patient/report objective remains open.
+  - A richer bulk snooze selection UI and grouped reminder audit visibility remain follow-ups.

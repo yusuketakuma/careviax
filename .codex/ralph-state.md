@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0717 JST
+
+- current task: connect care-report reminder snooze API to the report-delivery dashboard overdue rows.
+- files inspected: `git status --short --branch --untracked-files=all`, agmsg lock/FYI output, `docs/ui-ux-design-guidelines.md`, `src/app/(dashboard)/reports/report-delivery-dashboard.tsx`, `src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx`, task query invalidation patterns in `src/app/(dashboard)/tasks/tasks-content.tsx`, focused diffs, validation output, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/(dashboard)/reports/report-delivery-dashboard.tsx`, `src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: the newly added `delivery_ids` + `snooze_until` report reminder API was not reachable from the operational report-delivery dashboard, so users could only bulk queue reminders and could not defer one overdue recipient follow-up without touching all overdue reports.
+- security risks found: reduced accidental broad-action risk by making the row-level defer action send only the selected delivery id and future timestamp. No raw contact, patient name, report content, OTP, idempotency secret, or audit body is added to the mutation payload; existing org JSON headers, no false-empty error behavior, patient/report href helpers, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: no meaningful performance issue was introduced. The change adds one button per already rendered overdue row and reuses the existing mutation/invalidation flow; no new backend query, polling, dependency, broad render fan-out, background job, or unbounded loop was added.
+- validation commands: `pnpm exec vitest run 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx' --reporter=dot --testTimeout=60000`; `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/reports/report-delivery-dashboard.tsx' 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx'`; `pnpm exec prettier --check 'src/app/(dashboard)/reports/report-delivery-dashboard.tsx' 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx'`; `git diff --check -- 'src/app/(dashboard)/reports/report-delivery-dashboard.tsx' 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx'`; `pnpm typecheck --pretty false`.
+- validation results: focused report-delivery dashboard Vitest passed `1` file / `9` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed; full typecheck passed. Independent verifier was unavailable due the current agent thread limit, matching the previous backend/API slice.
+- remaining work: broad visit-time, report, and multi-professional cooperation objective remains active. Analytics still lists the delivery as overdue after snooze because the external recipient response state remains `response_waiting`; snooze now controls follow-up task timing rather than hiding clinical evidence.
+- next action: run full no-unused/lint/format gates, stage only the report-delivery dashboard files plus matching ledger hunks, commit the UI snooze slice, send agmsg FYI, then select the next bounded visit/report/cooperation gap.
+
 ### 20260701-0712 JST
 
 - current task: dedupe and snooze overdue care-report response reminder task creation.
@@ -15107,3 +15120,16 @@ Backup directory:
 - validation results: focused report-reminder service/API suite passed `2` files / `14` tests; scoped ESLint passed; scoped Prettier check passed; diff-check passed; full typecheck passed; no-unused passed; full lint passed; full format check passed; ledger Prettier check passed after using explicit Node heap because the default heap run aborted on the large Markdown ledger files.
 - remaining work: broad master/patient/report objective remains open. UI-level bulk snooze controls and grouped reminder audit visibility remain follow-ups.
 - next action: commit the care-report reminder grouping code/test slice, commit this ledger slice separately, send agmsg FYI, then confirm the worktree is clean.
+
+### 20260701-0718 JST
+
+- current task: connect the report delivery dashboard row UI to selected-delivery reminder snooze.
+- files inspected: `git status --short --branch --untracked-files=all`, `git diff --stat`, `git diff --name-status`, `src/app/(dashboard)/reports/report-delivery-dashboard.tsx`, `src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx`, `docs/ui-ux-design-guidelines.md`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/(dashboard)/reports/report-delivery-dashboard.tsx`, `src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: after the backend selected-delivery snooze contract existed, the delivery dashboard still only exposed the broad "queue all overdue" reminder action. Operators had no row-level defer control and could requeue every overdue delivery while intending to snooze one patient/report follow-up.
+- security risks found: reduced accidental broad follow-up mutation risk by sending row-level `delivery_ids` and future `snooze_until` only from the specific overdue row action. Existing org header helpers, auth/API route permissions, no-store response handling, PHI display behavior, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: no performance issue was changed. The UI reuses the existing mutation and query invalidation path with no new query, polling, dependency, background job, broad scan, or render fan-out.
+- validation commands: `pnpm exec vitest run 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx' --reporter=dot --testTimeout=60000`; scoped `pnpm exec eslint --max-warnings=0`; scoped `pnpm exec prettier --check`; `git diff --check`; `pnpm typecheck --pretty false`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`.
+- validation results: focused delivery dashboard suite passed `1` file / `9` tests; scoped ESLint passed; scoped Prettier check passed; diff-check passed; full typecheck passed; no-unused passed.
+- remaining work: broad master/patient/report objective remains open. Richer bulk snooze selection and grouped reminder audit visibility remain follow-ups.
+- next action: commit the report-delivery snooze UI code/test slice, commit this ledger slice separately, send agmsg FYI, then re-check for any late-arriving dirty files.
