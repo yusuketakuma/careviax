@@ -11,6 +11,7 @@
  */
 
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+import { buildPatientHref } from '@/lib/patient/navigation';
 
 export type BlockedReasonPresentation = {
   category: string;
@@ -131,7 +132,9 @@ export function buildBlockedReasons(exceptions: BlockedReasonSource[], now: Date
             status: 'sent',
             patientId: exception.patient_id ?? null,
           })
-        : presentation.actionHref;
+        : presentation.actionHref === '/patients' && exception.patient_id
+          ? buildPatientHref(exception.patient_id)
+          : presentation.actionHref;
     return {
       id: exception.id,
       label: exception.description,

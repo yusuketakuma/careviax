@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-1920 JST
+
+- current task: focus patient-related workflow blocked-reason actions on the exact patient when patient context is available.
+- files inspected: `git status --short --untracked-files=all`, generic visit/report/collaboration action-link search results, `src/lib/workflow/blocked-reason-projection.ts`, `src/lib/workflow/blocked-reason-projection.test.ts`, callers in visit preparation, dashboard cockpit, and patient board APIs, `src/lib/patient/navigation.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/lib/workflow/blocked-reason-projection.ts`, `src/lib/workflow/blocked-reason-projection.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: patient-category workflow blockers with a concrete `patient_id` still linked to aggregate `/patients`, forcing staff to re-search the patient from visit preparation, cockpit, or patient board blocked-reason lists.
+- security risks found: reduced wrong-patient / wrong-workspace navigation risk by routing only patient-category blockers with a present patient id through `buildPatientHref(patient_id)`; id-less cases keep the aggregate fallback and communication blockers keep their existing request-focused URL. No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- performance issues found: link construction over already-loaded exception rows only; no query, dependency, network call, background job, payload expansion, broad scan, or render loop changed.
+- validation commands: focused blocked-reason plus visit-preparation/cockpit/patient-board Vitest; scoped ESLint; scoped Prettier write/check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused Vitest passed `4` files / `47` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- remaining work: commit the workflow blocked-reason files and ledger files, send agmsg FYI, then continue scanning report/collaboration surfaces for generic action links or missing relation filters.
+- next action: commit `Focus patient blocked reason actions`, send agmsg FYI, and continue the next clean slice.
+
 ### 20260630-1915 JST
 
 - current task: focus report today-workspace pre-report visit actions on the exact visit-record entry route.

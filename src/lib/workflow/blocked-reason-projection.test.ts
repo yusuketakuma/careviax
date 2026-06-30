@@ -50,13 +50,33 @@ describe('buildBlockedReasons', () => {
     );
   });
 
-  it('keeps non-communication blockers on their existing destinations', () => {
+  it('focuses patient blockers on the exact patient when a patient id is available', () => {
+    const patientId = 'patient/1?x=y#frag';
     const [reason] = buildBlockedReasons(
       [
         {
           id: 'exception_1',
           exception_type: 'missing_visit_consent',
-          patient_id: 'patient_1',
+          patient_id: patientId,
+          description: '同意待ちです',
+          severity: 'critical',
+          created_at: now,
+        },
+      ],
+      now,
+    );
+
+    expect(reason.action_href).toBe(`/patients/${encodeURIComponent(patientId)}`);
+    expect(reason.action_href).not.toBe(`/patients/${patientId}`);
+  });
+
+  it('keeps patient blockers on their existing aggregate destination without a patient id', () => {
+    const [reason] = buildBlockedReasons(
+      [
+        {
+          id: 'exception_1',
+          exception_type: 'missing_visit_consent',
+          patient_id: null,
           description: '同意待ちです',
           severity: 'critical',
           created_at: now,

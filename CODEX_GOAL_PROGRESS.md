@@ -30,6 +30,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Workflow Blocked-Reason Patient Focus Links - 2026-06-30 19:20 JST
+
+- Scope:
+  - Continued visit-time and cross-workflow collaboration navigation cleanup in the shared blocked-reason projection used by visit preparation, cockpit, and patient board APIs.
+  - No UI layout, schema migration, live DB operation, auth/RLS change, external send, push/deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Patient-category blocked reasons now route to `buildPatientHref(patient_id)` when a concrete patient id is present instead of aggregate `/patients`.
+  - Communication/request blockers keep their request-focused URLs; patient blockers without a patient id keep the aggregate fallback.
+  - Regression coverage asserts hostile patient-id encoding and the id-less fallback.
+- Safety:
+  - Reduces wrong-patient / wrong-workspace navigation risk when staff follow blocked-reason actions from visit preparation, cockpit, or patient board lists.
+  - Uses the shared guarded patient navigation helper instead of local path construction.
+- Performance:
+  - Reuses already-loaded workflow-exception `patient_id`; link construction is in-memory only.
+  - No new query, dependency, network call, background job, payload expansion, render loop, or broad scan was added.
+- Validation:
+  - `pnpm exec vitest run src/lib/workflow/blocked-reason-projection.test.ts src/app/api/visits/today-preparation/route.test.ts src/app/api/dashboard/cockpit/route.test.ts src/app/api/patients/board/route.test.ts --reporter=dot --testTimeout=60000`: passed, `4` files / `47` tests.
+  - Scoped ESLint on blocked-reason and patient-navigation files: passed.
+  - Scoped Prettier write/check on blocked-reason and patient-navigation files: passed.
+  - Scoped `git diff --check` on blocked-reason files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Continue scanning visit-time/report/collaboration and patient-information surfaces for generic action links or missing relation filters.
+
 ### Report Workspace Visit Action Focus Links - 2026-06-30 19:15 JST
 
 - Scope:
