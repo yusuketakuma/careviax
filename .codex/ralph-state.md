@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0948 JST
+
+- current task: harden `POST /api/patient-share-cases/[id]/consents/[consentId]/revoke` response boundaries for interprofessional consent revocation.
+- files inspected: agmsg inbox/send for `phos/codex2`, `git status --short --untracked-files=all`, local Next.js route-handler and `unstable_rethrow` docs read earlier this turn, `src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.ts`, `src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.test.ts`, related patient-share consents route/test patterns, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Also detected codex-staged qualification-check/ledger WIP and waited for `f6de2b99` before using ledgers.
+- files changed: `src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.ts`, `src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: patient-share consent revoke POST was exported directly from `withAuthContext`; manually returned responses were no-store, but unexpected revocation/update failures or auth/plumbing failures before route-param/body handling could escape without the exported route's fixed no-store envelope.
+- security risks found: reduced raw-error and PHI/consent-artifact disclosure risk for consent revocation failures containing patient names, share consent identifiers, reason text, or token-like diagnostics. Auth/permission checks, consent/share-case scoping, already-revoked idempotent behavior, active-share-case revocation transition, audit minimization, response success/domain-error shapes, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query shape, dependency, retry loop, external request, synchronous blocking, or unbounded work was added. The patch only wraps the existing POST response boundary and adds focused assertions.
+- validation commands: `pnpm exec prettier --write 'src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.ts' 'src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.test.ts'`; `pnpm exec vitest run 'src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint on the two revoke files; scoped `pnpm exec prettier --check` on the two revoke files; scoped and full `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused revoke Vitest passed `1` file / `4` tests. Scoped ESLint, scoped Prettier check, scoped/full diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. Independent read-only Codex CLI review of only the two-file revoke diff returned `No actionable findings.`.
+- remaining work: exact-path stage only the two revoke files plus ledger hunks, commit, send agmsg FYI, and continue the next visit/report/interprofessional candidate. `PATCH_REVIEW_REQUEST` and a nudge were sent to codex with scope and validation; no peer blocker or approval arrived before commit preparation.
+- next action: explicit-path stage and commit this validated revoke response-boundary slice.
+
 ### 20260630-0946 JST
 
 - current task: harden `POST /api/patients/[id]/qualification-check` so online qualification checks use RLS request context, sensitive no-store fixed-error boundaries, PHI-minimized client responses, and patient-identity-safe validity semantics.

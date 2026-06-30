@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { resolvePatientShareCaseTransition } from '@/server/services/pharmacy-partnerships';
@@ -28,7 +29,7 @@ function toSafeRevokedConsent(row: {
   };
 }
 
-export const POST = withAuthContext<{ id: string; consentId: string }>(
+const authenticatedPOST = withAuthContext<{ id: string; consentId: string }>(
   async (req, ctx, { params }) => {
     const { id: rawId, consentId: rawConsentId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -145,3 +146,12 @@ export const POST = withAuthContext<{ id: string; consentId: string }>(
     message: '患者共有同意の撤回権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

@@ -24,6 +24,40 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Patient Share Consent Revoke POST No-Store / Sanitized Envelope - 2026-06-30 09:48 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration objective on patient-share consent revocation.
+  - Updated only `POST /api/patient-share-cases/[id]/consents/[consentId]/revoke` and its focused tests.
+  - Waited for codex's `f6de2b99` qualification-check commit to release ledgers before recording progress. No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Existing consent revocation handler logic now remains unchanged as `authenticatedPOST`, while exported `POST` applies the established `withSensitiveNoStore` + `unstable_rethrow` + fixed `internalError()` fallback pattern.
+  - Added a shared no-store assertion helper that checks both `Cache-Control` and `Pragma`.
+  - Added no-store assertions for successful revoke and already-revoked idempotent responses.
+  - Added sanitized no-store 500 regressions for unexpected revocation update failures and auth/plumbing failures before POST body parsing.
+- Safety:
+  - Reduces raw-error and PHI/consent-artifact disclosure risk for consent revocation failures containing patient names, share consent identifiers, reason text, or token-like diagnostics.
+  - Preserves auth/permission behavior, consent/share-case scoping, already-revoked idempotent behavior, active-share-case revocation transition, audit payload minimization, and existing success/domain-error response shapes.
+- Performance:
+  - No DB query shape, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only wraps the existing POST response boundary and adds focused assertions.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.ts' 'src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `4` tests.
+  - Scoped ESLint on the two revoke files: passed.
+  - Scoped `pnpm exec prettier --check` on the two revoke files: passed.
+  - Scoped and full `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` sent to codex with scope, validation, PHI/raw-error non-leakage, no-store coverage, response-shape preservation, and revocation side-effect safety focus.
+  - Independent read-only Codex CLI review of only the two-file revoke diff returned `No actionable findings.`.
+  - A nudge was sent to codex; no peer blocker or approval arrived before commit preparation.
+- Remaining:
+  - Exact-path stage only the two revoke files plus this ledger and `.codex/ralph-state.md`, commit, send agmsg FYI, then continue remaining visit/report/interprofessional API candidates.
+
 ### Patient Qualification Check POST RLS / No-Store / Identity Safety - 2026-06-30 09:46 JST
 
 - Scope:
