@@ -7,6 +7,7 @@ import { ja } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { StateBadge } from '@/components/ui/state-badge';
 import { PageSection } from '@/components/layout/page-section';
 import { cn } from '@/lib/utils';
 import type { CachedVisitBriefCard } from '@/lib/visits/visit-brief-cache';
@@ -310,7 +311,14 @@ function CachedVisitBrief({ item }: { item: CachedVisitBriefCard }) {
     <li className="rounded-xl border border-border px-4 py-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="font-medium text-foreground">{item.patientName}</h3>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <h3 className="font-medium text-foreground">{item.patientName}</h3>
+            {item.patientArchive?.archived ? (
+              <StateBadge role="readonly" className="text-[11px] font-bold">
+                アーカイブ中
+              </StateBadge>
+            ) : null}
+          </div>
           <p className="text-xs text-muted-foreground">
             {timeLabel(item.timeWindowStart, item.timeWindowEnd)}
             {item.siteName ? ` / ${item.siteName}` : ''}

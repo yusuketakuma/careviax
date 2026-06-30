@@ -90,6 +90,29 @@ describe('VisitBriefCard', () => {
     expect(screen.getByText('転倒リスク')).toBeTruthy();
   });
 
+  it('surfaces archived patient state in the brief header', () => {
+    const queryClient = new QueryClient();
+    const brief: VisitBrief = {
+      ...buildBrief(),
+      patient: {
+        ...buildBrief().patient,
+        archive: {
+          status: 'archived',
+          archived: true,
+          archived_at: '2026-06-30T09:00:00.000Z',
+        },
+      },
+    };
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VisitBriefCard brief={brief} />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText('アーカイブ中')).toBeTruthy();
+  });
+
   it('renders the empty state when there are no patient changes', () => {
     const queryClient = new QueryClient();
 

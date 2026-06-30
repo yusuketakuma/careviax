@@ -40,6 +40,7 @@ function createSharedViewerPayload() {
         name: '山田太郎',
         birth_date: '1950-01-01',
         gender: 'male',
+        archive: { status: 'active', archived: false, archived_at: null },
       },
       scope: {
         self_report_history: true,
@@ -130,5 +131,44 @@ describe('SharedViewerContent self report', () => {
         ([input, init]) => String(input).endsWith('/self-report') && init?.method === 'POST',
       );
     expect(postCalls).toHaveLength(0);
+  });
+
+  it('surfaces archive state without exposing internal archive ownership', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/external-access/token_1') {
+        return new Response(
+          JSON.stringify({
+            data: {
+              ...createSharedViewerPayload().data,
+              patient: {
+                id: 'patient_1',
+                name: '山田太郎',
+                birth_date: '1950-01-01',
+                gender: 'male',
+                archive: {
+                  status: 'archived',
+                  archived: true,
+                  archived_at: '2026-06-30T09:00:00.000Z',
+                },
+              },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ message: `Unhandled request: ${url}` }), {
+        status: 500,
+      });
+    });
+
+    renderSharedViewerContent();
+
+    fireEvent.change(screen.getByLabelText('OTP'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: /閲覧する/ }));
+
+    expect(await screen.findByText('アーカイブ中')).toBeTruthy();
+    expect(screen.getByText(/共有元では閲覧専用の患者情報/)).toBeTruthy();
+    expect(screen.queryByText(/archived_by|internal_user/)).toBeNull();
   });
 });

@@ -1,9 +1,14 @@
 import { parseJsonOrNull, readJsonObject } from '@/lib/db/json';
+import {
+  normalizePatientArchiveSummary,
+  type PatientArchiveSummary,
+} from '@/lib/patient/archive-summary';
 
 export type CachedVisitBriefCard = {
   scheduleId: string;
   patientId: string;
   patientName: string;
+  patientArchive?: PatientArchiveSummary | null;
   scheduledDate: string;
   timeWindowStart: string | null;
   timeWindowEnd: string | null;
@@ -65,6 +70,10 @@ export function normalizeCachedVisitBriefCard(value: unknown): CachedVisitBriefC
   const scheduleId = readNonEmptyString(object.scheduleId);
   const patientId = readNonEmptyString(object.patientId);
   const patientName = readNonEmptyString(object.patientName);
+  const hasPatientArchive = object.patientArchive !== undefined && object.patientArchive !== null;
+  const patientArchive = hasPatientArchive
+    ? normalizePatientArchiveSummary(object.patientArchive)
+    : null;
   const scheduledDate = readNonEmptyString(object.scheduledDate);
   const timeWindowStart = readNullableString(object.timeWindowStart);
   const timeWindowEnd = readNullableString(object.timeWindowEnd);
@@ -82,6 +91,7 @@ export function normalizeCachedVisitBriefCard(value: unknown): CachedVisitBriefC
     !scheduleId ||
     !patientId ||
     !patientName ||
+    (hasPatientArchive && patientArchive === null) ||
     !scheduledDate ||
     !priority ||
     !headline ||
@@ -102,6 +112,7 @@ export function normalizeCachedVisitBriefCard(value: unknown): CachedVisitBriefC
     scheduleId,
     patientId,
     patientName,
+    ...(patientArchive ? { patientArchive } : {}),
     scheduledDate,
     timeWindowStart,
     timeWindowEnd,

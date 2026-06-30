@@ -193,6 +193,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
             provider: 'rule',
             is_fallback: true,
           },
+          archive: null,
         },
         schedule_2: {
           ai_summary: {
@@ -203,6 +204,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
             provider: 'rule',
             is_fallback: true,
           },
+          archive: null,
         },
       },
     });

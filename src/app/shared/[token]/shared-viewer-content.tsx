@@ -19,7 +19,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { StateBadge } from '@/components/ui/state-badge';
 import { Textarea } from '@/components/ui/textarea';
+import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 
 type ExternalPayload = {
@@ -28,6 +30,7 @@ type ExternalPayload = {
     name: string;
     birth_date: string | null;
     gender: string | null;
+    archive?: PatientArchiveSummary | null;
   };
   allergy_info?: string | null;
   medication_profiles?: Array<{
@@ -334,8 +337,23 @@ export function SharedViewerContent({ token }: { token: string }) {
               <CardContent className="space-y-3 text-sm">
                 <div>
                   <p className="text-xs text-muted-foreground">氏名</p>
-                  <p className="font-medium">{data.patient.name}</p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <p className="font-medium">{data.patient.name}</p>
+                    {data.patient.archive?.archived ? (
+                      <StateBadge role="readonly" className="text-[11px] font-bold">
+                        アーカイブ中
+                      </StateBadge>
+                    ) : null}
+                  </div>
                 </div>
+                {data.patient.archive?.archived ? (
+                  <div
+                    role="status"
+                    className="rounded-md border border-state-readonly/30 bg-state-readonly/10 px-3 py-2 text-xs font-medium text-foreground"
+                  >
+                    共有元では閲覧専用の患者情報として扱われています。最新の対応可否は薬局へ確認してください。
+                  </div>
+                ) : null}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <p className="text-xs text-muted-foreground">生年月日</p>

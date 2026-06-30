@@ -313,6 +313,7 @@ describe('buildExternalAccessPayload', () => {
       name: '患者 太郎',
       birth_date: new Date('1950-01-01T00:00:00.000Z'),
       gender: 'male',
+      archived_at: null,
       phone: '090-0000-0000',
       allergy_info: 'penicillin',
     });
@@ -345,9 +346,51 @@ describe('buildExternalAccessPayload', () => {
         name: true,
         birth_date: true,
         gender: true,
+        archived_at: true,
         allergy_info: true,
       },
     });
+    expect(payload).toEqual(
+      expect.objectContaining({
+        patient: expect.objectContaining({
+          archive: { status: 'active', archived: false, archived_at: null },
+        }),
+      }),
+    );
+  });
+
+  it('exposes only minimal archive state in the external patient identity payload', async () => {
+    prismaMock.patient.findFirst.mockResolvedValueOnce({
+      id: 'patient_archived',
+      name: '患者 アーカイブ',
+      birth_date: new Date('1950-01-01T00:00:00.000Z'),
+      gender: 'female',
+      archived_at: new Date('2026-06-30T09:00:00.000Z'),
+      archived_by: 'internal_user',
+      allergy_info: null,
+    });
+
+    const payload = await buildExternalAccessPayload({
+      id: 'grant_1',
+      org_id: 'org_1',
+      patient_id: 'patient_archived',
+      otp_hash: 'otp_hash',
+      expires_at: new Date('2026-04-01T00:00:00.000Z'),
+      revoked_at: null,
+      scope: { allergy_info: true },
+    });
+
+    expect(payload?.patient).toMatchObject({
+      id: 'patient_archived',
+      name: '患者 アーカイブ',
+      archive: {
+        status: 'archived',
+        archived: true,
+        archived_at: '2026-06-30T09:00:00.000Z',
+      },
+    });
+    expect(JSON.stringify(payload)).not.toContain('internal_user');
+    expect(JSON.stringify(payload)).not.toContain('archived_by');
   });
 
   it('builds a scoped shared summary from medication, visit, and report data', async () => {

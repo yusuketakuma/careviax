@@ -56,7 +56,7 @@ function buildMinimalBriefDb() {
       findFirst: vi.fn().mockResolvedValue(null),
     },
     patient: {
-      findFirst: vi.fn().mockResolvedValue({ id: 'patient_1', name: '患者A' }),
+      findFirst: vi.fn().mockResolvedValue({ id: 'patient_1', name: '患者A', archived_at: null }),
     },
     prescriptionIntake: { findMany: vi.fn().mockResolvedValue([]) },
     medicationProfile: { findMany: vi.fn().mockResolvedValue([]) },
@@ -191,7 +191,7 @@ describe('getPatientVisitBrief', () => {
         ]),
       },
       patient: {
-        findFirst: vi.fn().mockResolvedValue({ id: 'patient_1', name: '患者A' }),
+        findFirst: vi.fn().mockResolvedValue({ id: 'patient_1', name: '患者A', archived_at: null }),
       },
       patientLabObservation: {
         findMany: vi.fn().mockResolvedValue([
@@ -457,7 +457,11 @@ describe('getPatientVisitBrief', () => {
       caseIds: ['case_1'],
     });
 
-    expect(result.patient).toEqual({ id: 'patient_1', name: '患者A' });
+    expect(result.patient).toEqual({
+      id: 'patient_1',
+      name: '患者A',
+      archive: { status: 'active', archived: false, archived_at: null },
+    });
     // role/userId 未指定経路では前回訪問差分は算出されない(perf/後方互換のピン)
     expect(result.patient_changes).toEqual([]);
     expect(db.prescriptionIntake.findMany).toHaveBeenCalledWith(
@@ -760,6 +764,28 @@ describe('getPatientVisitBrief', () => {
     expect(result.patient_changes).toEqual([]);
     expect(buildPatientStateSnapshotMock).not.toHaveBeenCalled();
   });
+
+  it('carries patient archive state in the visit brief identity', async () => {
+    const db = buildMinimalBriefDb();
+    db.patient.findFirst = vi.fn().mockResolvedValue({
+      id: 'patient_1',
+      name: '患者A',
+      archived_at: new Date('2026-06-30T09:00:00.000Z'),
+    });
+
+    const result = await getPatientVisitBrief(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      context: 'patient',
+      caseIds: ['case_1'],
+    });
+
+    expect(result.patient.archive).toEqual({
+      status: 'archived',
+      archived: true,
+      archived_at: '2026-06-30T09:00:00.000Z',
+    });
+  });
 });
 
 describe('getScheduleVisitBriefsForPatients', () => {
@@ -835,7 +861,11 @@ describe('getScheduleVisitBriefsForPatients', () => {
     expect([...result.keys()]).toEqual(['patient_1', 'patient_2']);
     expect(result.get('patient_1')).toEqual(
       expect.objectContaining({
-        patient: { id: 'patient_1', name: '患者A' },
+        patient: expect.objectContaining({
+          id: 'patient_1',
+          name: '患者A',
+          archive: { status: 'active', archived: false, archived_at: null },
+        }),
         context: 'schedule',
       }),
     );

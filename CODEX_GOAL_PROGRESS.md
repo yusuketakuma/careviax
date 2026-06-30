@@ -30,6 +30,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Archived Patient Summary Propagation - 2026-07-01 01:10 JST
+
+- Scope:
+  - Continued PRE-06 / P-08 / P-12 archived-patient visibility work after the patient-detail header slice.
+  - Focused on schedule board, visit brief, cached/offline brief cards, and external shared viewer contracts.
+- Fixed:
+  - Added a shared `PatientArchiveSummary` builder/normalizer with fail-closed validation for inconsistent cached archive states.
+  - Visit brief identity, day-board visits/proposals, cached schedule-day brief cards, and external-access patient payloads now carry minimal archive state.
+  - Schedule team board, offline visit brief cards, visit brief card header, and external shared viewer now surface `アーカイブ中`.
+  - `brief-batch` keeps PHI minimization by returning only top-level `archive` metadata, not patient id/name.
+- Safety:
+  - Reduces archived-patient wrong-use risk outside the patient detail page.
+  - Reduces external/shared overexposure risk by exposing only archive status and timestamp, not internal archive ownership.
+  - Preserves auth, assignment checks, external-access scope checks, no-store wrappers, archive write guards, migrations, DB mutation scripts, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Reuses already-loaded patient records or adds narrow `archived_at` selects.
+  - No new broad scan, dependency, background job, external call, unbounded loop, or heavy render path was added.
+- Validation:
+  - Changed-test suite covering communication request PATCH, visit brief, external access, brief batch, day board, schedule team board, offline panel, schedule-day brief cache, archive helper, visit-brief cache, visit-brief card, and shared viewer: passed, `12` files / `161` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master-management / patient-information objective remains open.
+  - PRE-06 still has remaining patient summary unification work for print/PDF/report-specific shared surfaces and further master-management guard/refactor inventory.
+
 ### Communication Request Tracing Sync Guard - 2026-07-01 01:09 JST
 
 - Scope:

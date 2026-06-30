@@ -35,6 +35,7 @@ type VisitBriefBatchPayload = {
   data: Record<
     string,
     {
+      archive?: CachedVisitBriefCard['patientArchive'] | null;
       ai_summary: {
         headline: string;
         must_check_today: string[];
@@ -255,6 +256,7 @@ export async function fetchMissingScheduleDayVisitBriefCards({
       scheduleId: schedule.id,
       patientId: schedule.case_.patient.id,
       patientName: schedule.case_.patient.name,
+      ...(brief.archive ? { patientArchive: brief.archive } : {}),
       scheduledDate: selectedDate,
       timeWindowStart: schedule.time_window_start,
       timeWindowEnd: schedule.time_window_end,

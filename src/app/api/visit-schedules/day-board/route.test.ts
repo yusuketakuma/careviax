@@ -184,6 +184,17 @@ describe('/api/visit-schedules/day-board', () => {
     expect(select).toMatchObject({
       cycle: { select: { overall_status: true } },
       carry_items_status: true,
+      case_: {
+        select: {
+          patient: {
+            select: {
+              id: true,
+              name: true,
+              archived_at: true,
+            },
+          },
+        },
+      },
       preparation: {
         select: {
           prepared_at: true,
@@ -352,6 +363,102 @@ describe('/api/visit-schedules/day-board', () => {
     expect(JSON.stringify(json.data)).not.toContain('proposal_hidden_4');
     expect(JSON.stringify(json.data)).not.toContain('proposal_hidden_5');
     expect(JSON.stringify(json.data)).not.toContain('非表示患者');
+  });
+
+  it('returns minimal archive identifiers for scheduled visits and pending proposals', async () => {
+    const archivedAt = new Date('2026-06-30T09:00:00.000Z');
+    visitScheduleFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'visit_archived',
+        case_id: 'case_archived',
+        cycle_id: null,
+        pharmacist_id: 'user_1',
+        visit_type: 'regular',
+        schedule_status: 'planned',
+        scheduled_date: new Date('2026-06-12T00:00:00.000Z'),
+        carry_items_status: 'ready',
+        priority: 'normal',
+        site_id: 'site_1',
+        route_order: 1,
+        vehicle_resource_id: null,
+        vehicle_resource: null,
+        time_window_start: new Date(2026, 5, 12, 10, 0),
+        time_window_end: new Date(2026, 5, 12, 10, 30),
+        confirmed_at: null,
+        cycle: null,
+        preparation: {
+          org_id: 'org_1',
+          prepared_at: null,
+          medication_changes_reviewed: true,
+          carry_items_confirmed: true,
+          previous_issues_reviewed: true,
+          route_confirmed: true,
+          offline_synced: true,
+        },
+        facility_batch_id: null,
+        facility_batch: null,
+        visit_record: null,
+        case_: {
+          patient: {
+            id: 'patient_archived',
+            name: '伊藤 アーカイブ',
+            archived_at: archivedAt,
+            archived_by: 'internal_user',
+            contacts: [],
+            residences: [],
+          },
+          care_team_links: [],
+        },
+      },
+    ]);
+    proposalFindManyMock.mockResolvedValue([
+      {
+        id: 'proposal_archived',
+        visit_type: 'regular',
+        proposal_status: 'proposed',
+        patient_contact_status: 'pending',
+        proposed_date: new Date('2026-06-12T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        proposed_pharmacist_id: 'user_1',
+        case_: {
+          patient: {
+            id: 'patient_pending_archived',
+            name: '鈴木 アーカイブ',
+            archived_at: archivedAt,
+            archived_by: 'internal_user',
+          },
+        },
+      },
+    ]);
+    proposalCountMock.mockResolvedValue(1);
+
+    const response = (await GET(createRequest('2026-06-12'), {
+      params: Promise.resolve({}),
+    }))!;
+    expect(response.status).toBe(200);
+    const json = await response.json();
+
+    expect(json.data.staff[0].visits[0]).toMatchObject({
+      id: 'visit_archived',
+      patient_id: 'patient_archived',
+      patient_archive: {
+        status: 'archived',
+        archived: true,
+        archived_at: '2026-06-30T09:00:00.000Z',
+      },
+    });
+    expect(json.data.pending_proposals[0]).toMatchObject({
+      id: 'proposal_archived',
+      patient_id: 'patient_pending_archived',
+      patient_archive: {
+        status: 'archived',
+        archived: true,
+        archived_at: '2026-06-30T09:00:00.000Z',
+      },
+    });
+    expect(JSON.stringify(json.data)).not.toContain('archived_by');
+    expect(JSON.stringify(json.data)).not.toContain('internal_user');
   });
 
   it('applies personal dashboard assignment scope to hidden proposal task counts', async () => {

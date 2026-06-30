@@ -7,6 +7,7 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { hasPermission, type PermissionKey } from '@/lib/auth/permissions';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
+import { buildPatientArchiveSummary } from '@/lib/patient/archive-summary';
 import { maskContactValueForAudit } from '@/lib/privacy/contact-mask';
 
 type ExternalGrantRecord = {
@@ -653,6 +654,7 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
       name: true,
       birth_date: true,
       gender: true,
+      archived_at: true,
       ...(scope.allergy_info === true ? { allergy_info: true } : {}),
     },
   });
@@ -669,6 +671,13 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
       : typeof allergyInfoValue === 'string'
         ? allergyInfoValue
         : JSON.stringify(allergyInfoValue, null, 2);
+  const patientPayload = {
+    id: patient.id,
+    name: patient.name,
+    birth_date: patient.birth_date,
+    gender: patient.gender,
+    archive: buildPatientArchiveSummary(patient.archived_at),
+  };
 
   let medicationProfiles = null;
   if (scope.medication_list === true) {
@@ -785,7 +794,7 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
   }
 
   return {
-    patient,
+    patient: patientPayload,
     ...(allergyInfo !== null ? { allergy_info: allergyInfo } : {}),
     ...(medicationProfiles !== null ? { medication_profiles: medicationProfiles } : {}),
     ...(visitSchedules !== null ? { visit_schedules: visitSchedules } : {}),

@@ -7,6 +7,7 @@ import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { formatUtcDateKey } from '@/lib/date-key';
+import { buildPatientArchiveSummary } from '@/lib/patient/archive-summary';
 import { withOrgContext } from '@/lib/db/rls';
 import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import { addUtcDays, japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
@@ -97,6 +98,7 @@ type DayBoardScheduleReadySource = {
   case_: {
     patient: {
       id: string;
+      archived_at?: Date | null;
       contacts: Array<{ id: string }>;
     };
     care_team_links: Array<{ role: string }>;
@@ -774,6 +776,7 @@ const authenticatedGET = withAuthContext(
                     select: {
                       id: true,
                       name: true,
+                      archived_at: true,
                       contacts: {
                         where: { org_id: ctx.orgId, is_emergency_contact: true },
                         select: { id: true },
@@ -850,7 +853,17 @@ const authenticatedGET = withAuthContext(
               time_window_start: true,
               time_window_end: true,
               proposed_pharmacist_id: true,
-              case_: { select: { patient: { select: { name: true } } } },
+              case_: {
+                select: {
+                  patient: {
+                    select: {
+                      id: true,
+                      name: true,
+                      archived_at: true,
+                    },
+                  },
+                },
+              },
             },
           }),
           db.visitScheduleProposal.count({
@@ -926,7 +939,9 @@ const authenticatedGET = withAuthContext(
 
         const toBoardVisit = (schedule: (typeof schedules)[number]): DayBoardVisit => ({
           id: schedule.id,
+          patient_id: schedule.case_.patient.id,
           patient_name: schedule.case_.patient.name,
+          patient_archive: buildPatientArchiveSummary(schedule.case_.patient.archived_at),
           visit_type: schedule.visit_type,
           schedule_status: schedule.schedule_status,
           priority: schedule.priority,
@@ -1083,7 +1098,9 @@ const authenticatedGET = withAuthContext(
 
           return {
             id: proposal.id,
+            patient_id: proposal.case_.patient.id,
             patient_name: proposal.case_.patient.name,
+            patient_archive: buildPatientArchiveSummary(proposal.case_.patient.archived_at),
             pharmacist_name: pharmacistNameById.get(proposal.proposed_pharmacist_id) ?? null,
             patient_contact_status: proposal.patient_contact_status,
             proposed_date: proposedDateKey,

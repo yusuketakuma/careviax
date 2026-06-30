@@ -5,9 +5,13 @@
  * 右レール(次にやること/止まっている理由)は /api/dashboard/cockpit を共用する。
  */
 
+import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
+
 export type DayBoardVisit = {
   id: string;
+  patient_id?: string;
   patient_name: string;
+  patient_archive?: PatientArchiveSummary | null;
   visit_type: string;
   schedule_status: string;
   priority: string;
@@ -92,7 +96,9 @@ export type DayBoardPatientContactStatus =
 
 export type DayBoardPendingProposal = {
   id: string;
+  patient_id?: string;
   patient_name: string;
+  patient_archive?: PatientArchiveSummary | null;
   pharmacist_name: string | null;
   patient_contact_status: DayBoardPatientContactStatus;
   /** YYYY-MM-DD */

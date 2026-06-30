@@ -21,6 +21,7 @@ const briefBatchSchema = z.object({
 });
 
 type VisitBriefBatchSummary = {
+  archive: VisitBrief['patient']['archive'] | null;
   ai_summary: Pick<
     VisitBriefAiSummary,
     'headline' | 'must_check_today' | 'source_refs' | 'generated_at' | 'provider' | 'is_fallback'
@@ -29,6 +30,7 @@ type VisitBriefBatchSummary = {
 
 function toVisitBriefBatchSummary(brief: VisitBrief): VisitBriefBatchSummary {
   return {
+    archive: brief.patient.archive ?? null,
     ai_summary: {
       headline: brief.ai_summary.headline,
       must_check_today: brief.ai_summary.must_check_today,

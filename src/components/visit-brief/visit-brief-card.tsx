@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { StateBadge } from '@/components/ui/state-badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import type {
@@ -140,6 +141,11 @@ export function VisitBriefCard({
             <CardTitle className="flex items-center gap-2 text-base">
               <Sparkles className="size-4 text-tag-info" aria-hidden="true" />
               {title}
+              {brief.patient.archive?.archived ? (
+                <StateBadge role="readonly" className="text-[11px] font-bold">
+                  アーカイブ中
+                </StateBadge>
+              ) : null}
             </CardTitle>
             <CardDescription className="mt-1">{description}</CardDescription>
           </div>

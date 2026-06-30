@@ -281,6 +281,21 @@ function resolveScheduleStatusRole(status: string | null): StatusRole {
   return role && role !== 'neutral' ? role : 'info';
 }
 
+function PatientArchiveBadge({
+  archive,
+  className,
+}: {
+  archive: DayBoardVisit['patient_archive'] | DayBoardPendingProposal['patient_archive'];
+  className?: string;
+}) {
+  if (!archive?.archived) return null;
+  return (
+    <StateBadge role="readonly" className={cn('shrink-0 text-[11px] font-bold', className)}>
+      アーカイブ中
+    </StateBadge>
+  );
+}
+
 function blockClassName(block: BoardBlock): string {
   if (block.kind === 'visit') {
     const statusClass =
@@ -328,6 +343,11 @@ function GanttBlock({ block }: { block: BoardBlock }) {
       {block.kind === 'visit' ? (
         <span className="shrink-0 rounded bg-white/20 px-1 py-0.5 text-[10px] leading-none">
           {isAggregateVisit ? '施設一括' : scheduleStatusLabel(block.status)}
+        </span>
+      ) : null}
+      {block.patientArchive?.archived ? (
+        <span className="shrink-0 rounded bg-white/20 px-1 py-0.5 text-[10px] leading-none">
+          アーカイブ中
         </span>
       ) : null}
       {preparationSummary ? <PreparationSummaryChip summary={preparationSummary} compact /> : null}
@@ -421,6 +441,7 @@ function ScheduleStatusControlPanel({
                       >
                         {scheduleStatusLabel(status)}
                       </StateBadge>
+                      <PatientArchiveBadge archive={block.patientArchive} className="mt-1" />
                     </div>
                     <select
                       aria-label={`${block.label}のステータスを変更`}
@@ -877,7 +898,10 @@ function VehicleRoutePanel({
                         )}`}
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="font-medium text-foreground">{visit.patient_name}様</p>
+                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                            <p className="font-medium text-foreground">{visit.patient_name}様</p>
+                            <PatientArchiveBadge archive={visit.patient_archive} />
+                          </div>
                           <p className="text-xs font-semibold text-foreground">
                             順路 {visit.route_order ?? '-'}
                           </p>
@@ -951,6 +975,7 @@ function RouteStaffList({ member, visits }: { member: DayBoardStaff; visits: Day
               <p className="truncate text-sm font-semibold text-foreground">
                 {visit.patient_name}様
               </p>
+              <PatientArchiveBadge archive={visit.patient_archive} className="mt-1" />
               <p className="text-xs text-muted-foreground">
                 {visit.time_start ? formatScheduleTimeIso(visit.time_start) : '時間未定'} /{' '}
                 {visit.vehicle_label ?? '車両未割当'}
@@ -1261,6 +1286,7 @@ function PendingProposalRow({
           {proposal.badge_label === '受入判断' ? '新規 ' : ''}
           {proposal.patient_name}様 — {dateLabel} {timeLabel} {pharmacistLabel}
         </p>
+        <PatientArchiveBadge archive={proposal.patient_archive} />
         {proposal.response_due_at ? (
           <span className="shrink-0 text-sm font-bold text-state-confirm">
             返答期限 {formatTimeOfDayIso(proposal.response_due_at)}

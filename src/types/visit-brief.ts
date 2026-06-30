@@ -1,4 +1,5 @@
 import type { OutsideMedEvidenceKind } from '@/lib/dispensing/set-audit-constants';
+import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
 
 export type VisitBriefContext = 'patient' | 'schedule';
 
@@ -199,6 +200,7 @@ export type VisitBrief = {
   patient: {
     id: string;
     name: string;
+    archive?: PatientArchiveSummary | null;
   };
   context: VisitBriefContext;
   generated_at: string;

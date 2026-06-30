@@ -4,6 +4,7 @@ import { isoOrNull } from '@/lib/utils/date';
 import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import { formatDateKey } from '@/lib/date-key';
+import { buildPatientArchiveSummary } from '@/lib/patient/archive-summary';
 import { detectMedicationChanges as detectChangesShared } from '@/lib/prescription/medication-diff';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
 import type { BillingEvidenceBlockersReader } from '@/server/services/billing-evidence';
@@ -132,6 +133,7 @@ type VisitBriefDataReader = BillingEvidenceBlockersReader & {
   patient: FindFirstDelegate<{
     id: string;
     name: string;
+    archived_at?: Date | string | null;
     scheduling_preference?: {
       visit_before_contact_required: boolean | null;
     } | null;
@@ -1282,6 +1284,7 @@ export async function getPatientVisitBrief(
       select: {
         id: true,
         name: true,
+        archived_at: true,
         scheduling_preference: {
           select: {
             visit_before_contact_required: true,
@@ -1836,7 +1839,11 @@ export async function getPatientVisitBrief(
   }
 
   return {
-    patient: { id: patient.id, name: patient.name },
+    patient: {
+      id: patient.id,
+      name: patient.name,
+      archive: buildPatientArchiveSummary(patient.archived_at ?? null),
+    },
     context: args.context,
     generated_at: new Date().toISOString(),
     last_prescribed_date: currentIntake?.prescribed_date.toISOString() ?? null,

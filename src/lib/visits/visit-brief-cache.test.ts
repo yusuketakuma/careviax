@@ -39,12 +39,35 @@ describe('visit brief cache helpers', () => {
     });
   });
 
+  it('preserves valid patient archive summaries in cached payloads', () => {
+    const archivedCard: CachedVisitBriefCard = {
+      ...validCard,
+      patientArchive: {
+        status: 'archived',
+        archived: true,
+        archived_at: '2026-06-01T00:00:00.000Z',
+      },
+    };
+
+    expect(parseCachedVisitBriefCardPayload(JSON.stringify(archivedCard))).toEqual(archivedCard);
+  });
+
   it('rejects malformed roots and unsafe enum/date values', () => {
     expect(parseCachedVisitBriefCardPayload('{bad-json')).toBeNull();
     expect(normalizeCachedVisitBriefCard(['not', 'an', 'object'])).toBeNull();
     expect(normalizeCachedVisitBriefCard({ ...validCard, priority: 'high' })).toBeNull();
     expect(normalizeCachedVisitBriefCard({ ...validCard, generatedAt: 'not-a-date' })).toBeNull();
     expect(normalizeCachedVisitBriefCard({ ...validCard, isFallback: 'false' })).toBeNull();
+    expect(
+      normalizeCachedVisitBriefCard({
+        ...validCard,
+        patientArchive: {
+          status: 'active',
+          archived: true,
+          archived_at: '2026-06-01T00:00:00.000Z',
+        },
+      }),
+    ).toBeNull();
   });
 
   it('rejects malformed string-array entries', () => {
