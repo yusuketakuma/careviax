@@ -108,6 +108,33 @@ describe('computeOptimizedVisitRoute (heuristic path)', () => {
     expect(result.stopSummaries).toHaveLength(1);
     expect(result.stopSummaries[0].scheduleId).toBe('sched_1');
     expect(result.stopSummaries[0].optimizedOrder).toBe(1);
+    expect(result.distanceSource).toBe('straight_line');
+    expect(result.stopSummaries[0].distanceSource).toBe('straight_line');
+  });
+
+  it('marks mixed distance source when only part of the heuristic route has road distance', async () => {
+    const estimateOne = vi.fn(async () => null);
+    const estimateMatrix = vi.fn(async () => [
+      [null, { durationMinutes: 10, distanceKm: 1 }],
+      [{ durationMinutes: 12 }, null],
+    ]);
+    createRoadTravelEstimatorMock.mockReturnValue(Object.assign(estimateOne, { estimateMatrix }));
+
+    const result = await computeOptimizedVisitRoute({
+      origin,
+      travelMode,
+      waypoints: [
+        { scheduleId: 'sched_1', patientName: '患者A', address: '住所A', lat: 35.1, lng: 139.1 },
+      ],
+    });
+
+    expect(result.status).toBe('ok');
+    expect(result.distanceSource).toBe('mixed');
+    expect(result.stopSummaries[0]).toMatchObject({
+      scheduleId: 'sched_1',
+      distanceSource: 'road',
+    });
+    expect(estimateOne).not.toHaveBeenCalled();
   });
 
   it('orders multiple waypoints and returns correct stop summaries', async () => {
@@ -359,8 +386,10 @@ describe('computeOptimizedVisitRoute (Google Routes path)', () => {
         scheduleId: 'sched_google',
         arrivalOffsetSeconds: 600,
         durationFromPreviousSeconds: 600,
+        distanceSource: 'road',
       }),
     ]);
+    expect(result.distanceSource).toBe('road');
     expect(fetchSpy).toHaveBeenCalledWith(
       'https://routes.googleapis.com/directions/v2:computeRoutes',
       expect.objectContaining({

@@ -1,4 +1,6 @@
 export type VisitRouteTravelMode = 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
+export type VisitRouteLegDistanceSource = 'road' | 'straight_line';
+export type VisitRouteDistanceSource = VisitRouteLegDistanceSource | 'mixed';
 
 export type VisitRouteOrigin = {
   lat: number;
@@ -12,6 +14,7 @@ export type VisitRouteStopSummary = {
   arrivalOffsetSeconds: number | null;
   distanceFromPreviousMeters: number | null;
   durationFromPreviousSeconds: number | null;
+  distanceSource?: VisitRouteLegDistanceSource | null;
 };
 
 export type VisitRoutePlan = {
@@ -23,5 +26,6 @@ export type VisitRoutePlan = {
   orderedScheduleIds: string[];
   totalDistanceMeters: number | null;
   totalDurationSeconds: number | null;
+  distanceSource?: VisitRouteDistanceSource | null;
   stopSummaries: VisitRouteStopSummary[];
 };

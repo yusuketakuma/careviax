@@ -33,6 +33,7 @@ describe('VisitRoutePreviewPanel', () => {
           orderedScheduleIds: ['schedule_1', 'proposal:proposal_1'],
           totalDistanceMeters: 3200,
           totalDurationSeconds: 1200,
+          distanceSource: 'mixed',
           stopSummaries: [
             {
               scheduleId: 'schedule_1',
@@ -94,6 +95,7 @@ describe('VisitRoutePreviewPanel', () => {
     expect(screen.getAllByText('確定予定')[0]).toBeTruthy();
     expect(screen.getAllByText('候補')[0]).toBeTruthy();
     expect(screen.getAllByText('現順 2')[0]).toBeTruthy();
+    expect(screen.getByText('道路+直線推定').closest('[data-role="confirm"]')).toBeTruthy();
     expect(screen.getByTestId('visit-route-map')).toBeTruthy();
 
     fireEvent.click(screen.getAllByRole('button', { name: '後ろへ' })[0]);

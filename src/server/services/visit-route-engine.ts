@@ -2,7 +2,13 @@ import { readJsonResponseBody } from '@/lib/api/response-body';
 import { readJsonObject } from '@/lib/db/json';
 import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
-import type { VisitRouteOrigin, VisitRoutePlan, VisitRouteTravelMode } from '@/types/visit-route';
+import type {
+  VisitRouteDistanceSource,
+  VisitRouteLegDistanceSource,
+  VisitRouteOrigin,
+  VisitRoutePlan,
+  VisitRouteTravelMode,
+} from '@/types/visit-route';
 import { createFetchTimeout } from './fetch-timeout';
 import {
   createRoadTravelEstimator,
@@ -180,12 +186,14 @@ function unavailableGoogleRoutePlan(args: {
     orderedScheduleIds: args.waypoints.map((waypoint) => waypoint.scheduleId),
     totalDistanceMeters: args.totalDistanceMeters ?? null,
     totalDurationSeconds: args.totalDurationSeconds ?? null,
+    distanceSource: args.totalDistanceMeters != null ? 'road' : null,
     stopSummaries: args.waypoints.map((waypoint, index) => ({
       scheduleId: waypoint.scheduleId,
       optimizedOrder: index + 1,
       arrivalOffsetSeconds: null,
       distanceFromPreviousMeters: null,
       durationFromPreviousSeconds: null,
+      distanceSource: null,
     })),
   };
 }
@@ -226,7 +234,11 @@ function haversineDistanceKm(from: { lat: number; lng: number }, to: { lat: numb
   return 2 * earthRadiusKm * Math.asin(Math.sqrt(h));
 }
 
-type RouteMatrixCell = { meters: number; seconds: number };
+type RouteMatrixCell = {
+  meters: number;
+  seconds: number;
+  distanceSource: VisitRouteLegDistanceSource;
+};
 type RouteMatrix = Array<Array<RouteMatrixCell | null>>;
 type NodePoint = { lat: number; lng: number };
 
@@ -240,6 +252,15 @@ function normalizeRouteMatrixPairConcurrency(value: unknown) {
   });
 }
 
+function mergeRouteDistanceSource(
+  current: VisitRouteDistanceSource | null,
+  next: VisitRouteLegDistanceSource | null,
+): VisitRouteDistanceSource | null {
+  if (!next) return current;
+  if (!current) return next;
+  return current === next ? current : 'mixed';
+}
+
 function estimateToMatrixCell(
   estimate: TravelEstimate | null,
   from: NodePoint,
@@ -248,13 +269,13 @@ function estimateToMatrixCell(
 ): RouteMatrixCell | null {
   if (estimate && Number.isFinite(estimate.durationMinutes)) {
     const fallbackDistanceKm = haversineDistanceKm(from, to);
-    const distanceKm = Number.isFinite(estimate.distanceKm)
-      ? estimate.distanceKm
-      : fallbackDistanceKm;
+    const hasRoadDistance = Number.isFinite(estimate.distanceKm);
+    const distanceKm = hasRoadDistance ? estimate.distanceKm : fallbackDistanceKm;
     if (Number.isFinite(distanceKm)) {
       return {
         meters: distanceKm * 1000,
         seconds: Math.round(estimate.durationMinutes * 60),
+        distanceSource: hasRoadDistance ? 'road' : 'straight_line',
       };
     }
   }
@@ -265,6 +286,7 @@ function estimateToMatrixCell(
   return {
     meters,
     seconds: Math.round(estimateFallbackTravelMinutes(fallbackDistanceKm, travelMode) * 60),
+    distanceSource: 'straight_line',
   };
 }
 
@@ -435,6 +457,7 @@ async function computeGoogleWaypointRoute(args: {
       orderedScheduleIds: args.waypoints.map((waypoint) => waypoint.scheduleId),
       totalDistanceMeters: route.distanceMeters ?? null,
       totalDurationSeconds: parseDurationSeconds(route.duration),
+      distanceSource: route.distanceMeters != null ? 'road' : null,
       stopSummaries: [],
     };
   }
@@ -458,6 +481,7 @@ async function computeGoogleWaypointRoute(args: {
       arrivalOffsetSeconds: legDurationSeconds == null ? null : cumulativeDuration,
       distanceFromPreviousMeters: leg?.distanceMeters ?? null,
       durationFromPreviousSeconds: legDurationSeconds,
+      distanceSource: leg?.distanceMeters != null ? ('road' as const) : null,
     };
   });
 
@@ -470,6 +494,7 @@ async function computeGoogleWaypointRoute(args: {
     orderedScheduleIds: optimizedWaypoints.map((waypoint) => waypoint.scheduleId),
     totalDistanceMeters: route.distanceMeters ?? null,
     totalDurationSeconds: parseDurationSeconds(route.duration),
+    distanceSource: route.distanceMeters != null ? 'road' : null,
     stopSummaries,
   };
 }
@@ -500,6 +525,7 @@ async function computeHeuristicRoute(args: {
       orderedScheduleIds: args.waypoints.map((waypoint) => waypoint.scheduleId),
       totalDistanceMeters: null,
       totalDurationSeconds: null,
+      distanceSource: null,
       stopSummaries: [],
       missingGeocodeWaypointIds,
     } as VisitRoutePlan & { missingGeocodeWaypointIds: string[] };
@@ -515,6 +541,7 @@ async function computeHeuristicRoute(args: {
       orderedScheduleIds: [],
       totalDistanceMeters: 0,
       totalDurationSeconds: 0,
+      distanceSource: null,
       stopSummaries: [],
     };
   }
@@ -539,6 +566,7 @@ async function computeHeuristicRoute(args: {
   let currentNodeIndex = 0; // origin
   let totalDistanceMeters = 0;
   let totalDurationSeconds = 0;
+  let distanceSource: VisitRouteDistanceSource | null = null;
   const usesPriorityConstraint = hasPriorityRouteConstraint(args.waypoints);
 
   // 確定済み(ロック)訪問を入力順のまま先頭に固定する。残りは貪欲法で最適化する。
@@ -568,12 +596,14 @@ async function computeHeuristicRoute(args: {
       const durationSeconds = cell ? cell.seconds : null;
       totalDistanceMeters += distanceMeters != null ? Math.round(distanceMeters) : 0;
       totalDurationSeconds += durationSeconds != null ? durationSeconds : 0;
+      distanceSource = mergeRouteDistanceSource(distanceSource, cell?.distanceSource ?? null);
       stopSummaries.push({
         scheduleId: args.waypoints[forcedWaypointIdx].scheduleId,
         optimizedOrder: ordered.length,
         arrivalOffsetSeconds: totalDurationSeconds,
         distanceFromPreviousMeters: distanceMeters != null ? Math.round(distanceMeters) : null,
         durationFromPreviousSeconds: durationSeconds,
+        distanceSource: cell?.distanceSource ?? null,
       });
       currentNodeIndex = targetNodeIndex;
       continue;
@@ -585,6 +615,7 @@ async function computeHeuristicRoute(args: {
     );
     let bestDistanceMeters = Number.POSITIVE_INFINITY;
     let bestDurationSeconds = Number.POSITIVE_INFINITY;
+    let bestDistanceSource: VisitRouteLegDistanceSource | null = null;
 
     for (let remIdx = 0; remIdx < remaining.length; remIdx++) {
       const waypointIdx = remaining[remIdx];
@@ -609,6 +640,7 @@ async function computeHeuristicRoute(args: {
         bestRemIdx = remIdx;
         bestDistanceMeters = distanceMeters;
         bestDurationSeconds = durationSeconds;
+        bestDistanceSource = cell?.distanceSource ?? null;
       }
     }
 
@@ -617,6 +649,7 @@ async function computeHeuristicRoute(args: {
     const nextWaypoint = args.waypoints[nextWaypointIdx];
     totalDistanceMeters += Number.isFinite(bestDistanceMeters) ? Math.round(bestDistanceMeters) : 0;
     totalDurationSeconds += Number.isFinite(bestDurationSeconds) ? bestDurationSeconds : 0;
+    distanceSource = mergeRouteDistanceSource(distanceSource, bestDistanceSource);
     stopSummaries.push({
       scheduleId: nextWaypoint.scheduleId,
       optimizedOrder: ordered.length,
@@ -627,6 +660,7 @@ async function computeHeuristicRoute(args: {
       durationFromPreviousSeconds: Number.isFinite(bestDurationSeconds)
         ? bestDurationSeconds
         : null,
+      distanceSource: bestDistanceSource,
     });
     currentNodeIndex = nextWaypointIdx + 1;
   }
@@ -635,6 +669,7 @@ async function computeHeuristicRoute(args: {
   if (returnToOrigin) {
     totalDistanceMeters += Math.round(returnToOrigin.meters);
     totalDurationSeconds += returnToOrigin.seconds;
+    distanceSource = mergeRouteDistanceSource(distanceSource, returnToOrigin.distanceSource);
   }
 
   const baseNote = usesPriorityConstraint
@@ -652,6 +687,7 @@ async function computeHeuristicRoute(args: {
     orderedScheduleIds: ordered.map((idx) => args.waypoints[idx].scheduleId),
     totalDistanceMeters,
     totalDurationSeconds,
+    distanceSource,
     stopSummaries,
   };
 }
@@ -681,6 +717,7 @@ export async function computeOptimizedVisitRoute(args: {
       orderedScheduleIds,
       totalDistanceMeters: null,
       totalDurationSeconds: null,
+      distanceSource: null,
       stopSummaries: [],
     };
   }
@@ -695,12 +732,14 @@ export async function computeOptimizedVisitRoute(args: {
       orderedScheduleIds,
       totalDistanceMeters: null,
       totalDurationSeconds: null,
+      distanceSource: null,
       stopSummaries: args.waypoints.map((waypoint, index) => ({
         scheduleId: waypoint.scheduleId,
         optimizedOrder: index + 1,
         arrivalOffsetSeconds: null,
         distanceFromPreviousMeters: null,
         durationFromPreviousSeconds: null,
+        distanceSource: null,
       })),
     };
   }

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0318 JST
+
+- current task: surface visit-route straight-line fallback distance source in the route plan and preview UI.
+- files inspected: `git status --short --branch --untracked-files=all`, `docs/schedule-route-build-plan.md` P6 distanceSource finding, `docs/ui-ux-design-guidelines.md`, `src/types/visit-route.ts`, `src/server/services/visit-route-engine.ts`, `src/server/services/visit-route-engine.test.ts`, `src/server/services/google-routes.ts`, `src/server/services/google-routes.test.ts`, `src/app/api/visit-routes/route.ts`, `src/app/api/visit-routes/route.test.ts`, `src/components/ui/state-badge.tsx`, `src/components/features/visits/visit-route-preview-panel.tsx`, `src/components/features/visits/visit-route-preview-panel.test.tsx`, and validation output.
+- files changed: `src/types/visit-route.ts`, `src/server/services/visit-route-engine.ts`, `src/server/services/visit-route-engine.test.ts`, `src/components/features/visits/visit-route-preview-panel.tsx`, `src/components/features/visits/visit-route-preview-panel.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: route plans could silently use straight-line fallback distances when road estimates were unavailable or incomplete, but the API/UI exposed no degraded-distance signal. Operators could therefore treat fallback route totals as road-calculated route evidence.
+- security risks found: reduced unsafe route-decision risk by adding plan-level and leg-level `distanceSource` metadata (`road`, `straight_line`, `mixed`) and surfacing mixed/straight-line estimates as a confirm-status badge in the shared route preview. Existing auth, RLS, route target filtering, Google request PHI minimization, no-store route wrappers, migrations, live data, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: pure metadata propagation over already-built route matrix cells and existing plan render. No new DB query, dependency, external request, background job, broad scan, or unbounded loop was added.
+- validation commands: `pnpm exec vitest run src/server/services/visit-route-engine.test.ts src/server/services/google-routes.test.ts src/components/features/visits/visit-route-preview-panel.test.tsx --reporter=dot --testTimeout=60000`; related route suite with locked/API tests; scoped ESLint; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck --pretty false`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`; `pnpm lint`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: focused route/UI suite passed `3` files / `24` tests; related route suite passed `6` files / `50` tests with expected sanitized-500 route log; scoped ESLint, scoped Prettier check, scoped diff-check, typecheck, no-unused, lint, full format check, and full diff-check passed.
+- remaining work: broad schedule-management / prescription-to-schedule / route-decision objective remains open. Concurrent unrelated conference-note PATCH lock files and patient-service consent-filter files remain preserved outside this route-distance-source commit.
+- next action: stage only the owned route-distance-source files and ledgers, commit, send agmsg FYI, then re-check status before choosing the next bounded gap.
+
 ### 20260701-0307 JST
 
 - current task: align visit-schedule list date filters with UTC-midnight @db.Date boundary helpers.

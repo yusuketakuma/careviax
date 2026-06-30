@@ -30,6 +30,30 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Visit Route Distance Source Signal - 2026-07-01 03:18 JST
+
+- Scope:
+  - Continued schedule / route-decision hardening on the shared visit route engine and route preview UI.
+  - Focused on exposing when route distances are road-calculated versus straight-line fallback estimates.
+- Fixed:
+  - Added `distanceSource` metadata to `VisitRoutePlan` and `VisitRouteStopSummary`.
+  - Google route plans report `road`; heuristic route matrix cells report `road` when estimator distance is available and `straight_line` when haversine fallback is used.
+  - Heuristic plan-level source aggregates to `mixed` when only part of the route has road distance.
+  - Shared route preview panel now shows a confirm-status badge for `直線距離推定` / `道路+直線推定`.
+- Safety:
+  - Reduces unsafe route-decision risk where fallback route totals could be mistaken for road-calculated evidence.
+  - Preserves existing auth, RLS, route target filtering, route ordering, Google request PHI minimization, no-store wrappers, migrations, live data, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Pure metadata propagation over existing route matrix cells and existing preview rendering.
+  - No DB query, dependency, external request, background job, broad scan, or unbounded loop was added.
+- Validation:
+  - Focused route/UI suite passed `3` files / `24` tests.
+  - Related route suite passed `6` files / `50` tests with the expected sanitized-500 route log.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck --pretty false`, `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`, `pnpm lint`, `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`, and full `git diff --check`: passed.
+- Remaining:
+  - Broad schedule-management / prescription-to-schedule / route-decision objective remains open.
+  - Concurrent unrelated conference-note PATCH lock and patient-service consent-filter dirty files remain preserved outside this slice.
+
 ### Visit Schedule List Date Boundary - 2026-07-01 03:07 JST
 
 - Scope:

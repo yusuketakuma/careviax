@@ -48,6 +48,17 @@ type VisitRoutePreviewPanelProps = {
   movableIds?: string[];
 };
 
+function distanceSourceLabel(source: VisitRoutePlan['distanceSource'] | null | undefined) {
+  switch (source) {
+    case 'straight_line':
+      return '直線距離推定';
+    case 'mixed':
+      return '道路+直線推定';
+    default:
+      return null;
+  }
+}
+
 export function VisitRoutePreviewPanel({
   title,
   description,
@@ -91,6 +102,7 @@ export function VisitRoutePreviewPanel({
     plan?.orderedScheduleIds.length && plan.orderedScheduleIds.length > 0
       ? plan.orderedScheduleIds
       : resolvedOrderedIds;
+  const routeDistanceSourceLabel = distanceSourceLabel(plan?.distanceSource);
   const summaryById = new Map((plan?.stopSummaries ?? []).map((item) => [item.scheduleId, item]));
   const orderedStops = resolvedOrderedIds
     .map((scheduleId, index) => {
@@ -200,6 +212,9 @@ export function VisitRoutePreviewPanel({
               </Badge>
               <Badge variant="outline">対象 {points.length} 件</Badge>
               {site ? <Badge variant="outline">起点 {site.name}</Badge> : null}
+              {routeDistanceSourceLabel ? (
+                <StateBadge role="confirm">{routeDistanceSourceLabel}</StateBadge>
+              ) : null}
               {extraSummary}
             </div>
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_19rem]">
