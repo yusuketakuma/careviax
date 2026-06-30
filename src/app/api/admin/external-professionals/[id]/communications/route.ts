@@ -7,6 +7,27 @@ import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import type { Prisma } from '@prisma/client';
 
+const EXTERNAL_PROFESSIONAL_COMMUNICATION_HISTORY_LIMIT = 20;
+
+function buildCommunicationHistoryMeta(args: {
+  professionalId: string;
+  limit: number;
+  totalCount: number;
+  visibleCount: number;
+  countBasis: string;
+}) {
+  return {
+    limit: args.limit,
+    total_count: args.totalCount,
+    visible_count: args.visibleCount,
+    hidden_count: Math.max(args.totalCount - args.visibleCount, 0),
+    count_basis: args.countBasis,
+    filters_applied: {
+      external_professional_id: args.professionalId,
+    },
+  };
+}
+
 function buildCommunicationRequestAssignmentWhere(args: {
   caseIds: string[];
   patientIds: string[];
@@ -85,15 +106,24 @@ const authenticatedGET = withAuthContext<{ id: string }>(
         })
       : null;
 
-    const [requests, events] = await Promise.all([
+    const requestWhere: Prisma.CommunicationRequestWhereInput = {
+      org_id: ctx.orgId,
+      OR: counterpartNames.map((name) => ({ recipient_name: name })),
+      ...(requestAssignmentWhere ? { AND: [requestAssignmentWhere] } : {}),
+    };
+    const eventWhere: Prisma.CommunicationEventWhereInput = {
+      org_id: ctx.orgId,
+      OR: counterpartNames.map((name) => ({ counterpart_name: name })),
+      ...(eventAssignmentWhere ? { AND: [eventAssignmentWhere] } : {}),
+    };
+
+    const [requestTotalCount, eventTotalCount, requests, events] = await Promise.all([
+      prisma.communicationRequest.count({ where: requestWhere }),
+      prisma.communicationEvent.count({ where: eventWhere }),
       prisma.communicationRequest.findMany({
-        where: {
-          org_id: ctx.orgId,
-          OR: counterpartNames.map((name) => ({ recipient_name: name })),
-          ...(requestAssignmentWhere ? { AND: [requestAssignmentWhere] } : {}),
-        },
+        where: requestWhere,
         orderBy: { requested_at: 'desc' },
-        take: 20,
+        take: EXTERNAL_PROFESSIONAL_COMMUNICATION_HISTORY_LIMIT,
         select: {
           id: true,
           patient_id: true,
@@ -108,13 +138,9 @@ const authenticatedGET = withAuthContext<{ id: string }>(
         },
       }),
       prisma.communicationEvent.findMany({
-        where: {
-          org_id: ctx.orgId,
-          OR: counterpartNames.map((name) => ({ counterpart_name: name })),
-          ...(eventAssignmentWhere ? { AND: [eventAssignmentWhere] } : {}),
-        },
+        where: eventWhere,
         orderBy: { occurred_at: 'desc' },
-        take: 20,
+        take: EXTERNAL_PROFESSIONAL_COMMUNICATION_HISTORY_LIMIT,
         select: {
           id: true,
           event_type: true,
@@ -160,6 +186,22 @@ const authenticatedGET = withAuthContext<{ id: string }>(
           subject: item.subject,
           occurred_at: item.occurred_at.toISOString(),
         })),
+      },
+      meta: {
+        requests: buildCommunicationHistoryMeta({
+          professionalId: id,
+          limit: EXTERNAL_PROFESSIONAL_COMMUNICATION_HISTORY_LIMIT,
+          totalCount: requestTotalCount,
+          visibleCount: requests.length,
+          countBasis: 'external_professional_communication_requests',
+        }),
+        events: buildCommunicationHistoryMeta({
+          professionalId: id,
+          limit: EXTERNAL_PROFESSIONAL_COMMUNICATION_HISTORY_LIMIT,
+          totalCount: eventTotalCount,
+          visibleCount: events.length,
+          countBasis: 'external_professional_communication_events',
+        }),
       },
     });
   },
