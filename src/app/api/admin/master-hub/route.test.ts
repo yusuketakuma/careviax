@@ -79,6 +79,9 @@ function findMaster(body: unknown, key: string) {
     action_label: string;
     note: string;
     next_action_hint: string;
+    issue_count: number;
+    status: string;
+    status_count: number | null;
   };
 }
 
@@ -167,6 +170,30 @@ describe('/api/admin/master-hub', () => {
     expect(findMaster(body, 'vehicles')).toMatchObject({
       action_label: '点検を予約',
       action_href: '/admin/vehicles',
+    });
+  });
+
+  it('marks an expired vehicle inspection as blocked freshness instead of due soon', async () => {
+    tx.visitVehicleResource.findMany.mockResolvedValueOnce([
+      {
+        label: '軽バン2号',
+        available: true,
+        notes: null,
+        next_inspection_date: new Date('2026-06-01T00:00:00Z'),
+        updated_at: new Date('2026-06-02T00:00:00Z'),
+      },
+    ]);
+
+    const response = await GET(createRequest(), emptyRouteContext);
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(findMaster(body, 'vehicles')).toMatchObject({
+      status: 'expired',
+      status_count: null,
+      issue_count: 1,
+      next_action_hint: '軽バン2号を配車候補から外して点検を予約する',
+      note: '軽バン2号の点検期限 6/1 が10日過ぎています — 配車候補から除外して点検を予約してください',
     });
   });
 

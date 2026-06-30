@@ -49,11 +49,13 @@ const STATUS_ROLE: Record<MasterHubCard['status'], StatusRole> = {
   healthy: 'done',
   checking: 'confirm',
   due_soon: 'confirm',
+  expired: 'blocked',
 };
 
 function statusBadgeLabel(card: MasterHubCard): string {
   if (card.status === 'healthy') return '健全';
   if (card.status === 'due_soon') return '期限接近';
+  if (card.status === 'expired') return '期限切れ';
   return card.status_count != null ? `確認中 ${card.status_count}` : '確認中';
 }
 
@@ -73,7 +75,7 @@ function MasterCard({ card }: { card: MasterHubCard }) {
         </StateBadge>
       </div>
       <p className="text-xs leading-5" data-testid="master-hub-card-meta">
-        <span className="font-semibold text-foreground">
+        <span className="font-semibold tabular-nums text-foreground">
           {card.count.toLocaleString('ja-JP')}
           {card.count_unit}
         </span>
@@ -114,7 +116,10 @@ function buildMasterHubSummary(data: MasterHubResponse) {
   const attentionCards = data.masters.filter((card) => card.status !== 'healthy');
   const issueCount = data.masters.reduce((total, card) => total + card.issue_count, 0);
   const primaryAttention =
-    attentionCards.find((card) => card.status === 'checking') ?? attentionCards[0] ?? null;
+    attentionCards.find((card) => card.status === 'expired') ??
+    attentionCards.find((card) => card.status === 'checking') ??
+    attentionCards[0] ??
+    null;
 
   return {
     attentionCards,
@@ -221,16 +226,17 @@ export function MasterHubContent() {
                   <div className="grid grid-cols-3 gap-2 sm:gap-3">
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-muted-foreground">今日の判定</p>
-                      <p className="mt-1 text-lg font-bold text-foreground">
+                      <p className="mt-1 text-lg font-bold tabular-nums text-foreground">
                         {summary.attentionCards.length > 0 ? '確認あり' : '健全'}
                       </p>
                       <p className="text-xs leading-5 text-muted-foreground">
-                        {summary.attentionCards.length}マスターに注意
+                        <span className="tabular-nums">{summary.attentionCards.length}</span>
+                        マスターに注意
                       </p>
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-muted-foreground">未処理</p>
-                      <p className="mt-1 text-lg font-bold text-foreground">
+                      <p className="mt-1 text-lg font-bold tabular-nums text-foreground">
                         {summary.issueCount.toLocaleString('ja-JP')}件
                       </p>
                       <p className="text-xs leading-5 text-muted-foreground">

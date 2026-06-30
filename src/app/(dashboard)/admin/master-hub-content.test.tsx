@@ -282,7 +282,7 @@ describe('MasterHubContent', () => {
     // 医薬品マスター(健全)
     expect(within(cards[0]).getByText('医薬品マスター')).toBeTruthy();
     expect(within(cards[0]).getByText('健全')).toBeTruthy();
-    expect(within(cards[0]).getByText('1,248件')).toBeTruthy();
+    expect(within(cards[0]).getByText('1,248件').className).toContain('tabular-nums');
     expect(within(cards[0]).getByText(/最終更新 6\/10/)).toBeTruthy();
     expect(within(cards[0]).getByText('採用品と安全タグを確認する')).toBeTruthy();
     expect(within(cards[0]).getByText('未処理なし')).toBeTruthy();
@@ -346,11 +346,42 @@ describe('MasterHubContent', () => {
     expect(summary.querySelector('.grid')?.className).toContain('grid-cols-3');
     expect(within(summary).getByText('今日の判定')).toBeTruthy();
     expect(within(summary).getByText('確認あり')).toBeTruthy();
-    expect(within(summary).getByText('2マスターに注意')).toBeTruthy();
+    expect(summary.textContent).toContain('2マスターに注意');
     expect(within(summary).getByText('未処理')).toBeTruthy();
-    expect(within(summary).getByText('2件')).toBeTruthy();
+    expect(within(summary).getByText('2件').className).toContain('tabular-nums');
     expect(within(summary).getByText('医療機関マスター')).toBeTruthy();
     expect(within(summary).getByText('やまもと内科の送付先FAXを確認する')).toBeTruthy();
+  });
+
+  it('renders expired master status as blocked and prioritizes it in the summary', () => {
+    const fixture = buildFixture();
+    fixture.masters[6] = {
+      ...fixture.masters[6],
+      status: 'expired',
+      note: '軽バン2号の点検期限 6/1 が10日過ぎています — 配車候補から除外して点検を予約してください',
+      next_action_hint: '軽バン2号を配車候補から外して点検を予約する',
+      issue_count: 1,
+    };
+    useQueryMock.mockReturnValue({
+      data: fixture,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchMock,
+    });
+
+    render(<MasterHubContent />);
+
+    const vehicleCard = screen.getAllByTestId('master-hub-card')[6];
+    expect(within(vehicleCard).getByText('期限切れ').closest('[data-role="blocked"]')).toBeTruthy();
+    expect(
+      within(vehicleCard).getByText(
+        '軽バン2号の点検期限 6/1 が10日過ぎています — 配車候補から除外して点検を予約してください',
+      ),
+    ).toBeTruthy();
+    const summary = screen.getByTestId('master-hub-summary');
+    expect(within(summary).getByText('車両マスター')).toBeTruthy();
+    expect(within(summary).getByText('軽バン2号を配車候補から外して点検を予約する')).toBeTruthy();
   });
 
   it('keeps card and search actions at the PH-OS 44px target size', () => {

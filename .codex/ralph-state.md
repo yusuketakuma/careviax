@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0228 JST
+
+- current task: harden master-hub vehicle freshness status and count alignment.
+- files inspected: `git status --short --branch --untracked-files=all`, `docs/design-gap-analysis-new.md` 13_master, `docs/uiux-improvement-plan.md` `/admin` master-hub row, `docs/ui-ux-design-guidelines.md`, local Next route-handler docs, `src/app/api/admin/master-hub/route.ts`, `src/types/master-hub.ts`, `src/app/(dashboard)/admin/master-hub-content.tsx`, related tests, and validation output.
+- files changed: `src/types/master-hub.ts`, `src/app/api/admin/master-hub/route.ts`, `src/app/api/admin/master-hub/route.test.ts`, `src/app/(dashboard)/admin/master-hub-content.tsx`, `src/app/(dashboard)/admin/master-hub-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: master-hub vehicle inspection deadlines in the past were still represented by the same due-soon freshness state, so the UI could show a deadline breach as an orange reminder instead of a blocked master-data state. Master count summaries also lacked the tabular-number alignment called out in the UI/UX plan.
+- security risks found: reduced stale/unsafe vehicle-master operation risk by returning an explicit expired freshness state for overdue inspection dates, mapping it to the blocked status token, and prioritizing expired masters in the summary. Existing auth, RLS org scoping, sensitive no-store responses, sanitized 500 handling, migrations, DB mutation scripts, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: reuses the existing vehicle-master aggregate and computes the day difference once. No new DB query, dependency, background job, external call, broad scan, render-heavy path, or unbounded loop was added.
+- validation commands: `pnpm vitest run src/app/api/admin/master-hub/route.test.ts 'src/app/(dashboard)/admin/master-hub-content.test.tsx' --reporter=dot`; `pnpm format:check`; `pnpm typecheck`.
+- validation results: focused Vitest passed `2` files / `13` tests; format check passed; typecheck passed including Next route type generation.
+- remaining work: broad master-management / patient-information objective remains open. Unrelated concurrent dirty changes appeared in `src/app/api/visit-routes/reorder/route.ts` and `src/app/api/visit-routes/reorder/route.test.ts`; they were inspected, preserved, and excluded from this master-hub slice.
+- next action: commit only the master-hub expired-status/count-alignment slice plus ledgers, then re-check status and continue the next master/patient gap.
+
 ### 20260701-0220 JST
 
 - current task: wire patient operational summaries into schedule list/detail/day-board APIs and schedule UI surfaces.

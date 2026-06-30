@@ -382,18 +382,31 @@ const authenticatedGET = withAuthContext(
         action_label: '点検を予約',
         action_href: '/admin/vehicles',
       };
-      if (
+      const inspectionDaysRemaining = nearestInspection
+        ? daysUntil(nearestInspection.deadline, now)
+        : null;
+      if (nearestInspection && inspectionDaysRemaining != null && inspectionDaysRemaining < 0) {
+        const overdueDays = Math.abs(inspectionDaysRemaining);
+        vehiclesCard = {
+          ...vehicleBase,
+          status: 'expired',
+          status_count: null,
+          issue_count: 1,
+          next_action_hint: `${nearestInspection.label}を配車候補から外して点検を予約する`,
+          note: `${nearestInspection.label}の点検期限 ${format(nearestInspection.deadline, 'M/d')} が${overdueDays}日過ぎています — 配車候補から除外して点検を予約してください`,
+        };
+      } else if (
         nearestInspection &&
-        daysUntil(nearestInspection.deadline, now) <= VEHICLE_INSPECTION_SOON_DAYS
+        inspectionDaysRemaining != null &&
+        inspectionDaysRemaining <= VEHICLE_INSPECTION_SOON_DAYS
       ) {
-        const remaining = daysUntil(nearestInspection.deadline, now);
         vehiclesCard = {
           ...vehicleBase,
           status: 'due_soon',
           status_count: null,
           issue_count: 1,
           next_action_hint: `${nearestInspection.label}の点検を予約する`,
-          note: `${nearestInspection.label}の点検期限 ${format(nearestInspection.deadline, 'M/d')}(あと${remaining}日) — 期限切れで配車候補から自動除外されます`,
+          note: `${nearestInspection.label}の点検期限 ${format(nearestInspection.deadline, 'M/d')}(あと${inspectionDaysRemaining}日) — 期限切れで配車候補から自動除外されます`,
         };
       } else if (unavailableVehicles.length > 0) {
         vehiclesCard = {

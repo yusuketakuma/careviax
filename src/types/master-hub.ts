@@ -6,8 +6,8 @@ import type { TodayOpsRail } from '@/types/today-ops-rail';
  * (docs/design-gap-analysis-new.md 13_master)。
  */
 
-/** 鮮度ステータス: 健全(緑)/ 確認中 N(橙)/ 期限接近(橙) */
-export type MasterHubStatus = 'healthy' | 'checking' | 'due_soon';
+/** 鮮度ステータス: 健全(緑)/ 確認中 N(橙)/ 期限接近(橙)/ 期限切れ(赤) */
+export type MasterHubStatus = 'healthy' | 'checking' | 'due_soon' | 'expired';
 
 export type MasterHubCard = {
   key:

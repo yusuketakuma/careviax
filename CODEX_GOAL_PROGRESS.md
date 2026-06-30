@@ -30,6 +30,30 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Master Hub Expired Vehicle Freshness - 2026-07-01 02:28 JST
+
+- Scope:
+  - Continued master-management hardening on `/api/admin/master-hub` and `/admin`.
+  - Focused on the UI/UX plan requirement that due-soon masters remain confirm-level while expired masters become blocked, plus count alignment in the master hub.
+- Fixed:
+  - Added `expired` to the master-hub freshness status contract.
+  - Vehicle inspections with a dedicated `next_inspection_date` in the past now return `status: "expired"` with a blocked next-action hint instead of sharing the due-soon state.
+  - The master-hub UI maps expired status to the blocked `StateBadge`, labels it `期限切れ`, and prioritizes expired masters in the decision summary.
+  - Master counts and summary issue counts now use `tabular-nums` for aligned scanning.
+- Safety:
+  - Reduces unsafe stale vehicle-master operation risk: an overdue vehicle inspection is now visibly blocked before schedule/route staff treat the vehicle as merely approaching a deadline.
+  - Preserves auth, RLS org scoping, sensitive no-store responses, sanitized failures, migrations, DB mutation scripts, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Reuses the existing vehicle aggregate and computes inspection day distance once.
+  - No new DB query, dependency, background job, external call, broad scan, render-heavy path, or unbounded loop was added.
+- Validation:
+  - `pnpm vitest run src/app/api/admin/master-hub/route.test.ts 'src/app/(dashboard)/admin/master-hub-content.test.tsx' --reporter=dot`: passed, `2` files / `13` tests.
+  - `pnpm format:check`: passed.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - Broad master-management / patient-information objective remains open.
+  - Concurrent unrelated dirty changes in `src/app/api/visit-routes/reorder/route.ts` and `src/app/api/visit-routes/reorder/route.test.ts` were preserved outside this slice.
+
 ### Schedule Patient Operational Summary Wiring - 2026-07-01 02:20 JST
 
 - Scope:
