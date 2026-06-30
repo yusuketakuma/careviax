@@ -30,6 +30,36 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Facility Unit Master Mutation Boundary - 2026-07-01 07:40 JST
+
+- Scope:
+  - Continued master-management hardening for facility unit masters under `/api/admin/facilities/[id]/units`.
+  - Focused on unit create/update/delete paths that drive patient residence assignment, facility visit grouping, and visit preparation context.
+- Fixed:
+  - Facility unit list/create/update/delete responses now consistently carry sensitive no-store headers and sanitized unexpected-error fallbacks.
+  - Facility id and unit id route params are normalized before opening a DB transaction.
+  - Facility unit creation now verifies the parent facility, creates the unit, and writes `facility_unit_created` audit evidence inside the same org RLS transaction.
+  - Facility unit update now performs org-scoped existence lookup, mutation, and `facility_unit_updated` audit evidence inside the same org RLS transaction.
+  - Facility unit deletion now checks active residences, deletes, and writes `facility_unit_deleted` audit evidence inside the same org RLS transaction.
+  - Tests lock no-store headers, audit payloads, malformed/non-object fail-fast behavior, transaction use, deletion block behavior, blank route-param rejection, and sanitized internal errors.
+- Safety:
+  - Reduces audit gaps, tenant-boundary drift, and cache/error ambiguity for facility unit masters that are referenced by patient residence, facility-batch, and visit-preparation flows.
+  - Preserves existing canVisit/canAdmin permissions, response shapes, duplicate-name conflict handling, patient-in-unit deletion block, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds only one audit write on successful create/update/delete and moves existing existence checks into the existing write transaction.
+  - Adds no new dependency, polling, background job, broad scan, render fan-out, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/admin/facilities/'[id]'/units/route.test.ts src/app/api/admin/facilities/'[id]'/units/'[unitId]'/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `12` tests.
+  - Scoped ESLint, scoped Prettier check, scoped diff-check, and full `git diff --check`: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- Remaining:
+  - Broad master-management and patient-information objective remains open.
+  - New unrelated dirty files appeared during this slice in report-share, escalation-rules, care-reports today workspace, and report types paths; they were preserved and left unstaged.
+  - Next high-value follow-ups remain auditing other admin master mutation routes for no-store/audit/RLS parity and patient detail stale-write preconditions.
+
 ### CareReport Reminder Dedupe/Snooze Backend - 2026-07-01 07:12 JST
 
 - Scope:
