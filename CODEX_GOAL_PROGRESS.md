@@ -21362,3 +21362,34 @@ Next loop:
   - `pnpm exec vitest run src/components/features/comments/comment-thread.test.tsx --reporter=dot --testTimeout=30000`: passed, `1` file / `6` tests, for read-only review of `1fbd4189`.
 - Remaining:
   - Commit this ledger-only update and continue to the next non-overlapping visit/report/interprofessional candidate.
+
+### Master Management API Path/Header Convergence — 2026-06-30 10:04 JST
+
+- Scope:
+  - Improved the root drug-master admin surface by replacing scattered inline master/stock API URL construction and manual org headers with shared helpers.
+  - Kept existing API response shapes, request payloads, query semantics, UI layout, and server behavior unchanged.
+- Fixed:
+  - Added `src/lib/drug-masters/api-paths.ts` for drug master collection/detail/generic recommendation/ingredient group endpoint construction.
+  - Added `src/lib/pharmacy-drug-stocks/api-paths.ts` for pharmacy stock, history, impact, usage-mismatch, bulk, copy, review, safety-follow-up, export, request, and template endpoint construction.
+  - Updated `drug-master-content.tsx` to delegate dynamic drug/request/template paths through helpers and to use `buildOrgHeaders` / `buildOrgJsonHeaders`.
+  - Added regression tests for empty-query compatibility, hostile ID encoding, exact dot-segment rejection, helper delegation, and sentinel org header usage.
+- Safety:
+  - Dynamic IDs now use the shared `encodePathSegment` path contract before fetch.
+  - Exact `.` / `..` route segments fail closed through the shared helper.
+  - Tenant header behavior is centralized for this master admin surface.
+  - No migration, live DB operation, external fetch, destructive command, or PHI contract change was run.
+- Review:
+  - Read-only verifier subagent found no regressions in URL shape, fail-closed behavior, helper/header convergence, or test strength.
+- Validation:
+  - Focused Vitest passed: `3` files / `72` tests.
+  - Scoped ESLint and Prettier check on the six owned files passed.
+  - `git diff --check` on tracked diffs passed; new helper files were covered by Prettier, ESLint, and Vitest.
+  - Raw dynamic master path/header grep returned no matches.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Broader master-management work can continue into other admin/import surfaces.
+  - Commit only the six drug-master helper/content files plus ledger hunks after codex2 review.
+  - Preserve unrelated patient-share-case WIP owned by codex2.

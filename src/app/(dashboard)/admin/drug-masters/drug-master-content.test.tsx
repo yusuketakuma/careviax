@@ -4,6 +4,17 @@ import type { ReactNode } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import {
+  buildDrugMasterApiPath,
+  buildDrugMasterGenericRecommendationsApiPath,
+  buildDrugMasterIngredientGroupApiPath,
+} from '@/lib/drug-masters/api-paths';
+import {
+  buildPharmacyDrugStockRequestApiPath,
+  buildPharmacyDrugStockTemplateApiPath,
+  buildPharmacyDrugStockTemplateApplyApiPath,
+} from '@/lib/pharmacy-drug-stocks/api-paths';
 import { MasterEditorView } from '../master-editor-view';
 import { DrugMasterContent, parseReorderPointInput } from './drug-master-content';
 
@@ -22,6 +33,7 @@ const {
   lastMutationOptions,
   invalidateQueriesMock,
   capturedQueryKeys,
+  capturedQueryOptions,
   detailDataMock,
   stockConfigDataMock,
   candidatesDataMock,
@@ -38,6 +50,10 @@ const {
   // slice4b: every useQuery call records its FULL queryKey here so filter tests can assert the
   // key shape reacts to the migrated Select state (state+queryKey, not DOM-only).
   capturedQueryKeys: [] as ReadonlyArray<unknown>[],
+  capturedQueryOptions: [] as Array<{
+    queryKey: readonly unknown[];
+    queryFn?: () => unknown;
+  }>,
   // slice4c: controllable payloads for the drug-detail panel queries so a test can render the
   // 採用後発薬 (preferred generic) Select. Default null/empty preserves the prior behavior
   // (the fallback `{ data: null }` branch) so every existing test is unaffected.
@@ -54,6 +70,39 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
 }));
 
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return {
+    ...actual,
+    buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
+    buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
+  };
+});
+
+vi.mock('@/lib/drug-masters/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/drug-masters/api-paths')>();
+  return {
+    ...actual,
+    buildDrugMasterApiPath: vi.fn(actual.buildDrugMasterApiPath),
+    buildDrugMasterGenericRecommendationsApiPath: vi.fn(
+      actual.buildDrugMasterGenericRecommendationsApiPath,
+    ),
+    buildDrugMasterIngredientGroupApiPath: vi.fn(actual.buildDrugMasterIngredientGroupApiPath),
+  };
+});
+
+vi.mock('@/lib/pharmacy-drug-stocks/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/pharmacy-drug-stocks/api-paths')>();
+  return {
+    ...actual,
+    buildPharmacyDrugStockRequestApiPath: vi.fn(actual.buildPharmacyDrugStockRequestApiPath),
+    buildPharmacyDrugStockTemplateApiPath: vi.fn(actual.buildPharmacyDrugStockTemplateApiPath),
+    buildPharmacyDrugStockTemplateApplyApiPath: vi.fn(
+      actual.buildPharmacyDrugStockTemplateApplyApiPath,
+    ),
+  };
+});
+
 vi.mock('@tanstack/react-query', () => ({
   useMutation: (options?: MutationOptions) => ({
     mutate: (...args: unknown[]) => {
@@ -63,8 +112,10 @@ vi.mock('@tanstack/react-query', () => ({
     isPending: false,
     variables: null,
   }),
-  useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => {
+  useQuery: (options: { queryKey: readonly unknown[]; queryFn?: () => unknown }) => {
+    const { queryKey } = options;
     capturedQueryKeys.push(queryKey as ReadonlyArray<unknown>);
+    capturedQueryOptions.push(options);
     const key = queryKey[0];
     if (queryErrorKeys.has(String(key))) {
       let refetch = refetchSpies.get(String(key));
@@ -566,6 +617,7 @@ describe('DrugMasterContent', () => {
     pendingRequestsMock.mockReturnValue([]);
     mutationMutateMock.mockClear();
     lastMutationOptions.current = null;
+    capturedQueryOptions.length = 0;
     capturedSelectItems.length = 0;
     detailDataMock.current = null;
     stockConfigDataMock.current = null;
@@ -768,6 +820,179 @@ describe('DrugMasterContent', () => {
       decision_note: '申請内容を確認して却下',
     });
   });
+
+  it('delegates dynamic drug-detail API paths and org headers to shared helpers', async () => {
+    const drugMasterId = 'drug/a b?x=y#z';
+    pendingRequestsMock.mockReturnValue([
+      {
+        id: 'request_1',
+        site_id: 'site_1',
+        drug_master_id: drugMasterId,
+        status: 'pending',
+        action_type: 'adopt',
+        requested_payload: { is_stocked: true },
+        reason: '新規採用候補',
+        created_at: '2026-05-27T00:00:00.000Z',
+      },
+    ]);
+    detailDataMock.current = {
+      id: drugMasterId,
+      yj_code: '9999999999',
+      receipt_code: null,
+      jan_code: null,
+      drug_name: '先発薬A',
+      drug_name_kana: null,
+      generic_name: 'イブプロフェン',
+      drug_price: 50,
+      unit: '錠',
+      dosage_form: null,
+      therapeutic_category: null,
+      manufacturer: null,
+      is_generic: false,
+      is_narcotic: false,
+      is_psychotropic: false,
+      is_high_risk: false,
+      outpatient_injection_eligible: false,
+      outpatient_injection_note: null,
+      is_lasa_risk: false,
+      tall_man_name: null,
+      lasa_group_key: null,
+      max_administration_days: null,
+      stock_config: null,
+      hot_code: null,
+      transitional_expiry_date: null,
+      package_inserts: [],
+      interactions_as_a: [],
+      interactions_as_b: [],
+    };
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ data: [], recommendations: [] }),
+    }));
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+
+    try {
+      render(<DrugMasterContent variant="formulary" />);
+      fireEvent.click(screen.getByText('採用追加'));
+
+      const latestQueryFn = (queryName: string, idIndex: number) => {
+        const option = capturedQueryOptions
+          .filter((candidate) => candidate.queryKey[0] === queryName)
+          .filter((candidate) => candidate.queryKey[idIndex] === drugMasterId)
+          .at(-1);
+        expect(option?.queryFn).toBeTruthy();
+        return option!.queryFn!;
+      };
+
+      vi.mocked(buildDrugMasterApiPath).mockReturnValueOnce('/api/drug-masters/__helper_detail__');
+      await latestQueryFn('drug-master-detail', 2)();
+      expect(buildDrugMasterApiPath).toHaveBeenCalledWith(drugMasterId);
+      expect(fetchMock).toHaveBeenLastCalledWith('/api/drug-masters/__helper_detail__', {
+        headers: sentinelHeaders,
+      });
+
+      vi.mocked(buildDrugMasterGenericRecommendationsApiPath).mockReturnValueOnce(
+        '/api/drug-masters/__helper_generic__',
+      );
+      await latestQueryFn('generic-recommendations', 3)();
+      expect(buildDrugMasterGenericRecommendationsApiPath).toHaveBeenCalledWith(
+        drugMasterId,
+        expect.any(URLSearchParams),
+      );
+      expect(fetchMock).toHaveBeenLastCalledWith('/api/drug-masters/__helper_generic__', {
+        headers: sentinelHeaders,
+      });
+
+      vi.mocked(buildDrugMasterIngredientGroupApiPath).mockReturnValueOnce(
+        '/api/drug-masters/__helper_ingredient__',
+      );
+      await latestQueryFn('ingredient-group', 3)();
+      expect(buildDrugMasterIngredientGroupApiPath).toHaveBeenCalledWith(
+        drugMasterId,
+        expect.any(URLSearchParams),
+      );
+      expect(fetchMock).toHaveBeenLastCalledWith('/api/drug-masters/__helper_ingredient__', {
+        headers: sentinelHeaders,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('delegates formulary decision and template mutations to shared path/header helpers', async () => {
+    const requestId = 'request/a b?x=y#z';
+    pendingRequestsMock.mockReturnValue([
+      {
+        id: requestId,
+        site_id: 'site_1',
+        drug_master_id: 'drug_1',
+        status: 'pending',
+        action_type: 'adopt',
+        requested_payload: { is_stocked: true },
+        reason: '新規採用候補',
+        created_at: '2026-05-27T00:00:00.000Z',
+      },
+    ]);
+    const jsonHeaders = {
+      'Content-Type': 'application/json',
+      'x-test-helper': 'buildOrgJsonHeaders',
+    };
+    const orgHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(jsonHeaders);
+    vi.mocked(buildOrgHeaders).mockReturnValue(orgHeaders);
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ request: { status: 'approved' }, data: {}, deleted: true }),
+    }));
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+
+    try {
+      render(<DrugMasterContent variant="formulary" />);
+
+      fireEvent.click(screen.getByRole('button', { name: '承認' }));
+      fireEvent.click(screen.getByRole('button', { name: '承認' }));
+      const [decisionPayload] = mutationMutateMock.mock.calls.at(-1)!;
+      vi.mocked(buildPharmacyDrugStockRequestApiPath).mockReturnValueOnce(
+        '/api/pharmacy-drug-stock-requests/__helper_request__',
+      );
+      await lastMutationOptions.current!.mutationFn!(decisionPayload);
+      expect(buildPharmacyDrugStockRequestApiPath).toHaveBeenCalledWith(requestId);
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        '/api/pharmacy-drug-stock-requests/__helper_request__',
+        expect.objectContaining({ method: 'PATCH', headers: jsonHeaders }),
+      );
+
+      fireEvent.change(screen.getByRole('combobox', { name: '適用する採用品テンプレート' }), {
+        target: { value: 'template_1' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /適用差分確認/ }));
+      vi.mocked(buildPharmacyDrugStockTemplateApplyApiPath).mockReturnValueOnce(
+        '/api/pharmacy-drug-stock-templates/__helper_template__/apply',
+      );
+      await lastMutationOptions.current!.mutationFn!({ dryRun: true });
+      expect(buildPharmacyDrugStockTemplateApplyApiPath).toHaveBeenCalledWith('template_1');
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        '/api/pharmacy-drug-stock-templates/__helper_template__/apply',
+        expect.objectContaining({ method: 'POST', headers: jsonHeaders }),
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: '在宅内科 標準セット（12件） を削除' }));
+      fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+      vi.mocked(buildPharmacyDrugStockTemplateApiPath).mockReturnValueOnce(
+        '/api/pharmacy-drug-stock-templates/__helper_template__',
+      );
+      await lastMutationOptions.current!.mutationFn!();
+      expect(buildPharmacyDrugStockTemplateApiPath).toHaveBeenCalledWith('template_1');
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        '/api/pharmacy-drug-stock-templates/__helper_template__',
+        expect.objectContaining({ method: 'DELETE', headers: orgHeaders }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe('DrugMasterContent formulary select migration (slice4a)', () => {
@@ -777,6 +1002,7 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
     pendingRequestsMock.mockReturnValue([]);
     mutationMutateMock.mockClear();
     lastMutationOptions.current = null;
+    capturedQueryOptions.length = 0;
     capturedSelectItems.length = 0;
     afterSelectChangeHook.current = null;
     invalidateQueriesMock.mockReset();
@@ -1638,6 +1864,7 @@ describe('DrugMasterContent filter select migration (slice4b)', () => {
     lastMutationOptions.current = null;
     capturedSelectItems.length = 0;
     capturedQueryKeys.length = 0;
+    capturedQueryOptions.length = 0;
     afterSelectChangeHook.current = null;
     invalidateQueriesMock.mockReset();
     invalidateQueriesMock.mockImplementation(async () => undefined);
@@ -1907,6 +2134,7 @@ describe('DrugMasterContent preferred-generic select migration (slice4c)', () =>
     lastMutationOptions.current = null;
     capturedSelectItems.length = 0;
     capturedQueryKeys.length = 0;
+    capturedQueryOptions.length = 0;
     afterSelectChangeHook.current = null;
     invalidateQueriesMock.mockReset();
     invalidateQueriesMock.mockImplementation(async () => undefined);
@@ -2019,6 +2247,7 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     detailDataMock.current = null;
     stockConfigDataMock.current = null;
     candidatesDataMock.current = [];
+    capturedQueryOptions.length = 0;
     queryErrorKeys.clear();
     refetchSpies.clear();
   });

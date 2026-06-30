@@ -50,8 +50,32 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import {
+  buildDrugMasterApiPath,
+  buildDrugMasterGenericRecommendationsApiPath,
+  buildDrugMasterIngredientGroupApiPath,
+  buildDrugMastersApiPath,
+} from '@/lib/drug-masters/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
+import {
+  buildPharmacyDrugStockBulkApiPath,
+  buildPharmacyDrugStockCopyApiPath,
+  buildPharmacyDrugStockExportApiPath,
+  buildPharmacyDrugStockHistoryApiPath,
+  buildPharmacyDrugStockImpactApiPath,
+  buildPharmacyDrugStockRequestApiPath,
+  buildPharmacyDrugStockRequestsApiPath,
+  buildPharmacyDrugStockReviewApiPath,
+  buildPharmacyDrugStockSafetyFollowUpApiPath,
+  buildPharmacyDrugStocksApiPath,
+  buildPharmacyDrugStockTemplateApiPath,
+  buildPharmacyDrugStockTemplateApplyApiPath,
+  buildPharmacyDrugStockTemplateCsvApiPath,
+  buildPharmacyDrugStockTemplatesApiPath,
+  buildPharmacyDrugStockUsageMismatchApiPath,
+} from '@/lib/pharmacy-drug-stocks/api-paths';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import type { DrugMasterImportStatusResponse } from '@/types/drug-master-import-status';
 import {
@@ -904,7 +928,7 @@ function DrugMasterOperationalContent({
     queryKey: ['pharmacy-sites', orgId, 'stock-setup'],
     queryFn: async () => {
       const res = await fetch('/api/pharmacy-sites', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('拠点一覧の取得に失敗しました');
       return res.json() as Promise<{ data: PharmacySiteOption[] }>;
@@ -979,8 +1003,8 @@ function DrugMasterOperationalContent({
   } = useQuery({
     queryKey: ['drug-masters', orgId, params],
     queryFn: async () => {
-      const res = await fetch(`/api/drug-masters?${params}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildDrugMastersApiPath(params), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('医薬品マスターの取得に失敗しました');
       return res.json() as Promise<{
@@ -1001,7 +1025,7 @@ function DrugMasterOperationalContent({
     queryKey: ['drug-master-status'],
     queryFn: async () => {
       const res = await fetch('/api/drug-master-imports/status', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('マスターステータスの取得に失敗しました');
       return res.json() as Promise<DrugMasterImportStatusResponse>;
@@ -1022,7 +1046,7 @@ function DrugMasterOperationalContent({
       if (importLogSourceFilter !== 'all') logParams.set('source', importLogSourceFilter);
       if (importLogStatusFilter !== 'all') logParams.set('status', importLogStatusFilter);
       const res = await fetch(`/api/drug-master-import-logs?${logParams}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('取込履歴の取得に失敗しました');
       return res.json() as Promise<{ data: DrugMasterImportLog[] }>;
@@ -1034,8 +1058,9 @@ function DrugMasterOperationalContent({
   const detailQuery = useQuery({
     queryKey: ['drug-master-detail', orgId, selectedDrugId],
     queryFn: async () => {
-      const res = await fetch(`/api/drug-masters/${selectedDrugId}`, {
-        headers: { 'x-org-id': orgId },
+      if (!selectedDrugId) throw new Error('医薬品を選択してください');
+      const res = await fetch(buildDrugMasterApiPath(selectedDrugId), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
         throw new Error('医薬品詳細の取得に失敗しました');
@@ -1053,8 +1078,8 @@ function DrugMasterOperationalContent({
         site_id: effectiveSelectedSiteId,
         drug_master_id: selectedDrugId ?? '',
       });
-      const res = await fetch(`/api/pharmacy-drug-stocks?${params}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildPharmacyDrugStocksApiPath(params), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('採用品設定の取得に失敗しました');
       return res.json() as Promise<{ data: PharmacyDrugStockConfig | null }>;
@@ -1071,8 +1096,8 @@ function DrugMasterOperationalContent({
         drug_master_id: selectedDrugId ?? '',
         limit: '10',
       });
-      const res = await fetch(`/api/pharmacy-drug-stocks/history?${params}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildPharmacyDrugStockHistoryApiPath(params), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('採用品履歴の取得に失敗しました');
       return res.json() as Promise<{ data: PharmacyDrugStockHistoryItem[] }>;
@@ -1089,8 +1114,8 @@ function DrugMasterOperationalContent({
         review_due: 'true',
         limit: '200',
       });
-      const res = await fetch(`/api/pharmacy-drug-stocks?${params}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildPharmacyDrugStocksApiPath(params), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('採用薬レビュー対象の取得に失敗しました');
       return res.json() as Promise<{ data: FormularyStockSummaryRow[] }>;
@@ -1107,8 +1132,8 @@ function DrugMasterOperationalContent({
         missing_reorder_point: 'true',
         limit: '200',
       });
-      const res = await fetch(`/api/pharmacy-drug-stocks?${params}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildPharmacyDrugStocksApiPath(params), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('在庫下限未設定の取得に失敗しました');
       return res.json() as Promise<{ data: FormularyStockSummaryRow[] }>;
@@ -1127,8 +1152,8 @@ function DrugMasterOperationalContent({
         queue: impactQueue,
         queue_limit: '25',
       });
-      const res = await fetch(`/api/pharmacy-drug-stocks/impact?${params}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildPharmacyDrugStockImpactApiPath(params), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('採用薬影響レビューの取得に失敗しました');
       return res.json() as Promise<FormularyImpactResponse>;
@@ -1146,8 +1171,8 @@ function DrugMasterOperationalContent({
         frequent_threshold: '2',
         limit: '10',
       });
-      const res = await fetch(`/api/pharmacy-drug-stocks/usage-mismatch?${params}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildPharmacyDrugStockUsageMismatchApiPath(params), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('処方・採用品不一致の取得に失敗しました');
       return res.json() as Promise<FormularyUsageMismatchResponse>;
@@ -1165,8 +1190,8 @@ function DrugMasterOperationalContent({
         overdue_days: '7',
         limit: '50',
       });
-      const res = await fetch(`/api/pharmacy-drug-stock-requests?${params}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildPharmacyDrugStockRequestsApiPath(params), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('採用品変更申請の取得に失敗しました');
       return res.json() as Promise<FormularyChangeRequestListResponse>;
@@ -1181,8 +1206,8 @@ function DrugMasterOperationalContent({
       const params = new URLSearchParams({ limit: '50' });
       const query = debouncedTemplateSearchQuery;
       if (query) params.set('q', query);
-      const res = await fetch(`/api/pharmacy-drug-stock-templates?${params}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildPharmacyDrugStockTemplatesApiPath(params), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('採用品テンプレートの取得に失敗しました');
       return res.json() as Promise<{ data: FormularyTemplateItem[] }>;
@@ -1207,8 +1232,8 @@ function DrugMasterOperationalContent({
         limit: '20',
         includeTotal: 'false',
       });
-      const res = await fetch(`/api/drug-masters?${params}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildDrugMastersApiPath(params), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('採用後発薬候補の取得に失敗しました');
       return res.json() as Promise<{ data: GenericCandidateOption[] }>;
@@ -1224,9 +1249,9 @@ function DrugMasterOperationalContent({
       const params = new URLSearchParams({ limit: '8' });
       if (effectiveSelectedSiteId) params.set('site_id', effectiveSelectedSiteId);
       const res = await fetch(
-        `/api/drug-masters/${selectedDrugId}/generic-recommendations?${params}`,
+        buildDrugMasterGenericRecommendationsApiPath(selectedDrugId, params),
         {
-          headers: { 'x-org-id': orgId },
+          headers: buildOrgHeaders(orgId),
         },
       );
       if (!res.ok) throw new Error('推奨後発品の取得に失敗しました');
@@ -1244,8 +1269,8 @@ function DrugMasterOperationalContent({
       }
       const params = new URLSearchParams({ limit: '50' });
       if (effectiveSelectedSiteId) params.set('site_id', effectiveSelectedSiteId);
-      const res = await fetch(`/api/drug-masters/${selectedDrugId}/ingredient-group?${params}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildDrugMasterIngredientGroupApiPath(selectedDrugId, params), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('同一成分グループの取得に失敗しました');
       return res.json() as Promise<IngredientGroupResponse>;
@@ -1263,10 +1288,7 @@ function DrugMasterOperationalContent({
 
       const res = await fetch(definition.endpoint, {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(definition.body ?? {}),
       });
       const json = await res.json().catch(() => null);
@@ -1311,7 +1333,7 @@ function DrugMasterOperationalContent({
     mutationFn: async () => {
       const res = await fetch('/api/jobs/drug-master-auto-refresh', {
         method: 'POST',
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
@@ -1347,7 +1369,7 @@ function DrugMasterOperationalContent({
     mutationFn: async () => {
       const res = await fetch('/api/jobs/drug-master-freshness-check', {
         method: 'POST',
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
@@ -1385,12 +1407,9 @@ function DrugMasterOperationalContent({
       follow_up_reason?: string | null;
       follow_up_due_date?: string | null;
     }) => {
-      const res = await fetch('/api/pharmacy-drug-stocks', {
+      const res = await fetch(buildPharmacyDrugStocksApiPath(), {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
       const json = await res.json().catch(() => null);
@@ -1427,12 +1446,9 @@ function DrugMasterOperationalContent({
       };
       reason?: string | null;
     }) => {
-      const res = await fetch('/api/pharmacy-drug-stock-requests', {
+      const res = await fetch(buildPharmacyDrugStockRequestsApiPath(), {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
       const json = await res.json().catch(() => null);
@@ -1456,12 +1472,9 @@ function DrugMasterOperationalContent({
       decision: 'approve' | 'reject';
       decision_note?: string | null;
     }) => {
-      const res = await fetch(`/api/pharmacy-drug-stock-requests/${payload.request_id}`, {
+      const res = await fetch(buildPharmacyDrugStockRequestApiPath(payload.request_id), {
         method: 'PATCH',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           decision: payload.decision,
           decision_note: payload.decision_note ?? null,
@@ -1495,12 +1508,9 @@ function DrugMasterOperationalContent({
 
   const runBulkCsvMutation = async (dryRun: boolean) => {
     if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
-    const res = await fetch('/api/pharmacy-drug-stocks/bulk', {
+    const res = await fetch(buildPharmacyDrugStockBulkApiPath(), {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-org-id': orgId,
-      },
+      headers: buildOrgJsonHeaders(orgId),
       body: JSON.stringify({
         site_id: effectiveSelectedSiteId,
         csv: bulkCsv,
@@ -1597,12 +1607,9 @@ function DrugMasterOperationalContent({
       const requestTargetSiteId = effectiveSelectedSiteId;
       const requestSourceSiteId = copySourceSiteId;
       const requestOverwrite = copyOverwrite;
-      const res = await fetch('/api/pharmacy-drug-stocks/copy', {
+      const res = await fetch(buildPharmacyDrugStockCopyApiPath(), {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           source_site_id: copySourceSiteId,
           target_site_id: effectiveSelectedSiteId,
@@ -1659,12 +1666,9 @@ function DrugMasterOperationalContent({
       if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
       const name = templateName.trim();
       if (!name) throw new Error('テンプレート名を入力してください');
-      const res = await fetch('/api/pharmacy-drug-stock-templates', {
+      const res = await fetch(buildPharmacyDrugStockTemplatesApiPath(), {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           name,
           source_site_id: effectiveSelectedSiteId,
@@ -1694,12 +1698,9 @@ function DrugMasterOperationalContent({
       const requestTargetSiteId = effectiveSelectedSiteId;
       const requestTemplateId = selectedTemplateId;
       const requestOverwrite = copyOverwrite;
-      const res = await fetch(`/api/pharmacy-drug-stock-templates/${selectedTemplateId}/apply`, {
+      const res = await fetch(buildPharmacyDrugStockTemplateApplyApiPath(selectedTemplateId), {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           target_site_id: effectiveSelectedSiteId,
           overwrite: copyOverwrite,
@@ -1752,9 +1753,9 @@ function DrugMasterOperationalContent({
   const deleteTemplateMutation = useMutation({
     mutationFn: async () => {
       if (!selectedTemplateId) throw new Error('テンプレートを選択してください');
-      const res = await fetch(`/api/pharmacy-drug-stock-templates/${selectedTemplateId}`, {
+      const res = await fetch(buildPharmacyDrugStockTemplateApiPath(selectedTemplateId), {
         method: 'DELETE',
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(json?.message ?? '採用品テンプレートの削除に失敗しました');
@@ -1777,12 +1778,9 @@ function DrugMasterOperationalContent({
   const reviewMutation = useMutation({
     mutationFn: async () => {
       if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
-      const res = await fetch('/api/pharmacy-drug-stocks/review', {
+      const res = await fetch(buildPharmacyDrugStockReviewApiPath(), {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ site_id: effectiveSelectedSiteId }),
       });
       const json = await res.json().catch(() => null);
@@ -1804,12 +1802,9 @@ function DrugMasterOperationalContent({
   const safetyFollowUpMutation = useMutation({
     mutationFn: async () => {
       if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
-      const res = await fetch('/api/pharmacy-drug-stocks/safety-follow-up', {
+      const res = await fetch(buildPharmacyDrugStockSafetyFollowUpApiPath(), {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           site_id: effectiveSelectedSiteId,
           queue: 'all',
@@ -1848,8 +1843,8 @@ function DrugMasterOperationalContent({
         site_id: effectiveSelectedSiteId,
         purpose: exportPurpose,
       });
-      const res = await fetch(`/api/pharmacy-drug-stocks/export?${params}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildPharmacyDrugStockExportApiPath(params), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
         const json = await res.json().catch(() => null);
@@ -1876,8 +1871,8 @@ function DrugMasterOperationalContent({
       const params = new URLSearchParams();
       if (effectiveSelectedSiteId) params.set('site_id', effectiveSelectedSiteId);
       const query = params.toString();
-      const res = await fetch(`/api/pharmacy-drug-stocks/template${query ? `?${query}` : ''}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildPharmacyDrugStockTemplateCsvApiPath(query || undefined), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
         const json = await res.json().catch(() => null);
