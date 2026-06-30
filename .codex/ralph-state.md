@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0823 JST
+
+- current task: converge PCA pump master UI path and org-header construction on shared helpers.
+- files inspected: `git status --short --branch --untracked-files=all`, `git log --oneline -n 12`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, `docs/ui-ux-design-guidelines.md`, gbrain search for master-management context, `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`, `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx`, `src/lib/pca-pumps/api-paths.ts`, `src/lib/pca-pumps/api-paths.test.ts`, `src/lib/prescriber-institutions/api-paths.ts`, `src/lib/prescriber-institutions/api-paths.test.ts`, `src/lib/api/org-headers.ts`, focused diffs, and validation output.
+- files changed: `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`, `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: the PCA pump master UI still assembled `x-org-id` and JSON headers inline across list, create, rental, return-inspection, and maintenance mutations despite shared org-header helpers already existing. It also kept the prescriber institution option lookup as an inline raw path.
+- security risks found: reduced tenant-header drift in a patient-treatment equipment master by routing PCA pump reads and mutations through `buildOrgHeaders` / `buildOrgJsonHeaders`, while preserving shared encoded path helpers for dynamic pump/rental ids. Existing UI layout, form validation, query keys, payloads, hostile id encoding, dot-segment fail-closed behavior, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: no meaningful performance issue was introduced. The change only centralizes local string/header construction and adds no request, backend query, dependency, polling, background job, render fan-out, broad scan, or unbounded loop.
+- validation commands: `pnpm exec vitest run src/app/'(dashboard)'/admin/pca-pumps/pca-pumps-content.test.tsx src/lib/pca-pumps/api-paths.test.ts src/lib/prescriber-institutions/api-paths.test.ts --reporter=dot --testTimeout=60000`; scoped `pnpm exec prettier --check`; scoped `pnpm exec eslint --max-warnings=0`; scoped `git diff --check`; `pnpm typecheck --pretty false`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`; `pnpm lint`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: focused PCA pump UI/path-helper suite passed `3` files / `33` tests; scoped Prettier check passed; scoped ESLint passed; scoped diff-check passed; full typecheck passed; no-unused passed; full lint passed; full format check passed; full diff-check passed.
+- remaining work: broad master-management and patient-information objective remains active. Separate report deep-link dirty files and pre-existing patient-condition ledger review updates remain outside this PCA slice and were preserved.
+- next action: stage only PCA pump content/test files plus this PCA ledger hunk, commit, send agmsg FYI, then re-check dirty ownership before selecting the next bounded master/patient gap.
+
 ### 20260701-0810 JST
 
 - current task: add optimistic stale-write protection, field revision evidence, and redacted audit logging to patient condition replacement.

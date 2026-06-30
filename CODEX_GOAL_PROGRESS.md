@@ -30,6 +30,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### PCA Pump Master Helper Boundary - 2026-07-01 08:23 JST
+
+- Scope:
+  - Continued master-management and patient-treatment equipment hardening for `/admin/pca-pumps`.
+  - Focused on API path and tenant-header construction for PCA pump inventory, rental, return-inspection, maintenance status, and institution option lookups.
+- Fixed:
+  - PCA pump list, open rental list, return-inspection backlog, and prescriber institution option fetches now use shared org-header helpers.
+  - PCA pump create, rental create, rental return/cancel, pump status update, and return-inspection save now use `buildOrgJsonHeaders`.
+  - PCA pump/rental collection mutations now call shared path builders instead of raw collection constants at the call site.
+  - Prescriber institution lookup now uses the shared collection path constant instead of an inline raw path.
+  - Tests lock helper delegation with sentinel headers so raw inline `x-org-id` construction regresses visibly.
+- Safety:
+  - Reduces tenant-header drift in a core equipment master used around PCA pump lending, return inspection, and maintenance status decisions.
+  - Preserves existing UI layout, form validation, query keys, payloads, hostile id encoding, dot-segment fail-closed behavior, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Header/path helper convergence only changes local string/header construction.
+  - Adds no network request, backend query, dependency, polling, background job, render fan-out, broad scan, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/'(dashboard)'/admin/pca-pumps/pca-pumps-content.test.tsx src/lib/pca-pumps/api-paths.test.ts src/lib/prescriber-institutions/api-paths.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `33` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on PCA pump files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master-management and patient-information objective remains open.
+  - Separate report deep-link dirty files and pre-existing patient-condition ledger review updates are preserved outside this PCA slice.
+
 ### CareReport Family Contact Send Source - 2026-07-01 08:09 JST
 
 - Scope:
