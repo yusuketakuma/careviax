@@ -1,5 +1,10 @@
 import { Metadata } from 'next';
-import { MasterEditorView } from '../master-editor-view';
+import { Suspense } from 'react';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import { getAdminFacilitiesShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
+import { PageScaffold } from '@/components/layout/page-scaffold';
+import { Loading } from '@/components/ui/loading';
+import { FacilitiesContent } from './facilities-content';
 
 export const metadata: Metadata = {
   title: '施設マスター — PH-OS',
@@ -7,11 +12,17 @@ export const metadata: Metadata = {
 
 export default function FacilitiesPage() {
   return (
-    <MasterEditorView
-      activeCategory="施設"
-      listTitle="施設一覧"
-      itemPrefix="施設"
-      testId="facility-master-editor"
-    />
+    <PageScaffold>
+      <AdminPageHeader
+        title="施設マスター"
+        description="患者居宅、訪問条件、施設担当者を管理し、訪問計画と連携先連絡に反映します。"
+        shortcuts={getAdminFacilitiesShortcutLinks()}
+        supportingContent={null}
+      />
+
+      <Suspense fallback={<Loading />}>
+        <FacilitiesContent />
+      </Suspense>
+    </PageScaffold>
   );
 }
