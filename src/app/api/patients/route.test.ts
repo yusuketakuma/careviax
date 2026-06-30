@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
+  authPlumbingFailureRef,
   withAuthContextMock,
   patientFindManyMock,
   patientCreateMock,
@@ -23,7 +24,9 @@ const {
   careCaseCreateMock,
   careTeamLinkCreateManyMock,
   validateOrgReferencesMock,
+  notifyWebhookEventForOrgMock,
 } = vi.hoisted(() => ({
+  authPlumbingFailureRef: { current: null as Error | null },
   withAuthContextMock: vi.fn(),
   patientFindManyMock: vi.fn(),
   patientCreateMock: vi.fn(),
@@ -45,6 +48,7 @@ const {
   careCaseCreateMock: vi.fn(),
   careTeamLinkCreateManyMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
+  notifyWebhookEventForOrgMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -67,6 +71,9 @@ vi.mock('@/lib/auth/context', () => ({
     ) => {
       if (req.authResponse) {
         return Promise.resolve(req.authResponse);
+      }
+      if (authPlumbingFailureRef.current) {
+        throw authPlumbingFailureRef.current;
       }
 
       return handler(
@@ -111,6 +118,10 @@ vi.mock('@/server/services/patient-risk', () => ({
   listPatientRiskSummaries: listPatientRiskSummariesMock,
 }));
 
+vi.mock('@/server/services/outbound-webhook', () => ({
+  notifyWebhookEventForOrg: notifyWebhookEventForOrgMock,
+}));
+
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
@@ -152,13 +163,16 @@ function createAuthenticatedRequest(
   return Object.assign(new NextRequest(url, init), auth);
 }
 
-function createAuthFailureRequest(status: 401 | 403) {
-  return Object.assign(new NextRequest('http://localhost/api/patients?view=match&q=青葉'), {
-    authResponse: Response.json(
-      { code: status === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN', message: '認証エラー' },
-      { status },
-    ),
-  }) as AuthenticatedTestRequest;
+function createAuthFailureRequest(status: 401 | 403, method: 'GET' | 'POST' = 'GET') {
+  return Object.assign(
+    new NextRequest('http://localhost/api/patients?view=match&q=青葉', { method }),
+    {
+      authResponse: Response.json(
+        { code: status === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN', message: '認証エラー' },
+        { status },
+      ),
+    },
+  ) as AuthenticatedTestRequest;
 }
 
 function createJsonRequest(body: unknown, auth?: { orgId: string; userId: string; role: string }) {
@@ -193,6 +207,7 @@ function expectSensitiveNoStore(response: Response) {
 describe('/api/patients GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authPlumbingFailureRef.current = null;
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-20T12:00:00.000Z'));
     patientCreateMock.mockResolvedValue({ id: 'patient_new' });
@@ -204,6 +219,7 @@ describe('/api/patients GET', () => {
     careCaseCreateMock.mockResolvedValue({ id: 'case_new' });
     careTeamLinkCreateManyMock.mockResolvedValue({ count: 2 });
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
+    notifyWebhookEventForOrgMock.mockResolvedValue([]);
     getFacilityVisitDefaultsMock.mockResolvedValue(null);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -1495,6 +1511,7 @@ describe('/api/patients GET', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(assertFacilityReferenceMock).toHaveBeenCalled();
     expect(patientCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1588,6 +1605,12 @@ describe('/api/patients GET', () => {
         ]),
       }),
     );
+    expect(notifyWebhookEventForOrgMock).toHaveBeenCalledWith('org_1', 'patient.created', {
+      patientId: 'patient_new',
+    });
+    const webhookPayload = notifyWebhookEventForOrgMock.mock.calls[0]?.[2] ?? {};
+    expect(webhookPayload).not.toHaveProperty('name');
+    expect(JSON.stringify(webhookPayload)).not.toContain('訪問 花子');
   });
 
   it('validates and persists patient-level care team assignments on creation', async () => {
@@ -1611,6 +1634,7 @@ describe('/api/patients GET', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
       pharmacist_ids: ['pharmacist_primary'],
       staff_ids: ['staff_primary', 'staff_backup'],
@@ -1650,6 +1674,7 @@ describe('/api/patients GET', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '指定されたスタッフはこの組織に所属していません',
@@ -1660,6 +1685,7 @@ describe('/api/patients GET', () => {
     expect(patientFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientCreateMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
   it('returns 409 before creating when a patient identity duplicate is not acknowledged', async () => {
@@ -1683,6 +1709,7 @@ describe('/api/patients GET', () => {
     ))!;
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       details: {
@@ -1692,6 +1719,7 @@ describe('/api/patients GET', () => {
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientCreateMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
   it('creates and returns a warning when an identity duplicate is acknowledged', async () => {
@@ -1720,7 +1748,9 @@ describe('/api/patients GET', () => {
     ))!;
 
     expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toMatchObject({
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
       id: 'patient_new',
       warnings: [
         {
@@ -1729,10 +1759,18 @@ describe('/api/patients GET', () => {
         },
       ],
       metadata: {
-        duplicate_candidates: [expect.objectContaining({ id: 'patient_existing' })],
+        duplicate_acknowledged: true,
+        duplicate_candidate_count: 1,
       },
     });
+    expect(body.metadata).not.toHaveProperty('duplicate_candidates');
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('patient_existing');
+    expect(bodyText).not.toContain('1944-04-01');
     expect(patientCreateMock).toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).toHaveBeenCalledWith('org_1', 'patient.created', {
+      patientId: 'patient_new',
+    });
   });
 
   it('rejects malformed patient contact numbers before creating a patient', async () => {
@@ -1756,24 +1794,29 @@ describe('/api/patients GET', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientCreateMock).not.toHaveBeenCalled();
     expect(patientSchedulePreferenceCreateMock).not.toHaveBeenCalled();
     expect(careTeamLinkCreateManyMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object request bodies before creating a patient', async () => {
     const response = (await POST(createJsonRequest(['unexpected'])))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientCreateMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON request bodies before creating a patient', async () => {
     const response = (await POST(createMalformedJsonRequest()))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -1783,6 +1826,7 @@ describe('/api/patients GET', () => {
     expect(residenceCreateMock).not.toHaveBeenCalled();
     expect(contactPartyCreateManyMock).not.toHaveBeenCalled();
     expect(careCaseCreateMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object intake payloads before creating a patient', async () => {
@@ -1797,8 +1841,80 @@ describe('/api/patients GET', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientCreateMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+  });
+
+  it.each([401, 403] as const)(
+    'adds no-store headers to patient POST auth failure %s',
+    async (status) => {
+      const response = (await POST(createAuthFailureRequest(status, 'POST')))!;
+
+      expect(response.status).toBe(status);
+      expectSensitiveNoStore(response);
+      expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+      expect(patientFindManyMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(patientCreateMock).not.toHaveBeenCalled();
+      expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('returns a fixed sensitive no-store 500 when patient creation fails unexpectedly', async () => {
+    const rawErrorMessage = 'create patient failed for 患者A birth=1944-04-01 token=secret';
+    patientFindManyMock.mockResolvedValueOnce([]);
+    patientCreateMock.mockRejectedValueOnce(new Error(rawErrorMessage));
+
+    const response = (await POST(
+      createJsonRequest({
+        name: '訪問 花子',
+        name_kana: 'ホウモン ハナコ',
+        birth_date: '1944-04-01',
+        gender: 'female',
+      }),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain(rawErrorMessage);
+    expect(bodyText).not.toContain('患者A');
+    expect(bodyText).not.toContain('token=secret');
+    expect(residenceCreateMock).not.toHaveBeenCalled();
+    expect(contactPartyCreateManyMock).not.toHaveBeenCalled();
+    expect(patientConditionCreateManyMock).not.toHaveBeenCalled();
+    expect(careCaseCreateMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a fixed sensitive no-store 500 when patient POST auth plumbing fails', async () => {
+    authPlumbingFailureRef.current = new Error(
+      'auth plumbing failed for patient=患者A token=secret',
+    );
+
+    const response = (await POST(
+      createJsonRequest({
+        name: '訪問 花子',
+        name_kana: 'ホウモン ハナコ',
+        birth_date: '1944-04-01',
+        gender: 'female',
+      }),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('患者A');
+    expect(bodyText).not.toContain('token=secret');
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientCreateMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
   it('copies facility acceptance window into schedule preferences on patient creation', async () => {
@@ -1822,6 +1938,7 @@ describe('/api/patients GET', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(getFacilityVisitDefaultsMock).toHaveBeenCalledWith(
       expect.objectContaining({
         patient: expect.any(Object),

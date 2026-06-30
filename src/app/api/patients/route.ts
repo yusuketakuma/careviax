@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { conflict, internalError, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -268,12 +269,13 @@ const authenticatedGET = withAuthContext(
 export const GET: typeof authenticatedGET = async (req, routeContext) => {
   try {
     return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch {
+  } catch (err) {
+    unstable_rethrow(err);
     return withSensitiveNoStore(internalError());
   }
 };
 
-export const POST = withAuthContext(
+const authenticatedPOST = withAuthContext(
   async (req, ctx) => {
     const raw = await readJsonObjectRequestBody(req);
     if (!raw) {
@@ -354,7 +356,8 @@ export const POST = withAuthContext(
                 ]
               : [],
           metadata: {
-            duplicate_candidates: duplicates,
+            duplicate_acknowledged: duplicateAcknowledged,
+            duplicate_candidate_count: duplicates.length,
           },
         },
         201,
@@ -374,3 +377,12 @@ export const POST = withAuthContext(
     message: '患者情報の作成権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

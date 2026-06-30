@@ -1272,7 +1272,6 @@ export async function createPatientWithIntake(orgId: string, data: CreatePatient
 
   await notifyWebhookEventForOrg(orgId, 'patient.created', {
     patientId: patient.id,
-    name: patient.name,
     ...(patient.created_at instanceof Date ? { createdAt: patient.created_at.toISOString() } : {}),
   });
 
