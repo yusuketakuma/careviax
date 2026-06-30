@@ -1164,7 +1164,15 @@ describe('/api/visit-schedules/day-board', () => {
         vehicle_code: true,
         travel_mode: true,
         max_stops: true,
+        max_route_duration_minutes: true,
         available: true,
+        site: {
+          select: {
+            address: true,
+            lat: true,
+            lng: true,
+          },
+        },
       },
     });
   });
@@ -1334,6 +1342,74 @@ describe('/api/visit-schedules/day-board', () => {
         recommendation_reason: '本日の上限に到達',
       }),
     ]);
+  });
+
+  it('surfaces vehicle route duration over-limit status for assigned vehicles', async () => {
+    membershipFindManyMock.mockResolvedValue([
+      { role: 'pharmacist', user: { id: 'user_1', name: '山田 太郎' } },
+    ]);
+    visitScheduleFindManyMock.mockResolvedValue([
+      {
+        id: 'visit_far_1',
+        case_id: 'case_1',
+        cycle_id: null,
+        pharmacist_id: 'user_1',
+        visit_type: 'regular',
+        schedule_status: 'planned',
+        scheduled_date: new Date('2026-06-12T00:00:00.000Z'),
+        carry_items_status: null,
+        priority: 'normal',
+        site_id: 'site_1',
+        route_order: 1,
+        vehicle_resource_id: 'vehicle_1',
+        vehicle_resource: { id: 'vehicle_1', label: '軽バン1号', travel_mode: 'DRIVE' },
+        time_window_start: new Date(2026, 5, 12, 10, 0),
+        time_window_end: new Date(2026, 5, 12, 10, 30),
+        confirmed_at: null,
+        cycle: null,
+        preparation: null,
+        facility_batch_id: null,
+        facility_batch: null,
+        visit_record: null,
+        case_: {
+          patient: {
+            id: 'patient_1',
+            name: '遠方 患者',
+            contacts: [],
+            residences: [{ address: '遠方宅', lat: 36.5, lng: 140.5 }],
+          },
+          care_team_links: [],
+        },
+      },
+    ]);
+    visitVehicleResourceFindManyMock.mockResolvedValue([
+      {
+        id: 'vehicle_1',
+        label: '軽バン1号',
+        site_id: 'site_1',
+        vehicle_code: 'VEH-DEMO-001',
+        travel_mode: 'DRIVE',
+        max_stops: 8,
+        max_route_duration_minutes: 30,
+        available: true,
+        site: { address: '拠点薬局', lat: 35.6812, lng: 139.7671 },
+      },
+    ]);
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    const vehicle = json.data.vehicle_resources[0];
+
+    expect(vehicle).toMatchObject({
+      id: 'vehicle_1',
+      max_route_duration_minutes: 30,
+      route_duration_status: 'exceeded',
+      route_duration_label: expect.stringContaining('超過'),
+      recommended: false,
+      recommendation_reason: '稼働上限を超過',
+    });
+    expect(vehicle.route_duration_minutes).toBeGreaterThan(30);
   });
 
   it('recommends vehicles only for unassigned visits in the same site', async () => {

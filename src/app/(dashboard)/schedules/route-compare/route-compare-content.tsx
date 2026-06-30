@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 import { timeIsoToMinutes } from '@/lib/visits/time-of-day';
+import { cn } from '@/lib/utils';
 import type { ScheduleDayBoardResponse } from '@/types/schedule-day-board';
 import type { VisitRoutePlan, VisitRouteTravelMode } from '@/types/visit-route';
 import type { VisitSchedule } from '../day-view.shared';
@@ -83,6 +84,21 @@ function normalizeVisitRouteTravelMode(value: string | null | undefined): VisitR
   return value && VISIT_ROUTE_TRAVEL_MODES.has(value as VisitRouteTravelMode)
     ? (value as VisitRouteTravelMode)
     : 'DRIVE';
+}
+
+function vehicleRouteDurationClassName(
+  status: ScheduleDayBoardResponse['vehicle_resources'][number]['route_duration_status'],
+) {
+  switch (status) {
+    case 'exceeded':
+      return 'text-state-blocked';
+    case 'unverified':
+      return 'text-state-confirm';
+    case 'within_limit':
+      return 'text-state-done';
+    case 'not_limited':
+      return 'text-muted-foreground';
+  }
 }
 
 function routeHeaders(orgId: string) {
@@ -446,6 +462,19 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
     () => dayBoardQuery.data?.vehicle_resources.find((vehicle) => vehicle.recommended) ?? null,
     [dayBoardQuery.data],
   );
+  const vehicleRouteStatusTarget = useMemo(
+    () =>
+      recommendedVehicle ??
+      dayBoardQuery.data?.vehicle_resources.find(
+        (vehicle) =>
+          vehicle.available &&
+          vehicle.remaining_stops > 0 &&
+          (vehicle.route_duration_status === 'exceeded' ||
+            vehicle.route_duration_status === 'unverified'),
+      ) ??
+      null,
+    [dayBoardQuery.data, recommendedVehicle],
+  );
   const routeTravelMode = normalizeVisitRouteTravelMode(recommendedVehicle?.travel_mode);
 
   // 比較対象は個人宅訪問のみ。施設一括訪問は居室順(施設トラッカー)で管理するため除外する
@@ -688,6 +717,25 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
         <h1 className="text-base font-bold text-foreground">ルート最適化</h1>
         {dateNavigator}
       </div>
+      {vehicleRouteStatusTarget ? (
+        <div
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs"
+          data-testid="route-compare-vehicle-duration"
+        >
+          <span className="font-semibold text-foreground">
+            {recommendedVehicle?.id === vehicleRouteStatusTarget.id ? '推奨車両' : '車両反映不可'}{' '}
+            {vehicleRouteStatusTarget.label}
+          </span>
+          <span
+            className={cn(
+              'font-semibold',
+              vehicleRouteDurationClassName(vehicleRouteStatusTarget.route_duration_status),
+            )}
+          >
+            {vehicleRouteStatusTarget.route_duration_label}
+          </span>
+        </div>
+      ) : null}
 
       {routeDetail ? (
         <div className="flex flex-col gap-4">

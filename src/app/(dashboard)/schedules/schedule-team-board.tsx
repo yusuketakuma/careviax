@@ -528,6 +528,22 @@ const TRAVEL_MODE_LABELS: Record<string, string> = {
   BICYCLE: '自転車',
   WALK: '徒歩',
 };
+
+function vehicleRouteDurationClassName(
+  status: ScheduleDayBoardResponse['vehicle_resources'][number]['route_duration_status'],
+) {
+  switch (status) {
+    case 'exceeded':
+      return 'text-state-blocked';
+    case 'unverified':
+      return 'text-state-confirm';
+    case 'within_limit':
+      return 'text-state-done';
+    case 'not_limited':
+      return 'text-muted-foreground';
+  }
+}
+
 const VEHICLE_ASSIGNABLE_STATUSES = new Set([
   'planned',
   'in_preparation',
@@ -770,6 +786,14 @@ function VehicleRoutePanel({
                   <span className="ml-1 font-semibold text-foreground">
                     {vehicle.recommendation_reason}
                   </span>
+                </p>
+                <p
+                  className={cn(
+                    'mt-0.5 text-xs font-semibold leading-5',
+                    vehicleRouteDurationClassName(vehicle.route_duration_status),
+                  )}
+                >
+                  {vehicle.route_duration_label}
                 </p>
               </li>
             ))}

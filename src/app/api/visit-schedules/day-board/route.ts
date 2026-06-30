@@ -12,7 +12,14 @@ import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import { addUtcDays, japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { timeDateToMinutes } from '@/lib/visits/time-of-day';
 import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
+import { createRoadTravelEstimator } from '@/server/services/road-routing';
+import { buildVehicleRoutePoint } from '@/server/services/visit-schedule-service';
+import {
+  estimateVehicleRouteDurationWithCandidate,
+  type VehicleRouteDurationPoint,
+} from '@/server/services/visit-schedule-planner';
 import type {
+  DayBoardVehicleResource,
   DayBoardPendingProposal,
   DayBoardStaff,
   DayBoardVisit,
@@ -21,6 +28,7 @@ import type {
   ScheduleDayBoardOperationalTask,
   ScheduleDayBoardResponse,
 } from '@/types/schedule-day-board';
+import type { VisitRouteTravelMode } from '@/types/visit-route';
 import {
   buildDashboardTaskAssignmentWhere,
   resolveDashboardAssignmentScope,
@@ -101,6 +109,28 @@ type DayBoardManagementPlan = {
   effective_from: Date | null;
   version: number;
   approved_at: Date | null;
+};
+
+type DayBoardVehicleRouteSchedule = {
+  scheduled_date: Date;
+  route_order: number | null;
+  time_window_start: Date | null;
+  case_: {
+    patient: {
+      residences?: Array<{ address: string | null; lat: number | null; lng: number | null }>;
+    };
+  };
+};
+
+type DayBoardVehicleRouteSource = {
+  label: string;
+  travel_mode: string;
+  max_route_duration_minutes?: number | null;
+  site?: { address: string | null; lat: number | null; lng: number | null } | null;
+};
+
+type DayBoardVehicleSummary = DayBoardVehicleResource & {
+  matching_unassigned_visit_count: number;
 };
 
 type DayBoardDb = Pick<
@@ -228,6 +258,111 @@ function visitOccupiedMinutes(start: Date | null, end: Date | null): number {
 
 function activeThrough(date: Date | null | undefined, asOf: Date) {
   return !date || date >= asOf;
+}
+
+function buildDayBoardVehicleSitePoint(
+  site:
+    | {
+        address: string | null;
+        lat: number | null;
+        lng: number | null;
+      }
+    | null
+    | undefined,
+): VehicleRouteDurationPoint | null {
+  if (!site) return null;
+  return {
+    routeOrder: 0,
+    lat: site.lat,
+    lng: site.lng,
+    address: site.address,
+    startsAt: null,
+  };
+}
+
+function formatRouteDurationMinutes(minutes: number) {
+  return Number.isInteger(minutes) ? String(minutes) : minutes.toFixed(1);
+}
+
+async function summarizeDayBoardVehicleRouteDuration(
+  vehicle: DayBoardVehicleRouteSource,
+  schedules: DayBoardVehicleRouteSchedule[],
+): Promise<
+  Pick<
+    DayBoardVehicleResource,
+    | 'max_route_duration_minutes'
+    | 'route_duration_minutes'
+    | 'route_duration_status'
+    | 'route_duration_label'
+  >
+> {
+  const maxRouteDurationMinutes = vehicle.max_route_duration_minutes ?? null;
+  if (maxRouteDurationMinutes == null) {
+    return {
+      max_route_duration_minutes: null,
+      route_duration_minutes: null,
+      route_duration_status: 'not_limited',
+      route_duration_label: '稼働上限なし',
+    };
+  }
+
+  if (schedules.length === 0) {
+    return {
+      max_route_duration_minutes: maxRouteDurationMinutes,
+      route_duration_minutes: 0,
+      route_duration_status: 'within_limit',
+      route_duration_label: `稼働 0分 / 上限 ${maxRouteDurationMinutes}分`,
+    };
+  }
+
+  const routePoints = schedules.map((schedule) =>
+    buildVehicleRoutePoint({
+      scheduledDate: schedule.scheduled_date,
+      routeOrder: schedule.route_order,
+      timeWindowStart: schedule.time_window_start,
+      residence: schedule.case_.patient.residences?.[0] ?? null,
+    }),
+  );
+  const candidatePoint = routePoints[routePoints.length - 1];
+  if (!candidatePoint) {
+    return {
+      max_route_duration_minutes: maxRouteDurationMinutes,
+      route_duration_minutes: 0,
+      route_duration_status: 'within_limit',
+      route_duration_label: `稼働 0分 / 上限 ${maxRouteDurationMinutes}分`,
+    };
+  }
+
+  const estimate = await estimateVehicleRouteDurationWithCandidate(
+    buildDayBoardVehicleSitePoint(vehicle.site),
+    routePoints.slice(0, -1),
+    candidatePoint,
+    createRoadTravelEstimator(vehicle.travel_mode as VisitRouteTravelMode),
+    vehicle.travel_mode as VisitRouteTravelMode,
+  );
+  if (estimate.durationMinutes == null) {
+    return {
+      max_route_duration_minutes: maxRouteDurationMinutes,
+      route_duration_minutes: null,
+      route_duration_status: 'unverified',
+      route_duration_label: `稼働上限 ${maxRouteDurationMinutes}分 未確認`,
+    };
+  }
+
+  const roundedDurationMinutes = Math.round(estimate.durationMinutes * 10) / 10;
+  const routeDurationLabel = `稼働 ${formatRouteDurationMinutes(
+    roundedDurationMinutes,
+  )}分 / 上限 ${maxRouteDurationMinutes}分`;
+  return {
+    max_route_duration_minutes: maxRouteDurationMinutes,
+    route_duration_minutes: roundedDurationMinutes,
+    route_duration_status:
+      estimate.durationMinutes > maxRouteDurationMinutes ? 'exceeded' : 'within_limit',
+    route_duration_label:
+      estimate.durationMinutes > maxRouteDurationMinutes
+        ? `${routeDurationLabel} 超過`
+        : routeDurationLabel,
+  };
 }
 
 function compareManagementPlans(left: DayBoardManagementPlan, right: DayBoardManagementPlan) {
@@ -602,6 +737,15 @@ const authenticatedGET = withAuthContext(
                         where: { org_id: ctx.orgId, is_emergency_contact: true },
                         select: { id: true },
                       },
+                      residences: {
+                        where: { is_primary: true },
+                        take: 1,
+                        select: {
+                          address: true,
+                          lat: true,
+                          lng: true,
+                        },
+                      },
                     },
                   },
                   care_team_links: {
@@ -641,7 +785,15 @@ const authenticatedGET = withAuthContext(
               vehicle_code: true,
               travel_mode: true,
               max_stops: true,
+              max_route_duration_minutes: true,
               available: true,
+              site: {
+                select: {
+                  address: true,
+                  lat: true,
+                  lng: true,
+                },
+              },
             },
           }),
           db.visitScheduleProposal.findMany({
@@ -1017,6 +1169,7 @@ const authenticatedGET = withAuthContext(
 
         const auditPendingCount = auditTaskGroups.reduce((sum, group) => sum + group._count.id, 0);
         const assignedVehicleCounts = new Map<string, number>();
+        const assignedVehicleSchedulesById = new Map<string, typeof schedules>();
         const unassignedAssignableVisitCountsBySite = new Map<string, number>();
         for (const schedule of schedules) {
           if (schedule.vehicle_resource_id) {
@@ -1024,6 +1177,10 @@ const authenticatedGET = withAuthContext(
               schedule.vehicle_resource_id,
               (assignedVehicleCounts.get(schedule.vehicle_resource_id) ?? 0) + 1,
             );
+            const vehicleSchedules =
+              assignedVehicleSchedulesById.get(schedule.vehicle_resource_id) ?? [];
+            vehicleSchedules.push(schedule);
+            assignedVehicleSchedulesById.set(schedule.vehicle_resource_id, vehicleSchedules);
           } else if (VEHICLE_ASSIGNABLE_STATUSES.has(schedule.schedule_status)) {
             const siteKey = schedule.site_id ?? '';
             unassignedAssignableVisitCountsBySite.set(
@@ -1032,32 +1189,50 @@ const authenticatedGET = withAuthContext(
             );
           }
         }
-        const vehicleSummaries = vehicleResources.map((vehicle) => {
-          const assignedVisitCount = assignedVehicleCounts.get(vehicle.id) ?? 0;
-          const remainingStops = Math.max(0, vehicle.max_stops - assignedVisitCount);
-          const matchingUnassignedVisitCount =
-            unassignedAssignableVisitCountsBySite.get(vehicle.site_id ?? '') ?? 0;
-          return {
-            id: vehicle.id,
-            label: vehicle.label,
-            site_id: vehicle.site_id,
-            vehicle_code: vehicle.vehicle_code,
-            travel_mode: vehicle.travel_mode,
-            available: vehicle.available,
-            max_stops: vehicle.max_stops,
-            assigned_visit_count: assignedVisitCount,
-            remaining_stops: remainingStops,
-            matching_unassigned_visit_count: matchingUnassignedVisitCount,
-            recommended: false,
-            recommendation_reason: vehicle.available
-              ? remainingStops > 0
-                ? `空き ${remainingStops}件`
-                : '本日の上限に到達'
-              : '停止中',
-          };
-        });
+        const vehicleSummaries = await Promise.all(
+          vehicleResources.map(async (vehicle): Promise<DayBoardVehicleSummary> => {
+            const assignedVisitCount = assignedVehicleCounts.get(vehicle.id) ?? 0;
+            const remainingStops = Math.max(0, vehicle.max_stops - assignedVisitCount);
+            const matchingUnassignedVisitCount =
+              unassignedAssignableVisitCountsBySite.get(vehicle.site_id ?? '') ?? 0;
+            const routeDuration = await summarizeDayBoardVehicleRouteDuration(
+              vehicle,
+              assignedVehicleSchedulesById.get(vehicle.id) ?? [],
+            );
+            const routeDurationBlockerReason =
+              routeDuration.route_duration_status === 'exceeded'
+                ? '稼働上限を超過'
+                : routeDuration.route_duration_status === 'unverified'
+                  ? '稼働上限を未確認'
+                  : null;
+            return {
+              id: vehicle.id,
+              label: vehicle.label,
+              site_id: vehicle.site_id,
+              vehicle_code: vehicle.vehicle_code,
+              travel_mode: vehicle.travel_mode,
+              available: vehicle.available,
+              max_stops: vehicle.max_stops,
+              ...routeDuration,
+              assigned_visit_count: assignedVisitCount,
+              remaining_stops: remainingStops,
+              matching_unassigned_visit_count: matchingUnassignedVisitCount,
+              recommended: false,
+              recommendation_reason: vehicle.available
+                ? (routeDurationBlockerReason ??
+                  (remainingStops > 0 ? `空き ${remainingStops}件` : '本日の上限に到達'))
+                : '停止中',
+            };
+          }),
+        );
         const recommendedVehicle = vehicleSummaries
-          .filter((vehicle) => vehicle.available && vehicle.remaining_stops > 0)
+          .filter(
+            (vehicle) =>
+              vehicle.available &&
+              vehicle.remaining_stops > 0 &&
+              (vehicle.route_duration_status === 'within_limit' ||
+                vehicle.route_duration_status === 'not_limited'),
+          )
           .sort(
             (left, right) =>
               Math.min(right.remaining_stops, right.matching_unassigned_visit_count) -

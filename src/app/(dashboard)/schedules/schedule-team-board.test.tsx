@@ -268,8 +268,12 @@ function buildBoardFixture(): ScheduleDayBoardResponse {
         travel_mode: 'DRIVE',
         available: true,
         max_stops: 8,
+        max_route_duration_minutes: 180,
         assigned_visit_count: 2,
         remaining_stops: 6,
+        route_duration_minutes: 42,
+        route_duration_status: 'within_limit',
+        route_duration_label: '稼働 42分 / 上限 180分',
         recommended: true,
         recommendation_reason: '未割当 1件を受けられます',
       },
@@ -281,8 +285,12 @@ function buildBoardFixture(): ScheduleDayBoardResponse {
         travel_mode: 'DRIVE',
         available: true,
         max_stops: 4,
+        max_route_duration_minutes: null,
         assigned_visit_count: 0,
         remaining_stops: 4,
+        route_duration_minutes: null,
+        route_duration_status: 'not_limited',
+        route_duration_label: '稼働上限なし',
         recommended: false,
         recommendation_reason: '空き 4件',
       },
@@ -866,6 +874,7 @@ describe('ScheduleTeamBoard', () => {
     expect(within(vehicles).getByText('空き 2台')).toBeTruthy();
     expect(within(vehicles).getByText('軽バン1号')).toBeTruthy();
     expect(within(vehicles).getByText('推奨')).toBeTruthy();
+    expect(within(vehicles).getByText('稼働 42分 / 上限 180分')).toBeTruthy();
     expect(within(vehicles).getByText(/未割当 1件を受けられます/)).toBeTruthy();
     expect(within(vehicles).getByRole('button', { name: '推奨車両を反映' })).toBeTruthy();
     const routePreview = screen.getByTestId('schedule-route-preview');

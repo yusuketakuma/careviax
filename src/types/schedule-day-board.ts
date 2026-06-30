@@ -172,8 +172,12 @@ export type DayBoardVehicleResource = {
   travel_mode: string;
   available: boolean;
   max_stops: number;
+  max_route_duration_minutes: number | null;
   assigned_visit_count: number;
   remaining_stops: number;
+  route_duration_minutes: number | null;
+  route_duration_status: 'within_limit' | 'exceeded' | 'unverified' | 'not_limited';
+  route_duration_label: string;
   recommended: boolean;
   recommendation_reason: string;
 };

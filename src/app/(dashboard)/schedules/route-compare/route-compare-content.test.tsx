@@ -227,8 +227,12 @@ function boardFixture(): ScheduleDayBoardResponse {
         travel_mode: 'DRIVE',
         available: true,
         max_stops: 6,
+        max_route_duration_minutes: 180,
         assigned_visit_count: 0,
         remaining_stops: 6,
+        route_duration_minutes: 42,
+        route_duration_status: 'within_limit',
+        route_duration_label: '稼働 42分 / 上限 180分',
         recommended: true,
         recommendation_reason: '予備枠 6件',
       },
@@ -339,6 +343,9 @@ describe('RouteCompareContent', () => {
     renderRouteCompareContent();
 
     expect(await screen.findAllByText(/移動23分/)).not.toHaveLength(0);
+    const vehicleDuration = screen.getByTestId('route-compare-vehicle-duration');
+    expect(within(vehicleDuration).getByText('推奨車両 社用車A')).toBeTruthy();
+    expect(within(vehicleDuration).getByText('稼働 42分 / 上限 180分')).toBeTruthy();
     expect(screen.queryByText(/薬局⇔訪問先 16 分/)).toBeNull();
 
     const routeRequests = fetchCalls.filter((call) => call.url === '/api/visit-routes');
