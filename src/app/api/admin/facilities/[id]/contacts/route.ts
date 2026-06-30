@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
-import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { unstable_rethrow } from 'next/navigation';
+import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
@@ -9,6 +10,7 @@ import { facilityContactSchema } from '@/lib/validations/facility';
 import { z } from 'zod';
 
 const updateFacilityContactsSchema = z.object({
+  expected_updated_at: z.string().datetime('施設担当者の版情報が不正です'),
   contacts: z.array(facilityContactSchema),
 });
 
@@ -21,6 +23,7 @@ function toResponse(contact: {
   fax: string | null;
   is_primary: boolean;
   notes: string | null;
+  updated_at?: Date;
 }) {
   return {
     id: contact.id,
@@ -31,7 +34,16 @@ function toResponse(contact: {
     fax: contact.fax,
     is_primary: contact.is_primary,
     notes: contact.notes,
+    updated_at: contact.updated_at?.toISOString(),
   };
+}
+
+function staleContactsConflict(expectedUpdatedAt: string, currentUpdatedAt: Date | null) {
+  return conflict('施設担当者が更新されています。再読み込みしてください', {
+    conflict_type: 'stale_facility_contacts',
+    expected_updated_at: expectedUpdatedAt,
+    current_updated_at: currentUpdatedAt?.toISOString() ?? null,
+  });
 }
 
 const authenticatedGET = withAuthContext<{ id: string }>(
@@ -40,7 +52,7 @@ const authenticatedGET = withAuthContext<{ id: string }>(
 
     const facility = await prisma.facility.findFirst({
       where: { id, org_id: ctx.orgId },
-      select: { id: true },
+      select: { id: true, updated_at: true },
     });
     if (!facility) return notFound('施設が見つかりません');
 
@@ -49,7 +61,13 @@ const authenticatedGET = withAuthContext<{ id: string }>(
       orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
     });
 
-    return success({ data: contacts.map(toResponse) });
+    return success({
+      data: contacts.map(toResponse),
+      metadata: {
+        expected_updated_at: facility.updated_at.toISOString(),
+        version_basis: 'facility_updated_at',
+      },
+    });
   },
   {
     permission: 'canVisit',
@@ -60,7 +78,8 @@ const authenticatedGET = withAuthContext<{ id: string }>(
 export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
   try {
     return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch {
+  } catch (err) {
+    unstable_rethrow(err);
     return withSensitiveNoStore(internalError());
   }
 }
@@ -76,14 +95,30 @@ export const PUT = withAuthContext<{ id: string }>(
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
+    const expectedUpdatedAt = new Date(parsed.data.expected_updated_at);
 
     const facility = await prisma.facility.findFirst({
       where: { id, org_id: ctx.orgId },
-      select: { id: true },
+      select: { id: true, updated_at: true },
     });
     if (!facility) return notFound('施設が見つかりません');
+    if (facility.updated_at.toISOString() !== expectedUpdatedAt.toISOString()) {
+      return staleContactsConflict(parsed.data.expected_updated_at, facility.updated_at);
+    }
 
-    const contacts = await withOrgContext(ctx.orgId, async (tx) => {
+    const nextUpdatedAt = new Date();
+    const result = await withOrgContext(ctx.orgId, async (tx) => {
+      const claimed = await tx.facility.updateMany({
+        where: { id, org_id: ctx.orgId, updated_at: expectedUpdatedAt },
+        data: { updated_at: nextUpdatedAt },
+      });
+      if (claimed.count !== 1) {
+        return {
+          kind: 'response' as const,
+          response: staleContactsConflict(parsed.data.expected_updated_at, facility.updated_at),
+        };
+      }
+
       await tx.facilityContact.deleteMany({
         where: { org_id: ctx.orgId, facility_id: id },
       });
@@ -103,13 +138,21 @@ export const PUT = withAuthContext<{ id: string }>(
         });
       }
 
-      return tx.facilityContact.findMany({
+      const contacts = await tx.facilityContact.findMany({
         where: { org_id: ctx.orgId, facility_id: id },
         orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
       });
+      return { kind: 'updated' as const, contacts, expectedUpdatedAt: nextUpdatedAt };
     });
+    if (result.kind === 'response') return result.response;
 
-    return success({ data: contacts.map(toResponse) });
+    return success({
+      data: result.contacts.map(toResponse),
+      metadata: {
+        expected_updated_at: result.expectedUpdatedAt.toISOString(),
+        version_basis: 'facility_updated_at',
+      },
+    });
   },
   {
     permission: 'canAdmin',

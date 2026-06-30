@@ -7,6 +7,7 @@ export type FacilityContactApiSource = {
   fax: string | null;
   is_primary: boolean;
   notes: string | null;
+  updated_at?: Date;
 };
 
 export type FacilityApiSource = {
@@ -69,6 +70,9 @@ export function serializeFacilityResponse(
       fax: contact.fax,
       is_primary: contact.is_primary,
       notes: contact.notes,
+      ...(options.includeTimestamps && contact.updated_at
+        ? { updated_at: contact.updated_at.toISOString() }
+        : {}),
     })),
     ...(options.includeTimestamps
       ? {

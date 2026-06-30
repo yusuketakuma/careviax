@@ -7,6 +7,7 @@ import {
 } from '@/lib/validations/phone';
 
 const timeStringSchema = z.string().regex(/^\d{2}:\d{2}$/, '時刻形式が不正です（HH:mm）');
+const expectedFacilityUpdatedAtSchema = z.string().datetime('施設マスターの版情報が不正です');
 
 export const facilityContactSchema = z.object({
   id: z.string().optional(),
@@ -62,6 +63,7 @@ export const updateFacilityUnitSchema = z.object({
 });
 
 export const updateFacilitySchema = z.object({
+  expected_updated_at: expectedFacilityUpdatedAtSchema,
   name: z.string().trim().min(1).optional(),
   facility_type: facilityTypeSchema.optional(),
   address: z.string().trim().nullable().optional(),

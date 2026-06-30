@@ -40,6 +40,7 @@ describe('facility API helpers', () => {
             fax: null,
             is_primary: true,
             notes: null,
+            updated_at: new Date('2026-03-02T00:05:00.000Z'),
           },
         ],
         created_at: new Date('2026-03-01T00:00:00.000Z'),
@@ -53,6 +54,7 @@ describe('facility API helpers', () => {
       acceptance_time_to: '17:30',
       regular_visit_weekdays: [],
       patient_count: 3,
+      contacts: [{ updated_at: '2026-03-02T00:05:00.000Z' }],
       created_at: '2026-03-01T00:00:00.000Z',
       updated_at: '2026-03-02T00:00:00.000Z',
     });

@@ -30,6 +30,30 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Facility Master Contact OCC - 2026-07-01 04:40 JST
+
+- Scope:
+  - Continued master-management hardening on facility master detail updates and facility-contact replacement APIs.
+  - Focused on preventing stale facility master screens from replacing contact rows after another operator already changed the facility.
+- Fixed:
+  - `PATCH /api/admin/facilities/[id]` now requires `expected_updated_at`, compares it to `Facility.updated_at`, and claims the same facility row version with `updateMany` before scalar updates or nested contact replacement.
+  - `PUT /api/admin/facilities/[id]/contacts` and `PUT /api/facilities/[id]/contacts` now require `expected_updated_at`, claim the facility row version before `deleteMany + createMany`, and return `409` without deleting contacts when the claim loses the race.
+  - Facility detail/contact GET responses now expose the current facility-backed version anchor so callers can submit the correct `expected_updated_at`.
+  - Facility serialization now preserves contact `updated_at` when timestamp output is requested.
+- Safety:
+  - Reduces stale facility/contact master overwrite risk and prevents old screens from silently deleting newer facility contacts.
+  - Preserves existing canVisit/canAdmin permissions, org scoping, validation-before-DB behavior for malformed payloads, no-store GET wrappers, sanitized GET 500 handling, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds one narrow `Facility.updateMany` version claim per facility/contact replacement and reuses the existing bounded contact reload.
+  - No new dependency, external call, background job, broad scan, render-heavy path, or unbounded loop was added.
+- Validation:
+  - Focused facility OCC/helper Vitest passed `4` files / `36` tests.
+  - Related facility admin/public API suite passed `8` files / `55` tests with the expected sanitized-500 route log.
+  - Scoped ESLint, scoped Prettier, scoped diff-check, full typecheck, no-unused, full lint, full format check, and full diff-check passed.
+- Remaining:
+  - Broad master-management / patient-information objective remains open.
+  - Concurrent visit-schedule-planner concurrency dirty files remain preserved outside this facility master slice.
+
 ### Visit Planner Candidate Evaluation Concurrency Cap - 2026-07-01 04:41 JST
 
 - Scope:

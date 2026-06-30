@@ -5,17 +5,21 @@ const {
   facilityFindFirstMock,
   residenceCountMock,
   residenceFindFirstMock,
-  facilityUpdateMock,
+  facilityUpdateManyMock,
+  facilityFindFirstInTxMock,
   facilityDeleteMock,
   facilityContactDeleteManyMock,
+  facilityContactCreateManyMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   facilityFindFirstMock: vi.fn(),
   residenceCountMock: vi.fn(),
   residenceFindFirstMock: vi.fn(),
-  facilityUpdateMock: vi.fn(),
+  facilityUpdateManyMock: vi.fn(),
+  facilityFindFirstInTxMock: vi.fn(),
   facilityDeleteMock: vi.fn(),
   facilityContactDeleteManyMock: vi.fn(),
+  facilityContactCreateManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -44,14 +48,24 @@ vi.mock('@/lib/db/rls', () => ({
 import { DELETE, GET, PATCH } from './route';
 
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+const CURRENT_UPDATED_AT = '2026-03-02T00:00:00.000Z';
+const STALE_UPDATED_AT = '2026-03-01T00:00:00.000Z';
 
 function createRequest(method: 'DELETE' | 'GET' | 'PATCH', body?: unknown) {
+  const requestBody =
+    method === 'PATCH' &&
+    body &&
+    typeof body === 'object' &&
+    !Array.isArray(body) &&
+    !('expected_updated_at' in body)
+      ? { expected_updated_at: CURRENT_UPDATED_AT, ...body }
+      : body;
   const init: NextRequestInit = {
     method,
     headers: { 'content-type': 'application/json' },
   };
-  if (body !== undefined) {
-    init.body = JSON.stringify(body);
+  if (requestBody !== undefined) {
+    init.body = JSON.stringify(requestBody);
   }
   return new NextRequest('http://localhost/api/admin/facilities/facility_1', init);
 }
@@ -72,8 +86,12 @@ function expectNoStore(response: Response) {
 describe('/api/admin/facilities/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    facilityFindFirstMock.mockResolvedValue({ id: 'facility_1' });
-    facilityUpdateMock.mockResolvedValue({
+    facilityFindFirstMock.mockResolvedValue({
+      id: 'facility_1',
+      updated_at: new Date(CURRENT_UPDATED_AT),
+    });
+    facilityUpdateManyMock.mockResolvedValue({ count: 1 });
+    facilityFindFirstInTxMock.mockResolvedValue({
       id: 'facility_1',
       name: 'あおば苑',
       facility_type: 'group_home',
@@ -84,6 +102,8 @@ describe('/api/admin/facilities/[id]', () => {
       acceptance_time_to: new Date('1970-01-01T15:30:00.000Z'),
       regular_visit_weekdays: [1, 3, 5],
       notes: '更新メモ',
+      created_at: new Date('2026-03-01T00:00:00.000Z'),
+      updated_at: new Date(CURRENT_UPDATED_AT),
       contacts: [
         {
           id: 'contact_1',
@@ -95,6 +115,7 @@ describe('/api/admin/facilities/[id]', () => {
           is_primary: true,
           notes: null,
           created_at: new Date('2026-03-28T00:00:00.000Z'),
+          updated_at: new Date(CURRENT_UPDATED_AT),
         },
       ],
     });
@@ -105,12 +126,14 @@ describe('/api/admin/facilities/[id]', () => {
       callback({
         facilityContact: {
           deleteMany: facilityContactDeleteManyMock,
+          createMany: facilityContactCreateManyMock,
         },
         residence: {
           findFirst: residenceFindFirstMock,
         },
         facility: {
-          update: facilityUpdateMock,
+          updateMany: facilityUpdateManyMock,
+          findFirst: facilityFindFirstInTxMock,
           delete: facilityDeleteMock,
         },
       }),
@@ -147,9 +170,13 @@ describe('/api/admin/facilities/[id]', () => {
     expect(facilityContactDeleteManyMock).toHaveBeenCalledWith({
       where: { org_id: 'org_1', facility_id: 'facility_1' },
     });
-    expect(facilityUpdateMock).toHaveBeenCalledWith(
+    expect(facilityUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'facility_1' },
+        where: {
+          id: 'facility_1',
+          org_id: 'org_1',
+          updated_at: new Date(CURRENT_UPDATED_AT),
+        },
         data: expect.objectContaining({
           name: 'あおば苑',
           facility_type: 'group_home',
@@ -158,20 +185,21 @@ describe('/api/admin/facilities/[id]', () => {
           acceptance_time_from: new Date('1970-01-01T09:30:00.000Z'),
           acceptance_time_to: new Date('1970-01-01T15:30:00.000Z'),
           regular_visit_weekdays: [1, 3, 5],
-          contacts: {
-            create: [
-              expect.objectContaining({
-                org_id: 'org_1',
-                name: '相談員A',
-                role: '相談員',
-                phone: '03-3333-4444',
-                fax: '03-3333-5555',
-              }),
-            ],
-          },
         }),
       }),
     );
+    expect(facilityContactCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          org_id: 'org_1',
+          facility_id: 'facility_1',
+          name: '相談員A',
+          role: '相談員',
+          phone: '03-3333-4444',
+          fax: '03-3333-5555',
+        }),
+      ],
+    });
   });
 
   it('does not clear facility contact numbers when PATCH omits them', async () => {
@@ -182,12 +210,17 @@ describe('/api/admin/facilities/[id]', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(facilityContactDeleteManyMock).not.toHaveBeenCalled();
-    expect(facilityUpdateMock).toHaveBeenCalledWith(
+    expect(facilityUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'facility_1' },
-        data: {
-          notes: '更新メモ',
+        where: {
+          id: 'facility_1',
+          org_id: 'org_1',
+          updated_at: new Date(CURRENT_UPDATED_AT),
         },
+        data: expect.objectContaining({
+          notes: '更新メモ',
+          updated_at: expect.any(Date),
+        }),
       }),
     );
   });
@@ -218,7 +251,67 @@ describe('/api/admin/facilities/[id]', () => {
     });
     expect(facilityFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(facilityUpdateMock).not.toHaveBeenCalled();
+    expect(facilityUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('requires expected_updated_at before loading the facility for PATCH', async () => {
+    const response = await PATCH(
+      createRequest('PATCH', {
+        expected_updated_at: undefined,
+        notes: '更新メモ',
+      }),
+      { params: Promise.resolve({ id: 'facility_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: { expected_updated_at: expect.any(Array) },
+    });
+    expect(facilityFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(facilityUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale expected_updated_at before replacing nested contacts', async () => {
+    const response = await PATCH(
+      createRequest('PATCH', {
+        expected_updated_at: STALE_UPDATED_AT,
+        contacts: [{ name: '相談員A' }],
+      }),
+      { params: Promise.resolve({ id: 'facility_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        conflict_type: 'stale_facility',
+        expected_updated_at: STALE_UPDATED_AT,
+        current_updated_at: CURRENT_UPDATED_AT,
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(facilityContactDeleteManyMock).not.toHaveBeenCalled();
+    expect(facilityContactCreateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('does not replace contacts when the facility version claim loses the race', async () => {
+    facilityUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await PATCH(
+      createRequest('PATCH', {
+        contacts: [{ name: '相談員A' }],
+      }),
+      { params: Promise.resolve({ id: 'facility_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(facilityUpdateManyMock).toHaveBeenCalledTimes(1);
+    expect(facilityContactDeleteManyMock).not.toHaveBeenCalled();
+    expect(facilityContactCreateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object update payloads before loading the facility', async () => {
@@ -230,7 +323,7 @@ describe('/api/admin/facilities/[id]', () => {
     expect(response.status).toBe(400);
     expect(facilityFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(facilityUpdateMock).not.toHaveBeenCalled();
+    expect(facilityUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON update payloads before loading the facility', async () => {
@@ -245,7 +338,7 @@ describe('/api/admin/facilities/[id]', () => {
     });
     expect(facilityFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(facilityUpdateMock).not.toHaveBeenCalled();
+    expect(facilityUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('returns facility detail with patient count', async () => {
@@ -273,8 +366,11 @@ describe('/api/admin/facilities/[id]', () => {
           fax: null,
           is_primary: true,
           notes: null,
+          updated_at: new Date(CURRENT_UPDATED_AT),
         },
       ],
+      created_at: new Date('2026-03-01T00:00:00.000Z'),
+      updated_at: new Date(CURRENT_UPDATED_AT),
     });
 
     const response = await GET(createRequest('GET'), {
@@ -298,6 +394,7 @@ describe('/api/admin/facilities/[id]', () => {
         acceptance_time_from: '09:30',
         acceptance_time_to: '15:30',
         regular_visit_weekdays: [1, 3, 5],
+        updated_at: CURRENT_UPDATED_AT,
       },
     });
   });
