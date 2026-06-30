@@ -292,7 +292,7 @@ function proposalTargetName(
 ) {
   const caseId = options?.caseId ?? 'case_1';
   const proposalId = options?.proposalId ?? 'proposal_1';
-  return `${patientName} ${dateLabel} ${timeRange} / ${options?.pharmacistName ?? '薬剤師A'} / ${options?.vehicleLabel ?? '社用車A'} / ${proposalSafeIdentifierLabel(caseId, proposalId)}`;
+  return `${patientName} ${dateLabel} ${timeRange} / ${options?.pharmacistName ?? '薬剤師A'} / ${options?.vehicleLabel ?? '社用車A (最大6件 / 180分以内)'} / ${proposalSafeIdentifierLabel(caseId, proposalId)}`;
 }
 
 function proposalCheckboxName(
@@ -903,7 +903,9 @@ describe('ScheduleProposalsContent', () => {
     expect(within(confirmDialog).getAllByText(/2026\/04\/09/).length).toBeGreaterThan(0);
     expect(within(confirmDialog).getAllByText(/09:00 - 10:00/).length).toBeGreaterThan(0);
     expect(within(confirmDialog).getByText('薬剤師A')).toBeTruthy();
-    expect(within(confirmDialog).getByText('社用車A')).toBeTruthy();
+    expect(
+      within(confirmDialog).getAllByText(/社用車A.*最大6件.*180分以内/).length,
+    ).toBeGreaterThan(0);
     expect(within(confirmDialog).getByText('提案中')).toBeTruthy();
     expect(within(confirmDialog).getByText('患者連絡待ち')).toBeTruthy();
     expectElementTextExcludesSensitiveDetails(confirmDialog);
@@ -2107,7 +2109,7 @@ describe('ScheduleProposalsContent', () => {
     expect(
       screen.getByText('患者へ電話し、結果を「確認済み」で保存すると日時確定できます。'),
     ).toBeTruthy();
-    expect(screen.getAllByText('社用車A').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/社用車A/).length).toBeGreaterThan(0);
   });
 
   it('does not display or prefill past contact log PHI while preserving new contact attempt input', async () => {
@@ -2320,6 +2322,6 @@ describe('ScheduleProposalsContent', () => {
     expect(screen.getByText('代替担当')).toBeTruthy();
     expect(screen.getByText('緊急度で前倒し')).toBeTruthy();
     expect(screen.getByText('患者希望枠内')).toBeTruthy();
-    expect(screen.getAllByText('社用車A').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/社用車A/).length).toBeGreaterThan(0);
   });
 });

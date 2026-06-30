@@ -1283,7 +1283,7 @@ export function ScheduleProposalsContent({
           timeWindowStart: item.proposal.time_window_start,
           timeWindowEnd: item.proposal.time_window_end,
           pharmacistName: item.proposal.proposed_pharmacist?.name ?? '担当未解決',
-          vehicleLabel: item.proposal.vehicle_resource?.label ?? '社用車未指定',
+          vehicleLabel: formatVehicleResourceLabel(item.proposal.vehicle_resource, '社用車未指定'),
           message: bulkActionFailureDisplayMessage(item),
         })),
       });
@@ -2337,7 +2337,10 @@ export function ScheduleProposalsContent({
                 <div>
                   <dt className="text-xs text-muted-foreground">社用車</dt>
                   <dd className="font-medium">
-                    {singleConfirmProposal.vehicle_resource?.label ?? '社用車未指定'}
+                    {formatVehicleResourceLabel(
+                      singleConfirmProposal.vehicle_resource,
+                      '社用車未指定',
+                    )}
                   </dd>
                 </div>
                 <div>
@@ -2442,7 +2445,7 @@ export function ScheduleProposalsContent({
                     {formatNullableDateLabel(proposal.proposed_date)}{' '}
                     {timeLabel(proposal.time_window_start, proposal.time_window_end)} /{' '}
                     {proposal.proposed_pharmacist?.name ?? '担当未解決'} /{' '}
-                    {proposal.vehicle_resource?.label ?? '社用車未指定'}
+                    {formatVehicleResourceLabel(proposal.vehicle_resource, '社用車未指定')}
                   </p>
                 </li>
               ))}

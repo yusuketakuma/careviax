@@ -247,7 +247,7 @@ describe('schedule-day-view.helpers', () => {
     );
     expect(proposalListVisitPlaceLabel({ site: null })).toBe('訪問先住所は詳細・ルート確認で表示');
     expect(proposalActionTargetLabel(proposal)).toBe(
-      '山田花子 2026/04/09 18:00 - 19:00 / 薬剤師A / 社用車A / ケース 1 / 候補 1',
+      '山田花子 2026/04/09 18:00 - 19:00 / 薬剤師A / 社用車A (最大6件 / 180分以内) / ケース 1 / 候補 1',
     );
   });
 

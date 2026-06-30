@@ -755,7 +755,7 @@ export function proposalSafeIdentifierLabel(proposal: Pick<Proposal, 'case_id' |
 
 export function proposalActionTargetLabel(proposal: Proposal) {
   const pharmacistName = proposal.proposed_pharmacist?.name ?? '担当未解決';
-  const vehicleLabel = proposal.vehicle_resource?.label ?? '社用車未指定';
+  const vehicleLabel = formatVehicleResourceLabel(proposal.vehicle_resource, '社用車未指定');
   return `${proposal.case_.patient.name} ${formatNullableDateLabel(proposal.proposed_date)} ${timeLabel(proposal.time_window_start, proposal.time_window_end)} / ${pharmacistName} / ${vehicleLabel} / ${proposalSafeIdentifierLabel(proposal)}`;
 }
 
