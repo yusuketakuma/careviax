@@ -27086,3 +27086,28 @@ Next loop:
 - Remaining:
   - Broad schedule/prescription/route objective remains open.
   - Continue scanning remaining route-order entrypoints and schedule displays for missing current-state or preparation evidence.
+
+### Communication Request Type Filter - 2026-06-30 22:30 JST
+
+- Scope:
+  - Continued visit/report/collaboration queue hardening for mixed report返信、患者共有、訪問予定変更、緊急連絡、処方医フォロー依頼.
+  - Focused on preserving `request_type` from request-producing links into the communication request list API/UI.
+- Fixed:
+  - `/communications/requests` now reads, displays, query-keys, and sends `request_type` as a filter.
+  - `GET /api/communication-requests` trims and validates explicit `request_type`, rejects blank values, and applies it to the Prisma `where`.
+  - Report share, report delivery, today-workspace, home-care multidisciplinary share, communication queue, and visit brief links now preserve known request type when opening a focused request.
+- Safety:
+  - Reduces wrong-queue / wrong-request follow-up risk in mixed multidisciplinary queues.
+  - Existing auth, org/RLS assignment scope, care-report visibility filtering, no-store responses, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- Performance:
+  - Adds only a scalar predicate to the existing paginated request list and uses already selected request metadata.
+- Validation:
+  - Communication focused Vitest passed `5` files / `78` tests.
+  - Related report/home-care/queue/visit/today-workspace Vitest passed `6` files / `91` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit/report/collaboration objective remains open.
+  - `src/app/(dashboard)/schedules/schedule-team-board*.tsx` is separate dirty WIP and should stay out of this communication slice unless explicitly claimed.
