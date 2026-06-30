@@ -13,6 +13,7 @@ const {
   visitScheduleFindFirstMock,
   careCaseFindFirstMock,
   careCaseFindManyMock,
+  contactPartyFindManyMock,
   prescriptionIntakeFindFirstMock,
   sendCareReportEmailMock,
   upsertBillingEvidenceForVisitMock,
@@ -31,6 +32,7 @@ const {
   visitScheduleFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
+  contactPartyFindManyMock: vi.fn(),
   prescriptionIntakeFindFirstMock: vi.fn(),
   sendCareReportEmailMock: vi.fn(),
   upsertBillingEvidenceForVisitMock: vi.fn(),
@@ -109,6 +111,9 @@ vi.mock('@/lib/db/client', () => ({
     careCase: {
       findFirst: careCaseFindFirstMock,
       findMany: careCaseFindManyMock,
+    },
+    contactParty: {
+      findMany: contactPartyFindManyMock,
     },
     prescriptionIntake: {
       findFirst: prescriptionIntakeFindFirstMock,
@@ -292,6 +297,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         ],
       },
     ]);
+    contactPartyFindManyMock.mockResolvedValue([]);
     prescriptionIntakeFindFirstMock.mockResolvedValue({
       prescriber_name: '山田 太郎',
       prescriber_institution_ref: {
@@ -1464,6 +1470,83 @@ describe('/api/care-reports/[id]/send POST', () => {
     expect(txMock.auditLog.create).not.toHaveBeenCalled();
     expect(sendCareReportEmailMock).not.toHaveBeenCalled();
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts family-share recipients from patient contacts', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'confirmed',
+      visit_record_id: null,
+      content: {},
+      report_type: 'family_share',
+      pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
+    });
+    contactPartyFindManyMock.mockResolvedValueOnce([
+      {
+        relation: 'child',
+        name: '長女 佐藤',
+        organization_name: null,
+        phone: '090-1111-2222',
+        email: 'daughter@example.com',
+        fax: null,
+        address: '東京都千代田区1-2-3',
+      },
+    ]);
+
+    const response = await POST(
+      createRequest({
+        channel: 'phone',
+        recipient_name: '長女 佐藤',
+        recipient_contact: '090-1111-2222',
+        recipient_role: 'family',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(contactPartyFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+      },
+      select: {
+        relation: true,
+        name: true,
+        organization_name: true,
+        phone: true,
+        email: true,
+        fax: true,
+        address: true,
+      },
+    });
+    expect(txMock.deliveryRecord.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          channel: 'phone',
+          recipient_name: '長女 佐藤',
+          recipient_contact: '090-1111-2222',
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        report: { id: 'report_1', status: 'sent' },
+        deliveries: [
+          {
+            channel: 'phone',
+            delivery_mode: 'manual_recorded',
+            recipient_role: 'family',
+            status: 'sent',
+          },
+        ],
+      },
+    });
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
   });
 
   it('rejects bulk sends when any recipient role does not match the report type', async () => {

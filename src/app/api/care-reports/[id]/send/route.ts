@@ -37,6 +37,7 @@ import { sendCareReportEmail } from '@/server/services/report-delivery';
 import { learnContactProfileFromCommunication } from '@/lib/contact-profiles';
 import { transitionCycleStatus } from '@/lib/db/cycle-transition';
 import { inferCareReportTargetRole } from '@/lib/reports/care-report-target-role';
+import { audienceKeyFromRecipientRole, SHARE_AUDIENCES } from '@/lib/communications/share-audience';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { getAuthSecret } from '@/lib/auth/secret';
 import { logger } from '@/lib/utils/logger';
@@ -198,6 +199,12 @@ function recipientNameMatches(
   return sourceNames.some((name) => comparableText(name) === expectedName);
 }
 
+function contactRelationsForRecipientRole(recipientRole: string) {
+  const audienceKey = audienceKeyFromRecipientRole(recipientRole);
+  if (!audienceKey) return [];
+  return SHARE_AUDIENCES.find((audience) => audience.key === audienceKey)?.contactRelations ?? [];
+}
+
 async function validateRecipientsAgainstKnownSources(args: {
   orgId: string;
   report: ReportRecord;
@@ -211,7 +218,7 @@ async function validateRecipientsAgainstKnownSources(args: {
     };
   }
 
-  const [cases, latestPrescriptionIntake] = await Promise.all([
+  const [cases, patientContacts, latestPrescriptionIntake] = await Promise.all([
     prisma.careCase.findMany({
       where: {
         org_id: orgId,
@@ -241,6 +248,21 @@ async function validateRecipientsAgainstKnownSources(args: {
             },
           },
         },
+      },
+    }),
+    prisma.contactParty.findMany({
+      where: {
+        org_id: orgId,
+        patient_id: report.patient_id,
+      },
+      select: {
+        relation: true,
+        name: true,
+        organization_name: true,
+        phone: true,
+        email: true,
+        fax: true,
+        address: true,
       },
     }),
     prisma.prescriptionIntake.findFirst({
@@ -294,6 +316,25 @@ async function validateRecipientsAgainstKnownSources(args: {
       }),
     );
     if (matchesCareTeam) continue;
+
+    const contactRelations = contactRelationsForRecipientRole(recipient.recipient_role);
+    const matchesPatientContact =
+      contactRelations.length > 0 &&
+      patientContacts.some((contact) => {
+        if (!contactRelations.includes(contact.relation)) return false;
+        if (
+          !recipientNameMatches(recipient.recipient_name, [contact.name, contact.organization_name])
+        ) {
+          return false;
+        }
+        return recipientContactMatches(recipient.channel, recipient.recipient_contact, {
+          phone: contact.phone,
+          email: contact.email,
+          fax: contact.fax,
+          address: contact.address,
+        });
+      });
+    if (matchesPatientContact) continue;
 
     const institution = latestPrescriptionIntake?.prescriber_institution_ref ?? null;
     const matchesPrescriberInstitution =
