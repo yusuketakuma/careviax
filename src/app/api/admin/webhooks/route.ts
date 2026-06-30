@@ -39,29 +39,42 @@ export const GET = withAuthContext(
       1,
       MAX_WEBHOOK_REGISTRATION_LIMIT,
     );
+    const where = { org_id: ctx.orgId };
 
-    const registrations = await withOrgContext(ctx.orgId, async (tx) => {
-      return tx.webhookRegistration.findMany({
-        where: { org_id: ctx.orgId },
-        orderBy: { created_at: 'desc' },
-        take: limit + 1,
-        select: {
-          id: true,
-          url: true,
-          events: true,
-          is_active: true,
-          created_at: true,
-          updated_at: true,
-          // Exclude secret from list response
-        },
-      });
+    const [totalCount, registrations] = await withOrgContext(ctx.orgId, async (tx) => {
+      return Promise.all([
+        tx.webhookRegistration.count({ where }),
+        tx.webhookRegistration.findMany({
+          where,
+          orderBy: { created_at: 'desc' },
+          take: limit,
+          select: {
+            id: true,
+            url: true,
+            events: true,
+            is_active: true,
+            created_at: true,
+            updated_at: true,
+            // Exclude secret from list response
+          },
+        }),
+      ]);
     });
+    const visibleCount = registrations.length;
+    const hiddenCount = Math.max(totalCount - visibleCount, 0);
 
     return success({
-      data: registrations.slice(0, limit).map(toPublicWebhookRegistration),
+      data: registrations.map(toPublicWebhookRegistration),
+      total_count: totalCount,
+      visible_count: visibleCount,
+      hidden_count: hiddenCount,
+      truncated: hiddenCount > 0,
+      count_basis: 'webhook_registrations',
+      filters_applied: {},
+      limit,
       meta: {
         limit,
-        has_more: registrations.length > limit,
+        has_more: hiddenCount > 0,
       },
     });
   },

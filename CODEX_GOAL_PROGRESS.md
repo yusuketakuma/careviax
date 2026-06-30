@@ -25828,3 +25828,33 @@ Next loop:
 - Remaining:
   - The broad master-management/patient-information goal remains open.
   - Continue scanning capped admin master APIs such as webhooks, pharmacist shift templates/shifts, vehicle resources, business holidays, packaging methods, templates, and document delivery rules for count metadata, stale preconditions, audit-near-action gaps, and false-empty states.
+
+### Webhook Registration Counted Metadata - 2026-06-30 19:37 JST
+
+- Scope:
+  - Continued master-management hardening for the outbound webhook registration master API.
+  - Focused on capped `GET /api/admin/webhooks` responses that previously exposed only `meta.has_more`.
+- Fixed:
+  - `GET /api/admin/webhooks` now returns `total_count`, `visible_count`, `hidden_count`, `truncated`, `count_basis`, `filters_applied`, and `limit`.
+  - The route now uses one exact org-scoped `webhookRegistration.count` query plus a bounded `take: limit` list query instead of `limit + 1` overfetch.
+  - Existing `meta.limit` and `meta.has_more` are preserved for backward compatibility, with `has_more` now derived from `hidden_count > 0`.
+  - Regression coverage now verifies exact hidden counts without returning or leaking the hidden webhook registration.
+- Safety:
+  - Reduces false-complete webhook-registration master risk while preserving the existing redacted URL list response.
+  - Hidden webhook URLs, URL credentials/tokens/fragments, secrets, encrypted secret material, raw internals, and PHI are not exposed; metadata contains only counts, count basis, filters, and limit.
+  - Existing admin authorization, org scoping, URL redaction, malformed legacy URL redaction, POST URL safety validation, one-time secret return, and audit-on-create behavior remain intact.
+  - No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Replaces one-row overfetch with one scoped count query plus a bounded list query using the same org predicate.
+  - No new dependency, background job, broad scan outside that predicate, unbounded loop, network call, or render-heavy path was added.
+- Validation:
+  - Read Next route-handler docs before the API-facing change.
+  - `pnpm exec vitest run src/app/api/admin/webhooks/route.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `15` tests.
+  - Scoped ESLint and scoped `git diff --check` on webhook API files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - The broad master-management/patient-information goal remains open.
+  - Continue scanning capped master APIs such as pharmacist shift templates/shifts, vehicle resources, business holidays, packaging methods, templates, document delivery rules, drug alert rules, and saved views.
+  - Separate dirty `src/lib/patient/lab-analytes.ts` label-helper changes are present and intentionally not included in this webhook commit.

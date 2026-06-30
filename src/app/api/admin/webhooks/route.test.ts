@@ -5,6 +5,7 @@ const {
   requireAuthContextMock,
   withAuthContextMock,
   withOrgContextMock,
+  webhookRegistrationCountMock,
   webhookRegistrationFindManyMock,
   webhookRegistrationCreateMock,
   auditLogCreateMock,
@@ -28,6 +29,7 @@ const {
     },
   ),
   withOrgContextMock: vi.fn(),
+  webhookRegistrationCountMock: vi.fn(),
   webhookRegistrationFindManyMock: vi.fn(),
   webhookRegistrationCreateMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
@@ -114,6 +116,7 @@ describe('/api/admin/webhooks', () => {
         updated_at: new Date('2026-05-01T00:00:00.000Z'),
       },
     ]);
+    webhookRegistrationCountMock.mockResolvedValue(1);
     webhookRegistrationCreateMock.mockResolvedValue({
       id: 'webhook_2',
       url: 'https://partner.example.com/hooks/careviax',
@@ -125,6 +128,7 @@ describe('/api/admin/webhooks', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         webhookRegistration: {
+          count: webhookRegistrationCountMock,
           findMany: webhookRegistrationFindManyMock,
           create: webhookRegistrationCreateMock,
         },
@@ -165,7 +169,7 @@ describe('/api/admin/webhooks', () => {
         created_at: true,
         updated_at: true,
       },
-      take: 6,
+      take: 5,
     });
     const body = await response.json();
     expect(body).toMatchObject({
@@ -175,20 +179,30 @@ describe('/api/admin/webhooks', () => {
           url: 'https://partner.example.com/hooks/careviax',
         }),
       ],
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'webhook_registrations',
+      filters_applied: {},
+      limit: 5,
       meta: {
         limit: 5,
         has_more: false,
       },
     });
+    expect(webhookRegistrationCountMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1' },
+    });
     expect(JSON.stringify(body)).not.toContain('list-secret');
   });
 
   it.each([
-    ['', 101],
-    ['?limit=200', 201],
-    ['?limit=9999', 201],
-    ['?limit=0', 2],
-    ['?limit=abc', 101],
+    ['', 100],
+    ['?limit=200', 200],
+    ['?limit=9999', 200],
+    ['?limit=0', 1],
+    ['?limit=abc', 100],
   ])('bounds webhook registration list size for "%s"', async (search, expectedTake) => {
     const response = await GET(createGetRequest(search), emptyRouteContext);
 
@@ -203,7 +217,8 @@ describe('/api/admin/webhooks', () => {
     );
   });
 
-  it('reports has_more without returning the extra registration', async () => {
+  it('returns counted metadata without leaking hidden webhook registrations', async () => {
+    webhookRegistrationCountMock.mockResolvedValueOnce(2);
     webhookRegistrationFindManyMock.mockResolvedValueOnce([
       {
         id: 'webhook_1',
@@ -213,14 +228,6 @@ describe('/api/admin/webhooks', () => {
         created_at: new Date('2026-05-01T00:00:00.000Z'),
         updated_at: new Date('2026-05-01T00:00:00.000Z'),
       },
-      {
-        id: 'webhook_2',
-        url: 'https://partner.example.com/hooks/two?token=second-secret#ignored',
-        events: ['billing.exported'],
-        is_active: true,
-        created_at: new Date('2026-04-01T00:00:00.000Z'),
-        updated_at: new Date('2026-04-01T00:00:00.000Z'),
-      },
     ]);
 
     const response = await GET(createGetRequest('?limit=1'), emptyRouteContext);
@@ -229,7 +236,7 @@ describe('/api/admin/webhooks', () => {
     expect(response.status).toBe(200);
     expect(webhookRegistrationFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        take: 2,
+        take: 1,
       }),
     );
     const body = await response.json();
@@ -240,6 +247,13 @@ describe('/api/admin/webhooks', () => {
           url: 'https://partner.example.com/hooks/one',
         },
       ],
+      total_count: 2,
+      visible_count: 1,
+      hidden_count: 1,
+      truncated: true,
+      count_basis: 'webhook_registrations',
+      filters_applied: {},
+      limit: 1,
       meta: {
         limit: 1,
         has_more: true,
@@ -248,7 +262,6 @@ describe('/api/admin/webhooks', () => {
     expect(body.data).toHaveLength(1);
     expect(JSON.stringify(body)).not.toContain('webhook_2');
     expect(JSON.stringify(body)).not.toContain('first-secret');
-    expect(JSON.stringify(body)).not.toContain('second-secret');
   });
 
   it('does not echo malformed legacy webhook URLs in list responses', async () => {
