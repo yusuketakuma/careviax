@@ -46,7 +46,10 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 
 import { POST } from './route';
 
-function createReopenRequest(body: unknown, headers: Record<string, string> = { 'x-org-id': 'org_1' }) {
+function createReopenRequest(
+  body: unknown,
+  headers: Record<string, string> = { 'x-org-id': 'org_1' },
+) {
   return new NextRequest('http://localhost/api/visit-schedules/schedule_1/reopen', {
     method: 'POST',
     body: JSON.stringify(body),
@@ -55,6 +58,11 @@ function createReopenRequest(body: unknown, headers: Record<string, string> = { 
       ...headers,
     },
   });
+}
+
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/visit-schedules/[id]/reopen POST', () => {
@@ -101,6 +109,7 @@ describe('/api/visit-schedules/[id]/reopen POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
       where: { id: 'schedule_1', org_id: 'org_1', version: 1 },
       data: { schedule_status: 'planned', version: { increment: 1 } },
@@ -141,6 +150,7 @@ describe('/api/visit-schedules/[id]/reopen POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '取消済みの訪問予定のみ再開できます',
     });
@@ -154,6 +164,7 @@ describe('/api/visit-schedules/[id]/reopen POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
@@ -193,6 +204,59 @@ describe('/api/visit-schedules/[id]/reopen POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when auth plumbing fails before body parsing', async () => {
+    authMock.mockRejectedValueOnce(
+      new Error('raw auth schedule reopen patient 山田 花子 token secret'),
+    );
+
+    const response = await POST(createReopenRequest({ reason_code: 'other' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw auth');
+    expect(bodyText).not.toContain('山田 花子');
+    expect(bodyText).not.toContain('token secret');
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when reopen transaction fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('raw reopen transaction patient 山田 花子 token secret reason memo'),
+    );
+
+    const response = await POST(createReopenRequest({ reason_code: 'other' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw reopen');
+    expect(bodyText).not.toContain('山田 花子');
+    expect(bodyText).not.toContain('token secret');
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 });

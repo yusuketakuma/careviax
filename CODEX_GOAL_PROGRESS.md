@@ -21456,3 +21456,35 @@ Next loop:
 - Remaining:
   - Commit only the four reorder route/test files plus these ledger updates.
   - Continue the next schedule-management candidate.
+
+### Visit Schedule Reopen Response Boundary Slice — 2026-06-30 10:37 JST
+
+- Scope:
+  - Continued schedule-management implementation in `/api/visit-schedules/[id]/reopen`.
+  - Kept reopen validation, assignment authorization, version-guarded update, audit entry, workflow notification, and response payload shape unchanged.
+  - Preserved codex-owned reschedule lifecycle WIP and unrelated prescription QR draft dirty files without staging them.
+- Fixed:
+  - Split the reopen handler into `authenticatedPOST` plus an exported wrapper.
+  - Wrapped exported POST responses in `withSensitiveNoStore`.
+  - Converted exported-route auth/plumbing failures and unexpected transaction failures to fixed `INTERNAL_ERROR` responses after `unstable_rethrow`.
+  - Added no-store assertions for success, validation, and conflict responses.
+  - Added sanitized no-store 500 tests for auth failure before body parsing and unexpected reopen transaction failure.
+- Safety:
+  - Reduces cache leakage risk for cancelled-schedule reopen transitions.
+  - Unexpected 500 bodies do not expose seeded patient names, token text, or raw thrown messages.
+  - No database migration, live data operation, external send, authorization change, audit payload expansion, transaction rewrite, or workflow notification change was run.
+- Review:
+  - codex confirmed ownership of the separate reschedule lifecycle dirty paths and instructed codex2 to commit exact reopen paths only.
+  - codex returned `APPROVED` after rerunning focused Vitest `1` file / `7` tests, scoped ESLint, scoped Prettier check, and scoped diff-check.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/visit-schedules/[id]/reopen/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests.
+  - Scoped ESLint on the two owned reopen files: passed.
+  - Scoped Prettier check on the two owned reopen files: passed.
+  - Scoped `git diff --check` on the two owned reopen files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the two reopen route/test files plus these ledger updates.
+  - Continue after codex commits or releases the reschedule lifecycle WIP.

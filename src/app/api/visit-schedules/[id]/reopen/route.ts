@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
@@ -6,7 +7,15 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, forbiddenResponse, conflict } from '@/lib/api/response';
+import {
+  success,
+  validationError,
+  notFound,
+  forbiddenResponse,
+  conflict,
+  internalError,
+} from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import {
   VISIT_SCHEDULE_CANCEL_REASON_CODES,
@@ -25,7 +34,10 @@ const reopenScheduleSchema = z.object({
   reason_note: z.string().trim().max(500, 'メモは500文字以内で入力してください').optional(),
 });
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedPOST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問予定の更新権限がありません',
@@ -114,4 +126,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   });
 
   return success(result.schedule);
+}
+
+export async function POST(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }
