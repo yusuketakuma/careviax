@@ -523,18 +523,55 @@ export function PatientForm({
 
   const careTeamPharmacists = careTeamPharmacistsQuery.data ?? [];
   const careTeamStaff = careTeamStaffQuery.data ?? [];
+  const careTeamPharmacistsLoadFailed = Boolean(careTeamPharmacistsQuery.isError);
+  const careTeamStaffLoadFailed = Boolean(careTeamStaffQuery.isError);
   const careTeamFields = [
-    { name: 'primary_pharmacist_id' as const, label: '主担当薬剤師', options: careTeamPharmacists },
-    { name: 'backup_pharmacist_id' as const, label: '副担当薬剤師', options: careTeamPharmacists },
-    { name: 'primary_staff_id' as const, label: '主担当スタッフ', options: careTeamStaff },
-    { name: 'backup_staff_id' as const, label: '副担当スタッフ', options: careTeamStaff },
+    {
+      name: 'primary_pharmacist_id' as const,
+      label: '主担当薬剤師',
+      options: careTeamPharmacists,
+      isLoading: careTeamPharmacistsQuery.isLoading,
+      loadFailed: careTeamPharmacistsLoadFailed,
+      loadingPlaceholder: '薬剤師候補を読み込み中...',
+      failedPlaceholder: '薬剤師候補を取得できません',
+    },
+    {
+      name: 'backup_pharmacist_id' as const,
+      label: '副担当薬剤師',
+      options: careTeamPharmacists,
+      isLoading: careTeamPharmacistsQuery.isLoading,
+      loadFailed: careTeamPharmacistsLoadFailed,
+      loadingPlaceholder: '薬剤師候補を読み込み中...',
+      failedPlaceholder: '薬剤師候補を取得できません',
+    },
+    {
+      name: 'primary_staff_id' as const,
+      label: '主担当スタッフ',
+      options: careTeamStaff,
+      isLoading: careTeamStaffQuery.isLoading,
+      loadFailed: careTeamStaffLoadFailed,
+      loadingPlaceholder: 'スタッフ候補を読み込み中...',
+      failedPlaceholder: 'スタッフ候補を取得できません',
+    },
+    {
+      name: 'backup_staff_id' as const,
+      label: '副担当スタッフ',
+      options: careTeamStaff,
+      isLoading: careTeamStaffQuery.isLoading,
+      loadFailed: careTeamStaffLoadFailed,
+      loadingPlaceholder: 'スタッフ候補を読み込み中...',
+      failedPlaceholder: 'スタッフ候補を取得できません',
+    },
   ];
 
-  const serviceAreaWarning = evaluateServiceAreaWarning({
-    serviceAreas: serviceAreasQuery.data ?? [],
-    address: watchedAddress,
-    facilityId: selectedFacilityId || null,
-  });
+  const serviceAreasLoadFailed = Boolean(serviceAreasQuery.isError);
+  const serviceAreaWarning = serviceAreasLoadFailed
+    ? null
+    : evaluateServiceAreaWarning({
+        serviceAreas: serviceAreasQuery.data ?? [],
+        address: watchedAddress,
+        facilityId: selectedFacilityId || null,
+      });
   const facilityUnitsLoadFailed = Boolean(selectedFacilityId && facilityUnitsQuery.isError);
 
   useEffect(() => {
@@ -841,6 +878,50 @@ export function PatientForm({
                 <p className="text-xs text-muted-foreground">
                   任意。未設定のままでも登録できます。
                 </p>
+                {careTeamPharmacistsLoadFailed ? (
+                  <p
+                    className="flex flex-wrap items-center gap-x-2 text-xs text-destructive"
+                    role="alert"
+                  >
+                    <span>
+                      {queryErrorMessage(
+                        careTeamPharmacistsQuery.error,
+                        '薬剤師一覧の取得に失敗しました',
+                      )}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="h-auto min-h-0 p-0 text-xs"
+                      onClick={() => careTeamPharmacistsQuery.refetch()}
+                    >
+                      再試行
+                    </Button>
+                  </p>
+                ) : null}
+                {careTeamStaffLoadFailed ? (
+                  <p
+                    className="flex flex-wrap items-center gap-x-2 text-xs text-destructive"
+                    role="alert"
+                  >
+                    <span>
+                      {queryErrorMessage(
+                        careTeamStaffQuery.error,
+                        'スタッフ一覧の取得に失敗しました',
+                      )}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="h-auto min-h-0 p-0 text-xs"
+                      onClick={() => careTeamStaffQuery.refetch()}
+                    >
+                      再試行
+                    </Button>
+                  </p>
+                ) : null}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   {careTeamFields.map((field) => (
                     <div key={field.name} className="space-y-1.5">
@@ -848,9 +929,16 @@ export function PatientForm({
                       <select
                         id={field.name}
                         {...register(field.name)}
+                        disabled={field.isLoading || field.loadFailed}
                         className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50 sm:h-8 sm:min-h-0"
                       >
-                        <option value="">未設定</option>
+                        <option value="">
+                          {field.isLoading
+                            ? field.loadingPlaceholder
+                            : field.loadFailed
+                              ? field.failedPlaceholder
+                              : '未設定'}
+                        </option>
                         {field.options.map((member) => (
                           <option key={member.id} value={member.id}>
                             {member.name}
@@ -888,7 +976,28 @@ export function PatientForm({
                 />
               </div>
 
-              {serviceAreaWarning ? (
+              {serviceAreasLoadFailed ? (
+                <p
+                  className="flex flex-wrap items-center gap-x-2 text-xs text-destructive"
+                  role="alert"
+                >
+                  <span>
+                    {queryErrorMessage(
+                      serviceAreasQuery.error,
+                      '訪問エリア設定の取得に失敗しました',
+                    )}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto min-h-0 p-0 text-xs"
+                    onClick={() => serviceAreasQuery.refetch()}
+                  >
+                    再試行
+                  </Button>
+                </p>
+              ) : serviceAreaWarning ? (
                 <Alert
                   variant="default"
                   className={

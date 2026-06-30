@@ -228,6 +228,53 @@ describe('PatientForm', () => {
     expect(within(careTeam).getAllByText('事務 花子').length).toBe(2);
   });
 
+  it('surfaces care team fetch failures instead of showing empty member selects', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    const pharmacistsRefetch = vi.fn();
+    const staffRefetch = vi.fn();
+    useQueryMock.mockImplementation((options: { queryKey: unknown[] }) => {
+      const key = options.queryKey[1];
+      if (key === 'care-team-pharmacists') {
+        return {
+          data: undefined,
+          isLoading: false,
+          isError: true,
+          error: new Error('薬剤師一覧の取得に失敗しました'),
+          refetch: pharmacistsRefetch,
+        };
+      }
+      if (key === 'care-team-staff') {
+        return {
+          data: undefined,
+          isLoading: false,
+          isError: true,
+          error: new Error('スタッフ一覧の取得に失敗しました'),
+          refetch: staffRefetch,
+        };
+      }
+      return { data: [], isLoading: false, isError: false, refetch: vi.fn() };
+    });
+
+    render(<PatientForm />);
+
+    const careTeam = screen.getByTestId('patient-care-team');
+    expect(within(careTeam).getByText('薬剤師一覧の取得に失敗しました')).toBeTruthy();
+    expect(within(careTeam).getByText('スタッフ一覧の取得に失敗しました')).toBeTruthy();
+
+    const primaryPharmacist = within(careTeam).getByLabelText('主担当薬剤師') as HTMLSelectElement;
+    const primaryStaff = within(careTeam).getByLabelText('主担当スタッフ') as HTMLSelectElement;
+    expect(primaryPharmacist.disabled).toBe(true);
+    expect(primaryPharmacist.options[0]?.text).toBe('薬剤師候補を取得できません');
+    expect(primaryStaff.disabled).toBe(true);
+    expect(primaryStaff.options[0]?.text).toBe('スタッフ候補を取得できません');
+
+    const retryButtons = within(careTeam).getAllByRole('button', { name: '再試行' });
+    fireEvent.click(retryButtons[0]);
+    fireEvent.click(retryButtons[1]);
+    expect(pharmacistsRefetch).toHaveBeenCalledTimes(1);
+    expect(staffRefetch).toHaveBeenCalledTimes(1);
+  });
+
   it('shows server-side duplicate candidates and resubmits with duplicate acknowledgement', async () => {
     useOrgIdMock.mockReturnValue('org_1');
     useQueryMock.mockReturnValue({ data: [], isLoading: false });
@@ -518,6 +565,42 @@ describe('PatientForm', () => {
 
     expect(screen.getByRole('alert').textContent).toContain('ユニット一覧の取得に失敗しました');
     expect(screen.queryByText(/この施設には登録済みユニットがありません/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces service area fetch failures instead of hiding visit coverage checks', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    const refetch = vi.fn();
+    useQueryMock.mockImplementation((options: { queryKey: unknown[] }) => {
+      if (options.queryKey[1] === 'service-areas') {
+        return {
+          data: undefined,
+          isLoading: false,
+          isError: true,
+          error: new Error('訪問エリア設定の取得に失敗しました'),
+          refetch,
+        };
+      }
+      return { data: [], isLoading: false, isError: false, refetch: vi.fn() };
+    });
+
+    render(
+      <PatientForm
+        defaultValues={{
+          name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
+          birth_date: '1950-01-01',
+          gender: 'male',
+          address: '東京都新宿区',
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: '住所・保険' }));
+
+    expect(screen.getByRole('alert').textContent).toContain('訪問エリア設定の取得に失敗しました');
+    expect(screen.queryByText(/登録住所が既存の訪問エリアに一致していません/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(refetch).toHaveBeenCalledTimes(1);
   });
