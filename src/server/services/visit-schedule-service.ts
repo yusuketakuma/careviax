@@ -71,10 +71,34 @@ type VisitVehicleResourceValidationArgs = {
   excludeScheduleId?: string;
 };
 
+type VisitVehicleResourceValidationDb =
+  | Pick<PrismaClient, 'visitSchedule' | 'visitVehicleResource'>
+  | Pick<Prisma.TransactionClient, 'visitSchedule' | 'visitVehicleResource'>;
+
+type VisitScheduleTimeConflictDb =
+  | Pick<PrismaClient, 'visitSchedule'>
+  | Pick<Prisma.TransactionClient, 'visitSchedule'>;
+
+export type VisitScheduleTimeConflictKind = 'pharmacist_overlap' | 'vehicle_overlap';
+
+type VisitScheduleTimeConflictArgs = {
+  orgId: string;
+  scheduledDate: Date;
+  pharmacistId: string;
+  timeWindowStart: Date | null;
+  timeWindowEnd: Date | null;
+  vehicleResourceId?: string | null;
+  excludeScheduleId?: string;
+};
+
 type PreferenceWindow = {
   from?: string;
   to?: string;
 };
+
+export function isActiveVisitScheduleStatus(status: string) {
+  return (ACTIVE_VISIT_SCHEDULE_STATUSES as readonly string[]).includes(status);
+}
 
 export type ListSchedulesFilters = {
   cursor?: string;
@@ -150,7 +174,7 @@ export async function listSchedules(
 }
 
 export async function validateVisitVehicleResourceForSchedule(
-  prisma: PrismaClient,
+  prisma: VisitVehicleResourceValidationDb,
   args: VisitVehicleResourceValidationArgs,
 ) {
   const vehicleResource = await prisma.visitVehicleResource.findFirst({
@@ -207,6 +231,62 @@ export async function validateVisitVehicleResourceForSchedule(
   }
 
   return { ok: true as const, vehicleResource };
+}
+
+export async function findVisitScheduleTimeConflict(
+  prisma: VisitScheduleTimeConflictDb,
+  args: VisitScheduleTimeConflictArgs,
+) {
+  if (!args.timeWindowStart || !args.timeWindowEnd) return null;
+
+  const baseWhere: Prisma.VisitScheduleWhereInput = {
+    org_id: args.orgId,
+    ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
+    scheduled_date: args.scheduledDate,
+    schedule_status: {
+      in: [...ACTIVE_VISIT_SCHEDULE_STATUSES],
+    },
+    time_window_start: { lt: args.timeWindowEnd },
+    time_window_end: { gt: args.timeWindowStart },
+  };
+
+  const pharmacistConflict = await prisma.visitSchedule.findFirst({
+    where: {
+      ...baseWhere,
+      pharmacist_id: args.pharmacistId,
+    },
+    select: { id: true },
+  });
+  if (pharmacistConflict) {
+    return {
+      kind: 'pharmacist_overlap' as const,
+      scheduleId: pharmacistConflict.id,
+    };
+  }
+
+  if (!args.vehicleResourceId) return null;
+  const vehicleConflict = await prisma.visitSchedule.findFirst({
+    where: {
+      ...baseWhere,
+      vehicle_resource_id: args.vehicleResourceId,
+    },
+    select: { id: true },
+  });
+  if (vehicleConflict) {
+    return {
+      kind: 'vehicle_overlap' as const,
+      scheduleId: vehicleConflict.id,
+    };
+  }
+
+  return null;
+}
+
+export function getVisitScheduleTimeConflictMessage(kind: VisitScheduleTimeConflictKind) {
+  if (kind === 'vehicle_overlap') {
+    return '同一車両・同一日付の訪問時間帯が既存予定と重複しています。再読み込みしてください';
+  }
+  return '同一薬剤師・同一日付の訪問時間帯が既存予定と重複しています。再読み込みしてください';
 }
 
 export async function createSchedule(
@@ -334,6 +414,8 @@ export async function createSchedule(
   }
 
   const facilityUnitId = careCase.patient?.residences[0]?.facility_unit_id ?? null;
+  const targetTimeWindowStart = time_window_start ? hhmmToTimeDate(time_window_start) : null;
+  const targetTimeWindowEnd = time_window_end ? hhmmToTimeDate(time_window_end) : null;
 
   const result = await withSerializableScheduleCreateTransaction(orgId, async (tx) => {
     const duplicateSchedule = await tx.visitSchedule.findFirst({
@@ -367,6 +449,36 @@ export async function createSchedule(
       return {
         error: 'duplicate_open_proposal' as const,
       };
+    }
+
+    const timeConflict = await findVisitScheduleTimeConflict(tx, {
+      orgId,
+      scheduledDate,
+      pharmacistId: rest.pharmacist_id,
+      timeWindowStart: targetTimeWindowStart,
+      timeWindowEnd: targetTimeWindowEnd,
+      vehicleResourceId: vehicle_resource_id ?? null,
+    });
+    if (timeConflict) {
+      return {
+        error: 'time_conflict' as const,
+        conflictKind: timeConflict.kind,
+      };
+    }
+
+    if (vehicle_resource_id) {
+      const vehicleValidation = await validateVisitVehicleResourceForSchedule(tx, {
+        orgId,
+        vehicleResourceId: vehicle_resource_id,
+        siteId: effectiveSiteId,
+        scheduledDate,
+      });
+      if (!vehicleValidation.ok) {
+        return {
+          error: 'vehicle_resource_invalid' as const,
+          response: vehicleValidation.response,
+        };
+      }
     }
 
     const billingValidation = await validateVisitScheduleBlockingBillingRequirements({
@@ -410,8 +522,8 @@ export async function createSchedule(
             ? 'primary'
             : 'fallback',
         scheduled_date: scheduledDate,
-        ...(time_window_start ? { time_window_start: hhmmToTimeDate(time_window_start) } : {}),
-        ...(time_window_end ? { time_window_end: hhmmToTimeDate(time_window_end) } : {}),
+        ...(targetTimeWindowStart ? { time_window_start: targetTimeWindowStart } : {}),
+        ...(targetTimeWindowEnd ? { time_window_end: targetTimeWindowEnd } : {}),
         confirmed_at: new Date(),
         confirmed_by: userId,
         route_order: routeOrderDraft?.route_order ?? 1,
@@ -435,6 +547,10 @@ export async function createSchedule(
       );
     }
     if (result.error === 'billing_cap_exceeded') return validationError(result.message);
+    if (result.error === 'time_conflict') {
+      return conflict(getVisitScheduleTimeConflictMessage(result.conflictKind));
+    }
+    if (result.error === 'vehicle_resource_invalid') return result.response;
     return conflict('訪問予定の作成が同時に更新されました。再読み込みしてください');
   }
 

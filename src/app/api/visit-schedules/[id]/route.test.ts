@@ -211,8 +211,12 @@ describe('/api/visit-schedules/[id] GET', () => {
       callback({
         visitSchedule: {
           findFirst: visitScheduleTxFindFirstMock,
+          count: visitScheduleCountMock,
           updateMany: visitScheduleUpdateManyMock,
           update: visitScheduleUpdateMock,
+        },
+        visitVehicleResource: {
+          findFirst: visitVehicleResourceFindFirstMock,
         },
         visitScheduleProposal: {
           findFirst: visitScheduleProposalTxFindFirstMock,
@@ -444,7 +448,7 @@ describe('/api/visit-schedules/[id] GET', () => {
   });
 
   it('stores patched time windows as UTC @db.Time sentinel dates', async () => {
-    visitScheduleTxFindFirstMock.mockResolvedValueOnce({
+    visitScheduleTxFindFirstMock.mockResolvedValueOnce(null).mockResolvedValueOnce({
       id: 'schedule_1',
       case_id: 'case_1',
       site_id: 'site_1',
@@ -1044,6 +1048,82 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
   });
 
+  it('rechecks selected vehicle stop limits inside the schedule PATCH transaction', async () => {
+    visitVehicleResourceFindFirstMock.mockResolvedValue({
+      id: 'vehicle_1',
+      site_id: 'site_1',
+      label: '社用車A',
+      max_stops: 1,
+    });
+    visitScheduleCountMock.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
+
+    const response = await PATCH(createPatchRequest({ vehicle_resource_id: 'vehicle_1' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '社用車A で訪問できる件数は最大 1 件です',
+    });
+    expect(visitScheduleCountMock).toHaveBeenCalledTimes(2);
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('allows cancelling an over-capacity existing vehicle schedule without vehicle revalidation', async () => {
+    visitVehicleResourceFindFirstMock.mockResolvedValue({
+      id: 'vehicle_1',
+      site_id: 'site_1',
+      label: '社用車A',
+      max_stops: 1,
+    });
+    visitScheduleCountMock.mockResolvedValue(99);
+    visitScheduleFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      cycle_id: 'cycle_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      schedule_status: 'planned',
+      scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+      time_window_start: new Date('1970-01-01T09:00:00.000Z'),
+      time_window_end: new Date('1970-01-01T10:00:00.000Z'),
+      route_order: 1,
+      recurrence_rule: null,
+      version: 1,
+      confirmed_at: null,
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      vehicle_resource_id: 'vehicle_1',
+      visit_record: null,
+      preparation: null,
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+      },
+    });
+
+    const response = await PATCH(createPatchRequest({ schedule_status: 'cancelled' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitVehicleResourceFindFirstMock).not.toHaveBeenCalled();
+    expect(visitScheduleCountMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          schedule_status: 'cancelled',
+          version: { increment: 1 },
+        }),
+      }),
+    );
+  });
+
   it('rejects schedule PATCH when the selected vehicle belongs to another site', async () => {
     visitVehicleResourceFindFirstMock.mockResolvedValueOnce({
       id: 'vehicle_2',
@@ -1074,6 +1154,7 @@ describe('/api/visit-schedules/[id] GET', () => {
     visitScheduleFindFirstMock.mockResolvedValueOnce({
       id: 'schedule_1',
       case_id: 'case_1',
+      schedule_status: 'planned',
       confirmed_at: null,
       pharmacist_id: 'user_1',
       site_id: 'site_1',
@@ -1141,6 +1222,44 @@ describe('/api/visit-schedules/[id] GET', () => {
       message: '訪問開始時刻が薬剤師シフトの開始前です',
     });
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects schedule time changes that overlap an active schedule for the same pharmacist', async () => {
+    visitScheduleTxFindFirstMock.mockResolvedValueOnce({ id: 'schedule_overlap' });
+
+    const response = await PATCH(
+      createPatchRequest({
+        time_window_start: '09:30',
+        time_window_end: '10:30',
+      }),
+      {
+        params: Promise.resolve({ id: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同一薬剤師・同一日付の訪問時間帯が既存予定と重複しています。再読み込みしてください',
+    });
+    expect(visitScheduleTxFindFirstMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        id: { not: 'schedule_1' },
+        pharmacist_id: 'user_1',
+        scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+        schedule_status: {
+          in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
+        },
+        time_window_start: { lt: new Date('1970-01-01T10:30:00.000Z') },
+        time_window_end: { gt: new Date('1970-01-01T09:30:00.000Z') },
+      }),
+      select: { id: true },
+    });
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects schedule date changes outside patient preferred weekdays', async () => {

@@ -241,6 +241,9 @@ describe('/api/visit-schedules', () => {
           count: visitScheduleCountMock,
           create: visitScheduleCreateMock,
         },
+        visitVehicleResource: {
+          findFirst: visitVehicleResourceFindFirstMock,
+        },
         visitScheduleProposal: {
           findFirst: visitScheduleProposalFindFirstMock,
           findMany: visitScheduleProposalRouteFindManyMock,
@@ -612,6 +615,115 @@ describe('/api/visit-schedules', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('rejects manual schedule creation when the pharmacist time window overlaps an active schedule', async () => {
+    visitScheduleFindFirstMock
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'schedule_overlap' });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同一薬剤師・同一日付の訪問時間帯が既存予定と重複しています。再読み込みしてください',
+    });
+    expect(visitScheduleFindFirstMock).toHaveBeenNthCalledWith(2, {
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        pharmacist_id: 'user_2',
+        scheduled_date: new Date('2026-03-31T00:00:00.000Z'),
+        schedule_status: {
+          in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
+        },
+        time_window_start: { lt: new Date('1970-01-01T10:00:00.000Z') },
+        time_window_end: { gt: new Date('1970-01-01T09:00:00.000Z') },
+      }),
+      select: { id: true },
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects manual schedule creation when the selected vehicle time window overlaps an active schedule', async () => {
+    visitScheduleFindFirstMock
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'schedule_vehicle_overlap' });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+        vehicle_resource_id: 'vehicle_1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同一車両・同一日付の訪問時間帯が既存予定と重複しています。再読み込みしてください',
+    });
+    expect(visitScheduleFindFirstMock).toHaveBeenNthCalledWith(3, {
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        vehicle_resource_id: 'vehicle_1',
+        scheduled_date: new Date('2026-03-31T00:00:00.000Z'),
+        time_window_start: { lt: new Date('1970-01-01T10:00:00.000Z') },
+        time_window_end: { gt: new Date('1970-01-01T09:00:00.000Z') },
+      }),
+      select: { id: true },
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rechecks selected vehicle stop limits inside the manual create transaction', async () => {
+    visitVehicleResourceFindFirstMock.mockResolvedValue({
+      id: 'vehicle_1',
+      site_id: 'site_1',
+      label: '社用車A',
+      max_stops: 1,
+    });
+    visitScheduleCountMock.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+        vehicle_resource_id: 'vehicle_1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '社用車A で訪問できる件数は最大 1 件です',
+    });
+    expect(visitScheduleCountMock).toHaveBeenCalledTimes(2);
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('rejects duplicate manual schedule creation even when the request has a different cycle', async () => {
     visitScheduleFindFirstMock.mockResolvedValueOnce({ id: 'schedule_existing' });
 
@@ -665,6 +777,9 @@ describe('/api/visit-schedules', () => {
             findMany: visitScheduleRouteFindManyMock,
             count: visitScheduleCountMock,
             create: visitScheduleCreateMock,
+          },
+          visitVehicleResource: {
+            findFirst: visitVehicleResourceFindFirstMock,
           },
           visitScheduleProposal: {
             findFirst: visitScheduleProposalFindFirstMock,

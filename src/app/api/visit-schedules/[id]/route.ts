@@ -37,6 +37,9 @@ import { findVisitRouteOrderConflict } from '@/lib/visits/route-order-conflicts'
 import { prisma } from '@/lib/db/client';
 import { validateScheduleTimeStringsFitShift } from '@/server/services/visit-schedule-shift';
 import {
+  findVisitScheduleTimeConflict,
+  getVisitScheduleTimeConflictMessage,
+  isActiveVisitScheduleStatus,
   validateManualSchedulePreferences,
   validateVisitVehicleResourceForSchedule,
 } from '@/server/services/visit-schedule-service';
@@ -293,6 +296,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const targetScheduleStatus = rest.schedule_status;
   const existingScheduleStatus = existing.schedule_status as ScheduleStatus;
   const effectiveScheduleStatus = targetScheduleStatus ?? existingScheduleStatus;
+  const changesActiveOccupancyStatus =
+    targetScheduleStatus !== undefined &&
+    !isActiveVisitScheduleStatus(existingScheduleStatus) &&
+    isActiveVisitScheduleStatus(effectiveScheduleStatus);
   const touchesReadyGatedSchedule =
     isReadyGatedScheduleStatus(existingScheduleStatus) ||
     isReadyGatedScheduleStatus(effectiveScheduleStatus);
@@ -373,6 +380,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     route_order: rest.route_order !== undefined ? rest.route_order : existing.route_order,
     recurrence_rule: rest.recurrence_rule ?? existing.recurrence_rule,
   };
+  const projectedScheduleIsActive = isActiveVisitScheduleStatus(projectedSchedule.schedule_status);
+  const changesScheduleTimingOrAssignment =
+    scheduled_date !== undefined ||
+    time_window_start !== undefined ||
+    time_window_end !== undefined ||
+    rest.pharmacist_id !== undefined;
+  const changesScheduleOccupancy =
+    changesScheduleTimingOrAssignment ||
+    vehicle_resource_id !== undefined ||
+    changesActiveOccupancyStatus;
+  const shouldRecheckTimeConflict =
+    projectedScheduleIsActive &&
+    changesScheduleOccupancy &&
+    projectedSchedule.time_window_start != null &&
+    projectedSchedule.time_window_end != null;
+  const targetVehicleResourceId =
+    vehicle_resource_id !== undefined ? vehicle_resource_id : existing.vehicle_resource_id;
+  const targetVehicleScheduledDate = projectedSchedule.scheduled_date;
+  const targetVehicleSiteId = projectedSchedule.site_id;
+  const shouldRecheckVehicleCapacity =
+    Boolean(targetVehicleResourceId) &&
+    projectedScheduleIsActive &&
+    (vehicle_resource_id !== undefined ||
+      scheduled_date !== undefined ||
+      site_id !== undefined ||
+      changesActiveOccupancyStatus);
   const projectedAuditChanges = schedulePatchAuditChanges(existing, projectedSchedule);
   if (Object.keys(projectedAuditChanges).length === 0) {
     const currentSchedule = await prisma.visitSchedule.findFirst({
@@ -389,11 +422,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
   if (!refResult.ok) return refResult.response;
 
-  const changesScheduleTimingOrAssignment =
-    scheduled_date !== undefined ||
-    time_window_start !== undefined ||
-    time_window_end !== undefined ||
-    rest.pharmacist_id !== undefined;
   if (changesScheduleTimingOrAssignment) {
     const targetDate = scheduled_date ? new Date(scheduled_date) : existing.scheduled_date;
     const targetPharmacistId = rest.pharmacist_id ?? existing.pharmacist_id;
@@ -478,16 +506,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
-  const targetVehicleResourceId =
-    vehicle_resource_id !== undefined ? vehicle_resource_id : existing.vehicle_resource_id;
-  if (targetVehicleResourceId) {
-    const targetDate = scheduled_date ? new Date(scheduled_date) : existing.scheduled_date;
-    const targetSiteId = site_id !== undefined ? site_id || null : existing.site_id;
+  if (shouldRecheckVehicleCapacity && targetVehicleResourceId) {
     const vehicleValidation = await validateVisitVehicleResourceForSchedule(prisma, {
       orgId: ctx.orgId,
       vehicleResourceId: targetVehicleResourceId,
-      siteId: targetSiteId,
-      scheduledDate: targetDate,
+      siteId: targetVehicleSiteId,
+      scheduledDate: targetVehicleScheduledDate,
       excludeScheduleId: id,
     });
     if (!vehicleValidation.ok) return vehicleValidation.response;
@@ -521,11 +545,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
-  const runPatchTransaction = routeOrderTarget
-    ? <T>(work: (tx: Prisma.TransactionClient) => Promise<T>) =>
-        withSerializableVisitSchedulePatchTransaction(ctx.orgId, ctx, work)
-    : <T>(work: (tx: Prisma.TransactionClient) => Promise<T>) =>
-        withOrgContext(ctx.orgId, work, { requestContext: ctx });
+  const runPatchTransaction =
+    routeOrderTarget || shouldRecheckTimeConflict || shouldRecheckVehicleCapacity
+      ? <T>(work: (tx: Prisma.TransactionClient) => Promise<T>) =>
+          withSerializableVisitSchedulePatchTransaction(ctx.orgId, ctx, work)
+      : <T>(work: (tx: Prisma.TransactionClient) => Promise<T>) =>
+          withOrgContext(ctx.orgId, work, { requestContext: ctx });
 
   const patchScheduleResult = async (tx: Prisma.TransactionClient) => {
     if (requiresReadyTransitionGate) {
@@ -561,6 +586,40 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         return {
           ok: false as const,
           response: validationError('同一薬剤師・同一日付で route_order は重複できません'),
+        };
+      }
+    }
+
+    if (shouldRecheckTimeConflict) {
+      const timeConflict = await findVisitScheduleTimeConflict(tx, {
+        orgId: ctx.orgId,
+        scheduledDate: projectedSchedule.scheduled_date,
+        pharmacistId: projectedSchedule.pharmacist_id,
+        timeWindowStart: projectedSchedule.time_window_start,
+        timeWindowEnd: projectedSchedule.time_window_end,
+        vehicleResourceId: projectedSchedule.vehicle_resource_id,
+        excludeScheduleId: id,
+      });
+      if (timeConflict) {
+        return {
+          ok: false as const,
+          response: conflict(getVisitScheduleTimeConflictMessage(timeConflict.kind)),
+        };
+      }
+    }
+
+    if (shouldRecheckVehicleCapacity && targetVehicleResourceId) {
+      const vehicleValidation = await validateVisitVehicleResourceForSchedule(tx, {
+        orgId: ctx.orgId,
+        vehicleResourceId: targetVehicleResourceId,
+        siteId: targetVehicleSiteId,
+        scheduledDate: targetVehicleScheduledDate,
+        excludeScheduleId: id,
+      });
+      if (!vehicleValidation.ok) {
+        return {
+          ok: false as const,
+          response: vehicleValidation.response,
         };
       }
     }
