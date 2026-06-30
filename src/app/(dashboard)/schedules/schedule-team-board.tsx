@@ -1,12 +1,14 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { AlertTriangle, Car, Lock, Plus, Route, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { StateBadge } from '@/components/ui/state-badge';
@@ -722,6 +724,7 @@ function VehicleRoutePanel({
   onApplyRecommendedVehicle: (payload: ApplyRecommendedVehiclePayload) => void;
   applyingRecommendedVehicle: boolean;
 }) {
+  const [vehicleConfirmOpen, setVehicleConfirmOpen] = useState(false);
   const routeStaff = board.staff
     .map((member) => ({
       member,
@@ -733,6 +736,20 @@ function VehicleRoutePanel({
     (vehicle) => vehicle.available && vehicle.remaining_stops > 0,
   ).length;
   const recommendedVehicleTargets = unassignedTimedVisitsForRecommendedVehicle(board);
+  const vehicleConfirmTitle = recommendedVehicle
+    ? `${recommendedVehicle.label}を未割当訪問へ反映しますか`
+    : '推奨車両を反映しますか';
+  const vehicleConfirmDescription = recommendedVehicle
+    ? `${recommendedVehicle.label}を${recommendedVehicleTargets.length}件の訪問予定へ割り当てます。対象と出発前条件を確認してください。`
+    : '推奨車両がありません。';
+
+  const confirmRecommendedVehicle = () => {
+    if (!recommendedVehicle || recommendedVehicleTargets.length === 0) return;
+    onApplyRecommendedVehicle({
+      vehicleId: recommendedVehicle.id,
+      scheduleIds: recommendedVehicleTargets.map((visit) => visit.id),
+    });
+  };
 
   return (
     <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(220px,0.9fr)_minmax(0,1.4fr)]">
@@ -811,16 +828,65 @@ function VehicleRoutePanel({
               size="sm"
               className="mt-2 !h-auto !min-h-[44px] w-full sm:!h-auto sm:!min-h-[44px]"
               disabled={applyingRecommendedVehicle || recommendedVehicleTargets.length === 0}
-              onClick={() =>
-                onApplyRecommendedVehicle({
-                  vehicleId: recommendedVehicle.id,
-                  scheduleIds: recommendedVehicleTargets.map((visit) => visit.id),
-                })
-              }
+              onClick={() => setVehicleConfirmOpen(true)}
               data-testid="apply-recommended-vehicle"
             >
               {applyingRecommendedVehicle ? '反映中' : '推奨車両を反映'}
             </Button>
+            <ConfirmDialog
+              open={vehicleConfirmOpen}
+              onOpenChange={setVehicleConfirmOpen}
+              title={vehicleConfirmTitle}
+              description={vehicleConfirmDescription}
+              confirmLabel={
+                applyingRecommendedVehicle
+                  ? '反映中'
+                  : `${recommendedVehicleTargets.length}件へ車両を反映`
+              }
+              confirmDisabled={applyingRecommendedVehicle || recommendedVehicleTargets.length === 0}
+              onConfirm={confirmRecommendedVehicle}
+            >
+              <div className="space-y-2 text-sm">
+                <p className="text-xs font-medium text-muted-foreground">反映対象の訪問予定</p>
+                <ul className="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-border/70 p-2">
+                  {recommendedVehicleTargets.map((visit) => {
+                    const preparationSummary = normalizePreparationSummary(
+                      visit.preparation_summary,
+                    );
+                    const preparationDetails = [
+                      preparationSummaryDisplayLabel(preparationSummary),
+                      readyBlockerDisplayLabel(preparationSummary),
+                      formatPreparationDetailLabels('未完', preparationSummary.incomplete_labels),
+                    ].filter((part): part is string => Boolean(part));
+                    return (
+                      <li
+                        key={visit.id}
+                        className="rounded-md bg-muted/30 px-3 py-2"
+                        aria-label={`${visit.patient_name}様、${preparationSummaryAriaLabel(
+                          preparationSummary,
+                        )}`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="font-medium text-foreground">{visit.patient_name}様</p>
+                          <p className="text-xs font-semibold text-foreground">
+                            順路 {visit.route_order ?? '-'}
+                          </p>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {visit.time_start ? formatScheduleTimeIso(visit.time_start) : '時間未定'}
+                        </p>
+                        <p className="mt-1 text-xs text-state-confirm">
+                          {preparationDetails.join(' / ')}
+                        </p>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  住所、電話番号、薬剤名、処方の細部はこの確認画面には表示しません。対象訪問と出発前条件が一致している場合のみ反映してください。
+                </p>
+              </div>
+            </ConfirmDialog>
           </div>
         ) : null}
       </section>

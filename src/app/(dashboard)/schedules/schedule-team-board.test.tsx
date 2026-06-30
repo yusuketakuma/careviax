@@ -1133,7 +1133,7 @@ describe('ScheduleTeamBoard', () => {
     });
   });
 
-  it('applies the recommended vehicle only to assignable unassigned visits', () => {
+  it('confirms before applying the recommended vehicle only to assignable unassigned visits', () => {
     const mutate = vi.fn();
     useMutationMock.mockReturnValue({
       mutate,
@@ -1144,6 +1144,18 @@ describe('ScheduleTeamBoard', () => {
     render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
 
     fireEvent.click(screen.getByRole('button', { name: '推奨車両を反映' }));
+    expect(mutate).not.toHaveBeenCalled();
+
+    const dialog = screen.getByRole('alertdialog', {
+      name: '軽バン1号を未割当訪問へ反映しますか',
+    });
+    expect(within(dialog).getByText('反映対象の訪問予定')).toBeTruthy();
+    expect(within(dialog).getByText('岡田 健様')).toBeTruthy();
+    expect(within(dialog).getByText('順路 -')).toBeTruthy();
+    expect(within(dialog).getByText(/準備 5\/5/)).toBeTruthy();
+    expect(within(dialog).getByText(/持参物ステータス未解決/)).toBeTruthy();
+    expect(dialog.textContent ?? '').not.toContain('東京都');
+    fireEvent.click(within(dialog).getByRole('button', { name: '1件へ車両を反映' }));
 
     expect(mutate).toHaveBeenCalledWith({
       vehicleId: 'vehicle_1',
