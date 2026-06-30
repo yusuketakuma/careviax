@@ -888,7 +888,14 @@ describe('ScheduleProposalsContent', () => {
     const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: {} }));
     vi.stubGlobal('fetch', fetchMock);
     mockImmediateMutations();
-    mockDashboardProposals([buildProposal({ id: 'proposal_1' })]);
+    mockDashboardProposals([
+      buildProposal({
+        id: 'proposal_1',
+        medication_end_date: '2026-04-10',
+        visit_deadline_date: '2026-04-09',
+        proposal_reason: 'アムロジピン増量 / 処方詳細 変更 / 患者条件 09:00-12:00',
+      }),
+    ]);
 
     render(<ScheduleProposalsContent />);
 
@@ -908,6 +915,12 @@ describe('ScheduleProposalsContent', () => {
     ).toBeGreaterThan(0);
     expect(within(confirmDialog).getByText('提案中')).toBeTruthy();
     expect(within(confirmDialog).getByText('患者連絡待ち')).toBeTruthy();
+    expect(within(confirmDialog).getByText('薬剤判断: 服薬最終日')).toBeTruthy();
+    expect(within(confirmDialog).getByText('2026/04/10')).toBeTruthy();
+    expect(within(confirmDialog).getByText('薬剤判断: 開始日前配薬')).toBeTruthy();
+    expect(within(confirmDialog).getByText('2026/04/09までの候補')).toBeTruthy();
+    expect(within(confirmDialog).getByText('薬剤判断: 薬剤根拠')).toBeTruthy();
+    expect(within(confirmDialog).getByText('候補理由に根拠あり')).toBeTruthy();
     expectElementTextExcludesSensitiveDetails(confirmDialog);
 
     fireEvent.click(within(confirmDialog).getByRole('button', { name: 'キャンセル' }));

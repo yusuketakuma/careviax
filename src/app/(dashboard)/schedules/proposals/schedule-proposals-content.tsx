@@ -550,6 +550,41 @@ function buildMedicationWorkflowChecks(proposal: Proposal) {
   ];
 }
 
+function buildSafeMedicationConfirmationFacts(proposal: Proposal) {
+  const proposedDateKey = toDateKey(proposal.proposed_date);
+  const deadlineKey = proposal.visit_deadline_date ? toDateKey(proposal.visit_deadline_date) : null;
+  const hasMedicationReason = splitProposalReason(proposal.proposal_reason ?? '').some((reason) =>
+    /変更|新規|開始|服薬|算定|患者条件/.test(reason),
+  );
+  const deadlineLabel =
+    deadlineKey === null
+      ? '配薬期限未設定'
+      : proposedDateKey <= deadlineKey
+        ? `${formatNullableDateLabel(proposal.visit_deadline_date)}までの候補`
+        : `${formatNullableDateLabel(proposal.visit_deadline_date)}を超過`;
+
+  return [
+    {
+      label: '服薬最終日',
+      value: proposal.medication_end_date
+        ? formatNullableDateLabel(proposal.medication_end_date)
+        : '未設定',
+    },
+    {
+      label: '開始日前配薬',
+      value: deadlineLabel,
+    },
+    {
+      label: '薬剤根拠',
+      value: hasMedicationReason ? '候補理由に根拠あり' : '候補理由に根拠未記録',
+    },
+    {
+      label: 'ルート',
+      value: proposalRouteDecisionLabel(proposal),
+    },
+  ];
+}
+
 function ProposalMedicationWorkflowCard({
   proposal,
   compact = false,
@@ -2356,8 +2391,16 @@ export function ScheduleProposalsContent({
                   </dd>
                 </div>
               </dl>
+              <dl className="grid gap-2 rounded-lg border border-state-confirm/25 bg-state-confirm/5 px-3 py-2 sm:grid-cols-2">
+                {buildSafeMedicationConfirmationFacts(singleConfirmProposal).map((fact) => (
+                  <div key={fact.label}>
+                    <dt className="text-xs text-state-confirm">薬剤判断: {fact.label}</dt>
+                    <dd className="font-medium text-foreground">{fact.value}</dd>
+                  </div>
+                ))}
+              </dl>
               <p className="text-xs leading-5 text-muted-foreground">
-                住所や連絡先、薬剤・処方に関する細かな内容はこの確認画面には表示しません。対象患者・候補日・担当・社用車・識別子だけを確認してから実行してください。
+                住所や連絡先、薬剤名、処方の細部はこの確認画面には表示しません。対象患者・候補日・担当・社用車・識別子と、薬剤判断サマリーだけを確認してから実行してください。
               </p>
             </div>
           ) : null}
