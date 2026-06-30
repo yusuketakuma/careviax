@@ -328,6 +328,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   visit_at: '2026-06-20T02:00:00.000Z',
                   submitted_at: '2026-06-20T03:00:00.000Z',
                   confirmed_at: null,
+                  updated_at: '2026-06-20T03:00:00.000Z',
                   owner_partner_pharmacy: {
                     id: 'partner_pharmacy_1',
                     name: '協力薬局',
@@ -354,6 +355,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   visit_at: '2026-06-19T02:00:00.000Z',
                   submitted_at: '2026-06-19T03:00:00.000Z',
                   confirmed_at: '2026-06-19T04:00:00.000Z',
+                  updated_at: '2026-06-19T04:00:00.000Z',
                   owner_partner_pharmacy: {
                     id: 'partner_pharmacy_1',
                     name: '協力薬局',
@@ -387,6 +389,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   visit_at: '2026-06-20T01:30:00.000Z',
                   submitted_at: null,
                   confirmed_at: null,
+                  updated_at: '2026-06-20T01:30:00.000Z',
                   owner_partner_pharmacy: {
                     id: 'partner_pharmacy_1',
                     name: '協力薬局',
@@ -612,6 +615,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
               visit_at: '2026-06-20T01:30:00.000Z',
               submitted_at: null,
               confirmed_at: null,
+              updated_at: '2026-06-20T01:45:00.000Z',
               owner_partner_pharmacy: {
                 id: 'partner_pharmacy_1',
                 name: '協力薬局',
@@ -1714,15 +1718,15 @@ describe('PharmacyCooperationWorkflowContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '提出する' }));
 
     await waitFor(() => {
-      expect(
-        Boolean(
-          findFetchCall(
-            (input, init) =>
-              String(input) === '/api/partner-visit-records/partner_record_draft/submit' &&
-              init?.method === 'POST',
-          ),
-        ),
-      ).toBe(true);
+      const submitCall = findFetchCall(
+        (input, init) =>
+          String(input) === '/api/partner-visit-records/partner_record_draft/submit' &&
+          init?.method === 'POST',
+      );
+      expect(submitCall).toBeTruthy();
+      expect(JSON.parse(String(submitCall?.[1]?.body))).toEqual({
+        expected_updated_at: '2026-06-20T01:30:00.000Z',
+      });
     });
 
     fireEvent.click(
@@ -1752,6 +1756,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
       expect(confirmCall).toBeTruthy();
       expect(JSON.parse(String(confirmCall?.[1]?.body))).toMatchObject({
         decision: 'confirm',
+        expected_updated_at: '2026-06-20T03:00:00.000Z',
         doctor_report_required: false,
       });
     });
@@ -1794,6 +1799,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
       expect(confirmCall).toBeTruthy();
       expect(JSON.parse(String(confirmCall?.[1]?.body))).toMatchObject({
         decision: 'confirm',
+        expected_updated_at: '2026-06-20T03:00:00.000Z',
         doctor_report_required: true,
       });
     });
@@ -1843,6 +1849,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
       expect(returnCall).toBeTruthy();
       expect(JSON.parse(String(returnCall?.[1]?.body))).toMatchObject({
         decision: 'return',
+        expected_updated_at: '2026-06-20T03:00:00.000Z',
         return_reason: '記録の確認が必要です',
       });
     });

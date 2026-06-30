@@ -55,14 +55,19 @@ function createRouteContext(recordId = 'partner_visit_record_1') {
 }
 
 const routeContext = createRouteContext();
+const CURRENT_UPDATED_AT = '2026-06-18T00:00:00.000Z';
 
 function createRequest(body: unknown, recordId = 'partner_visit_record_1') {
+  const requestBody =
+    body && typeof body === 'object' && !Array.isArray(body) && !('expected_updated_at' in body)
+      ? { expected_updated_at: CURRENT_UPDATED_AT, ...body }
+      : body;
   return new NextRequest(
     `http://localhost/api/partner-visit-records/${encodeURIComponent(recordId)}/review`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(requestBody),
     },
   );
 }
@@ -80,6 +85,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     partnerVisitRecordFindFirstMock.mockResolvedValue({
       id: 'partner_visit_record_1',
       status: 'submitted',
+      updated_at: new Date(CURRENT_UPDATED_AT),
       visit_request_id: 'visit_request_1',
       share_case_id: 'share_case_1',
       owner_partner_pharmacy_id: 'partner_pharmacy_1',
@@ -135,6 +141,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     partnerVisitRecordFindFirstMock.mockResolvedValueOnce({
       id: rawRecordId,
       status: 'submitted',
+      updated_at: new Date(CURRENT_UPDATED_AT),
       visit_request_id: 'visit_request_1',
       share_case_id: 'share_case_1',
       owner_partner_pharmacy_id: 'partner_pharmacy_1',
@@ -190,6 +197,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
         id: rawRecordId,
         org_id: 'org_1',
         status: 'submitted',
+        updated_at: new Date(CURRENT_UPDATED_AT),
         share_case: { status: 'active' },
         owner_partner_pharmacy: { status: 'active' },
         visit_request: {
@@ -281,6 +289,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     partnerVisitRecordFindFirstMock.mockResolvedValueOnce({
       id: 'partner_visit_record_1',
       status: 'submitted',
+      updated_at: new Date(CURRENT_UPDATED_AT),
       visit_request_id: 'visit_request_1',
       share_case_id: 'share_case_1',
       owner_partner_pharmacy_id: 'partner_pharmacy_1',
@@ -388,6 +397,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     partnerVisitRecordFindFirstMock.mockResolvedValue({
       id: 'partner_visit_record_1',
       status: 'draft',
+      updated_at: new Date(CURRENT_UPDATED_AT),
       visit_request_id: 'visit_request_1',
       share_case_id: 'share_case_1',
       owner_partner_pharmacy_id: 'partner_pharmacy_1',
@@ -412,6 +422,49 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     expectSensitiveNoStore(response);
     expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(partnerVisitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(claimCooperationNoteUpsertMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('requires expected_updated_at before loading the partner visit record', async () => {
+    const response = await rawPOST(
+      createRequest({ decision: 'confirm', expected_updated_at: undefined }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: { expected_updated_at: expect.any(Array) },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(partnerVisitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(partnerVisitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale expected_updated_at before update or audit side effects', async () => {
+    const response = await rawPOST(
+      createRequest({
+        decision: 'confirm',
+        expected_updated_at: '2026-06-17T23:59:59.000Z',
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '協力訪問記録が更新されています。再読み込みしてください',
+    });
+    expect(partnerVisitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(claimCooperationNoteUpsertMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();

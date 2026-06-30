@@ -230,6 +230,7 @@ type PartnerVisitRecordRow = {
   visit_at: string;
   submitted_at: string | null;
   confirmed_at: string | null;
+  updated_at: string;
   owner_partner_pharmacy: { id: string; name: string; status: string };
   visit_request: { id: string; status: string; urgency: string };
   claim_note: {
@@ -386,6 +387,7 @@ const partnerVisitRecordRowSchema = z.object({
   visit_at: z.string(),
   submitted_at: z.string().nullable(),
   confirmed_at: z.string().nullable(),
+  updated_at: z.string(),
   owner_partner_pharmacy: partnerPharmacySummarySchema,
   visit_request: z.object({
     id: z.string(),
@@ -3104,10 +3106,14 @@ export function PharmacyCooperationWorkflowContent() {
   });
 
   const submitRecordMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, expectedUpdatedAt }: { id: string; expectedUpdatedAt: string }) => {
       const response = await fetch(buildPartnerVisitRecordApiPath(id, '/submit'), {
         method: 'POST',
-        headers: { 'x-org-id': orgId },
+        headers: {
+          'content-type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({ expected_updated_at: expectedUpdatedAt }),
       });
       return readApiJson<unknown>(response);
     },
@@ -3124,11 +3130,13 @@ export function PharmacyCooperationWorkflowContent() {
     mutationFn: async ({
       id,
       decision,
+      expectedUpdatedAt,
       returnReason,
       doctorReportRequired,
     }: {
       id: string;
       decision: 'confirm' | 'return';
+      expectedUpdatedAt: string;
       returnReason?: string;
       doctorReportRequired?: boolean;
     }) => {
@@ -3140,6 +3148,7 @@ export function PharmacyCooperationWorkflowContent() {
         },
         body: JSON.stringify({
           decision,
+          expected_updated_at: expectedUpdatedAt,
           ...(returnReason ? { return_reason: returnReason } : {}),
           doctor_report_required: Boolean(doctorReportRequired),
         }),
@@ -3240,12 +3249,16 @@ export function PharmacyCooperationWorkflowContent() {
         });
         return;
       case 'submitPartnerVisitRecord':
-        submitRecordMutation.mutate(pendingWorkflowAction.record.id);
+        submitRecordMutation.mutate({
+          id: pendingWorkflowAction.record.id,
+          expectedUpdatedAt: pendingWorkflowAction.record.updated_at,
+        });
         return;
       case 'confirmPartnerVisitRecord':
         reviewRecordMutation.mutate({
           id: pendingWorkflowAction.record.id,
           decision: 'confirm',
+          expectedUpdatedAt: pendingWorkflowAction.record.updated_at,
           doctorReportRequired: pendingWorkflowAction.doctorReportRequired,
         });
         return;
@@ -3253,6 +3266,7 @@ export function PharmacyCooperationWorkflowContent() {
         reviewRecordMutation.mutate({
           id: pendingWorkflowAction.record.id,
           decision: 'return',
+          expectedUpdatedAt: pendingWorkflowAction.record.updated_at,
           returnReason: pendingWorkflowAction.returnReason.trim(),
         });
         return;

@@ -22,6 +22,7 @@ const reviewDecisionSchema = z.enum(['confirm', 'return']);
 const reviewPartnerVisitRecordSchema = z
   .object({
     decision: reviewDecisionSchema,
+    expected_updated_at: z.string().datetime('版情報が不正です'),
     return_reason: z.string().trim().max(1000).optional(),
     doctor_report_required: z.boolean().default(false),
   })
@@ -125,6 +126,7 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
           select: {
             id: true,
             status: true,
+            updated_at: true,
             visit_request_id: true,
             share_case_id: true,
             owner_partner_pharmacy_id: true,
@@ -150,6 +152,11 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
         });
 
         if (!record) return { response: notFound('協力訪問記録が見つかりません') };
+        const expectedUpdatedAt = new Date(parsed.data.expected_updated_at);
+        if (record.updated_at.toISOString() !== expectedUpdatedAt.toISOString()) {
+          return { response: conflict('協力訪問記録が更新されています。再読み込みしてください') };
+        }
+
         const recordTransition = resolvePartnerVisitRecordTransition({
           currentStatus: record.status,
           action: parsed.data.decision === 'confirm' ? 'confirm' : 'return',
@@ -179,6 +186,7 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
             id,
             org_id: ctx.orgId,
             status: recordTransition.currentStatus,
+            updated_at: expectedUpdatedAt,
             share_case: { status: 'active' },
             owner_partner_pharmacy: { status: 'active' },
             visit_request: {

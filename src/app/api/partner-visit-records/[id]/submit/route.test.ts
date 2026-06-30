@@ -53,12 +53,16 @@ function createRouteContext(recordId = 'partner_visit_record_1') {
 }
 
 const routeContext = createRouteContext();
+const CURRENT_UPDATED_AT = '2026-06-18T00:00:00.000Z';
 
-function createRequest(recordId = 'partner_visit_record_1') {
+function createRequest(recordId = 'partner_visit_record_1', body: unknown = undefined) {
+  const requestBody = body ?? { expected_updated_at: CURRENT_UPDATED_AT };
   return new NextRequest(
     `http://localhost/api/partner-visit-records/${encodeURIComponent(recordId)}/submit`,
     {
       method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(requestBody),
     },
   );
 }
@@ -76,6 +80,7 @@ describe('/api/partner-visit-records/[id]/submit POST', () => {
     partnerVisitRecordFindFirstMock.mockResolvedValue({
       id: 'partner_visit_record_1',
       status: 'draft',
+      updated_at: new Date(CURRENT_UPDATED_AT),
       visit_request_id: 'visit_request_1',
       share_case_id: 'share_case_1',
       revision_no: 1,
@@ -129,6 +134,7 @@ describe('/api/partner-visit-records/[id]/submit POST', () => {
     partnerVisitRecordFindFirstMock.mockResolvedValueOnce({
       id: rawRecordId,
       status: 'draft',
+      updated_at: new Date(CURRENT_UPDATED_AT),
       visit_request_id: 'visit_request_1',
       share_case_id: 'share_case_1',
       revision_no: 1,
@@ -168,6 +174,7 @@ describe('/api/partner-visit-records/[id]/submit POST', () => {
         id: rawRecordId,
         org_id: 'org_1',
         status: { in: ['draft', 'returned'] },
+        updated_at: new Date(CURRENT_UPDATED_AT),
         share_case: { status: 'active' },
         owner_partner_pharmacy: { status: 'active' },
         visit_request: {
@@ -245,6 +252,7 @@ describe('/api/partner-visit-records/[id]/submit POST', () => {
     partnerVisitRecordFindFirstMock.mockResolvedValue({
       id: 'partner_visit_record_1',
       status: 'submitted',
+      updated_at: new Date(CURRENT_UPDATED_AT),
       visit_request_id: 'visit_request_1',
       share_case_id: 'share_case_1',
       revision_no: 1,
@@ -270,6 +278,58 @@ describe('/api/partner-visit-records/[id]/submit POST', () => {
     expectSensitiveNoStore(response);
     expect(partnerVisitRecordUpdateManyMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('requires expected_updated_at before loading the partner visit record', async () => {
+    const response = await rawPOST(createRequest('partner_visit_record_1', {}), routeContext);
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: { expected_updated_at: expect.any(Array) },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(partnerVisitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(partnerVisitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale expected_updated_at before update or notification side effects', async () => {
+    const response = await rawPOST(
+      createRequest('partner_visit_record_1', {
+        expected_updated_at: '2026-06-17T23:59:59.000Z',
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '協力訪問記録が更新されています。再読み込みしてください',
+    });
+    expect(partnerVisitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict and skips downstream effects when the visit request transition loses the race', async () => {
+    pharmacyVisitRequestUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await rawPOST(createRequest(), routeContext);
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    expect(partnerVisitRecordUpdateManyMock).toHaveBeenCalled();
+    expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(partnerVisitRecordFindUniqueOrThrowMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
