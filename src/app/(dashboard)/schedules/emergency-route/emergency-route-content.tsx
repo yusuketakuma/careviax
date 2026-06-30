@@ -13,9 +13,17 @@ import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 import type { VisitRoutePlan } from '@/types/visit-route';
-import { priorityBadgeClass, PRIORITY_LABELS, type VisitSchedule } from '../day-view.shared';
+import {
+  priorityBadgeClass,
+  PRIORITY_LABELS,
+  timeLabel,
+  type VisitSchedule,
+} from '../day-view.shared';
 import { fetchVisitSchedulesWindow } from '../visit-schedule-fetch.helpers';
-import { applyVisitScheduleRouteUpdates } from '../visit-route-client';
+import {
+  applyVisitScheduleRouteUpdates,
+  type VisitScheduleRouteUpdate,
+} from '../visit-route-client';
 import { ScheduleDateNavigator } from '../schedule-date-navigator';
 
 /**
@@ -109,15 +117,49 @@ type ScenarioResult = {
   plan: VisitRoutePlan;
   /** 基準(緊急なし)からの移動増(分)。算出不能なら null */
   travelDeltaMinutes: number | null;
+  lockedScheduleIds: Set<string>;
+  releasedScheduleId: string | null;
 };
 
 type RecalcResult = {
   emergencyScheduleId: string;
-  lockedScheduleIds: Set<string>;
-  releasedScheduleId: string | null;
   plan1: ScenarioResult;
   plan2: ScenarioResult;
 };
+
+type ScenarioId = 'plan1' | 'plan2';
+
+type ImpactTone = 'ok' | 'warn' | 'blocked' | 'unknown';
+
+type ImpactItem = {
+  id: string;
+  label: string;
+  detail: string;
+  tone: ImpactTone;
+};
+
+type EmergencyRouteApplyPlan = {
+  updates: VisitScheduleRouteUpdate[];
+  routeOrderDiffCount: number;
+  blockedReason: string | null;
+};
+
+const SCENARIO_LABELS: Record<ScenarioId, string> = {
+  plan1: '案1',
+  plan2: '案2',
+};
+
+const IMPACT_TONE_META: Record<ImpactTone, { marker: string; srLabel: string; className: string }> =
+  {
+    ok: { marker: '✓', srLabel: '確認済み', className: 'text-state-done' },
+    warn: { marker: '!', srLabel: '要確認', className: 'text-state-confirm' },
+    blocked: { marker: '×', srLabel: '反映不可', className: 'text-state-blocked' },
+    unknown: { marker: '?', srLabel: '未確認', className: 'text-muted-foreground' },
+  };
+
+function scenarioLabel(scenarioId: ScenarioId) {
+  return SCENARIO_LABELS[scenarioId];
+}
 
 function routeIdHeaders(orgId: string) {
   return { 'Content-Type': 'application/json', 'x-org-id': orgId } as const;
@@ -158,6 +200,377 @@ function formatDeltaLabel(minutes: number | null) {
   return `移動 +${minutes}分`;
 }
 
+function routeCellKey(schedule: VisitSchedule, routeOrder: number) {
+  return `${schedule.pharmacist_id}:${schedule.scheduled_date}:${routeOrder}`;
+}
+
+function scheduleByRouteOrder(a: VisitSchedule, b: VisitSchedule) {
+  return (a.route_order ?? Number.MAX_SAFE_INTEGER) - (b.route_order ?? Number.MAX_SAFE_INTEGER);
+}
+
+export function buildEmergencyRouteApplyPlan(args: {
+  orderedScheduleIds: string[];
+  scheduleById: Map<string, VisitSchedule>;
+}): EmergencyRouteApplyPlan {
+  const desiredSchedules = args.orderedScheduleIds
+    .map((scheduleId) => args.scheduleById.get(scheduleId))
+    .filter((schedule): schedule is VisitSchedule => Boolean(schedule));
+
+  const mutableSchedules = desiredSchedules.filter((schedule) => !schedule.confirmed_at);
+  if (mutableSchedules.length === 0) {
+    return {
+      updates: [],
+      routeOrderDiffCount: 0,
+      blockedReason: '反映できる未確定訪問がありません',
+    };
+  }
+
+  const mutableScheduleIds = new Set(mutableSchedules.map((schedule) => schedule.id));
+  const occupiedCells = new Set<string>();
+  for (const schedule of args.scheduleById.values()) {
+    if (schedule.route_order == null || mutableScheduleIds.has(schedule.id)) continue;
+    occupiedCells.add(routeCellKey(schedule, schedule.route_order));
+  }
+
+  const assignedRouteOrders = new Map<string, number>();
+  let previousFixedRouteOrder = 0;
+  let segment: VisitSchedule[] = [];
+  let blockedReason: string | null = null;
+
+  const allocateSegment = (upperFixedRouteOrder: number | null) => {
+    if (segment.length === 0 || blockedReason) return;
+    if (
+      upperFixedRouteOrder != null &&
+      upperFixedRouteOrder - previousFixedRouteOrder <= segment.length
+    ) {
+      blockedReason = '確定済み訪問の間に未確定訪問を挿入できる順路番号の空きがありません';
+      return;
+    }
+
+    let nextCandidate = previousFixedRouteOrder + 1;
+    for (const schedule of segment) {
+      let assigned: number | null = null;
+      while (upperFixedRouteOrder == null || nextCandidate < upperFixedRouteOrder) {
+        const candidateKey = routeCellKey(schedule, nextCandidate);
+        nextCandidate += 1;
+        if (occupiedCells.has(candidateKey)) continue;
+        occupiedCells.add(candidateKey);
+        assigned = nextCandidate - 1;
+        break;
+      }
+
+      if (assigned == null) {
+        blockedReason = '確定済み訪問の間に未確定訪問を挿入できる順路番号の空きがありません';
+        return;
+      }
+      assignedRouteOrders.set(schedule.id, assigned);
+    }
+  };
+
+  for (const schedule of desiredSchedules) {
+    if (schedule.confirmed_at) {
+      if (schedule.route_order == null) {
+        return {
+          updates: [],
+          routeOrderDiffCount: 0,
+          blockedReason: '確定済み訪問の現在順路が未設定のため反映できません',
+        };
+      }
+      allocateSegment(schedule.route_order);
+      if (blockedReason) break;
+      previousFixedRouteOrder = schedule.route_order;
+      segment = [];
+      continue;
+    }
+
+    segment.push(schedule);
+  }
+  allocateSegment(null);
+
+  if (blockedReason) {
+    return { updates: [], routeOrderDiffCount: 0, blockedReason };
+  }
+
+  const updates = mutableSchedules
+    .map((schedule) => {
+      const routeOrder = assignedRouteOrders.get(schedule.id);
+      if (routeOrder == null || routeOrder === schedule.route_order) return null;
+      return { scheduleId: schedule.id, route_order: routeOrder };
+    })
+    .filter((update): update is VisitScheduleRouteUpdate => Boolean(update));
+
+  if (updates.length === 0) {
+    return {
+      updates: [],
+      routeOrderDiffCount: 0,
+      blockedReason: '反映が必要な順路差分はありません',
+    };
+  }
+
+  return {
+    updates,
+    routeOrderDiffCount: updates.length,
+    blockedReason: null,
+  };
+}
+
+function formatReleasedScheduleSummary(schedule: VisitSchedule | null) {
+  if (!schedule) return '再確認対象の訪問を特定できません';
+  const routeOrderLabel =
+    schedule.route_order == null ? '順路未設定' : `現在 #${schedule.route_order}`;
+  const visitTimeLabel = timeLabel(schedule.time_window_start, schedule.time_window_end);
+  return `${schedule.case_.patient.name} 様 / ${visitTimeLabel} / ${routeOrderLabel}`;
+}
+
+function buildVehicleImpactItem(
+  scenario: ScenarioResult | null,
+  scheduleById: Map<string, VisitSchedule>,
+): ImpactItem {
+  if (!scenario) {
+    return {
+      id: 'vehicle',
+      label: '車両・移動制約',
+      detail: '再計算後に確認',
+      tone: 'unknown',
+    };
+  }
+
+  if (scenario.plan.status === 'unavailable') {
+    return {
+      id: 'vehicle',
+      label: '車両・移動制約',
+      detail: scenario.plan.note ?? 'ルート計算不可',
+      tone: 'blocked',
+    };
+  }
+
+  const vehicleStats = new Map<
+    string,
+    {
+      label: string;
+      count: number;
+      maxStops: number | null;
+      maxRouteDurationMinutes: number | null;
+    }
+  >();
+  let unassignedCount = 0;
+
+  for (const scheduleId of scenario.plan.orderedScheduleIds) {
+    const vehicle = scheduleById.get(scheduleId)?.vehicle_resource;
+    if (!vehicle) {
+      unassignedCount += 1;
+      continue;
+    }
+
+    const stat = vehicleStats.get(vehicle.id) ?? {
+      label: vehicle.label,
+      count: 0,
+      maxStops: vehicle.max_stops,
+      maxRouteDurationMinutes: vehicle.max_route_duration_minutes,
+    };
+    stat.count += 1;
+    vehicleStats.set(vehicle.id, stat);
+  }
+
+  if (vehicleStats.size === 0) {
+    return {
+      id: 'vehicle',
+      label: '車両・移動制約',
+      detail: `車両未割当 ${scenario.plan.orderedScheduleIds.length}件`,
+      tone: 'unknown',
+    };
+  }
+
+  const stopLimitExceeded = [...vehicleStats.values()].find(
+    (stat) => stat.maxStops != null && stat.count > stat.maxStops,
+  );
+  if (stopLimitExceeded) {
+    return {
+      id: 'vehicle',
+      label: '車両・移動制約',
+      detail: `${stopLimitExceeded.label} ${stopLimitExceeded.count}/${stopLimitExceeded.maxStops}件で上限超過`,
+      tone: 'blocked',
+    };
+  }
+
+  const totalDurationMinutes =
+    scenario.plan.totalDurationSeconds == null
+      ? null
+      : Math.round(scenario.plan.totalDurationSeconds / 60);
+  const durationLimitExceeded =
+    totalDurationMinutes == null
+      ? null
+      : [...vehicleStats.values()].find(
+          (stat) =>
+            stat.maxRouteDurationMinutes != null &&
+            totalDurationMinutes > stat.maxRouteDurationMinutes,
+        );
+  if (durationLimitExceeded && totalDurationMinutes != null) {
+    return {
+      id: 'vehicle',
+      label: '車両・移動制約',
+      detail: `${durationLimitExceeded.label} ${totalDurationMinutes}/${durationLimitExceeded.maxRouteDurationMinutes}分で上限超過`,
+      tone: 'blocked',
+    };
+  }
+
+  if (unassignedCount > 0) {
+    return {
+      id: 'vehicle',
+      label: '車両・移動制約',
+      detail: `車両未割当 ${unassignedCount}件あり`,
+      tone: 'warn',
+    };
+  }
+
+  const vehicleLabels = [...vehicleStats.values()]
+    .map((stat) => `${stat.label} ${stat.count}件`)
+    .join(' / ');
+  return {
+    id: 'vehicle',
+    label: '車両・移動制約',
+    detail:
+      totalDurationMinutes == null ? vehicleLabels : `${vehicleLabels} / ${totalDurationMinutes}分`,
+    tone: 'ok',
+  };
+}
+
+function buildPharmacistImpactItem(
+  scenario: ScenarioResult | null,
+  scheduleById: Map<string, VisitSchedule>,
+): ImpactItem {
+  if (!scenario) {
+    return {
+      id: 'pharmacist',
+      label: '薬剤師負荷',
+      detail: '再計算後に確認',
+      tone: 'unknown',
+    };
+  }
+
+  if (scenario.plan.status === 'unavailable') {
+    return {
+      id: 'pharmacist',
+      label: '薬剤師負荷',
+      detail: 'ルート計算不可のため反映前確認が必要',
+      tone: 'blocked',
+    };
+  }
+
+  const pharmacistStats = new Map<string, { count: number; urgentCount: number }>();
+  for (const scheduleId of scenario.plan.orderedScheduleIds) {
+    const schedule = scheduleById.get(scheduleId);
+    if (!schedule) continue;
+    const stat = pharmacistStats.get(schedule.pharmacist_id) ?? { count: 0, urgentCount: 0 };
+    stat.count += 1;
+    if (schedule.priority === 'urgent' || schedule.priority === 'emergency') {
+      stat.urgentCount += 1;
+    }
+    pharmacistStats.set(schedule.pharmacist_id, stat);
+  }
+
+  if (pharmacistStats.size === 0) {
+    return {
+      id: 'pharmacist',
+      label: '薬剤師負荷',
+      detail: '担当薬剤師の予定を取得できません',
+      tone: 'unknown',
+    };
+  }
+
+  const stats = [...pharmacistStats.values()];
+  const maxVisitCount = Math.max(...stats.map((stat) => stat.count));
+  const urgentCount = stats.reduce((sum, stat) => sum + stat.urgentCount, 0);
+  const deltaLabel =
+    scenario.travelDeltaMinutes == null ? '移動増未計算' : `移動+${scenario.travelDeltaMinutes}分`;
+  const tone: ImpactTone =
+    scenario.releasedScheduleId || (scenario.travelDeltaMinutes ?? 0) > 0 ? 'warn' : 'ok';
+
+  return {
+    id: 'pharmacist',
+    label: '薬剤師負荷',
+    detail: `${pharmacistStats.size}名 / 最大${maxVisitCount}件 / 緊急${urgentCount}件 / ${deltaLabel}`,
+    tone,
+  };
+}
+
+function buildImpactItems(args: {
+  scenario: ScenarioResult | null;
+  selectedPlanId: ScenarioId;
+  confirmedCount: number;
+  scheduleById: Map<string, VisitSchedule>;
+  applyPlan: EmergencyRouteApplyPlan | null;
+}): ImpactItem[] {
+  const { scenario, selectedPlanId, confirmedCount, scheduleById, applyPlan } = args;
+  const label = scenarioLabel(selectedPlanId);
+
+  if (!scenario) {
+    return [
+      {
+        id: 'fixed',
+        label: '正式決定',
+        detail: '再計算後に固定件数を確認',
+        tone: 'unknown',
+      },
+      {
+        id: 'patient-confirmation',
+        label: '患者確認待ち',
+        detail: '再計算後に確認',
+        tone: 'unknown',
+      },
+      buildVehicleImpactItem(null, scheduleById),
+      buildPharmacistImpactItem(null, scheduleById),
+      {
+        id: 'route',
+        label: 'ルート計算',
+        detail: '未計算',
+        tone: 'unknown',
+      },
+      {
+        id: 'apply',
+        label: '反映対象',
+        detail: '再計算後に確認',
+        tone: 'unknown',
+      },
+    ];
+  }
+
+  return [
+    {
+      id: 'fixed',
+      label: '正式決定',
+      detail:
+        scenario.releasedScheduleId != null
+          ? `${label}: ${scenario.lockedScheduleIds.size}/${confirmedCount}件を固定`
+          : `${label}: ${confirmedCount}件を固定`,
+      tone: scenario.plan.status === 'ok' ? 'ok' : 'blocked',
+    },
+    {
+      id: 'patient-confirmation',
+      label: '患者確認待ち',
+      detail: scenario.releasedScheduleId != null ? '1件あり' : '0件',
+      tone: scenario.releasedScheduleId != null ? 'warn' : 'ok',
+    },
+    buildVehicleImpactItem(scenario, scheduleById),
+    buildPharmacistImpactItem(scenario, scheduleById),
+    {
+      id: 'route',
+      label: 'ルート計算',
+      detail:
+        scenario.plan.status === 'ok'
+          ? (scenario.plan.note ?? '計算完了')
+          : (scenario.plan.note ?? '計算不可'),
+      tone: scenario.plan.status === 'ok' ? 'ok' : 'blocked',
+    },
+    {
+      id: 'apply',
+      label: '反映対象',
+      detail: applyPlan?.blockedReason ?? `未確定訪問 ${applyPlan?.updates.length ?? 0}件`,
+      tone: applyPlan?.blockedReason ? 'blocked' : 'ok',
+    },
+  ];
+}
+
 export function EmergencyRouteContent({ initialDate }: { initialDate?: string }) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
@@ -166,10 +579,12 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
     () => initialDate ?? format(new Date(), 'yyyy-MM-dd'),
   );
   const [recalc, setRecalc] = useState<RecalcResult | null>(null);
+  const [selectedPlanId, setSelectedPlanId] = useState<ScenarioId>('plan1');
   const [confirmApply, setConfirmApply] = useState(false);
   const handleSelectDate = (date: string) => {
     setTargetDate(date);
     setRecalc(null);
+    setSelectedPlanId('plan1');
     syncSearchParams({ date });
   };
   const dateNavigator = (
@@ -238,6 +653,11 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
     [personalVisits],
   );
 
+  const scheduleById = useMemo(
+    () => new Map(schedules.map((schedule) => [schedule.id, schedule])),
+    [schedules],
+  );
+
   const recalcMutation = useMutation({
     mutationFn: async (): Promise<RecalcResult> => {
       if (!emergencySchedule) {
@@ -245,13 +665,10 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
       }
       const confirmedIds = confirmedSchedules.map((schedule) => schedule.id);
       // 案2 は route_order 末尾の確定訪問 1 件を固定から外して再確認を許可する
+      const confirmedByRouteOrder = [...confirmedSchedules].sort(scheduleByRouteOrder);
       const lastConfirmedId =
-        confirmedSchedules.length > 0
-          ? [...confirmedSchedules].sort(
-              (a, b) =>
-                (a.route_order ?? Number.MAX_SAFE_INTEGER) -
-                (b.route_order ?? Number.MAX_SAFE_INTEGER),
-            )[confirmedSchedules.length - 1].id
+        confirmedByRouteOrder.length > 0
+          ? confirmedByRouteOrder[confirmedByRouteOrder.length - 1].id
           : null;
       const plan2LockedIds = lastConfirmedId
         ? confirmedIds.filter((id) => id !== lastConfirmedId)
@@ -279,20 +696,23 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
       const baselineSeconds = baselinePlan?.totalDurationSeconds ?? null;
       return {
         emergencyScheduleId: emergencySchedule.id,
-        lockedScheduleIds: new Set(confirmedIds),
-        releasedScheduleId: lastConfirmedId,
         plan1: {
           plan: plan1,
           travelDeltaMinutes: deltaMinutes(plan1.totalDurationSeconds, baselineSeconds),
+          lockedScheduleIds: new Set(confirmedIds),
+          releasedScheduleId: null,
         },
         plan2: {
           plan: plan2,
           travelDeltaMinutes: deltaMinutes(plan2.totalDurationSeconds, baselineSeconds),
+          lockedScheduleIds: new Set(plan2LockedIds),
+          releasedScheduleId: lastConfirmedId,
         },
       };
     },
     onSuccess: (result) => {
       setRecalc(result);
+      setSelectedPlanId('plan1');
       toast.success('ルートを再計算しました');
     },
     onError: (error) => {
@@ -300,19 +720,33 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
     },
   });
 
-  // 「案1で反映」: 案1(確定患者の移動なし)の訪問順を route_order に反映する
+  // 選択中の案の訪問順を route_order に反映する
   const applyMutation = useMutation({
-    mutationFn: async () => {
-      const plan = recalc?.plan1.plan;
+    mutationFn: async (planId: ScenarioId) => {
+      const scenario = recalc?.[planId];
+      const plan = scenario?.plan;
       if (!plan) throw new Error('反映できる案がありません');
-      const updates = plan.orderedScheduleIds.map((scheduleId, index) => ({
-        scheduleId,
-        route_order: index + 1,
-      }));
-      return applyVisitScheduleRouteUpdates({ orgId, updates });
+      if (plan.status !== 'ok') throw new Error('ルート計算不可の案は反映できません');
+      const applyPlan = buildEmergencyRouteApplyPlan({
+        orderedScheduleIds: plan.orderedScheduleIds,
+        scheduleById,
+      });
+      if (applyPlan.blockedReason) throw new Error(applyPlan.blockedReason);
+      await applyVisitScheduleRouteUpdates({
+        orgId,
+        updates: applyPlan.updates,
+        confirmationContext: {
+          source: 'emergency_route_interruption',
+          date: targetDate,
+          travel_mode: plan.travelMode,
+          target_count: applyPlan.updates.length,
+          route_order_diff_count: applyPlan.routeOrderDiffCount,
+        },
+      });
+      return { planId };
     },
-    onSuccess: async () => {
-      toast.success('案1を対象日のルートに反映しました');
+    onSuccess: async ({ planId }) => {
+      toast.success(`${scenarioLabel(planId)}を対象日のルートに反映しました`);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['visit-schedules'] }),
         queryClient.invalidateQueries({ queryKey: ['visit-route-plan', orgId] }),
@@ -374,7 +808,29 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
   }
 
   const emergencyPatientName = emergencySchedule.case_.patient.name;
-  const lockedSet = recalc?.lockedScheduleIds ?? new Set<string>();
+  const selectedScenario = recalc?.[selectedPlanId] ?? null;
+  const selectedScenarioLabel = scenarioLabel(selectedPlanId);
+  const selectedScenarioLockedSet = selectedScenario?.lockedScheduleIds ?? new Set<string>();
+  const selectedApplyPlan = selectedScenario
+    ? buildEmergencyRouteApplyPlan({
+        orderedScheduleIds: selectedScenario.plan.orderedScheduleIds,
+        scheduleById,
+      })
+    : null;
+  const selectedScenarioCanApply =
+    selectedScenario?.plan.status === 'ok' && !selectedApplyPlan?.blockedReason;
+  const releasedScheduleSummary = formatReleasedScheduleSummary(
+    selectedScenario?.releasedScheduleId
+      ? (scheduleById.get(selectedScenario.releasedScheduleId) ?? null)
+      : null,
+  );
+  const impactItems = buildImpactItems({
+    scenario: selectedScenario,
+    selectedPlanId,
+    confirmedCount: confirmedSchedules.length,
+    scheduleById,
+    applyPlan: selectedApplyPlan,
+  });
 
   return (
     <div className="space-y-4">
@@ -429,41 +885,89 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
 
           {recalc ? (
             <RouteOrderChart
-              scheduleIds={recalc.plan1.plan.orderedScheduleIds}
+              scheduleIds={selectedScenario?.plan.orderedScheduleIds ?? []}
               emergencyScheduleId={recalc.emergencyScheduleId}
-              lockedScheduleIds={lockedSet}
+              lockedScheduleIds={selectedScenarioLockedSet}
             />
           ) : (
             <div className="flex min-h-[200px] items-center justify-center rounded-lg bg-tag-info/5 p-6 text-center text-sm text-muted-foreground">
               「ルートを再計算」を押すと、確定患者を固定した 2 つの案を表示します。
             </div>
           )}
+          {recalc ? (
+            <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1">
+                <span className="size-2 rounded-full bg-state-blocked" aria-hidden />
+                緊急訪問
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="size-2 rounded-full bg-state-waiting" aria-hidden />
+                固定する確定訪問
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="size-2 rounded-full bg-tag-info" aria-hidden />
+                調整対象
+              </span>
+            </div>
+          ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <div
-              className="rounded-lg border border-border/70 bg-card p-4"
+            <button
+              type="button"
+              className={[
+                'rounded-lg border p-4 text-left transition-colors',
+                selectedPlanId === 'plan1'
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border/70 bg-card hover:border-primary/50',
+                !recalc ? 'cursor-not-allowed opacity-80' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              disabled={!recalc}
+              aria-pressed={selectedPlanId === 'plan1'}
+              aria-label="案1を選択"
+              onClick={() => setSelectedPlanId('plan1')}
               data-testid="emergency-route-scenario-1"
             >
-              <h3 className="text-[15px] font-bold text-foreground">案1</h3>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-[15px] font-bold text-foreground">案1</h3>
+                {selectedPlanId === 'plan1' ? <Badge variant="secondary">選択中</Badge> : null}
+              </div>
               <p className="mt-2 text-sm font-semibold text-state-done">正式決定患者は変更なし</p>
               <p className="mt-2 text-sm text-muted-foreground">
                 {recalc ? formatDeltaLabel(recalc.plan1.travelDeltaMinutes) : '移動 —'}
               </p>
-            </div>
-            <div
-              className="rounded-lg border border-border/70 bg-card p-4"
+            </button>
+            <button
+              type="button"
+              className={[
+                'rounded-lg border p-4 text-left transition-colors',
+                selectedPlanId === 'plan2'
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border/70 bg-card hover:border-primary/50',
+                !recalc ? 'cursor-not-allowed opacity-80' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              disabled={!recalc}
+              aria-pressed={selectedPlanId === 'plan2'}
+              aria-label="案2を選択"
+              onClick={() => setSelectedPlanId('plan2')}
               data-testid="emergency-route-scenario-2"
             >
-              <h3 className="text-[15px] font-bold text-foreground">案2</h3>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-[15px] font-bold text-foreground">案2</h3>
+                {selectedPlanId === 'plan2' ? <Badge variant="secondary">選択中</Badge> : null}
+              </div>
               <p className="mt-2 text-sm font-semibold text-state-confirm">1件だけ再確認が必要</p>
               <p className="mt-2 text-sm text-muted-foreground">
                 {recalc ? formatDeltaLabel(recalc.plan2.travelDeltaMinutes) : '移動 —'}
               </p>
-            </div>
+            </button>
           </div>
         </section>
 
-        {/* RIGHT: 影響確認チェックリスト + 案1で反映 */}
+        {/* RIGHT: 影響確認チェックリスト + 選択案で反映 */}
         <section
           className="flex flex-col gap-5 rounded-xl border border-border/70 bg-card p-4 shadow-sm sm:p-5"
           aria-label="影響確認"
@@ -471,41 +975,39 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
         >
           <h2 className="text-[15px] font-bold text-foreground">影響確認</h2>
           <ul className="space-y-3 text-sm text-foreground">
-            <li className="flex items-start gap-2">
-              <span aria-hidden className="mt-0.5 text-state-done">
-                ✓
-              </span>
-              <span>正式決定：変更なし</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span aria-hidden className="mt-0.5 text-state-done">
-                ✓
-              </span>
-              <span>患者確認待ち：{recalc?.releasedScheduleId ? '1件あり' : '0件'}</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span aria-hidden className="mt-0.5 text-state-done">
-                ✓
-              </span>
-              <span>社用車A：使用可</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span aria-hidden className="mt-0.5 text-state-done">
-                ✓
-              </span>
-              <span>薬剤師負荷：許容範囲</span>
-            </li>
+            {impactItems.map((item) => {
+              const tone = IMPACT_TONE_META[item.tone];
+              return (
+                <li key={item.id} className="flex items-start gap-2">
+                  <span
+                    role="img"
+                    aria-label={tone.srLabel}
+                    className={['mt-0.5 font-semibold', tone.className].join(' ')}
+                  >
+                    {tone.marker}
+                  </span>
+                  <span>
+                    <span className="font-medium">{item.label}：</span>
+                    {item.detail}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
           <div className="mt-auto">
             <Button
               type="button"
               size="lg"
               className="w-full sm:h-11"
-              disabled={!recalc || applyMutation.isPending}
+              disabled={!selectedScenarioCanApply || applyMutation.isPending}
               onClick={() => setConfirmApply(true)}
               data-testid="emergency-route-apply-button"
             >
-              {applyMutation.isPending ? '反映中…' : '案1で反映'}
+              {applyMutation.isPending
+                ? '反映中…'
+                : selectedScenarioCanApply
+                  ? `${selectedScenarioLabel}で反映`
+                  : '反映不可'}
             </Button>
           </div>
         </section>
@@ -515,12 +1017,17 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
           onOpenChange={(open) => {
             if (!open) setConfirmApply(false);
           }}
-          title="案1を対象日のルートに反映しますか"
-          description="確定患者の訪問順を保ったまま、緊急処方の訪問を割り込ませた順序で route_order を更新します。施設一括訪問は各担当の末尾に現在の居室順のまま続きます。"
-          confirmLabel="案1で反映"
+          title={`${selectedScenarioLabel}を対象日のルートに反映しますか`}
+          description={`${selectedScenarioLabel}の順序で、確定済み訪問は更新対象から除外し、未確定訪問の route_order だけを更新します。${
+            selectedScenario?.releasedScheduleId
+              ? `この案では患者確認待ちが 1 件発生します: ${releasedScheduleSummary}。`
+              : '患者確認待ちは発生しません。'
+          }施設一括訪問は各担当の末尾に現在の居室順のまま続きます。`}
+          confirmLabel={`${selectedScenarioLabel}で反映`}
+          requiredConfirmText={selectedScenario?.releasedScheduleId ? '再確認済み' : undefined}
           onConfirm={() => {
             setConfirmApply(false);
-            applyMutation.mutate();
+            applyMutation.mutate(selectedPlanId);
           }}
         />
       </div>

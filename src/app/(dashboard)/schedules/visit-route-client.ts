@@ -22,8 +22,15 @@ export type VisitMixedRouteUpdate = {
   route_order: number;
 };
 
+export type VisitRouteConfirmationSource =
+  | 'schedule_day_route_preview'
+  | 'route_compare_adoption'
+  | 'emergency_route_interruption'
+  | 'proposal_detail_route_preview'
+  | 'weekly_optimizer_mixed_route_preview';
+
 export type VisitRouteConfirmationContext = {
-  source: string;
+  source: VisitRouteConfirmationSource;
   date?: string;
   pharmacist_id?: string;
   travel_mode?: 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';

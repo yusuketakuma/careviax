@@ -568,6 +568,39 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     expectNoWriteAuditOrNotify();
   });
 
+  it('accepts emergency route interruption confirmation context and records it in audit', async () => {
+    const response = (await PATCH(
+      createRequest({
+        updates: [{ schedule_id: 'schedule_1', route_order: 1 }],
+        confirmation_context: {
+          source: 'emergency_route_interruption',
+          date: '2026-04-09',
+          travel_mode: 'DRIVE',
+          target_count: 1,
+          route_order_diff_count: 1,
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(auditLogCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'visit_schedules_reordered',
+          changes: expect.objectContaining({
+            confirmation_context: {
+              source: 'emergency_route_interruption',
+              date: '2026-04-09',
+              travel_mode: 'DRIVE',
+              target_count: 1,
+              route_order_diff_count: 1,
+            },
+          }),
+        }),
+      }),
+    );
+  });
+
   it('rejects duplicate schedule targets before loading schedules', async () => {
     const response = (await PATCH(
       createRequest({

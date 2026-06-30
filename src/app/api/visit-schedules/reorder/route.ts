@@ -37,7 +37,11 @@ const VEHICLE_ASSIGNABLE_STATUSES = new Set([
 const ROUTE_REORDERABLE_STATUSES = VEHICLE_ASSIGNABLE_STATUSES;
 
 const routeOrderConfirmationContextSchema = z.object({
-  source: z.enum(['schedule_day_route_preview', 'route_compare_adoption']),
+  source: z.enum([
+    'schedule_day_route_preview',
+    'route_compare_adoption',
+    'emergency_route_interruption',
+  ]),
   date: visitScheduleDateKeySchema('確認日付の形式が不正です（YYYY-MM-DD）').optional(),
   pharmacist_id: z.string().trim().min(1).max(100).optional(),
   travel_mode: z.enum(['DRIVE', 'BICYCLE', 'WALK', 'TWO_WHEELER']).optional(),
