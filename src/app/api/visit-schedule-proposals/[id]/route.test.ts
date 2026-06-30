@@ -2652,6 +2652,111 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     expect(scheduleCreateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects proposal confirmation when the pharmacist time window overlaps an active schedule', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+      }),
+    );
+    scheduleFindFirstMock.mockResolvedValueOnce({ id: 'schedule_overlap' });
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同一薬剤師・同一日付の訪問時間帯が既存予定と重複しています。再読み込みしてください',
+    });
+    expect(scheduleFindFirstMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        pharmacist_id: 'pharmacist_1',
+        scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
+        schedule_status: {
+          in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
+        },
+        time_window_start: { lt: new Date('1970-01-01T10:00:00.000Z') },
+        time_window_end: { gt: new Date('1970-01-01T09:00:00.000Z') },
+      }),
+      select: { id: true },
+    });
+    expect(scheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects proposal confirmation when the selected vehicle time window overlaps an active schedule', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        vehicle_resource_id: 'vehicle_1',
+      }),
+    );
+    scheduleFindFirstMock.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: 'schedule_vehicle_overlap',
+    });
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同一車両・同一日付の訪問時間帯が既存予定と重複しています。再読み込みしてください',
+    });
+    expect(scheduleFindFirstMock).toHaveBeenNthCalledWith(2, {
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        vehicle_resource_id: 'vehicle_1',
+        scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
+        schedule_status: {
+          in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
+        },
+        time_window_start: { lt: new Date('1970-01-01T10:00:00.000Z') },
+        time_window_end: { gt: new Date('1970-01-01T09:00:00.000Z') },
+      }),
+      select: { id: true },
+    });
+    expect(scheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('excludes the reschedule source schedule from proposal confirmation overlap checks', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        reschedule_source_schedule_id: 'schedule_source',
+      }),
+    );
+    scheduleFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(scheduleFindFirstMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        id: { not: 'schedule_source' },
+        pharmacist_id: 'pharmacist_1',
+        scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
+        time_window_start: { lt: new Date('1970-01-01T10:00:00.000Z') },
+        time_window_end: { gt: new Date('1970-01-01T09:00:00.000Z') },
+      }),
+      select: { id: true },
+    });
+    expect(scheduleCreateMock).toHaveBeenCalled();
+  });
+
   it('copies a suggested recurrence rule into the finalized visit schedule', async () => {
     proposalFindFirstMock.mockResolvedValue(
       buildProposal({

@@ -45,6 +45,10 @@ import {
 } from '@/server/services/visit-schedule-communication';
 import { validateScheduleTimeDatesFitShift } from '@/server/services/visit-schedule-shift';
 import { validateVisitScheduleBlockingBillingRequirements } from '@/server/services/visit-schedule-billing-guard';
+import {
+  findVisitScheduleTimeConflict,
+  getVisitScheduleTimeConflictMessage,
+} from '@/server/services/visit-schedule-service';
 import { buildProposalRejectAuditChanges } from '@/lib/audit-logs/proposal-rejection';
 import {
   omitProposalRejectReason,
@@ -1605,6 +1609,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       };
     }
 
+    const timeConflict = await findVisitScheduleTimeConflict(tx, {
+      orgId: ctx.orgId,
+      scheduledDate: confirmedProposal.proposed_date,
+      pharmacistId: confirmedProposal.proposed_pharmacist_id,
+      timeWindowStart: confirmedProposal.time_window_start,
+      timeWindowEnd: confirmedProposal.time_window_end,
+      vehicleResourceId: confirmedProposal.vehicle_resource_id,
+      excludeScheduleId: confirmedProposal.reschedule_source_schedule_id ?? undefined,
+    });
+    if (timeConflict) {
+      return {
+        error: 'time_conflict' as const,
+        conflictKind: timeConflict.kind,
+      };
+    }
+
     const lockedRouteSchedules = await tx.visitSchedule.findMany({
       where: {
         org_id: ctx.orgId,
@@ -1836,6 +1856,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     if (result.error === 'state_changed') {
       return conflict('この候補はすでに確定または変更されています。再読み込みしてください');
+    }
+    if (result.error === 'time_conflict') {
+      return conflict(getVisitScheduleTimeConflictMessage(result.conflictKind));
     }
     if (result.error === 'finalized_schedule_unavailable') {
       return conflict('確定済み訪問を取得できません。再読み込みしてください');
