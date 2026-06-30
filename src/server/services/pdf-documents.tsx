@@ -52,6 +52,7 @@ import {
   type BillingDocumentKind,
   type BillingDocumentRecord,
 } from '@/server/services/pdf-billing-document-record';
+import { UnsupportedCareReportPdfContentError } from '@/server/services/pdf-errors';
 import {
   formatPdfDate,
   getPdfBranding,
@@ -937,13 +938,7 @@ function renderCareReportContent(report: CareReportRecord) {
     }
   }
 
-  return (
-    <Section title="内容">
-      <Text style={styles.paragraph}>
-        この報告書形式は外部提出用PDFとして表示できません。薬剤師が内容を確認し、専用形式で再出力してください。
-      </Text>
-    </Section>
-  );
+  throw new UnsupportedCareReportPdfContentError();
 }
 
 function renderManagementPlanContent(plan: ManagementPlanRecord) {

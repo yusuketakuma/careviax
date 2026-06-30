@@ -32,3 +32,12 @@ export class PdfNotFoundError extends Error {
 export function pdfNotFoundMessage(resource: PdfNotFoundResource): string {
   return SAFE_MESSAGES[resource];
 }
+
+export class UnsupportedCareReportPdfContentError extends Error {
+  constructor() {
+    super(
+      'この報告書形式は外部提出用PDFとして表示できません。薬剤師が内容を確認し、専用形式で再出力してください。',
+    );
+    this.name = 'UnsupportedCareReportPdfContentError';
+  }
+}

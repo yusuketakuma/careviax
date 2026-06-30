@@ -71,7 +71,7 @@ import {
   buildMedicationHistoryPdf,
   buildPatientVisitRecordsPdf,
 } from './pdf-documents';
-import { PdfNotFoundError } from './pdf-errors';
+import { PdfNotFoundError, UnsupportedCareReportPdfContentError } from './pdf-errors';
 
 function collectPdfText(value: unknown): string[] {
   if (value == null || typeof value === 'boolean') return [];
@@ -137,7 +137,7 @@ describe('buildCareReportPdf', () => {
     visitRecordFindManyMock.mockResolvedValue([]);
   });
 
-  it('falls back to generic content rendering for malformed physician-report JSON', async () => {
+  it('rejects malformed physician-report JSON before rendering a PDF', async () => {
     careReportFindFirstMock.mockResolvedValue({
       ...baseReport,
       report_type: 'physician_report',
@@ -145,31 +145,51 @@ describe('buildCareReportPdf', () => {
         patient: ['unexpected'],
         prescriptions: 'not-an-array',
         billing_context: { payer_basis: 'medical' },
+        internal_note: 'patient phone 090-1234-5678',
       },
     });
 
-    const result = await buildCareReportPdf('org_1', 'report_1');
+    await expect(buildCareReportPdf('org_1', 'report_1')).rejects.toBeInstanceOf(
+      UnsupportedCareReportPdfContentError,
+    );
 
-    expect(result.fileName).toBe('care-report-report_1.pdf');
-    expect(result.buffer).toEqual(Buffer.from('pdf'));
-    expect(renderToBufferMock).toHaveBeenCalledOnce();
+    expect(renderToBufferMock).not.toHaveBeenCalled();
   });
 
-  it('falls back to generic content rendering for malformed care-manager-report JSON', async () => {
+  it('rejects malformed care-manager-report JSON before rendering a PDF', async () => {
     careReportFindFirstMock.mockResolvedValue({
       ...baseReport,
       report_type: 'care_manager_report',
       content: {
         patient: null,
         medication_management_summary: { total_drugs: '5' },
+        source_provenance: { patient_id: 'patient_1' },
       },
     });
 
-    const result = await buildCareReportPdf('org_1', 'report_1');
+    await expect(buildCareReportPdf('org_1', 'report_1')).rejects.toBeInstanceOf(
+      UnsupportedCareReportPdfContentError,
+    );
 
-    expect(result.fileName).toBe('care-report-report_1.pdf');
-    expect(result.buffer).toEqual(Buffer.from('pdf'));
-    expect(renderToBufferMock).toHaveBeenCalledOnce();
+    expect(renderToBufferMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unknown care-report types without flattening internal JSON into PDF text', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      ...baseReport,
+      report_type: 'legacy_internal_report',
+      content: {
+        patient: { name: '山田 太郎' },
+        source_provenance: { patient_id: 'patient_1', visit_record_id: 'visit_1' },
+        internal_note: 'secret internal report body',
+      },
+    });
+
+    await expect(buildCareReportPdf('org_1', 'report_1')).rejects.toBeInstanceOf(
+      UnsupportedCareReportPdfContentError,
+    );
+
+    expect(renderToBufferMock).not.toHaveBeenCalled();
   });
 
   it('renders physician report medication-safety sections without internal billing context', async () => {
@@ -397,7 +417,7 @@ describe('buildCareReportPdf', () => {
     expect(text).not.toContain('billing-1');
   });
 
-  it('does not render audience report PDFs when report type and audience disagree', async () => {
+  it('rejects audience report PDFs when report type and audience disagree', async () => {
     careReportFindFirstMock.mockResolvedValue({
       ...baseReport,
       report_type: 'nurse_share',
@@ -416,12 +436,11 @@ describe('buildCareReportPdf', () => {
       },
     });
 
-    await buildCareReportPdf('org_1', 'report_1');
+    await expect(buildCareReportPdf('org_1', 'report_1')).rejects.toBeInstanceOf(
+      UnsupportedCareReportPdfContentError,
+    );
 
-    const text = collectPdfText(renderToBufferMock.mock.calls[0][0]).join('\n');
-    expect(text).toContain('外部提出用PDFとして表示できません');
-    expect(text).not.toContain('施設向け服薬状況。');
-    expect(text).not.toContain('施設向け依頼。');
+    expect(renderToBufferMock).not.toHaveBeenCalled();
   });
 });
 

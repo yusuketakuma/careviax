@@ -35,7 +35,10 @@ vi.mock('@/server/services/export-audit', () => ({
   recordDataExportAudit: recordDataExportAuditMock,
 }));
 
-import { PdfNotFoundError } from '@/server/services/pdf-errors';
+import {
+  PdfNotFoundError,
+  UnsupportedCareReportPdfContentError,
+} from '@/server/services/pdf-errors';
 import { GET } from './route';
 
 function createRequest() {
@@ -199,6 +202,27 @@ describe('/api/care-reports/[id]/pdf', () => {
       code: 'WORKFLOW_CONFLICT',
       message: '薬剤師確認済みの報告書のみPDF出力できます',
     });
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported care report PDF content without auditing or exposing raw content details', async () => {
+    buildCareReportPdfMock.mockRejectedValue(new UnsupportedCareReportPdfContentError());
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message:
+        'この報告書形式は外部提出用PDFとして表示できません。薬剤師が内容を確認し、専用形式で再出力してください。',
+    });
+    expect(JSON.stringify(body)).not.toContain('source_provenance');
+    expect(JSON.stringify(body)).not.toContain('patient_1');
     expect(pdfResponseMock).not.toHaveBeenCalled();
     expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });

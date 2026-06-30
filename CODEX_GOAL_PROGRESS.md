@@ -30,6 +30,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### CareReport PDF Unsupported Content Fail-Closed - 2026-07-01 04:55 JST
+
+- Scope:
+  - Continued report-feature and clinical output hardening under `docs/high-roi-functional-proposals-2026-06-18.md` PDF items 32-33.
+  - Focused on CareReport PDF export when persisted content is malformed, the report type is unknown, or an audience report's `report_type` and `report_audience` disagree.
+- Fixed:
+  - Added `UnsupportedCareReportPdfContentError` as a PDF-safe error for unsupported CareReport PDF content.
+  - `buildCareReportPdf` now rejects unsupported/malformed CareReport content before calling the PDF renderer instead of returning a normal PDF containing an unsupported-content placeholder.
+  - `GET /api/care-reports/[id]/pdf` now maps that safe error to a no-store `409` and does not return PDF bytes or write export audit records.
+  - Regression coverage proves malformed physician/care-manager content, unknown report types, and audience/type mismatches fail before rendering, and the route response does not expose raw internal content markers.
+- Safety:
+  - Reduces false-success external report output risk and prevents an unsupported CareReport body from being audited/returned as a successful PDF export.
+  - Preserves canSendCareReport auth, confirmed-report gating, not-found behavior, generic malformed-render sanitization, successful export audit ordering, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Fails unsupported reports before renderer work.
+  - No new DB query, dependency, external call, background job, broad scan, render-heavy path, or unbounded loop was added.
+- Validation:
+  - CareReport PDF service/route Vitest passed `2` files / `27` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on PDF files: passed.
+  - Full `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit-time, report, and multi-professional cooperation objective remains open.
+  - Remaining report/cooperation candidates include short-lived external PDF tokens, report source-provenance split, and additional audience/attachment gates.
+
 ### Facility Master And Contact OCC - 2026-07-01 04:44 JST
 
 - Scope:

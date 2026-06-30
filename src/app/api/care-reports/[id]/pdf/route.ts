@@ -7,7 +7,10 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import { recordDataExportAudit } from '@/server/services/export-audit';
-import { PdfNotFoundError } from '@/server/services/pdf-errors';
+import {
+  PdfNotFoundError,
+  UnsupportedCareReportPdfContentError,
+} from '@/server/services/pdf-errors';
 import { buildCareReportPdf } from '@/server/services/pdf-documents';
 
 export const runtime = 'nodejs';
@@ -36,6 +39,9 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     }
     if (cause instanceof Error && cause.message === 'CARE_REPORT_NOT_CONFIRMED') {
       return withSensitiveNoStore(conflict('薬剤師確認済みの報告書のみPDF出力できます'));
+    }
+    if (cause instanceof UnsupportedCareReportPdfContentError) {
+      return withSensitiveNoStore(conflict(cause.message));
     }
 
     return withSensitiveNoStore(
