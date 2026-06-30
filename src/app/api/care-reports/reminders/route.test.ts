@@ -94,6 +94,13 @@ describe('/api/care-reports/reminders POST', () => {
     expect(queueOverdueReportResponseRemindersMock).toHaveBeenCalledWith({ tx: true }, 'org_1', {
       overdueDays: 5,
     });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+    });
     expect(withAuthContextMock()).toEqual({
       permission: 'canSendCareReport',
       message: '報告書リマインドの作成権限がありません',

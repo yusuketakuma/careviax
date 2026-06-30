@@ -21,10 +21,13 @@ const authenticatedPOST = withAuthContext(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const result = await withOrgContext(ctx.orgId, (tx) =>
-      queueOverdueReportResponseReminders(tx, ctx.orgId, {
-        overdueDays: parsed.data.overdue_days,
-      }),
+    const result = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        queueOverdueReportResponseReminders(tx, ctx.orgId, {
+          overdueDays: parsed.data.overdue_days,
+        }),
+      { requestContext: ctx },
     );
 
     return success({ data: result }, 201);
