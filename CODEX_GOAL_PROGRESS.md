@@ -21489,6 +21489,46 @@ Next loop:
   - Commit only the two reopen route/test files plus these ledger updates.
   - Continue after codex commits or releases the reschedule lifecycle WIP.
 
+### Schedule Reschedule Lifecycle Hardening — 2026-06-30 10:55 JST
+
+- Scope:
+  - Hardened schedule reschedule approval, schedule cancellation, reschedule impact counts, and proposal approve/confirm lifecycle guards.
+  - Touched only schedule/proposal backend API routes and focused tests; no UI layout, schema migration, live DB mutation outside tests, external send, push, deploy, or destructive operation was run.
+  - Preserved unrelated dirty prescription QR, print-audit, drug-suggest, and Codex2 ledger paths.
+- Fixed:
+  - `POST /api/visit-schedules/[id]/reschedule/approve` now uses a sensitive no-store fixed-error exported boundary.
+  - Reschedule approval now writes `visit_schedule_reschedule_approved` audit entries with patient id, status transition, override id, and approver id.
+  - Reschedule approval re-reads the source schedule inside the transaction and only allows `planned` / `in_preparation` source states with version/status guarded update.
+  - Approval responses, including approved-request retries, strip audit-only source schedule `schedule_status` / `version` fields to avoid response-shape drift.
+  - `DELETE /api/visit-schedules/[id]` now uses a sensitive no-store fixed-error boundary.
+  - Schedule cancellation now cancels pending reschedule overrides, supersedes still-active replacement proposals, and records cancelled override ids/count plus superseded proposal count in the cancel audit payload.
+  - Non-emergency reschedule impact counts now exclude `completed` schedules.
+  - Reschedule proposal approval/finalization now requires the override to be both approved and still `pending`; final override completion uses guarded `updateMany`, rolls back on state change, and maps confirm-time override races to `409 WORKFLOW_CONFLICT`.
+- Safety:
+  - Prevents cancelled reschedule overrides from being resurrected by later proposal approval/confirmation.
+  - Prevents already advanced source schedules from being silently marked `rescheduled` with stale audit status.
+  - Reduces cache/raw-error leakage risk on schedule cancellation and reschedule approval failure paths.
+  - Adds auditability for override/proposal lifecycle changes using ids/counts without patient names or free-text PHI expansion.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/visit-schedules/[id]/reschedule/approve/route.test.ts' 'src/app/api/visit-schedules/[id]/route.test.ts' 'src/app/api/visit-schedules/[id]/reschedule/route.test.ts' 'src/app/api/visit-schedule-proposals/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `4` files / `140` tests.
+  - Scoped ESLint on the eight owned files: passed.
+  - Scoped Prettier check on the eight owned files: passed.
+  - Scoped `git diff --check` on the eight owned files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `TZ=Asia/Tokyo pnpm test:schedule-time:tz`: passed, `30` files / `490` tests.
+- Review:
+  - Independent reviewers initially found blockers around cancelled override resurrection, stale source schedule status, DELETE no-store/fixed-error, audit granularity, and response-shape drift.
+  - Those findings were fixed. API contract re-review then found retry response-shape and confirm-time race status issues; both were fixed.
+  - Codex2 re-review returned `APPROVED` after focused Vitest `140`/`140`, scoped ESLint, scoped Prettier check, and scoped diff-check.
+  - API contract re-review found no remaining blockers after focused Vitest `140`/`140`.
+  - General correctness re-review found no remaining blockers after focused Vitest `140`/`140` and scoped diff-check.
+- Remaining:
+  - Exact-path stage only the eight owned schedule/proposal files plus this ledger hunk and the matching Ralph hunk.
+  - Continue next schedule-management safety candidates: same-name patient id matching, JST client defaults, and save-boundary time overlap guards.
+
 ### Visit Schedule Generation Response Boundary Slice — 2026-06-30 10:44 JST
 
 - Scope:

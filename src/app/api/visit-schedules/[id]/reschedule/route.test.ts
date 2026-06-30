@@ -604,7 +604,7 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
         pharmacist_id: 'user_1',
         scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
         schedule_status: {
-          notIn: ['cancelled', 'rescheduled'],
+          notIn: ['cancelled', 'rescheduled', 'completed'],
         },
         id: { not: 'schedule_1' },
       },

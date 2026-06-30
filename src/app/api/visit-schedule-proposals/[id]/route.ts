@@ -153,6 +153,13 @@ class VisitProposalConfirmRetryLimitError extends Error {
   }
 }
 
+class VisitProposalOverrideStateChangedError extends Error {
+  constructor() {
+    super('visit proposal reschedule override state changed');
+    this.name = 'VisitProposalOverrideStateChangedError';
+  }
+}
+
 function isSerializableTransactionConflict(cause: unknown) {
   return cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
 }
@@ -882,9 +889,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         },
         select: {
           approved_at: true,
+          status: true,
         },
       });
-      if (!override?.approved_at) {
+      if (!override?.approved_at || override.status !== 'pending') {
         return validationError('確定済み訪問の変更は管理者承認後に進めてください');
       }
     }
@@ -1327,9 +1335,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         },
         select: {
           approved_at: true,
+          status: true,
         },
       });
-      if (!override?.approved_at) {
+      if (!override?.approved_at || override.status !== 'pending') {
         return {
           error: 'override_not_approved' as const,
         };
@@ -1745,9 +1754,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
 
     if (confirmedProposal.reschedule_source_schedule_id) {
-      await tx.visitScheduleOverride.update({
+      const overrideUpdate = await tx.visitScheduleOverride.updateMany({
         where: {
+          org_id: ctx.orgId,
           source_schedule_id: confirmedProposal.reschedule_source_schedule_id,
+          status: 'pending',
+          approved_at: { not: null },
         },
         data: {
           status: 'completed',
@@ -1755,6 +1767,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           after_snapshot: buildVisitScheduleSnapshot(schedule),
         },
       });
+      if (overrideUpdate.count !== 1) {
+        throw new VisitProposalOverrideStateChangedError();
+      }
     }
 
     await createAuditLogEntry(tx, ctx, {
@@ -1796,6 +1811,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     return { proposal, schedule, alreadyFinalized: false };
   }).catch((cause: unknown) => {
+    if (cause instanceof VisitProposalOverrideStateChangedError) {
+      return {
+        error: 'override_state_changed' as const,
+      };
+    }
     if (cause instanceof VisitProposalConfirmRetryLimitError) {
       return {
         error: 'serialization_conflict' as const,
@@ -1810,6 +1830,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     if (result.error === 'override_not_approved') {
       return validationError('確定済み訪問の変更は承認後に新候補を確定してください');
+    }
+    if (result.error === 'override_state_changed') {
+      return conflict('確定済み訪問の変更承認が同時に更新されました。再読み込みしてください');
     }
     if (result.error === 'state_changed') {
       return conflict('この候補はすでに確定または変更されています。再読み込みしてください');

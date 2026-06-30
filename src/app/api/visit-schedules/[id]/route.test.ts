@@ -9,7 +9,10 @@ const {
   visitScheduleTxFindFirstMock,
   visitScheduleProposalFindFirstMock,
   visitScheduleProposalTxFindFirstMock,
+  visitScheduleProposalUpdateManyMock,
   visitScheduleCountMock,
+  visitScheduleOverrideFindManyMock,
+  visitScheduleOverrideUpdateManyMock,
   visitScheduleUpdateManyMock,
   visitScheduleUpdateMock,
   visitVehicleResourceFindFirstMock,
@@ -30,7 +33,10 @@ const {
   visitScheduleTxFindFirstMock: vi.fn(),
   visitScheduleProposalFindFirstMock: vi.fn(),
   visitScheduleProposalTxFindFirstMock: vi.fn(),
+  visitScheduleProposalUpdateManyMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
+  visitScheduleOverrideFindManyMock: vi.fn(),
+  visitScheduleOverrideUpdateManyMock: vi.fn(),
   visitScheduleUpdateManyMock: vi.fn(),
   visitScheduleUpdateMock: vi.fn(),
   visitVehicleResourceFindFirstMock: vi.fn(),
@@ -160,6 +166,11 @@ function createMalformedJsonPatchRequest(
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/visit-schedules/[id] GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -174,6 +185,9 @@ describe('/api/visit-schedules/[id] GET', () => {
     visitScheduleUpdateManyMock.mockResolvedValue({ count: 1 });
     visitScheduleUpdateMock.mockResolvedValue({ id: 'schedule_1', schedule_status: 'in_progress' });
     visitScheduleCountMock.mockResolvedValue(0);
+    visitScheduleProposalUpdateManyMock.mockResolvedValue({ count: 1 });
+    visitScheduleOverrideFindManyMock.mockResolvedValue([{ id: 'override_1' }]);
+    visitScheduleOverrideUpdateManyMock.mockResolvedValue({ count: 1 });
     visitVehicleResourceFindFirstMock.mockResolvedValue({
       id: 'vehicle_1',
       site_id: 'site_1',
@@ -202,6 +216,11 @@ describe('/api/visit-schedules/[id] GET', () => {
         },
         visitScheduleProposal: {
           findFirst: visitScheduleProposalTxFindFirstMock,
+          updateMany: visitScheduleProposalUpdateManyMock,
+        },
+        visitScheduleOverride: {
+          findMany: visitScheduleOverrideFindManyMock,
+          updateMany: visitScheduleOverrideUpdateManyMock,
         },
         auditLog: {
           create: auditLogCreateMock,
@@ -1817,9 +1836,42 @@ describe('/api/visit-schedules/[id] GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
       where: { id: 'schedule_1', org_id: 'org_1', version: 1 },
       data: { schedule_status: 'cancelled', version: { increment: 1 } },
+    });
+    expect(visitScheduleOverrideFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        source_schedule_id: 'schedule_1',
+        status: 'pending',
+      },
+      select: { id: true },
+    });
+    expect(visitScheduleOverrideUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        source_schedule_id: 'schedule_1',
+        status: 'pending',
+        id: { in: ['override_1'] },
+      },
+      data: {
+        status: 'cancelled',
+      },
+    });
+    expect(visitScheduleProposalUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        reschedule_source_schedule_id: 'schedule_1',
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+        finalized_schedule_id: null,
+      },
+      data: {
+        proposal_status: 'superseded',
+      },
     });
   });
 
@@ -1881,6 +1933,84 @@ describe('/api/visit-schedules/[id] GET', () => {
       where: { id: 'schedule_1', org_id: 'org_1', version: 1 },
       data: { schedule_status: 'cancelled', version: { increment: 1 } },
     });
+    expect(visitScheduleOverrideFindManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when delete auth plumbing fails before loading the schedule', async () => {
+    authMock.mockRejectedValueOnce(
+      new Error('raw delete auth patient 山田 花子 token secret schedule memo'),
+    );
+
+    const response = await DELETE(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw delete auth');
+    expect(bodyText).not.toContain('山田 花子');
+    expect(bodyText).not.toContain('token secret');
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when pending override cancellation fails', async () => {
+    visitScheduleOverrideUpdateManyMock.mockRejectedValueOnce(
+      new Error('raw override cancel patient 山田 花子 token secret'),
+    );
+
+    const response = await DELETE(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw override');
+    expect(bodyText).not.toContain('山田 花子');
+    expect(bodyText).not.toContain('token secret');
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when delete audit logging fails', async () => {
+    auditLogCreateMock.mockRejectedValueOnce(
+      new Error('raw delete audit patient 山田 花子 token secret reason memo'),
+    );
+
+    const response = await DELETE(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw delete audit');
+    expect(bodyText).not.toContain('山田 花子');
+    expect(bodyText).not.toContain('token secret');
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
@@ -1905,6 +2035,9 @@ describe('/api/visit-schedules/[id] GET', () => {
           reason_code: 'patient_request',
           reason_label: '患者都合',
           reason_note: '家族から延期希望',
+          cancelled_override_ids: ['override_1'],
+          cancelled_override_count: 1,
+          superseded_reschedule_proposal_count: 1,
         }),
       }),
     });
@@ -1920,7 +2053,13 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: 'visit_schedule_cancelled',
-        changes: expect.objectContaining({ reason_code: null, reason_note: null }),
+        changes: expect.objectContaining({
+          reason_code: null,
+          reason_note: null,
+          cancelled_override_ids: ['override_1'],
+          cancelled_override_count: 1,
+          superseded_reschedule_proposal_count: 1,
+        }),
       }),
     });
   });

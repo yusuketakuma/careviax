@@ -1,9 +1,12 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { requireAuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { success, notFound, validationError, conflict } from '@/lib/api/response';
+import { success, notFound, validationError, conflict, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { resolveOperationalTasks } from '@/server/services/operational-tasks';
 import { fetchEmergencyContacts } from '@/lib/patient/emergency-contacts';
@@ -15,7 +18,12 @@ class RescheduleApprovalStateChangedError extends Error {
   }
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+const RESCHEDULE_APPROVABLE_SOURCE_STATUSES = ['planned', 'in_preparation'] as const;
+
+async function authenticatedPOST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
     message: 'リスケ承認の権限がありません',
@@ -40,6 +48,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           pharmacist_id: true,
           case_id: true,
           schedule_status: true,
+          version: true,
           case_: {
             select: {
               patient_id: true,
@@ -54,7 +63,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return validationError('リスケ要求の申請者自身は承認できません');
   }
   if (override.approved_at) {
-    return success({ data: override });
+    const { source_schedule: overrideSourceSchedule, ...overrideWithoutSourceSchedule } = override;
+    return success({
+      data: {
+        ...overrideWithoutSourceSchedule,
+        source_schedule: {
+          id: overrideSourceSchedule.id,
+          pharmacist_id: overrideSourceSchedule.pharmacist_id,
+          case_id: overrideSourceSchedule.case_id,
+          case_: overrideSourceSchedule.case_,
+        },
+        suggested_contacts: [],
+      },
+    });
   }
 
   let approved;
@@ -79,11 +100,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           throw new RescheduleApprovalStateChangedError();
         }
 
+        const sourceSchedule = await tx.visitSchedule.findFirst({
+          where: { id, org_id: ctx.orgId },
+          select: { schedule_status: true, version: true },
+        });
+        if (
+          !sourceSchedule ||
+          !RESCHEDULE_APPROVABLE_SOURCE_STATUSES.includes(
+            sourceSchedule.schedule_status as (typeof RESCHEDULE_APPROVABLE_SOURCE_STATUSES)[number],
+          )
+        ) {
+          throw new RescheduleApprovalStateChangedError();
+        }
+
         const scheduleClaim = await tx.visitSchedule.updateMany({
           where: {
             id,
             org_id: ctx.orgId,
-            schedule_status: { notIn: ['completed', 'cancelled', 'rescheduled'] },
+            version: sourceSchedule.version,
+            schedule_status: sourceSchedule.schedule_status,
           },
           data: {
             schedule_status: 'rescheduled',
@@ -93,6 +128,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (scheduleClaim.count !== 1) {
           throw new RescheduleApprovalStateChangedError();
         }
+
+        await createAuditLogEntry(tx, ctx, {
+          action: 'visit_schedule_reschedule_approved',
+          targetType: 'VisitSchedule',
+          targetId: id,
+          patientId: override.source_schedule.case_.patient_id,
+          changes: {
+            schedule_status: {
+              from: sourceSchedule.schedule_status,
+              to: 'rescheduled',
+            },
+            override_id: override.id,
+            approved_by: ctx.userId,
+          },
+        });
 
         await resolveOperationalTasks(tx, {
           orgId: ctx.orgId,
@@ -129,9 +179,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           override.source_schedule.case_.patient_id,
         );
 
+        const { source_schedule: overrideSourceSchedule, ...overrideWithoutSourceSchedule } =
+          override;
+        const sourceScheduleForResponse = {
+          id: overrideSourceSchedule.id,
+          pharmacist_id: overrideSourceSchedule.pharmacist_id,
+          case_id: overrideSourceSchedule.case_id,
+          case_: overrideSourceSchedule.case_,
+        };
+
         return {
           updated: {
-            ...override,
+            ...overrideWithoutSourceSchedule,
+            source_schedule: sourceScheduleForResponse,
             approved_by: ctx.userId,
             approved_at: approvedAt,
           },
@@ -163,4 +223,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       suggested_contacts: approved.emergencyContacts,
     },
   });
+}
+
+export async function POST(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }

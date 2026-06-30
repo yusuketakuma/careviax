@@ -27,7 +27,9 @@ const {
   contactLogUpdateManyMock,
   auditLogCreateMock,
   auditLogFindFirstMock,
+  overrideFindFirstMock,
   overrideUpdateMock,
+  overrideUpdateManyMock,
   evaluateVisitWorkflowGateMock,
   userFindManyMock,
   computeOptimizedVisitRouteMock,
@@ -59,7 +61,9 @@ const {
   contactLogUpdateManyMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   auditLogFindFirstMock: vi.fn(),
+  overrideFindFirstMock: vi.fn(),
   overrideUpdateMock: vi.fn(),
+  overrideUpdateManyMock: vi.fn(),
   evaluateVisitWorkflowGateMock: vi.fn(),
   userFindManyMock: vi.fn(),
   computeOptimizedVisitRouteMock: vi.fn(),
@@ -84,6 +88,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     visitScheduleContactLog: {
       findFirst: contactLogFindFirstMock,
+    },
+    visitScheduleOverride: {
+      findFirst: overrideFindFirstMock,
     },
     auditLog: {
       findFirst: auditLogFindFirstMock,
@@ -253,7 +260,9 @@ function buildTxMock() {
       updateMany: contactLogUpdateManyMock,
     },
     visitScheduleOverride: {
+      findFirst: overrideFindFirstMock,
       update: overrideUpdateMock,
+      updateMany: overrideUpdateManyMock,
     },
     auditLog: {
       findFirst: auditLogFindFirstMock,
@@ -338,7 +347,13 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     contactLogUpdateManyMock.mockResolvedValue({ count: 1 });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     auditLogFindFirstMock.mockResolvedValue(null);
+    overrideFindFirstMock.mockResolvedValue({
+      id: 'override_1',
+      status: 'pending',
+      approved_at: new Date('2026-03-26T10:00:00.000Z'),
+    });
     overrideUpdateMock.mockResolvedValue({ id: 'override_1' });
+    overrideUpdateManyMock.mockResolvedValue({ count: 1 });
     evaluateVisitWorkflowGateMock.mockResolvedValue({
       ok: true,
       issues: [],
@@ -1637,6 +1652,35 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('rejects approving a reschedule proposal when the approved override was cancelled', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'reschedule_pending',
+        patient_contact_status: 'pending',
+        reschedule_source_schedule_id: 'schedule_source_1',
+      }),
+    );
+    overrideFindFirstMock.mockResolvedValueOnce({
+      id: 'override_1',
+      status: 'cancelled',
+      approved_at: new Date('2026-03-26T10:00:00.000Z'),
+    });
+
+    const response = await PATCH(createRequest({ action: 'approve' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '確定済み訪問の変更は管理者承認後に進めてください',
+    });
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('returns conflict when rejection loses the state claim race', async () => {
     proposalFindFirstMock.mockResolvedValue(
       buildProposal({
@@ -1740,6 +1784,110 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
+  });
+
+  it('rejects finalizing a reschedule proposal when the approved override was cancelled', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        reschedule_source_schedule_id: 'schedule_source_1',
+      }),
+    );
+    overrideFindFirstMock.mockResolvedValueOnce({
+      id: 'override_1',
+      status: 'cancelled',
+      approved_at: new Date('2026-03-26T10:00:00.000Z'),
+    });
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '確定済み訪問の変更は承認後に新候補を確定してください',
+    });
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+    expect(proposalUpdateMock).not.toHaveBeenCalled();
+    expect(overrideUpdateManyMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('completes a reschedule override only while it is still pending', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        reschedule_source_schedule_id: 'schedule_source_1',
+      }),
+    );
+    proposalUpdateMock.mockResolvedValueOnce(
+      buildProposal({
+        proposal_status: 'confirmed',
+        patient_contact_status: 'confirmed',
+        finalized_schedule_id: 'schedule_1',
+        reschedule_source_schedule_id: 'schedule_source_1',
+      }),
+    );
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(overrideUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        source_schedule_id: 'schedule_source_1',
+        status: 'pending',
+        approved_at: { not: null },
+      },
+      data: expect.objectContaining({
+        status: 'completed',
+        replacement_schedule_id: 'schedule_1',
+      }),
+    });
+    expect(overrideUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict when reschedule override completion loses the state race', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        reschedule_source_schedule_id: 'schedule_source_1',
+      }),
+    );
+    overrideUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '確定済み訪問の変更承認が同時に更新されました。再読み込みしてください',
+    });
+    expect(overrideUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        source_schedule_id: 'schedule_source_1',
+        status: 'pending',
+        approved_at: { not: null },
+      },
+      data: expect.objectContaining({
+        status: 'completed',
+        replacement_schedule_id: 'schedule_1',
+      }),
+    });
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects proposal finalization when billing caps are exceeded at confirmation time', async () => {

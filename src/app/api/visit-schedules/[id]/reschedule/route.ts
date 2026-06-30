@@ -555,7 +555,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           pharmacist_id: schedule.pharmacist_id,
           scheduled_date: schedule.scheduled_date,
           schedule_status: {
-            notIn: ['cancelled', 'rescheduled'],
+            notIn: ['cancelled', 'rescheduled', 'completed'],
           },
           id: { not: schedule.id },
           ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),

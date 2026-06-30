@@ -706,7 +706,10 @@ const cancelScheduleSchema = z.object({
   reason_note: z.string().trim().max(500, 'メモは500文字以内で入力してください').optional(),
 });
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedDELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問予定の更新権限がありません',
@@ -768,6 +771,42 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
           response: conflict('更新後の訪問予定を取得できません。再読み込みしてください'),
         };
       }
+      const pendingOverrides = await tx.visitScheduleOverride.findMany({
+        where: {
+          org_id: ctx.orgId,
+          source_schedule_id: id,
+          status: 'pending',
+        },
+        select: { id: true },
+      });
+      const cancelledOverrideIds = pendingOverrides.map((override) => override.id);
+      const cancelledOverrides =
+        cancelledOverrideIds.length > 0
+          ? await tx.visitScheduleOverride.updateMany({
+              where: {
+                org_id: ctx.orgId,
+                source_schedule_id: id,
+                status: 'pending',
+                id: { in: cancelledOverrideIds },
+              },
+              data: {
+                status: 'cancelled',
+              },
+            })
+          : { count: 0 };
+      const supersededRescheduleProposals = await tx.visitScheduleProposal.updateMany({
+        where: {
+          org_id: ctx.orgId,
+          reschedule_source_schedule_id: id,
+          proposal_status: {
+            in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+          },
+          finalized_schedule_id: null,
+        },
+        data: {
+          proposal_status: 'superseded',
+        },
+      });
       await createAuditLogEntry(tx, ctx, {
         action: 'visit_schedule_cancelled',
         targetType: 'VisitSchedule',
@@ -777,6 +816,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
           reason_code: reasonCode,
           reason_label: reasonCode ? visitScheduleCancelReasonLabel(reasonCode) : null,
           reason_note: reasonNote,
+          cancelled_override_ids: cancelledOverrideIds,
+          cancelled_override_count: cancelledOverrides.count,
+          superseded_reschedule_proposal_count: supersededRescheduleProposals.count,
         },
       });
       return { ok: true as const, schedule: updatedSchedule };
@@ -792,4 +834,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   });
 
   return success(schedule.schedule);
+}
+
+export async function DELETE(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedDELETE(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }
