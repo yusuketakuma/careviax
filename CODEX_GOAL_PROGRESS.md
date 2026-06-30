@@ -30,6 +30,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Visit-Record Tracing Follow-Up Relation - 2026-06-30 17:28 JST
+
+- Scope:
+  - Continued Codex2-owned visit-time, report, and multidisciplinary collaboration implementation after the shared worktree returned clean.
+  - Focused on the previously blocked visit-record-origin `tracing_report_followup` path.
+  - No schema migration, live DB operation, auth/RLS change, external send, push/deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Visit record save still created `tracing_report` drafts and matching `communicationRequest` rows, but the follow-up task was related to the `visit_record`.
+  - `tracing_report_followup` tasks now use `relatedEntityType: 'tracing_report'` and `relatedEntityId: tracingReport.id`.
+  - Existing dedupe remains visit-record + drug-identity based, so repeated saves do not create duplicate task identities.
+  - Route tests now assert the task relation points at the tracing report for coded, DrugMaster-linked, existing-issue, and uncoded residual-medication cases.
+- Safety:
+  - Reduces wrong-workspace follow-up risk: shared operational task presentation can now route visit-origin tracing report tasks to the related communication request filter instead of a generic visit-record context.
+  - Keeps patient/case/report identifiers inside existing org-scoped transaction boundaries and does not expose new PHI fields.
+- Performance:
+  - Linkage reuses the `tracingReport.id` already produced or found in the existing loop.
+  - No new query, background job, dependency, network call, payload expansion, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-records/route.test.ts src/lib/tasks/operational-task-presentation.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `94` tests.
+  - Scoped ESLint on visit-record route/test and operational-task presentation files: passed.
+  - Scoped Prettier check on the same files: passed.
+  - Scoped `git diff --check` on the visit-record route/test files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Continue scanning visit-time/report/collaboration surfaces for generic action links or relation gaps.
+  - The broader goal remains open; this slice only closes the visit-record tracing follow-up relation gap.
+
 ### Route Compare Engine-Only Detail Cleanup - 2026-06-30 17:22 JST
 
 - Scope:

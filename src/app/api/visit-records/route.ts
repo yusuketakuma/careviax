@@ -1470,8 +1470,8 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
           assignedTo: ctx.userId,
           dueDate: visitRecordedAt,
           slaDueAt: visitRecordedAt,
-          relatedEntityType: 'visit_record',
-          relatedEntityId: record.id,
+          relatedEntityType: 'tracing_report',
+          relatedEntityId: tracingReport.id,
           dedupeKey: `tracing-report-followup:${record.id}:${drugIdentityKey}`,
           metadata: {
             patient_id: careCase.patient_id,

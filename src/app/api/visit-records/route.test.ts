@@ -2073,6 +2073,8 @@ describe('/api/visit-records POST', () => {
           task_type: 'tracing_report_followup',
           title: 'アムロジピン錠5mg（2149001） の残薬調整を確認',
           dedupe_key: 'tracing-report-followup:record_1:code:2149001',
+          related_entity_type: 'tracing_report',
+          related_entity_id: 'tracing_1',
           metadata: expect.objectContaining({
             drug_name: 'アムロジピン錠5mg',
             drug_code: '2149001',
@@ -2155,6 +2157,8 @@ describe('/api/visit-records POST', () => {
         create: expect.objectContaining({
           task_type: 'tracing_report_followup',
           dedupe_key: 'tracing-report-followup:record_1:master:drug_master_amlodipine',
+          related_entity_type: 'tracing_report',
+          related_entity_id: 'tracing_1',
           metadata: expect.objectContaining({
             drug_master_id: 'drug_master_amlodipine',
             drug_code: '2149001',
@@ -2258,6 +2262,8 @@ describe('/api/visit-records POST', () => {
         create: expect.objectContaining({
           task_type: 'tracing_report_followup',
           dedupe_key: 'tracing-report-followup:record_1:code:2149001',
+          related_entity_type: 'tracing_report',
+          related_entity_id: 'tracing_1',
           metadata: expect.objectContaining({
             drug_name: 'アムロジピンOD錠5mg',
             drug_code: '2149001',
@@ -2311,6 +2317,8 @@ describe('/api/visit-records POST', () => {
         create: expect.objectContaining({
           task_type: 'tracing_report_followup',
           dedupe_key: 'tracing-report-followup:record_1:name:名称未確定薬',
+          related_entity_type: 'tracing_report',
+          related_entity_id: 'tracing_1',
           metadata: expect.objectContaining({
             drug_name: '名称未確定薬',
             drug_code: null,

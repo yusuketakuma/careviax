@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-1728 JST
+
+- current task: attach visit-record-origin tracing follow-up tasks to the generated/reused tracing report so collaboration follow-up links can resolve to the related request context.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox for `phos/codex2`, latest commits, `src/app/api/visit-records/route.ts`, `src/app/api/visit-records/route.test.ts`, `src/lib/tasks/operational-task-presentation.ts`, `src/lib/tasks/operational-task-presentation.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/visit-records/route.ts`, `src/app/api/visit-records/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: visit-record save created or reused a `tracing_report` and created a related `communicationRequest`, but the `tracing_report_followup` task still used `relatedEntityType: 'visit_record'`. Shared task presentation therefore could not route the task to the related communication request filter.
+- security risks found: reduced wrong-workspace / wrong-follow-up navigation risk by making the operational task point at the tracing report identity already created in the org-scoped transaction. No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- performance issues found: relation assignment reuses the existing `tracingReport.id`; no new query, dependency, network call, background job, payload expansion, broad scan, or loop changed.
+- validation commands: focused visit-record route/task-presentation Vitest; scoped ESLint; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused Vitest passed `2` files / `94` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- remaining work: commit only the two owned visit-record files and ledger files for this coherent slice, then continue scanning visit/report/collaboration surfaces for generic action links or relation gaps.
+- next action: commit `Relate tracing followup tasks to tracing reports`, send agmsg FYI, and continue the next clean slice.
+
 ### 20260630-1722 JST
 
 - current task: remove the old fixed-value synthetic route-compare scenario path from production code and require engine-backed scenarios for the recommended route detail.
