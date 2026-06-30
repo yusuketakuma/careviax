@@ -29690,3 +29690,31 @@ Next loop:
 - Remaining:
   - Broad master/patient/report objective remains open.
   - A richer bulk snooze selection UI and grouped reminder audit visibility remain follow-ups.
+
+### Report Share Workspace Limited Counts - 2026-07-01 07:42 JST
+
+- Scope:
+  - Continued report/collaboration workspace hardening.
+  - Focused on `/api/care-reports/today-workspace` and the `/reports` share workspace headings for limited lists.
+- Fixed:
+  - Added `count_metadata` to the today-workspace response for `to_write`, `waiting`, `resolved`, `created`, and `open_issues`.
+  - Replaced visible-row-derived totals for waiting replies, resolved replies, and created reports with aggregate totals plus visible/hidden/limit metadata.
+  - Updated report share workspace headings to show labels such as `先頭5件 / 他4件` when a section is truncated instead of presenting the limited row count as the total.
+  - Kept open-issue metadata explicit with `count_basis: "derived_visible_window"` because open issues are still derived from bounded report and billing issue windows.
+- Safety:
+  - Reduces false-operational coordination risk where staff could believe all waiting/resolved/created/report-issue work was visible.
+  - No PHI fields, auth, org/RLS scope, mutations, external sends, migrations, push/deploy, secret handling, or destructive-operation boundaries were changed.
+- Performance:
+  - Preserves bounded row retrieval and adds narrow count queries inside the existing read transaction for the affected totals.
+  - Adds no new dependency, polling, background job, external call, broad unbounded fetch, or render-heavy path.
+- Validation:
+  - `pnpm exec vitest run src/app/api/care-reports/today-workspace/route.test.ts 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' --reporter=dot --testTimeout=60000`: passed, `2` files / `45` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit/report/collaboration objective remains open.
+  - Full DB-level open-issue totals remain a follow-up because the route currently derives open issues from bounded report and billing issue windows.

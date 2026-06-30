@@ -216,6 +216,48 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
     },
   ],
   counts: { to_write: 3, waiting: 2, resolved: 1, created: 3, open_issues: 2 },
+  count_metadata: {
+    to_write: {
+      total_count: 3,
+      visible_count: 3,
+      hidden_count: 0,
+      limit: null,
+      truncated: false,
+      count_basis: 'full_result',
+    },
+    waiting: {
+      total_count: 2,
+      visible_count: 2,
+      hidden_count: 0,
+      limit: 5,
+      truncated: false,
+      count_basis: 'database_total',
+    },
+    resolved: {
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      limit: 3,
+      truncated: false,
+      count_basis: 'database_total',
+    },
+    created: {
+      total_count: 3,
+      visible_count: 3,
+      hidden_count: 0,
+      limit: 12,
+      truncated: false,
+      count_basis: 'database_total',
+    },
+    open_issues: {
+      total_count: 2,
+      visible_count: 2,
+      hidden_count: 0,
+      limit: 12,
+      truncated: false,
+      count_basis: 'derived_visible_window',
+    },
+  },
   evidence: { template_count: 3, monthly_delivery_count: 14 },
 };
 
@@ -437,6 +479,60 @@ describe('ReportShareWorkspace', () => {
       expect(row.className).toContain('border-l-state-done');
       expect(row.className).not.toContain('bg-state-done/10');
     }
+  });
+
+  it('labels limited workspace counts as visible plus hidden rows', async () => {
+    const workspace = JSON.parse(JSON.stringify(TODAY_WORKSPACE)) as ReportsTodayWorkspaceResponse;
+    workspace.counts = {
+      ...workspace.counts,
+      waiting: 6,
+      resolved: 4,
+      created: 12,
+      open_issues: 5,
+    };
+    workspace.count_metadata = {
+      ...workspace.count_metadata,
+      waiting: {
+        ...workspace.count_metadata.waiting,
+        total_count: 6,
+        visible_count: workspace.waiting_replies.length,
+        hidden_count: 4,
+        truncated: true,
+      },
+      resolved: {
+        ...workspace.count_metadata.resolved,
+        total_count: 4,
+        visible_count: workspace.resolved_today.length,
+        hidden_count: 3,
+        truncated: true,
+      },
+      created: {
+        ...workspace.count_metadata.created,
+        total_count: 12,
+        visible_count: workspace.created_reports.length,
+        hidden_count: 9,
+        truncated: true,
+      },
+      open_issues: {
+        ...workspace.count_metadata.open_issues,
+        total_count: 5,
+        visible_count: workspace.open_issues.length,
+        hidden_count: 3,
+        truncated: true,
+      },
+    };
+
+    stubFetch(workspace);
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('report-waiting-box')).toBeTruthy();
+    });
+    expect(screen.getByText('先頭2件 / 他4件')).toBeTruthy();
+    expect(screen.getByText('先頭1件 / 他3件')).toBeTruthy();
+    expect(screen.getByText('先頭3件 / 他9件')).toBeTruthy();
+    expect(screen.getByText('先頭2件 / 他3件')).toBeTruthy();
+    expect(screen.getByText(/書く3件・課題5件・作成済み12件・待つ6件・解決4件/)).toBeTruthy();
   });
 
   it('renders billing candidate open issues using their own action href', async () => {

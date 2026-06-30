@@ -38,6 +38,20 @@ export function buildHeaderMeta(
   return `${dateLabel} — 書く${counts.to_write}件・課題${counts.open_issues}件・作成済み${counts.created}件・待つ${counts.waiting}件・解決${counts.resolved}件`;
 }
 
+export function formatWorkspaceCountLabel(
+  count:
+    | ReportsTodayWorkspaceResponse['count_metadata'][keyof ReportsTodayWorkspaceResponse['count_metadata']]
+    | null
+    | undefined,
+  visibleFallback: number,
+): string {
+  if (!count) return `${visibleFallback}件`;
+  if (count.hidden_count > 0) {
+    return `先頭${count.visible_count}件 / 他${count.hidden_count}件`;
+  }
+  return `${count.visible_count}件`;
+}
+
 /** 返信待ちの経過バッジ「3日経過」(送付当日は「本日送付」) */
 export function waitingBadgeLabel(waitingDays: number): string {
   return waitingDays >= 1 ? `${waitingDays}日経過` : '本日送付';

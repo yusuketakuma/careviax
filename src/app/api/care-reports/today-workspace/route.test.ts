@@ -46,10 +46,14 @@ type TxOverrides = {
   schedules?: unknown[];
   draftReports?: unknown[];
   recentReports?: unknown[];
+  recentReportCount?: number;
   facilities?: unknown[];
   deliveries?: unknown[];
+  waitingDeliveryCount?: number;
   requests?: unknown[];
+  waitingRequestCount?: number;
   responses?: unknown[];
+  resolvedResponseCount?: number;
   patients?: unknown[];
   billingCandidates?: unknown[];
   templateCount?: number;
@@ -63,22 +67,41 @@ function mockTx(overrides: TxOverrides = {}) {
     },
     careReport: {
       findMany: vi.fn().mockImplementation((args?: { take?: number; orderBy?: unknown }) => {
-        if (args?.take) return Promise.resolve(overrides.recentReports ?? []);
+        if (args?.take) {
+          const rows = overrides.recentReports ?? [];
+          return Promise.resolve(rows.slice(0, args.take));
+        }
         return Promise.resolve(overrides.draftReports ?? []);
       }),
+      count: vi
+        .fn()
+        .mockResolvedValue(overrides.recentReportCount ?? (overrides.recentReports ?? []).length),
     },
     facility: {
       findMany: vi.fn().mockResolvedValue(overrides.facilities ?? []),
     },
     deliveryRecord: {
       findMany: vi.fn().mockResolvedValue(overrides.deliveries ?? []),
-      count: vi.fn().mockResolvedValue(overrides.deliveryCount ?? 0),
+      count: vi.fn().mockImplementation((args?: { where?: { status?: string } }) => {
+        if (args?.where?.status === 'response_waiting') {
+          return Promise.resolve(
+            overrides.waitingDeliveryCount ?? (overrides.deliveries ?? []).length,
+          );
+        }
+        return Promise.resolve(overrides.deliveryCount ?? 0);
+      }),
     },
     communicationRequest: {
       findMany: vi.fn().mockResolvedValue(overrides.requests ?? []),
+      count: vi
+        .fn()
+        .mockResolvedValue(overrides.waitingRequestCount ?? (overrides.requests ?? []).length),
     },
     communicationResponse: {
       findMany: vi.fn().mockResolvedValue(overrides.responses ?? []),
+      count: vi
+        .fn()
+        .mockResolvedValue(overrides.resolvedResponseCount ?? (overrides.responses ?? []).length),
     },
     patient: {
       findMany: vi.fn().mockResolvedValue(overrides.patients ?? []),
@@ -134,6 +157,48 @@ describe('/api/care-reports/today-workspace', () => {
       resolved: 0,
       created: 0,
       open_issues: 0,
+    });
+    expect(json.data.count_metadata).toEqual({
+      to_write: {
+        total_count: 0,
+        visible_count: 0,
+        hidden_count: 0,
+        limit: null,
+        truncated: false,
+        count_basis: 'full_result',
+      },
+      waiting: {
+        total_count: 0,
+        visible_count: 0,
+        hidden_count: 0,
+        limit: 5,
+        truncated: false,
+        count_basis: 'database_total',
+      },
+      resolved: {
+        total_count: 0,
+        visible_count: 0,
+        hidden_count: 0,
+        limit: 3,
+        truncated: false,
+        count_basis: 'database_total',
+      },
+      created: {
+        total_count: 0,
+        visible_count: 0,
+        hidden_count: 0,
+        limit: 12,
+        truncated: false,
+        count_basis: 'database_total',
+      },
+      open_issues: {
+        total_count: 0,
+        visible_count: 0,
+        hidden_count: 0,
+        limit: 12,
+        truncated: false,
+        count_basis: 'derived_visible_window',
+      },
     });
     expect(withOrgContextMock).toHaveBeenCalledWith(
       'org_1',
@@ -571,6 +636,86 @@ describe('/api/care-reports/today-workspace', () => {
       resolved: 1,
       created: 0,
       open_issues: 0,
+    });
+  });
+
+  it('separates total, visible, and hidden counts for limited workspace lists', async () => {
+    const now = Date.now();
+    mockTx({
+      deliveries: Array.from({ length: 5 }, (_, index) => ({
+        id: `del_${index}`,
+        sent_at: new Date(now - (index + 1) * 86_400_000),
+        report: {
+          id: `report_waiting_${index}`,
+          patient_id: `patient_${index}`,
+          report_type: 'care_manager_report',
+          content: { title: `報告 ${index}` },
+        },
+      })),
+      waitingDeliveryCount: 7,
+      requests: [],
+      waitingRequestCount: 2,
+      responses: Array.from({ length: 3 }, (_, index) => ({
+        id: `resp_${index}`,
+        responded_at: new Date(now - index * 60_000),
+        request: { subject: `回答 ${index}`, patient_id: `patient_${index}` },
+      })),
+      resolvedResponseCount: 5,
+      recentReports: Array.from({ length: 12 }, (_, index) => ({
+        id: `report_created_${index}`,
+        patient_id: `patient_${index}`,
+        report_type: 'care_manager_report',
+        status: 'sent',
+        content: {},
+        created_at: new Date(now - index * 60_000),
+        updated_at: new Date(now - index * 60_000),
+        delivery_records: [],
+      })),
+      recentReportCount: 20,
+      patients: Array.from({ length: 12 }, (_, index) => ({
+        id: `patient_${index}`,
+        name: `患者 ${index}`,
+      })),
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace?date=2026-06-11');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+
+    expect(json.data.waiting_replies).toHaveLength(5);
+    expect(json.data.resolved_today).toHaveLength(3);
+    expect(json.data.created_reports).toHaveLength(12);
+    expect(json.data.counts).toMatchObject({
+      waiting: 9,
+      resolved: 5,
+      created: 20,
+    });
+    expect(json.data.count_metadata).toMatchObject({
+      waiting: {
+        total_count: 9,
+        visible_count: 5,
+        hidden_count: 4,
+        limit: 5,
+        truncated: true,
+        count_basis: 'database_total',
+      },
+      resolved: {
+        total_count: 5,
+        visible_count: 3,
+        hidden_count: 2,
+        limit: 3,
+        truncated: true,
+        count_basis: 'database_total',
+      },
+      created: {
+        total_count: 20,
+        visible_count: 12,
+        hidden_count: 8,
+        limit: 12,
+        truncated: true,
+        count_basis: 'database_total',
+      },
     });
   });
 

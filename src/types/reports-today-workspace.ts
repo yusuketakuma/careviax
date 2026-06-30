@@ -119,6 +119,15 @@ export type ReportBillingCandidateOpenIssue = ReportOpenIssueBase & {
 
 export type ReportOpenIssue = ReportCareReportOpenIssue | ReportBillingCandidateOpenIssue;
 
+export type ReportWorkspaceCount = {
+  total_count: number;
+  visible_count: number;
+  hidden_count: number;
+  limit: number | null;
+  truncated: boolean;
+  count_basis: 'full_result' | 'database_total' | 'derived_visible_window';
+};
+
 export type ReportsTodayWorkspaceResponse = {
   generated_at: string;
   draft_rows: ReportDraftRow[];
@@ -132,6 +141,13 @@ export type ReportsTodayWorkspaceResponse = {
     resolved: number;
     created: number;
     open_issues: number;
+  };
+  count_metadata: {
+    to_write: ReportWorkspaceCount;
+    waiting: ReportWorkspaceCount;
+    resolved: ReportWorkspaceCount;
+    created: ReportWorkspaceCount;
+    open_issues: ReportWorkspaceCount;
   };
   evidence: {
     /** 宛先別テンプレート種数(送付テンプレート N種) */

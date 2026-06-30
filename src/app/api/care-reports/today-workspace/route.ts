@@ -37,6 +37,7 @@ import type {
   ReportCreatedRow,
   ReportFailedDelivery,
   ReportResolvedToday,
+  ReportWorkspaceCount,
   ReportsTodayWorkspaceResponse,
   ReportWaitingReply,
 } from '@/types/reports-today-workspace';
@@ -61,6 +62,23 @@ const OPEN_ISSUE_SEVERITY_RANK: Record<ReportOpenIssue['severity'], number> = {
   warning: 1,
   info: 2,
 };
+
+function buildWorkspaceCount(args: {
+  totalCount: number;
+  visibleCount: number;
+  limit: number | null;
+  countBasis: ReportWorkspaceCount['count_basis'];
+}): ReportWorkspaceCount {
+  const hiddenCount = Math.max(0, args.totalCount - args.visibleCount);
+  return {
+    total_count: args.totalCount,
+    visible_count: args.visibleCount,
+    hidden_count: hiddenCount,
+    limit: args.limit,
+    truncated: hiddenCount > 0,
+    count_basis: args.countBasis,
+  };
+}
 
 const dateQuerySchema = z.object({
   date: dateKeySchema('日付はYYYY-MM-DD形式で指定してください').optional(),
@@ -530,6 +548,9 @@ const authenticatedGET = withAuthContext(
             },
           },
         });
+        const waitingDeliveryCountPromise = tx.deliveryRecord.count({
+          where: { org_id: ctx.orgId, status: 'response_waiting' },
+        });
         const waitingRequestsPromise = tx.communicationRequest.findMany({
           where: {
             org_id: ctx.orgId,
@@ -548,6 +569,12 @@ const authenticatedGET = withAuthContext(
             requested_at: true,
           },
         });
+        const waitingRequestCountPromise = tx.communicationRequest.count({
+          where: {
+            org_id: ctx.orgId,
+            status: { in: ['sent', 'received', 'in_progress'] },
+          },
+        });
         const resolvedResponsesPromise = tx.communicationResponse.findMany({
           where: {
             org_id: ctx.orgId,
@@ -559,6 +586,12 @@ const authenticatedGET = withAuthContext(
             id: true,
             responded_at: true,
             request: { select: { subject: true, patient_id: true } },
+          },
+        });
+        const resolvedResponseCountPromise = tx.communicationResponse.count({
+          where: {
+            org_id: ctx.orgId,
+            responded_at: targetDayInstantRange,
           },
         });
         const recentReportsPromise = tx.careReport.findMany({
@@ -588,6 +621,9 @@ const authenticatedGET = withAuthContext(
               },
             },
           },
+        });
+        const recentReportCountPromise = tx.careReport.count({
+          where: { org_id: ctx.orgId },
         });
         const templateCountPromise = tx.template.count({
           where: { org_id: ctx.orgId, template_type: 'care_report' },
@@ -677,17 +713,25 @@ const authenticatedGET = withAuthContext(
         const [
           { schedules, existingReports, facilities },
           waitingDeliveries,
+          waitingDeliveryCount,
           waitingRequests,
+          waitingRequestCount,
           resolvedResponses,
+          resolvedResponseCount,
           recentReports,
+          recentReportCount,
           templateCount,
           monthlyDeliveryCount,
         ] = await Promise.all([
           scheduleContextPromise,
           waitingDeliveriesPromise,
+          waitingDeliveryCountPromise,
           waitingRequestsPromise,
+          waitingRequestCountPromise,
           resolvedResponsesPromise,
+          resolvedResponseCountPromise,
           recentReportsPromise,
+          recentReportCountPromise,
           templateCountPromise,
           monthlyDeliveryCountPromise,
         ]);
@@ -962,6 +1006,39 @@ const authenticatedGET = withAuthContext(
           }),
         );
         const openIssues = mergeOpenIssues(reportOpenIssues, billingOpenIssues);
+        const openIssueCandidateCount = reportOpenIssues.length + billingOpenIssues.length;
+        const countMetadata: ReportsTodayWorkspaceResponse['count_metadata'] = {
+          to_write: buildWorkspaceCount({
+            totalCount: draftRows.length,
+            visibleCount: draftRows.length,
+            limit: null,
+            countBasis: 'full_result',
+          }),
+          waiting: buildWorkspaceCount({
+            totalCount: waitingDeliveryCount + waitingRequestCount,
+            visibleCount: waitingReplies.length,
+            limit: WAITING_LIMIT,
+            countBasis: 'database_total',
+          }),
+          resolved: buildWorkspaceCount({
+            totalCount: resolvedResponseCount,
+            visibleCount: resolvedToday.length,
+            limit: RESOLVED_LIMIT,
+            countBasis: 'database_total',
+          }),
+          created: buildWorkspaceCount({
+            totalCount: recentReportCount,
+            visibleCount: createdReports.length,
+            limit: CREATED_REPORT_LIMIT,
+            countBasis: 'database_total',
+          }),
+          open_issues: buildWorkspaceCount({
+            totalCount: openIssueCandidateCount,
+            visibleCount: openIssues.length,
+            limit: OPEN_ISSUE_LIMIT,
+            countBasis: 'derived_visible_window',
+          }),
+        };
 
         const responseData: ReportsTodayWorkspaceResponse = {
           generated_at: now.toISOString(),
@@ -971,12 +1048,13 @@ const authenticatedGET = withAuthContext(
           created_reports: createdReports,
           open_issues: openIssues,
           counts: {
-            to_write: draftRows.length,
-            waiting: waitingReplies.length,
-            resolved: resolvedToday.length,
-            created: createdReports.length,
-            open_issues: openIssues.length,
+            to_write: countMetadata.to_write.total_count,
+            waiting: countMetadata.waiting.total_count,
+            resolved: countMetadata.resolved.total_count,
+            created: countMetadata.created.total_count,
+            open_issues: countMetadata.open_issues.total_count,
           },
+          count_metadata: countMetadata,
           evidence: {
             template_count: templateCount,
             monthly_delivery_count: monthlyDeliveryCount,

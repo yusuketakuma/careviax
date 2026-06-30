@@ -39,6 +39,7 @@ import {
   buildReportEvidence,
   buildWorkspaceBlockedReasons,
   buildWorkspaceNextAction,
+  formatWorkspaceCountLabel,
   formatTimeOfDay,
   waitingBadgeLabel,
 } from './report-share-workspace.helpers';
@@ -297,7 +298,9 @@ function WaitingBoxesSection({ data }: { data: ReportsTodayWorkspaceResponse }) 
           <h3 id="report-waiting-heading" className="text-base font-bold text-foreground">
             返信待ち
           </h3>
-          <span className="text-xs text-muted-foreground">{data.counts.waiting}件</span>
+          <span className="text-xs text-muted-foreground">
+            {formatWorkspaceCountLabel(data.count_metadata?.waiting, data.waiting_replies.length)}
+          </span>
         </div>
         {data.waiting_replies.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">返信待ちはありません。</p>
@@ -319,7 +322,9 @@ function WaitingBoxesSection({ data }: { data: ReportsTodayWorkspaceResponse }) 
           <h3 id="report-resolved-heading" className="text-base font-bold text-foreground">
             今日解決した待ち
           </h3>
-          <span className="text-xs text-muted-foreground">{data.counts.resolved}件</span>
+          <span className="text-xs text-muted-foreground">
+            {formatWorkspaceCountLabel(data.count_metadata?.resolved, data.resolved_today.length)}
+          </span>
         </div>
         {data.resolved_today.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">今日解決した待ちはまだありません。</p>
@@ -355,7 +360,13 @@ function WaitingBoxesSection({ data }: { data: ReportsTodayWorkspaceResponse }) 
   );
 }
 
-function ReportOpenIssuesSection({ issues }: { issues: ReportOpenIssue[] }) {
+function ReportOpenIssuesSection({
+  issues,
+  count,
+}: {
+  issues: ReportOpenIssue[];
+  count: ReportsTodayWorkspaceResponse['count_metadata']['open_issues'] | null | undefined;
+}) {
   return (
     <section
       className="rounded-lg border border-border/70 bg-card p-4"
@@ -366,7 +377,9 @@ function ReportOpenIssuesSection({ issues }: { issues: ReportOpenIssue[] }) {
         <h3 id="report-open-issues-heading" className="text-base font-bold text-foreground">
           残課題
         </h3>
-        <span className="text-xs text-muted-foreground">{issues.length}件</span>
+        <span className="text-xs text-muted-foreground">
+          {formatWorkspaceCountLabel(count, issues.length)}
+        </span>
       </div>
       {issues.length === 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">
@@ -465,7 +478,13 @@ function CreatedReportStatusCell({ report }: { report: ReportCreatedRow }) {
   );
 }
 
-function CreatedReportsSection({ reports }: { reports: ReportCreatedRow[] }) {
+function CreatedReportsSection({
+  reports,
+  count,
+}: {
+  reports: ReportCreatedRow[];
+  count: ReportsTodayWorkspaceResponse['count_metadata']['created'] | null | undefined;
+}) {
   return (
     <section
       className="rounded-lg border border-border/70 bg-card p-4"
@@ -476,7 +495,9 @@ function CreatedReportsSection({ reports }: { reports: ReportCreatedRow[] }) {
         <h3 id="created-reports-heading" className="text-base font-bold text-foreground">
           作成済み報告書
         </h3>
-        <span className="text-xs text-muted-foreground">{reports.length}件</span>
+        <span className="text-xs text-muted-foreground">
+          {formatWorkspaceCountLabel(count, reports.length)}
+        </span>
       </div>
       {reports.length === 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">作成済み報告書はありません。</p>
@@ -709,8 +730,14 @@ export function ReportShareWorkspace() {
               {/* 即時対応優先(guidelines §68-76): 今日書く → 返信待ち(=止まっている/他職種待ち) →
                   残課題 → 作成済(参照)。返信待ちを上位へ繰り上げて判断を先に出す。 */}
               <WaitingBoxesSection data={data} />
-              <ReportOpenIssuesSection issues={data.open_issues} />
-              <CreatedReportsSection reports={data.created_reports} />
+              <ReportOpenIssuesSection
+                issues={data.open_issues}
+                count={data.count_metadata?.open_issues}
+              />
+              <CreatedReportsSection
+                reports={data.created_reports}
+                count={data.count_metadata?.created}
+              />
               <p
                 className="rounded-lg border-l-4 border-border/70 border-l-tag-info bg-card px-4 py-3 text-sm leading-6 text-tag-info"
                 data-testid="report-template-policy-bar"
