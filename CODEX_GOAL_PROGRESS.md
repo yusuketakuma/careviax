@@ -47,9 +47,13 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Uses one bounded sessionStorage read on initial component state and a small draft write when form state changes.
   - Adds no DB query, network request, dependency, polling, broad render fan-out, or unbounded loop.
 - Validation:
-  - Shared viewer content Vitest passed `1` file / `5` tests.
+  - Shared viewer content + self-report API Vitest passed `2` files / `19` tests.
   - Scoped ESLint, scoped Prettier check, and scoped diff-check on the shared viewer files: passed.
   - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
 - Remaining:
   - Broad master-management and patient-information objective remains open.
   - This slice does not change the backend self-report API or external-access token/OTP policy.
