@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0705 JST
+
+- current task: converge staff-management client API paths and org headers on shared helpers.
+- files inspected: `git status --short --branch --untracked-files=all`, `git log --oneline -n 10`, `docs/ui-ux-design-guidelines.md`, local Next route-handler docs, `src/app/(dashboard)/admin/users/users-content.tsx`, `src/app/(dashboard)/admin/users/users-content.test.tsx`, `src/app/(dashboard)/admin/staff/staff-kpi-panel.tsx`, `src/app/(dashboard)/admin/staff/staff-kpi-panel.test.tsx`, `src/lib/api/org-headers.ts`, `src/lib/http/path-segment.ts`, existing admin API path helper patterns, validation output, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/(dashboard)/admin/users/users-content.tsx`, `src/app/(dashboard)/admin/users/users-content.test.tsx`, `src/app/(dashboard)/admin/staff/staff-kpi-panel.tsx`, `src/app/(dashboard)/admin/staff/staff-kpi-panel.test.tsx`, `src/lib/pharmacists/api-paths.ts`, `src/lib/pharmacists/api-paths.test.ts`, `src/lib/staff-metrics/api-paths.ts`, `src/lib/staff-metrics/api-paths.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: the real staff-management UI still built staff API paths and `x-org-id` headers inline, including dynamic `/api/pharmacists/${id}` interpolation for profile/action PATCH calls. That left a core master UI outside the repository's shared path/header safety pattern.
+- security risks found: reduced tenant-header drift and unsafe dynamic path interpolation by moving staff list/detail and staff KPI paths to shared helpers and routing dynamic staff ids through `encodePathSegment`, including exact dot-segment rejection. Existing API contracts, permissions, invite/update/suspend/reactivate behavior, KPI behavior, live DB data, migrations, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: no meaningful performance issue was introduced. The change adds only small string-builder helpers and no DB query, network request count, dependency, polling, broad scan, render fan-out, or unbounded loop.
+- validation commands: `pnpm exec vitest run src/lib/pharmacists/api-paths.test.ts src/lib/staff-metrics/api-paths.test.ts 'src/app/(dashboard)/admin/users/users-content.test.tsx' 'src/app/(dashboard)/admin/staff/staff-kpi-panel.test.tsx' --reporter=dot --testTimeout=60000`; `pnpm exec eslint --max-warnings=0 ...staff UI/helper files`; `pnpm exec prettier --check ...staff UI/helper files`; `pnpm exec prettier --write ...4 files`; `git diff --check -- ...staff UI/helper files`; `pnpm typecheck --pretty false`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`; `pnpm lint`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: staff UI/path helper Vitest passed `4` files / `22` tests; scoped ESLint passed; scoped Prettier check initially failed on four files and passed after formatting; scoped diff-check passed; full typecheck passed; no-unused passed; full lint passed; full format-check passed; full diff-check passed.
+- remaining work: broad master-management and patient-information objective remains active. Deeper staff-page-specific composition tests and additional staff workflow UX refinements remain possible follow-ups.
+- next action: stage only the staff UI/helper files and matching ledger hunks, commit the helper-convergence slice, send agmsg FYI, then re-check status before selecting the next non-overlapping master/patient gap.
+
 ### 20260701-staff-patch-api-safety
 
 - current task: harden the staff master update API boundary after `/admin/staff` was switched to real staff management.

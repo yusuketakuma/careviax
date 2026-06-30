@@ -137,6 +137,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Broad master-management and patient-information objective remains open.
   - A separate unowned `src/app/api/communication-requests` duplicate-draft reuse diff was observed and preserved outside this staff API slice.
 
+### Staff Management API Helper Convergence - 2026-07-01 07:05 JST
+
+- Scope:
+  - Continued staff master frontend/refactor hardening.
+  - Focused on raw API path and raw `x-org-id` header construction in `/admin/staff` KPI and `/admin/users` staff-management workflows.
+- Fixed:
+  - Added `src/lib/pharmacists/api-paths.ts` for the pharmacists collection/detail API paths.
+  - Added `src/lib/staff-metrics/api-paths.ts` for the staff KPI API path.
+  - Replaced raw `/api/pharmacists`, `/api/pharmacists/${id}`, `/api/pharmacists?include_collaborators=true`, `/api/pharmacy-sites`, and `/api/admin/staff-metrics?month=...` fetch construction in the staff-management UI with shared path/header helpers.
+  - Dynamic staff ids now go through `encodePathSegment` via `buildPharmacistApiPath`, preserving exact dot-segment fail-closed behavior.
+  - Added helper and component regression tests for collection query paths, hostile id encoding, dot-segment rejection, and org-header helper delegation.
+- Safety:
+  - Reduces tenant-header drift and unsafe dynamic path interpolation in the core staff master UI.
+  - Preserves existing API contracts, canAdmin/canVisit permissions, staff update/invite/suspend/reactivate behavior, KPI query behavior, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds only small string-builder helpers; no new DB query, network call, dependency, polling, broad scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - Staff UI/path helper Vitest passed `4` files / `22` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on staff UI/helper files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master-management and patient-information objective remains open.
+  - Deeper staff-page-specific composition tests and additional staff workflow UX refinements remain possible follow-ups.
+
 ### External Professional Linked Patient Evidence - 2026-07-01 06:34 JST
 
 - Scope:

@@ -10,7 +10,9 @@ import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildAdminStaffMetricsApiPath } from '@/lib/staff-metrics/api-paths';
 
 type StaffMetricItem = {
   id: string;
@@ -62,8 +64,8 @@ export function StaffKpiPanel() {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['staff-kpi', orgId, month],
     queryFn: async () => {
-      const response = await fetch(`/api/admin/staff-metrics?month=${month}`, {
-        headers: { 'x-org-id': orgId },
+      const response = await fetch(buildAdminStaffMetricsApiPath(new URLSearchParams({ month })), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('スタッフKPIの取得に失敗しました');
       return response.json() as Promise<StaffMetricsResponse>;

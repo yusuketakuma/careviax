@@ -37,12 +37,19 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { USER_ACCOUNT_STATUS_ROLE } from '@/lib/constants/status-labels';
 import { formatDateTimeLabel } from '@/lib/ui/date-format';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   isOperationalMemberRole,
   roleRequiresSite,
   type ManageableMemberRole,
 } from '@/lib/auth/member-roles';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import {
+  PHARMACISTS_API_PATH,
+  buildPharmacistApiPath,
+  buildPharmacistsApiPath,
+} from '@/lib/pharmacists/api-paths';
+import { PHARMACY_SITES_API_PATH } from '@/lib/pharmacy-sites/api-paths';
 
 type UserItem = {
   id: string;
@@ -273,9 +280,10 @@ export function UsersContent() {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-users', orgId],
     queryFn: async () => {
-      const response = await fetch('/api/pharmacists?include_collaborators=true', {
-        headers: { 'x-org-id': orgId },
-      });
+      const response = await fetch(
+        buildPharmacistsApiPath(new URLSearchParams({ include_collaborators: 'true' })),
+        { headers: buildOrgHeaders(orgId) },
+      );
       if (!response.ok) throw new Error('ユーザー一覧の取得に失敗しました');
       return response.json() as Promise<UsersListResponse>;
     },
@@ -285,8 +293,8 @@ export function UsersContent() {
   const sitesQuery = useQuery({
     queryKey: ['pharmacy-sites', orgId],
     queryFn: async () => {
-      const response = await fetch('/api/pharmacy-sites', {
-        headers: { 'x-org-id': orgId },
+      const response = await fetch(PHARMACY_SITES_API_PATH, {
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('店舗一覧の取得に失敗しました');
       return response.json() as Promise<{ data: SiteOption[] }>;
@@ -306,9 +314,9 @@ export function UsersContent() {
 
   const inviteMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch('/api/pharmacists', {
+      const response = await fetch(PHARMACISTS_API_PATH, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           ...inviteForm,
           site_id: inviteForm.site_id || undefined,
@@ -335,9 +343,9 @@ export function UsersContent() {
     mutationFn: async () => {
       if (!detailUser || !detailForm) throw new Error('編集対象がありません');
 
-      const response = await fetch(`/api/pharmacists/${detailUser.id}`, {
+      const response = await fetch(buildPharmacistApiPath(detailUser.id), {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           action: 'update',
           name: detailForm.name,
@@ -380,9 +388,9 @@ export function UsersContent() {
       if (actionDialog.type === 'suspend' || actionDialog.type === 'retire') {
         body.reason = actionDialog.reason;
       }
-      const response = await fetch(`/api/pharmacists/${actionDialog.user.id}`, {
+      const response = await fetch(buildPharmacistApiPath(actionDialog.user.id), {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(body),
       });
       const payload = await response.json().catch(() => ({}));

@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { buildAdminStaffMetricsApiPath } from '@/lib/staff-metrics/api-paths';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
 const useQueryMock = vi.hoisted(() => vi.fn());
@@ -9,6 +11,19 @@ const useQueryMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
+
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return { ...actual, buildOrgHeaders: vi.fn(actual.buildOrgHeaders) };
+});
+
+vi.mock('@/lib/staff-metrics/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/staff-metrics/api-paths')>();
+  return {
+    ...actual,
+    buildAdminStaffMetricsApiPath: vi.fn(actual.buildAdminStaffMetricsApiPath),
+  };
+});
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: useQueryMock,
@@ -75,6 +90,25 @@ describe('StaffKpiPanel', () => {
     const table = screen.getByTestId('staff-kpi-table');
     expect(table).toBeTruthy();
     expect(table.getAttribute('data-rows')).toBe('1');
+  });
+
+  it('delegates the KPI fetch to shared path and org-header helpers', async () => {
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(SUCCESS_DATA.data)));
+    vi.stubGlobal('fetch', fetchMock);
+    useQueryMock.mockImplementationOnce(({ queryFn }: { queryFn: () => Promise<unknown> }) => {
+      void queryFn();
+      return SUCCESS_DATA;
+    });
+
+    render(<StaffKpiPanel />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(buildAdminStaffMetricsApiPath).toHaveBeenCalledWith(expect.any(URLSearchParams));
+    expect(buildOrgHeaders).toHaveBeenCalledWith('org_1');
+    expect(fetchMock).toHaveBeenCalledWith(`/api/admin/staff-metrics?month=${currentMonth}`, {
+      headers: buildOrgHeaders('org_1'),
+    });
   });
 
   it('keeps the month picker but shows ErrorState (not false-zeros) with retry on failure', () => {

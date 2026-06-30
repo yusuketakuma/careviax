@@ -1,8 +1,15 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import {
+  PHARMACISTS_API_PATH,
+  buildPharmacistApiPath,
+  buildPharmacistsApiPath,
+} from '@/lib/pharmacists/api-paths';
+import { PHARMACY_SITES_API_PATH } from '@/lib/pharmacy-sites/api-paths';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { UsersContent } from './users-content';
 
@@ -10,6 +17,7 @@ setupDomTestEnv();
 
 const mutationMutateMock = vi.hoisted(() => vi.fn());
 const queryErrorKeysMock = vi.hoisted(() => new Set<string>());
+const queryFnRunKeysMock = vi.hoisted(() => new Set<string>());
 const queryRefetchMock = vi.hoisted(() => vi.fn());
 const adminUsersResponseMock = vi.hoisted(() => ({
   current: null as null | {
@@ -62,13 +70,40 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
 
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return {
+    ...actual,
+    buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
+    buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
+  };
+});
+
+vi.mock('@/lib/pharmacists/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/pharmacists/api-paths')>();
+  return {
+    ...actual,
+    buildPharmacistsApiPath: vi.fn(actual.buildPharmacistsApiPath),
+    buildPharmacistApiPath: vi.fn(actual.buildPharmacistApiPath),
+  };
+});
+
 vi.mock('@tanstack/react-query', () => ({
   useMutation: () => ({
     mutate: mutationMutateMock,
     isPending: false,
   }),
-  useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => {
+  useQuery: ({
+    queryKey,
+    queryFn,
+  }: {
+    queryKey: readonly unknown[];
+    queryFn?: () => Promise<unknown>;
+  }) => {
     const key = queryKey[0];
+    if (queryFnRunKeysMock.has(String(key)) && queryFn) {
+      void queryFn();
+    }
 
     if (key === 'admin-users') {
       return {
@@ -151,8 +186,37 @@ describe('UsersContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     queryErrorKeysMock.clear();
+    queryFnRunKeysMock.clear();
     adminUsersResponseMock.current = null;
     Object.assign(user, defaultUser);
+  });
+
+  it('delegates users and site fetches to shared path and org-header helpers', async () => {
+    queryFnRunKeysMock.add('admin-users');
+    queryFnRunKeysMock.add('pharmacy-sites');
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ data: [] }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<UsersContent />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(buildPharmacistsApiPath).toHaveBeenCalledWith(expect.any(URLSearchParams));
+    expect(buildOrgHeaders).toHaveBeenCalledWith('org_1');
+    expect(fetchMock).toHaveBeenCalledWith('/api/pharmacists?include_collaborators=true', {
+      headers: buildOrgHeaders('org_1'),
+    });
+    expect(fetchMock).toHaveBeenCalledWith(PHARMACY_SITES_API_PATH, {
+      headers: buildOrgHeaders('org_1'),
+    });
+
+    expect(PHARMACISTS_API_PATH).toBe('/api/pharmacists');
+    expect(buildOrgJsonHeaders('org_1')).toEqual({
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+    });
+    expect(buildPharmacistApiPath('user_1')).toBe('/api/pharmacists/user_1');
   });
 
   it('associates user filters and row actions with accessible names', () => {
