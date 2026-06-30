@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { ACTIVE_VISIT_SCHEDULE_STATUSES } from '@/lib/constants/visit';
+import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
 
 const {
   authMock,
@@ -260,6 +262,7 @@ describe('/api/visit-routes POST', () => {
         where: expect.objectContaining({
           org_id: 'org_1',
           id: { in: ['schedule_1'] },
+          schedule_status: { in: [...ACTIVE_VISIT_SCHEDULE_STATUSES] },
         }),
       }),
     );
@@ -270,6 +273,32 @@ describe('/api/visit-routes POST', () => {
         }),
       }),
     );
+    expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
+  });
+
+  it('filters inactive schedules out of route targets before route calculation', async () => {
+    mockRouteContext();
+    scheduleFindManyMock.mockResolvedValue([]);
+
+    const response = await POST(
+      createRequest({
+        schedule_ids: ['completed_schedule'],
+        travel_mode: 'DRIVE',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expect(scheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          id: { in: ['completed_schedule'] },
+          schedule_status: { in: [...ACTIVE_VISIT_SCHEDULE_STATUSES] },
+        }),
+      }),
+    );
+    expect(proposalFindManyMock).not.toHaveBeenCalled();
     expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
   });
 
@@ -857,6 +886,16 @@ describe('/api/visit-routes POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(proposalFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          id: { in: ['proposal_1'] },
+          finalized_schedule_id: null,
+          proposal_status: { in: OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES },
+        }),
+      }),
+    );
     expect(computeOptimizedVisitRouteMock).toHaveBeenCalledWith({
       origin: { lat: 35.0, lng: 139.0, label: '本店' },
       travelMode: 'DRIVE',
@@ -865,5 +904,76 @@ describe('/api/visit-routes POST', () => {
         expect.objectContaining({ scheduleId: 'proposal:proposal_1', priority: 'emergency' }),
       ],
     });
+  });
+
+  it('filters finalized or non-open proposals out of route targets before route calculation', async () => {
+    mockRouteContext();
+    proposalFindManyMock.mockResolvedValue([]);
+
+    const response = await POST(
+      createRequest({
+        proposal_ids: ['proposal_finalized'],
+        travel_mode: 'DRIVE',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expect(proposalFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          id: { in: ['proposal_finalized'] },
+          finalized_schedule_id: null,
+          proposal_status: { in: OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES },
+        }),
+      }),
+    );
+    expect(scheduleFindManyMock).not.toHaveBeenCalled();
+    expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects mixed route requests instead of optimizing a partial route when one proposal target is stale', async () => {
+    scheduleFindManyMock.mockResolvedValue([
+      {
+        id: 'schedule_1',
+        priority: 'urgent',
+        site: {
+          id: 'site_1',
+          name: '本店',
+          lat: 35.0,
+          lng: 139.0,
+        },
+        case_: {
+          patient: {
+            name: '山田 太郎',
+            residences: [{ address: '東京都港区1-1-1', lat: 35.1, lng: 139.1 }],
+          },
+        },
+      },
+    ]);
+    proposalFindManyMock.mockResolvedValue([]);
+    mockRouteContext();
+
+    const response = await POST(
+      createRequest({
+        schedule_ids: ['schedule_1'],
+        proposal_ids: ['proposal_superseded'],
+        travel_mode: 'DRIVE',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expect(scheduleFindManyMock).toHaveBeenCalled();
+    expect(proposalFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          finalized_schedule_id: null,
+          proposal_status: { in: OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES },
+        }),
+      }),
+    );
+    expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
   });
 });

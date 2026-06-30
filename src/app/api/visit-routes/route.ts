@@ -7,9 +7,11 @@ import {
   buildVisitScheduleProposalAssignmentWhere,
 } from '@/lib/auth/visit-schedule-access';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { ACTIVE_VISIT_SCHEDULE_STATUSES } from '@/lib/constants/visit';
 import { withOrgContext } from '@/lib/db/rls';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES as OPEN_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
 import {
   computeOptimizedVisitRoute,
   type VisitRouteTravelMode,
@@ -121,6 +123,7 @@ const authenticatedPOST = withAuthContext(
                 where: {
                   org_id: ctx.orgId,
                   id: { in: parsed.data.schedule_ids },
+                  schedule_status: { in: [...ACTIVE_VISIT_SCHEDULE_STATUSES] },
                   ...(scheduleAssignmentWhere ? { AND: [scheduleAssignmentWhere] } : {}),
                 },
                 select: {
@@ -160,6 +163,8 @@ const authenticatedPOST = withAuthContext(
                 where: {
                   org_id: ctx.orgId,
                   id: { in: parsed.data.proposal_ids },
+                  finalized_schedule_id: null,
+                  proposal_status: { in: OPEN_PROPOSAL_STATUSES },
                   ...(proposalAssignmentWhere ? { AND: [proposalAssignmentWhere] } : {}),
                 },
                 select: {
