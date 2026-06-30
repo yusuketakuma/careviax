@@ -47,12 +47,17 @@ vi.mock('@/lib/audit/audit-entry', () => ({
 import { POST as rawPOST } from './route';
 
 const routeContext = { params: Promise.resolve({ id: 'visit_request_1' }) };
+const CURRENT_UPDATED_AT = '2026-06-18T00:00:00.000Z';
 
 function createRequest(body: unknown) {
+  const requestBody =
+    body && typeof body === 'object' && !Array.isArray(body) && !('expected_updated_at' in body)
+      ? { expected_updated_at: CURRENT_UPDATED_AT, ...body }
+      : body;
   return new NextRequest('http://localhost/api/pharmacy-visit-requests/visit_request_1/decision', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(requestBody),
   });
 }
 
@@ -73,6 +78,7 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
       share_case_id: 'share_case_1',
       partnership_id: 'partnership_1',
       partner_pharmacy_id: 'partner_pharmacy_1',
+      updated_at: new Date(CURRENT_UPDATED_AT),
       share_case: { status: 'active' },
       partnership: {
         status: 'active',
@@ -111,6 +117,7 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
         id: 'visit_request_1',
         org_id: 'org_1',
         status: 'requested',
+        updated_at: new Date(CURRENT_UPDATED_AT),
         share_case: { status: 'active' },
         partnership: {
           status: 'active',
@@ -174,6 +181,7 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
       share_case_id: 'share_case_1',
       partnership_id: 'partnership_1',
       partner_pharmacy_id: 'partner_pharmacy_1',
+      updated_at: new Date(CURRENT_UPDATED_AT),
       share_case: { status: 'active' },
       partnership: {
         status: 'active',
@@ -185,6 +193,44 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
 
     expect(response.status).toBe(409);
     expectSensitiveNoStore(response);
+    expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('requires expected_updated_at before loading the visit request', async () => {
+    const response = await rawPOST(
+      createRequest({ decision: 'accept', expected_updated_at: undefined }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: { expected_updated_at: expect.any(Array) },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale expected_updated_at before update or audit side effects', async () => {
+    const response = await rawPOST(
+      createRequest({
+        decision: 'accept',
+        expected_updated_at: '2026-06-17T23:59:59.000Z',
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '訪問依頼が更新されています。再読み込みしてください',
+    });
     expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });

@@ -14,6 +14,7 @@ const visitRequestDecisionSchema = z.enum(['accept', 'decline']);
 const updateVisitRequestDecisionSchema = z
   .object({
     decision: visitRequestDecisionSchema,
+    expected_updated_at: z.string().datetime('版情報が不正です'),
     pharmacist_id: z
       .string()
       .trim()
@@ -92,6 +93,7 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
           share_case_id: true,
           partnership_id: true,
           partner_pharmacy_id: true,
+          updated_at: true,
           share_case: { select: { status: true } },
           partnership: {
             select: {
@@ -103,6 +105,11 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
       });
 
       if (!visitRequest) return { response: notFound('訪問依頼が見つかりません') };
+      const expectedUpdatedAt = new Date(parsed.data.expected_updated_at);
+      if (visitRequest.updated_at.toISOString() !== expectedUpdatedAt.toISOString()) {
+        return { response: conflict('訪問依頼が更新されています。再読み込みしてください') };
+      }
+
       const transition = resolvePharmacyVisitRequestTransition({
         currentStatus: visitRequest.status,
         action: parsed.data.decision,
@@ -125,6 +132,7 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
           id,
           org_id: ctx.orgId,
           status: transition.currentStatus,
+          updated_at: expectedUpdatedAt,
           share_case: { status: 'active' },
           partnership: {
             status: 'active',

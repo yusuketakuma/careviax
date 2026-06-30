@@ -256,6 +256,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   accepted_at: null,
                   declined_at: null,
                   completed_at: null,
+                  updated_at: '2026-06-18T00:00:00.000Z',
                   partner_pharmacy: {
                     id: 'partner_pharmacy_1',
                     name: '協力薬局',
@@ -291,6 +292,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   accepted_at: '2026-06-20T00:30:00.000Z',
                   declined_at: null,
                   completed_at: null,
+                  updated_at: '2026-06-18T01:00:00.000Z',
                   partner_pharmacy: {
                     id: 'partner_pharmacy_1',
                     name: '協力薬局',
@@ -546,6 +548,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
               accepted_at: null,
               declined_at: null,
               completed_at: null,
+              updated_at: '2026-06-20T01:45:00.000Z',
               partner_pharmacy: {
                 id: 'partner_pharmacy_1',
                 name: '協力薬局',
@@ -1110,7 +1113,10 @@ describe('PharmacyCooperationWorkflowContent', () => {
             init?.method === 'POST',
         );
       expect(decisionCall).toBeTruthy();
-      expect(JSON.parse(String(decisionCall?.[1]?.body))).toEqual({ decision: 'accept' });
+      expect(JSON.parse(String(decisionCall?.[1]?.body))).toEqual({
+        decision: 'accept',
+        expected_updated_at: '2026-06-18T00:00:00.000Z',
+      });
     });
   });
 
@@ -1281,6 +1287,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
       expect(declineCall).toBeTruthy();
       expect(JSON.parse(String(declineCall?.[1]?.body))).toEqual({
         decision: 'decline',
+        expected_updated_at: '2026-06-18T00:00:00.000Z',
         decline_reason: '協力薬局の訪問枠が不足しています',
       });
     });

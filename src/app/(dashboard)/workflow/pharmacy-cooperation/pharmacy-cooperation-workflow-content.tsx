@@ -210,6 +210,7 @@ type PharmacyVisitRequestRow = {
   accepted_at: string | null;
   declined_at: string | null;
   completed_at: string | null;
+  updated_at: string;
   partner_pharmacy: { id: string; name: string; status: string };
   partnership: { id: string; base_site: { id: string; name: string } };
   has_request_reason: boolean;
@@ -362,6 +363,7 @@ const pharmacyVisitRequestRowSchema = z.object({
   accepted_at: z.string().nullable(),
   declined_at: z.string().nullable(),
   completed_at: z.string().nullable(),
+  updated_at: z.string(),
   partner_pharmacy: partnerPharmacySummarySchema,
   partnership: z.object({
     id: z.string(),
@@ -3070,10 +3072,12 @@ export function PharmacyCooperationWorkflowContent() {
     mutationFn: async ({
       id,
       decision,
+      expectedUpdatedAt,
       declineReason,
     }: {
       id: string;
       decision: 'accept' | 'decline';
+      expectedUpdatedAt: string;
       declineReason?: string;
     }) => {
       const response = await fetch(`/api/pharmacy-visit-requests/${id}/decision`, {
@@ -3084,6 +3088,7 @@ export function PharmacyCooperationWorkflowContent() {
         },
         body: JSON.stringify({
           decision,
+          expected_updated_at: expectedUpdatedAt,
           ...(declineReason ? { decline_reason: declineReason } : {}),
         }),
       });
@@ -3223,12 +3228,14 @@ export function PharmacyCooperationWorkflowContent() {
         visitRequestDecisionMutation.mutate({
           id: pendingWorkflowAction.request.id,
           decision: 'accept',
+          expectedUpdatedAt: pendingWorkflowAction.request.updated_at,
         });
         return;
       case 'declineVisitRequest':
         visitRequestDecisionMutation.mutate({
           id: pendingWorkflowAction.request.id,
           decision: 'decline',
+          expectedUpdatedAt: pendingWorkflowAction.request.updated_at,
           declineReason: pendingWorkflowAction.declineReason.trim(),
         });
         return;
