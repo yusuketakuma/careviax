@@ -49,10 +49,10 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation:
   - Focused Vitest suite passed `7` files / `180` tests.
   - `pnpm lint`: passed.
-  - `pnpm format:check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
   - `git diff --check`: passed.
-  - `pnpm typecheck`: passed.
-  - `pnpm typecheck:no-unused`: passed after clearing stale interrupted verifier tsc processes and rerunning cleanly.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed after the default no-unused run exited `143` without TypeScript diagnostics.
 - Remaining:
   - Broad master-management / patient-information objective remains open.
   - Continue patient-information inventory and master-management guard/refactor work after this commit.
