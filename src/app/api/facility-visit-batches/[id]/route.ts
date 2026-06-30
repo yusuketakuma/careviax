@@ -1,5 +1,6 @@
 import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
+import type { ScheduleStatus } from '@prisma/client';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -34,16 +35,32 @@ const patchFacilityVisitBatchSchema = z.object({
     .optional(),
 });
 
-const FACILITY_BATCH_ROUTE_REORDERABLE_STATUSES = new Set([
+const FACILITY_BATCH_ROUTE_REORDERABLE_STATUSES = [
   'planned',
   'in_preparation',
   'ready',
   'departed',
   'in_progress',
-]);
+] satisfies readonly ScheduleStatus[];
+
+const FACILITY_BATCH_ROUTE_REORDERABLE_STATUS_SET = new Set<ScheduleStatus>(
+  FACILITY_BATCH_ROUTE_REORDERABLE_STATUSES,
+);
+
+type FacilityBatchDeleteRollbackResult = { error: 'stale_schedule' };
+
+class FacilityBatchDeleteRollback extends Error {
+  constructor(readonly result: FacilityBatchDeleteRollbackResult) {
+    super('facility batch delete transaction rolled back');
+    this.name = 'FacilityBatchDeleteRollback';
+  }
+}
 
 function isFacilityBatchRouteStatusLocked(scheduleStatus: string | null | undefined) {
-  return scheduleStatus != null && !FACILITY_BATCH_ROUTE_REORDERABLE_STATUSES.has(scheduleStatus);
+  return (
+    scheduleStatus != null &&
+    !FACILITY_BATCH_ROUTE_REORDERABLE_STATUS_SET.has(scheduleStatus as ScheduleStatus)
+  );
 }
 
 function buildBatchScheduleAccessWhere(ctx: AuthContext, batchId: string) {
@@ -90,13 +107,44 @@ const authenticatedDELETE = withAuthContext(
 
       const batchSchedules = await tx.visitSchedule.findMany({
         where: { org_id: ctx.orgId, facility_batch_id: id },
-        select: { id: true, case_id: true, route_order: true },
+        select: {
+          id: true,
+          case_id: true,
+          route_order: true,
+          schedule_status: true,
+          confirmed_at: true,
+          version: true,
+        },
       });
+      if (
+        batchSchedules.some((schedule) =>
+          isFacilityBatchRouteStatusLocked(schedule.schedule_status),
+        )
+      ) {
+        return { error: 'route_status_locked' as const };
+      }
+      if (batchSchedules.some((schedule) => schedule.confirmed_at != null)) {
+        return { error: 'confirmed_route_change' as const };
+      }
 
-      await tx.visitSchedule.updateMany({
-        where: { org_id: ctx.orgId, facility_batch_id: id },
-        data: { facility_batch_id: null, route_order: null },
-      });
+      const updateResults = await Promise.all(
+        batchSchedules.map((schedule) =>
+          tx.visitSchedule.updateMany({
+            where: {
+              id: schedule.id,
+              org_id: ctx.orgId,
+              facility_batch_id: id,
+              version: schedule.version,
+              schedule_status: { in: [...FACILITY_BATCH_ROUTE_REORDERABLE_STATUSES] },
+              confirmed_at: null,
+            },
+            data: { facility_batch_id: null, route_order: null, version: { increment: 1 } },
+          }),
+        ),
+      );
+      if (updateResults.some((updateResult) => updateResult.count !== 1)) {
+        throw new FacilityBatchDeleteRollback({ error: 'stale_schedule' });
+      }
 
       await tx.facilityVisitBatch.delete({ where: { id } });
 
@@ -117,11 +165,25 @@ const authenticatedDELETE = withAuthContext(
       });
 
       return { deleted: true };
+    }).catch((err: unknown) => {
+      if (err instanceof FacilityBatchDeleteRollback) {
+        return err.result;
+      }
+      throw err;
     });
 
     if ('error' in result) {
       if (result.error === 'forbidden') {
         return forbidden('施設一括訪問バッチへのアクセス権限がありません');
+      }
+      if (result.error === 'route_status_locked') {
+        return validationError('完了済みまたは中止済みの訪問予定は施設一括訪問から解除できません');
+      }
+      if (result.error === 'confirmed_route_change') {
+        return validationError('電話確定済みの訪問予定は施設一括訪問から解除できません');
+      }
+      if (result.error === 'stale_schedule') {
+        return conflict('施設一括訪問が同時に更新されました。再読み込みしてください');
       }
       return notFound('施設一括訪問バッチが見つかりません');
     }

@@ -20,18 +20,31 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0029 JST
+
+- current task: guard visit-record handoff confirmation with the reviewed visit-record version.
+- files inspected: `src/app/api/visit-records/[id]/handoff/route.ts`, `src/app/api/visit-records/[id]/handoff/route.test.ts`, `src/server/services/visit-handoff.ts`, `src/server/services/visit-handoff.test.ts`, focused validation output, and current dirty status.
+- files changed: `src/app/api/visit-records/[id]/handoff/route.ts`, `src/app/api/visit-records/[id]/handoff/route.test.ts`, `src/server/services/visit-handoff.ts`, `src/server/services/visit-handoff.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: handoff confirmation could write edited handoff data and resolve the confirmation task after the visit record changed because the PUT request did not carry the visit-record version and `confirmHandoff` updated by id only.
+- security risks found: reduced stale clinical handoff confirmation risk by returning the visit-record version in GET, requiring `expected_visit_record_version` on PUT, checking it before service calls, and claiming the service update with `updateMany({ id, version })` before resolving tasks. Existing auth, assignment access, no-store wrappers, PHI-redacted extraction error behavior, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: added scalar `version` / `updated_at` selects and an in-transaction guarded update predicate. No new dependency, external call, background job, broad scan, unbounded loop, or render-heavy path was added.
+- validation commands: `pnpm vitest run src/app/api/visit-records/'[id]'/handoff/route.test.ts src/server/services/visit-handoff.test.ts --reporter=dot --testTimeout=60000`; scoped ESLint; scoped Prettier check; `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: focused Vitest passed `2` files / `30` tests. Remaining shared gate results will be recorded after the facility/handoff guard set is validated.
+- remaining work: broad master-management and patient-information objective remains open. Next mapped patient gap remains PRE-06 archive/detail UI state.
+- next action: validate the combined facility/handoff guard set, then commit it as the next grouped safety slice.
+
 ### 20260701-0023 JST
 
-- current task: guard facility-batch DELETE unlink writes with schedule status/version preconditions.
-- files inspected: `pnpm typecheck` failure output, `src/app/api/facility-visit-batches/[id]/route.ts`, `src/app/api/facility-visit-batches/[id]/route.test.ts`, and related schedule-status search results.
+- current task: guard facility-batch DELETE unlink writes with schedule status, confirmation, and version preconditions.
+- files inspected: `git status --short --branch --untracked-files=all`, subagent mapper findings, local Next Route Handler docs, `docs/ui-ux-design-guidelines.md`, `src/app/api/facility-visit-batches/[id]/route.ts`, `src/app/api/facility-visit-batches/[id]/route.test.ts`, `src/app/api/facility-visit-batches/route.test.ts`, and validation output.
 - files changed: `src/app/api/facility-visit-batches/[id]/route.ts`, `src/app/api/facility-visit-batches/[id]/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
-- bugs found: facility-batch DELETE unlinking could clear `facility_batch_id` / `route_order` in bulk without carrying per-schedule version and status predicates, and the first typed implementation widened the reorderable status set to `string[]`, breaking Prisma enum typing.
-- security risks found: reduced stale/locked route mutation risk by requiring each schedule unlink write to match the reviewed version, non-confirmed state, and route-reorderable status before deleting the batch. Existing auth, assignment access, org/RLS scope, no-store wrappers, audit/notification behavior, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
-- performance issues found: replaces one bulk update with bounded per-schedule guarded `updateMany` calls over schedules already loaded for the batch. No dependency, external call, background job, broad scan, or render-heavy path was added.
-- validation commands: `pnpm vitest run src/app/api/facility-visit-batches/'[id]'/route.test.ts --reporter=dot --testTimeout=60000`; scoped ESLint; scoped Prettier check; `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
-- validation results: focused Vitest passed `1` file / `32` tests. The Prisma enum typing issue found by `pnpm typecheck` was fixed by preserving `ScheduleStatus` on the reorderable status constant. Remaining shared gate results will be recorded after the combined guard set is validated.
-- remaining work: broad master-management and patient-information objective remains open. Next mapped patient gap remains PRE-06 archive/detail UI state.
-- next action: validate the combined schedule/report/facility guard set, then commit the guarded patient side-effect slice.
+- bugs found: facility-batch DELETE could clear `facility_batch_id` / `route_order` in bulk without status, phone-confirmation, or per-schedule version predicates, so completed/cancelled/confirmed or concurrently changed visit schedules could be silently unbatched before batch delete, audit, and workflow notifications. The first guarded unlink implementation also returned a stale-schedule result after partial per-schedule writes, which would not roll back the transaction.
+- security risks found: reduced stale/locked route mutation risk by rejecting locked or phone-confirmed schedules before side effects, requiring each unlink write to match the reviewed version/non-confirmed/reorderable state, and throwing a transaction rollback sentinel when any guarded unlink loses the race. Existing auth, assignment access, org/RLS scope, no-store wrappers, audit/notification behavior, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: replaces one bulk update with bounded per-schedule guarded `updateMany` calls over schedules already loaded for the batch. The existing lookup only widens scalar selects; no dependency, external call, background job, broad scan, unbounded loop, or render-heavy path was added.
+- validation commands: `pnpm exec vitest run 'src/app/api/facility-visit-batches/[id]/route.test.ts' src/app/api/facility-visit-batches/route.test.ts --reporter=dot --testTimeout=60000`; scoped Prettier check; scoped ESLint; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; `git diff --check`.
+- validation results: focused Vitest passed `2` files / `56` tests. Scoped Prettier, scoped ESLint, scoped diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm format:check`, `pnpm lint`, and final `git diff --check` passed. The Prisma enum typing issue found by the first `pnpm typecheck` attempt was fixed by preserving `ScheduleStatus` on the reorderable status constant.
+- remaining work: broad schedule/prescription/route-management objective remains open. The mapped next high-risk gap is the visit-record save boundary for cancelled/rescheduled/completed/postponed schedules and duplicate side effects.
+- next action: commit only the facility-batch DELETE guard slice plus ledgers, send agmsg FYI, then inspect the visit-record save boundary.
 
 ### 20260701-0020 JST
 

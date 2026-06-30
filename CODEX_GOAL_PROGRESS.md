@@ -27650,3 +27650,57 @@ Next loop:
 - Remaining:
   - Broad master/patient objective remains open.
   - Next mapped patient gap remains PRE-06 archive/detail UI state: archived-patient detail banner/read-only affordance and cross-surface archive identifiers.
+
+### Facility Batch Delete Route-Unlink Guard - 2026-07-01 00:23 JST
+
+- Scope:
+  - Continued schedule/patient route mutation hardening.
+  - Focused on `DELETE /api/facility-visit-batches/[id]`, the final save boundary for unlinking a facility batch from visit schedules.
+- Fixed:
+  - Facility-batch DELETE now loads schedule `schedule_status`, `confirmed_at`, and `version` before unlinking.
+  - Locked or phone-confirmed schedules are rejected before route unlink, batch delete, audit, or workflow notifications.
+  - Each unlink write now uses a per-schedule guarded `updateMany` with `version`, reorderable status, and `confirmed_at: null` predicates.
+  - A stale guarded unlink throws a rollback sentinel, so a 409 cannot leave earlier schedule unlink writes partially applied.
+  - Reorderable statuses now retain Prisma `ScheduleStatus` typing so full typecheck stays green.
+- Safety:
+  - Reduces stale/locked route mutation risk when a facility batch is deleted after route order, status, or phone-confirmation state changed.
+  - Preserves auth, assignment access, org/RLS scope, no-store wrappers, audit/notification behavior, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Replaces one bulk update with bounded per-schedule guarded writes over schedules already loaded for the batch.
+  - No new dependency, external call, job, broad scan, unbounded loop, or render-heavy path was added.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/facility-visit-batches/[id]/route.test.ts' src/app/api/facility-visit-batches/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `56` tests.
+  - Scoped Prettier check: passed.
+  - Scoped ESLint: passed.
+  - Scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed after preserving `ScheduleStatus` typing on the reorderable status constant.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad schedule/prescription/route-management objective remains open.
+  - Next mapped high-risk gap is the visit-record save boundary for cancelled/rescheduled/completed/postponed schedules and duplicate side effects.
+
+### Visit Handoff Confirmation Version Guard - 2026-07-01 00:29 JST
+
+- Scope:
+  - Continued visit-record and patient handoff safety hardening.
+  - Focused on `/api/visit-records/[id]/handoff` GET/PUT and `confirmHandoff`.
+- Fixed:
+  - Handoff GET now returns `visit_record_version` and `visit_record_updated_at`.
+  - Handoff PUT now requires `expected_visit_record_version`.
+  - Stale versions are rejected with a sanitized 409 before handoff confirmation.
+  - `confirmHandoff` now checks the loaded version and uses a guarded `updateMany({ id, version })` claim before resolving operational tasks.
+- Safety:
+  - Reduces stale clinical handoff confirmation risk when a visit record changes after the handoff panel renders.
+  - Preserves auth, assignment access, no-store wrappers, PHI-redacted extraction error behavior, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds scalar version metadata and a guarded update predicate only.
+  - No new dependency, external call, job, broad scan, unbounded loop, or render-heavy path was added.
+- Validation:
+  - `pnpm vitest run src/app/api/visit-records/'[id]'/handoff/route.test.ts src/server/services/visit-handoff.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `30` tests.
+  - Shared scoped lint/format/diff-check/typecheck results will be recorded after the combined facility/handoff dirty set is validated.
+- Remaining:
+  - Broad master/patient objective remains open.
+  - Next mapped patient gap remains PRE-06 archive/detail UI state: archived-patient detail banner/read-only affordance and cross-surface archive identifiers.

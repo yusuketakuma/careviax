@@ -129,6 +129,32 @@ function expectSensitiveNoStore(response: Response) {
   expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
+function expectDeleteScheduleUnlinkWrites() {
+  expect(visitScheduleUpdateManyMock).toHaveBeenCalledTimes(2);
+  expect(visitScheduleUpdateManyMock).toHaveBeenNthCalledWith(1, {
+    where: {
+      id: 'schedule_1',
+      org_id: 'org_1',
+      facility_batch_id: 'batch_1',
+      version: 7,
+      schedule_status: { in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'] },
+      confirmed_at: null,
+    },
+    data: { facility_batch_id: null, route_order: null, version: { increment: 1 } },
+  });
+  expect(visitScheduleUpdateManyMock).toHaveBeenNthCalledWith(2, {
+    where: {
+      id: 'schedule_2',
+      org_id: 'org_1',
+      facility_batch_id: 'batch_1',
+      version: 3,
+      schedule_status: { in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'] },
+      confirmed_at: null,
+    },
+    data: { facility_batch_id: null, route_order: null, version: { increment: 1 } },
+  });
+}
+
 describe('/api/facility-visit-batches/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -163,7 +189,7 @@ describe('/api/facility-visit-batches/[id]', () => {
       },
     ]);
     visitScheduleCountMock.mockResolvedValue(2);
-    visitScheduleUpdateManyMock.mockResolvedValue({ count: 2 });
+    visitScheduleUpdateManyMock.mockResolvedValue({ count: 1 });
     visitScheduleUpdateMock.mockResolvedValue({});
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -249,10 +275,7 @@ describe('/api/facility-visit-batches/[id]', () => {
           pharmacist_id: true,
         },
       });
-      expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
-        where: { org_id: 'org_1', facility_batch_id: 'batch_1' },
-        data: { facility_batch_id: null, route_order: null },
-      });
+      expectDeleteScheduleUnlinkWrites();
       expect(facilityVisitBatchDeleteMock).toHaveBeenCalledWith({
         where: { id: 'batch_1' },
       });
@@ -298,10 +321,7 @@ describe('/api/facility-visit-batches/[id]', () => {
           pharmacist_id: true,
         },
       });
-      expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
-        where: { org_id: 'org_1', facility_batch_id: 'batch_1' },
-        data: { facility_batch_id: null, route_order: null },
-      });
+      expectDeleteScheduleUnlinkWrites();
       expect(facilityVisitBatchDeleteMock).toHaveBeenCalledWith({
         where: { id: 'batch_1' },
       });
@@ -335,6 +355,84 @@ describe('/api/facility-visit-batches/[id]', () => {
         orgId: 'org_1',
         payload: { source: 'facility_visit_batch_delete' },
       });
+    });
+
+    it('rejects locked schedule statuses before delete unlink side effects', async () => {
+      visitScheduleFindManyMock.mockResolvedValue([
+        {
+          id: 'schedule_1',
+          case_id: 'case_1',
+          route_order: 1,
+          schedule_status: 'completed',
+          confirmed_at: null,
+          version: 7,
+        },
+        {
+          id: 'schedule_2',
+          case_id: 'case_2',
+          route_order: 2,
+          schedule_status: 'planned',
+          confirmed_at: null,
+          version: 3,
+        },
+      ]);
+
+      const response = await DELETE(createRequest(), routeContext('batch_1'));
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '完了済みまたは中止済みの訪問予定は施設一括訪問から解除できません',
+      });
+      expectNoMutationSideEffects();
+    });
+
+    it('rejects confirmed schedules before delete unlink side effects', async () => {
+      visitScheduleFindManyMock.mockResolvedValue([
+        {
+          id: 'schedule_1',
+          case_id: 'case_1',
+          route_order: 1,
+          schedule_status: 'planned',
+          confirmed_at: new Date('2026-03-27T10:00:00.000Z'),
+          version: 7,
+        },
+        {
+          id: 'schedule_2',
+          case_id: 'case_2',
+          route_order: 2,
+          schedule_status: 'planned',
+          confirmed_at: null,
+          version: 3,
+        },
+      ]);
+
+      const response = await DELETE(createRequest(), routeContext('batch_1'));
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '電話確定済みの訪問予定は施設一括訪問から解除できません',
+      });
+      expectNoMutationSideEffects();
+    });
+
+    it('returns conflict when a batch schedule changes before guarded delete unlink', async () => {
+      visitScheduleUpdateManyMock
+        .mockResolvedValueOnce({ count: 1 })
+        .mockResolvedValueOnce({ count: 0 });
+
+      const response = await DELETE(createRequest(), routeContext('batch_1'));
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'WORKFLOW_CONFLICT',
+        message: '施設一括訪問が同時に更新されました。再読み込みしてください',
+      });
+      expect(visitScheduleUpdateManyMock).toHaveBeenCalledTimes(2);
+      expect(facilityVisitBatchDeleteMock).not.toHaveBeenCalled();
+      expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+      expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
     });
 
     it('does not copy potentially PHI-like stored facility labels into delete audit changes', async () => {
@@ -410,10 +508,7 @@ describe('/api/facility-visit-batches/[id]', () => {
       await expect(response.json()).resolves.toEqual({ deleted: true });
       // org-wide ロールは担当アクセス突合(count)を一切行わずに削除できる
       expect(visitScheduleCountMock).not.toHaveBeenCalled();
-      expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
-        where: { org_id: 'org_1', facility_batch_id: 'batch_1' },
-        data: { facility_batch_id: null, route_order: null },
-      });
+      expectDeleteScheduleUnlinkWrites();
       expect(facilityVisitBatchDeleteMock).toHaveBeenCalledWith({
         where: { id: 'batch_1' },
       });
