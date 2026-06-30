@@ -18,7 +18,7 @@ const {
   visitRecordCreateMock,
   visitRecordFindFirstMock,
   visitRecordUpdateManyMock,
-  visitScheduleUpdateMock,
+  visitScheduleUpdateManyMock,
   consentRecordFindFirstMock,
   medicationCycleFindFirstMock,
   medicationCycleFindManyMock,
@@ -65,7 +65,7 @@ const {
   visitRecordCreateMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
   visitRecordUpdateManyMock: vi.fn(),
-  visitScheduleUpdateMock: vi.fn(),
+  visitScheduleUpdateManyMock: vi.fn(),
   consentRecordFindFirstMock: vi.fn(),
   medicationCycleFindFirstMock: vi.fn(),
   medicationCycleFindManyMock: vi.fn(),
@@ -181,6 +181,46 @@ function createMalformedJsonRequest(headers?: Record<string, string>) {
 function expectSensitiveNoStore(response: Response) {
   expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
   expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
+function expectVisitScheduleStatusClaim(scheduleStatus: string) {
+  expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
+    where: {
+      id: 'schedule_1',
+      org_id: 'org_1',
+      version: 4,
+      schedule_status: 'ready',
+    },
+    data: {
+      schedule_status: scheduleStatus,
+      version: { increment: 1 },
+    },
+  });
+}
+
+function createVisitScheduleFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'schedule_1',
+    case_id: 'case_1',
+    version: 4,
+    schedule_status: 'ready',
+    carry_items_status: 'ready',
+    recurrence_rule: null,
+    scheduled_date: new Date('2026-03-25T00:00:00.000Z'),
+    cycle_id: 'cycle_1',
+    visit_type: 'regular',
+    pharmacist_id: 'user_1',
+    site_id: 'site_1',
+    time_window_start: null,
+    time_window_end: null,
+    medication_end_date: null,
+    visit_deadline_date: null,
+    case_: {
+      primary_pharmacist_id: 'user_primary',
+      backup_pharmacist_id: null,
+    },
+    ...overrides,
+  };
 }
 
 function createUniqueConstraintError() {
@@ -864,6 +904,7 @@ describe('/api/visit-records POST', () => {
     visitRecordFindFirstMock.mockReset();
     visitRecordCreateMock.mockReset();
     visitRecordUpdateManyMock.mockReset();
+    visitScheduleUpdateManyMock.mockReset();
 
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     getRequestAuthContextMock.mockReturnValue({
@@ -883,26 +924,7 @@ describe('/api/visit-records POST', () => {
       confirmed_at: null,
       extracted_at: '2026-04-01T00:00:00Z',
     });
-    visitScheduleFindFirstMock.mockResolvedValue({
-      id: 'schedule_1',
-      case_id: 'case_1',
-      schedule_status: 'ready',
-      carry_items_status: 'ready',
-      recurrence_rule: null,
-      scheduled_date: new Date('2026-03-25T00:00:00.000Z'),
-      cycle_id: 'cycle_1',
-      visit_type: 'regular',
-      pharmacist_id: 'user_1',
-      site_id: 'site_1',
-      time_window_start: null,
-      time_window_end: null,
-      medication_end_date: null,
-      visit_deadline_date: null,
-      case_: {
-        primary_pharmacist_id: 'user_primary',
-        backup_pharmacist_id: null,
-      },
-    });
+    visitScheduleFindFirstMock.mockResolvedValue(createVisitScheduleFixture());
     careCaseFindFirstMock.mockResolvedValue({
       patient_id: 'patient_1',
       required_visit_support: null,
@@ -933,7 +955,7 @@ describe('/api/visit-records POST', () => {
       version: 2,
     });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
-    visitScheduleUpdateMock.mockResolvedValue({ id: 'schedule_1' });
+    visitScheduleUpdateManyMock.mockResolvedValue({ count: 1 });
     consentRecordFindFirstMock.mockResolvedValue({ id: 'consent_1' });
     medicationCycleFindFirstMock.mockResolvedValue({
       id: 'cycle_1',
@@ -961,7 +983,7 @@ describe('/api/visit-records POST', () => {
         $queryRaw: vi.fn().mockResolvedValue([]),
         visitSchedule: {
           findFirst: visitScheduleFindFirstMock,
-          update: visitScheduleUpdateMock,
+          updateMany: visitScheduleUpdateManyMock,
         },
         careCase: {
           findFirst: careCaseFindFirstMock,
@@ -1067,10 +1089,103 @@ describe('/api/visit-records POST', () => {
     expect(visitRecordCreateMock).not.toHaveBeenCalled();
   });
 
+  it.each(['completed', 'cancelled', 'postponed', 'rescheduled', 'no_show'] as const)(
+    'rejects new records for %s schedules before clinical save side effects',
+    async (scheduleStatus) => {
+      visitScheduleFindFirstMock.mockResolvedValue({
+        id: 'schedule_1',
+        case_id: 'case_1',
+        version: 4,
+        schedule_status: scheduleStatus,
+        carry_items_status: 'ready',
+        recurrence_rule: null,
+        scheduled_date: new Date('2026-03-25T00:00:00.000Z'),
+        cycle_id: 'cycle_1',
+        visit_type: 'regular',
+        pharmacist_id: 'user_1',
+        site_id: 'site_1',
+        time_window_start: null,
+        time_window_end: null,
+        medication_end_date: null,
+        visit_deadline_date: null,
+        case_: {
+          primary_pharmacist_id: 'user_primary',
+          backup_pharmacist_id: null,
+        },
+      });
+
+      const response = await POST(
+        createRequest(
+          {
+            schedule_id: 'schedule_1',
+            patient_id: 'patient_1',
+            visit_date: '2026-03-26',
+            outcome_status: 'completed',
+            structured_soap: completedVisitStructuredSoap,
+          },
+          { 'x-org-id': 'org_1' },
+        ),
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'WORKFLOW_CONFLICT',
+        message: '訪問予定が同時に更新されました。再読み込みしてください',
+        details: {
+          current_schedule_status: scheduleStatus,
+        },
+      });
+      expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+      expect(visitRecordCreateMock).not.toHaveBeenCalled();
+      expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+      expect(taskUpsertMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('returns conflict when the schedule status changes before the guarded save claim', async () => {
+    visitScheduleFindFirstMock
+      .mockResolvedValueOnce(createVisitScheduleFixture())
+      .mockResolvedValueOnce({
+        schedule_status: 'cancelled',
+      });
+    visitScheduleUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          structured_soap: completedVisitStructuredSoap,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '訪問予定が同時に更新されました。再読み込みしてください',
+      details: {
+        current_schedule_status: 'cancelled',
+      },
+    });
+    expectVisitScheduleStatusClaim('completed');
+    expect(consentRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(taskUpsertMock).not.toHaveBeenCalled();
+    expect(billingEvidenceUpsertMock).not.toHaveBeenCalled();
+    expect(processHandoffExtractionMock).not.toHaveBeenCalled();
+  });
+
   it('returns 400 before writes when carry items are blocked for a visit completion record', async () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
+      version: 4,
       schedule_status: 'ready',
       carry_items_status: 'blocked',
       recurrence_rule: null,
@@ -1109,7 +1224,7 @@ describe('/api/visit-records POST', () => {
         '持参物が未確定のため訪問記録を作成できません。持参物を確定するか代替手配を記録してください',
     });
     expect(visitRecordCreateMock).not.toHaveBeenCalled();
-    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
     expect(listBillingEvidenceBlockersMock).not.toHaveBeenCalled();
   });
 
@@ -1117,6 +1232,7 @@ describe('/api/visit-records POST', () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
+      version: 4,
       schedule_status: 'ready',
       carry_items_status: 'partial',
       recurrence_rule: null,
@@ -1161,6 +1277,7 @@ describe('/api/visit-records POST', () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
+      version: 4,
       schedule_status: 'ready',
       carry_items_status: 'partial',
       recurrence_rule: null,
@@ -1267,6 +1384,7 @@ describe('/api/visit-records POST', () => {
       visitScheduleFindFirstMock.mockResolvedValue({
         id: 'schedule_1',
         case_id: 'case_1',
+        version: 4,
         schedule_status: 'ready',
         carry_items_status: carryItemsStatus,
         recurrence_rule: null,
@@ -1316,6 +1434,7 @@ describe('/api/visit-records POST', () => {
       visitScheduleFindFirstMock.mockResolvedValue({
         id: 'schedule_1',
         case_id: 'case_1',
+        version: 4,
         schedule_status: 'ready',
         carry_items_status: 'blocked',
         recurrence_rule: null,
@@ -1353,7 +1472,7 @@ describe('/api/visit-records POST', () => {
         message: expect.stringContaining(messagePart),
       });
       expect(visitRecordCreateMock).not.toHaveBeenCalled();
-      expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+      expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
     },
   );
 
@@ -1361,6 +1480,7 @@ describe('/api/visit-records POST', () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
+      version: 4,
       schedule_status: 'ready',
       carry_items_status: 'blocked',
       recurrence_rule: null,
@@ -1394,10 +1514,7 @@ describe('/api/visit-records POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     expect(visitRecordCreateMock).toHaveBeenCalledOnce();
-    expect(visitScheduleUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'schedule_1' },
-      data: { schedule_status: 'postponed' },
-    });
+    expectVisitScheduleStatusClaim('postponed');
     expect(listBillingEvidenceBlockersMock).not.toHaveBeenCalled();
   });
 
@@ -1405,6 +1522,7 @@ describe('/api/visit-records POST', () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
+      version: 4,
       schedule_status: 'ready',
       carry_items_status: 'blocked',
       recurrence_rule: null,
@@ -1438,10 +1556,7 @@ describe('/api/visit-records POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     expect(visitRecordCreateMock).toHaveBeenCalledOnce();
-    expect(visitScheduleUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'schedule_1' },
-      data: { schedule_status: 'cancelled' },
-    });
+    expectVisitScheduleStatusClaim('cancelled');
     expect(listBillingEvidenceBlockersMock).not.toHaveBeenCalled();
   });
 
@@ -1522,11 +1637,11 @@ describe('/api/visit-records POST', () => {
         },
       },
     });
-    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects stale previous visit reuse metadata before creating a visit record', async () => {
-    visitRecordFindFirstMock.mockResolvedValueOnce({
+    visitRecordFindFirstMock.mockResolvedValueOnce(null).mockResolvedValueOnce({
       id: 'previous_visit_1',
       patient_id: 'patient_1',
       version: 5,
@@ -1563,11 +1678,11 @@ describe('/api/visit-records POST', () => {
       },
     });
     expect(visitRecordCreateMock).not.toHaveBeenCalled();
-    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects previous visit reuse without source revision metadata before creating a visit record', async () => {
-    visitRecordFindFirstMock.mockResolvedValueOnce({
+    visitRecordFindFirstMock.mockResolvedValueOnce(null).mockResolvedValueOnce({
       id: 'previous_visit_1',
       patient_id: 'patient_1',
       version: 5,
@@ -1602,7 +1717,7 @@ describe('/api/visit-records POST', () => {
       },
     });
     expect(visitRecordCreateMock).not.toHaveBeenCalled();
-    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects calendar-overflow visit and receipt dates before loading the visit schedule', async () => {
@@ -1652,7 +1767,7 @@ describe('/api/visit-records POST', () => {
     expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(visitRecordCreateMock).not.toHaveBeenCalled();
-    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
     expect(processHandoffExtractionMock).not.toHaveBeenCalled();
   });
 
@@ -1669,7 +1784,7 @@ describe('/api/visit-records POST', () => {
     expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(visitRecordCreateMock).not.toHaveBeenCalled();
-    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
     expect(processHandoffExtractionMock).not.toHaveBeenCalled();
   });
 
@@ -1724,6 +1839,7 @@ describe('/api/visit-records POST', () => {
       visitScheduleFindFirstMock.mockResolvedValue({
         id: 'schedule_1',
         case_id: 'case_1',
+        version: 4,
         schedule_status: 'ready',
         carry_items_status: 'ready',
         recurrence_rule: null,
@@ -1778,10 +1894,7 @@ describe('/api/visit-records POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     expect(visitRecordCreateMock).toHaveBeenCalledOnce();
-    expect(visitScheduleUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'schedule_1' },
-      data: { schedule_status: 'postponed' },
-    });
+    expectVisitScheduleStatusClaim('postponed');
     expect(consentRecordFindFirstMock).not.toHaveBeenCalled();
     expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
     expect(medicationCycleUpdateMock).not.toHaveBeenCalled();
@@ -1812,7 +1925,7 @@ describe('/api/visit-records POST', () => {
       },
     });
     expect(visitRecordCreateMock).not.toHaveBeenCalled();
-    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
     expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
   });
 
@@ -1820,6 +1933,7 @@ describe('/api/visit-records POST', () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
+      version: 4,
       schedule_status: 'ready',
       recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=WE',
       scheduled_date: new Date('2026-03-25T00:00:00.000Z'),
@@ -1873,6 +1987,7 @@ describe('/api/visit-records POST', () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
+      version: 4,
       schedule_status: 'ready',
       recurrence_rule: 'FREQ=WEEKLY;INTERVAL=2;BYDAY=WE',
       scheduled_date: new Date('2026-07-01T00:00:00.000Z'),
@@ -1922,6 +2037,7 @@ describe('/api/visit-records POST', () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
+      version: 4,
       schedule_status: 'ready',
       recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=FR',
       scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
@@ -2333,6 +2449,7 @@ describe('/api/visit-records POST', () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
+      version: 4,
       schedule_status: 'ready',
       recurrence_rule: null,
       cycle_id: 'cycle_1',
@@ -2436,6 +2553,7 @@ describe('/api/visit-records POST', () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
+      version: 4,
       schedule_status: 'ready',
       recurrence_rule: null,
       cycle_id: 'cycle_1',
@@ -2484,6 +2602,7 @@ describe('/api/visit-records POST', () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
+      version: 4,
       schedule_status: 'ready',
       recurrence_rule: null,
       cycle_id: 'cycle_1',

@@ -31,13 +31,14 @@ import {
 import { buildAllSoapTexts } from '@/lib/utils/soap-text-builder';
 import { transitionCycleStatus } from '@/lib/db/cycle-transition';
 import { getNextSimpleRruleOccurrence } from '@/lib/visits/rrule';
+import { ACTIVE_VISIT_SCHEDULE_STATUSES } from '@/lib/constants/visit';
 import { buildVisitRecordPdfHref } from '@/lib/visits/navigation';
 import {
   getMissingHomeVisit2026CompletionItems,
   isHomeVisit2026CompletionOutcome,
 } from '@/lib/visits/home-visit-2026-evidence';
 import type { StructuredSoap } from '@/types/structured-soap';
-import { Prisma } from '@prisma/client';
+import { Prisma, type ScheduleStatus } from '@prisma/client';
 import {
   listBillingEvidenceBlockers,
   upsertBillingEvidenceForVisit,
@@ -100,6 +101,34 @@ const firstVisitDocumentOutcomes = new Set<CreateVisitRecordInput['outcome_statu
   'revisit_needed',
   'delivery_only',
 ]);
+
+const VISIT_RECORD_ACTIVE_SOURCE_SCHEDULE_STATUS_SET = new Set<ScheduleStatus>(
+  ACTIVE_VISIT_SCHEDULE_STATUSES,
+);
+
+type VisitRecordSaveRollbackResult = {
+  error: 'schedule_status_conflict';
+  scheduleStatus?: ScheduleStatus;
+};
+
+class VisitRecordSaveRollback extends Error {
+  constructor(readonly result: VisitRecordSaveRollbackResult) {
+    super('visit record transaction rolled back');
+    this.name = 'VisitRecordSaveRollback';
+  }
+}
+
+function canSaveVisitRecordForScheduleStatus(args: {
+  sourceStatus: ScheduleStatus;
+  targetStatus: ScheduleStatus;
+  isOverwrite: boolean;
+}) {
+  if (VISIT_RECORD_ACTIVE_SOURCE_SCHEDULE_STATUS_SET.has(args.sourceStatus)) {
+    return true;
+  }
+
+  return args.isOverwrite && args.sourceStatus === args.targetStatus;
+}
 
 const visitRecordListQuerySchema = z
   .object({
@@ -1045,6 +1074,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
       select: {
         id: true,
         case_id: true,
+        version: true,
         schedule_status: true,
         carry_items_status: true,
         recurrence_rule: true,
@@ -1070,6 +1100,31 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
     }
     if (!canAccessVisitScheduleAssignment(ctx, schedule)) {
       return { error: 'schedule_forbidden' as const };
+    }
+    const existingRecord = await loadExistingVisitRecordConflict(tx, ctx.orgId, schedule_id);
+    const canOverwrite =
+      existingRecord != null &&
+      conflict_resolution === 'overwrite' &&
+      existing_record_id === existingRecord.id &&
+      expected_version === existingRecord.version;
+
+    if (existingRecord && !canOverwrite) {
+      return {
+        error: 'record_conflict' as const,
+        existingRecord,
+      };
+    }
+    if (
+      !canSaveVisitRecordForScheduleStatus({
+        sourceStatus: schedule.schedule_status,
+        targetStatus: scheduleStatus,
+        isOverwrite: canOverwrite,
+      })
+    ) {
+      return {
+        error: 'schedule_status_conflict' as const,
+        scheduleStatus: schedule.schedule_status,
+      };
     }
 
     const suggestedNextVisitDate = getNextVisitSuggestionDate({
@@ -1220,21 +1275,6 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
       };
     }
 
-    const existingRecord = await loadExistingVisitRecordConflict(tx, ctx.orgId, schedule_id);
-    if (existingRecord) {
-      const canOverwrite =
-        conflict_resolution === 'overwrite' &&
-        existing_record_id === existingRecord.id &&
-        expected_version === existingRecord.version;
-
-      if (!canOverwrite) {
-        return {
-          error: 'record_conflict' as const,
-          existingRecord,
-        };
-      }
-    }
-
     // 訪問時点の患者詳細を凍結する(過去訪問の不変参照 / 前回訪問差分の基準点)。
     // findPatientOverviewBase の生現在値読み出しを再利用し、二重実装しない。
     // captured_at は凍結した実時刻(=保存時点)。snapshot は「記録作成時点の現在値」であり
@@ -1260,7 +1300,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
     }
 
     let record;
-    if (existingRecord && conflict_resolution === 'overwrite') {
+    if (existingRecord && canOverwrite) {
       const updateResult = await tx.visitRecord.updateMany({
         where: {
           id: existingRecord.id,
@@ -1553,10 +1593,28 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
       }
     }
 
-    await tx.visitSchedule.update({
-      where: { id: schedule_id },
-      data: { schedule_status: scheduleStatus },
+    const scheduleStatusClaim = await tx.visitSchedule.updateMany({
+      where: {
+        id: schedule_id,
+        org_id: ctx.orgId,
+        version: schedule.version,
+        schedule_status: schedule.schedule_status,
+      },
+      data: {
+        schedule_status: scheduleStatus,
+        version: { increment: 1 },
+      },
     });
+    if (scheduleStatusClaim.count !== 1) {
+      const currentSchedule = await tx.visitSchedule.findFirst({
+        where: { id: schedule_id, org_id: ctx.orgId },
+        select: { schedule_status: true },
+      });
+      throw new VisitRecordSaveRollback({
+        error: 'schedule_status_conflict',
+        scheduleStatus: currentSchedule?.schedule_status ?? schedule.schedule_status,
+      });
+    }
 
     if (shouldAdvanceVisitWorkflow && schedule.cycle_id) {
       const activeVisitConsent = await tx.consentRecord.findFirst({
@@ -1704,9 +1762,14 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
     return {
       record,
       suggestedSchedule,
-      conflictResolved: existingRecord != null && conflict_resolution === 'overwrite',
+      conflictResolved: canOverwrite,
       handoffExtraction,
     };
+  }).catch((cause: unknown) => {
+    if (cause instanceof VisitRecordSaveRollback) {
+      return cause.result;
+    }
+    throw cause;
   });
 }
 
@@ -1735,6 +1798,11 @@ async function authenticatedPOST(req: NextRequest) {
       }
       if (result.error === 'schedule_forbidden') {
         return forbiddenResponse('この訪問予定の記録を作成する権限がありません');
+      }
+      if (result.error === 'schedule_status_conflict') {
+        return conflict('訪問予定が同時に更新されました。再読み込みしてください', {
+          current_schedule_status: result.scheduleStatus ?? null,
+        });
       }
       if (result.error === 'case_not_found') {
         return validationError('訪問予定に紐づくケースが見つかりません');

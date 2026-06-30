@@ -27676,6 +27676,36 @@ Next loop:
   - Broad master/patient objective remains open.
   - PRE-06 still needs archived identifiers in schedule / visit brief / shared links and patient summary rules across print/PDF/shared.
 
+### Visit Record Schedule Claim Guard - 2026-07-01 00:51 JST
+
+- Scope:
+  - Continued patient-information workflow hardening around visit-record creation.
+  - Focused on `POST /api/visit-records` after recent schedule status/version guard work.
+- Fixed:
+  - Visit-record save now rejects inactive source schedule statuses before clinical save side effects.
+  - Existing-record overwrite remains allowed only when overwriting the same terminal status record with the expected visit-record version.
+  - Final schedule status transition now uses a guarded `updateMany` claim scoped by `id`, `org_id`, current `version`, and current `schedule_status`.
+  - If the guarded claim fails, the transaction is rolled back and the API returns `409 WORKFLOW_CONFLICT` with the current source schedule status.
+  - Regression coverage locks inactive schedule rejection and stale schedule claim conflict behavior.
+- Safety:
+  - Reduces stale-workflow and duplicate clinical side-effect risk when two staff/users save the same schedule concurrently.
+  - Preserves auth/permission behavior, schedule assignment authorization, org scoping, previous-visit reuse validation, PHI/error sanitization, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Uses a narrow conditional schedule update instead of an unconditional update.
+  - No new broad scans, dependencies, jobs, external calls, or unbounded loops were added.
+- Validation:
+  - `pnpm vitest run src/app/api/visit-records/route.test.ts --reporter=dot --testTimeout=60000`: passed on rerun, `1` file / `80` tests. Initial run reported a non-reproducible 409/500 mismatch in two previous-visit reuse tests; targeted and full reruns passed after inspecting the mock/reset path.
+  - Scoped ESLint on `src/app/api/visit-records/route.ts` and `route.test.ts`: passed.
+  - Scoped Prettier check on the same files: passed.
+  - Scoped `git diff --check` on the same files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- Remaining:
+  - Broad master/patient objective remains open.
+  - Continue PRE-06 archived identifiers across schedule / visit brief / shared links and remaining master-management write guards.
+
 ### Facility Batch Delete Route-Unlink Guard - 2026-07-01 00:23 JST
 
 - Scope:

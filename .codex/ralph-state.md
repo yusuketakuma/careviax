@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0051 JST
+
+- current task: guard visit-record creation against stale visit-schedule status claims.
+- files inspected: `git status --short --branch --untracked-files=all`, `git diff --stat`, `src/app/api/visit-records/route.ts`, `src/app/api/visit-records/route.test.ts`, existing visit-schedule status constants, and previous visit reuse validation call sites.
+- files changed: `src/app/api/visit-records/route.ts`, `src/app/api/visit-records/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: visit-record save could perform clinical write side effects after reading an active schedule even if another request had already moved that schedule out of an active status before the final schedule status update.
+- security risks found: reduced clinical data-integrity and wrong-workflow risk by rejecting inactive source schedule statuses before side effects, scoping the final schedule status claim by `org_id`, `version`, and current status, and returning a sanitized workflow conflict instead of silently advancing a stale schedule. Auth, assignment authorization, PHI/error sanitization, org scoping, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: replaced a single unconditional schedule update with a narrow indexed `updateMany` claim. No new broad scans, external calls, dependencies, background jobs, or unbounded loops were added.
+- validation commands: `pnpm vitest run src/app/api/visit-records/route.test.ts --reporter=dot --testTimeout=60000`; `pnpm exec eslint --max-warnings=0 src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts`; `git diff --check -- src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`.
+- validation results: focused Vitest passed `1` file / `80` tests on rerun after inspecting a non-reproducible initial 409/500 mismatch in two previous-visit reuse tests; scoped ESLint passed; scoped Prettier check passed; scoped `git diff --check` passed; `pnpm typecheck` passed; `pnpm typecheck:no-unused` passed; `pnpm lint` passed; `pnpm format:check` passed.
+- remaining work: broad master-management and patient-information objective remains open. Continue mapping PRE-06 archived identifiers across schedules / visit brief / shared links and the remaining master-management write guards.
+- next action: commit the visit-record schedule claim guard slice, send agmsg FYI, then resume the broader objective from the next highest-risk master/patient gap.
+
 ### 20260701-0040 JST
 
 - current task: surface archived-patient state in the pinned patient detail header.
