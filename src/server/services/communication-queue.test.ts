@@ -543,20 +543,21 @@ describe('listCommunicationQueue', () => {
 
   it('filters external share visibility before applying the final queue item limit', async () => {
     emptyDbMocks();
+    const patientId = 'patient 1/../x?y=#frag';
     externalAccessGrantFindManyMock.mockResolvedValue([
       {
         id: 'visible-1',
-        patient_id: 'p-1',
+        patient_id: patientId,
         granted_to_name: '担当内',
         expires_at: new Date('2026-04-02T00:00:00Z'),
         scope: { care_reports: true, allowed_case_ids: ['case-1'] },
       },
     ]);
-    patientFindManyMock.mockResolvedValue([{ id: 'p-1', name: '田中太郎' }]);
+    patientFindManyMock.mockResolvedValue([{ id: patientId, name: '田中太郎' }]);
 
     const result = await listCommunicationQueue(makeDb(), {
       orgId: 'org-1',
-      patientIds: ['p-hidden', 'p-1'],
+      patientIds: ['p-hidden', patientId],
       caseIds: ['case-1'],
       limit: 1,
     });
@@ -580,10 +581,11 @@ describe('listCommunicationQueue', () => {
     expect(result.items).toEqual([
       expect.objectContaining({
         id: 'external_share:visible-1',
-        patient_id: 'p-1',
-        action_href: '/external?focus=shares',
+        patient_id: patientId,
+        action_href: `/patients/${encodeURIComponent(patientId)}/share`,
       }),
     ]);
+    expect(result.items[0].action_href).not.toContain(patientId);
   });
 
   it('queries DB-visible external shares without offset paging hidden grants', async () => {

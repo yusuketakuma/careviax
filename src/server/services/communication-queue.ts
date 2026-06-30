@@ -867,7 +867,7 @@ export async function listCommunicationQueue(
       patient_id: grant.patient_id,
       patient_name: patientNameById.get(grant.patient_id) ?? null,
       due_at: grant.expires_at.toISOString(),
-      action_href: buildExternalHref({ focus: 'shares' }),
+      action_href: buildPatientHref(grant.patient_id, '/share'),
       action_label: '共有状況を確認',
     })),
   ]
