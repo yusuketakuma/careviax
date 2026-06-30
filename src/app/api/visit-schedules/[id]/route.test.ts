@@ -21,6 +21,7 @@ const {
   careCaseFindFirstMock,
   validateOrgReferencesMock,
   notifyWorkflowMutationMock,
+  resolveOperationalTasksMock,
   evaluateReadyTransitionMock,
   getReadyTransitionErrorMessageMock,
   sanitizeReadyTransitionDetailsMock,
@@ -45,6 +46,7 @@ const {
   careCaseFindFirstMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
+  resolveOperationalTasksMock: vi.fn(),
   evaluateReadyTransitionMock: vi.fn(),
   getReadyTransitionErrorMessageMock: vi.fn(),
   sanitizeReadyTransitionDetailsMock: vi.fn((details) => ({
@@ -104,6 +106,10 @@ vi.mock('@/lib/api/org-reference', () => ({
 
 vi.mock('@/server/services/workflow-dashboard-cache', () => ({
   notifyWorkflowMutation: notifyWorkflowMutationMock,
+}));
+
+vi.mock('@/server/services/operational-tasks', () => ({
+  resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
 vi.mock('@/server/services/visit-preparation-readiness', () => ({
@@ -206,6 +212,7 @@ describe('/api/visit-schedules/[id] GET', () => {
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
     validateOrgReferencesMock.mockResolvedValue({ ok: true, data: {} });
     notifyWorkflowMutationMock.mockResolvedValue(undefined);
+    resolveOperationalTasksMock.mockResolvedValue({ count: 1 });
     evaluateReadyTransitionMock.mockResolvedValue({ ok: true });
     getReadyTransitionErrorMessageMock.mockReturnValue(
       '訪問準備に未解決の止まっている理由があるため ready へ進めません',
@@ -2148,6 +2155,11 @@ describe('/api/visit-schedules/[id] GET', () => {
         status: 'cancelled',
       },
     });
+    expect(resolveOperationalTasksMock).toHaveBeenCalledWith(expect.anything(), {
+      orgId: 'org_1',
+      dedupeKey: 'visit-reschedule-approval:schedule_1',
+      status: 'cancelled',
+    });
     expect(visitScheduleProposalUpdateManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -2160,6 +2172,47 @@ describe('/api/visit-schedules/[id] GET', () => {
       data: {
         proposal_status: 'superseded',
       },
+    });
+  });
+
+  it('cancels a stale reschedule approval task even when no pending override remains', async () => {
+    visitScheduleOverrideFindManyMock.mockResolvedValueOnce([]);
+
+    const response = await DELETE(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitScheduleOverrideUpdateManyMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).toHaveBeenCalledWith(expect.anything(), {
+      orgId: 'org_1',
+      dedupeKey: 'visit-reschedule-approval:schedule_1',
+      status: 'cancelled',
+    });
+    expect(visitScheduleProposalUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        reschedule_source_schedule_id: 'schedule_1',
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+        finalized_schedule_id: null,
+      },
+      data: {
+        proposal_status: 'superseded',
+      },
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'visit_schedule_cancelled',
+        changes: expect.objectContaining({
+          cancelled_override_ids: [],
+          cancelled_override_count: 0,
+          cancelled_reschedule_approval_task_count: 1,
+          superseded_reschedule_proposal_count: 1,
+        }),
+      }),
     });
   });
 
@@ -2234,6 +2287,7 @@ describe('/api/visit-schedules/[id] GET', () => {
       expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
       expect(visitScheduleOverrideFindManyMock).not.toHaveBeenCalled();
       expect(visitScheduleOverrideUpdateManyMock).not.toHaveBeenCalled();
+      expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
       expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
       expect(auditLogCreateMock).not.toHaveBeenCalled();
       expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
@@ -2259,6 +2313,7 @@ describe('/api/visit-schedules/[id] GET', () => {
     });
     expect(visitScheduleOverrideFindManyMock).not.toHaveBeenCalled();
     expect(visitScheduleOverrideUpdateManyMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
     expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
@@ -2308,6 +2363,32 @@ describe('/api/visit-schedules/[id] GET', () => {
     });
     const bodyText = JSON.stringify(body);
     expect(bodyText).not.toContain('raw override');
+    expect(bodyText).not.toContain('山田 花子');
+    expect(bodyText).not.toContain('token secret');
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when reschedule approval task cancellation fails', async () => {
+    resolveOperationalTasksMock.mockRejectedValueOnce(
+      new Error('raw approval task patient 山田 花子 token secret'),
+    );
+
+    const response = await DELETE(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw approval task');
     expect(bodyText).not.toContain('山田 花子');
     expect(bodyText).not.toContain('token secret');
     expect(auditLogCreateMock).not.toHaveBeenCalled();
@@ -2361,6 +2442,7 @@ describe('/api/visit-schedules/[id] GET', () => {
           reason_note: '家族から延期希望',
           cancelled_override_ids: ['override_1'],
           cancelled_override_count: 1,
+          cancelled_reschedule_approval_task_count: 1,
           superseded_reschedule_proposal_count: 1,
         }),
       }),
@@ -2382,6 +2464,7 @@ describe('/api/visit-schedules/[id] GET', () => {
           reason_note: null,
           cancelled_override_ids: ['override_1'],
           cancelled_override_count: 1,
+          cancelled_reschedule_approval_task_count: 1,
           superseded_reschedule_proposal_count: 1,
         }),
       }),

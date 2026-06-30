@@ -16,6 +16,7 @@ const {
   visitScheduleProposalUpdateManyMock,
   visitScheduleOverrideFindFirstMock,
   visitScheduleOverrideCreateMock,
+  visitScheduleOverrideUpdateMock,
   contactPartyFindManyMock,
   careTeamLinkFindManyMock,
   communicationRequestCreateMock,
@@ -40,6 +41,7 @@ const {
   visitScheduleProposalUpdateManyMock: vi.fn(),
   visitScheduleOverrideFindFirstMock: vi.fn(),
   visitScheduleOverrideCreateMock: vi.fn(),
+  visitScheduleOverrideUpdateMock: vi.fn(),
   contactPartyFindManyMock: vi.fn(),
   careTeamLinkFindManyMock: vi.fn(),
   communicationRequestCreateMock: vi.fn(),
@@ -186,6 +188,7 @@ function buildImpactedSchedule(overrides?: Record<string, unknown>) {
     schedule_status: 'planned',
     confirmed_at: new Date('2026-03-25T11:00:00.000Z'),
     confirmed_by: 'user_2',
+    version: 2,
     override_request: null,
     case_: {
       patient_id: 'patient_2',
@@ -313,6 +316,11 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
         id: data.source_schedule_id === 'schedule_2' ? 'override_2' : 'override_1',
       }),
     );
+    visitScheduleOverrideUpdateMock.mockImplementation(
+      async ({ data }: { data: { source_schedule_id?: string } }) => ({
+        id: data.source_schedule_id === 'schedule_2' ? 'override_2' : 'override_cancelled',
+      }),
+    );
     contactPartyFindManyMock.mockResolvedValue([
       {
         name: '長女',
@@ -372,6 +380,7 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
         visitScheduleOverride: {
           findFirst: visitScheduleOverrideFindFirstMock,
           create: visitScheduleOverrideCreateMock,
+          update: visitScheduleOverrideUpdateMock,
         },
         contactParty: {
           findMany: contactPartyFindManyMock,
@@ -745,7 +754,7 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
           impact_summary: expect.objectContaining({
             impacted_schedule_count: 1,
             proposed_replacements: 2,
-            impacted_patient_names: ['佐藤次郎'],
+            impacted_patient_ids: ['patient_2'],
             preferred_pharmacist_id: 'user_1',
             requested_vehicle_resource_id: 'vehicle_1',
             current_vehicle_resource_id: 'vehicle_1',
@@ -755,6 +764,7 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
         }),
       }),
     );
+    expect(JSON.stringify(visitScheduleOverrideCreateMock.mock.calls)).not.toContain('佐藤次郎');
     expect(communicationRequestCreateMock).toHaveBeenCalledTimes(4);
     expect(communicationRequestCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -822,6 +832,139 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
       orgId: 'org_1',
       payload: { source: 'visit_schedules_reschedule_request', schedule_id: 'schedule_1' },
     });
+  });
+
+  it('skips impacted emergency reschedule side effects when the impacted schedule state changes', async () => {
+    visitScheduleUpdateManyMock.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({
+      count: 0,
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          reason: '緊急訪問が割り込んだため',
+          reason_code: 'emergency_insert',
+          communication_channel: 'phone',
+          communication_result: 'pending',
+          start_date: '2026-03-28',
+          priority: 'urgent',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'schedule_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(visitScheduleUpdateManyMock).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: 'schedule_2',
+        org_id: 'org_1',
+        version: 2,
+        schedule_status: { in: ['planned', 'in_preparation'] },
+      },
+      data: {
+        version: { increment: 1 },
+      },
+    });
+    expect(visitScheduleProposalCreateMock).toHaveBeenCalledTimes(1);
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalledWith({
+      data: expect.objectContaining({ reschedule_source_schedule_id: 'schedule_2' }),
+    });
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideCreateMock).toHaveBeenCalledTimes(1);
+    expect(visitScheduleOverrideCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          source_schedule_id: 'schedule_1',
+          impact_summary: expect.objectContaining({
+            auto_reschedule_summary: [
+              expect.objectContaining({
+                schedule_id: 'schedule_2',
+                patient_id: 'patient_2',
+                status: 'skipped_state_changed',
+                proposal_ids: [],
+              }),
+            ],
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('audits reused cancelled impacted overrides during emergency auto-rescheduling', async () => {
+    visitScheduleFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      buildImpactedSchedule({
+        override_request: {
+          id: 'override_impacted_cancelled',
+          status: 'cancelled',
+          requested_by: 'old_impact_user',
+          requested_at: new Date('2026-03-22T01:02:03.000Z'),
+          approved_by: 'old_impact_admin',
+          approved_at: new Date('2026-03-22T04:05:06.000Z'),
+          replacement_schedule_id: 'schedule_impact_replacement',
+          updated_at: new Date('2026-03-23T07:08:09.000Z'),
+        },
+      }),
+    ]);
+
+    const response = await POST(
+      createRequest(
+        {
+          reason: '緊急訪問が割り込んだため',
+          reason_code: 'emergency_insert',
+          communication_channel: 'phone',
+          communication_result: 'pending',
+          start_date: '2026-03-28',
+          priority: 'urgent',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'schedule_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(visitScheduleOverrideUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'override_impacted_cancelled' },
+      data: expect.objectContaining({
+        status: 'pending',
+        reason: '緊急訪問割込みの影響で再調整が必要です（差込予定ID: schedule_1）',
+        requested_by: 'user_1',
+        approved_by: null,
+        approved_at: null,
+        replacement_schedule_id: null,
+      }),
+    });
+    expect(visitScheduleOverrideCreateMock).toHaveBeenCalledTimes(1);
+    expect(visitScheduleOverrideCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ source_schedule_id: 'schedule_1' }),
+      }),
+    );
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'visit_schedule_reschedule_requested',
+        changes: expect.objectContaining({
+          reused_cancelled_impacted_overrides: [
+            {
+              id: 'override_impacted_cancelled',
+              schedule_id: 'schedule_2',
+              patient_id: 'patient_2',
+              proposal_ids: ['proposal_2'],
+              previous_status: 'cancelled',
+              previous_requested_by: 'old_impact_user',
+              previous_requested_at: '2026-03-22T01:02:03.000Z',
+              previous_approved_by: 'old_impact_admin',
+              previous_approved_at: '2026-03-22T04:05:06.000Z',
+              previous_replacement_schedule_id: 'schedule_impact_replacement',
+              previous_updated_at: '2026-03-23T07:08:09.000Z',
+            },
+          ],
+        }),
+      }),
+    });
+    expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain('佐藤次郎');
   });
 
   it('skips in-flight impacted schedules during emergency insert auto-rescheduling', async () => {
@@ -1071,6 +1214,97 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
     expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
     expect(visitScheduleOverrideCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('reuses a cancelled reschedule override instead of creating a duplicate source override', async () => {
+    visitScheduleOverrideFindFirstMock.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: 'override_cancelled',
+      status: 'cancelled',
+      requested_by: 'old_user',
+      requested_at: new Date('2026-03-20T01:02:03.000Z'),
+      approved_by: 'old_admin',
+      approved_at: new Date('2026-03-20T04:05:06.000Z'),
+      replacement_schedule_id: 'schedule_old_replacement',
+      updated_at: new Date('2026-03-21T07:08:09.000Z'),
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          reason: '患者都合で変更',
+          reason_code: 'patient_request',
+          communication_channel: 'phone',
+          communication_result: 'pending',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'schedule_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(visitScheduleProposalUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        reschedule_source_schedule_id: 'schedule_1',
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+        finalized_schedule_id: null,
+      },
+      data: {
+        proposal_status: 'superseded',
+      },
+    });
+    expect(visitScheduleOverrideUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'override_cancelled' },
+      data: expect.objectContaining({
+        status: 'pending',
+        reason: '患者都合で変更',
+        requested_by: 'user_1',
+        approved_by: null,
+        approved_at: null,
+        replacement_schedule_id: null,
+        impact_summary: expect.objectContaining({
+          request_intent_key: expect.stringMatching(/^visit-reschedule:v1:[a-f0-9]{64}$/),
+          proposed_replacements: 1,
+        }),
+        after_snapshot: [
+          expect.objectContaining({
+            proposal_id: 'proposal_1',
+          }),
+        ],
+      }),
+    });
+    expect(visitScheduleOverrideCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'visit_schedule_reschedule_requested',
+        changes: expect.objectContaining({
+          superseded_previous_reschedule_proposal_count: 1,
+          reused_cancelled_override: {
+            id: 'override_cancelled',
+            previous_status: 'cancelled',
+            previous_requested_by: 'old_user',
+            previous_requested_at: '2026-03-20T01:02:03.000Z',
+            previous_approved_by: 'old_admin',
+            previous_approved_at: '2026-03-20T04:05:06.000Z',
+            previous_replacement_schedule_id: 'schedule_old_replacement',
+            previous_updated_at: '2026-03-21T07:08:09.000Z',
+          },
+        }),
+      }),
+    });
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        dedupeKey: 'visit-reschedule-approval:schedule_1',
+      }),
+    );
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: { source: 'visit_schedules_reschedule_request', schedule_id: 'schedule_1' },
+    });
   });
 
   it('returns conflict without durable side effects when the source schedule changes during reschedule request', async () => {

@@ -35,6 +35,7 @@ import { validateOrgReferences } from '@/lib/api/org-reference';
 import { updateVisitScheduleSchema, type ScheduleStatus } from '@/lib/validations/visit-schedule';
 import { findVisitRouteOrderConflict } from '@/lib/visits/route-order-conflicts';
 import { prisma } from '@/lib/db/client';
+import { resolveOperationalTasks } from '@/server/services/operational-tasks';
 import { validateScheduleTimeStringsFitShift } from '@/server/services/visit-schedule-shift';
 import {
   findVisitScheduleTimeConflict,
@@ -877,6 +878,11 @@ async function authenticatedDELETE(
               },
             })
           : { count: 0 };
+      const cancelledApprovalTasks = (await resolveOperationalTasks(tx, {
+        orgId: ctx.orgId,
+        dedupeKey: `visit-reschedule-approval:${id}`,
+        status: 'cancelled',
+      })) as { count?: number };
       const supersededRescheduleProposals = await tx.visitScheduleProposal.updateMany({
         where: {
           org_id: ctx.orgId,
@@ -901,6 +907,7 @@ async function authenticatedDELETE(
           reason_note: reasonNote,
           cancelled_override_ids: cancelledOverrideIds,
           cancelled_override_count: cancelledOverrides.count,
+          cancelled_reschedule_approval_task_count: cancelledApprovalTasks.count ?? null,
           superseded_reschedule_proposal_count: supersededRescheduleProposals.count,
         },
       });

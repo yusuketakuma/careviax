@@ -118,7 +118,13 @@ async function withSerializableRescheduleCreateTransaction<T>(
   throw new VisitRescheduleCreateRetryLimitError();
 }
 
-type RescheduleSourceSchedule = {
+type SchedulingPreferenceRecord = {
+  visit_before_contact_required: boolean | null;
+  mcs_linked: boolean | null;
+  primary_contact_preference: string | null;
+};
+
+type RescheduleScheduleBase = {
   id: string;
   case_id: string;
   cycle_id: string | null;
@@ -138,17 +144,60 @@ type RescheduleSourceSchedule = {
   version: number;
   case_: {
     patient_id: string;
+  };
+};
+
+type RescheduleSourceSchedule = RescheduleScheduleBase & {
+  case_: RescheduleScheduleBase['case_'] & {
+    required_visit_support: unknown;
     patient: {
-      name: string;
+      scheduling_preference: SchedulingPreferenceRecord | null;
     };
   };
 };
 
-type ImpactedSchedule = RescheduleSourceSchedule & {
+type ImpactedSchedule = RescheduleScheduleBase & {
   override_request: {
     id: string;
     status: 'pending' | 'completed' | 'cancelled';
+    requested_by: string | null;
+    requested_at: Date | null;
+    approved_by: string | null;
+    approved_at: Date | null;
+    replacement_schedule_id: string | null;
+    updated_at: Date | null;
   } | null;
+};
+
+type ExistingRescheduleOverride = ImpactedSchedule['override_request'];
+
+type ReusedCancelledOverrideAudit = {
+  id: string;
+  previous_status: 'cancelled';
+  previous_requested_by: string | null;
+  previous_requested_at: string | null;
+  previous_approved_by: string | null;
+  previous_approved_at: string | null;
+  previous_replacement_schedule_id: string | null;
+  previous_updated_at: string | null;
+};
+
+type ReusedCancelledImpactedOverrideAudit = ReusedCancelledOverrideAudit & {
+  schedule_id: string;
+  patient_id: string;
+  proposal_ids: string[];
+};
+
+type PendingRescheduleOverrideData = {
+  org_id: string;
+  source_schedule_id: string;
+  status: 'pending';
+  reason: string;
+  requested_by: string;
+  requested_at: Date;
+  before_snapshot: Prisma.InputJsonValue;
+  impact_summary: Prisma.InputJsonValue;
+  after_snapshot: Prisma.InputJsonValue;
 };
 
 function toTimeString(value: Date | null) {
@@ -242,6 +291,53 @@ function impactSummaryHasRequestIntent(impactSummary: Prisma.JsonValue, requestI
     !Array.isArray(impactSummary) &&
     (impactSummary as { request_intent_key?: unknown }).request_intent_key === requestIntentKey
   );
+}
+
+function toAuditIsoDate(value: Date | null | undefined) {
+  return value?.toISOString() ?? null;
+}
+
+async function writePendingRescheduleOverride(
+  tx: Prisma.TransactionClient,
+  existingOverride: ExistingRescheduleOverride,
+  data: PendingRescheduleOverrideData,
+) {
+  if (existingOverride && existingOverride.status !== 'cancelled') {
+    return { error: 'existing_override' as const };
+  }
+
+  if (existingOverride?.status === 'cancelled') {
+    const reusedCancelledOverride: ReusedCancelledOverrideAudit = {
+      id: existingOverride.id,
+      previous_status: 'cancelled',
+      previous_requested_by: existingOverride.requested_by ?? null,
+      previous_requested_at: toAuditIsoDate(existingOverride.requested_at),
+      previous_approved_by: existingOverride.approved_by ?? null,
+      previous_approved_at: toAuditIsoDate(existingOverride.approved_at),
+      previous_replacement_schedule_id: existingOverride.replacement_schedule_id ?? null,
+      previous_updated_at: toAuditIsoDate(existingOverride.updated_at),
+    };
+
+    await tx.visitScheduleOverride.update({
+      where: { id: existingOverride.id },
+      data: {
+        status: data.status,
+        reason: data.reason,
+        requested_by: data.requested_by,
+        requested_at: data.requested_at,
+        approved_by: null,
+        approved_at: null,
+        replacement_schedule_id: null,
+        before_snapshot: data.before_snapshot,
+        impact_summary: data.impact_summary,
+        after_snapshot: data.after_snapshot,
+      },
+    });
+    return { reusedCancelledOverride };
+  }
+
+  await tx.visitScheduleOverride.create({ data });
+  return { reusedCancelledOverride: null };
 }
 
 async function loadExistingPendingReschedule(args: {
@@ -376,7 +472,6 @@ const authenticatedPOST = async (
           required_visit_support: true,
           patient: {
             select: {
-              name: true,
               scheduling_preference: {
                 select: {
                   visit_before_contact_required: true,
@@ -389,20 +484,7 @@ const authenticatedPOST = async (
         },
       },
     },
-  })) as
-    | (RescheduleSourceSchedule & {
-        case_: RescheduleSourceSchedule['case_'] & {
-          required_visit_support: unknown;
-          patient: RescheduleSourceSchedule['case_']['patient'] & {
-            scheduling_preference: {
-              visit_before_contact_required: boolean | null;
-              mcs_linked: boolean | null;
-              primary_contact_preference: string | null;
-            } | null;
-          };
-        };
-      })
-    | null;
+  })) as RescheduleSourceSchedule | null;
   if (!schedule) return notFound('訪問予定が見つかりません');
 
   // Build scheduling preference context from structured fields + JSON intake
@@ -545,9 +627,15 @@ const authenticatedPOST = async (
         select: {
           id: true,
           status: true,
+          requested_by: true,
+          requested_at: true,
+          approved_by: true,
+          approved_at: true,
+          replacement_schedule_id: true,
+          updated_at: true,
         },
       });
-      if (existingOverride) {
+      if (existingOverride && existingOverride.status !== 'cancelled') {
         return { error: 'existing_override' as const };
       }
 
@@ -566,6 +654,23 @@ const authenticatedPOST = async (
       if (sourceClaim.count !== 1) {
         return { error: 'source_schedule_state_changed' as const };
       }
+
+      const supersededPreviousSourceProposals =
+        existingOverride?.status === 'cancelled'
+          ? await tx.visitScheduleProposal.updateMany({
+              where: {
+                org_id: ctx.orgId,
+                reschedule_source_schedule_id: schedule.id,
+                proposal_status: {
+                  in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+                },
+                finalized_schedule_id: null,
+              },
+              data: {
+                proposal_status: 'superseded',
+              },
+            })
+          : { count: 0 };
 
       let impactedScheduleCount = await tx.visitSchedule.count({
         where: {
@@ -597,16 +702,18 @@ const authenticatedPOST = async (
 
       const autoRescheduleSummary: Array<{
         schedule_id: string;
-        patient_name: string;
+        patient_id: string;
         route_order: number | null;
         status:
           | 'proposed'
           | 'skipped_existing_override'
           | 'skipped_workflow_gate'
-          | 'skipped_no_slot';
+          | 'skipped_no_slot'
+          | 'skipped_state_changed';
         proposal_ids: string[];
         reason?: string;
       }> = [];
+      const reusedCancelledImpactedOverrides: ReusedCancelledImpactedOverrideAudit[] = [];
 
       if (parsed.data.reason_code === 'emergency_insert') {
         const impactedSchedules = (await tx.visitSchedule.findMany({
@@ -637,20 +744,22 @@ const authenticatedPOST = async (
             schedule_status: true,
             confirmed_at: true,
             confirmed_by: true,
+            version: true,
             override_request: {
               select: {
                 id: true,
                 status: true,
+                requested_by: true,
+                requested_at: true,
+                approved_by: true,
+                approved_at: true,
+                replacement_schedule_id: true,
+                updated_at: true,
               },
             },
             case_: {
               select: {
                 patient_id: true,
-                patient: {
-                  select: {
-                    name: true,
-                  },
-                },
               },
             },
           },
@@ -665,10 +774,13 @@ const authenticatedPOST = async (
         impactedScheduleCount = impactedCandidates.length;
 
         for (const impactedSchedule of impactedCandidates) {
-          if (impactedSchedule.override_request) {
+          if (
+            impactedSchedule.override_request &&
+            impactedSchedule.override_request.status !== 'cancelled'
+          ) {
             autoRescheduleSummary.push({
               schedule_id: impactedSchedule.id,
-              patient_name: impactedSchedule.case_.patient.name,
+              patient_id: impactedSchedule.case_.patient_id,
               route_order: impactedSchedule.route_order,
               status: 'skipped_existing_override',
               proposal_ids: [],
@@ -698,7 +810,7 @@ const authenticatedPOST = async (
             if (error instanceof Error && error.message.startsWith('VISIT_WORKFLOW_GATE:')) {
               autoRescheduleSummary.push({
                 schedule_id: impactedSchedule.id,
-                patient_name: impactedSchedule.case_.patient.name,
+                patient_id: impactedSchedule.case_.patient_id,
                 route_order: impactedSchedule.route_order,
                 status: 'skipped_workflow_gate',
                 proposal_ids: [],
@@ -717,11 +829,35 @@ const authenticatedPOST = async (
           if (impactedDrafts.length === 0) {
             autoRescheduleSummary.push({
               schedule_id: impactedSchedule.id,
-              patient_name: impactedSchedule.case_.patient.name,
+              patient_id: impactedSchedule.case_.patient_id,
               route_order: impactedSchedule.route_order,
               status: 'skipped_no_slot',
               proposal_ids: [],
               reason: '代替候補の空き枠を見つけられませんでした',
+            });
+            continue;
+          }
+
+          const impactedClaim = await tx.visitSchedule.updateMany({
+            where: {
+              id: impactedSchedule.id,
+              org_id: ctx.orgId,
+              version: impactedSchedule.version,
+              schedule_status: { in: [...RESCHEDULE_CREATABLE_SOURCE_STATUSES] },
+              ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+            },
+            data: {
+              version: { increment: 1 },
+            },
+          });
+          if (impactedClaim.count !== 1) {
+            autoRescheduleSummary.push({
+              schedule_id: impactedSchedule.id,
+              patient_id: impactedSchedule.case_.patient_id,
+              route_order: impactedSchedule.route_order,
+              status: 'skipped_state_changed',
+              proposal_ids: [],
+              reason: '訪問予定が同時に更新または取消されたため自動再提案をスキップ',
             });
             continue;
           }
@@ -749,18 +885,20 @@ const authenticatedPOST = async (
               tx.visitScheduleProposal.create({
                 data: {
                   ...draft,
-                  proposal_reason: `${draft.proposal_reason} / 緊急割込影響: ${schedule.case_.patient.name} の差込対応`,
+                  proposal_reason: `${draft.proposal_reason} / 緊急割込影響: 予定 ${schedule.id} の差込対応`,
                 },
               }),
             ),
           );
 
-          await tx.visitScheduleOverride.create({
-            data: {
+          const impactedOverrideResult = await writePendingRescheduleOverride(
+            tx,
+            impactedSchedule.override_request,
+            {
               org_id: ctx.orgId,
               source_schedule_id: impactedSchedule.id,
               status: 'pending',
-              reason: `緊急訪問割込みの影響で再調整が必要です（差込患者: ${schedule.case_.patient.name}）`,
+              reason: `緊急訪問割込みの影響で再調整が必要です（差込予定ID: ${schedule.id}）`,
               requested_by: ctx.userId,
               requested_at: requestedAt,
               before_snapshot: buildVisitScheduleSnapshot({
@@ -770,7 +908,6 @@ const authenticatedPOST = async (
               impact_summary: {
                 impacted_by_schedule_id: schedule.id,
                 impacted_by_patient_id: schedule.case_.patient_id,
-                impacted_by_patient_name: schedule.case_.patient.name,
                 proposal_ids: createdImpactProposals.map((proposal) => proposal.id),
                 reason_code: parsed.data.reason_code,
               },
@@ -783,11 +920,30 @@ const authenticatedPOST = async (
                 vehicle_resource_id: proposal.vehicle_resource_id ?? null,
               })),
             },
-          });
+          );
+          if ('error' in impactedOverrideResult) {
+            autoRescheduleSummary.push({
+              schedule_id: impactedSchedule.id,
+              patient_id: impactedSchedule.case_.patient_id,
+              route_order: impactedSchedule.route_order,
+              status: 'skipped_existing_override',
+              proposal_ids: [],
+              reason: '既存の変更承認待ちがあるため自動再提案をスキップ',
+            });
+            continue;
+          }
+          if (impactedOverrideResult.reusedCancelledOverride) {
+            reusedCancelledImpactedOverrides.push({
+              ...impactedOverrideResult.reusedCancelledOverride,
+              schedule_id: impactedSchedule.id,
+              patient_id: impactedSchedule.case_.patient_id,
+              proposal_ids: createdImpactProposals.map((proposal) => proposal.id),
+            });
+          }
 
           autoRescheduleSummary.push({
             schedule_id: impactedSchedule.id,
-            patient_name: impactedSchedule.case_.patient.name,
+            patient_id: impactedSchedule.case_.patient_id,
             route_order: impactedSchedule.route_order,
             status: 'proposed',
             proposal_ids: createdImpactProposals.map((proposal) => proposal.id),
@@ -846,45 +1002,47 @@ const authenticatedPOST = async (
         schedulingPreference,
       });
 
-      await tx.visitScheduleOverride.create({
-        data: {
-          org_id: ctx.orgId,
-          source_schedule_id: schedule.id,
-          status: 'pending',
-          reason: parsed.data.reason,
-          requested_by: ctx.userId,
-          requested_at: requestedAt,
-          before_snapshot: buildVisitScheduleSnapshot({
-            ...schedule,
-            confirmed_by: schedule.confirmed_by ?? null,
-          }),
-          impact_summary: {
-            impacted_schedule_count: impactedScheduleCount,
-            proposed_replacements:
-              createdProposals.length +
-              autoRescheduleSummary.reduce((sum, item) => sum + item.proposal_ids.length, 0),
-            pharmacist_id: schedule.pharmacist_id,
-            preferred_pharmacist_id: preferredPharmacistId ?? null,
-            requested_vehicle_resource_id: requestedVehicleResourceId ?? null,
-            current_vehicle_resource_id: schedule.vehicle_resource_id,
-            vehicle_reassignment_mode: vehicleReassignmentMode,
-            reason_code: parsed.data.reason_code,
-            communication_channel: parsed.data.communication_channel,
-            communication_result: parsed.data.communication_result,
-            impacted_patient_names: autoRescheduleSummary.map((item) => item.patient_name),
-            auto_reschedule_summary: autoRescheduleSummary,
-            request_intent_key: requestIntentKey,
-          },
-          after_snapshot: createdProposals.map((proposal) => ({
-            proposal_id: proposal.id,
-            proposed_date: proposal.proposed_date.toISOString(),
-            time_window_start: proposal.time_window_start?.toISOString() ?? null,
-            time_window_end: proposal.time_window_end?.toISOString() ?? null,
-            proposed_pharmacist_id: proposal.proposed_pharmacist_id,
-            vehicle_resource_id: proposal.vehicle_resource_id ?? null,
-          })),
+      const sourceOverrideResult = await writePendingRescheduleOverride(tx, existingOverride, {
+        org_id: ctx.orgId,
+        source_schedule_id: schedule.id,
+        status: 'pending',
+        reason: parsed.data.reason,
+        requested_by: ctx.userId,
+        requested_at: requestedAt,
+        before_snapshot: buildVisitScheduleSnapshot({
+          ...schedule,
+          confirmed_by: schedule.confirmed_by ?? null,
+        }),
+        impact_summary: {
+          impacted_schedule_count: impactedScheduleCount,
+          proposed_replacements:
+            createdProposals.length +
+            autoRescheduleSummary.reduce((sum, item) => sum + item.proposal_ids.length, 0),
+          pharmacist_id: schedule.pharmacist_id,
+          preferred_pharmacist_id: preferredPharmacistId ?? null,
+          requested_vehicle_resource_id: requestedVehicleResourceId ?? null,
+          current_vehicle_resource_id: schedule.vehicle_resource_id,
+          vehicle_reassignment_mode: vehicleReassignmentMode,
+          reason_code: parsed.data.reason_code,
+          communication_channel: parsed.data.communication_channel,
+          communication_result: parsed.data.communication_result,
+          impacted_patient_ids: autoRescheduleSummary.map((item) => item.patient_id),
+          auto_reschedule_summary: autoRescheduleSummary,
+          request_intent_key: requestIntentKey,
         },
+        after_snapshot: createdProposals.map((proposal) => ({
+          proposal_id: proposal.id,
+          proposed_date: proposal.proposed_date.toISOString(),
+          time_window_start: proposal.time_window_start?.toISOString() ?? null,
+          time_window_end: proposal.time_window_end?.toISOString() ?? null,
+          proposed_pharmacist_id: proposal.proposed_pharmacist_id,
+          vehicle_resource_id: proposal.vehicle_resource_id ?? null,
+        })),
       });
+      if ('error' in sourceOverrideResult) {
+        return { error: 'existing_override' as const };
+      }
+      const reusedCancelledOverride = sourceOverrideResult.reusedCancelledOverride;
 
       // HVI-01F: SLA due date — prefer pharmacy_decision_due_date from intake when it falls
       // before the scheduled visit date, otherwise fall back to the scheduled date itself.
@@ -1054,6 +1212,17 @@ const authenticatedPOST = async (
           requested_vehicle_resource_id: requestedVehicleResourceId ?? null,
           current_vehicle_resource_id: schedule.vehicle_resource_id,
           vehicle_reassignment_mode: vehicleReassignmentMode,
+          superseded_previous_reschedule_proposal_count: supersededPreviousSourceProposals.count,
+          ...(reusedCancelledOverride
+            ? {
+                reused_cancelled_override: reusedCancelledOverride,
+              }
+            : {}),
+          ...(reusedCancelledImpactedOverrides.length > 0
+            ? {
+                reused_cancelled_impacted_overrides: reusedCancelledImpactedOverrides,
+              }
+            : {}),
         },
       });
 
