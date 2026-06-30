@@ -118,6 +118,51 @@ describe('describeOperationalTask', () => {
     ).toBe(`/prescriptions/${encodeURIComponent(intakeId)}`);
   });
 
+  it.each([
+    'visit_demand',
+    'visit_contact_followup',
+    'visit_preparation',
+    'visit_schedule_override_approval',
+    'facility_batch_tracker',
+    'mobile_visit_mode',
+    'visit_carry_item_review',
+  ])('focuses %s tasks on the related visit schedule', (taskType) => {
+    const scheduleId = '../schedule with space?x=1#frag';
+
+    expect(
+      describeOperationalTask({
+        task_type: taskType,
+        related_entity_type: 'visit_schedule',
+        related_entity_id: scheduleId,
+      }).actionHref,
+    ).toBe(`/schedules?focus=schedule&schedule_id=${encodeURIComponent(scheduleId)}`);
+  });
+
+  it.each(['visit_demand', 'visit_contact_followup', 'visit_schedule_override_approval'])(
+    'focuses %s tasks on the related visit schedule proposal',
+    (taskType) => {
+      const proposalId = '../proposal with space?x=1#frag';
+
+      expect(
+        describeOperationalTask({
+          task_type: taskType,
+          related_entity_type: 'visit_schedule_proposal',
+          related_entity_id: proposalId,
+        }).actionHref,
+      ).toBe(`/schedules/proposals?detail=${encodeURIComponent(proposalId)}`);
+    },
+  );
+
+  it('falls back schedule-related visit tasks to the matching task queue when no schedule entity is known', () => {
+    expect(
+      describeOperationalTask({
+        task_type: 'visit_preparation',
+        related_entity_type: null,
+        related_entity_id: null,
+      }).actionHref,
+    ).toBe('/tasks?status=&task_type=visit_preparation');
+  });
+
   it('focuses self-report and community follow-up tasks on the external work queues', () => {
     expect(
       describeOperationalTask({

@@ -8,7 +8,10 @@ import {
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
-import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
+import {
+  buildScheduleFocusHref,
+  buildScheduleProposalDetailHref,
+} from '@/lib/schedules/navigation';
 import { buildVisitHref } from '@/lib/visits/navigation';
 
 export type OperationalTaskPresentation = {
@@ -33,6 +36,19 @@ function buildRelatedTaskQueueHref(
     relatedEntityType: task.related_entity_type ?? undefined,
     relatedEntityId: task.related_entity_id ?? undefined,
   });
+}
+
+function buildScheduleRelatedTaskHref(
+  taskType: string,
+  task: OperationalTaskPresentationInput,
+): string {
+  if (task.related_entity_type === 'visit_schedule' && task.related_entity_id) {
+    return buildScheduleFocusHref(task.related_entity_id);
+  }
+  if (task.related_entity_type === 'visit_schedule_proposal' && task.related_entity_id) {
+    return buildScheduleProposalDetailHref(task.related_entity_id);
+  }
+  return buildRelatedTaskQueueHref(taskType, task);
 }
 
 export function describeOperationalTask(
@@ -65,19 +81,19 @@ export function describeOperationalTask(
       };
     case 'visit_demand':
       return {
-        actionHref: '/schedules',
+        actionHref: buildScheduleRelatedTaskHref('visit_demand', task),
         actionLabel: '候補を確認',
         queueLabel: '訪問候補',
       };
     case 'visit_contact_followup':
       return {
-        actionHref: '/schedules',
+        actionHref: buildScheduleRelatedTaskHref('visit_contact_followup', task),
         actionLabel: '架電を再開',
         queueLabel: '架電',
       };
     case 'visit_preparation':
       return {
-        actionHref: '/schedules',
+        actionHref: buildScheduleRelatedTaskHref('visit_preparation', task),
         actionLabel: '準備を完了',
         queueLabel: '訪問準備',
       };
@@ -116,7 +132,7 @@ export function describeOperationalTask(
       };
     case 'visit_schedule_override_approval':
       return {
-        actionHref: '/schedules',
+        actionHref: buildScheduleRelatedTaskHref('visit_schedule_override_approval', task),
         actionLabel: '変更承認',
         queueLabel: '例外変更',
       };
@@ -164,13 +180,13 @@ export function describeOperationalTask(
       };
     case 'facility_batch_tracker':
       return {
-        actionHref: '/schedules',
+        actionHref: buildScheduleRelatedTaskHref('facility_batch_tracker', task),
         actionLabel: '施設訪問を確認',
         queueLabel: '施設訪問',
       };
     case 'mobile_visit_mode':
       return {
-        actionHref: '/schedules',
+        actionHref: buildScheduleRelatedTaskHref('mobile_visit_mode', task),
         actionLabel: '同期状況を確認',
         queueLabel: 'モバイル',
       };
@@ -263,7 +279,7 @@ export function describeOperationalTask(
       };
     case 'visit_carry_item_review':
       return {
-        actionHref: '/schedules',
+        actionHref: buildScheduleRelatedTaskHref('visit_carry_item_review', task),
         actionLabel: '持参物を確認',
         queueLabel: '持参物',
       };

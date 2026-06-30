@@ -25056,3 +25056,30 @@ Next loop:
 - Remaining:
   - The broad visit/report/interprofessional collaboration goal remains open.
   - Remaining clean candidates include operational-task-presentation schedule/proposal routing and conferences single-draft CTA; avoid dirty operating-hours/patient/visit-route files.
+
+### Operational Visit Task Focused Links - 2026-06-30 18:02 JST
+
+- Scope:
+  - Continued visit-time task navigation hardening in `describeOperationalTask`.
+  - Focused on visit-demand, contact follow-up, preparation, override approval, facility batch, mobile visit mode, and carry-item review task types that had schedule/proposal context but still routed to the broad schedules hub.
+- Fixed:
+  - Added `buildScheduleRelatedTaskHref` to route `visit_schedule` entities to `buildScheduleFocusHref`.
+  - Added `visit_schedule_proposal` support through `buildScheduleProposalDetailHref`.
+  - Schedule-related visit task types now fall back to the matching task queue when no concrete schedule/proposal entity is available.
+  - Added regression coverage for hostile schedule IDs, hostile proposal IDs, and the no-entity task-queue fallback.
+- Safety:
+  - Reduces wrong-schedule/wrong-proposal navigation risk for visit-time operational task queues.
+  - Keeps query encoding centralized in existing schedule and task helpers.
+  - No auth/RLS policy, permission, PHI export, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - No new query, network call, dependency, background job, broad scan, unbounded loop, or render-heavy path was added.
+- Validation:
+  - `pnpm exec prettier --write src/lib/tasks/operational-task-presentation.ts src/lib/tasks/operational-task-presentation.test.ts`: passed.
+  - `pnpm exec vitest run src/lib/tasks/operational-task-presentation.test.ts src/lib/schedules/navigation.test.ts src/lib/dashboard/home-link-builders.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `41` tests.
+  - Scoped ESLint on operational task presentation plus schedule/home link helpers: passed.
+  - Scoped Prettier check and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - The broad visit/report/interprofessional collaboration goal remains open.
+  - Remaining clean candidate from Mapper: conferences single-draft CTA to report detail; dirty operating-hours/patient/visit-route files remain out of scope.
