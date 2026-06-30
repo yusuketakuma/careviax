@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { Prisma } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -36,7 +36,14 @@ import {
   loadVisitScheduleBillingGuardRows,
   validateVisitScheduleBlockingBillingRequirements,
 } from '@/server/services/visit-schedule-billing-guard';
+import { createRoadTravelEstimator } from '@/server/services/road-routing';
+import { buildVehicleRoutePoint } from '@/server/services/visit-schedule-service';
+import {
+  estimateVehicleRouteDurationWithCandidate,
+  type VehicleRouteDurationPoint,
+} from '@/server/services/visit-schedule-planner';
 import type { BillingCadenceScheduleRow } from '@/server/services/billing-requirement-validator';
+import type { VisitRouteTravelMode } from '@/types/visit-route';
 
 // Insurance visit frequency limits: medical=4/month, care=2/month
 const MONTHLY_LIMITS: Record<string, number> = {
@@ -191,6 +198,37 @@ type ScheduleLimitInsuranceDb = {
   };
 };
 
+type GeneratedVisitVehicleValidationDb =
+  | Pick<PrismaClient, 'visitSchedule' | 'visitVehicleResource'>
+  | Pick<Prisma.TransactionClient, 'visitSchedule' | 'visitVehicleResource'>;
+
+type GeneratedVisitVehicleRoutePointSource = {
+  address: string | null;
+  lat: number | null;
+  lng: number | null;
+};
+
+type GeneratedVisitVehicleResource = {
+  id: string;
+  site_id: string | null;
+  label: string;
+  max_stops: number | null;
+  max_route_duration_minutes: number | null;
+  travel_mode: VisitRouteTravelMode;
+  site: GeneratedVisitVehicleRoutePointSource | null;
+};
+
+type GeneratedVisitVehicleScheduleRow = {
+  scheduled_date: Date;
+  route_order: number | null;
+  time_window_start: Date | null;
+  case_: {
+    patient: {
+      residences: GeneratedVisitVehicleRoutePointSource[];
+    };
+  };
+};
+
 type GeneratedVisitShift = {
   date: Date;
   site_id: string | null;
@@ -277,12 +315,16 @@ async function resolveScheduleLimitInsuranceTypes(args: {
 }
 
 async function validateGeneratedVisitVehicleResource(args: {
+  db?: GeneratedVisitVehicleValidationDb;
   orgId: string;
   vehicleResourceId: string;
   candidateDates: Date[];
   shiftByDate: Map<string, GeneratedVisitShift>;
+  candidateResidence: GeneratedVisitVehicleRoutePointSource | null;
+  timeWindowStart: Date | null;
 }) {
-  const vehicleResource = await prisma.visitVehicleResource.findFirst({
+  const db = args.db ?? prisma;
+  const vehicleResource = (await db.visitVehicleResource.findFirst({
     where: {
       org_id: args.orgId,
       id: args.vehicleResourceId,
@@ -293,8 +335,17 @@ async function validateGeneratedVisitVehicleResource(args: {
       site_id: true,
       label: true,
       max_stops: true,
+      max_route_duration_minutes: true,
+      travel_mode: true,
+      site: {
+        select: {
+          address: true,
+          lat: true,
+          lng: true,
+        },
+      },
     },
-  });
+  })) as GeneratedVisitVehicleResource | null;
   if (!vehicleResource) {
     return validationError('選択した車両リソースが見つからないか利用できません');
   }
@@ -309,9 +360,11 @@ async function validateGeneratedVisitVehicleResource(args: {
     }
   }
 
-  if (vehicleResource.max_stops == null) return null;
+  if (vehicleResource.max_stops == null && vehicleResource.max_route_duration_minutes == null) {
+    return null;
+  }
 
-  const existingSchedules = await prisma.visitSchedule.findMany({
+  const existingSchedules = (await db.visitSchedule.findMany({
     where: {
       org_id: args.orgId,
       vehicle_resource_id: args.vehicleResourceId,
@@ -322,25 +375,115 @@ async function validateGeneratedVisitVehicleResource(args: {
     },
     select: {
       scheduled_date: true,
+      route_order: true,
+      time_window_start: true,
+      case_: {
+        select: {
+          patient: {
+            select: {
+              residences: {
+                where: { is_primary: true },
+                take: 1,
+                select: {
+                  address: true,
+                  lat: true,
+                  lng: true,
+                },
+              },
+            },
+          },
+        },
+      },
     },
-  });
+  })) as GeneratedVisitVehicleScheduleRow[];
   const countByDate = new Map<string, number>();
   for (const schedule of existingSchedules) {
     const dateKey = buildDateKey(schedule.scheduled_date);
     countByDate.set(dateKey, (countByDate.get(dateKey) ?? 0) + 1);
   }
-  for (const candidateDate of args.candidateDates) {
-    const dateKey = buildDateKey(candidateDate);
-    const nextCount = (countByDate.get(dateKey) ?? 0) + 1;
-    countByDate.set(dateKey, nextCount);
-    if (nextCount > vehicleResource.max_stops) {
+  if (vehicleResource.max_stops != null) {
+    for (const candidateDate of args.candidateDates) {
+      const dateKey = buildDateKey(candidateDate);
+      const nextCount = (countByDate.get(dateKey) ?? 0) + 1;
+      countByDate.set(dateKey, nextCount);
+      if (nextCount > vehicleResource.max_stops) {
+        return validationError(
+          `${vehicleResource.label} で訪問できる件数は最大 ${vehicleResource.max_stops} 件です`,
+        );
+      }
+    }
+  }
+
+  if (vehicleResource.max_route_duration_minutes != null) {
+    const sitePoint = buildGeneratedVisitVehicleSitePoint(vehicleResource.site);
+    if (!sitePoint) {
       return validationError(
-        `${vehicleResource.label} で訪問できる件数は最大 ${vehicleResource.max_stops} 件です`,
+        `${vehicleResource.label} の稼働上限 ${vehicleResource.max_route_duration_minutes}分を検証できません。訪問拠点の住所座標を整備してください`,
       );
+    }
+
+    const existingPointsByDate = new Map<string, VehicleRouteDurationPoint[]>();
+    for (const schedule of existingSchedules) {
+      const dateKey = buildDateKey(schedule.scheduled_date);
+      const points = existingPointsByDate.get(dateKey) ?? [];
+      points.push(
+        buildVehicleRoutePoint({
+          scheduledDate: schedule.scheduled_date,
+          routeOrder: schedule.route_order,
+          timeWindowStart: schedule.time_window_start,
+          residence: schedule.case_.patient.residences[0] ?? null,
+        }),
+      );
+      existingPointsByDate.set(dateKey, points);
+    }
+
+    const generatedPointsByDate = new Map<string, VehicleRouteDurationPoint[]>();
+    const estimateRoadTravel = createRoadTravelEstimator(vehicleResource.travel_mode);
+    for (const candidateDate of args.candidateDates) {
+      const dateKey = buildDateKey(candidateDate);
+      const candidatePoint = buildVehicleRoutePoint({
+        scheduledDate: candidateDate,
+        routeOrder: null,
+        timeWindowStart: args.timeWindowStart,
+        residence: args.candidateResidence,
+      });
+      const generatedPoints = generatedPointsByDate.get(dateKey) ?? [];
+      const estimate = await estimateVehicleRouteDurationWithCandidate(
+        sitePoint,
+        [...(existingPointsByDate.get(dateKey) ?? []), ...generatedPoints],
+        candidatePoint,
+        estimateRoadTravel,
+        vehicleResource.travel_mode,
+      );
+      if (estimate.durationMinutes == null) {
+        return validationError(
+          `${vehicleResource.label} の稼働上限 ${vehicleResource.max_route_duration_minutes}分を検証できません（${estimate.summary}）`,
+        );
+      }
+      if (estimate.durationMinutes > vehicleResource.max_route_duration_minutes) {
+        return validationError(
+          `${vehicleResource.label} の候補追加後の推定稼働時間 ${estimate.durationMinutes.toFixed(1)}分 が上限 ${vehicleResource.max_route_duration_minutes}分を超えます`,
+        );
+      }
+      generatedPoints.push(candidatePoint);
+      generatedPointsByDate.set(dateKey, generatedPoints);
     }
   }
 
   return null;
+}
+
+function buildGeneratedVisitVehicleSitePoint(
+  site: GeneratedVisitVehicleRoutePointSource | null,
+): VehicleRouteDurationPoint | null {
+  if (!site) return null;
+  return {
+    routeOrder: 0,
+    lat: site.lat,
+    lng: site.lng,
+    address: site.address,
+    startsAt: null,
+  };
 }
 
 const authenticatedPOST = withAuthContext(
@@ -418,6 +561,15 @@ const authenticatedPOST = withAuthContext(
         patient: {
           select: {
             scheduling_preference: true,
+            residences: {
+              where: { is_primary: true },
+              take: 1,
+              select: {
+                address: true,
+                lat: true,
+                lng: true,
+              },
+            },
           },
         },
       },
@@ -593,6 +745,9 @@ const authenticatedPOST = withAuthContext(
     const operatingDayViolationByDate = new Map(
       operatingDayViolations.map((violation) => [violation.dateKey, violation]),
     );
+    const generatedTimeWindowStart = mergedTimeWindow.from
+      ? hhmmToTimeDate(mergedTimeWindow.from)
+      : null;
 
     if (vehicle_resource_id) {
       const vehicleValidationError = await validateGeneratedVisitVehicleResource({
@@ -600,6 +755,8 @@ const authenticatedPOST = withAuthContext(
         vehicleResourceId: vehicle_resource_id,
         candidateDates,
         shiftByDate,
+        candidateResidence: careCase.patient.residences[0] ?? null,
+        timeWindowStart: generatedTimeWindowStart,
       });
       if (vehicleValidationError) return vehicleValidationError;
     }
@@ -668,6 +825,24 @@ const authenticatedPOST = withAuthContext(
         return {
           error: 'duplicate_open_proposal' as const,
         };
+      }
+
+      if (vehicle_resource_id) {
+        const vehicleValidationError = await validateGeneratedVisitVehicleResource({
+          db: tx,
+          orgId: ctx.orgId,
+          vehicleResourceId: vehicle_resource_id,
+          candidateDates,
+          shiftByDate,
+          candidateResidence: careCase.patient.residences[0] ?? null,
+          timeWindowStart: generatedTimeWindowStart,
+        });
+        if (vehicleValidationError) {
+          return {
+            error: 'vehicle_resource_invalid' as const,
+            response: vehicleValidationError,
+          };
+        }
       }
 
       const transactionScheduleLimitTypes = await resolveScheduleLimitInsuranceTypes({
@@ -849,6 +1024,9 @@ const authenticatedPOST = withAuthContext(
       }
       if (result.error === 'billing_cap_exceeded') {
         return validationError(result.message);
+      }
+      if (result.error === 'vehicle_resource_invalid') {
+        return result.response;
       }
       return conflict('訪問予定の生成が同時に更新されました。再読み込みしてください');
     }

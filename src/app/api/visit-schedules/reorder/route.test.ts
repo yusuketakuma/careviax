@@ -205,8 +205,32 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     scheduleCountMock.mockResolvedValue(0);
     proposalFindFirstMock.mockResolvedValue(null);
     const vehicles = [
-      { id: 'vehicle_1', site_id: 'site_1', label: '軽バン1号', max_stops: 4 },
-      { id: 'vehicle_2', site_id: 'site_2', label: '軽バン2号', max_stops: 4 },
+      {
+        id: 'vehicle_1',
+        site_id: 'site_1',
+        label: '軽バン1号',
+        max_stops: 4,
+        max_route_duration_minutes: null,
+        travel_mode: 'DRIVE',
+        site: {
+          address: '薬局',
+          lat: 35.681236,
+          lng: 139.767125,
+        },
+      },
+      {
+        id: 'vehicle_2',
+        site_id: 'site_2',
+        label: '軽バン2号',
+        max_stops: 4,
+        max_route_duration_minutes: null,
+        travel_mode: 'DRIVE',
+        site: {
+          address: '別拠点',
+          lat: 35.7,
+          lng: 139.7,
+        },
+      },
     ];
     vehicleFindManyMock.mockImplementation(({ where }: { where: { id?: { in?: string[] } } }) => {
       const ids = where.id?.in ?? vehicles.map((vehicle) => vehicle.id);
@@ -406,6 +430,23 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         schedule_status: true,
         vehicle_resource_id: true,
         version: true,
+        case_: {
+          select: {
+            patient: {
+              select: {
+                residences: {
+                  where: { is_primary: true },
+                  take: 1,
+                  select: {
+                    address: true,
+                    lat: true,
+                    lng: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
     expect(scheduleFindFirstMock).not.toHaveBeenCalled();
@@ -996,6 +1037,15 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         site_id: true,
         label: true,
         max_stops: true,
+        max_route_duration_minutes: true,
+        travel_mode: true,
+        site: {
+          select: {
+            address: true,
+            lat: true,
+            lng: true,
+          },
+        },
       },
     });
     expect(scheduleFindManyMock).toHaveBeenCalledWith({
@@ -1009,6 +1059,25 @@ describe('/api/visit-schedules/reorder PATCH', () => {
       select: {
         vehicle_resource_id: true,
         scheduled_date: true,
+        route_order: true,
+        time_window_start: true,
+        case_: {
+          select: {
+            patient: {
+              select: {
+                residences: {
+                  where: { is_primary: true },
+                  take: 1,
+                  select: {
+                    address: true,
+                    lat: true,
+                    lng: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
     expect(scheduleCountMock).not.toHaveBeenCalled();
@@ -1143,6 +1212,25 @@ describe('/api/visit-schedules/reorder PATCH', () => {
       select: {
         vehicle_resource_id: true,
         scheduled_date: true,
+        route_order: true,
+        time_window_start: true,
+        case_: {
+          select: {
+            patient: {
+              select: {
+                residences: {
+                  where: { is_primary: true },
+                  take: 1,
+                  select: {
+                    address: true,
+                    lat: true,
+                    lng: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
     expect(scheduleCountMock).not.toHaveBeenCalled();
@@ -1150,7 +1238,19 @@ describe('/api/visit-schedules/reorder PATCH', () => {
 
   it('rejects route adoption when recommended vehicle capacity would be exceeded', async () => {
     vehicleFindManyMock.mockResolvedValueOnce([
-      { id: 'vehicle_1', site_id: 'site_1', label: '軽バン1号', max_stops: 2 },
+      {
+        id: 'vehicle_1',
+        site_id: 'site_1',
+        label: '軽バン1号',
+        max_stops: 2,
+        max_route_duration_minutes: null,
+        travel_mode: 'DRIVE',
+        site: {
+          address: '薬局',
+          lat: 35.681236,
+          lng: 139.767125,
+        },
+      },
     ]);
     scheduleFindManyMock.mockImplementation(({ where }: { where: { id?: { in?: string[] } } }) => {
       if (!where.id?.in) {
@@ -1211,6 +1311,105 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       message: '軽バン1号 で訪問できる件数は最大 2 件です',
+    });
+    expectNoWriteAuditOrNotify();
+  });
+
+  it('rejects route adoption when recommended vehicle route duration would be exceeded', async () => {
+    vehicleFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'vehicle_1',
+        site_id: 'site_1',
+        label: '軽バン1号',
+        max_stops: 8,
+        max_route_duration_minutes: 30,
+        travel_mode: 'DRIVE',
+        site: {
+          address: '薬局',
+          lat: 35.681236,
+          lng: 139.767125,
+        },
+      },
+    ]);
+    scheduleFindManyMock.mockImplementation(
+      ({
+        where,
+      }: {
+        where: { id?: { in?: string[] }; vehicle_resource_id?: { in?: string[] } };
+      }) => {
+        if (where.vehicle_resource_id?.in) return Promise.resolve([]);
+        return Promise.resolve([
+          {
+            id: 'schedule_1',
+            case_id: 'case_1',
+            pharmacist_id: 'pharmacist_1',
+            scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+            time_window_start: new Date('1970-01-01T09:00:00.000Z'),
+            time_window_end: new Date('1970-01-01T10:00:00.000Z'),
+            confirmed_at: null,
+            route_order: 1,
+            site_id: 'site_1',
+            schedule_status: 'planned',
+            vehicle_resource_id: null,
+            version: 1,
+            case_: {
+              patient: {
+                residences: [
+                  {
+                    address: '近隣患者宅',
+                    lat: 35.681236,
+                    lng: 139.78,
+                  },
+                ],
+              },
+            },
+          },
+          {
+            id: 'schedule_2',
+            case_id: 'case_1',
+            pharmacist_id: 'pharmacist_1',
+            scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+            time_window_start: new Date('1970-01-01T10:00:00.000Z'),
+            time_window_end: new Date('1970-01-01T11:00:00.000Z'),
+            confirmed_at: null,
+            route_order: 2,
+            site_id: 'site_1',
+            schedule_status: 'planned',
+            vehicle_resource_id: null,
+            version: 1,
+            case_: {
+              patient: {
+                residences: [
+                  {
+                    address: '遠方患者宅',
+                    lat: 35.681236,
+                    lng: 139.95,
+                  },
+                ],
+              },
+            },
+          },
+        ]);
+      },
+    );
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [
+          { schedule_id: 'schedule_1', route_order: 1 },
+          { schedule_id: 'schedule_2', route_order: 2 },
+        ],
+        vehicle_assignment: {
+          mode: 'assign_if_unassigned',
+          vehicle_resource_id: 'vehicle_1',
+          schedule_ids: ['schedule_1', 'schedule_2'],
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: expect.stringContaining('上限 30分を超えます'),
     });
     expectNoWriteAuditOrNotify();
   });

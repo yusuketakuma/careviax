@@ -26264,3 +26264,32 @@ Next loop:
 - Remaining:
   - The broad schedule-management goal remains open.
   - Continue inspecting route order, reschedule, and route-reorder finalization paths for stale saved-route and persisted vehicle-duration gaps.
+
+### Visit Schedule Reorder Vehicle Duration Enforcement - 2026-06-30 20:40 JST
+
+- Scope:
+  - Continued route-decision hardening for `PATCH /api/visit-schedules/reorder`.
+  - Focused on route adoption and vehicle-assignment save paths that can write `vehicle_resource_id` into schedules.
+- Fixed:
+  - Reorder now selects `max_route_duration_minutes`, `travel_mode`, and vehicle site coordinates for assigned vehicle resources.
+  - Target schedule and existing same-day vehicle schedule reads now include primary residence coordinates and route point fields needed for vehicle-duration estimation.
+  - The existing batched vehicle-capacity read now also supplies route-duration points when a selected vehicle has a route-duration limit.
+  - Reorder/adoption accumulates assigned target schedules per vehicle/date cell and rejects the batch before write if the estimated vehicle route exceeds the persisted limit.
+  - Regression coverage verifies route adoption is rejected before `updateMany`, audit, or notification when the selected vehicle would exceed a 30-minute route-duration limit.
+- Safety:
+  - Reduces unsafe final route adoption risk for patient visit schedules.
+  - Uses only org-scoped schedules, selected vehicle/site coordinates, and primary residence coordinates needed for route estimation.
+  - Existing assignment access, vehicle availability/site checks, stop-count validation, duplicate route-order checks, shift validation, status locks, optimistic guarded writes, audit logging, no-store responses, and workflow notifications remain intact.
+  - No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Reuses the existing batched same-day vehicle schedule lookup for both stop-count and route-duration checks.
+  - Adds route-duration estimation only for selected vehicles that define `max_route_duration_minutes`.
+  - No new dependency, background job, broad scan, unbounded loop, or network requirement was added; local coordinate fallback remains available when no routing provider is configured.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-schedules/generate/route.test.ts src/app/api/visit-schedules/reorder/route.test.ts src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `109` tests.
+  - Scoped Prettier check, scoped ESLint, and scoped `git diff --check` on generate/reorder route files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - The broad schedule-management goal remains open.
+  - Continue reviewing pure route-order changes for already assigned vehicles and proposal finalization/reorder save paths for persisted vehicle-duration and stale route-plan gaps.

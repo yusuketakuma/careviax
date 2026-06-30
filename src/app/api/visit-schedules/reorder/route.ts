@@ -24,6 +24,13 @@ import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import { findVisitRouteOrderConflict } from '@/lib/visits/route-order-conflicts';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { validateScheduleTimeDatesFitShift } from '@/server/services/visit-schedule-shift';
+import { createRoadTravelEstimator } from '@/server/services/road-routing';
+import { buildVehicleRoutePoint } from '@/server/services/visit-schedule-service';
+import {
+  estimateVehicleRouteDurationWithCandidate,
+  type VehicleRouteDurationPoint,
+} from '@/server/services/visit-schedule-planner';
+import type { VisitRouteTravelMode } from '@/types/visit-route';
 
 const VISIT_SCHEDULE_REORDER_SERIALIZABLE_RETRY_LIMIT = 3;
 
@@ -90,14 +97,21 @@ type VisitScheduleReorderError =
   | 'vehicle_site_required'
   | 'vehicle_site_mismatch'
   | 'vehicle_capacity_exceeded'
+  | 'vehicle_route_duration_exceeded'
   | 'vehicle_status_locked'
   | 'vehicle_assignment_target_mismatch'
   | 'vehicle_already_assigned'
   | 'duplicate_route_order';
 type VisitScheduleReorderResult =
-  | { error: Exclude<VisitScheduleReorderError, 'shift_conflict' | 'vehicle_capacity_exceeded'> }
+  | {
+      error: Exclude<
+        VisitScheduleReorderError,
+        'shift_conflict' | 'vehicle_capacity_exceeded' | 'vehicle_route_duration_exceeded'
+      >;
+    }
   | { error: 'shift_conflict'; message: string }
   | { error: 'vehicle_capacity_exceeded'; message: string }
+  | { error: 'vehicle_route_duration_exceeded'; message: string }
   | {
       case_ids: string[];
       schedule_ids: string[];
@@ -136,6 +150,26 @@ function buildAuditConfirmationContext(
 
 function isSerializableTransactionConflict(cause: unknown) {
   return cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
+}
+
+function buildVisitScheduleReorderSitePoint(
+  site:
+    | {
+        address: string | null;
+        lat: number | null;
+        lng: number | null;
+      }
+    | null
+    | undefined,
+): VehicleRouteDurationPoint | null {
+  if (!site) return null;
+  return {
+    routeOrder: 0,
+    lat: site.lat,
+    lng: site.lng,
+    address: site.address,
+    startsAt: null,
+  };
 }
 
 async function withSerializableVisitScheduleReorderTransaction<T>(
@@ -229,6 +263,23 @@ const authenticatedPATCH = withAuthContext(
               schedule_status: true,
               vehicle_resource_id: true,
               version: true,
+              case_: {
+                select: {
+                  patient: {
+                    select: {
+                      residences: {
+                        where: { is_primary: true },
+                        take: 1,
+                        select: {
+                          address: true,
+                          lat: true,
+                          lng: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
             },
           });
 
@@ -483,6 +534,15 @@ const authenticatedPATCH = withAuthContext(
                     site_id: true,
                     label: true,
                     max_stops: true,
+                    max_route_duration_minutes: true,
+                    travel_mode: true,
+                    site: {
+                      select: {
+                        address: true,
+                        lat: true,
+                        lng: true,
+                      },
+                    },
                   },
                 });
           if (vehicleResources.length !== vehicleResourceIds.length) {
@@ -539,9 +599,54 @@ const authenticatedPATCH = withAuthContext(
               assignedUpdateCount: number;
             }
           >();
+          type VehicleUpdateTarget = (typeof vehicleUpdateTargets)[number];
+          const vehicleRouteDurationCells = new Map<
+            string,
+            {
+              vehicleId: string;
+              dateKey: string;
+              label: string;
+              maxRouteDurationMinutes: number;
+              travelMode: VisitRouteTravelMode;
+              site: {
+                address: string | null;
+                lat: number | null;
+                lng: number | null;
+              } | null;
+              assignedTargets: VehicleUpdateTarget[];
+            }
+          >();
           for (const target of vehicleUpdateTargets) {
             if (target.vehicleResourceId === null) continue;
             const vehicle = vehicleById.get(target.vehicleResourceId);
+            if (vehicle?.max_route_duration_minutes != null) {
+              const key = `${target.vehicleResourceId}:${target.targetDate}`;
+              const current =
+                vehicleRouteDurationCells.get(key) ??
+                ({
+                  vehicleId: target.vehicleResourceId,
+                  dateKey: target.targetDate,
+                  label: vehicle.label,
+                  maxRouteDurationMinutes: vehicle.max_route_duration_minutes,
+                  travelMode: vehicle.travel_mode as VisitRouteTravelMode,
+                  site: vehicle.site,
+                  assignedTargets: [],
+                } satisfies {
+                  vehicleId: string;
+                  dateKey: string;
+                  label: string;
+                  maxRouteDurationMinutes: number;
+                  travelMode: VisitRouteTravelMode;
+                  site: {
+                    address: string | null;
+                    lat: number | null;
+                    lng: number | null;
+                  } | null;
+                  assignedTargets: VehicleUpdateTarget[];
+                });
+              current.assignedTargets.push(target);
+              vehicleRouteDurationCells.set(key, current);
+            }
             if (!vehicle || vehicle.max_stops == null) continue;
             const key = `${target.vehicleResourceId}:${target.targetDate}`;
             const current =
@@ -566,27 +671,29 @@ const authenticatedPATCH = withAuthContext(
           const vehicleCapacityUpdateScheduleIds = Array.from(
             new Set(vehicleUpdateTargets.map((target) => target.schedule.id)),
           );
+          const vehicleConstraintVehicleIds = Array.from(
+            new Set([
+              ...Array.from(vehicleCapacityCells.values()).map((cell) => cell.vehicleId),
+              ...Array.from(vehicleRouteDurationCells.values()).map((cell) => cell.vehicleId),
+            ]),
+          );
+          const vehicleConstraintDates = Array.from(
+            new Set([
+              ...Array.from(vehicleCapacityCells.values()).map((cell) => cell.dateKey),
+              ...Array.from(vehicleRouteDurationCells.values()).map((cell) => cell.dateKey),
+            ]),
+          ).map((dateKey) => new Date(dateKey));
           const vehicleCapacityRows =
-            vehicleCapacityCells.size === 0
+            vehicleConstraintVehicleIds.length === 0 || vehicleConstraintDates.length === 0
               ? []
               : await tx.visitSchedule.findMany({
                   where: {
                     org_id: ctx.orgId,
                     vehicle_resource_id: {
-                      in: Array.from(
-                        new Set(
-                          Array.from(vehicleCapacityCells.values()).map((cell) => cell.vehicleId),
-                        ),
-                      ),
+                      in: vehicleConstraintVehicleIds,
                     },
                     scheduled_date: {
-                      in: Array.from(
-                        new Set(
-                          Array.from(vehicleCapacityCells.values()).map(
-                            (cell) => new Date(cell.dateKey),
-                          ),
-                        ),
-                      ),
+                      in: vehicleConstraintDates,
                     },
                     schedule_status: { notIn: ['cancelled', 'rescheduled'] },
                     id: { notIn: vehicleCapacityUpdateScheduleIds },
@@ -594,6 +701,25 @@ const authenticatedPATCH = withAuthContext(
                   select: {
                     vehicle_resource_id: true,
                     scheduled_date: true,
+                    route_order: true,
+                    time_window_start: true,
+                    case_: {
+                      select: {
+                        patient: {
+                          select: {
+                            residences: {
+                              where: { is_primary: true },
+                              take: 1,
+                              select: {
+                                address: true,
+                                lat: true,
+                                lng: true,
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
                   },
                 });
           const existingAssignedCountByCell = new Map<string, number>();
@@ -610,6 +736,64 @@ const authenticatedPATCH = withAuthContext(
                 error: 'vehicle_capacity_exceeded' as const,
                 message: `${cell.label} で訪問できる件数は最大 ${cell.maxStops} 件です`,
               };
+            }
+          }
+
+          const existingRoutePointsByVehicleCell = new Map<string, VehicleRouteDurationPoint[]>();
+          for (const row of vehicleCapacityRows) {
+            if (!row.vehicle_resource_id) continue;
+            const key = `${row.vehicle_resource_id}:${formatUtcDateKey(row.scheduled_date)}`;
+            if (!vehicleRouteDurationCells.has(key)) continue;
+            const points = existingRoutePointsByVehicleCell.get(key) ?? [];
+            points.push(
+              buildVehicleRoutePoint({
+                scheduledDate: row.scheduled_date,
+                routeOrder: row.route_order,
+                timeWindowStart: row.time_window_start,
+                residence: row.case_.patient.residences[0] ?? null,
+              }),
+            );
+            existingRoutePointsByVehicleCell.set(key, points);
+          }
+          for (const [cellKey, cell] of vehicleRouteDurationCells) {
+            const sitePoint = buildVisitScheduleReorderSitePoint(cell.site);
+            if (!sitePoint) {
+              return {
+                error: 'vehicle_route_duration_exceeded' as const,
+                message: `${cell.label} の稼働上限 ${cell.maxRouteDurationMinutes}分を検証できません。訪問拠点の住所座標を整備してください`,
+              };
+            }
+
+            const acceptedTargetPoints: VehicleRouteDurationPoint[] = [];
+            const estimateRoadTravel = createRoadTravelEstimator(cell.travelMode);
+            for (const target of cell.assignedTargets) {
+              const scheduledDate = new Date(target.targetDate);
+              const candidatePoint = buildVehicleRoutePoint({
+                scheduledDate,
+                routeOrder: target.item.route_order ?? target.schedule.route_order,
+                timeWindowStart: target.schedule.time_window_start,
+                residence: target.schedule.case_.patient.residences[0] ?? null,
+              });
+              const estimate = await estimateVehicleRouteDurationWithCandidate(
+                sitePoint,
+                [...(existingRoutePointsByVehicleCell.get(cellKey) ?? []), ...acceptedTargetPoints],
+                candidatePoint,
+                estimateRoadTravel,
+                cell.travelMode,
+              );
+              if (estimate.durationMinutes == null) {
+                return {
+                  error: 'vehicle_route_duration_exceeded' as const,
+                  message: `${cell.label} の稼働上限 ${cell.maxRouteDurationMinutes}分を検証できません（${estimate.summary}）`,
+                };
+              }
+              if (estimate.durationMinutes > cell.maxRouteDurationMinutes) {
+                return {
+                  error: 'vehicle_route_duration_exceeded' as const,
+                  message: `${cell.label} の候補追加後の推定稼働時間 ${estimate.durationMinutes.toFixed(1)}分 が上限 ${cell.maxRouteDurationMinutes}分を超えます`,
+                };
+              }
+              acceptedTargetPoints.push(candidatePoint);
             }
           }
 
@@ -738,6 +922,9 @@ const authenticatedPATCH = withAuthContext(
         return validationError('選択した車両リソースは訪問予定の拠点では利用できません');
       }
       if (result.error === 'vehicle_capacity_exceeded') {
+        return validationError(result.message);
+      }
+      if (result.error === 'vehicle_route_duration_exceeded') {
         return validationError(result.message);
       }
       if (result.error === 'vehicle_status_locked') {

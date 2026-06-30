@@ -167,6 +167,13 @@ function buildCareCase(overrides?: Record<string, unknown>) {
         facility_time_from: new Date('1970-01-01T11:00:00.000Z'),
         facility_time_to: new Date('1970-01-01T13:00:00.000Z'),
       },
+      residences: [
+        {
+          address: '患者宅',
+          lat: 35.681236,
+          lng: 139.767125,
+        },
+      ],
     },
     ...overrides,
   };
@@ -288,6 +295,13 @@ describe('/api/visit-schedules/generate POST', () => {
       site_id: 'site_1',
       label: '社用車A',
       max_stops: 8,
+      max_route_duration_minutes: null,
+      travel_mode: 'DRIVE',
+      site: {
+        address: '薬局',
+        lat: 35.681236,
+        lng: 139.767125,
+      },
     });
     visitScheduleCountMock.mockResolvedValue(0);
     visitScheduleFindManyMock.mockResolvedValue([]);
@@ -312,6 +326,9 @@ describe('/api/visit-schedules/generate POST', () => {
           count: visitScheduleCountMock,
           findMany: visitScheduleFindManyMock,
           create: visitScheduleCreateMock,
+        },
+        visitVehicleResource: {
+          findFirst: visitVehicleResourceFindFirstMock,
         },
         visitScheduleProposal: {
           findMany: visitScheduleProposalFindManyMock,
@@ -713,9 +730,18 @@ describe('/api/visit-schedules/generate POST', () => {
         site_id: true,
         label: true,
         max_stops: true,
+        max_route_duration_minutes: true,
+        travel_mode: true,
+        site: {
+          select: {
+            address: true,
+            lat: true,
+            lng: true,
+          },
+        },
       },
     });
-    expect(visitVehicleResourceFindFirstMock).toHaveBeenCalledTimes(1);
+    expect(visitVehicleResourceFindFirstMock).toHaveBeenCalledTimes(2);
     expect(visitScheduleCountMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -736,9 +762,12 @@ describe('/api/visit-schedules/generate POST', () => {
             notIn: ['cancelled', 'rescheduled'],
           },
         },
-        select: {
+        select: expect.objectContaining({
           scheduled_date: true,
-        },
+          route_order: true,
+          time_window_start: true,
+          case_: expect.any(Object),
+        }),
       }),
     );
     expect(visitScheduleCreateMock).toHaveBeenCalledWith(
@@ -756,6 +785,13 @@ describe('/api/visit-schedules/generate POST', () => {
       site_id: 'site_2',
       label: '別拠点車両',
       max_stops: 8,
+      max_route_duration_minutes: null,
+      travel_mode: 'DRIVE',
+      site: {
+        address: '別拠点',
+        lat: 35.7,
+        lng: 139.7,
+      },
     });
 
     const response = await POST(
@@ -784,6 +820,13 @@ describe('/api/visit-schedules/generate POST', () => {
       site_id: 'site_1',
       label: '社用車A',
       max_stops: 1,
+      max_route_duration_minutes: null,
+      travel_mode: 'DRIVE',
+      site: {
+        address: '薬局',
+        lat: 35.681236,
+        lng: 139.767125,
+      },
     });
     visitScheduleFindManyMock.mockResolvedValueOnce([
       { scheduled_date: new Date('2026-04-07T00:00:00.000Z') },
@@ -807,6 +850,160 @@ describe('/api/visit-schedules/generate POST', () => {
       message: '社用車A で訪問できる件数は最大 1 件です',
     });
     expect(visitScheduleCountMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects recurring generation when the selected vehicle route duration limit is exceeded', async () => {
+    careCaseFindFirstMock.mockResolvedValue(
+      buildCareCase({
+        patient: {
+          scheduling_preference: null,
+          residences: [
+            {
+              address: '近隣患者宅',
+              lat: 35.681236,
+              lng: 139.78,
+            },
+          ],
+        },
+      }),
+    );
+    visitVehicleResourceFindFirstMock.mockResolvedValueOnce({
+      id: 'vehicle_1',
+      site_id: 'site_1',
+      label: '社用車A',
+      max_stops: 8,
+      max_route_duration_minutes: 30,
+      travel_mode: 'DRIVE',
+      site: {
+        address: '薬局',
+        lat: 35.681236,
+        lng: 139.767125,
+      },
+    });
+    visitScheduleFindManyMock.mockResolvedValueOnce([
+      {
+        scheduled_date: new Date('2026-04-07T00:00:00.000Z'),
+        route_order: 1,
+        time_window_start: new Date('1970-01-01T09:00:00.000Z'),
+        case_: {
+          patient: {
+            residences: [
+              {
+                address: '既存患者宅',
+                lat: 35.681236,
+                lng: 139.95,
+              },
+            ],
+          },
+        },
+      },
+    ]);
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-07',
+        end_date: '2026-04-07',
+        vehicle_resource_id: 'vehicle_1',
+        time_window_start: '10:00',
+        time_window_end: '11:00',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: expect.stringContaining('上限 30分を超えます'),
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('revalidates selected vehicle route duration inside the serializable generation transaction', async () => {
+    careCaseFindFirstMock.mockResolvedValue(
+      buildCareCase({
+        patient: {
+          scheduling_preference: null,
+          residences: [
+            {
+              address: '近隣患者宅',
+              lat: 35.681236,
+              lng: 139.78,
+            },
+          ],
+        },
+      }),
+    );
+    visitVehicleResourceFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'vehicle_1',
+        site_id: 'site_1',
+        label: '社用車A',
+        max_stops: 8,
+        max_route_duration_minutes: 90,
+        travel_mode: 'DRIVE',
+        site: {
+          address: '薬局',
+          lat: 35.681236,
+          lng: 139.767125,
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'vehicle_1',
+        site_id: 'site_1',
+        label: '社用車A',
+        max_stops: 8,
+        max_route_duration_minutes: 30,
+        travel_mode: 'DRIVE',
+        site: {
+          address: '薬局',
+          lat: 35.681236,
+          lng: 139.767125,
+        },
+      });
+    visitScheduleFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        scheduled_date: new Date('2026-04-07T00:00:00.000Z'),
+        route_order: 1,
+        time_window_start: new Date('1970-01-01T09:00:00.000Z'),
+        case_: {
+          patient: {
+            residences: [
+              {
+                address: '同時追加患者宅',
+                lat: 35.681236,
+                lng: 139.95,
+              },
+            ],
+          },
+        },
+      },
+    ]);
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-07',
+        end_date: '2026-04-07',
+        vehicle_resource_id: 'vehicle_1',
+        time_window_start: '10:00',
+        time_window_end: '11:00',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: expect.stringContaining('上限 30分を超えます'),
+    });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
   });
 
