@@ -174,6 +174,7 @@ const visitC = buildSchedule({
   id: 'visit-c',
   case_id: 'case-c',
   priority: 'emergency',
+  schedule_status: 'ready',
   route_order: 3,
   time_window_start: '2026-04-09T15:00:00.000Z',
   time_window_end: '2026-04-09T15:30:00.000Z',
@@ -391,6 +392,17 @@ describe('RouteCompareContent', () => {
         target_count: 4,
         route_order_diff_count: 4,
         vehicle_assignment_count: 4,
+      },
+      vehicle_assignment: {
+        mode: 'assign_if_unassigned',
+        vehicle_resource_id: 'vehicle_1',
+        schedule_ids: ['visit-b', 'visit-a', 'visit-c', 'facility-1'],
+        expected_schedule_statuses: [
+          { schedule_id: 'visit-b', schedule_status: 'planned' },
+          { schedule_id: 'visit-a', schedule_status: 'planned' },
+          { schedule_id: 'visit-c', schedule_status: 'ready' },
+          { schedule_id: 'facility-1', schedule_status: 'planned' },
+        ],
       },
     });
     expect(reorderRequest?.body?.updates).not.toContainEqual(

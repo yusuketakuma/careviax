@@ -30,6 +30,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Route Compare Vehicle Assignment Freshness - 2026-07-01 06:30 JST
+
+- Scope:
+  - Continued schedule route adoption hardening for `route-compare` and `/api/visit-schedules/reorder`.
+  - Focused on the recommended vehicle assignment payload sent when adopting a route comparison scenario.
+- Fixed:
+  - Route comparison adoption now builds `vehicleAssignmentTargets` with each schedule's currently reviewed `schedule_status`.
+  - The `vehicle_assignment` payload sent to `/api/visit-schedules/reorder` now includes `expected_schedule_statuses` aligned with `schedule_ids`.
+  - Regression coverage proves the outgoing reorder payload includes status preconditions and carries a non-`planned` assignable status (`ready`) instead of hard-coding all targets to `planned`.
+- Safety:
+  - Reduces stale vehicle-assignment risk where a route-comparison screen could assign a recommended vehicle after one of the target visits changed status in another tab/session.
+  - Reuses the existing server-side `expected_schedule_statuses` validation and guarded `updateMany` transaction predicates; no new API contract, permission path, DB mutation type, external call, migration, live data operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Adds only a small in-memory mapping over the already filtered vehicle assignment targets.
+  - No new query, dependency, background job, network call, render-heavy polling, broad scan, or unbounded loop was added.
+- Validation:
+  - Route-compare focused Vitest plus reorder API suite passed `2` files / `41` tests; the reorder route's expected sanitized-500 test log appeared while the suite passed.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on the route-compare files: passed.
+  - Independent verifier reported no blocking findings and confirmed the client payload, helper path, and server contract align; its test-strength caveat was addressed by using a `ready` fixture target.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: failed on unowned dirty `src/app/(dashboard)/admin/vehicles/vehicles-content.tsx`, outside this route-compare slice.
+- Remaining:
+  - Broad visit-time, route, master-management, patient-information, report, and multi-professional cooperation objective remains open.
+  - Full format gate remains blocked by the unowned vehicle admin slice until its owner formats or claims that file.
+  - Concurrent dirty external-professionals and visit-vehicle-resource/admin-vehicles files remain outside this route-compare commit.
+
 ### CareReport Delivery Mode Contract - 2026-07-01 06:02 JST
 
 - Scope:

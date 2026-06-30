@@ -609,7 +609,7 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
       }
       const routeUpdates = buildScenarioRouteOrderUpdates({ scenario, allVisits });
       const routeUpdateScheduleIds = new Set(routeUpdates.map((update) => update.scheduleId));
-      const vehicleAssignmentScheduleIds =
+      const vehicleAssignmentTargets =
         recommendedVehicle == null
           ? []
           : schedules
@@ -629,7 +629,13 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
                   left.id.localeCompare(right.id),
               )
               .slice(0, recommendedVehicle.remaining_stops)
-              .map((schedule) => schedule.id);
+              .map((schedule) => ({
+                scheduleId: schedule.id,
+                expectedStatus: schedule.schedule_status,
+              }));
+      const vehicleAssignmentScheduleIds = vehicleAssignmentTargets.map(
+        (target) => target.scheduleId,
+      );
 
       return applyVisitScheduleRouteUpdates({
         orgId,
@@ -640,6 +646,10 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
                 mode: 'assign_if_unassigned' as const,
                 vehicle_resource_id: recommendedVehicle.id,
                 schedule_ids: vehicleAssignmentScheduleIds,
+                expected_schedule_statuses: vehicleAssignmentTargets.map((target) => ({
+                  schedule_id: target.scheduleId,
+                  schedule_status: target.expectedStatus,
+                })),
               },
             }
           : {}),
