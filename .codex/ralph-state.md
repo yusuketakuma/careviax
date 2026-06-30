@@ -14029,6 +14029,19 @@ Backup directory:
 - remaining work: broad schedule/prescription/route objective remains open. Continue scanning live schedule surfaces where API state context exists but the current UI still opens generic queues or lacks current-state preconditions.
 - next action: inspect remaining `/schedules` operational links and route mutation callers for generic navigation or stale-state gaps.
 
+### 20260630-2320 JST
+
+- current task: reject stale schedule status changes from the day-board gantt when the displayed status no longer matches the current schedule row.
+- files inspected: `git status --short --branch --untracked-files=all`, memory recall for schedule stale-confirmation patterns, `src/app/(dashboard)/schedules/schedule-team-board.tsx`, `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`, `src/app/api/visit-schedules/[id]/route.ts`, `src/app/api/visit-schedules/[id]/route.test.ts`, and `src/lib/validations/visit-schedule.ts`.
+- files changed: `src/lib/validations/visit-schedule.ts`, `src/app/api/visit-schedules/[id]/route.ts`, `src/app/api/visit-schedules/[id]/route.test.ts`, `src/app/(dashboard)/schedules/schedule-team-board.tsx`, `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: ScheduleTeamBoard status changes posted only the desired `schedule_status`. If the board was stale, a staff member could intend `planned -> in_progress` while the API read a newer row and applied `ready -> in_progress` without caller-state confirmation.
+- security risks found: reduced stale-state / wrong-status transition risk by adding optional `expected_schedule_status`, rejecting mismatches with 409 before org-reference validation, transaction, write, audit, workflow notification, or task side effects, and sending the visible status from the gantt mutation payload. Existing auth, org/RLS assignment scope, terminal-state restrictions, ready-transition gates, version/confirmed guards, no-store errors, migrations, live DB operations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: request-body scalar validation and one in-memory comparison only; no query, dependency, background job, broad scan, or render-heavy path was added.
+- validation commands: focused `pnpm vitest run src/app/api/visit-schedules/'[id]'/route.test.ts --reporter=dot --testTimeout=60000`; focused `pnpm vitest run 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=60000`; combined focused `pnpm vitest run src/app/api/visit-schedules/'[id]'/route.test.ts 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=60000`; scoped `pnpm exec eslint`; scoped `pnpm exec prettier --check`; scoped/full `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: visit-schedule detail route focused suite passed `1` file / `83` tests; ScheduleTeamBoard focused suite passed `1` file / `22` tests; combined focused suite passed `2` files / `105` tests. Scoped ESLint, scoped Prettier check, scoped/full diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed.
+- remaining work: broad schedule/prescription/route objective remains open. Continue scanning live schedule mutation entrypoints for missing caller-state preconditions, especially vehicle assignment and other board-side direct actions.
+- next action: commit this validated status-precondition slice with explicit paths, then continue with the next schedule/route mutation gap.
+
 ### 20260630-2302 JST
 
 - current task: keep tracing-report follow-up operational-task links request-type scoped.
