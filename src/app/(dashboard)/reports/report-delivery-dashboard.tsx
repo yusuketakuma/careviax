@@ -303,6 +303,7 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
                         </Link>
                         <Link
                           href={buildCommunicationRequestsHref({
+                            status: 'sent',
                             patientId: item.patient_id,
                             relatedEntityType: 'care_report',
                             relatedEntityId: item.report_id,

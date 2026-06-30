@@ -373,6 +373,13 @@ describe('ReportDeliveryDashboard', () => {
       expect(screen.getByRole('link', { name: '報告書を開く' }).getAttribute('href')).toBe(
         `/reports/${encodeURIComponent('report/1?x=y#z')}`,
       );
+      expect(screen.getByRole('link', { name: '関連依頼' }).getAttribute('href')).toBe(
+        `/communications/requests?status=sent&patient_id=${encodeURIComponent(
+          'pt/1?x=y#z',
+        )}&related_entity_type=care_report&related_entity_id=${encodeURIComponent(
+          'report/1?x=y#z',
+        )}`,
+      );
       for (const name of ['患者詳細', '報告書を開く']) {
         const href = screen.getByRole('link', { name }).getAttribute('href') ?? '';
         expect(href).not.toContain('?x=y');
