@@ -9,6 +9,7 @@ import { withOrgContext } from '@/lib/db/rls';
 
 const DEFAULT_DOCUMENT_DELIVERY_RULE_LIMIT = 100;
 const MAX_DOCUMENT_DELIVERY_RULE_LIMIT = 200;
+const DOCUMENT_DELIVERY_RULE_COUNT_BASIS = 'document_delivery_rules' as const;
 
 const deliveryChannelSchema = z.enum(['email', 'fax', 'mcs']);
 
@@ -44,18 +45,36 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const rules = await withOrgContext(ctx.orgId, (tx) =>
-    tx.documentDeliveryRule.findMany({
-      where: {
-        org_id: ctx.orgId,
-        ...(parsedDocumentType?.success ? { document_type: parsedDocumentType.data } : {}),
-      },
-      orderBy: [{ document_type: 'asc' }, { target_role: 'asc' }, { updated_at: 'desc' }],
-      take: limit,
-    }),
-  );
+  const where = {
+    org_id: ctx.orgId,
+    ...(parsedDocumentType?.success ? { document_type: parsedDocumentType.data } : {}),
+  };
 
-  return success({ data: rules });
+  const [rules, totalCount] = await withOrgContext(ctx.orgId, (tx) =>
+    Promise.all([
+      tx.documentDeliveryRule.findMany({
+        where,
+        orderBy: [{ document_type: 'asc' }, { target_role: 'asc' }, { updated_at: 'desc' }],
+        take: limit,
+      }),
+      tx.documentDeliveryRule.count({ where }),
+    ]),
+  );
+  const visibleCount = rules.length;
+  const hiddenCount = Math.max(totalCount - visibleCount, 0);
+
+  return success({
+    data: rules,
+    total_count: totalCount,
+    visible_count: visibleCount,
+    hidden_count: hiddenCount,
+    truncated: hiddenCount > 0,
+    count_basis: DOCUMENT_DELIVERY_RULE_COUNT_BASIS,
+    filters_applied: {
+      document_type: parsedDocumentType?.success ? parsedDocumentType.data : null,
+    },
+    limit,
+  });
 }
 
 export async function POST(req: NextRequest) {

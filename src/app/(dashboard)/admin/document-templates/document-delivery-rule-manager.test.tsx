@@ -236,6 +236,50 @@ describe('DocumentDeliveryRuleManager', () => {
     expect(scope.getByRole('heading', { level: 3, name: '送達ルール一覧' })).toBeTruthy();
   });
 
+  it('surfaces hidden delivery-rule counts when the API response is truncated', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/document-delivery-rules' && !init?.method) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'rule_visible',
+                  document_type: 'care_report',
+                  target_role: 'physician',
+                  channel: 'fax',
+                  fallback_channels: ['mcs'],
+                  is_active: true,
+                },
+              ],
+              total_count: 3,
+              visible_count: 1,
+              hidden_count: 2,
+              truncated: true,
+              count_basis: 'document_delivery_rules',
+              filters_applied: { document_type: null },
+              limit: 1,
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    renderManager();
+
+    expect(await screen.findByText('先頭1件を表示 / 他2件')).toBeTruthy();
+    expect(
+      screen.getByText(
+        '文書送達ルールは上限内の先頭行だけを表示しています。未表示のルールが報告書送達候補に影響する可能性があります。',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('登録1件')).toBeNull();
+  });
+
   it('fails closed with a retryable error instead of an empty-state when the rules fetch fails', async () => {
     // A failed rules fetch must not render the "文書送達ルールはまだありません。" empty-state — that
     // false-empty reads as "no delivery rules" and would skew report delivery-channel suggestions.

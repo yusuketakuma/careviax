@@ -32,6 +32,19 @@ type DocumentDeliveryRuleRow = {
   is_active: boolean;
 };
 
+type DocumentDeliveryRulesResponse = {
+  data: DocumentDeliveryRuleRow[];
+  total_count?: number;
+  visible_count?: number;
+  hidden_count?: number;
+  truncated?: boolean;
+  count_basis?: 'document_delivery_rules';
+  filters_applied?: {
+    document_type?: string | null;
+  };
+  limit?: number;
+};
+
 const DOCUMENT_TYPE_OPTIONS = [
   { value: 'care_report', label: '報告書' },
   { value: 'tracing_report', label: 'トレーシングレポート' },
@@ -111,7 +124,7 @@ export function DocumentDeliveryRuleManager() {
       if (!res.ok) {
         throw new Error('文書送達ルールの取得に失敗しました');
       }
-      return res.json() as Promise<{ data: DocumentDeliveryRuleRow[] }>;
+      return res.json() as Promise<DocumentDeliveryRulesResponse>;
     },
     enabled: !!orgId,
   });
@@ -174,7 +187,18 @@ export function DocumentDeliveryRuleManager() {
     },
   });
 
-  const rules = rulesQuery.data?.data ?? [];
+  const rulesResponse = rulesQuery.data;
+  const rules = rulesResponse?.data ?? [];
+  const visibleRuleCount = rulesResponse?.visible_count ?? rules.length;
+  const totalRuleCount = rulesResponse?.total_count ?? visibleRuleCount;
+  const hiddenRuleCount = Math.max(
+    rulesResponse?.hidden_count ?? totalRuleCount - visibleRuleCount,
+    0,
+  );
+  const isRuleListTruncated = Boolean(rulesResponse?.truncated ?? hiddenRuleCount > 0);
+  const ruleCountLabel = isRuleListTruncated
+    ? `先頭${visibleRuleCount}件を表示 / 他${hiddenRuleCount}件`
+    : `登録${totalRuleCount}件`;
 
   return (
     <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
@@ -308,6 +332,16 @@ export function DocumentDeliveryRuleManager() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
+          {!rulesQuery.isPending && !rulesQuery.isError ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-foreground">{ruleCountLabel}</p>
+              {isRuleListTruncated ? (
+                <p role="status" className="text-sm text-amber-700">
+                  文書送達ルールは上限内の先頭行だけを表示しています。未表示のルールが報告書送達候補に影響する可能性があります。
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           {rulesQuery.isError ? (
             <ErrorState
               variant="server"
