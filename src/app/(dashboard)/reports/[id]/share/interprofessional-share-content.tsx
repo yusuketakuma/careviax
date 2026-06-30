@@ -48,6 +48,7 @@ type ShareCareReport = {
   patient_id: string;
   case_id?: string | null;
   report_type: string;
+  updated_at: string;
   status: string;
   content: unknown;
   pdf_url: string | null;
@@ -271,6 +272,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
         patientName: report.patient_summary?.name ?? null,
         reportId: report.id,
         reportType: report.report_type,
+        reportUpdatedAt: report.updated_at,
         recipientName: selectedAudienceCard.recipientName,
         recipientOrganizationName: selectedAudienceCard.recipientOrganizationName,
         sections,

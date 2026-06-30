@@ -81,6 +81,11 @@ const optionalDateSchema = z.preprocess(
     .optional(),
 );
 
+const optionalReportVersionSchema = z.preprocess(
+  trimStringOrUndefined,
+  z.string().datetime('報告書の版情報が不正です').optional(),
+);
+
 const createCommunicationRequestSchema = z.object({
   patient_id: optionalTrimmedStringSchema,
   case_id: optionalTrimmedStringSchema,
@@ -95,7 +100,18 @@ const createCommunicationRequestSchema = z.object({
   subject: requiredTrimmedStringSchema('件名は必須です'),
   content: requiredTrimmedStringSchema('内容は必須です'),
   due_date: optionalDateSchema,
+  expected_report_updated_at: optionalReportVersionSchema,
 });
+
+function isInterprofessionalShareRequest(args: {
+  templateKey?: string;
+  contextSnapshot?: Record<string, unknown>;
+}): boolean {
+  return (
+    args.templateKey === 'interprofessional_share_reply_request' ||
+    args.contextSnapshot?.source === 'interprofessional_share'
+  );
+}
 
 function readPresentOptionalSearchParam(
   searchParams: URLSearchParams,
@@ -266,7 +282,15 @@ const authenticatedPOST = withAuthContext(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const { patient_id, case_id, request_type, subject, content, due_date } = parsed.data;
+    const {
+      patient_id,
+      case_id,
+      request_type,
+      subject,
+      content,
+      due_date,
+      expected_report_updated_at,
+    } = parsed.data;
     const {
       template_key,
       recipient_name,
@@ -276,6 +300,10 @@ const authenticatedPOST = withAuthContext(
       context_snapshot,
       status,
     } = parsed.data;
+    const expectsInterprofessionalShareVersion = isInterprofessionalShareRequest({
+      templateKey: template_key,
+      contextSnapshot: context_snapshot,
+    });
     if (
       isCareReportCommunicationRequest(related_entity_type) &&
       !canAccessCareReportCommunication(ctx.role)
@@ -303,6 +331,7 @@ const authenticatedPOST = withAuthContext(
           patient_id: true,
           case_id: true,
           visit_record_id: true,
+          updated_at: true,
         },
       });
 
@@ -328,6 +357,22 @@ const authenticatedPOST = withAuthContext(
         }))
       ) {
         return notFound('報告書が見つかりません');
+      }
+
+      if (expectsInterprofessionalShareVersion && !expected_report_updated_at) {
+        return validationError('報告書の版情報は必須です', {
+          expected_report_updated_at: ['報告書の版情報は必須です'],
+        });
+      }
+
+      if (
+        expected_report_updated_at &&
+        careReport.updated_at.getTime() !== new Date(expected_report_updated_at).getTime()
+      ) {
+        return conflict('報告書が更新されています。再読み込みしてから返信依頼を起票してください', {
+          report_id: careReport.id,
+          current_report_updated_at: careReport.updated_at.toISOString(),
+        });
       }
 
       effectivePatientId = resolvedScope.patientId;

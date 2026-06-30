@@ -20,6 +20,32 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0023 JST
+
+- current task: guard facility-batch DELETE unlink writes with schedule status/version preconditions.
+- files inspected: `pnpm typecheck` failure output, `src/app/api/facility-visit-batches/[id]/route.ts`, `src/app/api/facility-visit-batches/[id]/route.test.ts`, and related schedule-status search results.
+- files changed: `src/app/api/facility-visit-batches/[id]/route.ts`, `src/app/api/facility-visit-batches/[id]/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: facility-batch DELETE unlinking could clear `facility_batch_id` / `route_order` in bulk without carrying per-schedule version and status predicates, and the first typed implementation widened the reorderable status set to `string[]`, breaking Prisma enum typing.
+- security risks found: reduced stale/locked route mutation risk by requiring each schedule unlink write to match the reviewed version, non-confirmed state, and route-reorderable status before deleting the batch. Existing auth, assignment access, org/RLS scope, no-store wrappers, audit/notification behavior, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: replaces one bulk update with bounded per-schedule guarded `updateMany` calls over schedules already loaded for the batch. No dependency, external call, background job, broad scan, or render-heavy path was added.
+- validation commands: `pnpm vitest run src/app/api/facility-visit-batches/'[id]'/route.test.ts --reporter=dot --testTimeout=60000`; scoped ESLint; scoped Prettier check; `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: focused Vitest passed `1` file / `32` tests. The Prisma enum typing issue found by `pnpm typecheck` was fixed by preserving `ScheduleStatus` on the reorderable status constant. Remaining shared gate results will be recorded after the combined guard set is validated.
+- remaining work: broad master-management and patient-information objective remains open. Next mapped patient gap remains PRE-06 archive/detail UI state.
+- next action: validate the combined schedule/report/facility guard set, then commit the guarded patient side-effect slice.
+
+### 20260701-0020 JST
+
+- current task: require the rendered care-report version when creating interprofessional share reply requests.
+- files inspected: `git status --short --branch --untracked-files=all`, report share/communication request diffs, `src/app/api/communication-requests/route.ts`, `src/app/api/communication-requests/route.test.ts`, `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx`, `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx`, `src/app/(dashboard)/reports/[id]/share/interprofessional-share.helpers.ts`, and `src/app/(dashboard)/reports/[id]/share/interprofessional-share.helpers.test.ts`.
+- files changed: `src/app/api/communication-requests/route.ts`, `src/app/api/communication-requests/route.test.ts`, `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx`, `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx`, `src/app/(dashboard)/reports/[id]/share/interprofessional-share.helpers.ts`, `src/app/(dashboard)/reports/[id]/share/interprofessional-share.helpers.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: interprofessional report-share reply requests could be created after the displayed report changed because the communication request payload did not carry the report version the user reviewed.
+- security risks found: reduced stale clinical-report sharing risk by requiring `expected_report_updated_at` for interprofessional share reply requests and rejecting mismatches before duplicate checks or communication-request creation. Existing care-report communication permissions, org scope, source access check, no-store wrapper, PHI-minimized request content, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: reused the existing care-report lookup and added one scalar `updated_at` select plus timestamp comparison. No new query, dependency, job, external call, broad scan, unbounded loop, or render-heavy path was added.
+- validation commands: `pnpm vitest run src/app/api/communication-requests/route.test.ts src/app/'(dashboard)'/reports/'[id]'/share/interprofessional-share.helpers.test.ts src/app/'(dashboard)'/reports/'[id]'/share/interprofessional-share-content.test.tsx --reporter=dot --testTimeout=60000`; scoped ESLint; scoped Prettier check; `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: focused Vitest passed `3` files / `83` tests. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and `git diff --check` passed.
+- remaining work: broad master-management and patient-information objective remains open. Next mapped patient gap remains PRE-06 archive/detail UI state.
+- next action: commit only the interprofessional share reply version-guard slice plus ledger updates, send agmsg FYI, then re-check inbox/status before selecting the next visit/report/collaboration gap.
+
 ### 20260701-0017 JST
 
 - current task: preserve the reviewed visit-schedule version when creating conflict reconfirmation tasks.

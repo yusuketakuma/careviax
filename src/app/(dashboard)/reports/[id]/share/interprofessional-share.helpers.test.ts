@@ -307,6 +307,7 @@ describe('buildShareCommunicationRequestInput', () => {
       patientName: '加藤 ミサ',
       reportId: 'report_1',
       reportType: 'care_manager_report',
+      reportUpdatedAt: '2026-06-18T01:02:03.000Z',
       recipientName: '中島 桜',
       recipientOrganizationName: 'きたきゅうケアプラン',
       sections,
@@ -321,6 +322,7 @@ describe('buildShareCommunicationRequestInput', () => {
       recipient_role: 'care_manager',
       related_entity_type: 'care_report',
       related_entity_id: 'report_1',
+      expected_report_updated_at: '2026-06-18T01:02:03.000Z',
       status: 'sent',
       subject: '返信依頼: ケアマネ向け報告書共有(加藤 ミサ 様)',
       context_snapshot: {
@@ -352,6 +354,7 @@ describe('buildShareCommunicationRequestInput', () => {
       patientName: null,
       reportId: 'report_2',
       reportType: 'family_share',
+      reportUpdatedAt: '2026-06-18T01:02:03.000Z',
       recipientName: '加藤 直子',
       recipientOrganizationName: null,
       sections: buildAudienceShareSections({ body: 'あ'.repeat(5000) }, 'family', {
@@ -361,6 +364,7 @@ describe('buildShareCommunicationRequestInput', () => {
 
     expect(input.case_id).toBeUndefined();
     expect(input.recipient_role).toBe('family');
+    expect(input.expected_report_updated_at).toBe('2026-06-18T01:02:03.000Z');
     expect(input.subject).toBe('返信依頼: 家族向け報告書共有(対象患者)');
     expect(input.context_snapshot).not.toHaveProperty('recipient_organization_name');
     expect(input.content.length).toBeLessThanOrEqual(4000);

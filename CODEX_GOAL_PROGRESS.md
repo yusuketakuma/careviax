@@ -27623,3 +27623,30 @@ Next loop:
 - Remaining:
   - Broad schedule/prescription/route-management objective remains open.
   - Subagent mapper identified facility-batch DELETE route unlinking and visit-record save boundaries as the next high-risk persisted-save gaps.
+
+### Interprofessional Share Reply Version Guard - 2026-07-01 00:20 JST
+
+- Scope:
+  - Continued care-report and patient-contact safety hardening.
+  - Focused on interprofessional share reply requests created from `/reports/[id]/share` through `/api/communication-requests`.
+- Fixed:
+  - Share reply request input now carries `expected_report_updated_at` from the rendered care report.
+  - `/api/communication-requests` requires report version data for interprofessional share reply requests.
+  - Stale report versions are rejected with a sanitized 409 before duplicate checks or communication-request creation.
+  - Helper/content tests lock the version field and keep request content PHI-minimized.
+- Safety:
+  - Reduces stale clinical-report sharing risk when a report changes after the share page renders but before a reply request is created.
+  - Preserves care-report communication permissions, org scope, source access checks, no-store wrappers, PHI-minimized request content, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Reuses the existing care-report lookup and adds only `updated_at` plus timestamp comparison.
+  - No new query, dependency, job, external call, broad scan, unbounded loop, or heavy render path was added.
+- Validation:
+  - `pnpm vitest run src/app/api/communication-requests/route.test.ts src/app/'(dashboard)'/reports/'[id]'/share/interprofessional-share.helpers.test.ts src/app/'(dashboard)'/reports/'[id]'/share/interprofessional-share-content.test.tsx --reporter=dot --testTimeout=60000`: passed, `3` files / `83` tests.
+  - `pnpm typecheck --pretty false`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master/patient objective remains open.
+  - Next mapped patient gap remains PRE-06 archive/detail UI state: archived-patient detail banner/read-only affordance and cross-surface archive identifiers.

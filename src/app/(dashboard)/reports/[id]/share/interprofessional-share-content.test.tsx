@@ -12,6 +12,8 @@ import { InterprofessionalShareContent } from './interprofessional-share-content
 
 setupDomTestEnv();
 
+const REPORT_UPDATED_AT_ISO = '2026-06-18T01:02:03.000Z';
+
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
@@ -54,6 +56,7 @@ const REPORT = {
   patient_id: 'pt_1',
   case_id: 'case_1',
   report_type: 'care_manager_report',
+  updated_at: REPORT_UPDATED_AT_ISO,
   status: 'sent',
   pdf_url: null,
   patient_summary: { id: 'pt_1', name: '加藤 ミサ' },
@@ -227,6 +230,7 @@ function readCommunicationRequestPostBody(fetchMock: ReturnType<typeof stubFetch
     recipient_role: string;
     related_entity_type: string;
     related_entity_id: string;
+    expected_report_updated_at: string;
     context_snapshot: {
       source: string;
       report_id: string;
@@ -460,6 +464,7 @@ describe('InterprofessionalShareContent', () => {
       recipient_role: 'physician',
       related_entity_type: 'care_report',
       related_entity_id: 'rep_1',
+      expected_report_updated_at: REPORT_UPDATED_AT_ISO,
       status: 'sent',
       subject: '返信依頼: 主治医向け報告書共有(加藤 ミサ 様)',
       context_snapshot: {

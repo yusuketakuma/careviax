@@ -83,6 +83,8 @@ vi.mock('@/lib/contact-profiles', () => ({
 import { GET as rawGET, POST as rawPOST } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
+const CARE_REPORT_UPDATED_AT = new Date('2026-06-18T01:02:03.000Z');
+const CARE_REPORT_UPDATED_AT_ISO = CARE_REPORT_UPDATED_AT.toISOString();
 
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
@@ -123,6 +125,7 @@ describe('/api/communication-requests', () => {
       patient_id: 'patient_1',
       case_id: 'case_1',
       visit_record_id: 'visit_record_1',
+      updated_at: CARE_REPORT_UPDATED_AT,
     });
     tracingReportFindFirstMock.mockResolvedValue({
       id: 'tracing_1',
@@ -412,6 +415,7 @@ describe('/api/communication-requests', () => {
         patient_id: true,
         case_id: true,
         visit_record_id: true,
+        updated_at: true,
       },
     });
     expect(communicationRequestCreateMock).toHaveBeenCalledWith({
@@ -422,6 +426,117 @@ describe('/api/communication-requests', () => {
         related_entity_id: 'report_1',
       }),
     });
+  });
+
+  it('creates interprofessional care-report reply requests when the expected report version matches', async () => {
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        request_type: 'care_report_reply_request',
+        template_key: 'interprofessional_share_reply_request',
+        recipient_role: 'care_manager',
+        related_entity_type: 'care_report',
+        related_entity_id: 'report_1',
+        context_snapshot: {
+          source: 'interprofessional_share',
+          report_id: 'report_1',
+        },
+        subject: '返信依頼',
+        content: '報告書の確認をお願いします',
+        status: 'sent',
+        expected_report_updated_at: CARE_REPORT_UPDATED_AT_ISO,
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(communicationRequestFindFirstMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        request_type: 'care_report_reply_request',
+        related_entity_type: 'care_report',
+        related_entity_id: 'report_1',
+      }),
+      select: { id: true, status: true },
+    });
+    expect(communicationRequestCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        template_key: 'interprofessional_share_reply_request',
+        related_entity_type: 'care_report',
+        related_entity_id: 'report_1',
+        context_snapshot: {
+          source: 'interprofessional_share',
+          report_id: 'report_1',
+        },
+      }),
+    });
+    expect(communicationRequestCreateMock.mock.calls[0][0].data).not.toHaveProperty(
+      'expected_report_updated_at',
+    );
+  });
+
+  it('requires a report version for interprofessional care-report reply requests', async () => {
+    const response = (await POST(
+      createPostRequest({
+        request_type: 'care_report_reply_request',
+        template_key: 'interprofessional_share_reply_request',
+        recipient_role: 'care_manager',
+        related_entity_type: 'care_report',
+        related_entity_id: 'report_1',
+        context_snapshot: {
+          source: 'interprofessional_share',
+          report_id: 'report_1',
+        },
+        subject: '返信依頼',
+        content: '報告書の確認をお願いします',
+        status: 'sent',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '報告書の版情報は必須です',
+      details: {
+        expected_report_updated_at: ['報告書の版情報は必須です'],
+      },
+    });
+    expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale interprofessional care-report reply requests before duplicate checks', async () => {
+    const response = (await POST(
+      createPostRequest({
+        request_type: 'care_report_reply_request',
+        template_key: 'interprofessional_share_reply_request',
+        recipient_role: 'care_manager',
+        related_entity_type: 'care_report',
+        related_entity_id: 'report_1',
+        context_snapshot: {
+          source: 'interprofessional_share',
+          report_id: 'report_1',
+        },
+        subject: '返信依頼',
+        content: '報告書の確認をお願いします',
+        status: 'sent',
+        expected_report_updated_at: '2026-06-18T00:00:00.000Z',
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '報告書が更新されています。再読み込みしてから返信依頼を起票してください',
+      details: {
+        report_id: 'report_1',
+        current_report_updated_at: CARE_REPORT_UPDATED_AT_ISO,
+      },
+    });
+    expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
   });
 
   it('requires a related care report id before creating care report communication requests', async () => {

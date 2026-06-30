@@ -345,6 +345,7 @@ export type ShareCommunicationRequestInput = {
   recipient_role: string;
   related_entity_type: 'care_report';
   related_entity_id: string;
+  expected_report_updated_at: string;
   context_snapshot: Record<string, string | string[]>;
   status: 'sent';
   subject: string;
@@ -379,6 +380,7 @@ export function buildShareCommunicationRequestInput(args: {
   patientName: string | null;
   reportId: string;
   reportType: string;
+  reportUpdatedAt: string;
   recipientName: string;
   recipientOrganizationName: string | null;
   sections: readonly ShareSection[];
@@ -398,6 +400,7 @@ export function buildShareCommunicationRequestInput(args: {
     recipient_role: recipientRoleForShareAudience(args.audience),
     related_entity_type: 'care_report',
     related_entity_id: args.reportId,
+    expected_report_updated_at: args.reportUpdatedAt,
     context_snapshot: {
       source: 'interprofessional_share',
       report_id: args.reportId,
