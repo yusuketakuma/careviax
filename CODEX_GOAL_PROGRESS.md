@@ -27511,3 +27511,32 @@ Next loop:
 - Remaining:
   - Broad master/patient/schedule/collaboration objective remains open.
   - No push was performed.
+
+### Direct Recurring Visit Medication Deadlines - 2026-07-01 00:01 JST
+
+- Scope:
+  - Continued prescription-to-schedule decision hardening for direct recurring visit generation.
+  - Focused on `POST /api/visit-schedules/generate`, separate from the proposal planner path.
+- Fixed:
+  - Direct generation now loads prescription intakes/lines for the latest schedulable medication cycle.
+  - It reuses `resolveMedicationDeadlineSummary` to derive `medication_end_date` and `visit_deadline_date`.
+  - Generated `VisitSchedule` rows now persist those deadline fields alongside `cycle_id`.
+  - Candidate dates beyond the medication visit deadline are rejected before schedule creation, audit, or workflow notification side effects.
+- Safety:
+  - Reduces prescription-deadline drift where direct recurring schedules could look valid while missing the same medication deadline context used by proposal generation.
+  - Preserves auth, org/RLS context, workflow gates, billing guards, no-store wrapping, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds prescription deadline fields to the already required cycle lookup and computes deadlines in memory.
+  - No new top-level query, dependency, background job, external call, broad scan, unbounded loop, or heavy render path was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-schedules/generate/route.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `47` tests.
+  - Scoped ESLint: passed.
+  - Scoped Prettier check: passed.
+  - Scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Commit:
+  - `4bb5c807 fix(schedules): carry medication deadlines into recurring generation`
+- Remaining:
+  - Broad schedule/prescription/route-management objective remains open.
+  - Concurrent patient/report dirty files belong to separate slices and were preserved.
