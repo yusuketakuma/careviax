@@ -34,16 +34,31 @@ export async function GET(req: NextRequest) {
     1,
     MAX_NOTIFICATION_RULE_LIMIT,
   );
+  const where = { org_id: ctx.orgId };
 
-  const rules = await withOrgContext(ctx.orgId, (tx) =>
-    tx.notificationRule.findMany({
-      where: { org_id: ctx.orgId },
-      orderBy: { created_at: 'desc' },
-      take: limit,
-    }),
+  const [totalCount, rules] = await withOrgContext(ctx.orgId, (tx) =>
+    Promise.all([
+      tx.notificationRule.count({ where }),
+      tx.notificationRule.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        take: limit,
+      }),
+    ]),
   );
+  const visibleCount = rules.length;
+  const hiddenCount = Math.max(totalCount - visibleCount, 0);
 
-  return success({ data: rules });
+  return success({
+    data: rules,
+    total_count: totalCount,
+    visible_count: visibleCount,
+    hidden_count: hiddenCount,
+    truncated: hiddenCount > 0,
+    count_basis: 'notification_rules',
+    filters_applied: {},
+    limit,
+  });
 }
 
 export async function POST(req: NextRequest) {

@@ -25798,3 +25798,33 @@ Next loop:
 - Remaining:
   - The broad master-management/patient-information goal remains open.
   - Continue scanning capped admin master APIs such as notification rules, webhooks, shift templates, vehicle resources, business holidays, and packaging methods for count metadata, stale preconditions, audit-near-action gaps, and false-empty states.
+
+### Notification Rule Counted Metadata - 2026-06-30 19:33 JST
+
+- Scope:
+  - Continued master-management hardening for the event notification rule master used by admin notification settings.
+  - Focused on preventing capped `/api/notification-rules` results from looking like the complete notification design.
+- Fixed:
+  - `GET /api/notification-rules` now returns `total_count`, `visible_count`, `hidden_count`, `truncated`, `count_basis`, `filters_applied`, and `limit`.
+  - The route now counts rules with the same org predicate as the bounded row query and still respects the existing default/max list bounds.
+  - The notification settings page consumes the metadata, shows `登録N件` or `先頭N件を表示 / 他N件`, and warns when hidden event notification rules exist.
+  - Existing legacy `{ data: [] }` responses remain tolerated by the UI fallback path.
+- Safety:
+  - Reduces false-complete notification-master risk where hidden event/channel rules could make the admin screen appear to represent the whole notification design.
+  - Hidden recipient roles, user ids, event details, PHI, raw internals, and secrets are not exposed; metadata contains only counts, count basis, filters, and limit.
+  - Existing `canAdmin` authorization, org scoping, create/update UI behavior, browser-notification settings, escalation-rule metadata handling, retryable inline errors, and legacy response fallback remain intact.
+  - No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Adds one scoped `notificationRule.count` query using the same org predicate as the bounded row query.
+  - No new dependency, background job, broad scan outside that predicate, unbounded loop, network call, or render-heavy path was added.
+- Validation:
+  - Read `docs/ui-ux-design-guidelines.md` and Next route-handler docs before the API/UI-facing change.
+  - `gbrain search "CareViaX notification rules count metadata false empty" --limit 8`: returned unrelated older project hits, so live repo state was used as authoritative evidence.
+  - `pnpm exec vitest run src/app/api/notification-rules/route.test.ts 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `2` files / `13` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` on notification-rule API/UI files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - The broad master-management/patient-information goal remains open.
+  - Continue scanning capped admin master APIs such as webhooks, pharmacist shift templates/shifts, vehicle resources, business holidays, packaging methods, templates, and document delivery rules for count metadata, stale preconditions, audit-near-action gaps, and false-empty states.

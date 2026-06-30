@@ -3,11 +3,13 @@ import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
+  notificationRuleCountMock,
   notificationRuleFindManyMock,
   notificationRuleCreateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
+  notificationRuleCountMock: vi.fn(),
   notificationRuleFindManyMock: vi.fn(),
   notificationRuleCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -55,11 +57,13 @@ describe('/api/notification-rules', () => {
         role: 'admin',
       },
     });
+    notificationRuleCountMock.mockResolvedValue(1);
     notificationRuleFindManyMock.mockResolvedValue([{ id: 'rule_1' }]);
     notificationRuleCreateMock.mockResolvedValue({ id: 'rule_2' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         notificationRule: {
+          count: notificationRuleCountMock,
           findMany: notificationRuleFindManyMock,
           create: notificationRuleCreateMock,
         },
@@ -71,6 +75,19 @@ describe('/api/notification-rules', () => {
     const response = (await GET(createGetRequest()))!;
 
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: 'rule_1' }],
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'notification_rules',
+      filters_applied: {},
+      limit: 100,
+    });
+    expect(notificationRuleCountMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1' },
+    });
     expect(notificationRuleFindManyMock).toHaveBeenCalledWith({
       where: { org_id: 'org_1' },
       orderBy: { created_at: 'desc' },
@@ -89,6 +106,27 @@ describe('/api/notification-rules', () => {
         take: 5,
       }),
     );
+  });
+
+  it('returns counted metadata when the bounded notification rule list is truncated', async () => {
+    notificationRuleCountMock.mockResolvedValue(3);
+    notificationRuleFindManyMock.mockResolvedValue([{ id: 'rule_1' }]);
+
+    const response = (await GET(
+      createGetRequest('http://localhost/api/notification-rules?limit=1'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: 'rule_1' }],
+      total_count: 3,
+      visible_count: 1,
+      hidden_count: 2,
+      truncated: true,
+      count_basis: 'notification_rules',
+      filters_applied: {},
+      limit: 1,
+    });
   });
 
   it('clamps overly large notification rule list limits', async () => {

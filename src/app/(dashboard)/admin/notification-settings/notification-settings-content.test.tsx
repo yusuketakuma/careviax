@@ -34,7 +34,19 @@ describe('NotificationSettingsContent', () => {
         const url = String(input);
 
         if (url === '/api/notification-rules' && !init?.method) {
-          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+          return new Response(
+            JSON.stringify({
+              data: [],
+              total_count: 0,
+              visible_count: 0,
+              hidden_count: 0,
+              truncated: false,
+              count_basis: 'notification_rules',
+              filters_applied: {},
+              limit: 100,
+            }),
+            { status: 200 },
+          );
         }
 
         if (url === '/api/admin/escalation-rules' && !init?.method) {
@@ -173,6 +185,56 @@ describe('NotificationSettingsContent', () => {
     expect(
       screen.getByText(
         '追加のエスカレーションルールが 2件あります。表示中の状態だけで全体の通知設計を判断しないでください。',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('shows hidden event notification rule counts when the API result is truncated', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url === '/api/notification-rules' && !init?.method) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'rule_1',
+                  event_type: 'visit_schedule_reschedule_requested',
+                  channel: 'sms',
+                  enabled: true,
+                  recipients: {},
+                  created_at: '2026-06-19T10:00:00.000Z',
+                },
+              ],
+              total_count: 4,
+              visible_count: 1,
+              hidden_count: 3,
+              truncated: true,
+              count_basis: 'notification_rules',
+              filters_applied: {},
+              limit: 1,
+            }),
+            { status: 200 },
+          );
+        }
+
+        if (url === '/api/admin/escalation-rules' && !init?.method) {
+          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        }
+
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    render(<NotificationSettingsContent />);
+
+    expect(await screen.findByText('先頭1件を表示 / 他3件')).toBeTruthy();
+    expect(screen.getByText('表示中のみ確認中')).toBeTruthy();
+    expect(
+      screen.getByText(
+        '追加のイベント通知ルールが 3件あります。表示中の設定だけで全体の通知設計を判断しないでください。',
       ),
     ).toBeTruthy();
   });

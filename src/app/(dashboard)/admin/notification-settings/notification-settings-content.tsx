@@ -88,7 +88,26 @@ type EscalationRulesResponse = {
   limit?: number;
 };
 
+type NotificationRulesResponse = {
+  data?: NotificationRule[];
+  total_count?: number;
+  visible_count?: number;
+  hidden_count?: number;
+  truncated?: boolean;
+  count_basis?: string;
+  filters_applied?: Record<string, unknown>;
+  limit?: number;
+};
+
 type EscalationListMeta = {
+  totalCount: number;
+  visibleCount: number;
+  hiddenCount: number;
+  truncated: boolean;
+  limit: number | null;
+};
+
+type NotificationListMeta = {
   totalCount: number;
   visibleCount: number;
   hiddenCount: number;
@@ -300,6 +319,7 @@ export function NotificationSettingsContent() {
   const orgId = useOrgId();
   const [rules, setRules] = useState<NotificationRule[]>([]);
   const [escalationRules, setEscalationRules] = useState<EscalationRule[]>([]);
+  const [rulesListMeta, setRulesListMeta] = useState<NotificationListMeta | null>(null);
   const [escalationListMeta, setEscalationListMeta] = useState<EscalationListMeta | null>(null);
   const [rulesLoadedOrgId, setRulesLoadedOrgId] = useState<string | null>(null);
   const [escalationLoadedOrgId, setEscalationLoadedOrgId] = useState<string | null>(null);
@@ -344,11 +364,27 @@ export function NotificationSettingsContent() {
         if (!response.ok) {
           throw new Error('通知設定の取得に失敗しました');
         }
-        return (await response.json()) as { data?: NotificationRule[] };
+        return (await response.json()) as NotificationRulesResponse;
       })
       .then((payload) => {
         if (!active) return;
-        setRules(payload.data ?? []);
+        const rows = payload.data ?? [];
+        const totalCount =
+          typeof payload.total_count === 'number' ? payload.total_count : rows.length;
+        const visibleCount =
+          typeof payload.visible_count === 'number' ? payload.visible_count : rows.length;
+        const hiddenCount =
+          typeof payload.hidden_count === 'number'
+            ? payload.hidden_count
+            : Math.max(totalCount - visibleCount, 0);
+        setRules(rows);
+        setRulesListMeta({
+          totalCount,
+          visibleCount,
+          hiddenCount,
+          truncated: payload.truncated ?? hiddenCount > 0,
+          limit: typeof payload.limit === 'number' ? payload.limit : null,
+        });
         setRulesLoadError(false);
         setRulesLoadedOrgId(orgId);
       })
@@ -424,6 +460,13 @@ export function NotificationSettingsContent() {
     escalationHiddenCount > 0
       ? `先頭${escalationVisibleCount}件を表示 / 他${escalationHiddenCount}件`
       : `登録${escalationTotalCount}件`;
+  const rulesTotalCount = rulesListMeta?.totalCount ?? rules.length;
+  const rulesVisibleCount = rulesListMeta?.visibleCount ?? rules.length;
+  const rulesHiddenCount = rulesListMeta?.hiddenCount ?? 0;
+  const rulesListSummary =
+    rulesHiddenCount > 0
+      ? `先頭${rulesVisibleCount}件を表示 / 他${rulesHiddenCount}件`
+      : `登録${rulesTotalCount}件`;
 
   const rulesByEvent = useMemo(() => {
     return EVENT_CONFIGS.reduce<
@@ -683,6 +726,9 @@ export function NotificationSettingsContent() {
             `in_app` は未設定でも既定で配信されます。`sms` と `line` は明示的に ON
             にしたイベントだけ配信されます。
           </CardDescription>
+          {!loading && !rulesLoadError ? (
+            <p className="mt-2 text-sm text-muted-foreground">{rulesListSummary}</p>
+          ) : null}
         </CardHeader>
         <CardContent className="space-y-4">
           {loading ? (
@@ -708,70 +754,91 @@ export function NotificationSettingsContent() {
               }}
             />
           ) : (
-            EVENT_CONFIGS.map((config) => {
-              const badge = BADGE_VARIANTS[config.badge];
+            <>
+              {rulesHiddenCount > 0 ? (
+                <Alert>
+                  <ShieldAlert className="size-4" aria-hidden="true" />
+                  <AlertTitle>表示中のみ確認中</AlertTitle>
+                  <AlertDescription>
+                    追加のイベント通知ルールが {rulesHiddenCount}
+                    件あります。表示中の設定だけで全体の通知設計を判断しないでください。
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+              {EVENT_CONFIGS.map((config) => {
+                const badge = BADGE_VARIANTS[config.badge];
 
-              return (
-                <div
-                  key={config.eventType}
-                  className="flex flex-col gap-3 rounded-xl border border-border px-4 py-3 md:flex-row md:items-start md:justify-between"
-                >
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium text-foreground">{config.title}</p>
-                      <StateBadge role={badge.role}>{badge.label}</StateBadge>
+                return (
+                  <div
+                    key={config.eventType}
+                    className="flex flex-col gap-3 rounded-xl border border-border px-4 py-3 md:flex-row md:items-start md:justify-between"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium text-foreground">{config.title}</p>
+                        <StateBadge role={badge.role}>{badge.label}</StateBadge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{config.description}</p>
+                      <p className="font-mono text-xs text-muted-foreground/70">
+                        {config.eventType}
+                      </p>
                     </div>
-                    <p className="text-sm text-muted-foreground">{config.description}</p>
-                    <p className="font-mono text-xs text-muted-foreground/70">{config.eventType}</p>
-                  </div>
-                  <div className="grid gap-2 sm:min-w-80">
-                    {NOTIFICATION_CHANNEL_OPTIONS.map((channel) => {
-                      const rule = rulesByEvent[config.eventType]?.[channel.value] ?? null;
-                      const enabled =
-                        channel.value === 'in_app'
-                          ? (rule?.enabled ?? true)
-                          : (rule?.enabled ?? false);
-                      const isSaving = savingKey === `event:${config.eventType}:${channel.value}`;
-                      const Icon = channel.icon;
+                    <div className="grid gap-2 sm:min-w-80">
+                      {NOTIFICATION_CHANNEL_OPTIONS.map((channel) => {
+                        const rule = rulesByEvent[config.eventType]?.[channel.value] ?? null;
+                        const enabled =
+                          channel.value === 'in_app'
+                            ? (rule?.enabled ?? true)
+                            : (rule?.enabled ?? false);
+                        const isSaving = savingKey === `event:${config.eventType}:${channel.value}`;
+                        const Icon = channel.icon;
 
-                      return (
-                        <label
-                          key={channel.value}
-                          className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm"
-                        >
-                          <span className="flex min-w-0 items-center gap-3">
-                            <span className="rounded-full border border-border bg-background p-1.5">
-                              <Icon className="size-3.5 text-muted-foreground" aria-hidden="true" />
-                            </span>
-                            <span>
-                              <span className="block font-medium text-foreground">
-                                {channel.label}
+                        return (
+                          <label
+                            key={channel.value}
+                            className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm"
+                          >
+                            <span className="flex min-w-0 items-center gap-3">
+                              <span className="rounded-full border border-border bg-background p-1.5">
+                                <Icon
+                                  className="size-3.5 text-muted-foreground"
+                                  aria-hidden="true"
+                                />
                               </span>
-                              <span className="block text-xs text-muted-foreground">
-                                {channel.description}
+                              <span>
+                                <span className="block font-medium text-foreground">
+                                  {channel.label}
+                                </span>
+                                <span className="block text-xs text-muted-foreground">
+                                  {channel.description}
+                                </span>
                               </span>
                             </span>
-                          </span>
-                          <span className="flex items-center gap-3">
-                            {!rule && channel.value === 'in_app' ? (
-                              <Badge variant="outline">既定ON</Badge>
-                            ) : null}
-                            <Checkbox
-                              className="size-11 rounded-lg"
-                              checked={enabled}
-                              disabled={isSaving}
-                              onCheckedChange={(checked) =>
-                                void toggleEvent(config.eventType, channel.value, checked === true)
-                              }
-                            />
-                          </span>
-                        </label>
-                      );
-                    })}
+                            <span className="flex items-center gap-3">
+                              {!rule && channel.value === 'in_app' ? (
+                                <Badge variant="outline">既定ON</Badge>
+                              ) : null}
+                              <Checkbox
+                                className="size-11 rounded-lg"
+                                checked={enabled}
+                                disabled={isSaving}
+                                onCheckedChange={(checked) =>
+                                  void toggleEvent(
+                                    config.eventType,
+                                    channel.value,
+                                    checked === true,
+                                  )
+                                }
+                              />
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              );
-            })
+                );
+              })}
+            </>
           )}
         </CardContent>
         <CardFooter className="justify-between gap-3 text-xs text-muted-foreground">
