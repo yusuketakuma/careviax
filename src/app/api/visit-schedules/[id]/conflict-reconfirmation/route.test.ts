@@ -74,6 +74,7 @@ describe('/api/visit-schedules/[id]/conflict-reconfirmation POST', () => {
       scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
       schedule_status: 'planned',
       confirmed_at: null,
+      updated_at: new Date('2026-04-09T08:30:00.000Z'),
     });
     taskCreateMock.mockResolvedValue({
       id: 'task_1',
@@ -114,6 +115,7 @@ describe('/api/visit-schedules/[id]/conflict-reconfirmation POST', () => {
         scheduled_date: true,
         schedule_status: true,
         confirmed_at: true,
+        updated_at: true,
       },
     });
     expect(taskCreateMock).toHaveBeenCalledWith({
@@ -228,5 +230,25 @@ describe('/api/visit-schedules/[id]/conflict-reconfirmation POST', () => {
       message: '完了済みまたは中止済みの訪問予定には再確認依頼を作成できません',
     });
     expect(taskCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale reconfirmation requests before task creation or audit writes', async () => {
+    const response = await POST(
+      createRequest({
+        target_date: '2026-04-09',
+        expected_schedule_updated_at: '2026-04-09T08:00:00.000Z',
+      }),
+      routeContext(),
+    );
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '訪問予定が更新されています。再読み込みしてから再確認依頼を作成してください',
+    });
+    expect(taskCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 });

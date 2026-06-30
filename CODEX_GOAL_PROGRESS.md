@@ -27595,3 +27595,31 @@ Next loop:
 - Remaining:
   - Broad visit-time/report/collaboration objective remains open.
   - Shared dirty patient archive/search/QR/prescription changes are unrelated to this slice and were preserved unstaged.
+
+### Conflict Reconfirmation Version Guard - 2026-07-01 00:17 JST
+
+- Scope:
+  - Continued schedule/patient-contact safety hardening for conflict-resolution workflows.
+  - Focused on `/api/visit-schedules/[id]/conflict-reconfirmation` and the conflict-resolution UI.
+- Fixed:
+  - Conflict-resolution reconfirmation requests now include the reviewed schedule `updated_at` as `expected_schedule_updated_at`.
+  - The API loads `updated_at` with the existing schedule read and rejects stale reconfirmation requests with a sanitized 409 before task creation, audit writes, or workflow notifications.
+  - The UI test locks the request body so patient names are not sent and stale-version protection remains wired.
+- Safety:
+  - Reduces stale patient-contact task risk when a visit schedule changes after the conflict card is rendered.
+  - Preserves auth, org/RLS scope, no-store wrappers, PHI-minimized request bodies, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds one scalar field to an existing lookup plus a timestamp comparison only.
+  - No new query, dependency, job, external call, broad scan, unbounded loop, or heavy render path was added.
+- Validation:
+  - `pnpm vitest run src/app/api/visit-schedules/'[id]'/conflict-reconfirmation/route.test.ts src/app/'(dashboard)'/schedules/conflicts/conflict-resolution-content.test.tsx --reporter=dot --testTimeout=60000`: passed, `2` files / `9` tests.
+  - Scoped Prettier check: passed.
+  - Scoped ESLint: passed.
+  - `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - Broad schedule/prescription/route-management objective remains open.
+  - Subagent mapper identified facility-batch DELETE route unlinking and visit-record save boundaries as the next high-risk persisted-save gaps.

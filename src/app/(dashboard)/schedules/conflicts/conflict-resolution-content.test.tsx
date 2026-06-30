@@ -67,6 +67,7 @@ function buildConflictingSchedule(over: Record<string, unknown>) {
     priority: 'normal',
     visit_type: 'regular',
     route_order: 1,
+    updated_at: '2026-04-09T08:30:00.000Z',
     confirmed_at: null,
     vehicle_resource: null,
     case_: { patient: { id: 'patient_1', name: '患者A' } },
@@ -236,6 +237,7 @@ describe('ConflictResolutionContent', () => {
     expect(JSON.parse(String(init.body))).toEqual({
       target_date: '2026-04-09',
       plan_id: 'plan_a',
+      expected_schedule_updated_at: '2026-04-09T08:30:00.000Z',
     });
     expect(String(init.body)).not.toContain('患者A');
     await waitFor(() => {

@@ -436,6 +436,7 @@ export type VisitSchedule = {
   pharmacist_id: string;
   assignment_mode: AssignmentMode;
   route_order: number | null;
+  updated_at?: string;
   facility_batch_id: string | null;
   confirmed_at: string | null;
   case_: {

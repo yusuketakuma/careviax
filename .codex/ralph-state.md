@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0017 JST
+
+- current task: preserve the reviewed visit-schedule version when creating conflict reconfirmation tasks.
+- files inspected: `git status --short --branch --untracked-files=all`, subagent read-only mapper output, `docs/ui-ux-design-guidelines.md`, local Next Route Handler docs, `src/app/api/visit-schedules/[id]/conflict-reconfirmation/route.ts`, `src/app/api/visit-schedules/[id]/conflict-reconfirmation/route.test.ts`, `src/app/(dashboard)/schedules/conflicts/conflict-resolution-content.tsx`, `src/app/(dashboard)/schedules/conflicts/conflict-resolution-content.test.tsx`, `src/app/(dashboard)/schedules/visit-route-client.ts`, `src/app/(dashboard)/schedules/visit-schedule-fetch.helpers.ts`, `src/app/(dashboard)/schedules/day-view.shared.ts`, `src/app/api/visit-schedules/route.ts`, `src/server/services/visit-schedule-service.ts`, and `src/lib/db/schedule-includes.ts`.
+- files changed: `src/app/api/visit-schedules/[id]/conflict-reconfirmation/route.ts`, `src/app/api/visit-schedules/[id]/conflict-reconfirmation/route.test.ts`, `src/app/(dashboard)/schedules/conflicts/conflict-resolution-content.tsx`, `src/app/(dashboard)/schedules/conflicts/conflict-resolution-content.test.tsx`, `src/app/(dashboard)/schedules/day-view.shared.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: the conflict-resolution UI could create a patient reconfirmation task from a stale schedule card because the request carried target date and plan id only; if the schedule changed before the click, task/audit/notification side effects could be created against an outdated visit version.
+- security risks found: reduced stale patient-contact workflow risk by sending the reviewed schedule `updated_at` and returning a sanitized 409 before task creation, audit writes, or workflow notifications when the server schedule version no longer matches. Existing auth, org/RLS scope, no-store wrappers, PHI-minimized request body, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: added only one scalar `updated_at` field to the existing schedule lookup and a timestamp comparison. No new query, dependency, background job, external call, broad scan, unbounded loop, or render-heavy path was added.
+- validation commands: `pnpm exec vitest run 'src/app/api/visit-schedules/[id]/conflict-reconfirmation/route.test.ts' 'src/app/(dashboard)/schedules/conflicts/conflict-resolution-content.test.tsx' --reporter=dot --testTimeout=60000`; scoped Prettier check; scoped ESLint; `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`.
+- validation results: focused Vitest passed `2` files / `9` tests. Scoped Prettier, scoped ESLint, diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm format:check`, and `pnpm lint` passed.
+- remaining work: broad schedule/prescription/route-management objective remains open. Subagent mapper identified facility-batch DELETE route unlinking and visit-record save boundaries as the next high-risk persisted-save gaps.
+- next action: commit only this conflict reconfirmation version-guard slice plus ledger updates, send agmsg FYI, then inspect facility-batch DELETE guard gaps.
+
 ### 20260701-0010 JST
 
 - current task: guard care-report print-request audit writes with the exact previewed report version.

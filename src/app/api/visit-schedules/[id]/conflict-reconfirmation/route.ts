@@ -19,6 +19,7 @@ import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cac
 const conflictReconfirmationSchema = z.object({
   target_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
   plan_id: z.enum(['plan_a', 'plan_b', 'plan_c']).optional(),
+  expected_schedule_updated_at: z.string().datetime('訪問予定の版情報が不正です').optional(),
 });
 
 const RECONFIRMATION_CREATABLE_STATUSES = new Set([
@@ -76,6 +77,7 @@ export async function POST(req: NextRequest, routeContext: ConflictReconfirmatio
             scheduled_date: true,
             schedule_status: true,
             confirmed_at: true,
+            updated_at: true,
           },
         });
 
@@ -87,6 +89,13 @@ export async function POST(req: NextRequest, routeContext: ConflictReconfirmatio
         }
         if (!RECONFIRMATION_CREATABLE_STATUSES.has(schedule.schedule_status)) {
           return { status: 'status_locked' as const };
+        }
+        if (
+          parsed.data.expected_schedule_updated_at &&
+          schedule.updated_at.getTime() !==
+            new Date(parsed.data.expected_schedule_updated_at).getTime()
+        ) {
+          return { status: 'version_conflict' as const };
         }
 
         const dedupeKey = buildConflictReconfirmationDedupeKey(schedule.id, dateKey);
@@ -160,6 +169,11 @@ export async function POST(req: NextRequest, routeContext: ConflictReconfirmatio
     if (result.status === 'status_locked') {
       return withSensitiveNoStore(
         validationError('完了済みまたは中止済みの訪問予定には再確認依頼を作成できません'),
+      );
+    }
+    if (result.status === 'version_conflict') {
+      return withSensitiveNoStore(
+        conflict('訪問予定が更新されています。再読み込みしてから再確認依頼を作成してください'),
       );
     }
 

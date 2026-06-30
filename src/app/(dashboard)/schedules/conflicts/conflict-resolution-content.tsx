@@ -159,6 +159,7 @@ async function createConflictReconfirmationTask(args: {
   scheduleId: string;
   targetDate: string;
   planId?: AdjustmentPlan['id'];
+  expectedScheduleUpdatedAt?: string;
 }) {
   const response = await fetch(
     `/api/visit-schedules/${encodeURIComponent(args.scheduleId)}/conflict-reconfirmation`,
@@ -171,6 +172,9 @@ async function createConflictReconfirmationTask(args: {
       body: JSON.stringify({
         target_date: args.targetDate,
         ...(args.planId ? { plan_id: args.planId } : {}),
+        ...(args.expectedScheduleUpdatedAt
+          ? { expected_schedule_updated_at: args.expectedScheduleUpdatedAt }
+          : {}),
       }),
     },
   );
@@ -339,6 +343,7 @@ export function ConflictResolutionContent({ initialDate }: { initialDate?: strin
         scheduleId: schedule.id,
         targetDate,
         planId: recommendedPlan?.id,
+        expectedScheduleUpdatedAt: schedule.updated_at,
       }),
     onSuccess: async (_data, schedule) => {
       setReconfirmationTaskScheduleId(schedule.id);
