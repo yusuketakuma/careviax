@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { facilityFindFirstMock, residenceFindManyMock } = vi.hoisted(() => ({
+const { facilityFindFirstMock, residenceCountMock, residenceFindManyMock } = vi.hoisted(() => ({
   facilityFindFirstMock: vi.fn(),
+  residenceCountMock: vi.fn(),
   residenceFindManyMock: vi.fn(),
 }));
 
@@ -19,6 +20,7 @@ vi.mock('@/lib/db/client', () => ({
       findFirst: facilityFindFirstMock,
     },
     residence: {
+      count: residenceCountMock,
       findMany: residenceFindManyMock,
     },
   },
@@ -26,7 +28,8 @@ vi.mock('@/lib/db/client', () => ({
 
 import { GET } from './route';
 
-const createRequest = () => new NextRequest('http://localhost/api/facilities/facility_1/patients');
+const createRequest = (query = '') =>
+  new NextRequest(`http://localhost/api/facilities/facility_1/patients${query}`);
 
 function expectNoStore(response: Response) {
   expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
@@ -40,6 +43,7 @@ describe('/api/facilities/[id]/patients GET', () => {
       id: 'facility_1',
       name: 'あおば苑',
     });
+    residenceCountMock.mockResolvedValue(1);
     residenceFindManyMock.mockResolvedValue([
       {
         id: 'residence_1',
@@ -50,6 +54,7 @@ describe('/api/facilities/[id]/patients GET', () => {
           name: '山田 太郎',
           name_kana: 'ヤマダ タロウ',
           phone: '03-1111-2222',
+          archived_at: null,
           cases: [
             {
               id: 'case_1',
@@ -74,8 +79,10 @@ describe('/api/facilities/[id]/patients GET', () => {
         org_id: 'org_1',
         facility_id: 'facility_1',
         is_primary: true,
+        patient: { archived_at: null },
       },
       orderBy: [{ unit_name: 'asc' }, { created_at: 'asc' }],
+      take: 101,
       select: expect.any(Object),
     });
     await expect(response.json()).resolves.toMatchObject({
@@ -87,10 +94,119 @@ describe('/api/facilities/[id]/patients GET', () => {
             patient_id: 'patient_1',
             patient_name: '山田 太郎',
             case_status: 'active',
+            archive: { status: 'active', archived: false, archived_at: null },
           }),
         ],
       },
+      metadata: {
+        limit: 100,
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        has_more: false,
+        count_basis: 'primary_residences',
+        filters_applied: {
+          facility_id: 'facility_1',
+          archive_status: 'active',
+          assignment_scoped: false,
+        },
+      },
     });
+  });
+
+  it('returns archived patients only when archive_status=archived is explicit and exposes hidden counts', async () => {
+    residenceCountMock.mockResolvedValue(2);
+    residenceFindManyMock.mockResolvedValue([
+      {
+        id: 'residence_archived_1',
+        address: '東京都千代田区1-1-1',
+        unit_name: '203',
+        patient: {
+          id: 'patient_archived_1',
+          name: '佐藤 太郎',
+          name_kana: 'サトウ タロウ',
+          phone: '03-1111-2222',
+          archived_at: new Date('2026-04-01T09:30:00.000Z'),
+          cases: [{ id: 'case_archived_1', status: 'archived' }],
+        },
+      },
+      {
+        id: 'residence_archived_2',
+        address: '東京都千代田区2-2-2',
+        unit_name: '204',
+        patient: {
+          id: 'patient_archived_2',
+          name: '鈴木 花子',
+          name_kana: 'スズキ ハナコ',
+          phone: null,
+          archived_at: new Date('2026-04-02T09:30:00.000Z'),
+          cases: [{ id: 'case_archived_2', status: 'archived' }],
+        },
+      },
+    ]);
+
+    const response = await GET(createRequest('?archive_status=archived&limit=1'), {
+      params: Promise.resolve({ id: 'facility_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(residenceCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        facility_id: 'facility_1',
+        is_primary: true,
+        patient: { archived_at: { not: null } },
+      },
+    });
+    expect(residenceFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          facility_id: 'facility_1',
+          is_primary: true,
+          patient: { archived_at: { not: null } },
+        },
+        take: 2,
+      }),
+    );
+    const body = await response.json();
+    expect(body.data.patients).toHaveLength(1);
+    expect(body.data.patients[0]).toMatchObject({
+      patient_id: 'patient_archived_1',
+      archived_at: '2026-04-01T09:30:00.000Z',
+      archive: {
+        status: 'archived',
+        archived: true,
+        archived_at: '2026-04-01T09:30:00.000Z',
+      },
+    });
+    expect(body.metadata).toMatchObject({
+      limit: 1,
+      total_count: 2,
+      visible_count: 1,
+      hidden_count: 1,
+      has_more: true,
+      filters_applied: { archive_status: 'archived' },
+    });
+  });
+
+  it('rejects malformed limit values before loading the facility', async () => {
+    const response = await GET(createRequest('?limit=1.5'), {
+      params: Promise.resolve({ id: 'facility_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { limit: ['limit は整数で指定してください'] },
+    });
+    expect(facilityFindFirstMock).not.toHaveBeenCalled();
+    expect(residenceCountMock).not.toHaveBeenCalled();
+    expect(residenceFindManyMock).not.toHaveBeenCalled();
   });
 
   it('returns a no-store 404 when the facility does not exist', async () => {

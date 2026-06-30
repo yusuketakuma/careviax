@@ -30,6 +30,30 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Patient Linked Selector Archive And Count Contract - 2026-07-01 04:18 JST
+
+- Scope:
+  - Continued patient-information and master-management hardening on facility-linked and external-professional-linked patient selector APIs.
+  - Focused on preventing archived patients and hidden overflow rows from looking like normal active selector results.
+- Fixed:
+  - `GET /api/facilities/[id]/patients` now defaults to `archive_status=active`, supports explicit `archived` / `all`, applies the archive filter inside the same primary-residence predicate, and returns count/truncation metadata.
+  - `GET /api/admin/external-professionals/[id]/patients` now defaults to active linked patients, supports explicit archived/all selection, applies the archive filter through `CareCase.patient`, and returns count/truncation metadata.
+  - Both responses include per-row archive state when archived rows are explicitly requested and use `limit + 1` plus same-where `count` for hidden-row metadata.
+- Safety:
+  - Reduces archived-patient selection risk from facility and external professional master surfaces.
+  - Reduces false-complete patient selector risk for large facilities or broad external professional assignments.
+  - Preserves existing canVisit/canReport auth, org scoping, assignment filtering, no-store wrappers, sanitized 500 behavior, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds one narrow count query per selector using the same org/facility/professional/archive/assignment predicate as the bounded list and fetches one extra row for truncation detection.
+  - No new dependency, background job, external call, broad scan beyond the existing selector scope, render-heavy path, or unbounded loop was added.
+- Validation:
+  - Focused facility/external-professional selector Vitest passed `2` files / `9` tests.
+  - Related patient route contract suite passed `3` files / `54` tests.
+  - Scoped ESLint, scoped Prettier write/check, scoped diff-check, full typecheck, no-unused, full format check, and full diff-check passed.
+- Remaining:
+  - Broad master-management / patient-information objective remains open.
+  - Facility contact stale-write guard remains a high-value follow-up candidate.
+
 ### Partner Visit Record Review/Submit OCC - 2026-07-01 04:08 JST
 
 - Scope:
