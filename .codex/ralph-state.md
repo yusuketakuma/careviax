@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-1858 JST
+
+- current task: focus communication-queue missing-emergency-contact draft actions on the exact patient edit target.
+- files inspected: `git status --short --branch --untracked-files=all`, `git log --oneline -n 12`, `CODEX_GOAL_PROGRESS.md`, `.codex/ralph-state.md`, relevant memory entries for false-empty/patient-link guidance, `gbrain search "CareViaX master patient selector false empty count metadata" --limit 8`, `src/server/services/communication-queue.ts`, `src/server/services/communication-queue.test.ts`, `src/lib/patient/navigation.ts`, `src/lib/patient/navigation.test.ts`, patient edit/intake fields, and generic action-link search results.
+- files changed: `src/server/services/communication-queue.ts`, `src/server/services/communication-queue.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: the missing-emergency-contact draft builder created `patient_id: ''` and linked the action to generic `/patients`; the caller patched the patient id afterward, but staff following the draft still lost the exact patient/edit-field context.
+- security risks found: reduced wrong-patient / wrong-workspace navigation risk by routing the gap draft through `buildPatientHref(patientId, '/edit?section=visit#intake.emergency_contact.name')` while preserving the raw DB id in `patient_id`. No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- performance issues found: link construction only; no new query, dependency, network call, background job, payload expansion, broad scan, or loop changed.
+- validation commands: `pnpm exec vitest run src/server/services/communication-queue.test.ts src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=60000`; scoped `pnpm exec eslint --max-warnings=0`; scoped `pnpm exec prettier --check`; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused communication-queue/patient-navigation Vitest passed `2` files / `21` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- remaining work: commit only the two owned communication-queue files and ledger files, then continue scanning visit/report/collaboration and patient-information surfaces for generic action links or missing relation filters.
+- next action: commit `Focus emergency contact draft patient link`, then recheck dirty ownership and choose the next master/patient slice.
+
 ### 20260630-1855 JST
 
 - current task: focus visit-brief unresolved medication-issue and inquiry actions on reachable patient safety and communication request contexts.

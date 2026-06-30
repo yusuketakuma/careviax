@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db/client';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { formatCommunicationRequestTypeLabel } from '@/lib/communications/request-labels';
 import { buildExternalHref } from '@/lib/dashboard/home-link-builders';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { buildExternalAccessGrantVisibilityWhere } from './external-access';
@@ -253,19 +254,25 @@ function sortTimeline(left: TimelineSeed, right: TimelineSeed) {
   return rightTime - leftTime;
 }
 
-function buildEmergencyContactGapDraft(patientName: string): CommunicationDraftSuggestion {
+function buildEmergencyContactGapDraft(args: {
+  patientId: string;
+  patientName: string;
+}): CommunicationDraftSuggestion {
   return {
     id: 'missing_emergency_contact',
-    patient_id: '',
+    patient_id: args.patientId,
     template_key: 'missing_emergency_contact',
     request_type: 'emergency_contact_review',
     target_name: null,
     target_role: 'internal',
     title: '緊急連絡先の整備が必要です',
-    summary: `${patientName} の緊急連絡先が不足しています。先に連絡先と共有先を登録してください。`,
-    subject: `${patientName} の緊急連絡先確認`,
-    content: `${patientName} さんの急変時に連絡できる家族・主治医・訪看の連絡先確認が必要です。`,
-    action_href: '/patients',
+    summary: `${args.patientName} の緊急連絡先が不足しています。先に連絡先と共有先を登録してください。`,
+    subject: `${args.patientName} の緊急連絡先確認`,
+    content: `${args.patientName} さんの急変時に連絡できる家族・主治医・訪看の連絡先確認が必要です。`,
+    action_href: buildPatientHref(
+      args.patientId,
+      '/edit?section=visit#intake.emergency_contact.name',
+    ),
     action_label: '患者詳細を開く',
   };
 }
@@ -405,10 +412,12 @@ async function buildEmergencyDrafts(
 
   const drafts: CommunicationDraftSuggestion[] = [];
   if (emergencyContacts.length === 0) {
-    drafts.push({
-      ...buildEmergencyContactGapDraft(patient.name),
-      patient_id: patient.id,
-    });
+    drafts.push(
+      buildEmergencyContactGapDraft({
+        patientId: patient.id,
+        patientName: patient.name,
+      }),
+    );
   }
   if (physician) {
     drafts.push(

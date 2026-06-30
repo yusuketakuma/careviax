@@ -464,8 +464,9 @@ describe('listCommunicationQueue', () => {
 
   it('suggests missing emergency contact draft when no emergency contacts exist', async () => {
     emptyDbMocks();
+    const patientId = 'patient/1?x=y#frag';
     patientFindFirstMock.mockResolvedValue({
-      id: 'p-1',
+      id: patientId,
       name: '独居太郎',
       contacts: [],
     });
@@ -475,7 +476,7 @@ describe('listCommunicationQueue', () => {
 
     const result = await listCommunicationQueue(makeDb(), {
       orgId: 'org-1',
-      patientId: 'p-1',
+      patientId,
     });
 
     const gapDraft = result.emergency_drafts.find(
@@ -483,6 +484,10 @@ describe('listCommunicationQueue', () => {
     );
     expect(gapDraft).toBeDefined();
     expect(gapDraft!.title).toContain('緊急連絡先');
+    expect(gapDraft!.patient_id).toBe(patientId);
+    expect(gapDraft!.action_href).toBe(
+      `/patients/${encodeURIComponent(patientId)}/edit?section=visit#intake.emergency_contact.name`,
+    );
   });
 
   it('limits items to requested limit', async () => {
