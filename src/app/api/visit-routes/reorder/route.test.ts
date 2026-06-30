@@ -408,6 +408,100 @@ describe('/api/visit-routes/reorder PATCH', () => {
     expectNoWriteAuditOrNotify();
   });
 
+  it('rejects mixed route schedule reorders when an already assigned vehicle would exceed route duration', async () => {
+    scheduleFindManyMock.mockImplementation(
+      ({
+        where,
+      }: {
+        where: {
+          id?: { in?: string[]; notIn?: string[] };
+          vehicle_resource_id?: { in?: string[] };
+        };
+      }) => {
+        if (where.vehicle_resource_id?.in) return Promise.resolve([]);
+        return Promise.resolve([
+          {
+            id: 'schedule_1',
+            case_id: 'case_schedule_1',
+            pharmacist_id: 'user_1',
+            scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+            route_order: 2,
+            time_window_start: null,
+            vehicle_resource_id: 'vehicle_1',
+            case_: {
+              patient: {
+                residences: [
+                  {
+                    address: '近隣患者宅',
+                    lat: 35.681236,
+                    lng: 139.78,
+                  },
+                ],
+              },
+            },
+            vehicle_resource: {
+              id: 'vehicle_1',
+              label: '軽バン1号',
+              max_route_duration_minutes: 30,
+              travel_mode: 'DRIVE',
+              site: {
+                address: '薬局',
+                lat: 35.681236,
+                lng: 139.767125,
+              },
+            },
+          },
+          {
+            id: 'schedule_2',
+            case_id: 'case_schedule_2',
+            pharmacist_id: 'user_1',
+            scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+            route_order: 1,
+            time_window_start: null,
+            vehicle_resource_id: 'vehicle_1',
+            case_: {
+              patient: {
+                residences: [
+                  {
+                    address: '遠方患者宅',
+                    lat: 35.681236,
+                    lng: 139.95,
+                  },
+                ],
+              },
+            },
+            vehicle_resource: {
+              id: 'vehicle_1',
+              label: '軽バン1号',
+              max_route_duration_minutes: 30,
+              travel_mode: 'DRIVE',
+              site: {
+                address: '薬局',
+                lat: 35.681236,
+                lng: 139.767125,
+              },
+            },
+          },
+        ]);
+      },
+    );
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [
+          { item_type: 'schedule', id: 'schedule_1', route_order: 1 },
+          { item_type: 'schedule', id: 'schedule_2', route_order: 2 },
+        ],
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: expect.stringContaining('上限 30分を超えます'),
+    });
+    expectNoWriteAuditOrNotify();
+  });
+
   it('rejects locked proposals before partially updating schedules', async () => {
     proposalFindManyMock.mockResolvedValueOnce([
       {
