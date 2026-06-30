@@ -199,6 +199,10 @@ function getConferenceReportDraftIds(
   );
 }
 
+function buildConferenceReportOverviewHref(reportDraftIds: readonly string[]) {
+  return reportDraftIds.length === 1 ? buildReportHref(reportDraftIds[0]) : '/reports';
+}
+
 function buildConferenceNoteApiPath(noteId: string, suffix = '') {
   return `/api/conference-notes/${encodePathSegment(noteId)}${suffix}`;
 }
@@ -331,7 +335,7 @@ function NoteCard({
                 <div className="mt-3 flex flex-wrap gap-2">
                   {reportDraftIds.length > 0 ? (
                     <Link
-                      href="/reports"
+                      href={buildConferenceReportOverviewHref(reportDraftIds)}
                       className="inline-flex min-h-[44px] items-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
                     >
                       報告書を確認
@@ -1170,6 +1174,10 @@ export function ConferencesContent({
     ]);
   }
 
+  const lastReportDraftIds = lastSyncSummary
+    ? Array.from(new Set(lastSyncSummary.reportDraftIds ?? []))
+    : [];
+
   return (
     <div className="space-y-6">
       {contextSummary ? (
@@ -1570,10 +1578,7 @@ export function ConferencesContent({
                 「{lastSyncSummary.title}」の保存に連動して、必要な後続処理を作成しました。
               </p>
               <div className="flex flex-wrap gap-2">
-                <Badge variant="outline">
-                  報告書ドラフト {Array.from(new Set(lastSyncSummary.reportDraftIds ?? [])).length}
-                  件
-                </Badge>
+                <Badge variant="outline">報告書ドラフト {lastReportDraftIds.length}件</Badge>
                 <Badge variant="outline">タスク化 {lastSyncSummary.tasksCreated ?? 0}件</Badge>
                 <Badge variant="outline">
                   薬学課題 {lastSyncSummary.medicationIssuesCreated ?? 0}件
@@ -1581,22 +1586,20 @@ export function ConferencesContent({
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link
-                  href="/reports"
+                  href={buildConferenceReportOverviewHref(lastReportDraftIds)}
                   className="inline-flex rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
                 >
                   報告書を確認
                 </Link>
-                {Array.from(new Set(lastSyncSummary.reportDraftIds ?? [])).map(
-                  (reportId, index) => (
-                    <Link
-                      key={reportId}
-                      href={buildReportHref(reportId)}
-                      className="inline-flex rounded-lg border border-tag-info/30 bg-background px-3 py-2 text-sm font-medium text-tag-info hover:bg-tag-info/10"
-                    >
-                      ドラフト{index + 1}
-                    </Link>
-                  ),
-                )}
+                {lastReportDraftIds.map((reportId, index) => (
+                  <Link
+                    key={reportId}
+                    href={buildReportHref(reportId)}
+                    className="inline-flex rounded-lg border border-tag-info/30 bg-background px-3 py-2 text-sm font-medium text-tag-info hover:bg-tag-info/10"
+                  >
+                    ドラフト{index + 1}
+                  </Link>
+                ))}
                 {lastSyncSummary.billingCandidateId ? (
                   <Link
                     href="/billing/candidates"

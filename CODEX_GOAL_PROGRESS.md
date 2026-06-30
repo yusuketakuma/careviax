@@ -25083,3 +25083,33 @@ Next loop:
 - Remaining:
   - The broad visit/report/interprofessional collaboration goal remains open.
   - Remaining clean candidate from Mapper: conferences single-draft CTA to report detail; dirty operating-hours/patient/visit-route files remain out of scope.
+
+### Conference Single Draft Report CTA Focus - 2026-06-30 18:07 JST
+
+- Scope:
+  - Continued report/interprofessional collaboration navigation hardening on the conferences workspace.
+  - Focused on saved conference notes and save-summary actions that had exactly one generated report draft but still sent the primary "報告書を確認" CTA to the broad reports list.
+- Fixed:
+  - Added `buildConferenceReportOverviewHref` so a single report draft routes directly to `buildReportHref(reportId)`.
+  - Saved conference note cards now use the helper for the overview CTA while preserving individual draft links.
+  - Save-summary actions now dedupe report draft IDs once and use the helper for the overview CTA.
+  - Added regression assertions for hostile report IDs on both saved-note and save-summary CTAs.
+- Safety:
+  - Reduces wrong-report navigation risk after conference-note report generation.
+  - Keeps hostile report IDs behind the shared report navigation helper.
+  - Preserves existing multiple-draft behavior by keeping the overview CTA on `/reports` when there is not exactly one draft.
+  - No auth/RLS policy, permission, PHI export, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - No new query, network call, dependency, background job, broad scan, unbounded loop, or render-heavy path was added.
+  - The extra work is a small in-memory dedupe of existing draft IDs.
+- Validation:
+  - Read `docs/ui-ux-design-guidelines.md` and Next docs `01-app/01-getting-started/04-linking-and-navigating.md` / `01-app/03-api-reference/02-components/link.md` before the UI change.
+  - `pnpm exec prettier --write 'src/app/(dashboard)/conferences/conferences-content.tsx' 'src/app/(dashboard)/conferences/conferences-content.test.tsx'`: passed with no changes.
+  - `pnpm exec vitest run 'src/app/(dashboard)/conferences/conferences-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `1` file / `12` tests.
+  - Scoped ESLint on conferences content/test plus report navigation helper: passed.
+  - Scoped Prettier check and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - The broad visit/report/interprofessional collaboration goal remains open.
+  - Current dirty paths outside this slice are operating-hours, service-areas, patient form, ledger, and `.codex` progress from other agents; keep staging exact.

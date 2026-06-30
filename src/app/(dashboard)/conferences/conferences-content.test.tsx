@@ -383,6 +383,9 @@ describe('ConferencesContent', () => {
     expect(screen.getByRole('link', { name: 'ドラフト1' }).getAttribute('href')).toBe(
       buildReportHref(hostileReportId),
     );
+    expect(screen.getByRole('link', { name: '報告書を確認' }).getAttribute('href')).toBe(
+      buildReportHref(hostileReportId),
+    );
     const proposalParams = new URLSearchParams({
       case_id: hostileCaseId,
       patient_id: hostilePatientId,
@@ -429,6 +432,9 @@ describe('ConferencesContent', () => {
     });
 
     expect(screen.getByRole('link', { name: 'ドラフト1' }).getAttribute('href')).toBe(
+      buildReportHref(hostileReportId),
+    );
+    expect(screen.getByRole('link', { name: '報告書を確認' }).getAttribute('href')).toBe(
       buildReportHref(hostileReportId),
     );
     const proposalParams = new URLSearchParams({
