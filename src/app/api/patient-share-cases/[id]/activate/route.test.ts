@@ -2,11 +2,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { NextRequest } from 'next/server';
 
 const {
+  authPlumbingFailureRef,
   withOrgContextMock,
   patientShareCaseFindFirstMock,
   patientShareCaseUpdateMock,
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
+  authPlumbingFailureRef: { current: null as Error | null },
   withOrgContextMock: vi.fn(),
   patientShareCaseFindFirstMock: vi.fn(),
   patientShareCaseUpdateMock: vi.fn(),
@@ -15,8 +17,12 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => Promise<Response>) => {
-    return (req: NextRequest, routeContext?: unknown) =>
-      handler(
+    return (req: NextRequest, routeContext?: unknown) => {
+      if (authPlumbingFailureRef.current) {
+        throw authPlumbingFailureRef.current;
+      }
+
+      return handler(
         req,
         {
           orgId: 'org_1',
@@ -25,6 +31,7 @@ vi.mock('@/lib/auth/context', () => ({
         },
         routeContext,
       );
+    };
   },
 }));
 
@@ -47,6 +54,11 @@ function createRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/patient-share-cases/[id]/activate POST', () => {
   beforeAll(() => {
     process.env.TZ = 'Asia/Tokyo';
@@ -64,6 +76,7 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-19T00:00:00.000Z'));
     vi.clearAllMocks();
+    authPlumbingFailureRef.current = null;
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
       status: 'partner_confirmation_pending',
@@ -155,6 +168,7 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
     const response = await rawPOST(createRequest(), routeContext);
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       details: { blocker: 'missing_active_consent' },
@@ -299,6 +313,7 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
     const response = await rawPOST(createRequest(), routeContext);
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(patientShareCaseUpdateMock).toHaveBeenCalled();
   });
 
@@ -354,6 +369,7 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
     const response = await rawPOST(createRequest(), routeContext);
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(patientShareCaseFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'share_case_1', org_id: 'org_1' },
       select: expect.any(Object),
@@ -387,10 +403,57 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
         },
       },
     );
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     const bodyText = JSON.stringify(await response.json());
     expect(bodyText).toContain('has_partner_patient_id');
     expect(bodyText).not.toContain('partner_patient_snapshot');
     expect(bodyText).not.toContain('identity_proof');
+  });
+
+  it('returns a sanitized no-store 500 when activation update fails unexpectedly', async () => {
+    patientShareCaseUpdateMock.mockRejectedValueOnce(
+      new Error('raw patient_share_case activation patient 山田太郎 token secret identity_proof'),
+    );
+
+    const response = await rawPOST(createRequest(), routeContext);
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serializedBody = JSON.stringify(body);
+    expect(serializedBody).not.toContain('patient_share_case');
+    expect(serializedBody).not.toContain('山田太郎');
+    expect(serializedBody).not.toContain('token secret');
+    expect(serializedBody).not.toContain('identity_proof');
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when auth plumbing fails before route params', async () => {
+    authPlumbingFailureRef.current = new Error(
+      'raw auth patient_share_case activation patient 山田太郎 token secret',
+    );
+
+    const response = await rawPOST(createRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serializedBody = JSON.stringify(body);
+    expect(serializedBody).not.toContain('raw auth');
+    expect(serializedBody).not.toContain('patient_share_case');
+    expect(serializedBody).not.toContain('山田太郎');
+    expect(serializedBody).not.toContain('token secret');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientShareCaseUpdateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 });

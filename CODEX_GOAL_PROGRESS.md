@@ -59,6 +59,41 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Remaining:
   - Exact-path stage only the four conference-note files plus this ledger and `.codex/ralph-state.md`, commit, send agmsg FYI, then release locks.
 
+### Patient Share Case Activate POST No-Store / Sanitized Envelope - 2026-06-30 09:30 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration objective on patient-share activation.
+  - Updated only `POST /api/patient-share-cases/[id]/activate` and its focused tests.
+  - Preserved codex-owned dirty `src/app/api/patients/[id]/qualification-check/route.ts` and `route.test.ts`; no schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Existing activation handler logic now remains unchanged as `authenticatedPOST`, while the exported `POST` applies the established `withSensitiveNoStore` + `unstable_rethrow` + fixed `internalError()` fallback pattern.
+  - Added a shared no-store assertion helper that checks both `Cache-Control` and `Pragma`.
+  - Added no-store assertions for representative conflict and success responses.
+  - Added a sanitized no-store 500 regression for unexpected activation update failures containing share-case identifiers, patient name text, token-like text, and identity-proof text.
+  - Added an auth/plumbing failure regression that throws before route-param handling and proves no RLS transaction, activation update, or audit side effect occurs.
+- Safety:
+  - Reduces raw-error and PHI/partner-link disclosure risk for patient-share activation failures.
+  - Preserves auth/permission behavior, activation eligibility rules, same-day JST/date behavior, consent/link/partnership checks, patient-link response minimization, audit payloads, and existing success/domain-error response shapes.
+- Performance:
+  - No DB query shape, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only wraps the existing POST response boundary and adds focused assertions.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/patient-share-cases/[id]/activate/route.ts' 'src/app/api/patient-share-cases/[id]/activate/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/patient-share-cases/[id]/activate/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `9` tests.
+  - Scoped ESLint on the two activate files: passed.
+  - Scoped `git diff --check` on the two activate files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - Scoped `pnpm exec prettier --check` on the two activate files: passed.
+  - Full `git diff --check`: passed.
+  - `pnpm format:check`: failed only because codex-owned dirty qualification-check route/test were not Prettier formatted; codex was notified and those files were not touched.
+- Review:
+  - `PATCH_REVIEW_REQUEST` sent to codex with scope, validation, response-shape preservation, PHI/raw-error non-leakage, and activation side-effect safety focus; no peer reply arrived before commit preparation after a nudge.
+  - Independent read-only Codex CLI review of only the two-file activate diff returned `No actionable findings.`.
+- Remaining:
+  - Exact-path stage only the two activate files plus this ledger and `.codex/ralph-state.md`, commit, send agmsg FYI, then recheck codex's qualification-check status before starting another ledger-using slice.
+
 ### Partner Visit Physician Report Draft POST No-Store / Sanitized Envelope - 2026-06-30 09:08 JST
 
 - Scope:

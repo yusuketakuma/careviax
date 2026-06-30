@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0930 JST
+
+- current task: harden `POST /api/patient-share-cases/[id]/activate` response boundaries for interprofessional patient-share activation.
+- files inspected: agmsg inbox/send for `phos/codex2`, `git status --short --untracked-files=all`, local Next.js route-handler and `unstable_rethrow` docs read earlier this turn, `src/app/api/patient-share-cases/[id]/activate/route.ts`, `src/app/api/patient-share-cases/[id]/activate/route.test.ts`, related patient-share consents route/test as a future candidate, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Also read-only reviewed codex's qualification-check WIP and sent `APPROVED`.
+- files changed: `src/app/api/patient-share-cases/[id]/activate/route.ts`, `src/app/api/patient-share-cases/[id]/activate/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved codex-owned dirty `src/app/api/patients/[id]/qualification-check/route.ts` and `route.test.ts`.
+- bugs found: patient-share activation POST was exported directly from `withAuthContext`; returned responses were manually wrapped with sensitive no-store headers, but unexpected handler failures could be converted or propagated without the exported route's fixed no-store envelope, and auth/plumbing failures before route-param handling could escape before any side-effect assertions.
+- security risks found: reduced raw-error and PHI/partner-link disclosure risk for activation failures containing share-case identifiers, patient names, token-like diagnostics, identity proof text, or partner patient link details. Auth/permission checks, activation eligibility rules, consent/link/partnership date logic, patient-link response minimization, audit payloads, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query shape, dependency, retry loop, external request, synchronous blocking, or unbounded work was added. The patch only wraps the existing POST response boundary and adds focused assertions.
+- validation commands: `pnpm exec prettier --write 'src/app/api/patient-share-cases/[id]/activate/route.ts' 'src/app/api/patient-share-cases/[id]/activate/route.test.ts'`; `pnpm exec vitest run 'src/app/api/patient-share-cases/[id]/activate/route.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint on the two activate files; scoped `git diff --check` on the two activate files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm exec prettier --check` on the two activate files; full `git diff --check`; `pnpm format:check`.
+- validation results: Prettier passed. Focused activate Vitest passed `1` file / `9` tests. Scoped ESLint and scoped diff-check passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, scoped Prettier check, and full `git diff --check` passed. `pnpm format:check` failed only because codex-owned dirty qualification-check route/test were not Prettier formatted; codex was notified and those files were not touched.
+- remaining work: exact-path stage only the two activate files plus ledger hunks, commit, send agmsg FYI, and continue the next patient-share/interprofessional candidate after rechecking codex's qualification-check status. A `PATCH_REVIEW_REQUEST` was sent to codex and nudged, but no peer reply arrived before commit preparation; independent read-only Codex CLI review of the two-file activate diff returned `No actionable findings.`.
+- next action: explicit-path stage and commit this validated activate response-boundary slice, then recheck agmsg/status before starting another ledger-using slice.
+
 ### 20260630-0917 JST
 
 - current task: harden conference note create/update response boundaries for report and interprofessional collaboration workflows.
