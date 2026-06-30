@@ -117,6 +117,7 @@ const COVERAGE_CATEGORY_ENTRIES = {
     'DeliveryRecord',
     'CareReportSendRequest',
     'ExternalAccessGrant',
+    'DrugPackage',
     'DrugPackageInsert',
     'DrugInteraction',
     'DrugAlertRule',

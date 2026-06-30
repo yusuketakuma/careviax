@@ -455,8 +455,8 @@ CREATE POLICY tenant_isolation ON "VisitScheduleProposalBatch"
   WITH CHECK (org_id = public.app_enforced_org_id());
 
 -- ─── Drug Domain (org-scoped and hybrid tables) ────────────────────────────
--- Note: DrugMaster, DrugPackageInsert, DrugInteraction, GenericDrugMapping,
--- DrugMasterImportLog are global (no org_id) = NO RLS.
+-- Note: DrugMaster, DrugPackage, DrugPackageInsert, DrugInteraction,
+-- GenericDrugMapping, DrugMasterImportLog are global (no org_id) = NO RLS.
 -- DrugAlertRule is hybrid: org_id NULL stores global baseline rules, while
 -- org-specific rows are protected by the RLS policy above.
 

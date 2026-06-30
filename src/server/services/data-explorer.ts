@@ -91,6 +91,7 @@ const SEARCH_CANDIDATE_FIELDS = [
   'receipt_code',
   'hot_code',
   'jan_code',
+  'gtin',
   'recipient_name',
   'counterpart_name',
   'responder_name',
@@ -128,6 +129,7 @@ const GLOBAL_DATA_EXPLORER_MODELS: ReadonlySet<string> = new Set([
   'DrugMaster',
   'DrugMasterChangeEvent',
   'DrugMasterImportLog',
+  'DrugPackage',
   'DrugPackageInsert',
   'GenericDrugMapping',
 ] as const);
