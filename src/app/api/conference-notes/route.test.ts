@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
+  authPlumbingFailureRef,
   withAuthContextMock,
   withOrgContextMock,
   conferenceNoteFindManyMock,
@@ -36,6 +37,7 @@ const {
   upsertOperationalTaskMock,
   resolveOperationalTasksMock,
 } = vi.hoisted(() => ({
+  authPlumbingFailureRef: { current: null as Error | null },
   withAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   conferenceNoteFindManyMock: vi.fn(),
@@ -77,12 +79,18 @@ vi.mock('@/lib/auth/context', () => ({
       ctx: { orgId: string; userId: string; role: 'pharmacist' },
       routeContext: { params: Promise<Record<string, string>> },
     ) => Promise<Response>,
+    options?: { permission: string; message: string },
   ) => {
-    withAuthContextMock.mockImplementation(handler);
+    withAuthContextMock.mockImplementation(() => options);
     return (
       req: NextRequest,
       routeContext: { params: Promise<Record<string, string>> } = { params: Promise.resolve({}) },
-    ) => handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, routeContext);
+    ) => {
+      if (authPlumbingFailureRef.current) {
+        throw authPlumbingFailureRef.current;
+      }
+      return handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, routeContext);
+    };
   },
 }));
 
@@ -198,6 +206,7 @@ function buildTxMock() {
 describe('/api/conference-notes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authPlumbingFailureRef.current = null;
     withOrgContextMock.mockImplementation(
       async (_orgId: string, callback: (tx: unknown) => unknown) => callback(buildTxMock()),
     );
@@ -705,6 +714,7 @@ describe('/api/conference-notes', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectNoStore(response);
     expect(conferenceNoteCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -768,6 +778,85 @@ describe('/api/conference-notes', () => {
         user_agent: undefined,
       },
     });
+  });
+
+  it('returns a sanitized no-store 500 when conference note creation fails unexpectedly', async () => {
+    conferenceNoteCreateMock.mockRejectedValueOnce(
+      new Error('raw conference_note_create patient 山田太郎 token secret care conference'),
+    );
+
+    const response = await POST(
+      createRequest({
+        method: 'POST',
+        body: {
+          note_type: 'pre_discharge',
+          patient_id: 'patient_1',
+          title: '退院前カンファ',
+          structured_content: {
+            sections: [
+              {
+                key: 'discharge_background',
+                label: '退院背景',
+                body: '来週火曜に退院予定',
+              },
+            ],
+          },
+          participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+          conference_date: '2026-03-28T01:00:00.000Z',
+        },
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serializedBody = JSON.stringify(body);
+    expect(serializedBody).not.toContain('conference_note_create');
+    expect(serializedBody).not.toContain('山田太郎');
+    expect(serializedBody).not.toContain('token secret');
+    expect(serializedBody).not.toContain('care conference');
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+    expect(taskCreateManyMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
+    expect(medicationIssueCreateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when auth plumbing fails before parsing the conference note body', async () => {
+    authPlumbingFailureRef.current = new Error(
+      'raw auth conference_note_create patient 山田太郎 token secret',
+    );
+
+    const response = await POST(
+      createRequest({
+        method: 'POST',
+        body: ['unexpected'],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serializedBody = JSON.stringify(body);
+    expect(serializedBody).not.toContain('raw auth');
+    expect(serializedBody).not.toContain('conference_note_create');
+    expect(serializedBody).not.toContain('山田太郎');
+    expect(serializedBody).not.toContain('token secret');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(conferenceNoteCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(taskCreateManyMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects archived patients before creating notes or sync side effects', async () => {

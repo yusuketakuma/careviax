@@ -24,6 +24,41 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Conference Notes POST/PATCH No-Store / Sanitized Envelope - 2026-06-30 09:17 JST
+
+- Scope:
+  - Continued codex2's report-feature and interprofessional collaboration objective on conference-note creation and update APIs.
+  - Updated only root `POST /api/conference-notes` and item `PATCH /api/conference-notes/[id]` response boundaries plus focused tests.
+  - Preserved codex-owned dirty `src/app/api/patients/[id]/qualification-check/route.ts` and `route.test.ts`; no schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Root `POST` now keeps existing handler logic as `authenticatedPOST`, while exported `POST` applies the established `withSensitiveNoStore` + `unstable_rethrow` + fixed `internalError()` fallback pattern.
+  - Item `PATCH` now keeps existing handler logic as `authenticatedPATCH`, while exported `PATCH` applies the same sensitive no-store fixed-error boundary.
+  - Added no-store assertions on representative conference-note create and update success responses.
+  - Added sanitized 500 regressions for unexpected create/update failures containing conference-note identifiers, patient names/IDs, care-conference/service-manager note text, and token-like diagnostics.
+  - Added auth/plumbing failure regressions proving failures before POST body parsing or PATCH note loading return fixed no-store `INTERNAL_ERROR` bodies and avoid transaction/sync side effects.
+- Safety:
+  - Reduces raw-error and PHI/clinical-content disclosure risk for conference-note create/update failures.
+  - Preserves auth/permission behavior, request validation, writable-patient guard behavior, conference sync behavior, billing candidate side effects, visit proposal side effects, report draft sidecars, audit minimization, and existing success/domain-error response shapes.
+- Performance:
+  - No DB query shape, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only wraps existing mutating route response boundaries and adds focused assertions.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/conference-notes/route.ts' 'src/app/api/conference-notes/route.test.ts' 'src/app/api/conference-notes/[id]/route.ts' 'src/app/api/conference-notes/[id]/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/conference-notes/route.test.ts' 'src/app/api/conference-notes/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `54` tests.
+  - Scoped ESLint on the four conference-notes files: passed.
+  - Scoped `git diff --check` on the four conference-notes files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: exited `0`; one unrelated warning remained in codex-owned dirty `src/app/api/patients/[id]/qualification-check/route.ts` (`prisma` unused) and was reported to codex.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` sent to codex with scope, validation, response-shape preservation, PHI/raw-error non-leakage, and sync side-effect safety focus.
+  - Independent read-only Codex CLI review of only the six-file conference-notes/ledger diff returned `No actionable findings.`.
+  - codex returned `APPROVED` after reviewing the four route/test diffs and locally re-running focused Vitest `54`/`54`, scoped ESLint, and scoped diff-check.
+- Remaining:
+  - Exact-path stage only the four conference-note files plus this ledger and `.codex/ralph-state.md`, commit, send agmsg FYI, then release locks.
+
 ### Partner Visit Physician Report Draft POST No-Store / Sanitized Envelope - 2026-06-30 09:08 JST
 
 - Scope:

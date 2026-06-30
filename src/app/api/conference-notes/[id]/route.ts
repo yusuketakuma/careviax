@@ -111,7 +111,7 @@ export const GET: typeof authenticatedGET = async (req, routeContext) => {
   }
 };
 
-export const PATCH = withAuthContext<{ id: string }>(
+const authenticatedPATCH = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
     const { id: rawId } = await routeContext.params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -349,3 +349,12 @@ export const PATCH = withAuthContext<{ id: string }>(
     message: 'カンファレンス記録の更新権限がありません',
   },
 );
+
+export const PATCH: typeof authenticatedPATCH = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
+  authPlumbingFailureRef,
   conferenceNoteFindFirstMock,
   conferenceNoteUpdateMock,
   careCaseFindFirstMock,
@@ -25,6 +26,7 @@ const {
   upsertOperationalTaskMock,
   resolveOperationalTasksMock,
 } = vi.hoisted(() => ({
+  authPlumbingFailureRef: { current: null as Error | null },
   conferenceNoteFindFirstMock: vi.fn(),
   conferenceNoteUpdateMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
@@ -51,8 +53,13 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => unknown) => {
-    return (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
-      handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, routeContext);
+    return (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      if (authPlumbingFailureRef.current) {
+        throw authPlumbingFailureRef.current;
+      }
+
+      return handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, routeContext);
+    };
   },
 }));
 
@@ -97,6 +104,7 @@ function createRequest(body?: unknown) {
 describe('/api/conference-notes/[id] PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authPlumbingFailureRef.current = null;
     conferenceNoteFindFirstMock.mockResolvedValue({
       id: 'note_1',
       case_id: 'case_1',
@@ -298,6 +306,7 @@ describe('/api/conference-notes/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(conferenceNoteUpdateMock).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -409,6 +418,73 @@ describe('/api/conference-notes/[id] PATCH', () => {
         visit_proposal_id: 'proposal_new',
       }),
     });
+  });
+
+  it('returns a sanitized no-store 500 when conference note update fails unexpectedly', async () => {
+    conferenceNoteUpdateMock.mockRejectedValueOnce(
+      new Error('raw conference_note_update patient_1 token secret service manager note'),
+    );
+
+    const response = await PATCH(
+      createRequest({
+        title: '担当者会議（更新）',
+      }),
+      {
+        params: Promise.resolve({ id: 'note_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serializedBody = JSON.stringify(body);
+    expect(serializedBody).not.toContain('conference_note_update');
+    expect(serializedBody).not.toContain('patient_1');
+    expect(serializedBody).not.toContain('token secret');
+    expect(serializedBody).not.toContain('service manager note');
+    expect(conferenceNoteFindFirstMock).toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(taskCreateManyMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when auth plumbing fails before loading the conference note', async () => {
+    authPlumbingFailureRef.current = new Error(
+      'raw auth conference_note_update patient_1 token secret',
+    );
+
+    const response = await PATCH(
+      createRequest({
+        title: '担当者会議（更新）',
+      }),
+      {
+        params: Promise.resolve({ id: 'note_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serializedBody = JSON.stringify(body);
+    expect(serializedBody).not.toContain('raw auth');
+    expect(serializedBody).not.toContain('conference_note_update');
+    expect(serializedBody).not.toContain('patient_1');
+    expect(serializedBody).not.toContain('token secret');
+    expect(conferenceNoteFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object request bodies before loading or syncing the note', async () => {
