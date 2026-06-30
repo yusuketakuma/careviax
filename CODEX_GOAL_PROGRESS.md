@@ -26396,3 +26396,304 @@ Next loop:
 - Remaining:
   - The broad master-management and patient-information goal remains open.
   - Continue scanning remaining aggregate billing/patient action destinations and capped master selectors.
+
+### Document Delivery Rule Master Counted Metadata - 2026-06-30 21:00 JST
+
+- Scope:
+  - Continued master-management and report-delivery safety hardening for the document delivery rule master.
+  - Focused on `GET /api/document-delivery-rules`, which is bounded by `limit` and drives admin document template delivery routing.
+- Fixed:
+  - `GET /api/document-delivery-rules` now returns `total_count`, `visible_count`, `hidden_count`, `truncated`, `count_basis`, `filters_applied`, and `limit` while preserving the existing `data` array.
+  - The admin document delivery rule manager now displays exact visible/hidden counts and warns when the list is truncated.
+  - API tests lock count predicates to the same org/document-type filter as the bounded list query, and UI tests prevent visible rows from being presented as the full rule master.
+- Safety:
+  - Reduces false-complete report delivery master risk without returning hidden rule details, PHI, or delivery recipient free text.
+  - Existing admin auth, org scoping, path helper encoding, create/update/delete behavior, false-empty handling, live DB safety, external sends, migrations, push/deploy, and destructive-operation boundaries remain unchanged.
+- Performance:
+  - Adds one scoped `documentDeliveryRule.count` using the same org/document-type predicate as the bounded list query.
+  - No dependency, background job, broad scan outside the existing predicate, unbounded loop, or render-heavy path was added.
+- Validation:
+  - Read `docs/ui-ux-design-guidelines.md` and local Next Route Handler docs before the API/UI change.
+  - `pnpm exec vitest run src/app/api/document-delivery-rules/route.test.ts 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx' --reporter=dot --testTimeout=60000`: passed, `2` files / `17` tests.
+  - Scoped Prettier check, scoped ESLint, and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - The broad master-management and patient-information goal remains open.
+  - Continue scanning capped master APIs and patient/report delivery selectors for count metadata and false-empty gaps.
+
+### Communication Queue External Share Patient Focus - 2026-06-30 21:00 JST
+
+- Scope:
+  - Continued patient-information and communication workflow navigation hardening.
+  - Focused on external share queue rows in `listCommunicationQueue`.
+- Fixed:
+  - External share queue actions now point to the exact patient share workspace instead of the aggregate external share dashboard.
+  - Regression coverage uses a hostile patient id and asserts the href is single-encoded through `buildPatientHref`.
+- Safety:
+  - Reduces wrong-patient/workspace drift when staff review expiring external shares.
+  - No additional PHI fields, permission changes, live DB operations, external sends, migrations, push/deploy, or destructive operations were added.
+- Performance:
+  - Pure URL construction from already selected `grant.patient_id`; no query, dependency, background job, broad scan, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/communication-queue.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `16` tests.
+  - Scoped Prettier check, scoped ESLint, and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - Continue scanning remaining aggregate communication/report/patient action destinations after this grouped commit.
+
+### Home Care Ops Caregiver Share Patient Focus - 2026-06-30 21:07 JST
+
+- Scope:
+  - Continued patient-information action-link hardening for patient home-care feature summaries.
+  - Focused on caregiver self-report intake gaps when the patient has active home-care cases but no external share grant.
+- Fixed:
+  - The caregiver self-report intake gap now points to the exact patient share workspace instead of relying on aggregate external-share navigation.
+  - Regression coverage locks hostile patient id encoding through `buildPatientHref`.
+- Safety:
+  - Reduces wrong-patient/workspace navigation drift before caregiver-share setup.
+  - No new PHI response fields, permissions, live DB operations, external sends, migrations, push/deploy, or destructive operations were added.
+- Performance:
+  - Pure URL construction from the already scoped patient id; no query, dependency, broad scan, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/home-care-ops.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `10` tests.
+  - Scoped Prettier check and scoped ESLint: passed.
+- Remaining:
+  - Continue scanning remaining patient feature-summary action hrefs that still route to aggregate workspaces.
+
+### Patient Home Care Share Gap Focus - 2026-06-30 21:05 JST
+
+- Scope:
+  - Continued other-profession collaboration hardening for patient-scoped home-care feature summaries.
+  - Focused on caregiver/facility self-report intake when a patient has active cases but no external share grant.
+- Fixed:
+  - Patient-scoped caregiver share-gap actions now route to `/patients/:id/share` instead of the aggregate external workspace.
+  - Hostile patient IDs are encoded through `buildPatientHref` before appending `/share`.
+  - Existing behavior for patients with an active external share remains unchanged.
+- Safety:
+  - Reduces wrong-patient/workspace drift before staff create or review patient-specific external sharing.
+  - No new PHI fields, permission changes, live DB operations, external sends, migrations, push/deploy, or destructive operations were added.
+- Performance:
+  - Pure URL construction from the already supplied `args.patientId`; no query, dependency, broad scan, background job, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/home-care-ops.test.ts src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `15` tests.
+  - `pnpm exec eslint src/server/services/home-care-ops.ts src/server/services/home-care-ops.test.ts`: passed.
+  - `pnpm exec prettier --check src/server/services/home-care-ops.ts src/server/services/home-care-ops.test.ts`: passed.
+  - `git diff --check -- src/server/services/home-care-ops.ts src/server/services/home-care-ops.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - Broad visit/report/collaboration objective remains open.
+  - Progress-ledger files are mixed with other WIP and should be committed separately from the home-care code slice.
+
+### Visit Workflow Report Share Focus - 2026-06-30 21:11 JST
+
+- Scope:
+  - Continued visit-time report and other-profession collaboration navigation hardening.
+  - Focused on the post-visit `care_team_share` action built by `buildPostVisitWorkflowActions`.
+- Fixed:
+  - When a preferred care report already exists, the care-team share action now opens that report's interprofessional share page (`/reports/:id/share`) instead of the patient collaboration overview.
+  - When no report exists yet, the action keeps the existing patient collaboration fallback.
+  - Regression coverage verifies hostile report ids are encoded through `buildReportHref(..., '/share')`.
+- Safety:
+  - Reduces wrong-workspace drift after a visit by keeping report sharing, recipient review, and follow-up request creation in the report-specific share workflow.
+  - No new PHI fields, permission changes, live DB operations, external sends, migrations, push/deploy, or destructive operations were added.
+- Performance:
+  - Pure URL selection from already supplied report summaries; no query, dependency, broad scan, background job, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/lib/visits/visit-workflow-projection.test.ts src/lib/reports/navigation.test.ts src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `25` tests.
+  - `pnpm exec eslint src/lib/visits/visit-workflow-projection.ts src/lib/visits/visit-workflow-projection.test.ts`: passed.
+  - `pnpm exec prettier --check src/lib/visits/visit-workflow-projection.ts src/lib/visits/visit-workflow-projection.test.ts`: passed.
+  - `git diff --check -- src/lib/visits/visit-workflow-projection.ts src/lib/visits/visit-workflow-projection.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - Broad visit/report/collaboration objective remains open.
+  - Progress-ledger files remain mixed with other WIP and should be committed separately from this code slice.
+
+### Operational Task Deep Link Focus - 2026-06-30 21:22 JST
+
+- Scope:
+  - Continued visit-time/report/collaboration workflow navigation hardening for operational task presentation.
+  - Focused on task rows that already carry patient, visit-record, or prescription-intake related entity ids.
+- Fixed:
+  - Initial home visit assessment tasks now link to the exact patient record when related patient context is present.
+  - Emergency contact review tasks now link to the patient's visit-contact editor.
+  - Visit record retention tasks now link to the exact visit record.
+  - Prescription original retention tasks now link to the exact prescription intake.
+  - Regression coverage verifies hostile ids are encoded by shared patient/visit/prescription navigation helpers and dot-segment ids fail closed.
+- Safety:
+  - Reduces wrong-patient and wrong-workspace drift from task queues before visit preparation, report retention, and original-prescription follow-up work.
+  - No response shape, PHI field, permission, live DB operation, external send, migration, secret handling, push/deploy, or destructive operation changed.
+- Performance:
+  - Pure URL selection from already supplied task metadata; no query, dependency, broad scan, background job, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/lib/tasks/operational-task-presentation.test.ts src/server/services/operational-tasks.test.ts src/lib/patient/navigation.test.ts src/lib/visits/navigation.test.ts src/lib/prescriptions/navigation.test.ts --reporter=dot --testTimeout=60000`: passed, `5` files / `68` tests.
+  - `pnpm exec eslint src/lib/tasks/operational-task-presentation.ts src/lib/tasks/operational-task-presentation.test.ts`: passed.
+  - `pnpm exec prettier --check src/lib/tasks/operational-task-presentation.ts src/lib/tasks/operational-task-presentation.test.ts`: passed.
+  - `git diff --check -- src/lib/tasks/operational-task-presentation.ts src/lib/tasks/operational-task-presentation.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - Broad visit/report/collaboration objective remains open.
+  - Progress-ledger files remain mixed with other WIP and should be committed separately from this code slice.
+
+### Day Board Vehicle Route Duration Visibility - 2026-06-30 21:04 JST
+
+- Scope:
+  - Continued schedule-management and vehicle-resource master safety hardening.
+  - Focused on making persisted vehicle route-duration limits visible in the day-board API after the save-boundary enforcement work.
+- Fixed:
+  - `GET /api/visit-schedules/day-board` now selects vehicle route-duration caps, vehicle site origin, and primary residence route points.
+  - Day-board vehicle summaries now include route-duration limit, estimated duration, verification status, and a human-readable label.
+  - The schedule team board now displays the route-duration label beside each vehicle recommendation.
+  - The route comparison screen now surfaces the recommended or blocking vehicle route-duration status above route candidates.
+  - Type fixtures and route-compare tests now match the expanded day-board vehicle resource contract.
+- Safety:
+  - Operators can see when a vehicle route is within limit, exceeded, unverified, or not limited instead of only learning at save time.
+  - Hidden same-vehicle patient route details are used only server-side for summary calculation; no patient route details are added to vehicle metadata.
+  - Existing auth, org scoping, sensitive no-store behavior, live DB safety, external sends, migrations, push/deploy, and destructive-operation boundaries remain unchanged.
+- Performance:
+  - Reuses schedules already loaded for the day-board and estimates per vehicle resource.
+  - No new dependency, background job, broad scan, or external routing requirement was added; the existing estimator fallback remains available.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-schedules/day-board/route.test.ts 'src/app/(dashboard)/schedules/schedule-day-view.helpers.test.ts' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=60000`: passed, `3` files / `73` tests.
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' src/app/api/visit-schedules/day-board/route.test.ts 'src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `3` files / `47` tests.
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `1` file / `4` tests.
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx' src/lib/visits/visit-workflow-projection.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `19` tests.
+  - Scoped Prettier check, scoped ESLint, and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - Continue with capped master APIs, patient/report delivery selectors, and aggregate action destinations under the broad goal.
+
+### Post Visit Share Action Report Focus - 2026-06-30 21:10 JST
+
+- Scope:
+  - Continued patient/report collaboration navigation hardening after visit completion.
+  - Focused on post-visit care-team share actions when a concrete report exists.
+- Fixed:
+  - Care-team share actions now target the report share workspace when the preferred report exists.
+  - The patient collaboration fallback remains when no report exists yet.
+  - Regression coverage locks both report-share hostile id encoding and the no-report patient collaboration fallback.
+- Safety:
+  - Reduces wrong-workspace drift after visit completion, keeping report-specific sharing on the report object when possible.
+  - Existing encoded report/patient navigation helpers are used; no new PHI fields, permissions, live DB operations, external sends, migrations, push/deploy, or destructive operations were added.
+- Performance:
+  - Pure URL selection from already available report and patient ids; no query, dependency, broad scan, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx' src/lib/visits/visit-workflow-projection.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `19` tests.
+  - Scoped Prettier check and scoped ESLint: passed.
+- Remaining:
+  - Continue scanning report/share/patient action destinations that still use aggregate workspaces.
+
+### Schedule Day-Board Vehicle Route Duration Visibility - 2026-06-30 21:04 JST
+
+- Scope:
+  - Continued schedule/route decision hardening after save-boundary vehicle-duration validation was added.
+  - Focused on operator visibility in `/api/visit-schedules/day-board` and the team schedule board vehicle resource panel.
+- Fixed:
+  - `DayBoardVehicleResource` now carries persisted route-duration limit, current estimated duration, status, and display label.
+  - Day-board API now loads vehicle site coordinates and primary patient residence coordinates, then uses the existing route-duration estimator to classify each listed vehicle as `within_limit`, `exceeded`, `unverified`, or `not_limited`.
+  - Schedule team board vehicle cards now show the vehicle route-duration label, with existing state-token coloring for exceeded/unverified/within-limit states.
+  - Route-compare fixture was updated for the expanded day-board vehicle contract.
+  - Regression coverage verifies an over-limit assigned vehicle returns `route_duration_status: exceeded` and the UI renders the route-duration label.
+- Safety:
+  - Reduces the chance that staff choose or trust a vehicle route that will later fail persisted vehicle-duration validation.
+  - No hidden route details, extra PHI, permission changes, live DB operation, external send, migration, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Computes route-duration status only for day-board vehicles with `max_route_duration_minutes`.
+  - Reuses existing road-routing/fallback estimator; no dependency, background job, broad scan, or unbounded route search was added.
+- Validation:
+  - `pnpm vitest run src/app/api/visit-schedules/day-board/route.test.ts 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx'`: passed, `2` files / `43` tests.
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx'`: passed, `1` file / `4` tests.
+  - Scoped `pnpm exec eslint` on the changed schedule files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - The broad schedule-management goal remains open.
+  - Continue checking route-compare and route preview adoption screens for stale vehicle route-duration warnings and failed-save explainability.
+
+### Route Compare Vehicle Constraint Visibility - 2026-06-30 21:09 JST
+
+- Scope:
+  - Continued the schedule day-board vehicle route-duration visibility slice into route adoption surfaces.
+  - Focused on recommendation logic and `RouteCompareContent`.
+- Fixed:
+  - Day-board no longer marks vehicles with `route_duration_status: exceeded` or `unverified` as recommended, even when they still have remaining stop capacity.
+  - Over-limit vehicles now return `recommendation_reason: 稼働上限を超過`; unverified limited vehicles return `稼働上限を未確認`.
+  - Route-compare now displays the recommended vehicle's route-duration label near the route adoption controls.
+  - If no recommended vehicle exists but an available vehicle is blocked by route-duration status, route-compare shows it as `車両反映不可`.
+  - Tests lock the over-limit non-recommendation behavior and the route-compare vehicle-duration display.
+- Safety:
+  - Reduces over-limit/unverified vehicle auto-assignment risk before final route adoption.
+  - No hidden route details, extra PHI, permission changes, live DB operation, external send, migration, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Reuses already computed day-board route-duration status for recommendation filtering.
+  - Route-compare adds no query and only a small memoized display target.
+- Validation:
+  - `pnpm vitest run src/app/api/visit-schedules/day-board/route.test.ts 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' 'src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx'`: passed, `3` files / `47` tests.
+  - Scoped `pnpm exec eslint` on changed schedule files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - The broad schedule-management goal remains open.
+  - Current vehicle route-duration visibility/recommendation slice is validated; next useful area is final proposal/reschedule display explainability.
+
+### Weekly Optimizer Vehicle Constraint Label - 2026-06-30 21:15 JST
+
+- Scope:
+  - Continued vehicle-resource master visibility in proposal planning.
+  - Focused on the weekly optimizer vehicle selector.
+- Fixed:
+  - Weekly optimizer vehicle options now use the shared `formatVehicleResourceLabel`, so stop and route-duration constraints appear consistently in the selector.
+  - Regression coverage opens the vehicle selector and locks the displayed max-stop / max-duration label.
+- Safety:
+  - Reduces route-planning decisions from labels that omit persisted vehicle constraints.
+  - No new PHI fields, API calls, permission changes, live DB operations, external sends, migrations, push/deploy, or destructive operations were added.
+- Performance:
+  - Pure display formatting through an existing helper; no query, dependency, background job, or render-heavy path was added.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx' --reporter=dot --testTimeout=60000`: passed, `1` file / `7` tests.
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx' src/app/api/visit-schedules/day-board/route.test.ts 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' 'src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx'`: passed, `4` files / `54` tests.
+  - Scoped ESLint on changed schedule files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Continue checking final proposal/reschedule display explainability under the broad goal.
+
+### Proposal Confirmation Vehicle Constraint Labels - 2026-06-30 21:22 JST
+
+- Scope:
+  - Continued proposal/route-decision explainability after weekly optimizer vehicle labels were fixed.
+  - Focused on confirmation/action labels in `ScheduleProposalsContent`.
+- Fixed:
+  - `proposalActionTargetLabel` now uses `formatVehicleResourceLabel`, so ARIA labels and confirm dialog titles include max-stop and route-duration constraints.
+  - Bulk failure summaries and single confirmation dialogs now use the same formatted vehicle label.
+  - Proposal list confirmation rows now show the formatted vehicle label instead of raw vehicle name.
+  - Tests lock the constraint-bearing label in helper output and confirmation dialogs.
+- Safety:
+  - Keeps persisted vehicle constraints visible at the approval/confirmation action boundary.
+  - No hidden route details, extra PHI, API calls, permission changes, live DB operations, external sends, migrations, push/deploy, or destructive operations were added.
+- Performance:
+  - Pure display formatting through an existing helper; no query, dependency, background job, broad scan, or render-heavy path was added.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/schedule-day-view.helpers.test.ts' 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx'`: passed, `2` files / `65` tests.
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx' 'src/app/(dashboard)/schedules/schedule-day-view.helpers.test.ts' 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' src/app/api/visit-schedules/day-board/route.test.ts 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' 'src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx'`: passed, `6` files / `119` tests.
+  - Scoped ESLint on changed proposal/day-view files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - The broad schedule/prescription/route objective remains open.
+  - Next useful area is prescription-difference/carry-item evidence inside schedule proposal/detail decision surfaces.
