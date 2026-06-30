@@ -66,6 +66,30 @@ export type PatientOverview = {
     noted_at: string | null;
     notes: string | null;
   }>;
+  contacts: Array<{
+    id: string;
+    relation:
+      | 'self'
+      | 'spouse'
+      | 'child'
+      | 'parent'
+      | 'sibling'
+      | 'care_manager'
+      | 'physician'
+      | 'nurse'
+      | 'facility_staff'
+      | 'other';
+    name: string;
+    phone: string | null;
+    email: string | null;
+    fax: string | null;
+    organization_name: string | null;
+    department: string | null;
+    address: string | null;
+    is_primary: boolean;
+    is_emergency_contact: boolean;
+    notes: string | null;
+  }>;
   cases: Array<{
     id: string;
     status: string;

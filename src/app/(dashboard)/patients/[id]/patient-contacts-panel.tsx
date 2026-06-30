@@ -192,7 +192,7 @@ export function PatientContactsPanel({
       : CONTACT_SAVE_STALE_REASON;
 
   return (
-    <Card>
+    <Card data-testid="patient-contacts-panel">
       <CardHeader>
         <h2 className="font-heading text-base leading-snug font-medium">患者・家族連絡先</h2>
       </CardHeader>

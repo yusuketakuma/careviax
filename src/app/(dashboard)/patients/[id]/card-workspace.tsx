@@ -100,6 +100,7 @@ import type {
   PatientHomeOperationsSnapshot,
 } from '@/types/patient-home-operations';
 import type { VisitBriefUnresolvedItem } from '@/types/visit-brief';
+import { PatientContactsPanel } from './patient-contacts-panel';
 
 /**
  * design/images/new 06_card: カード = 1 処方サイクル(1 RX 番号)の作業台。
@@ -3800,6 +3801,7 @@ function CardTodayPanel({ tasks }: { tasks: PatientWorkspaceTodayTask[] }) {
 // 再レンダリングを抑止できる。表示内容は不変。
 const PatientFoundationPanelMemo = memo(PatientFoundationPanel);
 const PatientProfilePanelMemo = memo(PatientProfilePanel);
+const PatientContactsPanelMemo = memo(PatientContactsPanel);
 const PatientHomeOperationsPanelMemo = memo(PatientHomeOperationsPanel);
 const PatientShareCaseCreatePanelMemo = memo(PatientShareCaseCreatePanel);
 const PatientCardDocumentsPanelMemo = memo(PatientCardDocumentsPanel);
@@ -4286,6 +4288,12 @@ export function CardWorkspace({
         {headerRow}
         <PatientFoundationPanelMemo patient={patient} />
         <PatientProfilePanelMemo patient={patient} />
+        <PatientContactsPanelMemo
+          patientId={patient.id}
+          orgId={orgId}
+          initialContacts={patient.contacts}
+          initialExpectedUpdatedAt={patient.updated_at}
+        />
         <PatientHomeOperationsPanelMemo
           patient={patient}
           operations={homeOperations}
@@ -4660,6 +4668,12 @@ export function CardWorkspace({
           </h2>
           <PatientFoundationPanelMemo patient={patient} />
           <PatientProfilePanelMemo patient={patient} />
+          <PatientContactsPanelMemo
+            patientId={patient.id}
+            orgId={orgId}
+            initialContacts={patient.contacts}
+            initialExpectedUpdatedAt={patient.updated_at}
+          />
           <PatientHomeOperationsPanelMemo
             patient={patient}
             operations={homeOperations}

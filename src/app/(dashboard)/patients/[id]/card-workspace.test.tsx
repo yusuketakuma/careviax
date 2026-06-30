@@ -33,6 +33,7 @@ vi.mock('sonner', () => ({
   toast: {
     info: vi.fn(),
     success: vi.fn(),
+    warning: vi.fn(),
     error: vi.fn(),
   },
 }));
@@ -439,6 +440,7 @@ function mockPatientQuery(
     birth_date: '1942-04-12',
     gender: 'male',
     archived_at: null,
+    updated_at: '2026-06-01T00:00:00.000Z',
     allergy_info: [],
     residences: [],
     visit_schedules: [],
@@ -543,6 +545,22 @@ function mockPatientQuery(
     },
     cases: [],
     conditions: [],
+    contacts: [
+      {
+        id: 'contact_1',
+        relation: 'child',
+        name: '長女',
+        phone: '090-0000-0000',
+        email: null,
+        fax: null,
+        organization_name: null,
+        department: null,
+        address: null,
+        is_primary: true,
+        is_emergency_contact: true,
+        notes: null,
+      },
+    ],
     phone: '090-0000-0000',
     medical_insurance_number: null,
     care_insurance_number: null,
@@ -986,6 +1004,20 @@ describe('CardWorkspace', () => {
     expect(within(foundationPanel).getAllByRole('button', { name: 'タスク化' })).toHaveLength(3);
     expect(container.textContent).not.toMatch(/21540000|54001234|A-1|raw insurance note/);
     expect(screen.getByRole('heading', { name: '患者プロフィール' })).toBeTruthy();
+    const contactsPanel = screen.getByTestId('patient-contacts-panel');
+    expect(
+      Boolean(
+        screen.getByTestId('patient-profile-summary').compareDocumentPosition(contactsPanel) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBe(true);
+    expect(within(contactsPanel).getByRole('heading', { name: '患者・家族連絡先' })).toBeTruthy();
+    expect(within(contactsPanel).getByText('子: 長女')).toBeTruthy();
+    const contactsSaveButton = within(contactsPanel).getByRole('button', { name: '保存' });
+    expect(contactsSaveButton).toHaveProperty('disabled', false);
+    expect(
+      within(contactsPanel).queryByText('患者情報を再読み込みしてから連絡先を保存してください。'),
+    ).toBeNull();
     const homeOps = screen.getByTestId('patient-home-operations-panel');
     expect(within(homeOps).getByRole('heading', { name: '在宅運用管理' })).toBeTruthy();
     expect(within(homeOps).getAllByText('契約・同意・書類').length).toBeGreaterThan(0);
@@ -1623,6 +1655,7 @@ describe('CardWorkspace', () => {
       archived_by_name: null,
       allergy_info: [],
       residences: [],
+      contacts: [],
       scheduling_preference: null,
       visit_schedules: [],
       lab_summary: [],

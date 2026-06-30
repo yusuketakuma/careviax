@@ -60,6 +60,7 @@ describe('patient-detail-timeline-query', () => {
       action: {
         in: [
           'billing_payment_profile_updated',
+          'patient_contacts_updated',
           'patient_mcs_profile_updated',
           'patient_mcs_check_log_created',
         ],

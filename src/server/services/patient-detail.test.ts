@@ -3135,6 +3135,81 @@ describe('getPatientTimelineData', () => {
     );
   });
 
+  it('adds patient contact updates to the operation timeline without contact PHI exposure', async () => {
+    const auditLogFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'audit_contacts_1',
+        action: 'patient_contacts_updated',
+        target_type: 'Patient',
+        target_id: 'patient_1',
+        actor_id: 'user_1',
+        changes: {
+          contact_count: 2,
+          contact_name: '長男',
+          phone: '090-1111-1111',
+          email: 'family@example.com',
+          address: '東京都千代田区1-2-3',
+        },
+        created_at: new Date('2026-06-17T00:00:00.000Z'),
+      },
+    ]);
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      auditLog: {
+        findMany: auditLogFindManyMock,
+      },
+      user: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'user_1', name: '佐藤 薬剤師' }]),
+      },
+    });
+
+    const result = await getPatientTimelineData(runnerFor(db), {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(result?.timeline_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'operation_history:audit_contacts_1',
+          event_type: 'operation_history',
+          category: 'communication',
+          title: '連絡先を更新',
+          summary: '連絡先 2件',
+          href: '/patients/patient_1',
+          action_label: '患者詳細を開く',
+          status: 'patient_contacts_updated',
+          status_label: '連絡先更新',
+          actor_name: '佐藤 薬剤師',
+        }),
+      ]),
+    );
+    const timelineJson = JSON.stringify(result?.timeline_events);
+    expect(timelineJson).not.toMatch(/長男|090-1111-1111|family@example.com|東京都千代田区/);
+    expect(auditLogFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              target_type: 'Patient',
+              target_id: 'patient_1',
+              action: {
+                in: expect.arrayContaining(['patient_contacts_updated']),
+              },
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
   it('adds conference operation audits to the patient timeline without note body exposure', async () => {
     const auditLogFindManyMock = vi.fn().mockResolvedValue([
       {

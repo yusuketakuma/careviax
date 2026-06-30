@@ -348,6 +348,7 @@ const OPERATION_ACTION_LABELS: Record<string, { title: string; statusLabel: stri
   'first_visit_document.invalidated': { title: '初回文書を無効化', statusLabel: '無効化' },
   billing_collection_updated: { title: '集金情報を更新', statusLabel: '集金更新' },
   billing_payment_profile_updated: { title: '支払設定を更新', statusLabel: '支払設定' },
+  patient_contacts_updated: { title: '連絡先を更新', statusLabel: '連絡先更新' },
   patient_mcs_profile_updated: { title: 'MCS連携状態を更新', statusLabel: 'MCS更新' },
   patient_mcs_check_log_created: { title: 'MCS確認ログを登録', statusLabel: 'MCS確認' },
   'conference_note.created': { title: 'カンファレンス記録を登録', statusLabel: '会議登録' },
@@ -587,6 +588,8 @@ function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
     typeof collection.unpaid_amount === 'number'
       ? `未収 ${collection.unpaid_amount.toLocaleString('ja-JP')}円`
       : null;
+  const contactCount =
+    typeof changes.contact_count === 'number' ? `連絡先 ${changes.contact_count}件` : null;
 
   return (
     compactTimelineValues([
@@ -633,6 +636,7 @@ function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
       previewTimelineText(readString(collection.unpaid_reason), 40)
         ? `未収理由 ${previewTimelineText(readString(collection.unpaid_reason), 40)}`
         : null,
+      contactCount,
       labelOf(MCS_LINKED_STATUS_LABELS, changes.linked_status)
         ? `MCS ${labelOf(MCS_LINKED_STATUS_LABELS, changes.linked_status)}`
         : null,
@@ -696,6 +700,7 @@ function getOperationHistoryCategory(item: OperationHistoryTimelineSource) {
   if (item.action.startsWith('prescription_')) return 'prescription';
   if (item.target_type === 'prescription_history') return 'prescription';
   if (item.target_type === 'visit_record_list') return 'visit';
+  if (item.action === 'patient_contacts_updated') return 'communication';
   if (item.action.startsWith('patient_mcs_')) return 'communication';
   if (item.action.startsWith('conference_note.')) return 'communication';
   return 'document';

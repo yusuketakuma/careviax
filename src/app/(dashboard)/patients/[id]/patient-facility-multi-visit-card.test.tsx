@@ -84,6 +84,7 @@ function buildPatient(overrides: Partial<PatientOverview> = {}): PatientOverview
       infection_isolation: false,
     },
     conditions: [],
+    contacts: [],
     cases: [
       {
         id: 'case_1',

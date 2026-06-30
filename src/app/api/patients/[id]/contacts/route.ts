@@ -96,7 +96,7 @@ export async function GET(req: NextRequest, routeContext: { params: Promise<{ id
   }
 }
 
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedPUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者情報の更新権限がありません',
@@ -154,9 +154,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           data: { updated_at: nextUpdatedAt },
         });
         if (claimed.count !== 1) {
+          const currentPatient = await tx.patient.findFirst({
+            where: applyPatientAssignmentWhere(
+              { id, org_id: ctx.orgId },
+              { userId: ctx.userId, role: ctx.role },
+            ),
+            select: { updated_at: true },
+          });
           return {
             kind: 'response' as const,
-            response: staleContactsConflict(parsed.data.expected_updated_at, patient.updated_at),
+            response: staleContactsConflict(
+              parsed.data.expected_updated_at,
+              currentPatient?.updated_at ?? null,
+            ),
           };
         }
 
@@ -248,4 +258,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       version_basis: 'patient_updated_at',
     },
   });
+}
+
+export async function PUT(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedPUT(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }

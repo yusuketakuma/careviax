@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 
 const PATIENT_OPERATION_HISTORY_ACTIONS = [
+  'patient_contacts_updated',
   'patient_mcs_profile_updated',
   'patient_mcs_check_log_created',
 ] as const;

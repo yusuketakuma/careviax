@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   patientFindFirstMock,
+  patientFindFirstInTxMock,
   patientUpdateManyMock,
   withOrgContextMock,
   deleteManyMock,
@@ -12,6 +13,7 @@ const {
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
+  patientFindFirstInTxMock: vi.fn(),
   patientUpdateManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   deleteManyMock: vi.fn(),
@@ -94,12 +96,16 @@ describe('/api/patients/[id]/contacts PUT', () => {
       updated_at: new Date(CURRENT_UPDATED_AT),
       scheduling_preference: null,
     });
+    patientFindFirstInTxMock.mockResolvedValue({
+      updated_at: new Date(CURRENT_UPDATED_AT),
+    });
     patientUpdateManyMock.mockResolvedValue({ count: 1 });
     createManyMock.mockResolvedValue({ count: 1 });
     findManyMock.mockResolvedValue([{ id: 'contact_1', name: '田中花子' }]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         patient: {
+          findFirst: patientFindFirstInTxMock,
           updateMany: patientUpdateManyMock,
         },
         contactParty: {
@@ -153,6 +159,7 @@ describe('/api/patients/[id]/contacts PUT', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '患者IDが不正です',
     });
@@ -169,6 +176,7 @@ describe('/api/patients/[id]/contacts PUT', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -185,6 +193,7 @@ describe('/api/patients/[id]/contacts PUT', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -214,6 +223,7 @@ describe('/api/patients/[id]/contacts PUT', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(deleteManyMock).not.toHaveBeenCalled();
@@ -240,6 +250,7 @@ describe('/api/patients/[id]/contacts PUT', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '入力値が不正です',
       details: {
@@ -295,6 +306,7 @@ describe('/api/patients/[id]/contacts PUT', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(patientUpdateManyMock).toHaveBeenCalledWith({
       where: {
         id: 'patient_1',
@@ -510,9 +522,42 @@ describe('/api/patients/[id]/contacts PUT', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '連絡先が同時に更新されました。再読み込みしてください',
     });
+  });
+
+  it('returns a sanitized no-store 500 when contact replacement fails unexpectedly', async () => {
+    const rawError = '患者A 090-1111-1111 contact replacement failure';
+    deleteManyMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await PUT(
+      createRequest(
+        {
+          contacts: [
+            {
+              relation: 'child',
+              name: '長男',
+              phone: '090-1111-1111',
+              is_primary: true,
+              is_emergency_contact: true,
+            },
+          ],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(JSON.stringify(body)).not.toContain('090-1111-1111');
   });
 
   it('rejects stale expected_updated_at before replacing patient contacts', async () => {
@@ -537,6 +582,7 @@ describe('/api/patients/[id]/contacts PUT', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '患者連絡先が他の操作で更新されています。再読み込みしてください',
       details: {
@@ -553,6 +599,9 @@ describe('/api/patients/[id]/contacts PUT', () => {
 
   it('does not delete contacts when the patient version claim loses the race', async () => {
     patientUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+    patientFindFirstInTxMock.mockResolvedValueOnce({
+      updated_at: new Date('2026-03-30T09:01:00.000Z'),
+    });
 
     const response = await PUT(
       createRequest(
@@ -574,12 +623,20 @@ describe('/api/patients/[id]/contacts PUT', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       details: {
         conflict_type: 'stale_patient_contacts',
         expected_updated_at: CURRENT_UPDATED_AT,
-        current_updated_at: CURRENT_UPDATED_AT,
+        current_updated_at: '2026-03-30T09:01:00.000Z',
       },
+    });
+    expect(patientFindFirstInTxMock).toHaveBeenCalledWith({
+      where: {
+        id: 'patient_1',
+        org_id: 'corg1234567890123456789012',
+      },
+      select: { updated_at: true },
     });
     expect(deleteManyMock).not.toHaveBeenCalled();
     expect(createManyMock).not.toHaveBeenCalled();
@@ -660,6 +717,7 @@ describe('/api/patients/[id]/contacts PUT', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'アーカイブ中の患者は復元するまで更新できません',
     });

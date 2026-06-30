@@ -30,6 +30,38 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Patient Contacts Production Surface And Audit Timeline - 2026-07-01 05:15 JST
+
+- Scope:
+  - Finished the patient contact OCC follow-up by wiring the guarded contact editor into the current `/patients/[id]` card workspace and closing privacy/medical-safety review findings.
+  - Focused on production-surface availability, PHI-safe PUT response boundaries, OCC race diagnostics, and patient operation history visibility.
+- Fixed:
+  - `CardWorkspace` now mounts `PatientContactsPanel` next to the patient profile in both workspace layouts, passing the server-rendered `patient.updated_at` version token and current contact rows.
+  - `PatientOverview` and affected card-workspace tests now include contact data so the current patient-detail surface is type-safe and regression-covered.
+  - `PUT /api/patients/[id]/contacts` now uses the same sensitive no-store and sanitized unexpected-error wrapper as GET.
+  - When the patient version claim loses inside the RLS transaction, the route re-reads the current patient `updated_at` and returns that timestamp in the stale 409 response.
+  - `patient_contacts_updated` audit rows are now included in patient operation history, labelled as contact updates, categorized as communication, and summarized only as `連絡先 N件`.
+- Safety:
+  - Reduces patient/family/care-team contact PHI cache and raw-error leakage risk on contact replacement.
+  - Reduces stale-browser troubleshooting ambiguity by returning the true current row version after an OCC race loss.
+  - Makes successful contact replacement audits visible in patient workflow history without exposing contact names, phone, email, address, or notes.
+  - Preserves canVisit auth, assignment-aware patient access filtering, archived-patient write blocking, org scoping, RLS transaction context, GET masking, warning redaction, successful audit creation, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds only one narrow patient version re-read on OCC race loss and constant-time timeline label/category/summary handling.
+  - No new dependency, external call, broad scan, background job, render-heavy path, or unbounded loop was added.
+- Validation:
+  - Focused patient contacts API/timeline Vitest passed `3` files / `90` tests.
+  - Patient contact API/UI/card/timeline suite passed `6` files / `164` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on patient contact/card/timeline files: passed.
+  - Full `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master-management, patient-information, report, schedule, and multi-professional cooperation objective remains open.
+  - Concurrent dirty external-access atomic view-audit files remain outside this patient-contact commit and need a separate validation/commit pass.
+
 ### External Access View Audit Transaction - 2026-07-01 05:11 JST
 
 - Scope:
