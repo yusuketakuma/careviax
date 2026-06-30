@@ -43,6 +43,29 @@ function expectSensitiveNoStore(response: Response) {
   expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
+type PatientBoardTestMedicationCycle = {
+  id: string;
+  overall_status: string;
+  exception_status: string | null;
+  updated_at: Date;
+  prescription_intakes: Array<{
+    lines: Array<{
+      packaging_instruction_tags: string[];
+      dispensing_method: string | null;
+    }>;
+  }>;
+  inquiries: Array<{ inquired_at: Date; resolved_at: Date | null }>;
+  dispense_tasks: Array<{
+    due_date: Date | null;
+    audits: Array<{ result: string }>;
+  }>;
+  workflow_exceptions: Array<{
+    exception_type: string;
+    description: string;
+    created_at: Date;
+  }>;
+};
+
 function buildPatientRow(scheduledDate: Date) {
   return {
     id: 'patient_1',
@@ -95,7 +118,8 @@ function buildPatientRow(scheduledDate: Date) {
             is_primary: true,
           },
         ],
-        medication_cycles: [],
+        care_reports: [] as Array<{ id: string; status: string }>,
+        medication_cycles: [] as PatientBoardTestMedicationCycle[],
         visit_schedules: [
           {
             id: 'schedule_1',
@@ -332,6 +356,52 @@ describe('/api/patients/board', () => {
     expect(JSON.stringify(json.data.cards)).not.toContain(`/patients/${fallbackPatientId}`);
     expect(JSON.stringify(json.data.cards)).not.toContain(`/patients/${staticLinkPatientId}`);
     expect(JSON.stringify(json.data.cards)).not.toContain(scheduleId);
+  });
+
+  it('focuses reply-wait patient cards on the exact pending report', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
+    const reportId = 'report/1?tab=x#frag';
+    const patient = buildPatientRow(new Date('2026-06-20T00:00:00.000Z'));
+    patient.cases[0]!.care_reports = [{ id: reportId, status: 'failed' }];
+    patient.cases[0]!.medication_cycles = [
+      {
+        id: 'cycle_1',
+        overall_status: 'reported',
+        exception_status: 'report_failed',
+        updated_at: new Date('2026-06-10T00:00:00.000Z'),
+        prescription_intakes: [{ lines: [] }],
+        inquiries: [],
+        dispense_tasks: [],
+        workflow_exceptions: [],
+      },
+    ];
+    patientFindManyMock.mockResolvedValue([patient]);
+    patientCountMock.mockResolvedValue(1);
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+    expect(response.status).toBe(200);
+
+    const select = patientFindManyMock.mock.calls[0][0].select;
+    expect(select.cases.select.care_reports).toEqual({
+      where: { status: { in: ['response_waiting', 'failed'] } },
+      orderBy: { updated_at: 'desc' },
+      take: 1,
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    const json = await response.json();
+    expect(json.data.cards[0]).toMatchObject({
+      patient_id: 'patient_1',
+      attention: 'reply_wait',
+      status_text: '報告先の返信待ち 1日 — 再送できます',
+      link_label: '報告・共有へ',
+      link_href: `/reports/${encodeURIComponent(reportId)}`,
+    });
+    expect(JSON.stringify(json.data.cards[0])).not.toContain(reportId);
   });
 
   it('does not return primary residence full address in the board card payload', async () => {

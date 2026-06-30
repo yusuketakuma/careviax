@@ -15,6 +15,7 @@ import {
   buildPatientContactReadiness,
   selectPrimaryCareTeamCase,
 } from '@/lib/patient/care-team-contact';
+import { buildReportHref } from '@/lib/reports/navigation';
 import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
 import { buildPatientFoundationSummary } from '@/server/services/patient-detail-foundation';
 import {
@@ -228,6 +229,10 @@ type PatientQueryRow = {
       fax: string | null;
       is_primary: boolean | null;
     }>;
+    care_reports?: Array<{
+      id: string;
+      status: string;
+    }>;
     medication_cycles: Array<{
       id: string;
       overall_status: string;
@@ -295,6 +300,7 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
 
   const careCase = selectPrimaryCareTeamCase(patient.cases);
   const cycle = careCase?.medication_cycles[0] ?? null;
+  const pendingReport = careCase?.care_reports?.[0] ?? null;
   const nextSchedule = careCase?.visit_schedules[0] ?? null;
   const openException = cycle?.workflow_exceptions[0] ?? null;
   const latestInquiry = cycle?.inquiries[0] ?? null;
@@ -401,7 +407,9 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
         ? `報告先の返信待ち ${waitingDays}日 — 再送できます`
         : '報告先の返信待ち — 再送できます';
     tone = 'external';
-    link = STEP_LINKS.report;
+    link = pendingReport
+      ? { ...STEP_LINKS.report, href: buildReportHref(pendingReport.id) }
+      : STEP_LINKS.report;
   } else if (openException) {
     attention = 'checking';
     statusText = openException.description;
@@ -598,6 +606,15 @@ const authenticatedGET = withAuthContext(
                   email: true,
                   fax: true,
                   is_primary: true,
+                },
+              },
+              care_reports: {
+                where: { status: { in: ['response_waiting', 'failed'] } },
+                orderBy: { updated_at: 'desc' },
+                take: 1,
+                select: {
+                  id: true,
+                  status: true,
                 },
               },
               medication_cycles: {
