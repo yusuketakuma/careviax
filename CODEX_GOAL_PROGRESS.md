@@ -26777,3 +26777,123 @@ Next loop:
 - Remaining:
   - Broad master-management and patient-information goal remains open.
   - Continue reviewing bulk proposal/reschedule confirmation and remaining capped master APIs.
+
+### Bulk And Reschedule Medication Confirmation - 2026-06-30 21:44 JST
+
+- Scope:
+  - Continued schedule/prescription/route safety hardening at final action boundaries.
+  - Focused on bulk proposal confirmation and reschedule approval confirmation.
+- Fixed:
+  - Moved the safe medication confirmation summary into shared schedule helpers.
+  - Bulk proposal approval/rejection confirmation now shows safe facts for each target: 服薬最終日, 開始日前配薬, 薬剤根拠 presence, and route decision.
+  - Reschedule approval targets built from proposals now separate operational change reasons from prescription-sensitive proposal reasons.
+  - Reschedule approval dialogs show the same safe medication summary without exposing drug names, raw prescription details, addresses, or phone numbers.
+- Safety:
+  - Reduces final-action approval risk by keeping medication-deadline evidence visible where staff execute bulk approval/rejection or approve reschedule changes.
+  - Reduces leakage risk from raw `proposal_reason` values in confirmation UI.
+  - No API response expansion, permission changes, live DB operations, external sends, migrations, push/deploy, or destructive operations were added.
+- Performance:
+  - Pure formatting/filtering from already loaded proposal fields; no new query, dependency, background job, or render-heavy path was added.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' 'src/app/(dashboard)/schedules/schedule-day-reschedule-approval-dialog.test.tsx'`: passed, `2` files / `40` tests.
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' 'src/app/(dashboard)/schedules/schedule-day-reschedule-approval-dialog.test.tsx' 'src/app/(dashboard)/schedules/schedule-day-view.helpers.test.ts'`: passed, `3` files / `71` tests.
+  - Scoped `pnpm exec eslint` on changed schedule/proposal/reschedule files: passed.
+  - `pnpm typecheck`: passed.
+  - Scoped Prettier check on changed schedule/proposal/reschedule files: passed.
+  - Scoped and full `git diff --check`: passed.
+  - `pnpm format:check`: passed after the care-report waiting-reply dirty files were formatted and validated in the combined follow-up.
+- Remaining:
+  - Broad schedule/prescription/route objective remains open.
+  - Continue with remaining route-order confirmation or capped master/API surfaces after dirty ownership is rechecked.
+
+### Report Waiting Reply Related Links - 2026-06-30 21:45 JST
+
+- Scope:
+  - Continued report creation/sharing and multi-professional collaboration navigation hardening.
+  - Focused on `GET /api/care-reports/today-workspace` waiting inquiry rows.
+- Fixed:
+  - Waiting communication requests now keep the primary "依頼を確認" action on the communication queue and focus the secondary link on the related care report, visit record, or visit schedule when those ids are present.
+  - Unsupported related entity types, including existing tracing-report behavior, still fall back to the patient card link.
+  - Dot-segment report ids fail closed through `resolveCommunicationEntityLink` and fall back to the guarded patient link.
+- Safety:
+  - Reduces wrong-workspace drift from report reply waiting rows without exposing extra PHI or changing authorization, response scope, live DB behavior, external sends, migrations, push/deploy, or destructive operations.
+- Performance:
+  - Pure URL selection over already selected communication request fields; no query, dependency, background job, broad scan, or render-heavy path was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/care-reports/today-workspace/route.test.ts src/lib/communications/navigation.test.ts src/lib/reports/navigation.test.ts src/lib/visits/navigation.test.ts src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=60000`: passed, `5` files / `68` tests.
+  - Scoped `pnpm exec eslint` on the care-reports route/test files: passed.
+  - Scoped `pnpm exec prettier --check` on the care-reports route/test files: passed.
+  - Scoped `git diff --check` on the care-reports route/test files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - Broad visit/report/collaboration objective remains open.
+  - Progress ledgers remain mixed with separate schedule/template WIP, so commit the care-reports code slice separately.
+
+### Route Order Confirmation Medication Summary - 2026-06-30 21:47 JST
+
+- Scope:
+  - Continued visit-route decision hardening at the optimized `route_order` write boundary.
+  - Focused on the proposal detail "候補群へ最適順を反映" confirmation dialog.
+- Fixed:
+  - Route-order confirmation now shows the safe medication scheduling summary for each target candidate.
+  - The route fact inside that summary uses the reflected next route order, not the stale current order.
+  - Regression coverage verifies drug names and raw prescription details in `proposal_reason` do not leak into the route-order confirmation dialog.
+- Safety:
+  - Reduces unsafe route-order update risk by keeping medication-deadline evidence visible beside route ordering evidence.
+  - No API response expansion, permission changes, live DB operations, external sends, migrations, push/deploy, or destructive operations were added.
+- Performance:
+  - Pure formatting from already loaded proposal fields; no new query, dependency, background job, or render-heavy path was added.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx'`: passed, `1` file / `34` tests.
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' 'src/app/(dashboard)/schedules/schedule-day-reschedule-approval-dialog.test.tsx' 'src/app/(dashboard)/schedules/schedule-day-view.helpers.test.ts'`: passed, `3` files / `71` tests.
+  - Scoped `pnpm exec eslint` on changed schedule/proposal/reschedule files: passed.
+  - Scoped Prettier check on changed schedule/proposal/reschedule files: passed.
+  - Scoped and full `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - Broad schedule/prescription/route objective remains open.
+  - Full `pnpm format:check` passed in the combined follow-up after the care-report waiting-reply files were formatted.
+
+### Document Template Master Counted Metadata - 2026-06-30 21:50 JST
+
+- Scope:
+  - Continued master-management hardening for the document template master.
+  - Focused on the bounded `GET /api/templates` response and the document-template admin page.
+- Fixed:
+  - `GET /api/templates` now runs the list and count under `withOrgContext` and returns `total_count`, `visible_count`, `hidden_count`, `truncated`, `count_basis`, `filters_applied`, and `limit` while preserving `data`.
+  - The document-template admin page now shows exact registered/hidden counts and warns when additional templates are hidden by the response limit.
+- Safety:
+  - Reduces false-complete master-management risk without exposing hidden template content or additional PHI.
+  - Existing admin auth, org filters, safe API path helper usage, save/delete behavior, migrations, live DB operations, external sends, push/deploy, and destructive-operation boundaries remain unchanged.
+- Performance:
+  - Adds one scoped `template.count` query using the same org/template_type/target_role predicate as the bounded list query.
+- Validation:
+  - Read local Next Route Handler docs and `docs/ui-ux-design-guidelines.md` before the API/UI change.
+  - `pnpm vitest run src/app/api/templates/route.test.ts 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `2` files / `19` tests.
+  - Combined focused suite with schedule and care-report changes passed `5` files / `85` tests.
+  - Scoped ESLint, `pnpm format:check`, `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint` passed.
+- Remaining:
+  - Broad master-management and patient-information goal remains open.
+  - Continue scanning remaining capped master APIs and patient selectors.
+
+### Care Report Waiting Reply Focus Links - 2026-06-30 21:50 JST
+
+- Scope:
+  - Continued patient/report/collaboration navigation hardening for the care-report today workspace.
+  - Focused on communication-request waiting replies that already reference a report, visit record, or visit schedule.
+- Fixed:
+  - Waiting inquiry secondary actions now point to the related report, visit, or schedule when `related_entity_type`/`related_entity_id` are available.
+  - Dot-segment related IDs fail closed through `resolveCommunicationEntityLink` and fall back to the patient card link.
+- Safety:
+  - Reduces wrong-patient / wrong-workspace drift when resolving report and visit-related replies.
+  - Uses existing shared navigation helpers and does not expose new report content, PHI detail, permissions, migrations, live DB operations, external sends, push/deploy, or destructive operations.
+- Performance:
+  - Pure link resolution over already fetched communication requests; no new query, dependency, background job, or broad scan was added.
+- Validation:
+  - `pnpm vitest run src/app/api/care-reports/today-workspace/route.test.ts --reporter=dot --testTimeout=60000`: covered through the combined focused suite, passed.
+  - Combined focused suite with template and schedule changes passed `5` files / `85` tests.
+  - Scoped ESLint, `pnpm format:check`, `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint` passed.
+- Remaining:
+  - Broad report/collaboration and patient-information objective remains open.
