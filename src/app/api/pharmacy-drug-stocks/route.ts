@@ -1,8 +1,10 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { success, notFound, validationError } from '@/lib/api/response';
+import { internalError, success, notFound, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -155,7 +157,48 @@ const stockSelect = {
   },
 } as const;
 
-export const GET = withAuthContext(
+const stockListSelect = {
+  id: true,
+  site_id: true,
+  drug_master_id: true,
+  is_stocked: true,
+  stock_qty: true,
+  reorder_point: true,
+  preferred_generic_id: true,
+  adoption_source: true,
+  adoption_note: true,
+  last_reviewed_at: true,
+  reviewed_by_id: true,
+  follow_up_status: true,
+  follow_up_reason: true,
+  follow_up_due_date: true,
+  follow_up_resolved_at: true,
+  updated_at: true,
+  drug_master: {
+    select: {
+      id: true,
+      drug_name: true,
+      yj_code: true,
+      drug_price: true,
+      unit: true,
+      is_generic: true,
+      is_narcotic: true,
+      is_psychotropic: true,
+      is_high_risk: true,
+      is_lasa_risk: true,
+      transitional_expiry_date: true,
+    },
+  },
+  preferred_generic: {
+    select: {
+      id: true,
+      drug_name: true,
+      yj_code: true,
+    },
+  },
+} as const;
+
+const authenticatedGET = withAuthContext(
   async (req: NextRequest, authCtx) => {
     const { searchParams } = new URL(req.url);
     const parsed = parseSearchParams(stockQuerySchema, searchParams);
@@ -191,89 +234,73 @@ export const GET = withAuthContext(
       });
     }
 
+    const limit = parsed.data.limit ?? 50;
     const reviewCutoff = new Date();
     reviewCutoff.setDate(reviewCutoff.getDate() - STOCK_REVIEW_INTERVAL_DAYS);
-    const stocked = await prisma.pharmacyDrugStock.findMany({
-      where: {
-        org_id: authCtx.orgId,
-        site_id: site.id,
-        is_stocked: true,
-        ...(parsed.data.missing_reorder_point ? { reorder_point: null } : {}),
-        ...(parsed.data.review_due
-          ? {
-              OR: [{ last_reviewed_at: null }, { last_reviewed_at: { lt: reviewCutoff } }],
-            }
-          : {}),
-        ...(parsed.data.q
-          ? {
-              drug_master: {
-                OR: [
-                  { drug_name: { contains: parsed.data.q } },
-                  { generic_name: { contains: parsed.data.q } },
-                  { tall_man_name: { contains: parsed.data.q } },
-                  { manufacturer: { contains: parsed.data.q } },
-                  { yj_code: { startsWith: parsed.data.q } },
-                  { receipt_code: { startsWith: parsed.data.q } },
-                  { hot_code: { startsWith: parsed.data.q } },
-                  { jan_code: { startsWith: parsed.data.q } },
-                ],
-              },
-            }
-          : {}),
-      },
-      orderBy: [{ updated_at: 'desc' }],
-      take: parsed.data.limit ?? 50,
-      select: {
-        id: true,
-        site_id: true,
-        drug_master_id: true,
-        is_stocked: true,
-        stock_qty: true,
-        reorder_point: true,
-        preferred_generic_id: true,
-        adoption_source: true,
-        adoption_note: true,
-        last_reviewed_at: true,
-        reviewed_by_id: true,
-        follow_up_status: true,
-        follow_up_reason: true,
-        follow_up_due_date: true,
-        follow_up_resolved_at: true,
-        updated_at: true,
-        drug_master: {
-          select: {
-            id: true,
-            drug_name: true,
-            yj_code: true,
-            drug_price: true,
-            unit: true,
-            is_generic: true,
-            is_narcotic: true,
-            is_psychotropic: true,
-            is_high_risk: true,
-            is_lasa_risk: true,
-            transitional_expiry_date: true,
-          },
-        },
-        preferred_generic: {
-          select: {
-            id: true,
-            drug_name: true,
-            yj_code: true,
-          },
-        },
-      },
-    });
+    const where = {
+      org_id: authCtx.orgId,
+      site_id: site.id,
+      is_stocked: true,
+      ...(parsed.data.missing_reorder_point ? { reorder_point: null } : {}),
+      ...(parsed.data.review_due
+        ? {
+            OR: [{ last_reviewed_at: null }, { last_reviewed_at: { lt: reviewCutoff } }],
+          }
+        : {}),
+      ...(parsed.data.q
+        ? {
+            drug_master: {
+              OR: [
+                { drug_name: { contains: parsed.data.q } },
+                { generic_name: { contains: parsed.data.q } },
+                { tall_man_name: { contains: parsed.data.q } },
+                { manufacturer: { contains: parsed.data.q } },
+                { yj_code: { startsWith: parsed.data.q } },
+                { receipt_code: { startsWith: parsed.data.q } },
+                { hot_code: { startsWith: parsed.data.q } },
+                { jan_code: { startsWith: parsed.data.q } },
+              ],
+            },
+          }
+        : {}),
+    };
+    const [totalCount, fetchedStocks] = await Promise.all([
+      prisma.pharmacyDrugStock.count({ where }),
+      prisma.pharmacyDrugStock.findMany({
+        where,
+        orderBy: [{ updated_at: 'desc' }],
+        take: limit + 1,
+        select: stockListSelect,
+      }),
+    ]);
+    const hasMore = fetchedStocks.length > limit;
+    const stocked = hasMore ? fetchedStocks.slice(0, limit) : fetchedStocks;
+    const visibleCount = stocked.length;
+    const hiddenCount = Math.max(totalCount - visibleCount, 0);
 
     return success({
       site,
       data: stocked,
+      metadata: {
+        limit,
+        total_count: totalCount,
+        visible_count: visibleCount,
+        hidden_count: hiddenCount,
+        has_more: hasMore || hiddenCount > 0,
+        count_basis: 'pharmacy_drug_stocks',
+        filters_applied: {
+          site_id: site.id,
+          q: parsed.data.q ?? null,
+          review_due: parsed.data.review_due ?? false,
+          missing_reorder_point: parsed.data.missing_reorder_point ?? false,
+        },
+      },
     });
   },
   { permission: 'canAdmin' },
 );
 
-export const POST = withAuthContext(
+const authenticatedPOST = withAuthContext(
   async (req: NextRequest, authCtx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -466,3 +493,21 @@ export const POST = withAuthContext(
   },
   { permission: 'canAdmin' },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

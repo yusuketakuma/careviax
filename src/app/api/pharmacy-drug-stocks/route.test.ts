@@ -7,7 +7,7 @@ const { authMock, prismaMock } = vi.hoisted(() => ({
     membership: { findFirst: vi.fn() },
     pharmacySite: { findFirst: vi.fn() },
     drugMaster: { findFirst: vi.fn() },
-    pharmacyDrugStock: { findFirst: vi.fn(), findMany: vi.fn(), upsert: vi.fn() },
+    pharmacyDrugStock: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), upsert: vi.fn() },
     auditLog: { create: vi.fn() },
     $transaction: vi.fn(),
   },
@@ -45,6 +45,11 @@ function createMalformedJsonPostRequest() {
   });
 }
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/pharmacy-drug-stocks', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -52,6 +57,7 @@ describe('/api/pharmacy-drug-stocks', () => {
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'admin' });
     prismaMock.pharmacySite.findFirst.mockResolvedValue({ id: 'site_1', name: '本店' });
     prismaMock.pharmacyDrugStock.findFirst.mockResolvedValue(null);
+    prismaMock.pharmacyDrugStock.count.mockResolvedValue(1);
     prismaMock.$transaction.mockImplementation((callback) =>
       callback({
         pharmacyDrugStock: prismaMock.pharmacyDrugStock,
@@ -91,6 +97,7 @@ describe('/api/pharmacy-drug-stocks', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: {
         id: 'stock_1',
@@ -148,6 +155,22 @@ describe('/api/pharmacy-drug-stocks', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(prismaMock.pharmacyDrugStock.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        site_id: 'site_1',
+        is_stocked: true,
+        drug_master: {
+          OR: expect.arrayContaining([
+            { tall_man_name: { contains: '4987123' } },
+            { manufacturer: { contains: '4987123' } },
+            { hot_code: { startsWith: '4987123' } },
+            { jan_code: { startsWith: '4987123' } },
+          ]),
+        },
+      }),
+    });
     expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -163,7 +186,7 @@ describe('/api/pharmacy-drug-stocks', () => {
             ]),
           },
         }),
-        take: 20,
+        take: 21,
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
@@ -175,7 +198,164 @@ describe('/api/pharmacy-drug-stocks', () => {
           },
         },
       ],
+      metadata: {
+        limit: 20,
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        has_more: false,
+        count_basis: 'pharmacy_drug_stocks',
+        filters_applied: {
+          site_id: 'site_1',
+          q: '4987123',
+          review_due: false,
+          missing_reorder_point: false,
+        },
+      },
     });
+  });
+
+  it('returns capped list metadata when stocked rows exceed the visible limit', async () => {
+    prismaMock.pharmacyDrugStock.count.mockResolvedValue(3);
+    prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([
+      {
+        id: 'stock_1',
+        site_id: 'site_1',
+        drug_master_id: 'drug_1',
+        is_stocked: true,
+        stock_qty: null,
+        reorder_point: null,
+        preferred_generic_id: null,
+        adoption_source: 'manual',
+        adoption_note: null,
+        last_reviewed_at: null,
+        reviewed_by_id: null,
+        follow_up_status: null,
+        follow_up_reason: null,
+        follow_up_due_date: null,
+        follow_up_resolved_at: null,
+        updated_at: new Date('2026-03-28T00:00:00Z'),
+        drug_master: {
+          id: 'drug_1',
+          drug_name: '薬剤1',
+          yj_code: '111111111111',
+          drug_price: 1,
+          unit: '錠',
+          is_generic: false,
+          is_narcotic: false,
+          is_psychotropic: false,
+          is_high_risk: false,
+          is_lasa_risk: false,
+          transitional_expiry_date: null,
+        },
+        preferred_generic: null,
+      },
+      {
+        id: 'stock_2',
+        site_id: 'site_1',
+        drug_master_id: 'drug_2',
+        is_stocked: true,
+        stock_qty: null,
+        reorder_point: null,
+        preferred_generic_id: null,
+        adoption_source: 'manual',
+        adoption_note: null,
+        last_reviewed_at: null,
+        reviewed_by_id: null,
+        follow_up_status: null,
+        follow_up_reason: null,
+        follow_up_due_date: null,
+        follow_up_resolved_at: null,
+        updated_at: new Date('2026-03-27T00:00:00Z'),
+        drug_master: {
+          id: 'drug_2',
+          drug_name: '薬剤2',
+          yj_code: '222222222222',
+          drug_price: 2,
+          unit: '錠',
+          is_generic: false,
+          is_narcotic: false,
+          is_psychotropic: false,
+          is_high_risk: false,
+          is_lasa_risk: false,
+          transitional_expiry_date: null,
+        },
+        preferred_generic: null,
+      },
+      {
+        id: 'stock_3',
+        site_id: 'site_1',
+        drug_master_id: 'drug_3',
+        is_stocked: true,
+        stock_qty: null,
+        reorder_point: null,
+        preferred_generic_id: null,
+        adoption_source: 'manual',
+        adoption_note: null,
+        last_reviewed_at: null,
+        reviewed_by_id: null,
+        follow_up_status: null,
+        follow_up_reason: null,
+        follow_up_due_date: null,
+        follow_up_resolved_at: null,
+        updated_at: new Date('2026-03-26T00:00:00Z'),
+        drug_master: {
+          id: 'drug_3',
+          drug_name: '薬剤3',
+          yj_code: '333333333333',
+          drug_price: 3,
+          unit: '錠',
+          is_generic: false,
+          is_narcotic: false,
+          is_psychotropic: false,
+          is_high_risk: false,
+          is_lasa_risk: false,
+          transitional_expiry_date: null,
+        },
+        preferred_generic: null,
+      },
+    ]);
+
+    const response = await GET(
+      createRequest('http://localhost/api/pharmacy-drug-stocks?site_id=site_1&limit=2'),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 3 }),
+    );
+    const body = await response.json();
+    expect(body.data).toHaveLength(2);
+    expect(body.data.map((stock: { id: string }) => stock.id)).toEqual(['stock_1', 'stock_2']);
+    expect(body.metadata).toMatchObject({
+      limit: 2,
+      total_count: 3,
+      visible_count: 2,
+      hidden_count: 1,
+      has_more: true,
+    });
+  });
+
+  it('returns a sanitized no-store 500 when stocked rows fail to load', async () => {
+    prismaMock.pharmacyDrugStock.count.mockRejectedValueOnce(
+      new Error('raw pharmacy drug stock query failure with PHI'),
+    );
+
+    const response = await GET(
+      createRequest('http://localhost/api/pharmacy-drug-stocks?site_id=site_1&limit=2'),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw pharmacy drug stock query failure');
+    expect(bodyText).not.toContain('PHI');
   });
 
   it('rejects malformed limit values before loading the site', async () => {
@@ -186,6 +366,7 @@ describe('/api/pharmacy-drug-stocks', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'クエリパラメータが不正です',
@@ -246,6 +427,7 @@ describe('/api/pharmacy-drug-stocks', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(prismaMock.pharmacyDrugStock.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({

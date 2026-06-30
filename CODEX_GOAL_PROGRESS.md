@@ -30,6 +30,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Pharmacy Drug Stock List Count Contract - 2026-07-01 04:05 JST
+
+- Scope:
+  - Continued master-management hardening on `GET /api/pharmacy-drug-stocks`.
+  - Focused on formulary review queues where fixed `limit` lists could look complete without count/truncation metadata.
+- Fixed:
+  - The stocked-list path now shares an explicit Prisma `where` between `count` and `findMany`.
+  - The route fetches `limit + 1`, returns only the visible `limit` rows, and includes metadata with `limit`, `total_count`, `visible_count`, `hidden_count`, `has_more`, count basis, and applied site/query/review filters.
+  - GET and POST exports now use the shared sensitive no-store wrapper and sanitized unexpected-error fallback.
+  - Regression coverage proves normal metadata, truncated metadata, no-store validation errors, no-store success, and sanitized no-store 500 behavior.
+- Safety:
+  - Reduces false-complete formulary review risk when review-due or missing-reorder queues exceed the visible cap.
+  - Reduces PHI/medication-master cache and raw error leakage risk for stock-list and stock-upsert responses.
+  - Preserves existing canAdmin auth, org/site scoping, selected-drug lookup behavior, adoption validation, audit creation, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds one narrow `PharmacyDrugStock.count` with the same org/site/filter predicate as the bounded list and fetches one extra row for truncation detection.
+  - No new dependency, background job, external call, broad scan, render-heavy path, or unbounded loop was added.
+- Validation:
+  - Focused pharmacy-drug-stocks Vitest passed `1` file / `14` tests with the expected sanitized-500 test log.
+  - Related admin drug-master UI/view-model/API suite passed `3` files / `103` tests.
+  - Scoped ESLint, scoped Prettier check, scoped diff-check, full typecheck, no-unused, full format check, and full diff-check passed.
+- Remaining:
+  - Broad master-management / patient-information objective remains open.
+  - Facility/external-professional patient selector archive/capped metadata and facility contact stale-write guards remain high-value follow-up candidates.
+
 ### Visit Proposal Operating Hours Window Guard - 2026-07-01 04:01 JST
 
 - Scope:
