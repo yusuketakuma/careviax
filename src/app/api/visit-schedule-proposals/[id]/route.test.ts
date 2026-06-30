@@ -129,9 +129,13 @@ vi.mock('@/server/services/operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
-vi.mock('@/server/services/visit-route-engine', () => ({
-  computeOptimizedVisitRoute: computeOptimizedVisitRouteMock,
-}));
+vi.mock('@/server/services/visit-route-engine', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/server/services/visit-route-engine')>();
+  return {
+    ...actual,
+    computeOptimizedVisitRoute: computeOptimizedVisitRouteMock,
+  };
+});
 
 vi.mock('@/server/services/workflow-dashboard-cache', () => ({
   notifyWorkflowMutation: notifyWorkflowMutationMock,
@@ -573,9 +577,24 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     expect(computeOptimizedVisitRouteMock).toHaveBeenCalledWith(
       expect.objectContaining({
         waypoints: expect.arrayContaining([
-          expect.objectContaining({ scheduleId: 'schedule_1', priority: 'urgent' }),
-          expect.objectContaining({ scheduleId: 'proposal:proposal_1', priority: 'normal' }),
-          expect.objectContaining({ scheduleId: 'proposal:proposal_2', priority: 'emergency' }),
+          expect.objectContaining({
+            scheduleId: 'schedule_1',
+            priority: 'urgent',
+            timeWindow: { from: '08:30', to: '09:00' },
+            serviceMinutes: 60,
+          }),
+          expect.objectContaining({
+            scheduleId: 'proposal:proposal_1',
+            priority: 'normal',
+            timeWindow: { from: '09:00', to: '10:00' },
+            serviceMinutes: 60,
+          }),
+          expect.objectContaining({
+            scheduleId: 'proposal:proposal_2',
+            priority: 'emergency',
+            timeWindow: { from: '09:00', to: '10:00' },
+            serviceMinutes: 60,
+          }),
         ]),
       }),
     );

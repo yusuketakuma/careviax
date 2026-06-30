@@ -13,7 +13,9 @@ import { internalError, notFound, success, validationError } from '@/lib/api/res
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES as OPEN_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
 import {
+  DEFAULT_VISIT_ROUTE_SERVICE_MINUTES,
   computeOptimizedVisitRoute,
+  visitRouteTimeWindowFromDbTime,
   type VisitRouteTravelMode,
 } from '@/server/services/visit-route-engine';
 
@@ -129,6 +131,8 @@ const authenticatedPOST = withAuthContext(
                 select: {
                   id: true,
                   priority: true,
+                  time_window_start: true,
+                  time_window_end: true,
                   site: {
                     select: {
                       id: true,
@@ -170,6 +174,8 @@ const authenticatedPOST = withAuthContext(
                 select: {
                   id: true,
                   priority: true,
+                  time_window_start: true,
+                  time_window_end: true,
                   site: {
                     select: {
                       id: true,
@@ -269,6 +275,8 @@ const authenticatedPOST = withAuthContext(
               route_id: schedule.id,
               patient_name: schedule.case_.patient.name,
               priority: schedule.priority,
+              time_window_start: schedule.time_window_start,
+              time_window_end: schedule.time_window_end,
               residence: schedule.case_.patient.residences[0] ?? null,
               site: schedule.site,
             })),
@@ -280,6 +288,8 @@ const authenticatedPOST = withAuthContext(
               route_id: `proposal:${proposal.id}`,
               patient_name: proposal.case_.patient.name,
               priority: proposal.priority,
+              time_window_start: proposal.time_window_start,
+              time_window_end: proposal.time_window_end,
               residence: proposal.case_.patient.residences[0] ?? null,
               site: proposal.site,
             })),
@@ -344,6 +354,11 @@ const authenticatedPOST = withAuthContext(
               lat: residence.lat!,
               lng: residence.lng!,
               priority: item.priority,
+              timeWindow: visitRouteTimeWindowFromDbTime(
+                item.time_window_start,
+                item.time_window_end,
+              ),
+              serviceMinutes: DEFAULT_VISIT_ROUTE_SERVICE_MINUTES,
             };
           }),
           ...(lockedScheduleIds.length > 0 ? { lockedScheduleIds } : {}),

@@ -30,6 +30,30 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Visit Route Time Window And Service Duration - 2026-07-01 03:27 JST
+
+- Scope:
+  - Continued visit-route planning hardening on the shared route engine plus route preview callers.
+  - Focused on ensuring route duration and stop summaries reflect reviewed visit time windows and expected on-site service time.
+- Fixed:
+  - Added shared route waypoint time-window and service-duration fields.
+  - Route preview callers now select `time_window_start` / `time_window_end`, convert them with the shared DB-time helper, and pass a default 60-minute service duration into route planning.
+  - Heuristic and Google route plans now include service duration in total duration while preserving arrival offsets as travel-to-stop time.
+  - Stop summaries now carry service duration and time-window metadata for downstream review UI/API consumers.
+- Safety:
+  - Reduces under-estimated visit-route duration risk where travel-only totals could make a route look feasible despite required patient service time.
+  - Preserves existing auth, org/RLS scoping, route target filtering, Google request behavior, no-store responses, migrations, live data, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds scalar schedule/proposal fields and in-memory duration arithmetic over existing route inputs only.
+  - No new query fan-out, dependency, background job, external call, broad scan, or unbounded loop was added.
+- Validation:
+  - Targeted route/preparation/proposal/reopen Vitest suite passed `7` files / `162` tests after updating route-engine mocks and exact waypoint expectations.
+  - `pnpm format:check`: passed.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - Broad master/patient/schedule objective remains open.
+  - Browser/E2E proof remains separately blocked by the local e2e DB migration gap already tracked in `Plans.md`.
+
 ### Visit Schedule Reopen Override Claim - 2026-07-01 03:25 JST
 
 - Scope:

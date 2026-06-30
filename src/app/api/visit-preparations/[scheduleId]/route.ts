@@ -46,7 +46,9 @@ import {
 import { getScheduleVisitBrief } from '@/server/services/visit-brief';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import {
+  DEFAULT_VISIT_ROUTE_SERVICE_MINUTES,
   computeOptimizedVisitRoute,
+  visitRouteTimeWindowFromDbTime,
   type VisitRoutePlan,
   type VisitRouteTravelMode,
 } from '@/server/services/visit-route-engine';
@@ -1763,6 +1765,8 @@ async function authenticatedPUT(
           id: true,
           route_order: true,
           priority: true,
+          time_window_start: true,
+          time_window_end: true,
           site: {
             select: {
               id: true,
@@ -1813,6 +1817,8 @@ async function authenticatedPUT(
               id: true,
               route_order: true,
               priority: true,
+              time_window_start: true,
+              time_window_end: true,
               site: {
                 select: {
                   id: true,
@@ -1879,6 +1885,8 @@ async function authenticatedPUT(
           lat: residence.lat!,
           lng: residence.lng!,
           priority: item.priority,
+          timeWindow: visitRouteTimeWindowFromDbTime(item.time_window_start, item.time_window_end),
+          serviceMinutes: DEFAULT_VISIT_ROUTE_SERVICE_MINUTES,
         };
       }),
     });

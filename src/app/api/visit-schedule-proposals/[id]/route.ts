@@ -20,7 +20,9 @@ import {
   buildVisitScheduleProposalAssignmentWhere,
 } from '@/lib/auth/visit-schedule-access';
 import {
+  DEFAULT_VISIT_ROUTE_SERVICE_MINUTES,
   computeOptimizedVisitRoute,
+  visitRouteTimeWindowFromDbTime,
   type VisitRoutePlan,
   type VisitRouteTravelMode,
   type VisitRouteWaypoint,
@@ -416,6 +418,11 @@ async function buildRoutePreview(args: {
       lat: residence.lat,
       lng: residence.lng,
       priority: schedule.priority,
+      timeWindow: visitRouteTimeWindowFromDbTime(
+        schedule.time_window_start,
+        schedule.time_window_end,
+      ),
+      serviceMinutes: DEFAULT_VISIT_ROUTE_SERVICE_MINUTES,
     });
     points.push({
       schedule_id: schedule.id,
@@ -451,6 +458,11 @@ async function buildRoutePreview(args: {
         lat: residence.lat,
         lng: residence.lng,
         priority: previewProposal.priority,
+        timeWindow: visitRouteTimeWindowFromDbTime(
+          previewProposal.time_window_start,
+          previewProposal.time_window_end,
+        ),
+        serviceMinutes: DEFAULT_VISIT_ROUTE_SERVICE_MINUTES,
       });
       points.push({
         schedule_id: scheduleId,

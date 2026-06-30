@@ -273,6 +273,41 @@ describe('computeOptimizedVisitRoute (heuristic path)', () => {
     expect(estimateOne).not.toHaveBeenCalled();
   });
 
+  it('adds explicit service minutes to heuristic total duration while preserving arrival offsets', async () => {
+    const estimateOne = vi.fn(async () => null);
+    const estimateMatrix = vi.fn(async () => [
+      [null, { durationMinutes: 10, distanceKm: 1 }],
+      [{ durationMinutes: 5, distanceKm: 0.5 }, null],
+    ]);
+    createRoadTravelEstimatorMock.mockReturnValue(Object.assign(estimateOne, { estimateMatrix }));
+
+    const result = await computeOptimizedVisitRoute({
+      origin,
+      travelMode,
+      waypoints: [
+        {
+          scheduleId: 'sched_service',
+          patientName: '患者A',
+          address: '住所A',
+          lat: 35.1,
+          lng: 139.0,
+          serviceMinutes: 20,
+          timeWindow: { from: '09:00', to: '10:00' },
+        },
+      ],
+    });
+
+    expect(result.status).toBe('ok');
+    expect(result.totalDurationSeconds).toBe(35 * 60);
+    expect(result.stopSummaries[0]).toMatchObject({
+      scheduleId: 'sched_service',
+      arrivalOffsetSeconds: 10 * 60,
+      serviceDurationSeconds: 20 * 60,
+      timeWindow: { from: '09:00', to: '10:00' },
+    });
+    expect(estimateOne).not.toHaveBeenCalled();
+  });
+
   it('limits per-pair estimator concurrency when matrix estimates are unavailable', async () => {
     const releases: Array<() => void> = [];
     let active = 0;
@@ -449,6 +484,55 @@ describe('computeOptimizedVisitRoute (Google Routes path)', () => {
     const requestBody = JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body));
     expect(requestBody.destination).toEqual({
       location: { latLng: { latitude: origin.lat, longitude: origin.lng } },
+    });
+  });
+
+  it('adds explicit service minutes to Google total duration and leaves arrival as travel-to-stop', async () => {
+    vi.stubEnv('ROUTING_API_PROVIDER', 'google');
+    vi.stubEnv('GOOGLE_MAPS_SERVER_API_KEY', 'server-api-key');
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          routes: [
+            {
+              duration: '900s',
+              distanceMeters: 1200,
+              optimizedIntermediateWaypointIndex: [0],
+              legs: [{ duration: '600s', distanceMeters: 1200 }],
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    );
+
+    const result = await computeOptimizedVisitRoute({
+      origin,
+      travelMode,
+      waypoints: [
+        {
+          scheduleId: 'sched_google_service',
+          patientName: '患者A',
+          address: '住所A',
+          lat: 35.1,
+          lng: 139.1,
+          serviceMinutes: 30,
+          timeWindow: { from: '13:00', to: '14:00' },
+        },
+      ],
+    });
+
+    expect(result.status).toBe('ok');
+    expect(result.totalDurationSeconds).toBe(45 * 60);
+    expect(result.stopSummaries[0]).toMatchObject({
+      scheduleId: 'sched_google_service',
+      arrivalOffsetSeconds: 10 * 60,
+      serviceDurationSeconds: 30 * 60,
+      timeWindow: { from: '13:00', to: '14:00' },
     });
   });
 });

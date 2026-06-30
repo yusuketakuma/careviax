@@ -35,9 +35,13 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-vi.mock('@/server/services/visit-route-engine', () => ({
-  computeOptimizedVisitRoute: computeOptimizedVisitRouteMock,
-}));
+vi.mock('@/server/services/visit-route-engine', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/server/services/visit-route-engine')>();
+  return {
+    ...actual,
+    computeOptimizedVisitRoute: computeOptimizedVisitRouteMock,
+  };
+});
 
 import { POST as rawPOST } from './route';
 

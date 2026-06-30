@@ -37,9 +37,13 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-vi.mock('@/server/services/visit-route-engine', () => ({
-  computeOptimizedVisitRoute: computeOptimizedVisitRouteMock,
-}));
+vi.mock('@/server/services/visit-route-engine', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/server/services/visit-route-engine')>();
+  return {
+    ...actual,
+    computeOptimizedVisitRoute: computeOptimizedVisitRouteMock,
+  };
+});
 
 import { POST as rawPOST } from './route';
 
@@ -117,6 +121,8 @@ describe('/api/visit-routes POST', () => {
         id: 'schedule_1',
         priority: 'normal',
         scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        time_window_start: new Date('1970-01-01T09:00:00.000Z'),
+        time_window_end: new Date('1970-01-01T10:00:00.000Z'),
         site: {
           id: 'site_1',
           name: '本店',
@@ -134,6 +140,8 @@ describe('/api/visit-routes POST', () => {
         id: 'schedule_2',
         priority: 'urgent',
         scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        time_window_start: new Date('1970-01-01T10:30:00.000Z'),
+        time_window_end: new Date('1970-01-01T11:30:00.000Z'),
         site: {
           id: 'site_1',
           name: '本店',
@@ -169,8 +177,18 @@ describe('/api/visit-routes POST', () => {
       origin: { lat: 35.0, lng: 139.0, label: '本店' },
       travelMode: 'DRIVE',
       waypoints: [
-        expect.objectContaining({ scheduleId: 'schedule_1', priority: 'normal' }),
-        expect.objectContaining({ scheduleId: 'schedule_2', priority: 'urgent' }),
+        expect.objectContaining({
+          scheduleId: 'schedule_1',
+          priority: 'normal',
+          timeWindow: { from: '09:00', to: '10:00' },
+          serviceMinutes: 60,
+        }),
+        expect.objectContaining({
+          scheduleId: 'schedule_2',
+          priority: 'urgent',
+          timeWindow: { from: '10:30', to: '11:30' },
+          serviceMinutes: 60,
+        }),
       ],
     });
   });
@@ -842,6 +860,8 @@ describe('/api/visit-routes POST', () => {
       {
         id: 'schedule_1',
         priority: 'urgent',
+        time_window_start: new Date('1970-01-01T09:00:00.000Z'),
+        time_window_end: new Date('1970-01-01T10:00:00.000Z'),
         site: {
           id: 'site_1',
           name: '本店',
@@ -860,6 +880,8 @@ describe('/api/visit-routes POST', () => {
       {
         id: 'proposal_1',
         priority: 'emergency',
+        time_window_start: new Date('1970-01-01T10:30:00.000Z'),
+        time_window_end: new Date('1970-01-01T11:30:00.000Z'),
         site: {
           id: 'site_1',
           name: '本店',
@@ -900,8 +922,18 @@ describe('/api/visit-routes POST', () => {
       origin: { lat: 35.0, lng: 139.0, label: '本店' },
       travelMode: 'DRIVE',
       waypoints: [
-        expect.objectContaining({ scheduleId: 'schedule_1', priority: 'urgent' }),
-        expect.objectContaining({ scheduleId: 'proposal:proposal_1', priority: 'emergency' }),
+        expect.objectContaining({
+          scheduleId: 'schedule_1',
+          priority: 'urgent',
+          timeWindow: { from: '09:00', to: '10:00' },
+          serviceMinutes: 60,
+        }),
+        expect.objectContaining({
+          scheduleId: 'proposal:proposal_1',
+          priority: 'emergency',
+          timeWindow: { from: '10:30', to: '11:30' },
+          serviceMinutes: 60,
+        }),
       ],
     });
   });

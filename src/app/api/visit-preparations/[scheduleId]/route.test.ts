@@ -119,9 +119,13 @@ vi.mock('@/server/services/visit-brief', () => ({
   getScheduleVisitBrief: scheduleVisitBriefMock,
 }));
 
-vi.mock('@/server/services/visit-route-engine', () => ({
-  computeOptimizedVisitRoute: computeOptimizedVisitRouteMock,
-}));
+vi.mock('@/server/services/visit-route-engine', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/server/services/visit-route-engine')>();
+  return {
+    ...actual,
+    computeOptimizedVisitRoute: computeOptimizedVisitRouteMock,
+  };
+});
 
 vi.mock('@/server/services/operational-tasks', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/server/services/operational-tasks')>();
@@ -2354,6 +2358,8 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
           lat: 35.684,
           lng: 139.77,
           priority: 'normal',
+          timeWindow: null,
+          serviceMinutes: 60,
         },
       ],
     });

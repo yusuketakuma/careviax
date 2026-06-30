@@ -2,12 +2,15 @@ import { readJsonResponseBody } from '@/lib/api/response-body';
 import { readJsonObject } from '@/lib/db/json';
 import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
+import { timeDateToString } from '@/lib/visits/time-of-day';
 import type {
   VisitRouteDistanceSource,
   VisitRouteLegDistanceSource,
   VisitRouteOrigin,
   VisitRoutePlan,
+  VisitRouteTimeWindow,
   VisitRouteTravelMode,
+  VisitRouteWaypoint,
 } from '@/types/visit-route';
 import { createFetchTimeout } from './fetch-timeout';
 import {
@@ -17,18 +20,25 @@ import {
   type TravelEstimate,
 } from './road-routing';
 
-export type { VisitRouteOrigin, VisitRoutePlan, VisitRouteTravelMode } from '@/types/visit-route';
+export type {
+  VisitRouteOrigin,
+  VisitRoutePlan,
+  VisitRouteTravelMode,
+  VisitRouteWaypoint,
+} from '@/types/visit-route';
 
 const DEFAULT_GOOGLE_ROUTE_TIMEOUT_MS = 5000;
+export const DEFAULT_VISIT_ROUTE_SERVICE_MINUTES = 60;
 
-export type VisitRouteWaypoint = {
-  scheduleId: string;
-  patientName: string;
-  address: string;
-  lat: number;
-  lng: number;
-  priority?: string | null;
-};
+export function visitRouteTimeWindowFromDbTime(
+  start: Date | null | undefined,
+  end: Date | null | undefined,
+): VisitRouteTimeWindow | null {
+  const from = timeDateToString(start);
+  const to = timeDateToString(end);
+  if (!from || !to || to <= from) return null;
+  return { from, to };
+}
 
 type GoogleRouteLeg = {
   duration?: string;
@@ -261,6 +271,20 @@ function mergeRouteDistanceSource(
   return current === next ? current : 'mixed';
 }
 
+function waypointServiceDurationSeconds(waypoint: VisitRouteWaypoint) {
+  if (waypoint.serviceMinutes == null) return 0;
+  if (!Number.isFinite(waypoint.serviceMinutes) || waypoint.serviceMinutes < 0) return 0;
+  return Math.round(waypoint.serviceMinutes * 60);
+}
+
+function stopServiceFields(waypoint: VisitRouteWaypoint) {
+  const serviceDurationSeconds = waypointServiceDurationSeconds(waypoint);
+  return {
+    ...(serviceDurationSeconds > 0 ? { serviceDurationSeconds } : {}),
+    ...(waypoint.timeWindow ? { timeWindow: waypoint.timeWindow } : {}),
+  };
+}
+
 function estimateToMatrixCell(
   estimate: TravelEstimate | null,
   from: NodePoint,
@@ -466,6 +490,10 @@ async function computeGoogleWaypointRoute(args: {
       ? rawIndices
       : args.waypoints.map((_, index) => index);
   const optimizedWaypoints = optimizedIndices.map((index) => args.waypoints[index]);
+  const totalServiceDurationSeconds = optimizedWaypoints.reduce(
+    (total, waypoint) => total + waypointServiceDurationSeconds(waypoint),
+    0,
+  );
 
   let cumulativeDuration = 0;
   const stopSummaries = optimizedWaypoints.map((waypoint, index) => {
@@ -475,15 +503,19 @@ async function computeGoogleWaypointRoute(args: {
       cumulativeDuration += legDurationSeconds;
     }
 
-    return {
+    const summary = {
       scheduleId: waypoint.scheduleId,
       optimizedOrder: index + 1,
       arrivalOffsetSeconds: legDurationSeconds == null ? null : cumulativeDuration,
       distanceFromPreviousMeters: leg?.distanceMeters ?? null,
       durationFromPreviousSeconds: legDurationSeconds,
       distanceSource: leg?.distanceMeters != null ? ('road' as const) : null,
+      ...stopServiceFields(waypoint),
     };
+    cumulativeDuration += waypointServiceDurationSeconds(waypoint);
+    return summary;
   });
+  const routeDurationSeconds = parseDurationSeconds(route.duration);
 
   return {
     status: 'ok',
@@ -493,7 +525,8 @@ async function computeGoogleWaypointRoute(args: {
     encodedPath: route.polyline?.encodedPolyline ?? null,
     orderedScheduleIds: optimizedWaypoints.map((waypoint) => waypoint.scheduleId),
     totalDistanceMeters: route.distanceMeters ?? null,
-    totalDurationSeconds: parseDurationSeconds(route.duration),
+    totalDurationSeconds:
+      routeDurationSeconds == null ? null : routeDurationSeconds + totalServiceDurationSeconds,
     distanceSource: route.distanceMeters != null ? 'road' : null,
     stopSummaries,
   };
@@ -604,7 +637,9 @@ async function computeHeuristicRoute(args: {
         distanceFromPreviousMeters: distanceMeters != null ? Math.round(distanceMeters) : null,
         durationFromPreviousSeconds: durationSeconds,
         distanceSource: cell?.distanceSource ?? null,
+        ...stopServiceFields(args.waypoints[forcedWaypointIdx]),
       });
+      totalDurationSeconds += waypointServiceDurationSeconds(args.waypoints[forcedWaypointIdx]);
       currentNodeIndex = targetNodeIndex;
       continue;
     }
@@ -661,7 +696,9 @@ async function computeHeuristicRoute(args: {
         ? bestDurationSeconds
         : null,
       distanceSource: bestDistanceSource,
+      ...stopServiceFields(nextWaypoint),
     });
+    totalDurationSeconds += waypointServiceDurationSeconds(nextWaypoint);
     currentNodeIndex = nextWaypointIdx + 1;
   }
 
