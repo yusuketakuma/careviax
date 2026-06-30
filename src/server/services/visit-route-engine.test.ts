@@ -136,13 +136,16 @@ describe('computeOptimizedVisitRoute (heuristic path)', () => {
     expect(result.stopSummaries).toHaveLength(2);
   });
 
-  it('uses patient address travel time with visit priority correction', async () => {
+  it('uses hard visit priority bands before travel time', async () => {
     createRoadTravelEstimatorMock.mockReturnValue(
       async (_from: unknown, to: { lat: number; lng: number }) => {
         if (to.lat === 35.04) {
-          return { durationMinutes: 5, distanceKm: 1 };
+          return { durationMinutes: 2, distanceKm: 1 };
         }
-        return { durationMinutes: 35, distanceKm: 7 };
+        if (to.lat === 35.3) {
+          return { durationMinutes: 45, distanceKm: 7 };
+        }
+        return { durationMinutes: 120, distanceKm: 20 };
       },
     );
 
@@ -159,6 +162,14 @@ describe('computeOptimizedVisitRoute (heuristic path)', () => {
           priority: 'normal',
         },
         {
+          scheduleId: 'urgent_middle',
+          patientName: '中距離至急患者',
+          address: '住所C',
+          lat: 35.3,
+          lng: 139.0,
+          priority: 'urgent',
+        },
+        {
           scheduleId: 'emergency_far',
           patientName: '遠い緊急患者',
           address: '住所B',
@@ -170,8 +181,8 @@ describe('computeOptimizedVisitRoute (heuristic path)', () => {
     });
 
     expect(result.status).toBe('ok');
-    expect(result.note).toBe('優先度補正を含むヒューリスティック順序を表示しています');
-    expect(result.orderedScheduleIds).toEqual(['emergency_far', 'normal_near']);
+    expect(result.note).toBe('優先度を優先したヒューリスティック順序を表示しています');
+    expect(result.orderedScheduleIds).toEqual(['emergency_far', 'urgent_middle', 'normal_near']);
   });
 
   it('uses the estimator matrix API instead of per-pair estimates', async () => {

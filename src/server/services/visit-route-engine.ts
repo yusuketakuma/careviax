@@ -199,19 +199,19 @@ function resolveGoogleMapsServerApiKey() {
   );
 }
 
-function routePriorityBonusSeconds(priority: string | null | undefined) {
+function routePriorityRank(priority: string | null | undefined) {
   switch (priority) {
     case 'emergency':
-      return 45 * 60;
-    case 'urgent':
-      return 25 * 60;
-    default:
       return 0;
+    case 'urgent':
+      return 1;
+    default:
+      return 2;
   }
 }
 
 function hasPriorityRouteConstraint(waypoints: VisitRouteWaypoint[]) {
-  return waypoints.some((waypoint) => routePriorityBonusSeconds(waypoint.priority) > 0);
+  return waypoints.some((waypoint) => routePriorityRank(waypoint.priority) < 2);
 }
 
 function haversineDistanceKm(from: { lat: number; lng: number }, to: { lat: number; lng: number }) {
@@ -580,19 +580,22 @@ async function computeHeuristicRoute(args: {
     }
 
     let bestRemIdx = 0;
-    let bestScoreSeconds = Number.POSITIVE_INFINITY;
+    const bestRank = Math.min(
+      ...remaining.map((waypointIdx) => routePriorityRank(args.waypoints[waypointIdx].priority)),
+    );
     let bestDistanceMeters = Number.POSITIVE_INFINITY;
     let bestDurationSeconds = Number.POSITIVE_INFINITY;
 
     for (let remIdx = 0; remIdx < remaining.length; remIdx++) {
       const waypointIdx = remaining[remIdx];
+      if (routePriorityRank(args.waypoints[waypointIdx].priority) !== bestRank) {
+        continue;
+      }
       const targetNodeIndex = waypointIdx + 1;
       const cell = matrix[currentNodeIndex][targetNodeIndex];
 
       const distanceMeters = cell ? cell.meters : Number.POSITIVE_INFINITY;
       const durationSeconds = cell ? cell.seconds : Number.POSITIVE_INFINITY;
-      const scoreSeconds =
-        durationSeconds - routePriorityBonusSeconds(args.waypoints[waypointIdx].priority);
 
       // Guard: never let NaN participate in comparisons (Fix #1 defence-in-depth)
       if (!Number.isFinite(durationSeconds) && !Number.isFinite(distanceMeters)) {
@@ -600,14 +603,10 @@ async function computeHeuristicRoute(args: {
       }
 
       if (
-        scoreSeconds < bestScoreSeconds ||
-        (scoreSeconds === bestScoreSeconds && durationSeconds < bestDurationSeconds) ||
-        (scoreSeconds === bestScoreSeconds &&
-          durationSeconds === bestDurationSeconds &&
-          distanceMeters < bestDistanceMeters)
+        durationSeconds < bestDurationSeconds ||
+        (durationSeconds === bestDurationSeconds && distanceMeters < bestDistanceMeters)
       ) {
         bestRemIdx = remIdx;
-        bestScoreSeconds = scoreSeconds;
         bestDistanceMeters = distanceMeters;
         bestDurationSeconds = durationSeconds;
       }
@@ -639,7 +638,7 @@ async function computeHeuristicRoute(args: {
   }
 
   const baseNote = usesPriorityConstraint
-    ? '優先度補正を含むヒューリスティック順序を表示しています'
+    ? '優先度を優先したヒューリスティック順序を表示しています'
     : 'ヒューリスティック順序を表示しています';
 
   return {
