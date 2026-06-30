@@ -49,7 +49,11 @@ const routeOrderConfirmationContextSchema = z.object({
   target_count: z.number().int().min(1).max(100).optional(),
   route_order_diff_count: z.number().int().min(0).max(100).optional(),
   vehicle_assignment_count: z.number().int().min(0).max(100).optional(),
+  released_schedule_id: z.string().trim().min(1).max(100).optional(),
+  patient_reconfirmation_required: z.boolean().optional(),
 });
+
+type RouteOrderConfirmationContext = z.infer<typeof routeOrderConfirmationContextSchema>;
 
 const visitScheduleReorderSchema = z.object({
   updates: z
@@ -112,6 +116,22 @@ class VisitScheduleReorderRetryLimitError extends Error {
     super('visit schedule reorder transaction retry limit exceeded');
     this.name = 'VisitScheduleReorderRetryLimitError';
   }
+}
+
+function buildAuditConfirmationContext(
+  ctx: AuthContext,
+  confirmationContext: RouteOrderConfirmationContext | null,
+): Prisma.InputJsonValue | null {
+  if (!confirmationContext) return null;
+  if (confirmationContext.patient_reconfirmation_required !== true) {
+    return confirmationContext as Prisma.InputJsonValue;
+  }
+
+  return {
+    ...confirmationContext,
+    patient_reconfirmation_acknowledged_by: ctx.userId,
+    patient_reconfirmation_acknowledged_at: new Date().toISOString(),
+  } as Prisma.InputJsonValue;
 }
 
 function isSerializableTransactionConflict(cause: unknown) {
@@ -185,10 +205,15 @@ const authenticatedPATCH = withAuthContext(
         ctx.orgId,
         async (tx) => {
           const assignmentWhere = buildVisitScheduleAssignmentWhere(ctx);
+          const confirmationContext = parsed.data.confirmation_context;
+          const releasedScheduleId = confirmationContext?.released_schedule_id;
+          const scheduleLookupIds = Array.from(
+            new Set([...targetScheduleIds, ...(releasedScheduleId ? [releasedScheduleId] : [])]),
+          );
           const schedules = await tx.visitSchedule.findMany({
             where: {
               org_id: ctx.orgId,
-              id: { in: targetScheduleIds },
+              id: { in: scheduleLookupIds },
               ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
             },
             select: {
@@ -207,7 +232,7 @@ const authenticatedPATCH = withAuthContext(
             },
           });
 
-          if (schedules.length !== targetScheduleIds.length) {
+          if (schedules.length !== scheduleLookupIds.length) {
             return { error: 'not_found' as const };
           }
 
@@ -285,11 +310,28 @@ const authenticatedPATCH = withAuthContext(
             return { error: 'duplicate_route_order' as const };
           }
 
-          const confirmationContext = parsed.data.confirmation_context;
           const routeDates = Array.from(new Set(routeCells.map((cell) => cell.scheduledDate)));
           const routePharmacistIds = Array.from(
             new Set(routeCells.map((cell) => cell.pharmacistId)),
           );
+          const releasedSchedule = releasedScheduleId
+            ? (scheduleById.get(releasedScheduleId) ?? null)
+            : null;
+          if (
+            confirmationContext &&
+            (confirmationContext.patient_reconfirmation_required === true ||
+              confirmationContext.released_schedule_id) &&
+            (confirmationContext.source !== 'emergency_route_interruption' ||
+              !releasedSchedule ||
+              !releasedSchedule.confirmed_at ||
+              uniqueScheduleIds.includes(releasedSchedule.id) ||
+              (confirmationContext.date &&
+                confirmationContext.date !== formatUtcDateKey(releasedSchedule.scheduled_date)) ||
+              (routePharmacistIds.length === 1 &&
+                releasedSchedule.pharmacist_id !== routePharmacistIds[0]))
+          ) {
+            return { error: 'confirmation_context_mismatch' as const };
+          }
           if (
             confirmationContext &&
             ((confirmationContext.target_count &&
@@ -632,7 +674,10 @@ const authenticatedPATCH = withAuthContext(
                 confirmed: scheduleById.get(item.schedule_id)?.confirmed_at != null,
               })),
               vehicle_assignment: parsed.data.vehicle_assignment ?? null,
-              confirmation_context: parsed.data.confirmation_context ?? null,
+              confirmation_context: buildAuditConfirmationContext(
+                ctx,
+                parsed.data.confirmation_context ?? null,
+              ),
             },
           });
 

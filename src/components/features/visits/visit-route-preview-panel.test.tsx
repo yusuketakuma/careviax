@@ -141,4 +141,31 @@ describe('VisitRoutePreviewPanel', () => {
     rerender(<VisitRoutePreviewPanel {...baseProps} errorMessage="ルート計算に失敗しました" />);
     expect(screen.getByRole('alert').textContent).toContain('ルート計算に失敗しました');
   });
+
+  it('keeps route preview issue notes visible when every point is dropped', () => {
+    render(
+      <VisitRoutePreviewPanel
+        controlId="test-route-preview"
+        title="route preview"
+        description="desc"
+        travelMode="DRIVE"
+        plan={{
+          status: 'ok',
+          note: '座標未設定: 患者A、患者B',
+          travelMode: 'DRIVE',
+          origin: { lat: 35, lng: 139, label: '本店' },
+          encodedPath: null,
+          orderedScheduleIds: [],
+          totalDistanceMeters: null,
+          totalDurationSeconds: null,
+          stopSummaries: [],
+        }}
+        points={[]}
+        emptyMessage="地図に表示できる訪問先がありません"
+      />,
+    );
+
+    expect(screen.getByRole('status').textContent).toContain('地図に表示できる訪問先がありません');
+    expect(screen.getByRole('status').textContent).toContain('座標未設定: 患者A、患者B');
+  });
 });

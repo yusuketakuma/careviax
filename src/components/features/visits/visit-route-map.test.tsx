@@ -66,4 +66,11 @@ describe('VisitRouteMap', () => {
     expect(screen.getByText('確定予定')).toBeTruthy();
     expect(screen.getByText('ETA 09:05')).toBeTruthy();
   });
+
+  it('renders route issue notes when no points can be placed on the map', () => {
+    render(<VisitRouteMap points={[]} note="座標未設定: 患者A、患者B" />);
+
+    expect(screen.getByText('地図に表示できる訪問先がありません。')).toBeTruthy();
+    expect(screen.getByText('座標未設定: 患者A、患者B')).toBeTruthy();
+  });
 });

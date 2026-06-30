@@ -178,9 +178,10 @@ export function VisitRoutePreviewPanel({
             {errorMessage}
           </p>
         ) : points.length === 0 ? (
-          <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
-            {emptyMessage}
-          </p>
+          <div role="status" aria-live="polite" className="space-y-2 text-sm text-muted-foreground">
+            <p>{emptyMessage}</p>
+            {plan?.note ? <p className="leading-5">{plan.note}</p> : null}
+          </div>
         ) : (
           <>
             <div className="flex flex-wrap gap-2 text-sm">

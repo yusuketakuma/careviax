@@ -156,6 +156,20 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         vehicle_resource_id: null,
         version: 1,
       },
+      {
+        id: 'schedule_confirmed_tail',
+        case_id: 'case_confirmed_tail',
+        pharmacist_id: 'pharmacist_1',
+        scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+        time_window_start: new Date('1970-01-01T11:00:00.000Z'),
+        time_window_end: new Date('1970-01-01T12:00:00.000Z'),
+        confirmed_at: new Date('2026-04-08T12:00:00.000Z'),
+        route_order: 3,
+        site_id: 'site_1',
+        schedule_status: 'planned',
+        vehicle_resource_id: null,
+        version: 1,
+      },
     ];
     scheduleFindManyMock.mockImplementation(
       ({
@@ -578,6 +592,8 @@ describe('/api/visit-schedules/reorder PATCH', () => {
           travel_mode: 'DRIVE',
           target_count: 1,
           route_order_diff_count: 1,
+          released_schedule_id: 'schedule_confirmed_tail',
+          patient_reconfirmation_required: true,
         },
       }),
     ))!;
@@ -594,11 +610,68 @@ describe('/api/visit-schedules/reorder PATCH', () => {
               travel_mode: 'DRIVE',
               target_count: 1,
               route_order_diff_count: 1,
+              released_schedule_id: 'schedule_confirmed_tail',
+              patient_reconfirmation_required: true,
+              patient_reconfirmation_acknowledged_by: 'user_1',
+              patient_reconfirmation_acknowledged_at: expect.any(String),
             },
           }),
         }),
       }),
     );
+  });
+
+  it('rejects emergency reconfirmation context when the released schedule is not same-day confirmed', async () => {
+    scheduleFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        pharmacist_id: 'pharmacist_1',
+        scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+        time_window_start: new Date('1970-01-01T09:00:00.000Z'),
+        time_window_end: new Date('1970-01-01T10:00:00.000Z'),
+        confirmed_at: null,
+        route_order: 1,
+        site_id: 'site_1',
+        schedule_status: 'planned',
+        vehicle_resource_id: null,
+        version: 1,
+      },
+      {
+        id: 'schedule_unconfirmed_tail',
+        case_id: 'case_unconfirmed_tail',
+        pharmacist_id: 'pharmacist_1',
+        scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+        time_window_start: new Date('1970-01-01T11:00:00.000Z'),
+        time_window_end: new Date('1970-01-01T12:00:00.000Z'),
+        confirmed_at: null,
+        route_order: 3,
+        site_id: 'site_1',
+        schedule_status: 'planned',
+        vehicle_resource_id: null,
+        version: 1,
+      },
+    ]);
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [{ schedule_id: 'schedule_1', route_order: 1 }],
+        confirmation_context: {
+          source: 'emergency_route_interruption',
+          date: '2026-04-09',
+          target_count: 1,
+          route_order_diff_count: 1,
+          released_schedule_id: 'schedule_unconfirmed_tail',
+          patient_reconfirmation_required: true,
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '確認コンテキストが訪問予定の対象セルと一致しません',
+    });
+    expectNoWriteAuditOrNotify();
   });
 
   it('accepts schedule conflict resolution confirmation context and records it in audit', async () => {

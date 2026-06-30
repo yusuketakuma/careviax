@@ -168,6 +168,7 @@ export function VisitRouteMap(props: {
       <div className={props.className}>
         <div className="rounded-xl border border-dashed border-border bg-muted/20 p-4 text-sm text-muted-foreground">
           地図に表示できる訪問先がありません。
+          {props.note ? <div className="mt-2">{props.note}</div> : null}
         </div>
       </div>
     );

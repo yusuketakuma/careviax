@@ -151,6 +151,21 @@ const visitB = buildSchedule({
     },
   },
 });
+const confirmedVisit = buildSchedule({
+  id: 'visit-confirmed',
+  case_id: 'case-confirmed',
+  route_order: 1,
+  confirmed_at: '2026-04-08T12:00:00.000Z',
+  time_window_start: '2026-04-09T09:00:00.000Z',
+  time_window_end: '2026-04-09T09:30:00.000Z',
+  case_: {
+    patient: {
+      id: 'patient-confirmed',
+      name: '確定 患者',
+      residences: [{ address: '東京都千代田区6-6-6', lat: 35.5, lng: 139.5 }],
+    },
+  },
+});
 const visitC = buildSchedule({
   id: 'visit-c',
   case_id: 'case-c',
@@ -255,7 +270,10 @@ function installFetchMock() {
       fetchCalls.push({ url, init, body });
 
       if (url.startsWith('/api/visit-schedules?')) {
-        return jsonResponse({ data: [visitA, visitB, visitC, facilityVisit], hasMore: false });
+        return jsonResponse({
+          data: [confirmedVisit, visitA, visitB, visitC, facilityVisit],
+          hasMore: false,
+        });
       }
       if (url.startsWith('/api/visit-schedules/day-board')) {
         return jsonResponse({ data: boardFixture() });
@@ -266,12 +284,18 @@ function installFetchMock() {
           return jsonResponse({ message: '経路計算に失敗しました' }, 500);
         }
         if (scenario === 'time_preference') {
-          return jsonResponse({ data: routePlan(['visit-b', 'visit-a', 'visit-c'], 31 * 60) });
+          return jsonResponse({
+            data: routePlan(['visit-confirmed', 'visit-b', 'visit-a', 'visit-c'], 31 * 60),
+          });
         }
         if (scenario === 'emergency_slack') {
-          return jsonResponse({ data: routePlan(['visit-c', 'visit-b', 'visit-a'], 35 * 60) });
+          return jsonResponse({
+            data: routePlan(['visit-confirmed', 'visit-c', 'visit-b', 'visit-a'], 35 * 60),
+          });
         }
-        return jsonResponse({ data: routePlan(['visit-c', 'visit-a', 'visit-b'], 23 * 60) });
+        return jsonResponse({
+          data: routePlan(['visit-confirmed', 'visit-c', 'visit-a', 'visit-b'], 23 * 60),
+        });
       }
       if (url === '/api/visit-schedules/reorder') {
         return jsonResponse({ data: { ok: true } });
@@ -296,14 +320,14 @@ describe('RouteCompareContent', () => {
   it('computes three scenarios through visit-routes and applies the selected engine order', async () => {
     renderRouteCompareContent();
 
-    await screen.findByText('移動23分 / 余力0件');
+    expect(await screen.findAllByText(/移動23分/)).not.toHaveLength(0);
     expect(screen.queryByText(/薬局⇔訪問先 16 分/)).toBeNull();
 
     const routeRequests = fetchCalls.filter((call) => call.url === '/api/visit-routes');
     expect(routeRequests).toHaveLength(3);
     for (const request of routeRequests) {
       expect(request.body?.schedule_ids).toEqual(
-        expect.arrayContaining(['visit-a', 'visit-b', 'visit-c']),
+        expect.arrayContaining(['visit-confirmed', 'visit-a', 'visit-b', 'visit-c']),
       );
       expect(request.body?.schedule_ids).not.toContain('facility-1');
       expect(request.body?.vehicle_resource_id).toBe('vehicle_1');
@@ -320,10 +344,10 @@ describe('RouteCompareContent', () => {
     const reorderRequest = fetchCalls.find((call) => call.url === '/api/visit-schedules/reorder');
     expect(reorderRequest?.body).toMatchObject({
       updates: [
-        { schedule_id: 'visit-b', route_order: 1 },
-        { schedule_id: 'visit-a', route_order: 2 },
-        { schedule_id: 'visit-c', route_order: 3 },
-        { schedule_id: 'facility-1', route_order: 4 },
+        { schedule_id: 'visit-b', route_order: 2 },
+        { schedule_id: 'visit-a', route_order: 3 },
+        { schedule_id: 'visit-c', route_order: 4 },
+        { schedule_id: 'facility-1', route_order: 5 },
       ],
       confirmation_context: {
         source: 'route_compare_adoption',
@@ -333,13 +357,48 @@ describe('RouteCompareContent', () => {
         vehicle_assignment_count: 4,
       },
     });
+    expect(reorderRequest?.body?.updates).not.toContainEqual(
+      expect.objectContaining({ schedule_id: 'visit-confirmed' }),
+    );
+  });
+
+  it('keeps confirmed visits out of the adoption payload even when the engine returns them', async () => {
+    renderRouteCompareContent();
+
+    expect(await screen.findAllByText(/移動23分/)).not.toHaveLength(0);
+    const scenarioA = screen.getByLabelText('案A 移動少なめ');
+    fireEvent.click(within(scenarioA).getByRole('button', { name: 'この案を使う' }));
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'この案を使う' }),
+    );
+
+    await waitFor(() => expect(toastSuccessMock).toHaveBeenCalled());
+    const reorderRequest = fetchCalls.find((call) => call.url === '/api/visit-schedules/reorder');
+    expect(reorderRequest?.body).toMatchObject({
+      updates: [
+        { schedule_id: 'visit-c', route_order: 2 },
+        { schedule_id: 'visit-a', route_order: 3 },
+        { schedule_id: 'visit-b', route_order: 4 },
+        { schedule_id: 'facility-1', route_order: 5 },
+      ],
+      confirmation_context: {
+        source: 'route_compare_adoption',
+        date: '2026-04-09',
+        target_count: 4,
+        route_order_diff_count: 4,
+        vehicle_assignment_count: 4,
+      },
+    });
+    expect(reorderRequest?.body?.updates).not.toContainEqual(
+      expect.objectContaining({ schedule_id: 'visit-confirmed' }),
+    );
   });
 
   it('keeps partial route failures visible and disables only the failed scenario', async () => {
     failTimePreferenceRoute = true;
     renderRouteCompareContent();
 
-    await screen.findByText('移動23分 / 余力0件');
+    expect(await screen.findAllByText(/移動23分/)).not.toHaveLength(0);
     const scenarioB = screen.getByLabelText('案B 希望時間優先');
     expect(within(scenarioB).getByText(/採用不可: 経路計算に失敗しました/)).not.toBeNull();
     expect(

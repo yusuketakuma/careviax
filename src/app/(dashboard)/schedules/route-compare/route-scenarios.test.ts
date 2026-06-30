@@ -512,6 +512,57 @@ describe('buildScenarioRouteOrderUpdates', () => {
     );
     expect(new Set(cellKeys).size).toBe(cellKeys.length);
   });
+
+  it('does not include confirmed visits in adoption updates', () => {
+    const [, timePreference] = buildRouteScenarios(buildSeedLikeVisits());
+    const allVisits: RouteOrderTarget[] = [
+      {
+        scheduleId: 'visit-confirmed',
+        pharmacistId: 'user-yamada',
+        facilityBatchId: null,
+        routeOrder: 1,
+        startMinutes: 9 * 60,
+        confirmedAt: '2026-04-08T12:00:00.000Z',
+      },
+      {
+        scheduleId: 'visit-ito',
+        pharmacistId: 'user-yamada',
+        facilityBatchId: null,
+        routeOrder: 2,
+        startMinutes: 10 * 60 + 30,
+      },
+      {
+        scheduleId: 'visit-tanaka',
+        pharmacistId: 'user-yamada',
+        facilityBatchId: null,
+        routeOrder: 3,
+        startMinutes: 14 * 60,
+      },
+      {
+        scheduleId: 'visit-gh-ogawa',
+        pharmacistId: 'user-yamada',
+        facilityBatchId: 'batch-green-hill',
+        routeOrder: 1,
+        startMinutes: 15 * 60 + 30,
+      },
+    ];
+
+    const updates = buildScenarioRouteOrderUpdates({ scenario: timePreference, allVisits });
+
+    expect(updates.map((update) => update.scheduleId)).toEqual([
+      'visit-ito',
+      'visit-tanaka',
+      'visit-gh-ogawa',
+    ]);
+    expect(updates).not.toContainEqual(expect.objectContaining({ scheduleId: 'visit-confirmed' }));
+    expect(new Map(updates.map((update) => [update.scheduleId, update.route_order]))).toEqual(
+      new Map([
+        ['visit-ito', 2],
+        ['visit-tanaka', 3],
+        ['visit-gh-ogawa', 4],
+      ]),
+    );
+  });
 });
 
 describe('buildRecommendedRouteDetail', () => {

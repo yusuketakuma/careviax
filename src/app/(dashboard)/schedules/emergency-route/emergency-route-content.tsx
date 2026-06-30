@@ -741,6 +741,12 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
           travel_mode: plan.travelMode,
           target_count: applyPlan.updates.length,
           route_order_diff_count: applyPlan.routeOrderDiffCount,
+          ...(scenario.releasedScheduleId
+            ? {
+                released_schedule_id: scenario.releasedScheduleId,
+                patient_reconfirmation_required: true,
+              }
+            : { patient_reconfirmation_required: false }),
         },
       });
       return { planId };

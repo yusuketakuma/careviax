@@ -38,6 +38,8 @@ export type VisitRouteConfirmationContext = {
   target_count?: number;
   route_order_diff_count?: number;
   vehicle_assignment_count?: number;
+  released_schedule_id?: string;
+  patient_reconfirmation_required?: boolean;
 };
 
 export async function applyVisitScheduleRouteUpdates(args: {

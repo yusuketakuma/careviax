@@ -328,9 +328,67 @@ describe('EmergencyRouteContent', () => {
         travel_mode: 'DRIVE',
         target_count: 1,
         route_order_diff_count: 1,
+        released_schedule_id: 'confirmed_tail',
+        patient_reconfirmation_required: true,
       },
     });
     expect(toastSuccessMock).toHaveBeenCalledWith('案2を対象日のルートに反映しました');
+  });
+
+  it('blocks applying plan2 when the route engine marks the scenario unavailable', async () => {
+    const routeBodies: unknown[] = [];
+    const reorderBodies: unknown[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.startsWith('/api/visit-schedules?')) {
+        return Response.json({
+          data: [confirmedFirst, emergencySchedule, confirmedTail, facilityBatchSchedule],
+          hasMore: false,
+        });
+      }
+      if (url === '/api/visit-routes') {
+        const body = JSON.parse(String(init?.body));
+        routeBodies.push(body);
+        const scheduleIds = body.schedule_ids as string[];
+        if (scheduleIds.length === 2) {
+          return Response.json({ data: routePlan(['confirmed_1', 'confirmed_tail'], 600) });
+        }
+        if (Array.isArray(body.locked_schedule_ids) && body.locked_schedule_ids.length === 2) {
+          return Response.json({
+            data: routePlan(['confirmed_1', 'emergency', 'confirmed_tail'], 1200),
+          });
+        }
+        return Response.json({
+          data: {
+            ...routePlan(['confirmed_1', 'confirmed_tail', 'emergency'], 0),
+            status: 'unavailable',
+            note: '座標未設定: 緊急患者',
+            totalDistanceMeters: null,
+            totalDurationSeconds: null,
+          },
+        });
+      }
+      if (url === '/api/visit-schedules/reorder') {
+        reorderBodies.push(JSON.parse(String(init?.body)));
+        return Response.json({ data: { ok: true } });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderEmergencyRouteContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'ルートを再計算' }));
+    await waitFor(() => expect(routeBodies).toHaveLength(3));
+    fireEvent.click(screen.getByRole('button', { name: '案2を選択' }));
+
+    expect(screen.getByTestId('emergency-route-impact').textContent).toContain(
+      'ルート計算：座標未設定: 緊急患者',
+    );
+    expect((screen.getByRole('button', { name: '反映不可' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(reorderBodies).toHaveLength(0);
   });
 });
 
