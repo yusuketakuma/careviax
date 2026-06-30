@@ -1,9 +1,18 @@
+import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { success, validationError, notFound, forbidden, conflict } from '@/lib/api/response';
+import {
+  success,
+  validationError,
+  notFound,
+  forbidden,
+  conflict,
+  internalError,
+} from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import {
   buildVisitScheduleAssignmentWhere,
@@ -23,7 +32,7 @@ function buildBatchScheduleAccessWhere(ctx: AuthContext, batchId: string) {
   };
 }
 
-export const DELETE = withAuthContext(
+const authenticatedDELETE = withAuthContext(
   async (_req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -80,7 +89,16 @@ export const DELETE = withAuthContext(
   },
 );
 
-export const PATCH = withAuthContext(
+export const DELETE: typeof authenticatedDELETE = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedDELETE(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
+
+const authenticatedPATCH = withAuthContext(
   async (req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -180,3 +198,12 @@ export const PATCH = withAuthContext(
     message: '施設一括訪問の更新権限がありません',
   },
 );
+
+export const PATCH: typeof authenticatedPATCH = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

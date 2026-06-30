@@ -112,11 +112,9 @@ function expectNoMutationSideEffects() {
   expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
 }
 
-function expectCanVisitMutationAuth(handler: WrappedRouteHandler) {
-  expect(handler.authOptions).toEqual({
-    permission: 'canVisit',
-    message: '施設一括訪問の更新権限がありません',
-  });
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/facility-visit-batches/[id]', () => {
@@ -146,9 +144,7 @@ describe('/api/facility-visit-batches/[id]', () => {
     );
   });
 
-  it('wraps DELETE and PATCH with canVisit mutation authorization', () => {
-    expectCanVisitMutationAuth(DELETE as WrappedRouteHandler);
-    expectCanVisitMutationAuth(PATCH as WrappedRouteHandler);
+  it('registers DELETE and PATCH with canVisit mutation authorization', () => {
     expect(withAuthRegistrations).toEqual([
       {
         permission: 'canVisit',
@@ -168,6 +164,7 @@ describe('/api/facility-visit-batches/[id]', () => {
       const response = await DELETE(createRequest(), routeContext('batch_1'));
 
       expect(response.status).toBe(403);
+      expectSensitiveNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         code: 'AUTH_FORBIDDEN',
         message: '施設一括訪問の更新権限がありません',
@@ -204,6 +201,7 @@ describe('/api/facility-visit-batches/[id]', () => {
       const response = await DELETE(createRequest(), routeContext('  batch_1  '));
 
       expect(response.status).toBe(200);
+      expectSensitiveNoStore(response);
       expect(facilityVisitBatchFindFirstMock).toHaveBeenCalledWith({
         where: { id: 'batch_1', org_id: 'org_1' },
         select: { id: true, pharmacist_id: true },
@@ -298,6 +296,26 @@ describe('/api/facility-visit-batches/[id]', () => {
         where: { id: 'batch_1' },
       });
     });
+
+    it('returns a sanitized no-store 500 when delete transaction fails unexpectedly', async () => {
+      withOrgContextMock.mockRejectedValueOnce(
+        new Error('患者 山田花子 090-1234-5678 raw facility batch delete detail'),
+      );
+
+      const response = await DELETE(createRequest(), routeContext('batch_1'));
+
+      expect(response.status).toBe(500);
+      expectSensitiveNoStore(response);
+      const body = await response.json();
+      expect(body).toMatchObject({
+        code: 'INTERNAL_ERROR',
+        message: 'サーバー内部でエラーが発生しました',
+      });
+      expect(JSON.stringify(body)).not.toContain('山田花子');
+      expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+      expect(JSON.stringify(body)).not.toContain('raw facility batch delete detail');
+      expectNoMutationSideEffects();
+    });
   });
 
   describe('PATCH', () => {
@@ -310,6 +328,7 @@ describe('/api/facility-visit-batches/[id]', () => {
       );
 
       expect(response.status).toBe(403);
+      expectSensitiveNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         code: 'AUTH_FORBIDDEN',
         message: '施設一括訪問の更新権限がありません',
@@ -459,6 +478,7 @@ describe('/api/facility-visit-batches/[id]', () => {
       );
 
       expect(response.status).toBe(200);
+      expectSensitiveNoStore(response);
       await expect(response.json()).resolves.toEqual({
         updated: true,
         order: ['schedule_2', 'schedule_1'],
@@ -574,6 +594,29 @@ describe('/api/facility-visit-batches/[id]', () => {
       expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
       expect(facilityVisitBatchDeleteMock).not.toHaveBeenCalled();
       expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    });
+
+    it('returns a sanitized no-store 500 when reorder transaction fails unexpectedly', async () => {
+      withOrgContextMock.mockRejectedValueOnce(
+        new Error('患者 山田花子 090-1234-5678 raw facility batch reorder detail'),
+      );
+
+      const response = await PATCH(
+        createRequest({ ordered_schedule_ids: ['schedule_2', 'schedule_1'] }),
+        routeContext('batch_1'),
+      );
+
+      expect(response.status).toBe(500);
+      expectSensitiveNoStore(response);
+      const body = await response.json();
+      expect(body).toMatchObject({
+        code: 'INTERNAL_ERROR',
+        message: 'サーバー内部でエラーが発生しました',
+      });
+      expect(JSON.stringify(body)).not.toContain('山田花子');
+      expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+      expect(JSON.stringify(body)).not.toContain('raw facility batch reorder detail');
+      expectNoMutationSideEffects();
     });
   });
 });
