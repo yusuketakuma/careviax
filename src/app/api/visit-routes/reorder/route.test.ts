@@ -107,6 +107,28 @@ function buildSerializableConflictError() {
   });
 }
 
+function buildRouteSchedule(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'schedule_1',
+    case_id: 'case_schedule',
+    pharmacist_id: 'user_1',
+    scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+    schedule_status: 'planned',
+    confirmed_at: null,
+    route_order: null,
+    version: 1,
+    time_window_start: null,
+    vehicle_resource_id: null,
+    case_: {
+      patient: {
+        residences: [],
+      },
+    },
+    vehicle_resource: null,
+    ...overrides,
+  };
+}
+
 describe('/api/visit-routes/reorder PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -115,14 +137,7 @@ describe('/api/visit-routes/reorder PATCH', () => {
     membershipFindFirstMock.mockImplementation(() =>
       Promise.resolve({ role: authRoleRef.current }),
     );
-    scheduleFindManyMock.mockResolvedValue([
-      {
-        id: 'schedule_1',
-        case_id: 'case_schedule',
-        pharmacist_id: 'user_1',
-        scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
-      },
-    ]);
+    scheduleFindManyMock.mockResolvedValue([buildRouteSchedule()]);
     proposalFindManyMock.mockResolvedValue([
       {
         id: 'proposal_1',
@@ -260,6 +275,9 @@ describe('/api/visit-routes/reorder PATCH', () => {
         id: 'schedule_1',
         pharmacist_id: 'user_1',
         scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+        schedule_status: 'planned',
+        confirmed_at: null,
+        version: 1,
       }),
       data: {
         route_order: 2,
@@ -316,15 +334,7 @@ describe('/api/visit-routes/reorder PATCH', () => {
   });
 
   it('rejects stale expected route_order before mixed route writes', async () => {
-    scheduleFindManyMock.mockResolvedValueOnce([
-      {
-        id: 'schedule_1',
-        case_id: 'case_schedule',
-        pharmacist_id: 'user_1',
-        scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
-        route_order: 2,
-      },
-    ]);
+    scheduleFindManyMock.mockResolvedValueOnce([buildRouteSchedule({ route_order: 2 })]);
 
     const response = (await PATCH(
       createRequest({
@@ -344,6 +354,72 @@ describe('/api/visit-routes/reorder PATCH', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: 'route_order の反映対象が同時に更新されました。再読み込みしてください',
+    });
+    expectNoWriteAuditOrNotify();
+  });
+
+  it('rejects locked schedule statuses before mixed route writes', async () => {
+    scheduleFindManyMock.mockResolvedValueOnce([
+      buildRouteSchedule({ schedule_status: 'completed', route_order: 1 }),
+    ]);
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [{ item_type: 'schedule', id: 'schedule_1', route_order: 2 }],
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '完了済みまたは中止済みの訪問予定は順路を変更できません',
+    });
+    expectNoWriteAuditOrNotify();
+  });
+
+  it('rejects confirmed schedule route order changes before mixed route writes', async () => {
+    scheduleFindManyMock.mockResolvedValueOnce([
+      buildRouteSchedule({
+        confirmed_at: new Date('2026-04-08T12:00:00.000Z'),
+        route_order: 1,
+      }),
+    ]);
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [{ item_type: 'schedule', id: 'schedule_1', route_order: 2 }],
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '電話確定済みの訪問予定は順路を変更できません',
+    });
+    expectNoWriteAuditOrNotify();
+  });
+
+  it('rejects confirmed schedules even when their submitted route order is unchanged', async () => {
+    scheduleFindManyMock.mockResolvedValueOnce([
+      buildRouteSchedule({
+        confirmed_at: new Date('2026-04-08T12:00:00.000Z'),
+        route_order: 1,
+      }),
+    ]);
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [
+          { item_type: 'schedule', id: 'schedule_1', route_order: 1 },
+          { item_type: 'proposal', id: 'proposal_1', route_order: 2 },
+        ],
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '電話確定済みの訪問予定は順路を変更できません',
     });
     expectNoWriteAuditOrNotify();
   });
@@ -470,7 +546,10 @@ describe('/api/visit-routes/reorder PATCH', () => {
             case_id: 'case_schedule_1',
             pharmacist_id: 'user_1',
             scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+            schedule_status: 'planned',
+            confirmed_at: null,
             route_order: 2,
+            version: 1,
             time_window_start: null,
             vehicle_resource_id: 'vehicle_1',
             case_: {
@@ -501,7 +580,10 @@ describe('/api/visit-routes/reorder PATCH', () => {
             case_id: 'case_schedule_2',
             pharmacist_id: 'user_1',
             scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+            schedule_status: 'planned',
+            confirmed_at: null,
             route_order: 1,
+            version: 1,
             time_window_start: null,
             vehicle_resource_id: 'vehicle_1',
             case_: {

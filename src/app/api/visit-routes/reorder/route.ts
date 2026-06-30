@@ -29,6 +29,13 @@ import {
 import type { VisitRouteTravelMode } from '@/types/visit-route';
 
 const MIXED_ROUTE_REORDER_SERIALIZABLE_RETRY_LIMIT = 3;
+const ROUTE_REORDERABLE_STATUSES = new Set([
+  'planned',
+  'in_preparation',
+  'ready',
+  'departed',
+  'in_progress',
+]);
 
 const routeOrderConfirmationContextSchema = z.object({
   source: z.enum(['weekly_optimizer_mixed_route_preview']),
@@ -56,6 +63,8 @@ type MixedRouteReorderError =
   | 'locked'
   | 'mismatch'
   | 'stale_route_order'
+  | 'route_status_locked'
+  | 'confirmed_route_change'
   | 'duplicate_route_order'
   | 'vehicle_route_duration_exceeded';
 type MixedRouteReorderResult =
@@ -173,7 +182,10 @@ const authenticatedPATCH = withAuthContext(
                     case_id: true,
                     pharmacist_id: true,
                     scheduled_date: true,
+                    schedule_status: true,
+                    confirmed_at: true,
                     route_order: true,
+                    version: true,
                     time_window_start: true,
                     vehicle_resource_id: true,
                     case_: {
@@ -253,6 +265,18 @@ const authenticatedPATCH = withAuthContext(
             return proposalById.get(item.id)?.route_order !== item.expected_route_order;
           });
           if (staleSchedule || staleProposal) return { error: 'stale_route_order' as const };
+          const routeOrderLocked = scheduleUpdates.find((item) => {
+            const schedule = scheduleById.get(item.id);
+            return (
+              schedule !== undefined && !ROUTE_REORDERABLE_STATUSES.has(schedule.schedule_status)
+            );
+          });
+          if (routeOrderLocked) return { error: 'route_status_locked' as const };
+          const confirmedRouteChange = scheduleUpdates.find((item) => {
+            const schedule = scheduleById.get(item.id);
+            return schedule?.confirmed_at != null;
+          });
+          if (confirmedRouteChange) return { error: 'confirmed_route_change' as const };
 
           const routeCells = updates.map((item) => {
             if (item.item_type === 'schedule') {
@@ -475,16 +499,20 @@ const authenticatedPATCH = withAuthContext(
           await Promise.all(
             scheduleUpdates.map(async (item) => {
               const schedule = scheduleById.get(item.id);
+              if (!schedule) throw new MixedRouteReorderConflictError();
               const updateResult = await tx.visitSchedule.updateMany({
                 where: {
                   org_id: ctx.orgId,
                   id: item.id,
                   pharmacist_id: firstCell.pharmacistId,
                   scheduled_date: new Date(firstCell.dateKey),
+                  schedule_status: schedule.schedule_status,
+                  confirmed_at: schedule.confirmed_at,
+                  version: schedule.version,
                   ...(item.expected_route_order !== undefined
                     ? { route_order: item.expected_route_order }
                     : {}),
-                  ...(schedule?.vehicle_resource_id
+                  ...(schedule.vehicle_resource_id
                     ? { vehicle_resource_id: schedule.vehicle_resource_id }
                     : {}),
                   ...(scheduleAssignmentWhere ? { AND: [scheduleAssignmentWhere] } : {}),
@@ -575,6 +603,12 @@ const authenticatedPATCH = withAuthContext(
       }
       if (result.error === 'stale_route_order') {
         return conflict('route_order の反映対象が同時に更新されました。再読み込みしてください');
+      }
+      if (result.error === 'route_status_locked') {
+        return validationError('完了済みまたは中止済みの訪問予定は順路を変更できません');
+      }
+      if (result.error === 'confirmed_route_change') {
+        return validationError('電話確定済みの訪問予定は順路を変更できません');
       }
       if (result.error === 'duplicate_route_order') {
         return validationError('同一セル内で route_order は重複できません');

@@ -54,6 +54,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Broad master-management / patient-information objective remains open.
   - Concurrent unrelated dirty changes in `src/app/api/visit-routes/reorder/route.ts` and `src/app/api/visit-routes/reorder/route.test.ts` were preserved outside this slice.
 
+### Visit Route Reorder Status and Confirmation Guard - 2026-07-01 02:28 JST
+
+- Scope:
+  - Continued codex2's visit-time workflow objective while preserving the shared dirty worktree.
+  - Focused on `PATCH /api/visit-routes/reorder`, the mixed schedule/proposal route-order write boundary used by weekly optimizer route adoption.
+- Fixed:
+  - Mixed route schedule lookups now include `schedule_status`, `confirmed_at`, and `version`.
+  - Route adoption rejects schedules outside the active reorderable statuses before writes.
+  - Route adoption rejects phone-confirmed schedules in the submitted update payload before writes, including no-op route submissions that would otherwise still bump version.
+  - Guarded schedule writes now claim the same schedule status, confirmation timestamp, and version loaded for the operator's route decision.
+- Safety:
+  - Reduces completed/cancelled/no-show visit mutation risk, confirmed-visit route drift, and no-op version churn when applying mixed route plans.
+  - Preserves existing auth, assignment filters, org/RLS context, expected route-order stale checks, duplicate route-order checks, proposal locks, sensitive no-store responses, audit logging, workflow notification boundaries, migrations, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds only scalar fields to the existing schedule lookup and guarded `updateMany` predicates.
+  - No new DB round trip, broad scan, dependency, external call, background job, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-routes/reorder/route.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `17` tests.
+  - Scoped ESLint on the changed route/test: passed.
+  - Scoped Prettier check on the changed route/test: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit-time, report, and interprofessional collaboration objective remains open.
+  - Continue with report workspace / conference-note collaboration gaps after committing this visit-route safety slice.
+
 ### Schedule Patient Operational Summary Wiring - 2026-07-01 02:20 JST
 
 - Scope:

@@ -33,6 +33,19 @@ Backup directory:
 - remaining work: broad master-management / patient-information objective remains open. Unrelated concurrent dirty changes appeared in `src/app/api/visit-routes/reorder/route.ts` and `src/app/api/visit-routes/reorder/route.test.ts`; they were inspected, preserved, and excluded from this master-hub slice.
 - next action: commit only the master-hub expired-status/count-alignment slice plus ledgers, then re-check status and continue the next master/patient gap.
 
+### 20260701-0228-codex2 JST
+
+- current task: harden mixed visit-route reorder against locked statuses and confirmed route movement.
+- files inspected: `git status --short --branch --untracked-files=all`, agmsg inbox/send output, local Next route-handler docs, `src/app/api/visit-routes/reorder/route.ts`, `src/app/api/visit-routes/reorder/route.test.ts`, `src/app/(dashboard)/schedules/visit-route-client.ts`, weekly optimizer test payload expectations, facility visit batch route-guard patterns, `CODEX_GOAL_PROGRESS.md`, and validation output.
+- files changed: `src/app/api/visit-routes/reorder/route.ts`, `src/app/api/visit-routes/reorder/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: mixed route adoption could still update schedule `route_order` for schedules that were no longer in an active reorderable status, and phone-confirmed schedules in the payload could still receive no-op version bumps or route drift. The guarded write also did not claim the schedule status, confirmation timestamp, or version loaded for the route decision.
+- security risks found: reduced completed/cancelled/no-show visit mutation, phone-confirmed route drift, and no-op version churn risk by rejecting locked schedule statuses and any phone-confirmed schedule payload before write/audit/notify side effects, then claiming schedule writes with org, assignment, date/pharmacist, expected route order when supplied, current status, current confirmation timestamp, and version.
+- performance issues found: adds only scalar select fields and narrow `updateMany` predicates to the existing serializable transaction. No new DB round trip, dependency, external call, background job, broad scan, or unbounded loop was added.
+- validation commands: `pnpm exec vitest run src/app/api/visit-routes/reorder/route.test.ts --reporter=dot --testTimeout=60000`; `pnpm exec eslint --max-warnings=0 src/app/api/visit-routes/reorder/route.ts src/app/api/visit-routes/reorder/route.test.ts`; `pnpm exec prettier --check src/app/api/visit-routes/reorder/route.ts src/app/api/visit-routes/reorder/route.test.ts`; `git diff --check -- src/app/api/visit-routes/reorder/route.ts src/app/api/visit-routes/reorder/route.test.ts`; `pnpm typecheck --pretty false`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`; `pnpm lint`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: focused Vitest passed `1` file / `17` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed; typecheck passed; no-unused passed; full lint passed; full format check passed; full diff-check passed.
+- remaining work: broad visit-time, report, and interprofessional collaboration objective remains open. Report workspace and conference-note collaboration gaps remain likely next candidates.
+- next action: commit only this visit-route reorder guard plus ledgers, send agmsg FYI to codex/Claude, then re-check inbox/status before selecting the next report/collaboration slice.
+
 ### 20260701-0220 JST
 
 - current task: wire patient operational summaries into schedule list/detail/day-board APIs and schedule UI surfaces.
