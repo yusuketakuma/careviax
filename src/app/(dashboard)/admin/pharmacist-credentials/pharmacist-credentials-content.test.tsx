@@ -4,15 +4,18 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   PHARMACIST_CREDENTIALS_API_PATH,
   buildPharmacistCredentialApiPath,
 } from '@/lib/pharmacist-credentials/api-paths';
+import { buildPharmacistsApiPath } from '@/lib/pharmacists/api-paths';
 import { PharmacistCredentialsContent } from './pharmacist-credentials-content';
 
 setupDomTestEnv();
 
 const mutationMutateMock = vi.hoisted(() => vi.fn());
+const mutationConfigs = vi.hoisted(() => [] as MutationOptions[]);
 const useQueryMock = vi.hoisted(() => vi.fn());
 
 type MutationOptions = {
@@ -26,16 +29,19 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 }));
 
 vi.mock('@tanstack/react-query', () => ({
-  useMutation: (options: MutationOptions) => ({
-    mutate: () => {
-      mutationMutateMock();
-      void Promise.resolve(options.mutationFn?.()).then(
-        (data) => void options.onSuccess?.(data),
-        (error: unknown) => options.onError?.(error),
-      );
-    },
-    isPending: false,
-  }),
+  useMutation: (options: MutationOptions) => {
+    mutationConfigs.push(options);
+    return {
+      mutate: () => {
+        mutationMutateMock();
+        void Promise.resolve(options.mutationFn?.()).then(
+          (data) => void options.onSuccess?.(data),
+          (error: unknown) => options.onError?.(error),
+        );
+      },
+      isPending: false,
+    };
+  },
   useQuery: useQueryMock,
   useQueryClient: () => ({
     invalidateQueries: vi.fn(),
@@ -47,6 +53,23 @@ vi.mock('@/lib/pharmacist-credentials/api-paths', async (importActual) => {
   return {
     ...actual,
     buildPharmacistCredentialApiPath: vi.fn(actual.buildPharmacistCredentialApiPath),
+  };
+});
+
+vi.mock('@/lib/pharmacists/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/pharmacists/api-paths')>();
+  return {
+    ...actual,
+    buildPharmacistsApiPath: vi.fn(actual.buildPharmacistsApiPath),
+  };
+});
+
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return {
+    ...actual,
+    buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
+    buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
   };
 });
 
@@ -191,6 +214,20 @@ vi.mock('sonner', () => ({
 describe('PharmacistCredentialsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mutationConfigs.length = 0;
+    vi.mocked(buildOrgHeaders).mockImplementation((orgId, extra) => ({
+      'x-org-id': orgId,
+      ...extra,
+    }));
+    vi.mocked(buildOrgJsonHeaders).mockImplementation((orgId, extra) => ({
+      'Content-Type': 'application/json',
+      'x-org-id': orgId,
+      ...extra,
+    }));
+    vi.mocked(buildPharmacistsApiPath).mockImplementation((params?: URLSearchParams) => {
+      const query = params?.toString();
+      return query ? `/api/pharmacists?${query}` : '/api/pharmacists';
+    });
     useQueryMock.mockImplementation(defaultUseQueryImpl);
     vi.stubGlobal(
       'fetch',
@@ -214,6 +251,37 @@ describe('PharmacistCredentialsContent', () => {
     }
   });
 
+  it('delegates credential and staff fetches to shared path and org-header helpers', async () => {
+    const credentialHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'credentials' };
+    const staffHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'staff' };
+    vi.mocked(buildOrgHeaders)
+      .mockReturnValueOnce(credentialHeaders)
+      .mockReturnValueOnce(staffHeaders);
+    vi.mocked(buildPharmacistsApiPath).mockReturnValue('/api/pharmacists?from=helper');
+    render(<PharmacistCredentialsContent />);
+
+    const credentialQuery = useQueryMock.mock.calls.find(
+      ([options]) => options.queryKey[0] === 'pharmacist-credentials',
+    )?.[0] as { queryFn: () => Promise<unknown> };
+    const staffQuery = useQueryMock.mock.calls.find(
+      ([options]) => options.queryKey[0] === 'pharmacist-options',
+    )?.[0] as { queryFn: () => Promise<unknown> };
+
+    await credentialQuery.queryFn();
+    await staffQuery.queryFn();
+
+    const fetchMock = vi.mocked(fetch);
+    expect(fetchMock).toHaveBeenCalledWith(PHARMACIST_CREDENTIALS_API_PATH, {
+      headers: credentialHeaders,
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/pharmacists?from=helper', {
+      headers: staffHeaders,
+    });
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(1, 'org_1');
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(2, 'org_1');
+    expect(vi.mocked(buildPharmacistsApiPath)).toHaveBeenCalledWith();
+  });
+
   it('associates credential dialog fields with visible labels', () => {
     render(<PharmacistCredentialsContent />);
 
@@ -226,6 +294,29 @@ describe('PharmacistCredentialsContent', () => {
     expect(screen.getByLabelText('有効期限')).toBeTruthy();
     expect(screen.getByLabelText('在籍年数')).toBeTruthy();
     expect(screen.getByLabelText('週勤務時間')).toBeTruthy();
+  });
+
+  it('uses shared org JSON headers when saving a credential', async () => {
+    const jsonHeaders = {
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+      'x-test-helper': 'json',
+    };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(jsonHeaders);
+    render(<PharmacistCredentialsContent />);
+
+    const mutationOptions = mutationConfigs[0];
+    await mutationOptions?.mutationFn?.();
+
+    const fetchMock = vi.mocked(fetch);
+    expect(fetchMock).toHaveBeenCalledWith(
+      PHARMACIST_CREDENTIALS_API_PATH,
+      expect.objectContaining({
+        method: 'POST',
+        headers: jsonHeaders,
+      }),
+    );
+    expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
   });
 
   it('surfaces reversed credential dates and invalid numeric fields inline', () => {

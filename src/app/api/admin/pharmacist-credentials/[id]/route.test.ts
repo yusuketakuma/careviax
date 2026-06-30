@@ -2,35 +2,56 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
-  requireAuthContextMock,
+  authCtx,
+  withAuthContextMock,
+  withOrgContextMock,
+  createAuditLogEntryMock,
   pharmacistCredentialFindFirstMock,
   pharmacistCredentialUpdateMock,
   pharmacistCredentialDeleteMock,
   validateOrgReferencesMock,
-} = vi.hoisted(() => ({
-  requireAuthContextMock: vi.fn(),
-  pharmacistCredentialFindFirstMock: vi.fn(),
-  pharmacistCredentialUpdateMock: vi.fn(),
-  pharmacistCredentialDeleteMock: vi.fn(),
-  validateOrgReferencesMock: vi.fn(),
-}));
+} = vi.hoisted(() => {
+  const authCtx = {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'admin',
+  };
+  return {
+    authCtx,
+    withAuthContextMock: vi.fn(
+      (
+        handler: (
+          req: NextRequest,
+          ctx: typeof authCtx,
+          routeContext: { params: Promise<{ id: string }> },
+        ) => Promise<Response>,
+      ) =>
+        async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
+          handler(req, authCtx, routeContext),
+    ),
+    withOrgContextMock: vi.fn(),
+    createAuditLogEntryMock: vi.fn(),
+    pharmacistCredentialFindFirstMock: vi.fn(),
+    pharmacistCredentialUpdateMock: vi.fn(),
+    pharmacistCredentialDeleteMock: vi.fn(),
+    validateOrgReferencesMock: vi.fn(),
+  };
+});
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext: withAuthContextMock,
 }));
 
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    pharmacistCredential: {
-      findFirst: pharmacistCredentialFindFirstMock,
-      update: pharmacistCredentialUpdateMock,
-      delete: pharmacistCredentialDeleteMock,
-    },
-  },
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
 }));
 
 vi.mock('@/lib/api/org-reference', () => ({
   validateOrgReferences: validateOrgReferencesMock,
+}));
+
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
 }));
 
 import { DELETE, PATCH } from './route';
@@ -62,17 +83,26 @@ function createMalformedJsonRequest() {
 describe('/api/admin/pharmacist-credentials/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({
-      ctx: {
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'admin',
-      },
-    });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        pharmacistCredential: {
+          findFirst: pharmacistCredentialFindFirstMock,
+          update: pharmacistCredentialUpdateMock,
+          delete: pharmacistCredentialDeleteMock,
+        },
+        auditLog: {
+          create: vi.fn(),
+        },
+      }),
+    );
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
     pharmacistCredentialFindFirstMock.mockResolvedValue({
       id: 'cred_1',
       org_id: 'org_1',
+      user_id: 'user_2',
+      certification_type: '研修認定',
+      expiry_date: new Date('2026-04-01T00:00:00.000Z'),
       user: {
         id: 'user_2',
         name: '鈴木 一郎',
@@ -111,6 +141,8 @@ describe('/api/admin/pharmacist-credentials/[id]', () => {
     );
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
       pharmacist_id: 'user_2',
     });
@@ -134,6 +166,23 @@ describe('/api/admin/pharmacist-credentials/[id]', () => {
         },
       },
     });
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pharmacistCredential: expect.any(Object),
+      }),
+      authCtx,
+      expect.objectContaining({
+        action: 'pharmacist_credential_updated',
+        targetType: 'PharmacistCredential',
+        targetId: 'cred_1',
+        changes: expect.objectContaining({
+          previous_user_id: 'user_2',
+          user_id: 'user_2',
+          certification_type: '専門薬剤師',
+          expiry_date: '2027-04-01T00:00:00.000Z',
+        }),
+      }),
+    );
   });
 
   it('rejects non-object patch payloads before loading the credential', async () => {
@@ -142,6 +191,7 @@ describe('/api/admin/pharmacist-credentials/[id]', () => {
     });
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -156,6 +206,7 @@ describe('/api/admin/pharmacist-credentials/[id]', () => {
     });
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -175,6 +226,7 @@ describe('/api/admin/pharmacist-credentials/[id]', () => {
     );
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     await expect(response.json()).resolves.toMatchObject({
       message: '薬剤師認定情報IDが不正です',
     });
@@ -198,6 +250,7 @@ describe('/api/admin/pharmacist-credentials/[id]', () => {
     );
 
     expect(response.status).toBe(200);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
     expect(validateOrgReferencesMock).not.toHaveBeenCalled();
     expect(pharmacistCredentialUpdateMock).toHaveBeenCalledWith({
       where: { id: 'cred_1' },
@@ -231,6 +284,7 @@ describe('/api/admin/pharmacist-credentials/[id]', () => {
     );
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     await expect(response.json()).resolves.toMatchObject({
       message: '入力値が不正です',
     });
@@ -251,6 +305,7 @@ describe('/api/admin/pharmacist-credentials/[id]', () => {
     );
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     await expect(response.json()).resolves.toMatchObject({
       message: '入力値が不正です',
     });
@@ -265,6 +320,7 @@ describe('/api/admin/pharmacist-credentials/[id]', () => {
     });
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     await expect(response.json()).resolves.toMatchObject({
       message: '薬剤師認定情報IDが不正です',
     });
@@ -278,8 +334,26 @@ describe('/api/admin/pharmacist-credentials/[id]', () => {
     });
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
     expect(pharmacistCredentialDeleteMock).toHaveBeenCalledWith({
       where: { id: 'cred_1' },
     });
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pharmacistCredential: expect.any(Object),
+      }),
+      authCtx,
+      expect.objectContaining({
+        action: 'pharmacist_credential_deleted',
+        targetType: 'PharmacistCredential',
+        targetId: 'cred_1',
+        changes: expect.objectContaining({
+          user_id: 'user_2',
+          certification_type: '研修認定',
+          expiry_date: '2026-04-01T00:00:00.000Z',
+        }),
+      }),
+    );
   });
 });

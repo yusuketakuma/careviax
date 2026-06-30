@@ -30,10 +30,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   PHARMACIST_CREDENTIALS_API_PATH,
   buildPharmacistCredentialApiPath,
 } from '@/lib/pharmacist-credentials/api-paths';
+import { buildPharmacistsApiPath } from '@/lib/pharmacists/api-paths';
 
 type PharmacistCredential = {
   id: string;
@@ -233,7 +235,7 @@ export function PharmacistCredentialsContent() {
     queryKey: ['pharmacist-credentials', orgId],
     queryFn: async () => {
       const response = await fetch(PHARMACIST_CREDENTIALS_API_PATH, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('薬剤師認定情報の取得に失敗しました');
       return response.json() as Promise<PharmacistCredentialListResponse>;
@@ -244,8 +246,8 @@ export function PharmacistCredentialsContent() {
   const pharmacistsQuery = useQuery({
     queryKey: ['pharmacist-options', orgId],
     queryFn: async () => {
-      const response = await fetch('/api/pharmacists', {
-        headers: { 'x-org-id': orgId },
+      const response = await fetch(buildPharmacistsApiPath(), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('スタッフ一覧の取得に失敗しました');
       return response.json() as Promise<{ data: PharmacistOption[] }>;
@@ -279,7 +281,7 @@ export function PharmacistCredentialsContent() {
       const method = editingCredential ? 'PATCH' : 'POST';
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           user_id: form.user_id,
           certification_type: form.certification_type,
@@ -313,7 +315,7 @@ export function PharmacistCredentialsContent() {
       if (!deleteTarget) throw new Error('削除対象がありません');
       const response = await fetch(buildPharmacistCredentialApiPath(deleteTarget.id), {
         method: 'DELETE',
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
