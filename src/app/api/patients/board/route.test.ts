@@ -98,6 +98,7 @@ function buildPatientRow(scheduledDate: Date) {
         medication_cycles: [],
         visit_schedules: [
           {
+            id: 'schedule_1',
             scheduled_date: scheduledDate,
             time_window_start: null,
             carry_items_status: 'ready',
@@ -208,6 +209,8 @@ describe('/api/patients/board', () => {
         items: ['訪問準備未完'],
       },
       foundation_href: '/patients/patient_1#patient-foundation',
+      link_label: '訪問へ',
+      link_href: '/schedules?focus=schedule&schedule_id=schedule_1',
     });
     expect(JSON.stringify(json.data.cards[0])).not.toContain('090-1111-2222');
     // assigned_total(1) === displayed(1) → not truncated
@@ -280,13 +283,19 @@ describe('/api/patients/board', () => {
     expect(json.data.truncated).toBe(true);
   });
 
-  it('encodes patient card hrefs while preserving raw patient ids and static workflow links', async () => {
+  it('encodes patient card and schedule hrefs while preserving raw patient ids', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
     const fallbackPatientId = 'patient/1?tab=x#frag';
     const staticLinkPatientId = 'patient/2?tab=x#frag';
+    const scheduleId = '../schedule with space?x=1#frag';
     const fallbackPatientHref = `/patients/${encodeURIComponent(fallbackPatientId)}`;
     const staticLinkPatientHref = `/patients/${encodeURIComponent(staticLinkPatientId)}`;
+    const scheduleHref = `/schedules?focus=schedule&schedule_id=${encodeURIComponent(scheduleId)}`;
+    const staticLinkPatient = buildPatientRow(new Date('2026-06-12T00:00:00.000Z'));
+    staticLinkPatient.id = staticLinkPatientId;
+    staticLinkPatient.name = '訪問 リンク';
+    staticLinkPatient.cases[0]!.visit_schedules[0]!.id = scheduleId;
     patientFindManyMock.mockResolvedValue([
       {
         ...buildPatientRow(new Date('2026-06-20T00:00:00.000Z')),
@@ -294,11 +303,7 @@ describe('/api/patients/board', () => {
         name: 'カード 遷移',
         cases: [],
       },
-      {
-        ...buildPatientRow(new Date('2026-06-12T00:00:00.000Z')),
-        id: staticLinkPatientId,
-        name: '訪問 リンク',
-      },
+      staticLinkPatient,
     ]);
     patientCountMock.mockResolvedValue(2);
 
@@ -321,11 +326,12 @@ describe('/api/patients/board', () => {
     expect(staticLinkCard).toMatchObject({
       patient_id: staticLinkPatientId,
       link_label: '訪問へ',
-      link_href: '/visits',
+      link_href: scheduleHref,
       foundation_href: `${staticLinkPatientHref}#patient-foundation`,
     });
     expect(JSON.stringify(json.data.cards)).not.toContain(`/patients/${fallbackPatientId}`);
     expect(JSON.stringify(json.data.cards)).not.toContain(`/patients/${staticLinkPatientId}`);
+    expect(JSON.stringify(json.data.cards)).not.toContain(scheduleId);
   });
 
   it('does not return primary residence full address in the board card payload', async () => {

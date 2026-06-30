@@ -23,6 +23,7 @@ import {
   type VisitScheduleAccessContext,
 } from '@/lib/auth/visit-schedule-access';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { isVisitCarryItemsStatusBlockingReady } from '@/server/services/visit-preparation-readiness';
 import type {
   PatientAttentionKey,
@@ -250,6 +251,7 @@ type PatientQueryRow = {
       }>;
     }>;
     visit_schedules: Array<{
+      id: string;
       scheduled_date: Date;
       time_window_start: Date | null;
       carry_items_status: string | null;
@@ -346,7 +348,10 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
     attention = 'acceptance';
     statusText = '受入の返答待ち — 訪問枠を調整中';
     tone = 'caution';
-    link = { label: 'スケジュールへ', href: '/schedules' };
+    link = {
+      label: 'スケジュールへ',
+      href: nextSchedule ? buildScheduleFocusHref(nextSchedule.id) : '/schedules',
+    };
     if (!nextSchedule) nextVisitLabel = '未定(調整中)';
   } else if (!careCase || careCase.status === 'on_hold' || cycle?.overall_status === 'on_hold') {
     attention = 'paused';
@@ -375,7 +380,10 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
       ? '準備完了 — パケット・ルート・セット✓'
       : '本日訪問 — 出発前チェックを確認';
     tone = 'info';
-    link = STEP_LINKS.visit;
+    link = {
+      ...STEP_LINKS.visit,
+      href: nextSchedule ? buildScheduleFocusHref(nextSchedule.id) : STEP_LINKS.visit.href,
+    };
   } else if (cycle?.overall_status === 'inquiry_pending') {
     attention = 'external_wait';
     const waitingDays = latestInquiry ? daysBetween(latestInquiry.inquired_at, now) : 0;
@@ -405,6 +413,9 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
   }
 
   const patientHref = buildPatientHref(patient.id);
+  if (nextSchedule && link?.href === STEP_LINKS.visit.href) {
+    link = { ...link, href: buildScheduleFocusHref(nextSchedule.id) };
+  }
   const resolvedLink = link ?? { label: 'カードへ', href: patientHref };
   const linkHref = resolvedLink.href.length > 0 ? resolvedLink.href : patientHref;
 
@@ -648,6 +659,7 @@ const authenticatedGET = withAuthContext(
                 orderBy: [{ scheduled_date: 'asc' }, { time_window_start: 'asc' }],
                 take: 1,
                 select: {
+                  id: true,
                   scheduled_date: true,
                   time_window_start: true,
                   carry_items_status: true,

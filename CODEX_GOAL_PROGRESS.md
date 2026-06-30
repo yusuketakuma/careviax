@@ -54,6 +54,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Continue scanning visit-time/report/collaboration surfaces for generic action links or missing relation filters.
   - Preserve unrelated dirty admin facility-standards files.
 
+### Patient Board Visit Schedule Focus Links - 2026-06-30 18:49 JST
+
+- Scope:
+  - Continued visit-time navigation cleanup in the patient board Route Handler read model.
+  - Read local Next.js Route Handlers docs before editing the `app/api` route. No UI layout, schema migration, live DB operation, auth/RLS change, external send, push/deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Patient board visit schedules now select `id` in addition to date/time/preparation fields.
+  - Visit-today cards, acceptance cards with a schedule, and future visit-step cards now use `buildScheduleFocusHref(schedule.id)` instead of generic `/visits` or `/schedules`.
+  - Regression coverage asserts focused schedule links and hostile schedule-id encoding in the board payload.
+- Safety:
+  - Reduces wrong-schedule / wrong-patient navigation risk from the patient board by preserving the exact schedule context staff are acting on.
+  - Uses the existing schedule navigation helper rather than local query-string construction.
+- Performance:
+  - Adds only one scalar field to an existing bounded `visit_schedules take: 1` selection.
+  - Link construction is in-memory only; no new query family, dependency, network call, background job, render loop, or broad scan was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/patients/board/route.test.ts src/lib/schedules/navigation.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `21` tests.
+  - Scoped ESLint on patient-board route and schedule navigation files: passed.
+  - Scoped Prettier check on patient-board route and schedule navigation files: passed.
+  - Scoped `git diff --check` on patient-board route files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: blocked by unrelated dirty `src/app/api/admin/external-professionals/route.ts` WIP where `orderBy` is inferred as `string` instead of Prisma `SortOrder`; Codex was notified via agmsg.
+- Remaining:
+  - Continue scanning visit-time/report/collaboration surfaces for generic action links or missing relation filters.
+  - Preserve unrelated dirty `src/app/api/admin/external-professionals/route.ts`.
+
 ### Communication Queue External Focus Links - 2026-06-30 17:37 JST
 
 - Scope:

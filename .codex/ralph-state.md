@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-1849 JST
+
+- current task: focus patient board visit actions on the exact next visit schedule row when a schedule is available.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox for `phos/codex2`, generic link scan, local Next.js Route Handlers docs, `src/app/api/patients/board/route.ts`, `src/app/api/patients/board/route.test.ts`, `src/lib/schedules/navigation.ts`, `src/lib/schedules/navigation.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/patients/board/route.ts`, `src/app/api/patients/board/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Unrelated dirty `src/app/api/admin/external-professionals/route.ts` was preserved.
+- bugs found: patient board cards already selected the next visit schedule but did not select its `id`, so visit-today and future visit-step cards linked to generic `/visits` or `/schedules` instead of the schedule row staff needed to open.
+- security risks found: reduced wrong-schedule / wrong-patient navigation risk by routing available schedule actions through existing `buildScheduleFocusHref()`. No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- performance issues found: selected one scalar `visitSchedule.id` on an existing bounded `take: 1` relation and built links in memory only. No new query, dependency, network call, background job, payload expansion, broad scan, or loop changed.
+- validation commands: focused patient-board/schedule-navigation Vitest; scoped ESLint; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused Vitest passed `2` files / `21` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, and `pnpm typecheck` passed. `pnpm typecheck:no-unused` failed only on unrelated dirty external-professionals WIP: `src/app/api/admin/external-professionals/route.ts` queryOptions `orderBy` inferred as `string` rather than Prisma `SortOrder`; Codex was notified via agmsg and this slice did not touch that file.
+- remaining work: commit only the two owned patient board files and ledger files, then continue scanning visit/report/collaboration surfaces for generic action links or missing relation filters.
+- next action: commit `Focus patient board visit schedule links`, send agmsg FYI, and continue the next clean slice.
+
 ### 20260630-1842 JST
 
 - current task: focus patient detail workspace same-day visit task links on the exact visit schedule row.
