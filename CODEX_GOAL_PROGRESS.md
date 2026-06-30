@@ -30,6 +30,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### CareReport Delivery Mode Contract - 2026-07-01 06:02 JST
+
+- Scope:
+  - Continued report-function and multidisciplinary communication hardening under `docs/high-roi-functional-proposals-2026-06-18.md` item 29.
+  - Focused on CareReport send provenance for the existing direct-send route.
+- Fixed:
+  - CareReport delivery-attempt audit changes now include `delivery_mode`.
+  - Stale partner-visit-source blocked delivery audit changes also include `delivery_mode`.
+  - Persisted `report_delivery_targets` entries now include `delivery_mode` for newly finalized delivery outcomes.
+  - API delivery response items and stored idempotency replay bodies preserve `delivery_mode`.
+  - Current mapping is `email`/`ses` -> `external_sent`, record-only channels (`fax`, `phone`, `postal`, `in_person`) -> `manual_recorded`, and the helper reserves `ph_os_share` -> `internal_share` for internal-share paths.
+- Safety:
+  - Reduces ambiguous report-delivery provenance where a manual fax/postal/phone record looked indistinguishable from an actual external send.
+  - Preserves existing canSendCareReport permission checks, assignment access checks, report version gates, visit/partner source-freshness checks, send idempotency, PHI-masked response bodies, external email failure sanitization, live DB data, migrations, external-send behavior, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds only a constant-time channel-to-mode classification.
+  - No new DB query, dependency, external call, background job, render path, broad scan, or unbounded loop was added.
+- Validation:
+  - Focused CareReport send-route Vitest passed `1` file / `63` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on the send-route files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: exited `0`, with two warnings in currently dirty unowned `src/server/services/visit-route-engine.ts`.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: failed on the same unowned dirty `src/server/services/visit-route-engine.ts`; codex2 sent a CONSULT to `codex` and `claude` for ownership/cleanup coordination.
+- Remaining:
+  - Broad visit-time, report, and multi-professional cooperation objective remains open.
+  - Full format gate remains blocked by the unowned dirty visit-route-engine slice until its owner confirms or codex2 safely claims and validates it.
+  - Short-lived report/PDF external grants remain blocked on the OTP/idempotency product decision previously sent for consultation.
+
 ### External Access Report Document Boundary - 2026-07-01 05:52 JST
 
 - Scope:

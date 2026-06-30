@@ -1,7 +1,12 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
-import { Prisma, type MemberRole, type ReportStatus } from '@prisma/client';
+import {
+  Prisma,
+  type CommunicationChannel,
+  type MemberRole,
+  type ReportStatus,
+} from '@prisma/client';
 import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { parseOptionalIdempotencyKey } from '@/lib/api/idempotency-key';
@@ -68,6 +73,8 @@ function maskRecipientContact(channel: string, contact: string) {
 
 const STALE_DRAFT_DELIVERY_MS = 10 * 60 * 1000;
 const STALE_SEND_REQUEST_MS = 10 * 60 * 1000;
+
+type DeliveryMode = 'external_sent' | 'manual_recorded' | 'internal_share';
 
 function comparableText(value: string | null | undefined) {
   return (value ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
@@ -328,6 +335,7 @@ function buildDeliveryAttemptAuditChanges(args: {
     report_type: args.report.report_type,
     previous_report_status: args.report.status,
     channel: args.request.channel,
+    delivery_mode: resolveDeliveryMode(args.request.channel),
     safety_ack: args.request.safety_ack,
     recipient: {
       name: args.request.recipient_name,
@@ -598,6 +606,7 @@ function mergeReportDeliveryTargets(args: {
         recipient_name: outcome.recipient.recipient_name,
         recipient_role: outcome.recipient.recipient_role,
         channel: outcome.recipient.channel,
+        delivery_mode: resolveDeliveryMode(outcome.recipient.channel),
         status: outcome.failureReason ? 'failed' : 'sent',
         delivered_at: outcome.failureReason ? null : deliveredAt,
         failure_reason: outcome.failureReason,
@@ -729,10 +738,19 @@ function isEmailDeliveryChannel(channel: SendRecipient['channel']) {
   return channel === 'email' || channel === 'ses';
 }
 
+function resolveDeliveryMode(
+  channel: CommunicationChannel | SendRecipient['channel'],
+): DeliveryMode {
+  if (channel === 'ph_os_share') return 'internal_share';
+  if (channel === 'email' || channel === 'ses') return 'external_sent';
+  return 'manual_recorded';
+}
+
 function buildDeliveryResponseItem(outcome: DeliveryOutcome) {
   return {
     delivery_record_id: outcome.deliveryRecordId,
     channel: outcome.recipient.channel,
+    delivery_mode: resolveDeliveryMode(outcome.recipient.channel),
     recipient_role: outcome.recipient.recipient_role,
     recipient_contact_masked: maskRecipientContact(
       outcome.recipient.channel,
@@ -804,6 +822,7 @@ function minimizeDeliveryForIdempotencyReplay(value: unknown) {
   return {
     delivery_record_id: delivery.delivery_record_id,
     channel: delivery.channel,
+    delivery_mode: delivery.delivery_mode,
     recipient_role: delivery.recipient_role,
     recipient_contact_masked: delivery.recipient_contact_masked,
     status: delivery.status,
@@ -1117,6 +1136,7 @@ async function markDeliveryBlockedByPartnerVisitSource(
       delivery_record_id: args.deliveryRecordId,
       report_type: args.report.report_type,
       channel: args.recipient.channel,
+      delivery_mode: resolveDeliveryMode(args.recipient.channel),
       failure_reason: args.freshness.reason,
       source_scope: {
         has_case: Boolean(args.report.case_id),

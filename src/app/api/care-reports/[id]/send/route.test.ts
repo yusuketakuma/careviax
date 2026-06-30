@@ -838,6 +838,7 @@ describe('/api/care-reports/[id]/send POST', () => {
           changes: expect.objectContaining({
             delivery_record_id: 'delivery_1',
             channel: 'fax',
+            delivery_mode: 'manual_recorded',
             failure_reason: 'source_partner_visit_record_not_confirmed',
           }),
         }),
@@ -985,6 +986,7 @@ describe('/api/care-reports/[id]/send POST', () => {
           changes: expect.objectContaining({
             delivery_record_id: 'delivery_1',
             channel: 'email',
+            delivery_mode: 'external_sent',
             failure_reason: 'source_partner_visit_record_not_confirmed',
           }),
         }),
@@ -1534,6 +1536,7 @@ describe('/api/care-reports/[id]/send POST', () => {
           target_id: 'report_1',
           changes: expect.objectContaining({
             channel: 'email',
+            delivery_mode: 'external_sent',
             safety_ack: true,
             report_type: 'physician_report',
             recipient: {
@@ -1601,6 +1604,7 @@ describe('/api/care-reports/[id]/send POST', () => {
                 recipient_name: '山田 太郎',
                 recipient_role: 'physician',
                 channel: 'email',
+                delivery_mode: 'external_sent',
                 status: 'sent',
                 delivered_at: expect.any(String),
               }),
@@ -1615,6 +1619,8 @@ describe('/api/care-reports/[id]/send POST', () => {
         deliveries: [
           {
             delivery_record_id: 'delivery_1',
+            channel: 'email',
+            delivery_mode: 'external_sent',
             recipient_role: 'physician',
             status: 'sent',
           },
@@ -2274,6 +2280,7 @@ describe('/api/care-reports/[id]/send POST', () => {
                 delivery_record_id: 'delivery_1',
                 recipient_role: 'physician',
                 channel: 'fax',
+                delivery_mode: 'manual_recorded',
                 status: 'sent',
               }),
             ],
@@ -2281,6 +2288,18 @@ describe('/api/care-reports/[id]/send POST', () => {
         }),
       }),
     );
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        deliveries: [
+          {
+            delivery_record_id: 'delivery_1',
+            channel: 'fax',
+            delivery_mode: 'manual_recorded',
+            status: 'sent',
+          },
+        ],
+      },
+    });
   });
 
   it('does not resend when the same recipient already has a sent delivery record', async () => {
@@ -2344,6 +2363,7 @@ describe('/api/care-reports/[id]/send POST', () => {
           {
             delivery_record_id: 'delivery_existing',
             status: 'sent',
+            delivery_mode: 'external_sent',
             reused_existing_delivery: true,
             external_send_skipped: true,
           },
@@ -3208,6 +3228,7 @@ describe('/api/care-reports/[id]/send POST', () => {
           {
             delivery_record_id: 'delivery_1',
             status: 'failed',
+            delivery_mode: 'external_sent',
             recipient_contact_masked: 'd***@example.com',
           },
         ],
@@ -3297,7 +3318,9 @@ describe('/api/care-reports/[id]/send POST', () => {
       code: 'EXTERNAL_EMAIL_SEND_FAILED',
       details: {
         provider: 'ses',
-        deliveries: [{ delivery_record_id: 'delivery_1', status: 'failed' }],
+        deliveries: [
+          { delivery_record_id: 'delivery_1', status: 'failed', delivery_mode: 'external_sent' },
+        ],
       },
     });
     expect(loggerErrorMock).toHaveBeenCalledWith(
@@ -3357,10 +3380,12 @@ describe('/api/care-reports/[id]/send POST', () => {
               expect.objectContaining({
                 delivery_record_id: 'delivery_success',
                 status: 'sent',
+                delivery_mode: 'manual_recorded',
               }),
               expect.objectContaining({
                 delivery_record_id: 'delivery_failed',
                 status: 'failed',
+                delivery_mode: 'external_sent',
                 failure_reason: EMAIL_DELIVERY_FAILURE_REASON,
               }),
             ],
@@ -3375,10 +3400,15 @@ describe('/api/care-reports/[id]/send POST', () => {
         sent_count: 1,
         failed_count: 1,
         deliveries: [
-          { delivery_record_id: 'delivery_success', status: 'sent' },
+          {
+            delivery_record_id: 'delivery_success',
+            status: 'sent',
+            delivery_mode: 'manual_recorded',
+          },
           {
             delivery_record_id: 'delivery_failed',
             status: 'failed',
+            delivery_mode: 'external_sent',
             failure_reason: EMAIL_DELIVERY_FAILURE_REASON,
             retryable: true,
             recipient_contact_masked: 'd***@example.com',
