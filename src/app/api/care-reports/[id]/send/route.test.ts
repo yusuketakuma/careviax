@@ -1551,9 +1551,15 @@ describe('/api/care-reports/[id]/send POST', () => {
     expect(txMock.auditLog.create.mock.invocationCallOrder[0]).toBeLessThan(
       sendCareReportEmailMock.mock.invocationCallOrder[0],
     );
-    expect(txMock.deliveryRecord.update).toHaveBeenCalledWith(
+    expect(txMock.deliveryRecord.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'delivery_1' },
+        where: {
+          id: 'delivery_1',
+          org_id: 'org_1',
+          report_id: 'report_1',
+          status: 'draft',
+          delivery_intent_key: expect.stringMatching(/^care-report:v1:[a-f0-9]{64}$/),
+        },
         data: expect.objectContaining({
           status: 'sent',
           failure_reason: null,
@@ -1670,6 +1676,50 @@ describe('/api/care-reports/[id]/send POST', () => {
       details: {
         report_id: 'report_1',
         reason: 'report_finalization_stale',
+      },
+    });
+  });
+
+  it('returns conflict when delivery sent finalization loses the draft claim', async () => {
+    txMock.deliveryRecord.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    expect(sendCareReportEmailMock).toHaveBeenCalledOnce();
+    expect(txMock.deliveryRecord.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'delivery_1',
+          org_id: 'org_1',
+          report_id: 'report_1',
+          status: 'draft',
+          delivery_intent_key: expect.stringMatching(/^care-report:v1:[a-f0-9]{64}$/),
+        },
+        data: expect.objectContaining({ status: 'sent' }),
+      }),
+    );
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(learnContactProfileFromCommunicationMock).not.toHaveBeenCalled();
+    expect(txMock.careReport.updateMany).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同じ送付先への報告書送付が進行中です。送付履歴を確認してください',
+      details: {
+        report_id: 'report_1',
+        recipient_contact_masked: 'd***@example.com',
+        channel: 'email',
       },
     });
   });
@@ -2436,8 +2486,14 @@ describe('/api/care-reports/[id]/send POST', () => {
       sendCareReportEmailMock.mock.invocationCallOrder[0],
     );
     expect(sendCareReportEmailMock).toHaveBeenCalled();
-    expect(txMock.deliveryRecord.update).toHaveBeenCalledWith({
-      where: { id: 'delivery_stale_draft' },
+    expect(txMock.deliveryRecord.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'delivery_stale_draft',
+        org_id: 'org_1',
+        report_id: 'report_1',
+        status: 'draft',
+        delivery_intent_key: expect.stringMatching(/^care-report:v1:[a-f0-9]{64}$/),
+      },
       data: expect.objectContaining({
         status: 'sent',
         failure_reason: null,
@@ -2546,19 +2602,12 @@ describe('/api/care-reports/[id]/send POST', () => {
   });
 
   it('retries a failed same-recipient delivery by reusing the existing delivery record', async () => {
+    const failedUpdatedAt = new Date('2026-06-11T00:05:00.000Z');
     txMock.deliveryRecord.findFirst.mockResolvedValueOnce({
       id: 'delivery_failed_previous',
       status: 'failed',
+      updated_at: failedUpdatedAt,
     });
-    txMock.deliveryRecord.update
-      .mockResolvedValueOnce({
-        id: 'delivery_failed_previous',
-        status: 'draft',
-      })
-      .mockResolvedValueOnce({
-        id: 'delivery_failed_previous',
-        status: 'sent',
-      });
 
     const response = await POST(
       createRequest({
@@ -2574,8 +2623,15 @@ describe('/api/care-reports/[id]/send POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
-    expect(txMock.deliveryRecord.update).toHaveBeenNthCalledWith(1, {
-      where: { id: 'delivery_failed_previous' },
+    expect(txMock.deliveryRecord.updateMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        id: 'delivery_failed_previous',
+        org_id: 'org_1',
+        report_id: 'report_1',
+        channel: 'email',
+        status: 'failed',
+        updated_at: failedUpdatedAt,
+      },
       data: expect.objectContaining({
         status: 'draft',
         failure_reason: null,
@@ -2584,8 +2640,14 @@ describe('/api/care-reports/[id]/send POST', () => {
       }),
     });
     expect(sendCareReportEmailMock).toHaveBeenCalled();
-    expect(txMock.deliveryRecord.update).toHaveBeenNthCalledWith(2, {
-      where: { id: 'delivery_failed_previous' },
+    expect(txMock.deliveryRecord.updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: 'delivery_failed_previous',
+        org_id: 'org_1',
+        report_id: 'report_1',
+        status: 'draft',
+        delivery_intent_key: expect.stringMatching(/^care-report:v1:[a-f0-9]{64}$/),
+      },
       data: expect.objectContaining({
         status: 'sent',
         failure_reason: null,
@@ -2777,9 +2839,15 @@ describe('/api/care-reports/[id]/send POST', () => {
         }),
       }),
     );
-    expect(txMock.deliveryRecord.update).toHaveBeenCalledWith(
+    expect(txMock.deliveryRecord.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'delivery_1' },
+        where: {
+          id: 'delivery_1',
+          org_id: 'org_1',
+          report_id: 'report_1',
+          status: 'draft',
+          delivery_intent_key: expect.stringMatching(/^care-report:v1:[a-f0-9]{64}$/),
+        },
         data: expect.objectContaining({
           status: 'failed',
           failure_reason: EMAIL_DELIVERY_FAILURE_REASON,
@@ -2875,9 +2943,15 @@ describe('/api/care-reports/[id]/send POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
     expectSensitiveNoStore(response);
-    expect(txMock.deliveryRecord.update).toHaveBeenCalledWith(
+    expect(txMock.deliveryRecord.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'delivery_1' },
+        where: {
+          id: 'delivery_1',
+          org_id: 'org_1',
+          report_id: 'report_1',
+          status: 'draft',
+          delivery_intent_key: expect.stringMatching(/^care-report:v1:[a-f0-9]{64}$/),
+        },
         data: expect.objectContaining({
           status: 'failed',
           failure_reason: EMAIL_DELIVERY_FAILURE_REASON,
@@ -2900,6 +2974,56 @@ describe('/api/care-reports/[id]/send POST', () => {
       details: {
         report_id: 'report_1',
         reason: 'report_finalization_stale',
+      },
+    });
+  });
+
+  it('returns conflict when marking the delivery failed loses the draft claim', async () => {
+    const sesError = Object.assign(new Error('SES unavailable'), {
+      name: 'ThrottlingException',
+      $metadata: { httpStatusCode: 429 },
+    });
+    sendCareReportEmailMock.mockRejectedValue(sesError);
+    txMock.deliveryRecord.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    expect(txMock.deliveryRecord.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'delivery_1',
+          org_id: 'org_1',
+          report_id: 'report_1',
+          status: 'draft',
+          delivery_intent_key: expect.stringMatching(/^care-report:v1:[a-f0-9]{64}$/),
+        },
+        data: expect.objectContaining({
+          status: 'failed',
+          failure_reason: EMAIL_DELIVERY_FAILURE_REASON,
+        }),
+      }),
+    );
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(learnContactProfileFromCommunicationMock).not.toHaveBeenCalled();
+    expect(txMock.careReport.updateMany).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        report_id: 'report_1',
+        recipient_contact_masked: 'd***@example.com',
+        channel: 'email',
       },
     });
   });

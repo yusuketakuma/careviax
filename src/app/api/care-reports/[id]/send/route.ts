@@ -1240,53 +1240,73 @@ async function processRecipient(args: {
         };
       }
 
-      const deliveryRecord =
-        existingDeliveryRecord?.status === 'failed'
-          ? await tx.deliveryRecord.update({
-              where: { id: existingDeliveryRecord.id },
-              data: {
-                recipient_name: recipient.recipient_name,
-                recipient_contact: recipient.recipient_contact,
+      let deliveryRecord: {
+        id: string;
+        status: string;
+        reusedExistingDelivery?: true;
+      };
+      if (existingDeliveryRecord?.status === 'failed') {
+        const retryClaim = await tx.deliveryRecord.updateMany({
+          where: {
+            id: existingDeliveryRecord.id,
+            org_id: ctx.orgId,
+            report_id: reportId,
+            channel: recipient.channel,
+            status: 'failed',
+            updated_at: existingDeliveryRecord.updated_at,
+          },
+          data: {
+            recipient_name: recipient.recipient_name,
+            recipient_contact: recipient.recipient_contact,
+            delivery_intent_key: deliveryIntentKey,
+            status: 'draft',
+            failure_reason: null,
+            retry_count: { increment: 1 },
+          },
+        });
+        if (retryClaim.count !== 1) {
+          throw new DeliveryInProgressConflict();
+        }
+        deliveryRecord = {
+          id: existingDeliveryRecord.id,
+          status: 'draft',
+        };
+      } else {
+        deliveryRecord = await tx.deliveryRecord
+          .create({
+            data: {
+              org_id: ctx.orgId,
+              report_id: reportId,
+              channel: recipient.channel,
+              recipient_name: recipient.recipient_name,
+              recipient_contact: recipient.recipient_contact,
+              delivery_intent_key: deliveryIntentKey,
+              status: 'draft',
+            },
+          })
+          .catch(async (createError: unknown) => {
+            if (!isUniqueConstraintError(createError)) throw createError;
+            const racedDeliveryRecord = await tx.deliveryRecord.findFirst({
+              where: {
+                org_id: ctx.orgId,
                 delivery_intent_key: deliveryIntentKey,
-                status: 'draft',
-                failure_reason: null,
-                retry_count: { increment: 1 },
               },
-            })
-          : await tx.deliveryRecord
-              .create({
-                data: {
-                  org_id: ctx.orgId,
-                  report_id: reportId,
-                  channel: recipient.channel,
-                  recipient_name: recipient.recipient_name,
-                  recipient_contact: recipient.recipient_contact,
-                  delivery_intent_key: deliveryIntentKey,
-                  status: 'draft',
-                },
-              })
-              .catch(async (createError: unknown) => {
-                if (!isUniqueConstraintError(createError)) throw createError;
-                const racedDeliveryRecord = await tx.deliveryRecord.findFirst({
-                  where: {
-                    org_id: ctx.orgId,
-                    delivery_intent_key: deliveryIntentKey,
-                  },
-                  select: {
-                    id: true,
-                    status: true,
-                    updated_at: true,
-                  },
-                });
-                if (racedDeliveryRecord && isDeliveredReportStatus(racedDeliveryRecord.status)) {
-                  return {
-                    id: racedDeliveryRecord.id,
-                    status: racedDeliveryRecord.status,
-                    reusedExistingDelivery: true,
-                  };
-                }
-                throw new DeliveryInProgressConflict();
-              });
+              select: {
+                id: true,
+                status: true,
+                updated_at: true,
+              },
+            });
+            if (racedDeliveryRecord && isDeliveredReportStatus(racedDeliveryRecord.status)) {
+              return {
+                id: racedDeliveryRecord.id,
+                status: racedDeliveryRecord.status,
+                reusedExistingDelivery: true,
+              };
+            }
+            throw new DeliveryInProgressConflict();
+          });
+      }
 
       if ('reusedExistingDelivery' in deliveryRecord) {
         return deliveryRecord;
@@ -1358,13 +1378,22 @@ async function processRecipient(args: {
       await withOrgContext(
         ctx.orgId,
         async (tx) => {
-          await tx.deliveryRecord.update({
-            where: { id: attemptedDeliveryRecord.id },
+          const failedClaim = await tx.deliveryRecord.updateMany({
+            where: {
+              id: attemptedDeliveryRecord.id,
+              org_id: ctx.orgId,
+              report_id: reportId,
+              status: 'draft',
+              delivery_intent_key: deliveryIntentKey,
+            },
             data: {
               status: 'failed',
               failure_reason: failureReason,
             },
           });
+          if (failedClaim.count !== 1) {
+            throw new DeliveryInProgressConflict();
+          }
 
           await tx.communicationEvent.create({
             data: {
@@ -1418,14 +1447,23 @@ async function processRecipient(args: {
         }
       }
 
-      await tx.deliveryRecord.update({
-        where: { id: attemptedDeliveryRecord.id },
+      const sentClaim = await tx.deliveryRecord.updateMany({
+        where: {
+          id: attemptedDeliveryRecord.id,
+          org_id: ctx.orgId,
+          report_id: reportId,
+          status: 'draft',
+          delivery_intent_key: deliveryIntentKey,
+        },
         data: {
           status: 'sent',
           sent_at: new Date(),
           failure_reason: null,
         },
       });
+      if (sentClaim.count !== 1) {
+        throw new DeliveryInProgressConflict();
+      }
 
       if (primaryEventType) {
         await tx.communicationEvent.create({
