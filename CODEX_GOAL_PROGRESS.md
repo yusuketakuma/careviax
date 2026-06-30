@@ -30,6 +30,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Visit Planner Candidate-Scoped Confirmed Schedule Reads - 2026-07-01 05:32 JST
+
+- Scope:
+  - Continued visit-schedule planner P7 performance hardening.
+  - Focused on the confirmed-schedule read used during proposal scoring, which previously loaded every active schedule in the planning date window for the organization.
+- Fixed:
+  - The confirmed-schedule query now scopes the date-window read to schedules tied to the current patient, candidate pharmacists, candidate sites, or candidate vehicle resources.
+  - The query now selects only the fields needed by proposal scoring and diagnostics instead of including full related site and vehicle-resource records.
+  - Vehicle-resource reads are also narrowed to available resources for candidate sites while preserving an explicitly requested vehicle resource.
+  - Regression coverage proves the query `OR` scope, the reduced `select` shape, and the absence of broad `include` usage.
+- Safety:
+  - No auth, RLS, PHI, permission, audit, migration, external-send, push/deploy, secret, or destructive-operation surface was changed.
+  - Existing workflow, operating-day, cadence, capacity, route-order, vehicle, and max-travel guards remain in place.
+- Performance:
+  - Reduces active-schedule row volume and relation hydration during proposal scoring by narrowing the Prisma `where` clause to relevant patient/staff/site/vehicle candidates.
+  - Reduces selected payload size by fetching only the schedule and patient-residence/preference fields used downstream.
+  - No new dependency, external call, background job, render path, broad scan, or unbounded loop was added.
+- Validation:
+  - Planner focused Vitest passed `1` file / `44` tests.
+  - Scoped ESLint, scoped Prettier check, and diff-check on planner files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master-management, patient-information, report, schedule, and multi-professional cooperation objective remains open.
+  - Planner still has broader route optimization and additional candidate-pruning follow-ups.
+
 ### Visit Planner Route Insertion Matrix - 2026-07-01 05:24 JST
 
 - Scope:

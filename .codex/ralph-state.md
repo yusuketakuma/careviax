@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0532 JST
+
+- current task: scope visit planner confirmed-schedule reads to relevant patient, staff, site, and vehicle candidates.
+- files inspected: `git status --short --branch --untracked-files=all`, `git diff --stat`, `git diff --name-status`, focused diffs for `src/server/services/visit-schedule-planner.ts` and `src/server/services/visit-schedule-planner.test.ts`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, and validation output.
+- files changed: `src/server/services/visit-schedule-planner.ts`, `src/server/services/visit-schedule-planner.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: the planner loaded all active schedules in the date window for the organization even though scoring only needs schedules for the current patient, candidate pharmacists, candidate sites, or candidate vehicles. It also hydrated broader related site and vehicle-resource shapes than the downstream scoring path needs.
+- security risks found: no auth, RLS, PHI, permission, audit, migration, external-send, push/deploy, secret, or destructive-operation surface was changed. Existing workflow, operating-day, cadence, capacity, route-order, vehicle, and max-travel guards remain in place.
+- performance issues found: reduced active-schedule row volume and relation hydration by adding a candidate-scoped `OR` to the confirmed-schedule query, selecting only the schedule and patient residence/preference fields used downstream, and narrowing vehicle-resource reads to candidate sites while preserving an explicit vehicle resource. No new dependency, external call, background job, render path, broad scan, or unbounded loop was added.
+- validation commands: `pnpm exec vitest run src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`; `pnpm typecheck --pretty false`; `git diff --check`; `pnpm exec eslint --max-warnings=0 src/server/services/visit-schedule-planner.ts src/server/services/visit-schedule-planner.test.ts`; `pnpm exec prettier --check src/server/services/visit-schedule-planner.ts src/server/services/visit-schedule-planner.test.ts`.
+- validation results: planner focused Vitest passed `1` file / `44` tests; typecheck passed; diff-check passed; scoped ESLint passed; scoped Prettier check passed.
+- remaining work: broad master-management, patient-information, report, schedule, and multi-professional cooperation objective remains active. Planner still has broader route optimization and additional candidate-pruning follow-ups.
+- next action: commit the planner implementation/test group, commit the progress-ledger group, send agmsg FYI, then re-check status before resuming the master/patient objective.
+
 ### 20260701-0524 JST
 
 - current task: use the existing road travel matrix for visit planner route insertion scoring.
