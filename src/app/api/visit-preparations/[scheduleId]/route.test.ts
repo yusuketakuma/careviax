@@ -819,6 +819,7 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
               source_visit_record_updated_at: '2026-03-20T08:30:00.000Z',
               carry_forward_items: expect.arrayContaining([
                 '眠気とふらつきの継続確認',
+                '継続観察: 昼分の飲み忘れ',
                 expect.stringContaining('前回残薬'),
                 '副作用再確認: 眠気',
               ]),

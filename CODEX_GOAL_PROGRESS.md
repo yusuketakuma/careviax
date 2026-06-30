@@ -30,6 +30,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Visit Preparation Handoff Carry-Forward - 2026-07-01 08:00 JST
+
+- Scope:
+  - Continued visit-time and multi-professional handoff hardening for `GET /api/visit-preparations/[scheduleId]`.
+  - Focused on confirmed previous-visit handoff data that should seed the next visit record without mock data.
+- Fixed:
+  - Previous handoff `ongoing_monitoring` items now flow into `previous_visit.structured_reuse.carry_forward_items` as `継続観察: ...`.
+  - Existing next-check items, residual medication carry-forward, side-effect follow-up, adverse-event follow-up, and handoff detail payloads remain unchanged.
+  - The route test now locks that an ongoing monitoring item visible in `structured_reuse.handoff.ongoing_monitoring` is also preserved in the next visit carry-forward list.
+- Safety:
+  - Reduces clinical continuity loss where ongoing monitoring such as missed doses was visible during preparation but not persisted as next-visit reuse provenance.
+  - Preserves existing canVisit access, assignment checks, no-store behavior, source revision metadata, previous-visit stale guards at visit-record creation, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds only an in-memory mapping over already-loaded `ongoing_monitoring` strings.
+  - Keeps the existing unique item dedupe and 8-item cap; adds no DB query, network call, dependency, polling, broad scan, or render fan-out.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-preparations/'[scheduleId]'/route.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `37` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on visit-preparations files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit-time, report, and multi-professional cooperation objective remains open.
+  - Report-scoped external access grant send wiring remains blocked on OTP delivery/security product decision.
+  - Concurrent patient conditions/patient form/helper dirty files are owned outside this slice and were preserved.
+
 ### UAT Feedback Admin Boundary - 2026-07-01 07:54 JST
 
 - Scope:

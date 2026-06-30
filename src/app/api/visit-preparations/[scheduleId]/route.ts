@@ -511,6 +511,7 @@ function buildPreviousStructuredVisitReuse(
   const decisionRationale = readTrimmedString(handoff?.decision_rationale);
   const carryForwardItems = [
     ...handoffNextCheckItems,
+    ...handoffOngoingMonitoring.map((item) => `継続観察: ${item}`),
     residualLines.length > 0 ? `前回残薬: ${residualLines.slice(0, 2).join('、')}` : null,
     ...readStringArray(objective?.side_effect_checks).map((item) => `副作用再確認: ${item}`),
     ...readStringArray(adverseEvents?.events).map((item) => `有害事象フォロー: ${item}`),

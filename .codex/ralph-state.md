@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0800 JST
+
+- current task: carry confirmed visit handoff ongoing-monitoring items into the next visit preparation reuse payload.
+- files inspected: `git status --short --untracked-files=all`, agmsg `phos/codex2` inbox/team output, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, memory quick pass in `MEMORY.md`, `gbrain search "visit record handoff extraction report interprofessional careviax" --limit 5`, `docs/ui-ux-design-guidelines.md`, local Next route-handler docs, `src/app/api/visit-records/route.ts`, `src/server/services/visit-handoff.ts`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/api/visit-preparations/[scheduleId]/route.test.ts`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, report-share and communication-request code paths used to rule out already-covered report/interprofessional stale-precondition gaps, focused diffs, and validation output.
+- files changed: `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/api/visit-preparations/[scheduleId]/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: previous visit structured reuse exposed confirmed handoff `ongoing_monitoring` under `structured_reuse.handoff`, but did not include those items in `carry_forward_items`. The visit record form persists only `previous_visit_reuse.carry_forward_items`, so continuous monitoring items such as missed noon doses could be visible in the preparation pack but dropped from the saved next-visit carry-forward provenance.
+- security risks found: reduced clinical continuity/provenance loss for visit-time handoff data without changing auth, assignment checks, RLS, PHI export, external sharing, report sends, DB schema, migrations, live data, push/deploy, secret handling, or destructive-operation surfaces. Concurrent patient conditions/patient form helper dirty work claimed by `codex` was preserved and left unstaged.
+- performance issues found: no meaningful performance issue was introduced. The change maps already-loaded `ongoing_monitoring` strings in memory and preserves the existing dedupe and 8-item cap; no DB query, network call, dependency, polling, broad scan, render fan-out, or unbounded loop was added.
+- validation commands: `pnpm exec vitest run src/app/api/visit-preparations/'[scheduleId]'/route.test.ts --reporter=dot --testTimeout=60000`; scoped `pnpm exec eslint --max-warnings=0`; scoped `pnpm exec prettier --check`; scoped `git diff --check -- ...visit-preparations files`; `pnpm typecheck --pretty false`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`; `pnpm lint`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: focused visit-preparations API suite passed `1` file / `37` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed; full typecheck passed; no-unused passed; full lint passed; full format check passed; full diff-check passed.
+- remaining work: broad visit-time, report, and multi-professional cooperation objective remains active. Report-scoped external access grant send wiring remains blocked on OTP delivery/security product decision; continue with non-overlapping visit/report/cooperation slices after the concurrent patient-management work is committed or remains disjoint.
+- next action: stage only visit-preparations route/test plus matching ledger hunks, commit this validated carry-forward slice, send agmsg FYI, then re-check dirty ownership before selecting the next bounded gap.
+
 ### 20260701-0754 JST
 
 - current task: harden admin UAT feedback list/create/update API boundaries.
