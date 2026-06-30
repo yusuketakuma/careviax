@@ -4,11 +4,18 @@ import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeJsonInput } from '@/lib/db/json';
 import { isPrismaErrorCode } from '@/lib/db/prisma-errors';
-import { success, validationError, notFound, forbidden, internalError } from '@/lib/api/response';
+import {
+  success,
+  validationError,
+  notFound,
+  forbidden,
+  conflict,
+  internalError,
+} from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
-import type { Prisma } from '@prisma/client';
+import { RequestStatus, type Prisma } from '@prisma/client';
 import { z } from 'zod';
 import {
   communicationRequestStatusSchema,
@@ -43,6 +50,20 @@ function normalizeInputJsonObject(value: unknown): Prisma.InputJsonObject {
   const normalized = normalizeJsonInput(value);
   return isInputJsonObject(normalized) ? normalized : {};
 }
+
+const DUPLICATE_GUARDED_REPLY_REQUEST_TYPES = new Set([
+  'care_report_reply_request',
+  'patient_share_reply_request',
+]);
+
+const ACTIVE_REPLY_REQUEST_STATUSES = [
+  RequestStatus.draft,
+  RequestStatus.sent,
+  RequestStatus.received,
+  RequestStatus.in_progress,
+  RequestStatus.responded,
+  RequestStatus.escalated,
+];
 
 const communicationRequestQuerySchema = z.object({
   status: communicationRequestStatusSchema.optional(),
@@ -426,6 +447,36 @@ const authenticatedPOST = withAuthContext(
           }
         : {}),
     });
+
+    if (
+      related_entity_type &&
+      related_entity_id &&
+      DUPLICATE_GUARDED_REPLY_REQUEST_TYPES.has(request_type)
+    ) {
+      const existingOpenRequest = await prisma.communicationRequest.findFirst({
+        where: {
+          org_id: ctx.orgId,
+          request_type,
+          patient_id: effectivePatientId,
+          case_id: effectiveCaseId,
+          recipient_role: effectiveRecipientRole,
+          related_entity_type,
+          related_entity_id,
+          status: { in: ACTIVE_REPLY_REQUEST_STATUSES },
+        },
+        select: {
+          id: true,
+          status: true,
+        },
+      });
+
+      if (existingOpenRequest) {
+        return conflict('この相手への返信依頼は既に起票されています', {
+          request_id: existingOpenRequest.id,
+          status: existingOpenRequest.status,
+        });
+      }
+    }
 
     const result = await withOrgContext(
       ctx.orgId,

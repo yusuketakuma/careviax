@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 
 const {
   communicationRequestFindManyMock,
+  communicationRequestFindFirstMock,
   communicationRequestCreateMock,
   careReportFindFirstMock,
   tracingReportFindFirstMock,
@@ -15,6 +16,7 @@ const {
   withOrgContextMock,
 } = vi.hoisted(() => ({
   communicationRequestFindManyMock: vi.fn(),
+  communicationRequestFindFirstMock: vi.fn(),
   communicationRequestCreateMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
   tracingReportFindFirstMock: vi.fn(),
@@ -47,6 +49,7 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     communicationRequest: {
       findMany: communicationRequestFindManyMock,
+      findFirst: communicationRequestFindFirstMock,
     },
     careReport: {
       findFirst: careReportFindFirstMock,
@@ -113,6 +116,7 @@ describe('/api/communication-requests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     communicationRequestFindManyMock.mockResolvedValue([{ id: 'request_1', status: 'draft' }]);
+    communicationRequestFindFirstMock.mockResolvedValue(null);
     communicationRequestCreateMock.mockResolvedValue({ id: 'request_2', status: 'draft' });
     careReportFindFirstMock.mockResolvedValue({
       id: 'report_1',
@@ -491,6 +495,96 @@ describe('/api/communication-requests', () => {
     ))!;
 
     expect(response.status).toBe(403);
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate open care-report reply requests before creating another request', async () => {
+    communicationRequestFindFirstMock.mockResolvedValueOnce({
+      id: 'request_existing',
+      status: 'sent',
+    });
+
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        request_type: 'care_report_reply_request',
+        recipient_role: 'care_manager',
+        related_entity_type: 'care_report',
+        related_entity_id: 'report_1',
+        subject: '返信依頼',
+        content: '報告書の確認をお願いします',
+        status: 'sent',
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'この相手への返信依頼は既に起票されています',
+      details: {
+        request_id: 'request_existing',
+        status: 'sent',
+      },
+    });
+    expect(communicationRequestFindFirstMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        request_type: 'care_report_reply_request',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        recipient_role: 'care_manager',
+        related_entity_type: 'care_report',
+        related_entity_id: 'report_1',
+        status: {
+          in: ['draft', 'sent', 'received', 'in_progress', 'responded', 'escalated'],
+        },
+      }),
+      select: { id: true, status: true },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate open patient-share reply requests before creating another request', async () => {
+    communicationRequestFindFirstMock.mockResolvedValueOnce({
+      id: 'patient_request_existing',
+      status: 'in_progress',
+    });
+
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        request_type: 'patient_share_reply_request',
+        recipient_role: 'care_manager',
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_1',
+        subject: '返信依頼',
+        content: '患者共有の確認をお願いします',
+        status: 'sent',
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        request_id: 'patient_request_existing',
+        status: 'in_progress',
+      },
+    });
+    expect(communicationRequestFindFirstMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        request_type: 'patient_share_reply_request',
+        patient_id: 'patient_1',
+        case_id: null,
+        recipient_role: 'care_manager',
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_1',
+      }),
+      select: { id: true, status: true },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();
   });
 
