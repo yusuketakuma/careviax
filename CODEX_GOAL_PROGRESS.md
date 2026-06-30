@@ -57,6 +57,87 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Remaining:
   - Continue scanning other non-generator report draft paths and collaboration action surfaces for dropped clinical evidence or generic follow-up links.
 
+### Visit Vehicle Resource Counted Metadata - 2026-06-30 20:00 JST
+
+- Scope:
+  - Continued master-management hardening for the visit vehicle resource master used by schedule proposal and weekly optimization selectors.
+- Fixed:
+  - `GET /api/visit-vehicle-resources` now returns `total_count`, `visible_count`, `hidden_count`, `truncated`, `count_basis`, `filters_applied`, and `limit` while preserving the existing `data` array.
+  - Schedule proposal reproposal and weekly optimizer vehicle selectors now warn when additional vehicle resources are hidden by the bounded response.
+  - Proposal test helpers were aligned to the current default proposal fixture time so selector/action label regressions reflect live data.
+- Safety:
+  - Reduces false-complete vehicle-master selector risk while exposing only aggregate counts and visible rows.
+  - Existing org scoping, site/availability filters, admin membership checks, create/audit behavior, and response compatibility remain intact.
+- Performance:
+  - Adds one scoped `visitVehicleResource.count` query using the same predicate as the bounded list query.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-vehicle-resources/route.test.ts 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx' 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' src/app/api/visit-schedules/day-board/route.test.ts 'src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx' src/server/services/partner-visit-report-drafts.test.ts src/components/features/reports/physician-report-view.test.tsx src/server/services/pdf-documents.test.tsx --reporter=dot --testTimeout=60000`: passed, `9` files / `121` tests.
+  - Scoped Prettier check and `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - Continue scanning other capped master APIs and patient-linked selectors for false-empty/hidden-row behavior.
+
+### Schedule Day Board Hidden Staff Counts - 2026-06-30 20:00 JST
+
+- Scope:
+  - Continued patient/schedule management hardening for the day-board API and consumers.
+- Fixed:
+  - `GET /api/visit-schedules/day-board` now returns `staff_counts` with total/visible/hidden staff, visit, preparation-attention, and hidden operational-task counts.
+  - Hidden staff visits are counted without exposing hidden patient/task details.
+  - Route-compare and team-board fixtures now follow the expanded `ScheduleDayBoardResponse` contract.
+- Safety:
+  - Reduces false-empty/false-complete schedule board risk when staff rows are capped.
+  - Hidden staff patient names and operational task details remain off-board; only aggregate counts are exposed.
+- Performance:
+  - Adds one hidden-visit task count query only when hidden visits exist and assignment scope is available.
+- Validation:
+  - Covered by the `9`-file / `121`-test focused Vitest bundle above.
+  - Scoped Prettier check, `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint`: passed.
+- Remaining:
+  - Continue schedule/patient board scans for other capped panels that need aggregate hidden-state metadata.
+
+### Schedule Team Board Capacity Summary - 2026-06-30 20:00 JST
+
+- Scope:
+  - Continued schedule UI correctness work using the new day-board count metadata.
+- Fixed:
+  - Staff lanes now calculate visit minutes, travel minutes, idle minutes, and estimated visit slots.
+  - The team board renders a pharmacist capacity summary and explicitly indicates when hidden staff remain outside the visible lane summary.
+  - Visit-preparation and carry-item task links now focus the related schedule instead of falling back to the aggregate visits page when a schedule id is present.
+- Safety:
+  - Reduces wrong-context navigation and visible-lanes-only capacity misinterpretation risk without exposing additional PHI.
+- Performance:
+  - Adds in-memory aggregation over already-visible lanes only.
+- Validation:
+  - Covered by the `9`-file / `121`-test focused Vitest bundle above.
+  - Scoped Prettier check, `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint`: passed.
+- Remaining:
+  - Continue refining schedule operational surfaces where aggregate counts and focused action links prevent operator drift.
+
+### Workflow Readiness Action Focus - 2026-06-30 20:03 JST
+
+- Scope:
+  - Continued patient-information workflow hardening for readiness remediation guidance.
+- Fixed:
+  - Management-plan overdue guidance now opens the management-plan review task filter instead of an unsupported patient readiness filter.
+  - Missing-primary-physician guidance now uses the patient readiness filter instead of the aggregate patient list.
+  - `src/server/services/operational-tasks.test.ts` now matches the shared task-presentation fallback for `visit_demand`, which already routes no-entity visit-demand tasks to the filtered task queue.
+- Safety:
+  - Reduces wrong-workspace follow-up risk without exposing additional patient data.
+- Performance:
+  - URL construction only; no new query or render-heavy path.
+- Validation:
+  - Initial focused Vitest over workflow dashboard / patient route / operational tasks failed only on the stale `visit_demand` fallback expectation, then was fixed.
+  - `pnpm exec vitest run src/server/services/workflow-dashboard-sections.test.ts src/app/api/patients/route.test.ts src/server/services/operational-tasks.test.ts src/lib/tasks/operational-task-presentation.test.ts --reporter=dot --testTimeout=60000`: passed, `4` files / `100` tests.
+  - Scoped ESLint on the workflow dashboard and operational task test files: passed.
+  - Scoped Prettier check and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Continue scanning remediation/action links for generic aggregate destinations.
+
 ### Schedule Offline Brief Latest Labs - 2026-06-30 19:52 JST
 
 - Scope:

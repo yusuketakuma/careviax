@@ -33,6 +33,19 @@ Backup directory:
 - remaining work: broad master-management/patient-information goal remains open; keep scanning aggregate action links.
 - next action: stage only this workflow readiness action-link slice if the mixed ledger hunks can be separated safely; otherwise commit the code/test slice and leave mixed progress-ledger hunks unstaged.
 
+### 20260630-2000 JST
+
+- current task: commit the current verified schedule/master/report groups after the user requested grouping all changes.
+- files inspected: `git status --short --branch --untracked-files=all`, `git log --oneline -n 8`, `git diff --stat`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, vehicle-resource API/UI diffs, day-board API/type/fixture diffs, team-board helper/UI/test diffs, partner report draft diffs, and focused validation output.
+- files changed: `src/app/api/visit-vehicle-resources/route.ts`, `src/app/api/visit-vehicle-resources/route.test.ts`, `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`, `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx`, `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`, `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx`, `src/app/api/visit-schedules/day-board/route.ts`, `src/app/api/visit-schedules/day-board/route.test.ts`, `src/types/schedule-day-board.ts`, `src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx`, `src/app/(dashboard)/schedules/schedule-team-board.helpers.ts`, `src/app/(dashboard)/schedules/schedule-team-board.tsx`, `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`, `src/server/services/partner-visit-report-drafts.ts`, `src/server/services/partner-visit-report-drafts.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: bounded vehicle-resource lists had no exact hidden count; day-board staff capping hid work without aggregate hidden staff/visit/task counts; team-board summaries could imply visible lanes were the whole day and preparation actions fell back to `/visits`; partner-visit physician report drafts dropped explicit latest-lab evidence.
+- security risks found: reduced false-complete master/schedule-board and missed-clinical-context risk while exposing only aggregate hidden counts or already-scoped report content. Hidden staff patient details, hidden operational task details, hidden vehicle rows, secrets, raw internals, external sends, migrations, live DB operations, push/deploy, and destructive operations were not added.
+- performance issues found: added scoped count queries for vehicle resources and hidden staff visit tasks; other additions are in-memory aggregation/formatting over bounded existing data. No dependency, background job, broad scan, unbounded loop, or heavy render path was added.
+- validation commands: `pnpm exec vitest run` focused bundle over `9` files; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`.
+- validation results: focused Vitest passed `9` files / `121` tests. Scoped Prettier check, scoped diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint` all passed.
+- remaining work: broad master-management/patient-information goal remains open. Continue capped master API, patient schedule board, report draft, and action-link scans after grouped commits.
+- next action: stage explicit paths by logical group and commit without push.
+
 ### 20260630-1959 JST
 
 - current task: carry partner-pharmacy visit-record lab excerpts into generated physician report drafts.
