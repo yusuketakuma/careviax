@@ -1,9 +1,11 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { requireAuthContext } from '@/lib/auth/context';
 import {
   conflict,
   error,
   forbiddenResponse,
+  internalError,
   notFound,
   success,
   validationError,
@@ -24,7 +26,9 @@ import { canAccessCareReportSource } from '@/server/services/care-report-access'
 
 export const runtime = 'nodejs';
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+type PrintAuditRouteContext = { params: Promise<{ id: string }> };
+
+async function authenticatedPOST(req: NextRequest, { params }: PrintAuditRouteContext) {
   const authResult = await requireAuthContext(req, {
     permission: 'canSendCareReport',
     message: '報告書の印刷権限がありません',
@@ -134,4 +138,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   } satisfies CareReportPrintAuditResponse<CareReportPrintAuditPrintableReport>;
 
   return withSensitiveNoStore(success(responseBody));
+}
+
+export async function POST(req: NextRequest, routeContext: PrintAuditRouteContext) {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }

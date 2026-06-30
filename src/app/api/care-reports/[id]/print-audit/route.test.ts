@@ -354,6 +354,31 @@ describe('/api/care-reports/[id]/print-audit', () => {
     }))!;
 
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when auth context fails before report loading', async () => {
+    requireAuthContextMock.mockRejectedValueOnce(
+      new Error('raw print auth patient 山田花子 token secret'),
+    );
+
+    const response = (await POST(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw print auth');
+    expect(bodyText).not.toContain('山田花子');
+    expect(bodyText).not.toContain('token secret');
     expect(careReportFindFirstMock).not.toHaveBeenCalled();
     expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
   });
@@ -394,6 +419,30 @@ describe('/api/care-reports/[id]/print-audit', () => {
 
     expect(draftResponse.status).toBe(409);
     expectSensitiveNoStore(draftResponse);
+    expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when report loading fails unexpectedly', async () => {
+    careReportFindFirstMock.mockRejectedValueOnce(
+      new Error('raw print report load patient 山田花子 印刷本文 token secret'),
+    );
+
+    const response = (await POST(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw print report load');
+    expect(bodyText).not.toContain('山田花子');
+    expect(bodyText).not.toContain('印刷本文');
+    expect(bodyText).not.toContain('token secret');
     expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
   });
 
