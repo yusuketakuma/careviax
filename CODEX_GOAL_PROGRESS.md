@@ -30,6 +30,73 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### External Professional Communication History Counts - 2026-07-01 03:53 JST
+
+- Scope:
+  - Continued master-management and patient-information hardening on `GET /api/admin/external-professionals/[id]/communications`.
+  - Focused on the fixed recent-history lists for external professional communication requests and events.
+- Fixed:
+  - Request and event history now share explicit Prisma `where` objects between `count` and `findMany`.
+  - The response now includes per-list metadata with `limit`, `total_count`, `visible_count`, `hidden_count`, count basis, and the external professional filter.
+  - Regression coverage now proves normal metadata, truncated metadata, no-store 404 without history queries, and sanitized no-store 500 behavior.
+- Safety:
+  - Reduces false-complete communication history risk for patient-linked external professional master screens.
+  - Metadata exposes only counts and the professional id filter, not patient names or message subjects.
+  - Preserves existing canReport auth, org scoping, assignment filtering, no-store wrapper, sanitized unexpected-error boundary, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds one request count and one event count using the same bounded filters as the fixed latest-20 lists.
+  - No new dependency, background job, external call, broad scan, render-heavy path, or unbounded loop was added.
+- Validation:
+  - Focused communication-history Vitest passed `1` file / `4` tests.
+  - Related external-professional admin suite passed `4` files / `33` tests.
+  - Combined external-professional / pharmacy-cooperation / planner suite passed `7` files / `96` tests.
+  - Scoped ESLint, scoped Prettier check, full typecheck, no-unused, full format check, and full diff-check passed.
+- Remaining:
+  - Broad master-management / patient-information objective remains open.
+
+### Pharmacy Visit Request Decision OCC - 2026-07-01 03:53 JST
+
+- Scope:
+  - Continued patient-information and pharmacy-cooperation workflow hardening on visit request accept/decline decisions.
+  - Focused on stale decision protection after the workflow screen renders visit request rows.
+- Fixed:
+  - The visit request decision API now requires `expected_updated_at`, loads the row version, rejects stale decisions before update/audit side effects, and claims the guarded update with `updated_at`.
+  - The workflow UI schema now includes `updated_at` and sends it when accepting or declining a visit request.
+  - Regression coverage proves missing version validation, stale conflict behavior, and UI request bodies.
+- Safety:
+  - Reduces stale accept/decline risk when a cooperation visit request changes between screen render and operator action.
+  - Preserves existing transition rules, partnership/share-case active guards, no-store response boundary, audit creation on valid writes, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds one scalar field to the existing visit request read and one scalar predicate to the existing guarded update.
+  - No new query fan-out, dependency, background job, external call, broad scan, or unbounded loop was added.
+- Validation:
+  - Decision route + workflow UI Vitest passed `2` files / `31` tests.
+  - Combined external-professional / pharmacy-cooperation / planner suite passed `7` files / `96` tests.
+  - Scoped ESLint, scoped Prettier write/check, full typecheck, no-unused, full format check, and full diff-check passed.
+- Remaining:
+  - Broad patient-information / cooperation workflow objective remains open.
+
+### Visit Proposal Patient Facility Window Guard - 2026-07-01 03:53 JST
+
+- Scope:
+  - Continued patient-information and schedule-management hardening in `generateVisitScheduleProposalDrafts`.
+  - Focused on patient home-time and facility acceptance-time constraints used by proposal generation.
+- Fixed:
+  - Proposal generation now rejects candidates when patient and facility visit windows do not overlap.
+  - Added regression coverage proving both primary and backup pharmacist candidates are rejected with a clear `no_slot` diagnostic.
+- Safety:
+  - Reduces unsafe proposal generation where mutually impossible patient/facility time windows could still produce visit candidates.
+  - Preserves existing shift, holiday, vehicle, geocode, route-duration, medication-cycle, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Uses already-computed merged visit-window state inside candidate evaluation.
+  - No new DB query, dependency, background job, external call, broad scan, or unbounded loop was added.
+- Validation:
+  - Focused planner Vitest passed `1` file / `32` tests.
+  - Combined external-professional / pharmacy-cooperation / planner suite passed `7` files / `96` tests.
+  - Scoped ESLint, scoped Prettier check, full typecheck, no-unused, full format check, and full diff-check passed.
+- Remaining:
+  - Broad master-management / patient-information / schedule-management objective remains open.
+
 ### Facility Visit Batch History Count Contract - 2026-07-01 03:42 JST
 
 - Scope:
@@ -28464,3 +28531,33 @@ Next loop:
 - Remaining:
   - Broad visit/report/collaboration objective remains open.
   - Concurrent unowned dirty files remain in facility visit-batch and visit-constraint areas; they were preserved outside this report slice.
+
+### Pharmacy Visit Request Decision Version Guard - 2026-07-01 03:53 JST
+
+- Scope:
+  - Continued interprofessional collaboration hardening in the pharmacy cooperation workflow.
+  - Focused on `POST /api/pharmacy-visit-requests/[id]/decision` and the dashboard row actions that accept/decline visit requests.
+- Fixed:
+  - Visit-request accept/decline now requires `expected_updated_at`.
+  - The API loads `updated_at`, rejects stale decisions before update/audit side effects, and includes `updated_at` in the guarded `updateMany` claim.
+  - The cooperation workflow row schema now retains `updated_at`, and accept/decline actions send the row version the user reviewed.
+  - UI tests pin both accept and decline request bodies with the reviewed `expected_updated_at`.
+- Safety:
+  - Reduces stale partner-visit request decision risk when another user accepts/declines/updates the request after the workflow table renders.
+  - Preserves existing auth, patient-sharing permission, active share-case/partnership guards, org/RLS scoping, no-store wrapping, PHI-minimized audit payloads, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds one scalar `updated_at` field to existing reads and one predicate to the existing guarded update.
+  - No new query fan-out, dependency, background job, external call, broad scan, unbounded loop, or heavy render path was added.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/pharmacy-visit-requests/[id]/decision/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `1` file / `8` tests.
+  - `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `1` file / `23` tests.
+  - Related suite `pnpm exec vitest run 'src/app/api/pharmacy-visit-requests/[id]/decision/route.test.ts' src/app/api/pharmacy-visit-requests/route.test.ts 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `3` files / `43` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on the changed decision/workflow files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit/report/collaboration objective remains open.
+  - Concurrent unowned facility visit-batch and visit-constraint dirty files, plus the unowned 03:44 facility Ralph hunk, remain outside this slice.
