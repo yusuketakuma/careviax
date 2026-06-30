@@ -6,6 +6,7 @@ const dbMocks = vi.hoisted(() => ({
   equals: vi.fn(),
   toArray: vi.fn(),
   transaction: vi.fn(),
+  update: vi.fn(),
   where: vi.fn(),
 }));
 
@@ -24,12 +25,17 @@ vi.mock('@/lib/stores/offline-db', () => ({
     transaction: dbMocks.transaction,
     voiceMemoDrafts: {
       add: dbMocks.add,
+      update: dbMocks.update,
       where: dbMocks.where,
     },
   },
 }));
 
-import { loadLatestVoiceMemoDraft, saveVoiceMemoDraft } from './voice-memo-drafts';
+import {
+  loadLatestVoiceMemoDraft,
+  saveVoiceMemoDraft,
+  saveVoiceMemoManualTranscript,
+} from './voice-memo-drafts';
 
 function prepareVoiceMemoQuery() {
   dbMocks.where.mockReturnValue({ equals: dbMocks.equals });
@@ -49,6 +55,7 @@ describe('voice memo offline drafts', () => {
     dbMocks.transaction.mockImplementation(
       async (_mode: string, _table: unknown, callback: () => Promise<unknown>) => callback(),
     );
+    dbMocks.update.mockResolvedValue(1);
     cryptoMocks.decryptOfflinePayload.mockImplementation(
       async (value: string | null | undefined) => value ?? null,
     );
@@ -117,6 +124,49 @@ describe('voice memo offline drafts', () => {
     expect(dbMocks.add).not.toHaveBeenCalled();
   });
 
+  it('stores manual transcripts through the fail-closed encryption helper', async () => {
+    dbMocks.toArray.mockResolvedValue([
+      {
+        id: 2,
+        visitId: 'visit-1',
+        fileName: 'new.webm',
+        mimeType: 'audio/webm',
+        sizeBytes: 1024,
+        payload: 'encv1:new',
+        durationSeconds: 12,
+        recordedAt: new Date('2026-06-18T10:00:00.000Z'),
+        createdAt: new Date('2026-06-18T10:00:00.000Z'),
+        transcriptStatus: 'pending',
+      },
+    ]);
+
+    await expect(
+      saveVoiceMemoManualTranscript('visit-1', '夕食後は家族の声かけで飲めている。'),
+    ).resolves.toBe(true);
+
+    expect(cryptoMocks.encryptOfflinePayloadRequired).toHaveBeenCalledWith(
+      '夕食後は家族の声かけで飲めている。',
+      'voice memo manual transcript payload',
+    );
+    expect(dbMocks.update).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({
+        transcriptPayload: 'encv1:voice memo manual transcript payload:sealed',
+        transcriptStatus: 'done',
+      }),
+    );
+    expect(JSON.stringify(dbMocks.update.mock.calls[0]?.[1])).not.toContain('夕食後');
+  });
+
+  it('does not store a manual transcript when no voice memo draft exists', async () => {
+    dbMocks.toArray.mockResolvedValue([]);
+
+    await expect(saveVoiceMemoManualTranscript('visit-1', '夕食後メモ')).resolves.toBe(false);
+
+    expect(cryptoMocks.encryptOfflinePayloadRequired).not.toHaveBeenCalled();
+    expect(dbMocks.update).not.toHaveBeenCalled();
+  });
+
   it('loads the latest decrypted voice memo draft as a playback snapshot', async () => {
     dbMocks.toArray.mockResolvedValue([
       {
@@ -142,12 +192,14 @@ describe('voice memo offline drafts', () => {
         recordedAt: new Date('2026-06-18T10:00:00.000Z'),
         createdAt: new Date('2026-06-18T10:00:00.000Z'),
         transcriptStatus: 'pending',
+        transcriptPayload: 'encv1:transcript',
       },
     ]);
     cryptoMocks.decryptOfflinePayload.mockImplementation(
       async (value: string | null | undefined) => {
         if (value === 'encv1:new') return 'data:audio/webm;base64,NEW_AUDIO';
         if (value === 'encv1:old') return 'data:audio/webm;base64,OLD_AUDIO';
+        if (value === 'encv1:transcript') return '夕食後メモ';
         return null;
       },
     );
@@ -158,6 +210,7 @@ describe('voice memo offline drafts', () => {
       mimeType: 'audio/webm',
       durationSeconds: 12,
       recordedAt: '2026-06-18T10:00:00.000Z',
+      manualTranscript: '夕食後メモ',
     });
   });
 

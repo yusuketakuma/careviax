@@ -2,8 +2,12 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import {
+  loadLatestVoiceMemoDraft,
+  saveVoiceMemoManualTranscript,
+} from '@/lib/offline/voice-memo-drafts';
 import { VoiceMemoContent } from './voice-memo-content';
 
 setupDomTestEnv();
@@ -15,6 +19,7 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 vi.mock('@/lib/offline/voice-memo-drafts', () => ({
   loadLatestVoiceMemoDraft: vi.fn().mockResolvedValue(null),
   saveVoiceMemoDraft: vi.fn(),
+  saveVoiceMemoManualTranscript: vi.fn().mockResolvedValue(false),
 }));
 
 vi.mock('sonner', () => ({
@@ -37,11 +42,37 @@ function renderContent() {
   );
 }
 
+beforeEach(() => {
+  vi.mocked(loadLatestVoiceMemoDraft).mockResolvedValue(null);
+  vi.mocked(saveVoiceMemoManualTranscript).mockResolvedValue(false);
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.clearAllMocks();
 });
 
 describe('VoiceMemoContent', () => {
+  it('restores an encrypted manual transcript from the latest voice memo draft', async () => {
+    vi.mocked(loadLatestVoiceMemoDraft).mockResolvedValueOnce({
+      dataUrl: 'data:audio/webm;base64,VOICE',
+      fileName: 'memo.webm',
+      mimeType: 'audio/webm',
+      durationSeconds: 42,
+      recordedAt: '2026-06-18T10:00:00.000Z',
+      manualTranscript: '夕食後は家族の声かけで飲めている。',
+    });
+
+    renderContent();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('voice-memo-transcript-text').textContent).toBe(
+        '夕食後は家族の声かけで飲めている。',
+      );
+    });
+    expect(screen.getByTestId('voice-memo-title').textContent).toBe('訪問中メモ 00:42');
+  });
+
   it('reflects a manual transcript into the same transcript/append workflow used by STT results', async () => {
     renderContent();
 
@@ -55,6 +86,12 @@ describe('VoiceMemoContent', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('voice-memo-transcript-text').textContent).toBe(
+        '夕食後は家族の声かけで飲めている。\n便秘あり。次回も確認。',
+      );
+    });
+    await waitFor(() => {
+      expect(saveVoiceMemoManualTranscript).toHaveBeenCalledWith(
+        'visit_1',
         '夕食後は家族の声かけで飲めている。\n便秘あり。次回も確認。',
       );
     });

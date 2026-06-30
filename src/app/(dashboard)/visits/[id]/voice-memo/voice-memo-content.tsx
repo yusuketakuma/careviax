@@ -10,7 +10,11 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { resolveScheduleVisitRecordId } from '@/lib/offline/evidence-drafts.shared';
-import { loadLatestVoiceMemoDraft, saveVoiceMemoDraft } from '@/lib/offline/voice-memo-drafts';
+import {
+  loadLatestVoiceMemoDraft,
+  saveVoiceMemoDraft,
+  saveVoiceMemoManualTranscript,
+} from '@/lib/offline/voice-memo-drafts';
 import { cn } from '@/lib/utils';
 import {
   MAX_VOICE_MEMO_SECONDS,
@@ -87,6 +91,11 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
         setPhase('recorded');
         setDurationSeconds(draft.durationSeconds);
         setAudioUrl(draft.dataUrl);
+        if (draft.manualTranscript) {
+          setManualTranscript(draft.manualTranscript);
+          setTranscript(draft.manualTranscript);
+          setTranscribeRequested(false);
+        }
       })
       .catch(() => {
         // 復元できなくても新規録音は可能
@@ -290,6 +299,11 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
     setTranscribeRequested(false);
     setAppendedRecordId(null);
     toast.success('手入力メモを文字起こしとして反映しました');
+    void saveVoiceMemoManualTranscript(visitId, normalized).catch(() => {
+      toast.warning(
+        '手入力メモの端末保存に失敗しました。このページを離れる前に記録へ反映してください',
+      );
+    });
   }
 
   // p1_03 と同じ二段解決(訪問予定 → 紐づく記録 / 直接訪問記録 ID)で

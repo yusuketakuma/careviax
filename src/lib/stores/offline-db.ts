@@ -113,8 +113,10 @@ export type OfflineVoiceMemoDraft = {
   durationSeconds: number;
   recordedAt: Date;
   createdAt: Date;
-  /** 転写状態(第一版は外部 STT 未接続のため 'pending' のみ) */
+  /** 転写状態(外部 STT 未接続でも手入力転写を保存した場合は 'done') */
   transcriptStatus: 'pending' | 'done';
+  /** encryptOfflinePayloadRequired で暗号化した手入力転写(PHI のため平文保存しない) */
+  transcriptPayload?: string;
 };
 
 class PhOsOfflineDB extends Dexie {
