@@ -194,6 +194,7 @@ describe('schedule-day-view.helpers', () => {
       assignment_mode: 'primary',
       route_order: null,
       route_distance_score: null,
+      updated_at: '2026-04-09T08:00:00.000Z',
       medication_end_date: null,
       visit_deadline_date: null,
       proposal_reason: '移動良好',

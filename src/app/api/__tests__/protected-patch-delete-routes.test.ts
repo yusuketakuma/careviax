@@ -12,6 +12,13 @@ const { authMock, prismaMock, withOrgContextMock, txMock } = vi.hoisted(() => {
     line_id: 'line_1',
     patient_id: 'patient_1',
     case_id: 'case_1',
+    site_id: 'site_1',
+    pharmacist_id: 'user_1',
+    vehicle_resource_id: null,
+    scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+    schedule_status: 'planned',
+    confirmed_at: null,
+    recurrence_rule: null,
     role: 'admin',
     proposal_status: 'proposed',
     proposed_pharmacist_id: 'user_1',
@@ -54,6 +61,21 @@ const { authMock, prismaMock, withOrgContextMock, txMock } = vi.hoisted(() => {
         primary_pharmacist_id: 'user_1',
         backup_pharmacist_id: null,
         required_visit_support: null,
+      },
+    },
+    case_: {
+      primary_pharmacist_id: 'user_1',
+      backup_pharmacist_id: null,
+      patient: {
+        scheduling_preference: null,
+        residences: [
+          {
+            address: '東京都千代田区1-1-1',
+            lat: null,
+            lng: null,
+            facility: null,
+          },
+        ],
       },
     },
   });

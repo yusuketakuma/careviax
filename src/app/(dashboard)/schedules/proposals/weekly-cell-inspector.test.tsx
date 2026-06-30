@@ -77,6 +77,7 @@ describe('WeeklyCellInspector', () => {
       assignment_mode: 'primary',
       route_order: 2,
       route_distance_score: 1.2,
+      updated_at: '2026-04-09T08:00:00.000Z',
       medication_end_date: null,
       visit_deadline_date: null,
       proposal_reason: '',

@@ -184,6 +184,7 @@ function buildProposal(overrides?: Record<string, unknown>) {
     vehicle_resource_id: null,
     vehicle_resource: null,
     created_at: new Date('2026-03-26T09:00:00.000Z'),
+    updated_at: new Date('2026-03-26T09:15:00.000Z'),
     medication_end_date: new Date('2026-03-31T00:00:00.000Z'),
     visit_deadline_date: new Date('2026-03-30T00:00:00.000Z'),
     escalation_reason: null,
@@ -2665,6 +2666,47 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
       pharmacist_id: 'pharmacist_old',
     });
+  });
+
+  it('rejects stale proposal action preconditions before confirmation side effects', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        updated_at: new Date('2026-03-26T09:15:00.000Z'),
+      }),
+    );
+
+    const response = await PATCH(
+      createRequest(
+        {
+          action: 'confirm',
+          expected_updated_at: '2026-03-26T09:00:00.000Z',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      {
+        params: Promise.resolve({ id: 'proposal_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '訪問候補が同時に更新されました。再読み込みしてください',
+      details: {
+        expected_updated_at: '2026-03-26T09:00:00.000Z',
+        current_updated_at: '2026-03-26T09:15:00.000Z',
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(evaluateVisitWorkflowGateMock).not.toHaveBeenCalled();
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(contactLogCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('returns a conflict when the proposal state changes before the confirmation claim', async () => {

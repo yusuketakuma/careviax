@@ -281,20 +281,26 @@ type BulkActionFailure = {
   reachedServer: boolean;
 };
 
-type ProposalActionPayload =
-  | { action: 'approve' }
-  | { action: 'confirm' }
-  | { action: 'reject'; reject_reason?: string }
-  | {
-      action: 'contact_attempt';
-      outcome: ContactOutcome;
-      idempotency_key: string;
-      contact_method: ContactMethod;
-      contact_name?: string;
-      contact_phone?: string;
-      note?: string;
-      callback_due_at?: string;
-    };
+type ProposalActionPrecondition = {
+  expected_updated_at?: string;
+};
+
+type ProposalActionPayload = ProposalActionPrecondition &
+  (
+    | { action: 'approve' }
+    | { action: 'confirm' }
+    | { action: 'reject'; reject_reason?: string }
+    | {
+        action: 'contact_attempt';
+        outcome: ContactOutcome;
+        idempotency_key: string;
+        contact_method: ContactMethod;
+        contact_name?: string;
+        contact_phone?: string;
+        note?: string;
+        callback_due_at?: string;
+      }
+  );
 
 type SingleProposalConfirmState = {
   action: SingleProposalConfirmAction;
@@ -1213,7 +1219,13 @@ export function ScheduleProposalsContent({
                 'x-org-id': orgId,
               },
               body: JSON.stringify(
-                action === 'reject' ? { action, reject_reason: rejectReason } : { action },
+                action === 'reject'
+                  ? {
+                      action,
+                      reject_reason: rejectReason,
+                      expected_updated_at: proposal.updated_at,
+                    }
+                  : { action, expected_updated_at: proposal.updated_at },
               ),
             });
           } catch (error) {
@@ -1343,6 +1355,7 @@ export function ScheduleProposalsContent({
           id: detail.id,
           payload: {
             action: 'contact_attempt',
+            expected_updated_at: detail.updated_at,
             outcome: 'change_requested',
             idempotency_key: createScheduleContactAttemptIdempotencyKey(detail.id),
             contact_method: contactForm.contact_method,
@@ -2393,7 +2406,10 @@ export function ScheduleProposalsContent({
                 if (!singleConfirmAction) return;
                 proposalActionMutation.mutate({
                   id: singleConfirmAction.proposal.id,
-                  payload: { action: singleConfirmAction.action },
+                  payload: {
+                    action: singleConfirmAction.action,
+                    expected_updated_at: singleConfirmAction.proposal.updated_at,
+                  },
                 });
               }}
               disabled={!singleConfirmAction || proposalActionMutation.isPending}
@@ -2753,6 +2769,7 @@ export function ScheduleProposalsContent({
                               id: detail.id,
                               payload: {
                                 action: 'contact_attempt',
+                                expected_updated_at: detail.updated_at,
                                 outcome: contactForm.outcome,
                                 idempotency_key: createScheduleContactAttemptIdempotencyKey(
                                   detail.id,
@@ -2936,6 +2953,7 @@ export function ScheduleProposalsContent({
                               id: detail.id,
                               payload: {
                                 action: 'contact_attempt',
+                                expected_updated_at: detail.updated_at,
                                 outcome: 'confirmed',
                                 idempotency_key: createScheduleContactAttemptIdempotencyKey(
                                   detail.id,

@@ -33,6 +33,11 @@ const idempotencyKeySchema = z
   .regex(/^[A-Za-z0-9._:-]{1,128}$/, 'idempotency_key が不正です')
   .min(1, 'idempotency_key は必須です');
 
+const expectedUpdatedAtSchema = z
+  .string()
+  .datetime('expected_updated_at の日時形式が不正です')
+  .optional();
+
 export const generateVisitScheduleProposalSchema = z
   .object({
     case_id: z.string().min(1, 'ケースIDは必須です'),
@@ -82,17 +87,21 @@ export const generateVisitScheduleProposalSchema = z
 export const updateVisitScheduleProposalSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('approve'),
+    expected_updated_at: expectedUpdatedAtSchema,
   }),
   z.object({
     action: z.literal('confirm'),
+    expected_updated_at: expectedUpdatedAtSchema,
   }),
   z.object({
     action: z.literal('reject'),
+    expected_updated_at: expectedUpdatedAtSchema,
     reject_reason: z.string().trim().min(1, '却下理由は必須です').max(300).optional(),
   }),
   z
     .object({
       action: z.literal('contact_attempt'),
+      expected_updated_at: expectedUpdatedAtSchema,
       outcome: z.enum(['attempted', 'unreachable', 'declined', 'change_requested', 'confirmed']),
       idempotency_key: idempotencyKeySchema,
       contact_method: z.enum(['phone', 'fax', 'email']).default('phone'),

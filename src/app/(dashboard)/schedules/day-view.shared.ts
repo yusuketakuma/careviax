@@ -153,6 +153,7 @@ export type Proposal = {
   assignment_mode: AssignmentMode;
   route_order: number | null;
   route_distance_score: number | null;
+  updated_at: string;
   medication_end_date: string | null;
   visit_deadline_date: string | null;
   proposal_reason: string;

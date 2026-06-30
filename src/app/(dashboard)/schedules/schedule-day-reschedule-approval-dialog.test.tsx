@@ -76,6 +76,7 @@ function proposal(overrides: Partial<Proposal> = {}): Proposal {
     assignment_mode: 'primary',
     route_order: 1,
     route_distance_score: 1.4,
+    updated_at: '2026-04-09T08:00:00.000Z',
     medication_end_date: '2026-04-12',
     visit_deadline_date: '2026-04-11',
     proposal_reason: '緊急訪問が割り込んだため / 再提案',

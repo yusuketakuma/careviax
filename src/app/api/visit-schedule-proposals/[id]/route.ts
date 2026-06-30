@@ -207,6 +207,22 @@ function isSerializableTransactionConflict(cause: unknown) {
   return cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
 }
 
+function expectedUpdatedAtDate(value: string | undefined) {
+  return value ? new Date(value) : null;
+}
+
+function hasExpectedUpdatedAtMismatch(expected: string | undefined, actual: Date) {
+  const expectedDate = expectedUpdatedAtDate(expected);
+  return expectedDate != null && expectedDate.getTime() !== actual.getTime();
+}
+
+function staleProposalConflict(expected: string | undefined, actual: Date) {
+  return conflict('訪問候補が同時に更新されました。再読み込みしてください', {
+    expected_updated_at: expected ?? null,
+    current_updated_at: actual.toISOString(),
+  });
+}
+
 function appendRoutePreviewNote(note: string | null, next: string) {
   return note ? `${note} / ${next}` : next;
 }
@@ -964,6 +980,8 @@ async function authenticatedPATCH(
   const existing = await findProposalForPatch();
   if (!existing) return notFound('訪問候補が見つかりません');
 
+  const expectedUpdatedAt = parsed.data.expected_updated_at;
+
   const scheduleAssignmentWhere = buildVisitScheduleAssignmentWhere(ctx);
   const buildFinalizedScheduleWhere = (scheduleId: string, caseId = existing.case_id) => ({
     id: scheduleId,
@@ -973,6 +991,9 @@ async function authenticatedPATCH(
   });
 
   if (parsed.data.action === 'approve') {
+    if (hasExpectedUpdatedAtMismatch(expectedUpdatedAt, existing.updated_at)) {
+      return staleProposalConflict(expectedUpdatedAt, existing.updated_at);
+    }
     if (!['proposed', 'reschedule_pending'].includes(existing.proposal_status)) {
       return validationError('この候補は承認できません');
     }
@@ -1033,6 +1054,7 @@ async function authenticatedPATCH(
           org_id: ctx.orgId,
           proposal_status: { in: ['proposed', 'reschedule_pending'] },
           finalized_schedule_id: null,
+          ...(expectedUpdatedAt ? { updated_at: new Date(expectedUpdatedAt) } : {}),
           ...(existing.reschedule_source_schedule_id
             ? {
                 reschedule_source_schedule_id: existing.reschedule_source_schedule_id,
@@ -1088,6 +1110,9 @@ async function authenticatedPATCH(
   }
 
   if (parsed.data.action === 'reject') {
+    if (hasExpectedUpdatedAtMismatch(expectedUpdatedAt, existing.updated_at)) {
+      return staleProposalConflict(expectedUpdatedAt, existing.updated_at);
+    }
     if (
       !['proposed', 'patient_contact_pending', 'reschedule_pending'].includes(
         existing.proposal_status,
@@ -1111,6 +1136,7 @@ async function authenticatedPATCH(
             in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
           },
           finalized_schedule_id: null,
+          ...(expectedUpdatedAt ? { updated_at: new Date(expectedUpdatedAt) } : {}),
         },
         data: {
           proposal_status: 'rejected',
@@ -1198,6 +1224,10 @@ async function authenticatedPATCH(
       return success({ data: omitProposalRejectReason(existing) });
     }
 
+    if (hasExpectedUpdatedAtMismatch(expectedUpdatedAt, existing.updated_at)) {
+      return staleProposalConflict(expectedUpdatedAt, existing.updated_at);
+    }
+
     if (existing.proposal_status !== 'patient_contact_pending') {
       return validationError('この候補には電話結果を記録できません');
     }
@@ -1238,6 +1268,7 @@ async function authenticatedPATCH(
           org_id: ctx.orgId,
           proposal_status: 'patient_contact_pending',
           finalized_schedule_id: null,
+          ...(expectedUpdatedAt ? { updated_at: new Date(expectedUpdatedAt) } : {}),
         },
         data: {
           proposal_status: nextProposalStatus,
@@ -1390,6 +1421,10 @@ async function authenticatedPATCH(
     });
   }
 
+  if (hasExpectedUpdatedAtMismatch(expectedUpdatedAt, existing.updated_at)) {
+    return staleProposalConflict(expectedUpdatedAt, existing.updated_at);
+  }
+
   if (existing.proposal_status !== 'patient_contact_pending') {
     return validationError('この候補は承認後の電話確認を経てから確定してください');
   }
@@ -1460,6 +1495,12 @@ async function authenticatedPATCH(
     ) {
       return {
         error: 'state_changed' as const,
+      };
+    }
+    if (hasExpectedUpdatedAtMismatch(expectedUpdatedAt, currentProposal.updated_at)) {
+      return {
+        error: 'expected_updated_at_mismatch' as const,
+        currentUpdatedAt: currentProposal.updated_at,
       };
     }
 
@@ -1785,6 +1826,7 @@ async function authenticatedPATCH(
         proposal_status: 'patient_contact_pending',
         patient_contact_status: 'confirmed',
         finalized_schedule_id: null,
+        ...(expectedUpdatedAt ? { updated_at: new Date(expectedUpdatedAt) } : {}),
       },
       data: {
         confirmed_at: finalizedAt,
@@ -2139,6 +2181,9 @@ async function authenticatedPATCH(
     }
     if (result.error === 'state_changed') {
       return conflict('この候補はすでに確定または変更されています。再読み込みしてください');
+    }
+    if (result.error === 'expected_updated_at_mismatch') {
+      return staleProposalConflict(expectedUpdatedAt, result.currentUpdatedAt);
     }
     if (result.error === 'time_conflict') {
       return conflict(getVisitScheduleTimeConflictMessage(result.conflictKind));

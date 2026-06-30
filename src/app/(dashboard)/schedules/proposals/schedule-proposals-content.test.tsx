@@ -68,6 +68,8 @@ import { ScheduleProposalsContent } from './schedule-proposals-content';
 
 setupDomTestEnv();
 
+const PROPOSAL_UPDATED_AT = '2026-04-09T08:00:00.000Z';
+
 function buildProposal(overrides?: Record<string, unknown>) {
   return {
     id: 'proposal_1',
@@ -84,6 +86,7 @@ function buildProposal(overrides?: Record<string, unknown>) {
     assignment_mode: 'primary',
     route_order: 1,
     route_distance_score: 1.4,
+    updated_at: PROPOSAL_UPDATED_AT,
     medication_end_date: null,
     visit_deadline_date: '2026-04-11',
     proposal_reason: '移動良好',
@@ -941,7 +944,10 @@ describe('ScheduleProposalsContent', () => {
       '/api/visit-schedule-proposals/proposal_1',
       expect.objectContaining({
         method: 'PATCH',
-        body: JSON.stringify({ action: 'approve' }),
+        body: JSON.stringify({
+          action: 'approve',
+          expected_updated_at: PROPOSAL_UPDATED_AT,
+        }),
       }),
     );
     await waitFor(() => {
@@ -1010,7 +1016,10 @@ describe('ScheduleProposalsContent', () => {
       '/api/visit-schedule-proposals/proposal_2',
       expect.objectContaining({
         method: 'PATCH',
-        body: JSON.stringify({ action: 'confirm' }),
+        body: JSON.stringify({
+          action: 'confirm',
+          expected_updated_at: PROPOSAL_UPDATED_AT,
+        }),
       }),
     );
     await waitFor(() => {
@@ -1090,7 +1099,10 @@ describe('ScheduleProposalsContent', () => {
       '/api/visit-schedule-proposals/proposal_2',
       expect.objectContaining({
         method: 'PATCH',
-        body: JSON.stringify({ action: 'confirm' }),
+        body: JSON.stringify({
+          action: 'confirm',
+          expected_updated_at: PROPOSAL_UPDATED_AT,
+        }),
       }),
     );
   });
@@ -1251,13 +1263,19 @@ describe('ScheduleProposalsContent', () => {
       actionLabel: '承認して患者連絡へ進める',
       dialogName: (target: string) => `${target} を承認して患者連絡へ進めますか`,
       finalLabel: '承認して患者連絡へ進める',
-      expectedPayload: { action: 'approve' },
+      expectedPayload: {
+        action: 'approve',
+        expected_updated_at: PROPOSAL_UPDATED_AT,
+      },
     },
     {
       actionLabel: '日時確定する',
       dialogName: (target: string) => `${target} を日時確定しますか`,
       finalLabel: '日時確定する',
-      expectedPayload: { action: 'confirm' },
+      expectedPayload: {
+        action: 'confirm',
+        expected_updated_at: PROPOSAL_UPDATED_AT,
+      },
       proposalStatus: 'patient_contact_pending',
       patientContactStatus: 'confirmed',
       initialStatus: 'patient_contact_pending',
@@ -1463,7 +1481,10 @@ describe('ScheduleProposalsContent', () => {
       '/api/visit-schedule-proposals/proposal_1',
       expect.objectContaining({
         method: 'PATCH',
-        body: JSON.stringify({ action: 'approve' }),
+        body: JSON.stringify({
+          action: 'approve',
+          expected_updated_at: PROPOSAL_UPDATED_AT,
+        }),
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -1471,7 +1492,10 @@ describe('ScheduleProposalsContent', () => {
       '/api/visit-schedule-proposals/proposal_2',
       expect.objectContaining({
         method: 'PATCH',
-        body: JSON.stringify({ action: 'approve' }),
+        body: JSON.stringify({
+          action: 'approve',
+          expected_updated_at: PROPOSAL_UPDATED_AT,
+        }),
       }),
     );
   });
@@ -1830,6 +1854,7 @@ describe('ScheduleProposalsContent', () => {
         body: JSON.stringify({
           action: 'reject',
           reject_reason: '患者都合で訪問候補を見直し',
+          expected_updated_at: PROPOSAL_UPDATED_AT,
         }),
       }),
     );
@@ -1841,6 +1866,7 @@ describe('ScheduleProposalsContent', () => {
         body: JSON.stringify({
           action: 'reject',
           reject_reason: '患者都合で訪問候補を見直し',
+          expected_updated_at: PROPOSAL_UPDATED_AT,
         }),
       }),
     );
@@ -2233,6 +2259,7 @@ describe('ScheduleProposalsContent', () => {
     expect(requestBody).toMatchObject({
       action: 'contact_attempt',
       outcome: 'attempted',
+      expected_updated_at: PROPOSAL_UPDATED_AT,
       contact_method: 'phone',
       contact_name: '本人',
       contact_phone: '080-1111-2222',
