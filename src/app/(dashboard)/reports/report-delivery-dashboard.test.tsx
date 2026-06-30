@@ -117,6 +117,7 @@ function primeDashboard(overrides: { patientId?: string; reportId?: string } = {
 describe('ReportDeliveryDashboard', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it('keeps analytics as a secondary section instead of a primary page-level link', () => {
@@ -211,6 +212,7 @@ describe('ReportDeliveryDashboard', () => {
     expect(screen.getByText('8日経過')).toBeTruthy();
     expect(screen.getByLabelText('未確認報告の超過日数')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'リマインドタスク起票' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '患者Aの未確認報告を3日後に再通知' })).toBeTruthy();
 
     // action-first: 行動対象(未確認報告書一覧)は参照系の集計テーブルより DOM 順で前に置く。
     const overdueListTitle = screen.getByText('未確認報告書一覧');
@@ -333,6 +335,71 @@ describe('ReportDeliveryDashboard', () => {
     expect(init.headers).toBe(sentinelHeaders);
     expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
     expect(init.body).toBe(JSON.stringify({ overdue_days: 7 }));
+  });
+
+  it('passes a targeted snooze payload when an overdue row is deferred', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-10T00:00:00.000Z'));
+    const mutate = vi.fn();
+    primeDashboard();
+    useMutationMock.mockReturnValue({
+      mutate,
+      isPending: false,
+    });
+
+    render(<ReportDeliveryDashboard />);
+
+    fireEvent.click(screen.getByRole('button', { name: '患者Aの未確認報告を3日後に再通知' }));
+
+    expect(mutate).toHaveBeenCalledWith({
+      deliveryIds: ['delivery_1'],
+      snoozeUntil: '2026-04-13T00:00:00.000Z',
+    });
+  });
+
+  it('sends selected delivery snooze requests without broad reminder queueing', async () => {
+    const sentinelHeaders = {
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+      'x-test-helper': 'buildOrgJsonHeaders',
+    };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinelHeaders);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ data: { queued_count: 1 } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    primeDashboard();
+
+    render(<ReportDeliveryDashboard />);
+
+    const mutationOptions = useMutationMock.mock.calls[0]?.[0] as {
+      mutationFn: (input?: { deliveryIds?: string[]; snoozeUntil?: string }) => Promise<{
+        data: { queued_count: number };
+      }>;
+    };
+
+    await expect(
+      mutationOptions.mutationFn({
+        deliveryIds: ['delivery_1'],
+        snoozeUntil: '2026-04-13T00:00:00.000Z',
+      }),
+    ).resolves.toEqual({ data: { queued_count: 1 } });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/care-reports/reminders');
+    expect(init.method).toBe('POST');
+    expect(init.headers).toBe(sentinelHeaders);
+    expect(init.body).toBe(
+      JSON.stringify({
+        overdue_days: 7,
+        delivery_ids: ['delivery_1'],
+        snooze_until: '2026-04-13T00:00:00.000Z',
+      }),
+    );
   });
 
   describe('shared href helper convergence (F-044)', () => {

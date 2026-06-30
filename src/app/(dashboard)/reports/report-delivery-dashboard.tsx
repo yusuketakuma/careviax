@@ -75,6 +75,22 @@ type DeliveryAnalyticsResponse = {
 
 const REPORT_DELIVERY_REMINDER_DISABLED_REASON_ID = 'report-delivery-reminder-disabled-reason';
 const REPORT_DELIVERY_REMINDER_DISABLED_REASON = '送達分析を読み込んでいます。';
+const REPORT_REMINDER_SNOOZE_DAYS = 3;
+
+type ReminderMutationInput = {
+  deliveryIds?: string[];
+  snoozeUntil?: string;
+};
+
+type ReminderMutationResponse = {
+  data: {
+    queued_count: number;
+  };
+};
+
+function buildReminderSnoozeUntilIso(now = new Date()) {
+  return new Date(now.getTime() + REPORT_REMINDER_SNOOZE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+}
 
 export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?: boolean }) {
   const orgId = useOrgId();
@@ -102,11 +118,15 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
   });
 
   const reminderMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (input: ReminderMutationInput = {}) => {
       const response = await fetch('/api/care-reports/reminders', {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
-        body: JSON.stringify({ overdue_days: normalizedOverdueDays }),
+        body: JSON.stringify({
+          overdue_days: normalizedOverdueDays,
+          ...(input.deliveryIds?.length ? { delivery_ids: input.deliveryIds } : {}),
+          ...(input.snoozeUntil ? { snooze_until: input.snoozeUntil } : {}),
+        }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -114,10 +134,14 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
           (payload as { message?: string }).message ?? 'リマインド起票に失敗しました',
         );
       }
-      return payload as { data: { queued_count: number } };
+      return payload as ReminderMutationResponse;
     },
-    onSuccess: async (payload) => {
-      toast.success(`リマインドタスクを ${payload.data.queued_count} 件起票しました`);
+    onSuccess: async (payload, variables) => {
+      toast.success(
+        variables?.snoozeUntil
+          ? `未確認報告の再通知を${REPORT_REMINDER_SNOOZE_DAYS}日後に延期しました`
+          : `リマインドタスクを ${payload.data.queued_count} 件起票しました`,
+      );
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ['care-report-analytics', orgId, normalizedOverdueDays],
@@ -125,6 +149,9 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
         queryClient.invalidateQueries({
           queryKey: ['care-reports', orgId],
           exact: false,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['tasks', orgId],
         }),
       ]);
     },
@@ -231,7 +258,7 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
                   </div>
                   <Button
                     type="button"
-                    onClick={() => reminderMutation.mutate()}
+                    onClick={() => reminderMutation.mutate({})}
                     aria-describedby={
                       reminderDisabledReason
                         ? REPORT_DELIVERY_REMINDER_DISABLED_REASON_ID
@@ -319,6 +346,20 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
                         >
                           報告書を開く
                         </Link>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() =>
+                            reminderMutation.mutate({
+                              deliveryIds: [item.id],
+                              snoozeUntil: buildReminderSnoozeUntilIso(),
+                            })
+                          }
+                          disabled={reminderMutation.isPending}
+                          aria-label={`${item.patient_name}の未確認報告を${REPORT_REMINDER_SNOOZE_DAYS}日後に再通知`}
+                        >
+                          {REPORT_REMINDER_SNOOZE_DAYS}日後に再通知
+                        </Button>
                       </div>
                     </div>
                   ))}
