@@ -2,6 +2,7 @@ import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import {
@@ -13,6 +14,7 @@ import {
   internalError,
 } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { formatDateKey } from '@/lib/date-key';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import {
   buildVisitScheduleAssignmentWhere,
@@ -41,7 +43,13 @@ const authenticatedDELETE = withAuthContext(
     const result = await withOrgContext(ctx.orgId, async (tx) => {
       const batch = await tx.facilityVisitBatch.findFirst({
         where: { id, org_id: ctx.orgId },
-        select: { id: true, pharmacist_id: true },
+        select: {
+          id: true,
+          facility_id: true,
+          facility_unit_id: true,
+          scheduled_date: true,
+          pharmacist_id: true,
+        },
       });
       if (!batch) return { error: 'not_found' as const };
 
@@ -59,12 +67,33 @@ const authenticatedDELETE = withAuthContext(
         }
       }
 
+      const batchSchedules = await tx.visitSchedule.findMany({
+        where: { org_id: ctx.orgId, facility_batch_id: id },
+        select: { id: true, case_id: true, route_order: true },
+      });
+
       await tx.visitSchedule.updateMany({
         where: { org_id: ctx.orgId, facility_batch_id: id },
         data: { facility_batch_id: null, route_order: null },
       });
 
       await tx.facilityVisitBatch.delete({ where: { id } });
+
+      await createAuditLogEntry(tx, ctx, {
+        action: 'facility_visit_batch_deleted',
+        targetType: 'FacilityVisitBatch',
+        targetId: id,
+        changes: {
+          facility_unit_id: batch.facility_unit_id,
+          scheduled_date: formatDateKey(batch.scheduled_date),
+          pharmacist_id: batch.pharmacist_id,
+          detached_schedules: batchSchedules.map((schedule) => ({
+            schedule_id: schedule.id,
+            case_id: schedule.case_id,
+            previous_route_order: schedule.route_order ?? null,
+          })),
+        },
+      });
 
       return { deleted: true };
     });
@@ -126,7 +155,7 @@ const authenticatedPATCH = withAuthContext(
 
       const schedules = await tx.visitSchedule.findMany({
         where: { org_id: ctx.orgId, facility_batch_id: id },
-        select: { id: true },
+        select: { id: true, case_id: true, route_order: true },
       });
       if (!canBypassVisitScheduleAssignmentAccess(ctx)) {
         const accessibleSchedules = await tx.visitSchedule.count({
@@ -164,6 +193,24 @@ const authenticatedPATCH = withAuthContext(
       if (updateResults.some((updateResult) => updateResult.count !== 1)) {
         return { error: 'stale_schedule' as const };
       }
+
+      const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
+      await createAuditLogEntry(tx, ctx, {
+        action: 'facility_visit_batch_reordered',
+        targetType: 'FacilityVisitBatch',
+        targetId: id,
+        changes: {
+          schedules: orderedIds.map((scheduleId, index) => {
+            const schedule = scheduleById.get(scheduleId);
+            return {
+              schedule_id: scheduleId,
+              case_id: schedule?.case_id ?? null,
+              previous_route_order: schedule?.route_order ?? null,
+              route_order: index + 1,
+            };
+          }),
+        },
+      });
 
       return { updated: true, order: orderedIds };
     });

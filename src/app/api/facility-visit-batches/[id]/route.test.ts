@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 type RouteContext = { params: Promise<{ id: string }> };
-type TestAuthContext = { orgId: string; userId: string; role: 'pharmacist' };
+type TestRole = 'pharmacist' | 'driver';
+type TestAuthContext = { orgId: string; userId: string; role: TestRole };
 type WithAuthOptions = { permission?: string; message?: string };
 type WrappedRouteHandler = ((req: NextRequest, routeContext: RouteContext) => Promise<Response>) & {
   authOptions?: WithAuthOptions;
@@ -10,6 +11,7 @@ type WrappedRouteHandler = ((req: NextRequest, routeContext: RouteContext) => Pr
 
 const {
   authState,
+  createAuditLogEntryMock,
   facilityVisitBatchDeleteMock,
   facilityVisitBatchFindFirstMock,
   notifyWorkflowMutationMock,
@@ -21,7 +23,8 @@ const {
   withAuthContextMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
-  authState: { allow: true },
+  authState: { allow: true, role: 'pharmacist' as TestRole },
+  createAuditLogEntryMock: vi.fn(),
   facilityVisitBatchDeleteMock: vi.fn(),
   facilityVisitBatchFindFirstMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
@@ -54,7 +57,11 @@ const {
           );
         }
 
-        return handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, routeContext);
+        return handler(
+          req,
+          { orgId: 'org_1', userId: 'user_1', role: authState.role },
+          routeContext,
+        );
       }) as WrappedRouteHandler;
       wrappedHandler.authOptions = options;
       return wrappedHandler;
@@ -69,6 +76,10 @@ vi.mock('@/lib/auth/context', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
 }));
 
 vi.mock('@/server/services/workflow-dashboard-cache', () => ({
@@ -109,6 +120,7 @@ function expectNoMutationSideEffects() {
   expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
   expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
   expect(facilityVisitBatchDeleteMock).not.toHaveBeenCalled();
+  expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
 }
 
@@ -121,10 +133,21 @@ describe('/api/facility-visit-batches/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authState.allow = true;
-    facilityVisitBatchFindFirstMock.mockResolvedValue({ id: 'batch_1', pharmacist_id: 'user_1' });
+    authState.role = 'pharmacist';
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
+    facilityVisitBatchFindFirstMock.mockResolvedValue({
+      id: 'batch_1',
+      facility_id: 'facility_a',
+      facility_unit_id: 'unit_1',
+      scheduled_date: new Date('2026-03-28T00:00:00Z'),
+      pharmacist_id: 'user_1',
+    });
     facilityVisitBatchDeleteMock.mockResolvedValue({ id: 'batch_1' });
     notifyWorkflowMutationMock.mockResolvedValue(undefined);
-    visitScheduleFindManyMock.mockResolvedValue([{ id: 'schedule_1' }, { id: 'schedule_2' }]);
+    visitScheduleFindManyMock.mockResolvedValue([
+      { id: 'schedule_1', case_id: 'case_1', route_order: 1 },
+      { id: 'schedule_2', case_id: 'case_2', route_order: 2 },
+    ]);
     visitScheduleCountMock.mockResolvedValue(2);
     visitScheduleUpdateManyMock.mockResolvedValue({ count: 2 });
     visitScheduleUpdateMock.mockResolvedValue({});
@@ -204,7 +227,13 @@ describe('/api/facility-visit-batches/[id]', () => {
       expectSensitiveNoStore(response);
       expect(facilityVisitBatchFindFirstMock).toHaveBeenCalledWith({
         where: { id: 'batch_1', org_id: 'org_1' },
-        select: { id: true, pharmacist_id: true },
+        select: {
+          id: true,
+          facility_id: true,
+          facility_unit_id: true,
+          scheduled_date: true,
+          pharmacist_id: true,
+        },
       });
       expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
         where: { org_id: 'org_1', facility_batch_id: 'batch_1' },
@@ -228,7 +257,13 @@ describe('/api/facility-visit-batches/[id]', () => {
       expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
       expect(facilityVisitBatchFindFirstMock).toHaveBeenCalledWith({
         where: { id: 'batch_missing', org_id: 'org_1' },
-        select: { id: true, pharmacist_id: true },
+        select: {
+          id: true,
+          facility_id: true,
+          facility_unit_id: true,
+          scheduled_date: true,
+          pharmacist_id: true,
+        },
       });
       expectNoMutationSideEffects();
     });
@@ -241,7 +276,13 @@ describe('/api/facility-visit-batches/[id]', () => {
       expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
       expect(facilityVisitBatchFindFirstMock).toHaveBeenCalledWith({
         where: { id: 'batch_1', org_id: 'org_1' },
-        select: { id: true, pharmacist_id: true },
+        select: {
+          id: true,
+          facility_id: true,
+          facility_unit_id: true,
+          scheduled_date: true,
+          pharmacist_id: true,
+        },
       });
       expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
         where: { org_id: 'org_1', facility_batch_id: 'batch_1' },
@@ -250,15 +291,102 @@ describe('/api/facility-visit-batches/[id]', () => {
       expect(facilityVisitBatchDeleteMock).toHaveBeenCalledWith({
         where: { id: 'batch_1' },
       });
+      expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+        {
+          action: 'facility_visit_batch_deleted',
+          targetType: 'FacilityVisitBatch',
+          targetId: 'batch_1',
+          changes: {
+            facility_unit_id: 'unit_1',
+            scheduled_date: '2026-03-28',
+            pharmacist_id: 'user_1',
+            detached_schedules: [
+              {
+                schedule_id: 'schedule_1',
+                case_id: 'case_1',
+                previous_route_order: 1,
+              },
+              {
+                schedule_id: 'schedule_2',
+                case_id: 'case_2',
+                previous_route_order: 2,
+              },
+            ],
+          },
+        },
+      );
       expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
         orgId: 'org_1',
         payload: { source: 'facility_visit_batch_delete' },
       });
     });
 
+    it('does not copy potentially PHI-like stored facility labels into delete audit changes', async () => {
+      facilityVisitBatchFindFirstMock.mockResolvedValue({
+        id: 'batch_1',
+        facility_id: '東京都港区9-9-9 山田家',
+        facility_unit_id: null,
+        scheduled_date: new Date('2026-03-28T00:00:00Z'),
+        pharmacist_id: 'user_1',
+      });
+
+      const response = await DELETE(createRequest(), routeContext('batch_1'));
+
+      expect(response.status).toBe(200);
+      const auditPayload = createAuditLogEntryMock.mock.calls[0]?.[2];
+      expect(auditPayload).toEqual(
+        expect.objectContaining({
+          action: 'facility_visit_batch_deleted',
+          changes: expect.not.objectContaining({
+            facility_id: expect.anything(),
+          }),
+        }),
+      );
+      expect(JSON.stringify(auditPayload)).not.toContain('東京都港区9-9-9');
+      expect(JSON.stringify(auditPayload)).not.toContain('山田家');
+    });
+
+    it('checks non-bypass child schedule access before reading audit details', async () => {
+      authState.role = 'driver';
+      visitScheduleCountMock.mockResolvedValueOnce(2).mockResolvedValueOnce(1);
+
+      const response = await DELETE(createRequest(), routeContext('batch_1'));
+
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'AUTH_FORBIDDEN',
+        message: '施設一括訪問バッチへのアクセス権限がありません',
+      });
+      expect(visitScheduleCountMock).toHaveBeenNthCalledWith(1, {
+        where: { org_id: 'org_1', facility_batch_id: 'batch_1' },
+      });
+      expect(visitScheduleCountMock).toHaveBeenNthCalledWith(2, {
+        where: {
+          org_id: 'org_1',
+          facility_batch_id: 'batch_1',
+          AND: [
+            {
+              OR: [
+                { pharmacist_id: 'user_1' },
+                { case_: { primary_pharmacist_id: 'user_1' } },
+                { case_: { backup_pharmacist_id: 'user_1' } },
+              ],
+            },
+          ],
+        },
+      });
+      expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+      expectNoMutationSideEffects();
+    });
+
     it('allows org-wide roles to delete batches owned by another pharmacist without access counts', async () => {
       facilityVisitBatchFindFirstMock.mockResolvedValue({
         id: 'batch_1',
+        facility_id: 'facility_a',
+        facility_unit_id: 'unit_1',
+        scheduled_date: new Date('2026-03-28T00:00:00Z'),
         pharmacist_id: 'other_user',
       });
 
@@ -284,6 +412,9 @@ describe('/api/facility-visit-batches/[id]', () => {
     it('does not run child-schedule access counts for org-wide roles on owned batches', async () => {
       facilityVisitBatchFindFirstMock.mockResolvedValue({
         id: 'batch_1',
+        facility_id: 'facility_a',
+        facility_unit_id: 'unit_1',
+        scheduled_date: new Date('2026-03-28T00:00:00Z'),
         pharmacist_id: 'user_1',
       });
 
@@ -442,7 +573,7 @@ describe('/api/facility-visit-batches/[id]', () => {
       });
       expect(visitScheduleFindManyMock).toHaveBeenCalledWith({
         where: { org_id: 'org_1', facility_batch_id: 'batch_1' },
-        select: { id: true },
+        select: { id: true, case_id: true, route_order: true },
       });
       expectNoMutationSideEffects();
     });
@@ -460,7 +591,7 @@ describe('/api/facility-visit-batches/[id]', () => {
       });
       expect(visitScheduleFindManyMock).toHaveBeenCalledWith({
         where: { org_id: 'org_1', facility_batch_id: 'batch_1' },
-        select: { id: true },
+        select: { id: true, case_id: true, route_order: true },
       });
       expectNoMutationSideEffects();
     });
@@ -547,7 +678,7 @@ describe('/api/facility-visit-batches/[id]', () => {
       });
       expect(visitScheduleFindManyMock).toHaveBeenCalledWith({
         where: { org_id: 'org_1', facility_batch_id: 'batch_1' },
-        select: { id: true },
+        select: { id: true, case_id: true, route_order: true },
       });
       expect(visitScheduleUpdateManyMock).toHaveBeenCalledTimes(2);
       expect(visitScheduleUpdateManyMock).toHaveBeenNthCalledWith(1, {
@@ -567,6 +698,31 @@ describe('/api/facility-visit-batches/[id]', () => {
         data: { route_order: 2, version: { increment: 1 } },
       });
       expect(facilityVisitBatchDeleteMock).not.toHaveBeenCalled();
+      expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+        {
+          action: 'facility_visit_batch_reordered',
+          targetType: 'FacilityVisitBatch',
+          targetId: 'batch_1',
+          changes: {
+            schedules: [
+              {
+                schedule_id: 'schedule_2',
+                case_id: 'case_2',
+                previous_route_order: 2,
+                route_order: 1,
+              },
+              {
+                schedule_id: 'schedule_1',
+                case_id: 'case_1',
+                previous_route_order: 1,
+                route_order: 2,
+              },
+            ],
+          },
+        },
+      );
       expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
         orgId: 'org_1',
         payload: { source: 'facility_visit_batch_reorder' },

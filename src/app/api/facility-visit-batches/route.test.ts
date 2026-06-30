@@ -19,10 +19,13 @@ const { withAuthContextMock, withOrgContextMock } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
 }));
 
-const { visitScheduleCountMock, notifyWorkflowMutationMock } = vi.hoisted(() => ({
-  visitScheduleCountMock: vi.fn(),
-  notifyWorkflowMutationMock: vi.fn(),
-}));
+const { createAuditLogEntryMock, visitScheduleCountMock, notifyWorkflowMutationMock } = vi.hoisted(
+  () => ({
+    createAuditLogEntryMock: vi.fn(),
+    visitScheduleCountMock: vi.fn(),
+    notifyWorkflowMutationMock: vi.fn(),
+  }),
+);
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: withAuthContextMock,
@@ -30,6 +33,10 @@ vi.mock('@/lib/auth/context', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
 }));
 
 vi.mock('@/server/services/workflow-dashboard-cache', () => ({
@@ -67,6 +74,7 @@ function expectSensitiveNoStore(response: Response) {
 describe('/api/facility-visit-batches POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     visitScheduleCountMock.mockResolvedValue(2);
     notifyWorkflowMutationMock.mockResolvedValue(undefined);
   });
@@ -357,7 +365,167 @@ describe('/api/facility-visit-batches POST', () => {
       },
     });
     expect(preparationUpsertMock).toHaveBeenCalledTimes(2);
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      {
+        action: 'facility_visit_batch_created',
+        targetType: 'FacilityVisitBatch',
+        targetId: 'batch_1',
+        changes: {
+          facility_id: 'facility_a',
+          facility_group_kind: 'facility',
+          facility_unit_id: null,
+          scheduled_date: '2026-03-28',
+          pharmacist_id: 'ph_1',
+          packet_memo_updated: false,
+          carry_items_confirmed: true,
+          schedules: [
+            {
+              schedule_id: 'schedule_2',
+              case_id: 'case_2',
+              previous_facility_batch_id: null,
+              previous_route_order: null,
+              route_order: 1,
+            },
+            {
+              schedule_id: 'schedule_1',
+              case_id: 'case_1',
+              previous_facility_batch_id: null,
+              previous_route_order: null,
+              route_order: 2,
+            },
+          ],
+        },
+      },
+    );
   });
+
+  it.each([
+    {
+      caseName: 'address fallback',
+      buildingId: null,
+      address: '東京都港区9-9-9',
+      expectedKind: 'address',
+      forbiddenText: ['東京都港区9-9-9', '山田 太郎', '山田 花子', '秘密の申し送り'],
+    },
+    {
+      caseName: 'home-group label',
+      buildingId: '山田家',
+      address: '東京都港区9-9-9',
+      expectedKind: 'home_group',
+      forbiddenText: ['山田家', '東京都港区9-9-9', '山田 太郎', '山田 花子', '秘密の申し送り'],
+    },
+  ])(
+    'does not persist PHI-like %s text in facility batch audit changes',
+    async ({ buildingId, address, expectedKind, forbiddenText }) => {
+      const batchCreateMock = vi.fn().mockResolvedValue({ id: 'batch_phi_safe', notes: null });
+      const scheduleUpdateMock = vi.fn().mockResolvedValue({ count: 1 });
+
+      withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+        callback({
+          visitSchedule: {
+            findFirst: vi.fn().mockResolvedValue(null),
+            findMany: vi.fn().mockResolvedValue([
+              {
+                id: 'schedule_1',
+                site_id: 'site_1',
+                pharmacist_id: 'ph_1',
+                scheduled_date: new Date('2026-03-28T00:00:00Z'),
+                facility_batch_id: null,
+                route_order: null,
+                version: 1,
+                case_id: 'case_1',
+                carry_items_status: 'ready',
+                preparation: null,
+                case_: {
+                  patient: {
+                    id: 'patient_1',
+                    name: '山田 太郎',
+                    residences: [
+                      {
+                        facility_id: null,
+                        facility_unit_id: null,
+                        building_id: buildingId,
+                        address,
+                        unit_name: '101',
+                      },
+                    ],
+                  },
+                },
+              },
+              {
+                id: 'schedule_2',
+                site_id: 'site_1',
+                pharmacist_id: 'ph_1',
+                scheduled_date: new Date('2026-03-28T00:00:00Z'),
+                facility_batch_id: null,
+                route_order: null,
+                version: 1,
+                case_id: 'case_2',
+                carry_items_status: 'ready',
+                preparation: null,
+                case_: {
+                  patient: {
+                    id: 'patient_2',
+                    name: '山田 花子',
+                    residences: [
+                      {
+                        facility_id: null,
+                        facility_unit_id: null,
+                        building_id: buildingId,
+                        address,
+                        unit_name: '102',
+                      },
+                    ],
+                  },
+                },
+              },
+            ]),
+            count: visitScheduleCountMock,
+            updateMany: scheduleUpdateMock,
+          },
+          visitScheduleProposal: {
+            findFirst: vi.fn().mockResolvedValue(null),
+          },
+          facilityVisitBatch: {
+            create: batchCreateMock,
+            update: vi.fn(),
+          },
+          visitPreparation: {
+            upsert: vi.fn(),
+          },
+        }),
+      );
+
+      const response = await POST(
+        createRequest({
+          schedule_ids: ['schedule_1', 'schedule_2'],
+          packet_memo: { handoff: '秘密の申し送り' },
+        }),
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(201);
+      const auditPayloads = createAuditLogEntryMock.mock.calls.map((call) => call[2]);
+      const batchAuditPayload = auditPayloads.find(
+        (payload) => payload.action === 'facility_visit_batch_created',
+      );
+      expect(batchAuditPayload).toEqual(
+        expect.objectContaining({
+          changes: expect.objectContaining({
+            facility_id: null,
+            facility_group_kind: expectedKind,
+            packet_memo_updated: true,
+          }),
+        }),
+      );
+      const serializedAuditPayloads = JSON.stringify(auditPayloads);
+      for (const text of forbiddenText) {
+        expect(serializedAuditPayloads).not.toContain(text);
+      }
+    },
+  );
 
   it('returns a sanitized no-store 500 when facility batch transaction fails unexpectedly', async () => {
     withOrgContextMock.mockRejectedValueOnce(

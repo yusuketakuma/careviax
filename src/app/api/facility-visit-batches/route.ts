@@ -1,7 +1,7 @@
 import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
-import { deriveFacilityLabel } from '@/lib/utils/facility';
+import { deriveFacilityLabel, deriveVisitPlaceGroup } from '@/lib/utils/facility';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -70,6 +70,38 @@ function buildFacilityLabel(schedule: {
 }) {
   const residence = schedule.case_.patient.residences[0] ?? null;
   return deriveFacilityLabel(residence);
+}
+
+function buildFacilityAuditMetadata(
+  schedules: Array<{
+    case_: {
+      patient: {
+        residences: Array<{
+          facility_id: string | null;
+          building_id: string | null;
+          address: string;
+          unit_name: string | null;
+        }>;
+      };
+    };
+  }>,
+) {
+  const facilityIds = new Set(
+    schedules
+      .map((schedule) => schedule.case_.patient.residences[0]?.facility_id?.trim() ?? null)
+      .filter((value): value is string => value != null && value.length > 0),
+  );
+  const groupKinds = new Set(
+    schedules.map(
+      (schedule) =>
+        deriveVisitPlaceGroup(schedule.case_.patient.residences[0] ?? null)?.kind ?? 'unknown',
+    ),
+  );
+
+  return {
+    facility_id: facilityIds.size === 1 ? Array.from(facilityIds)[0] : null,
+    facility_group_kind: groupKinds.size === 1 ? Array.from(groupKinds)[0] : 'mixed',
+  };
 }
 
 function compareUnitName(
@@ -159,6 +191,7 @@ const authenticatedPOST = withAuthContext(
             pharmacist_id: true,
             scheduled_date: true,
             facility_batch_id: true,
+            route_order: true,
             version: true,
             case_id: true,
             carry_items_status: true,
@@ -439,6 +472,30 @@ const authenticatedPOST = withAuthContext(
           }),
         );
       }
+
+      await createAuditLogEntry(tx, ctx, {
+        action:
+          existingBatchIds.length === 1
+            ? 'facility_visit_batch_updated'
+            : 'facility_visit_batch_created',
+        targetType: 'FacilityVisitBatch',
+        targetId: batch.id,
+        changes: {
+          ...buildFacilityAuditMetadata(orderedSchedules),
+          facility_unit_id: facilityUnitId,
+          scheduled_date: formatDateKey(schedules[0].scheduled_date),
+          pharmacist_id: schedules[0].pharmacist_id,
+          packet_memo_updated: packetNotes !== undefined,
+          carry_items_confirmed: Boolean(parsed.data.carry_items_confirmed),
+          schedules: orderedSchedules.map((schedule, index) => ({
+            schedule_id: schedule.id,
+            case_id: schedule.case_id,
+            previous_facility_batch_id: schedule.facility_batch_id,
+            previous_route_order: schedule.route_order ?? null,
+            route_order: index + 1,
+          })),
+        },
+      });
 
       return {
         batch_id: batch.id,
