@@ -13,6 +13,7 @@ import {
 } from '@/lib/inquiries/presentation';
 import { listCommunicationQueue } from '@/server/services/communication-queue';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { formatCommunicationRequestTypeLabel } from '@/lib/communications/request-labels';
 import { describeOperationalTask } from '@/lib/tasks/operational-task-presentation';
 import { generateVisitBriefAiSummary } from '@/server/services/visit-brief-ai';
@@ -98,6 +99,7 @@ type VisitBriefDataReader = BillingEvidenceBlockersReader & {
   }>;
   jahisSupplementalRecord?: FindManyDelegate<JahisSupplementalRecordForBrief>;
   inquiryRecord: FindManyDelegate<{
+    id: string;
     reason: string;
     inquiry_content: string;
     proposal_origin?: 'post_inquiry' | 'pre_issuance' | null;
@@ -106,6 +108,7 @@ type VisitBriefDataReader = BillingEvidenceBlockersReader & {
   }>;
   medicationCycle: FindManyDelegate<{ id: string }>;
   medicationIssue: FindManyDelegate<{
+    id: string;
     title: string;
     description: string;
     priority: string;
@@ -799,6 +802,7 @@ function buildCommunicationItems(args: {
 }
 
 function buildUnresolvedItems(args: {
+  patientId: string;
   tasks: Array<{
     task_type: string;
     title: string;
@@ -808,12 +812,14 @@ function buildUnresolvedItems(args: {
     related_entity_id: string | null;
   }>;
   medicationIssues: Array<{
+    id: string;
     title: string;
     description: string;
     priority: string;
     category: string | null;
   }>;
   inquiries: Array<{
+    id: string;
     reason: string;
     inquiry_content: string;
     proposal_origin?: 'post_inquiry' | 'pre_issuance' | null;
@@ -843,7 +849,7 @@ function buildUnresolvedItems(args: {
       title: item.title,
       summary: `${item.description}${item.category ? ` / ${item.category}` : ''}`,
       severity: severityFromPriority(item.priority),
-      href: '/patients',
+      href: buildPatientHref(args.patientId, '/safety-check'),
     })),
     ...args.inquiries.map((item) => ({
       source_type: 'inquiry' as const,
@@ -860,7 +866,11 @@ function buildUnresolvedItems(args: {
           }),
         ]).join(' / ') || item.inquiry_content,
       severity: 'high' as const,
-      href: '/workflow',
+      href: buildCommunicationRequestsHref({
+        patientId: args.patientId,
+        relatedEntityType: 'inquiry_record',
+        relatedEntityId: item.id,
+      }),
     })),
     ...args.blockedBillingEvidence.map((item) => ({
       source_type: 'billing' as const,
@@ -1395,6 +1405,7 @@ export async function getPatientVisitBrief(
       orderBy: [{ priority: 'desc' }, { identified_at: 'desc' }],
       take: 3,
       select: {
+        id: true,
         title: true,
         description: true,
         priority: true,
@@ -1413,6 +1424,7 @@ export async function getPatientVisitBrief(
       orderBy: [{ inquired_at: 'desc' }],
       take: 2,
       select: {
+        id: true,
         reason: true,
         inquiry_content: true,
         proposal_origin: true,
@@ -1647,6 +1659,7 @@ export async function getPatientVisitBrief(
       | 'pre_issuance',
   }));
   const unresolvedItems = buildUnresolvedItems({
+    patientId: args.patientId,
     tasks,
     medicationIssues,
     inquiries: unresolvedInquiries,

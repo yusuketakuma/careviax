@@ -80,6 +80,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Continue scanning visit-time/report/collaboration surfaces for generic action links or missing relation filters.
   - Preserve unrelated dirty `src/app/api/admin/external-professionals/route.ts`.
 
+### Visit Brief Unresolved Collaboration Links - 2026-06-30 18:55 JST
+
+- Scope:
+  - Continued visit-time brief navigation cleanup for unresolved medication issues and inquiry records.
+  - No UI layout, schema migration, live DB operation, auth/RLS change, external send, push/deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Unresolved medication issue rows now link to the exact patient's safety-check surface via `buildPatientHref(patientId, '/safety-check')` instead of generic `/patients`.
+  - Unresolved inquiry rows now select `InquiryRecord.id` and link to `/communications/requests` filtered by `patient_id`, `related_entity_type=inquiry_record`, and encoded `related_entity_id`.
+  - Regression coverage asserts patient safety-check routing and hostile inquiry-id encoding.
+- Safety:
+  - Reduces wrong-patient / wrong-workspace navigation risk during visit-time issue triage and multidisciplinary inquiry follow-up.
+  - Uses shared guarded navigation helpers instead of local path or query-string construction.
+- Performance:
+  - Adds one scalar `id` to existing bounded medication issue (`take: 3`) and inquiry (`take: 2`) selections.
+  - No new query, dependency, network call, background job, payload expansion, render loop, or broad scan was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/visit-brief.test.ts src/lib/communications/navigation.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `33` tests.
+  - Scoped ESLint on visit-brief and communication navigation files: passed.
+  - Scoped Prettier check on visit-brief and communication navigation files: passed.
+  - Scoped `git diff --check` on visit-brief files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Continue scanning visit-time/report/collaboration surfaces for generic action links or missing relation filters.
+
 ### Communication Queue External Focus Links - 2026-06-30 17:37 JST
 
 - Scope:

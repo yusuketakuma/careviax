@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-1855 JST
+
+- current task: focus visit-brief unresolved medication-issue and inquiry actions on reachable patient safety and communication request contexts.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox for `phos/codex2`, generic link scan, `src/server/services/visit-brief.ts`, `src/server/services/visit-brief.test.ts`, `src/lib/communications/navigation.ts`, `src/lib/patient/navigation.ts`, patient safety/collaboration routes, workflow inquiry request linkage code, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/server/services/visit-brief.ts`, `src/server/services/visit-brief.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: visit-brief unresolved medication issues linked to generic `/patients`, and unresolved inquiries linked to generic `/workflow`, even though the brief has the patient id and can select the inquiry record id for an exact communication request filter.
+- security risks found: reduced wrong-patient / wrong-workspace navigation risk by routing medication issues through guarded `buildPatientHref(patientId, '/safety-check')` and inquiries through `buildCommunicationRequestsHref({ patientId, relatedEntityType: 'inquiry_record', relatedEntityId })`. No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- performance issues found: selected one scalar `id` on each existing bounded medication issue (`take: 3`) and inquiry (`take: 2`) query. No new query, dependency, network call, background job, payload expansion, broad scan, or loop changed.
+- validation commands: focused visit-brief/communication-navigation Vitest; scoped ESLint; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused Vitest passed `2` files / `33` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- remaining work: commit only the two owned visit-brief files and ledger files, then continue scanning visit/report/collaboration surfaces for generic action links or missing relation filters.
+- next action: commit `Focus visit brief unresolved collaboration links`, send agmsg FYI, and continue the next clean slice.
+
 ### 20260630-1849 JST
 
 - current task: focus patient board visit actions on the exact next visit schedule row when a schedule is available.

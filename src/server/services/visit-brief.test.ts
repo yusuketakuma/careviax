@@ -352,6 +352,7 @@ describe('getPatientVisitBrief', () => {
       medicationIssue: {
         findMany: vi.fn().mockResolvedValue([
           {
+            id: 'issue/1?x=y#frag',
             title: 'ふらつきリスク',
             description: '降圧薬調整の検討が必要',
             priority: 'high',
@@ -362,6 +363,7 @@ describe('getPatientVisitBrief', () => {
       inquiryRecord: {
         findMany: vi.fn().mockResolvedValue([
           {
+            id: 'inquiry/1?x=y#frag',
             reason: '用量疑義',
             inquiry_content: 'アムロジピン減量の適否を確認中',
           },
@@ -595,8 +597,14 @@ describe('getPatientVisitBrief', () => {
           href: '/reports/report%2F2%3Fx%3Dy%23frag',
         }),
         expect.objectContaining({
+          source_type: 'issue',
+          title: 'ふらつきリスク',
+          href: '/patients/patient_1/safety-check',
+        }),
+        expect.objectContaining({
           source_type: 'inquiry',
           title: '疑義照会 用量疑義',
+          href: '/communications/requests?patient_id=patient_1&related_entity_type=inquiry_record&related_entity_id=inquiry%2F1%3Fx%3Dy%23frag',
         }),
       ]),
     );
