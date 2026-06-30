@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0344 JST
+
+- current task: harden facility visit-batch history responses with no-store count metadata and sanitized failure handling.
+- files inspected: `git status --short --branch --untracked-files=all`, local Next route-handler docs, `src/app/api/admin/facilities/[id]/visit-batches/route.ts`, `src/app/api/admin/facilities/[id]/visit-batches/route.test.ts`, related facility admin route tests, concurrent dirty `src/app/api/care-reports/route.ts` / `route.test.ts` diffs, concurrent dirty `src/lib/validations/visit-constraints.ts` / `src/app/api/patients/[id]/visit-constraints/route.test.ts` diffs, validation output, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/admin/facilities/[id]/visit-batches/route.ts`, `src/app/api/admin/facilities/[id]/visit-batches/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: facility visit-batch history used a fixed latest-20 list without metadata showing whether older facility batches were hidden. The route also returned patient-name payloads without the shared sensitive no-store wrapper or a sanitized unexpected-failure fallback.
+- security risks found: reduced false-complete facility master history risk and PHI cache/error-leak risk by returning sensitive no-store responses for success, 404, and sanitized 500 failures, and by adding count metadata for hidden history. Existing canVisit permission, org/facility scoping, bounded list behavior, migrations, live data, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: adds one narrow `FacilityVisitBatch.count` with the same `org_id` / `facility_id` predicate as the bounded list. No new dependency, background job, external call, broad scan, render path, or unbounded loop was added.
+- validation commands: `pnpm exec vitest run 'src/app/api/admin/facilities/[id]/visit-batches/route.test.ts' --reporter=dot --testTimeout=60000`; `pnpm exec vitest run 'src/app/api/admin/facilities/[id]/visit-batches/route.test.ts' 'src/app/api/admin/facilities/[id]/route.test.ts' 'src/app/api/admin/facilities/[id]/patients/route.test.ts' 'src/app/api/admin/facilities/route.test.ts' --reporter=dot --testTimeout=60000`; `pnpm exec eslint --max-warnings=0 'src/app/api/admin/facilities/[id]/visit-batches/route.ts' 'src/app/api/admin/facilities/[id]/visit-batches/route.test.ts'`; `pnpm exec prettier --write 'src/app/api/admin/facilities/[id]/visit-batches/route.ts' 'src/app/api/admin/facilities/[id]/visit-batches/route.test.ts'`; `pnpm exec prettier --check 'src/app/api/admin/facilities/[id]/visit-batches/route.ts' 'src/app/api/admin/facilities/[id]/visit-batches/route.test.ts'`; `git diff --check -- 'src/app/api/admin/facilities/[id]/visit-batches/route.ts' 'src/app/api/admin/facilities/[id]/visit-batches/route.test.ts'`; `pnpm typecheck`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`; `pnpm format:check`; `git diff --check`.
+- validation results: focused facility visit-batch Vitest passed `1` file / `4` tests; related facility admin suite passed `4` files / `25` tests with the expected sanitized-500 test log; scoped ESLint passed; scoped Prettier write/check passed; scoped diff-check passed; full typecheck passed; no-unused passed; full format check passed; full diff-check passed.
+- remaining work: broad master-management / patient-information objective remains open. Concurrent dirty care-report source-lock files and patient visit-constraint coordinate files remain separate commit groups.
+- next action: stage only the facility visit-batch code/test and matching ledger hunks, commit, then re-check status before committing the remaining groups.
+
 ### 20260701-0342 JST
 
 - current task: validate visit-constraint residence coordinates at the write boundary.
