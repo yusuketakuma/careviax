@@ -1,12 +1,14 @@
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { forbidden, notFound, success, validationError } from '@/lib/api/response';
+import { forbidden, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { hasPermission } from '@/lib/auth/permissions';
 import { updateIncidentReport } from '@/server/services/incident-reports';
 import { updateIncidentReportSchema } from '@/lib/validations/incident-report';
 
-export const PATCH = withAuthContext<{ id: string }>(
+const authenticatedPATCH = withAuthContext<{ id: string }>(
   async (req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -35,3 +37,12 @@ export const PATCH = withAuthContext<{ id: string }>(
     message: 'ヒヤリハット記録の更新権限がありません',
   },
 );
+
+export const PATCH: typeof authenticatedPATCH = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

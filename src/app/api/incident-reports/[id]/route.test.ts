@@ -57,6 +57,11 @@ function routeCtx(id = 'incident_1') {
   return { params: Promise.resolve({ id }) };
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/incident-reports/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -79,6 +84,7 @@ describe('/api/incident-reports/[id]', () => {
     );
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(updateIncidentReportMock).toHaveBeenCalledWith(
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
       'incident_1',
@@ -94,6 +100,7 @@ describe('/api/incident-reports/[id]', () => {
     const response = await PATCH(makePatchRequest({ status: 'reviewed' }), routeCtx());
 
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
     expect(updateIncidentReportMock).not.toHaveBeenCalled();
   });
 
@@ -103,6 +110,7 @@ describe('/api/incident-reports/[id]', () => {
     const response = await PATCH(makePatchRequest({ status: 'reviewed' }, 'admin'), routeCtx());
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(hasPermissionMock).toHaveBeenCalledWith('admin', 'canAdmin');
     expect(updateIncidentReportMock).toHaveBeenCalledWith(
       expect.objectContaining({ role: 'admin' }),
@@ -117,15 +125,45 @@ describe('/api/incident-reports/[id]', () => {
     const response = await PATCH(makePatchRequest({ cause: '確認漏れ' }), routeCtx());
 
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
   });
 
   it('rejects invalid ids and empty payloads before service access', async () => {
     const invalidIdResponse = await PATCH(makePatchRequest({ cause: '確認漏れ' }), routeCtx('   '));
     expect(invalidIdResponse.status).toBe(400);
+    expectSensitiveNoStore(invalidIdResponse);
 
     const emptyPayloadResponse = await PATCH(makePatchRequest({}), routeCtx());
     expect(emptyPayloadResponse.status).toBe(400);
+    expectSensitiveNoStore(emptyPayloadResponse);
 
     expect(updateIncidentReportMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when update fails unexpectedly', async () => {
+    updateIncidentReportMock.mockRejectedValueOnce(
+      new Error('田中 花子 ヒヤリハット raw incident update failure'),
+    );
+
+    const response = await PATCH(
+      makePatchRequest({
+        cause: '患者宅で確認漏れ',
+        prevention_plan: '次回訪問前に二重確認',
+      }),
+      routeCtx(),
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('田中 花子');
+    expect(bodyText).not.toContain('ヒヤリハット');
+    expect(bodyText).not.toContain('raw incident update failure');
+    expect(bodyText).not.toContain('患者宅');
   });
 });
