@@ -3,8 +3,11 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildPatientApiPath, buildPatientDuplicateCheckApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildAdminFacilityUnitsApiPath } from '@/lib/facilities/api-paths';
+import { buildOrgMembersApiPath } from '@/lib/org-members/api-paths';
 import { PatientForm } from './patient-form';
 
 setupDomTestEnv();
@@ -45,6 +48,15 @@ vi.mock('@/lib/hooks/use-unsaved-changes-guard', () => ({
   useUnsavedChangesGuard: unsavedGuardMock,
 }));
 
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return {
+    ...actual,
+    buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
+    buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
+  };
+});
+
 vi.mock('@/lib/patient/navigation', async (importActual) => {
   const actual = await importActual<typeof import('@/lib/patient/navigation')>();
   return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
@@ -52,15 +64,40 @@ vi.mock('@/lib/patient/navigation', async (importActual) => {
 
 vi.mock('@/lib/patient/api-paths', async (importActual) => {
   const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
-  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+  return {
+    ...actual,
+    buildPatientApiPath: vi.fn(actual.buildPatientApiPath),
+    buildPatientDuplicateCheckApiPath: vi.fn(actual.buildPatientDuplicateCheckApiPath),
+  };
+});
+
+vi.mock('@/lib/facilities/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/facilities/api-paths')>();
+  return {
+    ...actual,
+    buildAdminFacilityUnitsApiPath: vi.fn(actual.buildAdminFacilityUnitsApiPath),
+  };
+});
+
+vi.mock('@/lib/org-members/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/org-members/api-paths')>();
+  return {
+    ...actual,
+    buildOrgMembersApiPath: vi.fn(actual.buildOrgMembersApiPath),
+  };
 });
 
 describe('PatientForm', () => {
   beforeEach(() => {
     window.history.replaceState(null, '', '/patients/new');
     vi.stubGlobal('fetch', vi.fn());
+    vi.mocked(buildOrgHeaders).mockClear();
+    vi.mocked(buildOrgJsonHeaders).mockClear();
     vi.mocked(buildPatientHref).mockClear();
     vi.mocked(buildPatientApiPath).mockClear();
+    vi.mocked(buildPatientDuplicateCheckApiPath).mockClear();
+    vi.mocked(buildAdminFacilityUnitsApiPath).mockClear();
+    vi.mocked(buildOrgMembersApiPath).mockClear();
   });
 
   function fillRequiredPatientFields() {
@@ -275,6 +312,46 @@ describe('PatientForm', () => {
     expect(staffRefetch).toHaveBeenCalledTimes(1);
   });
 
+  it('delegates patient-form lookup query paths and tenant headers to shared helpers', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    const queryConfigs: Array<{ queryKey: unknown[]; queryFn?: () => Promise<unknown> }> = [];
+    useQueryMock.mockImplementation(
+      (options: { queryKey: unknown[]; queryFn?: () => Promise<unknown> }) => {
+        queryConfigs.push(options);
+        return { data: [], isLoading: false, isError: false, refetch: vi.fn() };
+      },
+    );
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [] }),
+    } as Response);
+
+    render(<PatientForm />);
+
+    for (const key of ['facilities', 'service-areas', 'care-team-pharmacists', 'care-team-staff']) {
+      const query = queryConfigs.find((config) => config.queryKey[1] === key);
+      await query?.queryFn?.();
+    }
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/facilities', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/service-areas', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/pharmacists', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/org/members?eligible=staff', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(buildOrgHeaders).toHaveBeenCalledTimes(4);
+    expect(buildOrgHeaders).toHaveBeenNthCalledWith(1, 'org_1');
+    const staffParams = vi.mocked(buildOrgMembersApiPath).mock.calls[0]?.[0];
+    expect(staffParams?.toString()).toBe('eligible=staff');
+  });
+
   it('shows server-side duplicate candidates and resubmits with duplicate acknowledgement', async () => {
     useOrgIdMock.mockReturnValue('org_1');
     useQueryMock.mockReturnValue({ data: [], isLoading: false });
@@ -356,6 +433,7 @@ describe('PatientForm', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
     expect(buildPatientApiPath).toHaveBeenCalledWith(hostilePatientId);
+    expect(buildOrgJsonHeaders).toHaveBeenCalledWith('org_1');
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('/api/patients/__helper_pt__');
     expect(init.method).toBe('PATCH');
@@ -412,6 +490,7 @@ describe('PatientForm', () => {
       expect(screen.getByText('資格確認OK: 東京健保 / 負担割合 10%')).toBeTruthy();
     });
     expect(buildPatientApiPath).toHaveBeenCalledWith(hostilePatientId, '/qualification-check');
+    expect(buildOrgHeaders).toHaveBeenCalledWith('org_1');
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('/api/patients/__helper_pt__/qualification-check');
     expect(init.method).toBe('POST');
@@ -493,6 +572,7 @@ describe('PatientForm', () => {
 
     await facilityUnitsQuery?.queryFn?.();
 
+    expect(buildAdminFacilityUnitsApiPath).toHaveBeenCalledWith(hostileFacilityId);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(`/api/admin/facilities/${encodeURIComponent(hostileFacilityId)}/units`);
     expect(url).not.toContain('?x=y');
@@ -529,6 +609,7 @@ describe('PatientForm', () => {
         (config) => config.queryKey[1] === 'facility-units',
       );
       await expect(facilityUnitsQuery?.queryFn?.()).rejects.toThrow(RangeError);
+      expect(buildAdminFacilityUnitsApiPath).toHaveBeenCalledWith(facilityId);
       expect(fetchMock).not.toHaveBeenCalled();
     },
   );
@@ -720,6 +801,11 @@ describe('PatientForm', () => {
         vi.advanceTimersByTime(500);
       });
       expect(fetchMock).toHaveBeenCalled();
+      expect(buildOrgHeaders).toHaveBeenCalledWith('org_1');
+      const duplicateParams = vi.mocked(buildPatientDuplicateCheckApiPath).mock.calls[0]?.[0];
+      expect(duplicateParams?.toString()).toBe(
+        'name=%E5%B1%B1%E7%94%B0+%E5%A4%AA%E9%83%8E&date_of_birth=1950-01-01&gender=male',
+      );
       expect(firstSignal?.aborted).toBe(false);
 
       // 入力変更 → 直前 effect の cleanup が controller.abort() を呼ぶ

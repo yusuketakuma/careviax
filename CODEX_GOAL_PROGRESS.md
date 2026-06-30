@@ -30,6 +30,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Patient Form Helper Boundary - 2026-07-01 08:02 JST
+
+- Scope:
+  - Continued patient-information management hardening in `PatientForm`.
+  - Focused on API path and tenant-header construction for patient create/update, duplicate checks, facility/unit lookup, service-area lookup, and care-team option lookup.
+- Fixed:
+  - Patient create/update now uses `PATIENTS_API_PATH`, `buildPatientApiPath`, and `buildOrgJsonHeaders`.
+  - Duplicate checks now use `buildPatientDuplicateCheckApiPath` and `buildOrgHeaders`.
+  - Facility list/unit lookup now uses `ADMIN_FACILITIES_API_PATH`, `buildAdminFacilityUnitsApiPath`, and `buildOrgHeaders`.
+  - Service-area and pharmacist option lookups now use shared path constants plus `buildOrgHeaders`.
+  - Staff option lookup now uses a new `buildOrgMembersApiPath` helper plus `buildOrgHeaders`.
+  - Tests lock helper delegation, hostile id encoding, dot-segment fail-closed behavior, duplicate-check query construction, and org JSON/header helper usage.
+- Safety:
+  - Reduces patient-management tenant-header drift and unsafe raw path interpolation in a core patient-registration/editing surface.
+  - Preserves existing UI structure, text, form schema, stale-write `expected_updated_at`, duplicate acknowledgement behavior, query keys, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds only small string-builder helpers and no new network request, backend query, dependency, polling, background job, render fan-out, broad scan, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/components/features/patients/patient-form.test.tsx src/lib/patient/api-paths.test.ts src/lib/org-members/api-paths.test.ts src/lib/facilities/api-paths.test.ts src/lib/service-areas/api-paths.test.ts src/lib/pharmacists/api-paths.test.ts --reporter=dot --testTimeout=60000`: passed, `6` files / `58` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on patient form/helper files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master-management and patient-information objective remains open.
+  - Concurrent dirty patient-condition route files remain outside this helper-convergence commit and should be inspected as the next patient-information API slice.
+
 ### Visit Preparation Handoff Carry-Forward - 2026-07-01 08:00 JST
 
 - Scope:

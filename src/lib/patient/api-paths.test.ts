@@ -1,5 +1,38 @@
 import { describe, expect, it } from 'vitest';
-import { buildPatientApiPath, buildPatientWorkflowPreviewApiPath } from './api-paths';
+import {
+  PATIENTS_API_PATH,
+  PATIENT_DUPLICATE_CHECK_API_PATH,
+  buildPatientApiPath,
+  buildPatientDuplicateCheckApiPath,
+  buildPatientWorkflowPreviewApiPath,
+} from './api-paths';
+
+describe('patient collection API paths', () => {
+  it('exposes the patient collection path', () => {
+    expect(PATIENTS_API_PATH).toBe('/api/patients');
+  });
+});
+
+describe('buildPatientDuplicateCheckApiPath', () => {
+  it('builds the duplicate-check path with encoded query parameters', () => {
+    const params = new URLSearchParams({
+      name: '山田 太郎',
+      date_of_birth: '1950-01-01',
+      gender: 'male',
+    });
+
+    expect(PATIENT_DUPLICATE_CHECK_API_PATH).toBe('/api/patients/check-duplicate');
+    expect(buildPatientDuplicateCheckApiPath(params)).toBe(
+      '/api/patients/check-duplicate?name=%E5%B1%B1%E7%94%B0+%E5%A4%AA%E9%83%8E&date_of_birth=1950-01-01&gender=male',
+    );
+  });
+
+  it('omits the trailing question mark when no query parameters are present', () => {
+    expect(buildPatientDuplicateCheckApiPath(new URLSearchParams())).toBe(
+      '/api/patients/check-duplicate',
+    );
+  });
+});
 
 describe('buildPatientApiPath', () => {
   it('builds patient detail API paths for normal ids', () => {

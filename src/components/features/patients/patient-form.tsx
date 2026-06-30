@@ -8,9 +8,19 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import { buildPatientHref } from '@/lib/patient/navigation';
-import { buildPatientApiPath } from '@/lib/patient/api-paths';
-import { buildOrgHeaders } from '@/lib/api/org-headers';
-import { encodePathSegment } from '@/lib/http/path-segment';
+import {
+  PATIENTS_API_PATH,
+  buildPatientApiPath,
+  buildPatientDuplicateCheckApiPath,
+} from '@/lib/patient/api-paths';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import {
+  ADMIN_FACILITIES_API_PATH,
+  buildAdminFacilityUnitsApiPath,
+} from '@/lib/facilities/api-paths';
+import { SERVICE_AREAS_API_PATH } from '@/lib/service-areas/api-paths';
+import { PHARMACISTS_API_PATH } from '@/lib/pharmacists/api-paths';
+import { buildOrgMembersApiPath } from '@/lib/org-members/api-paths';
 import { createPatientSchema, type CreatePatientInput } from '@/lib/validations/patient';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { Button } from '@/components/ui/button';
@@ -431,8 +441,8 @@ export function PatientForm({
     async (name: string, birthDate: string, gender: string, signal?: AbortSignal) => {
       try {
         const params = new URLSearchParams({ name, date_of_birth: birthDate, gender });
-        const res = await fetch(`/api/patients/check-duplicate?${params}`, {
-          headers: { 'x-org-id': orgId },
+        const res = await fetch(buildPatientDuplicateCheckApiPath(params), {
+          headers: buildOrgHeaders(orgId),
           signal,
         });
         if (res.ok) {
@@ -451,8 +461,8 @@ export function PatientForm({
   const facilitiesQuery = useQuery({
     queryKey: ['patient-form', 'facilities', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/admin/facilities', {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(ADMIN_FACILITIES_API_PATH, {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
         throw new Error('施設一覧の取得に失敗しました');
@@ -466,12 +476,9 @@ export function PatientForm({
   const facilityUnitsQuery = useQuery({
     queryKey: ['patient-form', 'facility-units', orgId, selectedFacilityId],
     queryFn: async () => {
-      const res = await fetch(
-        `/api/admin/facilities/${encodePathSegment(selectedFacilityId)}/units`,
-        {
-          headers: { 'x-org-id': orgId },
-        },
-      );
+      const res = await fetch(buildAdminFacilityUnitsApiPath(selectedFacilityId), {
+        headers: buildOrgHeaders(orgId),
+      });
       if (!res.ok) {
         throw new Error('ユニット一覧の取得に失敗しました');
       }
@@ -484,8 +491,8 @@ export function PatientForm({
   const serviceAreasQuery = useQuery({
     queryKey: ['patient-form', 'service-areas', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/service-areas', {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(SERVICE_AREAS_API_PATH, {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
         throw new Error('訪問エリア設定の取得に失敗しました');
@@ -500,7 +507,7 @@ export function PatientForm({
   const careTeamPharmacistsQuery = useQuery({
     queryKey: ['patient-form', 'care-team-pharmacists', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/pharmacists', { headers: { 'x-org-id': orgId } });
+      const res = await fetch(PHARMACISTS_API_PATH, { headers: buildOrgHeaders(orgId) });
       if (!res.ok) throw new Error('薬剤師一覧の取得に失敗しました');
       const payload = (await res.json()) as { data?: Array<{ id: string; name: string }> };
       return payload.data ?? [];
@@ -511,8 +518,9 @@ export function PatientForm({
   const careTeamStaffQuery = useQuery({
     queryKey: ['patient-form', 'care-team-staff', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/org/members?eligible=staff', {
-        headers: { 'x-org-id': orgId },
+      const params = new URLSearchParams({ eligible: 'staff' });
+      const res = await fetch(buildOrgMembersApiPath(params), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('スタッフ一覧の取得に失敗しました');
       const payload = (await res.json()) as { data?: Array<{ id: string; name: string }> };
@@ -639,12 +647,9 @@ export function PatientForm({
       ...(duplicateConfirmed ? { duplicate_acknowledged: true } : {}),
       ...(patientId && expectedUpdatedAt ? { expected_updated_at: expectedUpdatedAt } : {}),
     };
-    const res = await fetch(patientId ? buildPatientApiPath(patientId) : '/api/patients', {
+    const res = await fetch(patientId ? buildPatientApiPath(patientId) : PATIENTS_API_PATH, {
       method: patientId ? 'PATCH' : 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-org-id': orgId,
-      },
+      headers: buildOrgJsonHeaders(orgId),
       body: JSON.stringify(payload),
     });
 

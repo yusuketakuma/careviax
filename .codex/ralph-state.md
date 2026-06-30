@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0802 JST
+
+- current task: converge patient form API paths and tenant headers on shared helpers.
+- files inspected: `git status --short --branch --untracked-files=all`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, `docs/ui-ux-design-guidelines.md`, `src/components/features/patients/patient-form.tsx`, `src/components/features/patients/patient-form.test.tsx`, `src/lib/api/org-headers.ts`, `src/lib/patient/api-paths.ts`, `src/lib/patient/api-paths.test.ts`, `src/lib/facilities/api-paths.ts`, `src/lib/pharmacists/api-paths.ts`, `src/lib/service-areas/api-paths.ts`, helper search output, focused diffs, and validation output.
+- files changed: `src/components/features/patients/patient-form.tsx`, `src/components/features/patients/patient-form.test.tsx`, `src/lib/patient/api-paths.ts`, `src/lib/patient/api-paths.test.ts`, `src/lib/org-members/api-paths.ts`, `src/lib/org-members/api-paths.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: the core patient registration/edit form still built multiple patient/admin/staff API paths and `x-org-id` / JSON headers inline, including facility unit path interpolation. That left a high-use patient-information surface outside the repository's shared helper contract even though adjacent patient/admin paths already had helper patterns.
+- security risks found: reduced tenant-header drift and unsafe raw path interpolation by routing duplicate checks, create/update, facility/unit lookups, service-area lookup, pharmacist lookup, and org-member staff lookup through shared helpers. Existing UI structure, form schema, stale-write `expected_updated_at`, duplicate acknowledgement behavior, query keys, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: no meaningful performance issue was introduced. The change adds only small path-builder helpers and no new network request, backend query, dependency, polling, background job, render fan-out, broad scan, or unbounded loop.
+- validation commands: `pnpm exec vitest run src/components/features/patients/patient-form.test.tsx src/lib/patient/api-paths.test.ts src/lib/org-members/api-paths.test.ts src/lib/facilities/api-paths.test.ts src/lib/service-areas/api-paths.test.ts src/lib/pharmacists/api-paths.test.ts --reporter=dot --testTimeout=60000`; scoped `pnpm exec prettier --check`; scoped `pnpm exec eslint`; scoped `git diff --check -- ...patient form/helper files`; `pnpm typecheck --pretty false`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`; `pnpm lint`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: focused patient form/helper suite passed `6` files / `58` tests; scoped Prettier check passed after formatting three owned files; scoped ESLint passed; scoped diff-check passed; full typecheck passed; no-unused passed; full lint passed; full format check passed; full diff-check passed.
+- remaining work: broad master-management and patient-information objective remains active. Concurrent dirty `src/app/api/patients/[id]/conditions/route.ts` and route test files remain outside this helper-convergence commit and should be inspected as the next patient-information API slice.
+- next action: stage only patient form/helper files plus matching progress ledger hunks, commit the validated helper-convergence slice, send agmsg FYI, then inspect the patient-condition route diff before continuing.
+
 ### 20260701-0800 JST
 
 - current task: carry confirmed visit handoff ongoing-monitoring items into the next visit preparation reuse payload.
