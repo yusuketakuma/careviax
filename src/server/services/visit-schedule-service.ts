@@ -11,7 +11,7 @@ import { ACTIVE_VISIT_SCHEDULE_STATUSES } from '@/lib/constants/visit';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { conflict, forbiddenResponse, validationError } from '@/lib/api/response';
 import { hhmmToTimeDate } from '@/lib/datetime/time-of-day';
-import { timeDateToString } from '@/lib/visits/time-of-day';
+import { applyTimeDateToDate, timeDateToString } from '@/lib/visits/time-of-day';
 import {
   OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES,
   allocateProposalRouteOrders,
@@ -23,10 +23,17 @@ import {
 } from '@/server/services/management-plans';
 import { validateVisitScheduleBlockingBillingRequirements } from '@/server/services/visit-schedule-billing-guard';
 import { validateScheduleTimeStringsFitShift } from '@/server/services/visit-schedule-shift';
+import { createRoadTravelEstimator } from '@/server/services/road-routing';
+import {
+  estimateVehicleRouteDurationWithCandidate,
+  type VehicleRouteDurationPoint,
+} from '@/server/services/visit-schedule-planner';
+import type { VisitRouteTravelMode } from '@/types/visit-route';
 import type { z } from 'zod';
 import type { createVisitScheduleSchema } from '@/lib/validations/visit-schedule';
 
 type CreateScheduleData = z.infer<typeof createVisitScheduleSchema>;
+const DEFAULT_ROUTE_DURATION_START = '09:00';
 
 const CREATE_SCHEDULE_SERIALIZABLE_RETRY_LIMIT = 3;
 
@@ -69,6 +76,9 @@ type VisitVehicleResourceValidationArgs = {
   siteId: string | null;
   scheduledDate: Date;
   excludeScheduleId?: string;
+  routeDurationContext?: {
+    candidatePoint: VehicleRouteDurationPoint;
+  };
 };
 
 type VisitVehicleResourceValidationDb =
@@ -188,6 +198,15 @@ export async function validateVisitVehicleResourceForSchedule(
       site_id: true,
       label: true,
       max_stops: true,
+      max_route_duration_minutes: true,
+      travel_mode: true,
+      site: {
+        select: {
+          address: true,
+          lat: true,
+          lng: true,
+        },
+      },
     },
   });
   if (!vehicleResource) {
@@ -229,8 +248,120 @@ export async function validateVisitVehicleResourceForSchedule(
       };
     }
   }
+  if (vehicleResource.max_route_duration_minutes != null) {
+    const sitePoint = buildSiteRoutePoint(vehicleResource.site);
+    if (!args.routeDurationContext || !sitePoint) {
+      return {
+        ok: false as const,
+        response: validationError(
+          `${vehicleResource.label} の稼働上限 ${vehicleResource.max_route_duration_minutes}分を検証できません。訪問拠点の住所座標を整備してください`,
+        ),
+      };
+    }
+
+    const existingSchedules = await prisma.visitSchedule.findMany({
+      where: {
+        org_id: args.orgId,
+        ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
+        vehicle_resource_id: args.vehicleResourceId,
+        scheduled_date: args.scheduledDate,
+        schedule_status: {
+          notIn: ['cancelled', 'rescheduled'],
+        },
+      },
+      select: {
+        route_order: true,
+        time_window_start: true,
+        case_: {
+          select: {
+            patient: {
+              select: {
+                residences: {
+                  where: { is_primary: true },
+                  take: 1,
+                  select: {
+                    address: true,
+                    lat: true,
+                    lng: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const existingPoints = existingSchedules.map((schedule) =>
+      buildVehicleRoutePoint({
+        scheduledDate: args.scheduledDate,
+        routeOrder: schedule.route_order,
+        timeWindowStart: schedule.time_window_start,
+        residence: schedule.case_.patient.residences[0] ?? null,
+      }),
+    );
+    const estimate = await estimateVehicleRouteDurationWithCandidate(
+      sitePoint,
+      existingPoints,
+      args.routeDurationContext.candidatePoint,
+      createRoadTravelEstimator(vehicleResource.travel_mode as VisitRouteTravelMode),
+      vehicleResource.travel_mode as VisitRouteTravelMode,
+    );
+    if (estimate.durationMinutes == null) {
+      return {
+        ok: false as const,
+        response: validationError(
+          `${vehicleResource.label} の稼働上限 ${vehicleResource.max_route_duration_minutes}分を検証できません（${estimate.summary}）`,
+        ),
+      };
+    }
+    if (estimate.durationMinutes > vehicleResource.max_route_duration_minutes) {
+      return {
+        ok: false as const,
+        response: validationError(
+          `${vehicleResource.label} の候補追加後の推定稼働時間 ${estimate.durationMinutes.toFixed(1)}分 が上限 ${vehicleResource.max_route_duration_minutes}分を超えます`,
+        ),
+      };
+    }
+  }
 
   return { ok: true as const, vehicleResource };
+}
+
+export function buildVehicleRoutePoint(args: {
+  scheduledDate: Date;
+  routeOrder: number | null;
+  timeWindowStart: Date | null;
+  residence: { address: string | null; lat: number | null; lng: number | null } | null;
+}): VehicleRouteDurationPoint {
+  return {
+    routeOrder: args.routeOrder,
+    lat: args.residence?.lat ?? null,
+    lng: args.residence?.lng ?? null,
+    address: args.residence?.address ?? null,
+    startsAt: args.timeWindowStart
+      ? applyTimeDateToDate(args.scheduledDate, args.timeWindowStart, DEFAULT_ROUTE_DURATION_START)
+      : null,
+  };
+}
+
+function buildSiteRoutePoint(
+  site:
+    | {
+        address: string | null;
+        lat: number | null;
+        lng: number | null;
+      }
+    | null
+    | undefined,
+): VehicleRouteDurationPoint | null {
+  if (!site) return null;
+  return {
+    routeOrder: 0,
+    lat: site.lat,
+    lng: site.lng,
+    address: site.address,
+    startsAt: null,
+  };
 }
 
 export async function findVisitScheduleTimeConflict(
@@ -357,6 +488,9 @@ export async function createSchedule(
             take: 1,
             select: {
               facility_unit_id: true,
+              address: true,
+              lat: true,
+              lng: true,
               facility: {
                 select: {
                   acceptance_time_from: true,
@@ -403,19 +537,28 @@ export async function createSchedule(
     return validationError(preferenceValidationError);
   }
 
+  const facilityUnitId = careCase.patient?.residences[0]?.facility_unit_id ?? null;
+  const targetTimeWindowStart = time_window_start ? hhmmToTimeDate(time_window_start) : null;
+  const targetTimeWindowEnd = time_window_end ? hhmmToTimeDate(time_window_end) : null;
+  const routeDurationContext = {
+    candidatePoint: buildVehicleRoutePoint({
+      scheduledDate,
+      routeOrder: null,
+      timeWindowStart: targetTimeWindowStart,
+      residence: careCase.patient.residences[0] ?? null,
+    }),
+  };
+
   if (vehicle_resource_id) {
     const vehicleValidation = await validateVisitVehicleResourceForSchedule(prisma, {
       orgId,
       vehicleResourceId: vehicle_resource_id,
       siteId: effectiveSiteId,
       scheduledDate,
+      routeDurationContext,
     });
     if (!vehicleValidation.ok) return vehicleValidation.response;
   }
-
-  const facilityUnitId = careCase.patient?.residences[0]?.facility_unit_id ?? null;
-  const targetTimeWindowStart = time_window_start ? hhmmToTimeDate(time_window_start) : null;
-  const targetTimeWindowEnd = time_window_end ? hhmmToTimeDate(time_window_end) : null;
 
   const result = await withSerializableScheduleCreateTransaction(orgId, async (tx) => {
     const duplicateSchedule = await tx.visitSchedule.findFirst({
@@ -472,6 +615,7 @@ export async function createSchedule(
         vehicleResourceId: vehicle_resource_id,
         siteId: effectiveSiteId,
         scheduledDate,
+        routeDurationContext,
       });
       if (!vehicleValidation.ok) {
         return {

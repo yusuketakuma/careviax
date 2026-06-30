@@ -958,6 +958,15 @@ describe('/api/visit-schedules', () => {
         site_id: true,
         label: true,
         max_stops: true,
+        max_route_duration_minutes: true,
+        travel_mode: true,
+        site: {
+          select: {
+            address: true,
+            lat: true,
+            lng: true,
+          },
+        },
       },
     });
     expect(visitScheduleCountMock).toHaveBeenCalledWith({
@@ -1032,6 +1041,109 @@ describe('/api/visit-schedules', () => {
       message: '社用車A で訪問できる件数は最大 1 件です',
     });
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects manual schedule creation when the selected vehicle route duration limit is exceeded', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'user_2',
+      backup_pharmacist_id: 'user_1',
+      required_visit_support: null,
+      patient: {
+        scheduling_preference: null,
+        residences: [
+          {
+            facility_unit_id: null,
+            address: '候補患者宅',
+            lat: 0,
+            lng: 0.2,
+            facility: null,
+          },
+        ],
+      },
+    });
+    visitVehicleResourceFindFirstMock.mockResolvedValueOnce({
+      id: 'vehicle_1',
+      site_id: 'site_1',
+      label: '社用車A',
+      max_stops: 8,
+      max_route_duration_minutes: 30,
+      travel_mode: 'DRIVE',
+      site: {
+        address: '本店',
+        lat: 0,
+        lng: 0,
+      },
+    });
+    visitScheduleFindManyMock.mockResolvedValueOnce([
+      {
+        route_order: 1,
+        time_window_start: new Date('1970-01-01T09:00:00.000Z'),
+        case_: {
+          patient: {
+            residences: [
+              {
+                address: '既存患者宅',
+                lat: 0,
+                lng: 0.1,
+              },
+            ],
+          },
+        },
+      },
+    ]);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '10:00',
+        time_window_end: '11:00',
+        vehicle_resource_id: 'vehicle_1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: expect.stringContaining('上限 30分を超えます'),
+    });
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        vehicle_resource_id: 'vehicle_1',
+        scheduled_date: new Date('2026-03-31'),
+        schedule_status: {
+          notIn: ['cancelled', 'rescheduled'],
+        },
+      },
+      select: {
+        route_order: true,
+        time_window_start: true,
+        case_: {
+          select: {
+            patient: {
+              select: {
+                residences: {
+                  where: { is_primary: true },
+                  take: 1,
+                  select: {
+                    address: true,
+                    lat: true,
+                    lng: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('allows org-wide pharmacist visit schedule creation even when not assigned to the case', async () => {

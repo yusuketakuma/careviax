@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-2024 JST
+
+- current task: enforce selected vehicle route-duration caps on manual visit schedule create and PATCH save boundaries.
+- files inspected: `git status --short --untracked-files=all`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, `docs/ui-ux-design-guidelines.md`, Next route-handler docs, `src/server/services/visit-schedule-planner.ts`, `src/server/services/visit-schedule-planner.test.ts`, `src/server/services/visit-schedule-service.ts`, `src/app/api/visit-schedules/route.ts`, `src/app/api/visit-schedules/route.test.ts`, `src/app/api/visit-schedules/[id]/route.ts`, `src/app/api/visit-schedules/[id]/route.test.ts`, `src/server/services/road-routing.ts`, and route-duration/vehicle-resource search results.
+- files changed: `src/server/services/visit-schedule-service.ts`, `src/app/api/visit-schedules/[id]/route.ts`, `src/app/api/visit-schedules/route.test.ts`, `src/app/api/visit-schedules/[id]/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: manual schedule creation and generic schedule PATCH reused the selected vehicle stop-limit guard but did not enforce `VisitVehicleResource.max_route_duration_minutes`, allowing manual edits to bypass a route-duration constraint already enforced in proposal generation/confirmation flows.
+- security risks found: reduced false-ok route assignment and patient-visit scheduling safety risk without exposing hidden same-vehicle patient details to clients. Existing auth, assignment access, site matching, time overlap checks, conflict handling, no-store wrappers, audit-on-update behavior, RLS boundaries, live DB safety, external-send safety, and secret handling remain intact.
+- performance issues found: added one bounded same-day same-vehicle schedule lookup only for vehicles with `max_route_duration_minutes` configured. Vehicles without a route-duration cap keep the previous query path. No dependency, background job, broad scan, unbounded loop, or external routing requirement was added.
+- validation commands: focused `pnpm exec vitest run src/app/api/visit-schedules/route.test.ts 'src/app/api/visit-schedules/[id]/route.test.ts' src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`; scoped Prettier check; scoped ESLint; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm test:schedule-time:tz`; `pnpm lint`.
+- validation results: focused Vitest passed `3` files / `150` tests. Schedule regression suite passed `30` files / `526` tests. Scoped Prettier, scoped ESLint, scoped diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint` passed.
+- remaining work: broad schedule/prescription/route-management goal remains open. Continue scanning reschedule/reorder and prescription-to-visit decision surfaces for final-save constraints that are only enforced in proposal previews.
+- next action: stage this route-duration guard slice and progress ledgers as an isolated commit, then re-check dirty status before selecting the next schedule/prescription gap.
+
 ### 20260630-2017 JST
 
 - current task: focus today-ops rail fallback exception actions on the workflow exception dashboard.

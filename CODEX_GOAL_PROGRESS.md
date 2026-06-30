@@ -30,6 +30,37 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Manual Schedule Vehicle Route Duration Guard - 2026-06-30 20:24 JST
+
+- Scope:
+  - Continued schedule-management and route-decision hardening for manual visit schedule creation and schedule PATCH updates.
+  - Focused on making the persisted vehicle `max_route_duration_minutes` constraint apply at the final save boundary, not only during proposal generation and proposal confirmation.
+- Fixed:
+  - `validateVisitVehicleResourceForSchedule` now selects vehicle travel mode, route-duration cap, and the vehicle's pharmacy-site origin, then validates same-day same-vehicle route duration when the cap is set.
+  - Manual schedule creation passes the candidate patient residence and planned time into the shared vehicle validation before save and again inside the serializable create transaction.
+  - Schedule PATCH now revalidates the selected or existing vehicle when route-shaping fields change: case, site, date/time, pharmacist, route order, vehicle assignment, or active occupancy status.
+  - Added regression coverage for manual create and PATCH requests that would exceed the selected vehicle route-duration cap.
+- Safety:
+  - Reduces false-ok route assignment risk where a manual edit could bypass the vehicle route-duration limit already enforced in proposal flows.
+  - Hidden patient details from other same-vehicle schedules are used only inside server-side validation and are not returned to the client.
+  - Existing auth, assignment access, site matching, stop-limit checks, overlap checks, conflict handling, no-store wrappers, audit-on-update behavior, and proposal route-duration behavior remain intact.
+  - No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Adds one bounded same-day same-vehicle schedule lookup only when `max_route_duration_minutes` is configured for the selected vehicle.
+  - Reuses the existing route-duration estimator and fallback travel calculation; vehicles without a route-duration cap keep the previous query path.
+  - No new dependency, background job, broad scan, unbounded loop, or external network requirement was added.
+- Validation:
+  - Read `docs/ui-ux-design-guidelines.md` and Next route-handler docs before the API-facing change.
+  - `pnpm exec vitest run src/app/api/visit-schedules/route.test.ts 'src/app/api/visit-schedules/[id]/route.test.ts' src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `150` tests.
+  - Scoped Prettier check, scoped ESLint, and scoped `git diff --check` on the four edited files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm test:schedule-time:tz`: passed, `30` files / `526` tests.
+  - `pnpm lint`: passed.
+- Remaining:
+  - The broad schedule/prescription/route-management goal remains open.
+  - Continue scanning reschedule/reorder and prescription-to-visit decision surfaces for other final-save constraints that are enforced in proposal previews but can still be bypassed by manual edits.
+
 ### Today Ops Rail Exception Focus - 2026-06-30 20:17 JST
 
 - Scope:

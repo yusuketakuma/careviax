@@ -6,6 +6,7 @@ const {
   authMock,
   membershipFindFirstMock,
   visitScheduleFindFirstMock,
+  visitScheduleFindManyMock,
   visitScheduleTxFindFirstMock,
   visitScheduleProposalFindFirstMock,
   visitScheduleProposalTxFindFirstMock,
@@ -31,6 +32,7 @@ const {
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   visitScheduleFindFirstMock: vi.fn(),
+  visitScheduleFindManyMock: vi.fn(),
   visitScheduleTxFindFirstMock: vi.fn(),
   visitScheduleProposalFindFirstMock: vi.fn(),
   visitScheduleProposalTxFindFirstMock: vi.fn(),
@@ -76,6 +78,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     visitSchedule: {
       findFirst: visitScheduleFindFirstMock,
+      findMany: visitScheduleFindManyMock,
       count: visitScheduleCountMock,
     },
     visitScheduleProposal: {
@@ -246,6 +249,7 @@ describe('/api/visit-schedules/[id] GET', () => {
       callback({
         visitSchedule: {
           findFirst: visitScheduleTxFindFirstMock,
+          findMany: visitScheduleFindManyMock,
           count: visitScheduleCountMock,
           updateMany: visitScheduleUpdateManyMock,
           update: visitScheduleUpdateMock,
@@ -269,6 +273,7 @@ describe('/api/visit-schedules/[id] GET', () => {
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     visitScheduleProposalFindFirstMock.mockResolvedValue(null);
     visitScheduleProposalTxFindFirstMock.mockResolvedValue(null);
+    visitScheduleFindManyMock.mockResolvedValue([]);
     visitScheduleTxFindFirstMock.mockImplementation(async (args) => {
       if (args?.where?.id?.not) return null;
       return {
@@ -1143,6 +1148,15 @@ describe('/api/visit-schedules/[id] GET', () => {
         site_id: true,
         label: true,
         max_stops: true,
+        max_route_duration_minutes: true,
+        travel_mode: true,
+        site: {
+          select: {
+            address: true,
+            lat: true,
+            lng: true,
+          },
+        },
       },
     });
     expect(visitScheduleCountMock).toHaveBeenCalledWith({
@@ -1192,6 +1206,121 @@ describe('/api/visit-schedules/[id] GET', () => {
       }),
     });
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects schedule PATCH when the selected vehicle route duration limit is exceeded', async () => {
+    visitScheduleFindFirstMock.mockResolvedValueOnce(
+      buildPatchScheduleFixture({
+        vehicle_resource_id: 'vehicle_1',
+        time_window_start: new Date('1970-01-01T09:00:00.000Z'),
+        time_window_end: new Date('1970-01-01T10:00:00.000Z'),
+        case_: {
+          primary_pharmacist_id: 'user_primary',
+          backup_pharmacist_id: null,
+          patient: {
+            residences: [
+              {
+                address: '候補患者宅',
+                lat: 0,
+                lng: 0.2,
+              },
+            ],
+          },
+        },
+      }),
+    );
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      patient_id: 'patient_1',
+      patient: {
+        scheduling_preference: null,
+        residences: [
+          {
+            address: '候補患者宅',
+            lat: 0,
+            lng: 0.2,
+            facility: null,
+          },
+        ],
+      },
+    });
+    visitVehicleResourceFindFirstMock.mockResolvedValueOnce({
+      id: 'vehicle_1',
+      site_id: 'site_1',
+      label: '社用車A',
+      max_stops: 8,
+      max_route_duration_minutes: 30,
+      travel_mode: 'DRIVE',
+      site: {
+        address: '本店',
+        lat: 0,
+        lng: 0,
+      },
+    });
+    visitScheduleFindManyMock.mockResolvedValueOnce([
+      {
+        route_order: 1,
+        time_window_start: new Date('1970-01-01T09:00:00.000Z'),
+        case_: {
+          patient: {
+            residences: [
+              {
+                address: '既存患者宅',
+                lat: 0,
+                lng: 0.1,
+              },
+            ],
+          },
+        },
+      },
+    ]);
+
+    const response = await PATCH(
+      createPatchRequest({ time_window_start: '10:00', time_window_end: '11:00' }),
+      {
+        params: Promise.resolve({ id: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: expect.stringContaining('上限 30分を超えます'),
+    });
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: { not: 'schedule_1' },
+        vehicle_resource_id: 'vehicle_1',
+        scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+        schedule_status: {
+          notIn: ['cancelled', 'rescheduled'],
+        },
+      },
+      select: {
+        route_order: true,
+        time_window_start: true,
+        case_: {
+          select: {
+            patient: {
+              select: {
+                residences: {
+                  where: { is_primary: true },
+                  take: 1,
+                  select: {
+                    address: true,
+                    lat: true,
+                    lng: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rechecks selected vehicle stop limits inside the schedule PATCH transaction', async () => {

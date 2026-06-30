@@ -39,6 +39,7 @@ import { resolveOperationalTasks } from '@/server/services/operational-tasks';
 import { validateScheduleTimeStringsFitShift } from '@/server/services/visit-schedule-shift';
 import {
   findVisitScheduleTimeConflict,
+  buildVehicleRoutePoint,
   getVisitScheduleTimeConflictMessage,
   isActiveVisitScheduleStatus,
   validateManualSchedulePreferences,
@@ -252,6 +253,19 @@ async function authenticatedPATCH(
         select: {
           primary_pharmacist_id: true,
           backup_pharmacist_id: true,
+          patient: {
+            select: {
+              residences: {
+                where: { is_primary: true },
+                take: 1,
+                select: {
+                  address: true,
+                  lat: true,
+                  lng: true,
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -394,6 +408,11 @@ async function authenticatedPATCH(
     changesScheduleTimingOrAssignment ||
     vehicle_resource_id !== undefined ||
     changesActiveOccupancyStatus;
+  const changesVehicleRouteShape =
+    changesScheduleTimingOrAssignment ||
+    case_id !== undefined ||
+    site_id !== undefined ||
+    rest.route_order !== undefined;
   const shouldRecheckTimeConflict =
     projectedScheduleIsActive &&
     changesScheduleOccupancy &&
@@ -409,6 +428,7 @@ async function authenticatedPATCH(
     (vehicle_resource_id !== undefined ||
       scheduled_date !== undefined ||
       site_id !== undefined ||
+      changesVehicleRouteShape ||
       changesActiveOccupancyStatus);
   const projectedAuditChanges = schedulePatchAuditChanges(existing, projectedSchedule);
   const hasProjectedChanges = Object.keys(projectedAuditChanges).length > 0;
@@ -459,6 +479,7 @@ async function authenticatedPATCH(
     }
   }
 
+  let projectedRouteResidence = existing.case_.patient?.residences[0] ?? null;
   if (
     case_id !== undefined ||
     scheduled_date !== undefined ||
@@ -476,6 +497,9 @@ async function authenticatedPATCH(
               where: { is_primary: true },
               take: 1,
               select: {
+                address: true,
+                lat: true,
+                lng: true,
                 facility: {
                   select: {
                     acceptance_time_from: true,
@@ -492,6 +516,7 @@ async function authenticatedPATCH(
     if (!careCase) {
       return validationError('ケースが見つかりません');
     }
+    projectedRouteResidence = careCase.patient.residences[0] ?? null;
 
     const targetDate = scheduled_date ? new Date(scheduled_date) : existing.scheduled_date;
     const targetTimeWindowStart =
@@ -515,12 +540,21 @@ async function authenticatedPATCH(
   }
 
   if (shouldRecheckVehicleCapacity && targetVehicleResourceId) {
+    const routeDurationContext = {
+      candidatePoint: buildVehicleRoutePoint({
+        scheduledDate: projectedSchedule.scheduled_date,
+        routeOrder: projectedSchedule.route_order,
+        timeWindowStart: projectedSchedule.time_window_start,
+        residence: projectedRouteResidence,
+      }),
+    };
     const vehicleValidation = await validateVisitVehicleResourceForSchedule(prisma, {
       orgId: ctx.orgId,
       vehicleResourceId: targetVehicleResourceId,
       siteId: targetVehicleSiteId,
       scheduledDate: targetVehicleScheduledDate,
       excludeScheduleId: id,
+      routeDurationContext,
     });
     if (!vehicleValidation.ok) return vehicleValidation.response;
   }
@@ -617,12 +651,21 @@ async function authenticatedPATCH(
     }
 
     if (shouldRecheckVehicleCapacity && targetVehicleResourceId) {
+      const routeDurationContext = {
+        candidatePoint: buildVehicleRoutePoint({
+          scheduledDate: projectedSchedule.scheduled_date,
+          routeOrder: projectedSchedule.route_order,
+          timeWindowStart: projectedSchedule.time_window_start,
+          residence: projectedRouteResidence,
+        }),
+      };
       const vehicleValidation = await validateVisitVehicleResourceForSchedule(tx, {
         orgId: ctx.orgId,
         vehicleResourceId: targetVehicleResourceId,
         siteId: targetVehicleSiteId,
         scheduledDate: targetVehicleScheduledDate,
         excludeScheduleId: id,
+        routeDurationContext,
       });
       if (!vehicleValidation.ok) {
         return {
