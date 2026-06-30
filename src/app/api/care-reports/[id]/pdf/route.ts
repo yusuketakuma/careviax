@@ -1,7 +1,7 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
-import { conflict, error, notFound, validationError } from '@/lib/api/response';
+import { conflict, error, internalError, notFound, validationError } from '@/lib/api/response';
 import { pdfResponse } from '@/lib/api/pdf-response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -12,7 +12,7 @@ import { buildCareReportPdf } from '@/server/services/pdf-documents';
 
 export const runtime = 'nodejs';
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canSendCareReport',
     message: '報告書 PDF の出力権限がありません',
@@ -68,4 +68,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   return withSensitiveNoStore(pdfResponse(rendered.buffer, rendered.fileName));
+}
+
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }

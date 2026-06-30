@@ -111,6 +111,30 @@ describe('/api/care-reports/[id]/pdf', () => {
     expect(pdfResponseMock).not.toHaveBeenCalled();
   });
 
+  it('returns a sanitized no-store 500 when auth context fails before rendering', async () => {
+    requireAuthContextMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 090-1234-5678 raw care report pdf auth detail'),
+    );
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('raw care report pdf auth detail');
+    expect(buildCareReportPdfMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+  });
+
   it('rejects blank report ids before rendering or auditing the export', async () => {
     const response = (await GET(createRequest(), {
       params: Promise.resolve({ id: '   ' }),
