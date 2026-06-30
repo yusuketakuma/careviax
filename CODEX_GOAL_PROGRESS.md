@@ -39,16 +39,18 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Special medical procedures such as TPN, CV port, narcotics, oxygen, ventilator, enteral route, dialysis, pressure ulcer, and stoma now map to specialty requirements.
   - Candidate scoring now applies a bounded soft penalty when a pharmacist lacks matching specialties, while keeping the candidate available rather than hard-rejecting.
   - Proposal reasons, accepted diagnostics, the proposal API type contract, and the diagnostics card now expose whether required specialty coverage matched, mismatched, or was unknown.
-  - Regression coverage proves specialty-matched pharmacists can outrank the primary pharmacist, malformed `visit_specialties` is treated as a soft mismatch, and the UI labels the specialty score contribution.
+  - Legacy/alternate procedure keys such as `tube_feeding` are mapped to existing specialty categories, and unmapped procedure keys become a generic `未定義手技` review state without leaking raw JSON values.
+  - Regression coverage proves specialty-matched pharmacists can outrank the primary pharmacist, malformed `visit_specialties` is treated as a soft mismatch, broad `緩和ケア` text does not over-credit narcotic-injection capability, unknown procedure keys are fail-visible, and the UI labels the specialty score contribution.
 - Safety:
   - Reduces unsafe assignment risk for complex home-visit procedures by preferring pharmacists with matching specialty declarations.
+  - Downgrades free-text matches to `登録上の専門対応候補` wording and keeps no-hard-filter behavior so incomplete staffing data does not hide all candidates.
   - Preserves emergency capability checks, primary/backup relationship scoring, route/vehicle scoring, capacity limits, operating-hour guards, workflow gate, auth/RLS callers, migrations, live data, external sends, push/deploy, secret handling, and destructive-operation boundaries.
 - Performance:
   - Adds only in-memory pattern matching over a small fixed procedure map per candidate.
   - No new DB query, dependency, external call, background job, broad scan, render-heavy path, or unbounded loop was added.
 - Validation:
-  - Focused planner/patient-selector Vitest passed `3` files / `45` tests.
-  - Related visit proposal API + planner + diagnostics-card suite passed `3` files / `126` tests with the expected sanitized-500 route log.
+  - Focused planner + diagnostics-card Vitest passed `2` files / `40` tests.
+  - Related proposal API + reschedule route + daily jobs suite passed `3` files / `155` tests with the expected sanitized-500 route log and expected daily-job info logs.
   - Scoped ESLint, scoped Prettier check, scoped diff-check, full typecheck, no-unused, full lint, full format check, and full diff-check passed.
 - Remaining:
   - Broad visit-time, report, and multi-professional cooperation objective remains open.
