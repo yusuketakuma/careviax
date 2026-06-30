@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-2035 JST
+
+- current task: focus patient-board reply-wait cards on the exact pending report when a failed or response-waiting care report exists.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox for `phos/codex2`, `git log --oneline -n 10`, generic aggregate action-link search results, local Next Route Handler docs, `src/app/api/patients/board/route.ts`, `src/app/api/patients/board/route.test.ts`, `src/lib/reports/navigation.ts`, `prisma/schema/communication.prisma`, `prisma/schema/patient.prisma`, and the concurrent dirty `visit-schedules/generate` diff. The visit-schedule-generate WIP typecheck blocker was inspected and preserved outside the patient-board commit group.
+- files changed: `src/app/api/patients/board/route.ts`, `src/app/api/patients/board/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Concurrent dirty visit-schedule-generate files remain separate WIP and are not part of this patient-board commit group.
+- bugs found: patient-board cards in `reply_wait` state had patient/case context and could have a concrete failed or response-waiting care report, but still linked to aggregate `/reports`, forcing staff to re-find the report before retrying delivery or checking replies.
+- security risks found: reduced wrong-report / wrong-patient navigation risk by routing only bounded, org-scoped case report data through the existing encoded `buildReportHref` helper. No new response field, report content, PHI detail, auth/RLS change, live DB operation, external send, migration, push/deploy, secret handling, or destructive operation was added.
+- performance issues found: added a bounded nested `care_reports` select (`take: 1`, statuses `response_waiting` / `failed`) inside the existing patient-board query. No new top-level query, dependency, background job, broad scan, unbounded loop, or heavy render path was added.
+- validation commands: focused patient-board / report-navigation Vitest; focused patient-board plus visit-schedule-generate regression Vitest after preserving concurrent schedule WIP; scoped ESLint; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused patient-board / report-navigation Vitest passed `2` files / `21` tests. Combined focused patient-board / report-navigation / visit-schedule-generate / route-planner Vitest passed `4` files / `97` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed. The first `pnpm typecheck` exposed a concurrent `visit-schedules/generate` `max_stops` nullability failure plus local test-fixture `never[]` inference; both were fixed in working tree before final validation.
+- remaining work: broad visit/report/collaboration objective remains open. Preserve and separately commit or hand off the unrelated visit-schedule-generate WIP rather than mixing it with this patient-board slice.
+- next action: stage only the patient-board route/test files for an isolated commit, send agmsg FYI, then re-check dirty ownership before selecting the next slice.
+
 ### 20260630-2034 JST
 
 - current task: add counted-list metadata to the drug alert rule master and prevent truncated safety-tuning saves.

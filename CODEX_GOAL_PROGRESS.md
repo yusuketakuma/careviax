@@ -30,6 +30,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Patient Board Report Reply Focus - 2026-06-30 20:35 JST
+
+- Scope:
+  - Continued visit/report/collaboration navigation hardening for the patient board.
+  - Focused on `reply_wait` patient cards where the case already has a failed or response-waiting report.
+- Fixed:
+  - Patient board case selection now includes the latest `response_waiting` / `failed` care report (`take: 1`).
+  - `reply_wait` cards now link to the exact report via `buildReportHref(report.id)` when available.
+  - Cards without a concrete pending report keep the existing aggregate `/reports` fallback.
+- Safety:
+  - Reduces wrong-report and wrong-patient navigation drift before resending or checking report replies.
+  - Uses the existing encoded report navigation helper and does not add report content or new response fields.
+  - No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Adds one bounded nested `care_reports` select inside the existing patient-board query.
+  - No new top-level query, dependency, background job, broad scan, unbounded loop, or render-heavy path was added.
+- Validation:
+  - Read local Next Route Handler docs before editing the API route.
+  - `pnpm exec vitest run src/app/api/patients/board/route.test.ts src/lib/reports/navigation.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `21` tests.
+  - `pnpm exec vitest run src/app/api/patients/board/route.test.ts src/lib/reports/navigation.test.ts src/app/api/visit-schedules/generate/route.test.ts src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`: passed, `4` files / `97` tests, including preserved concurrent schedule WIP needed for the full type gate.
+  - Scoped Prettier check, scoped ESLint, and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed after fixing local test-fixture `never[]` inference and the concurrent visit-schedule-generate `max_stops` nullability blocker in the working tree.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Continue scanning aggregate report/workflow/collaboration destinations.
+  - Preserve unrelated visit-schedule-generate WIP as a separate commit group.
+
 ### Drug Alert Rule Master Counted Metadata - 2026-06-30 20:34 JST
 
 - Scope:
