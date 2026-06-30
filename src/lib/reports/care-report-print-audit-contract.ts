@@ -17,9 +17,21 @@ export const PRINTABLE_CARE_REPORT_TYPES = [
 
 export type PrintableCareReportType = (typeof PRINTABLE_CARE_REPORT_TYPES)[number];
 
-export const careReportPrintAuditRequestSchema = z.object({
-  intent: z.enum(CARE_REPORT_PRINT_AUDIT_INTENTS).optional(),
-});
+export const careReportPrintAuditRequestSchema = z
+  .object({
+    intent: z.enum(CARE_REPORT_PRINT_AUDIT_INTENTS).optional(),
+    expected_report_updated_at: z.string().datetime('報告書の版情報が不正です').optional(),
+  })
+  .superRefine((value, ctx) => {
+    const intent = value.intent ?? 'print_requested';
+    if (intent === 'print_requested' && !value.expected_report_updated_at) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['expected_report_updated_at'],
+        message: '印刷する報告書の版情報は必須です',
+      });
+    }
+  });
 
 const printableCareReportTypeSchema = z.enum(PRINTABLE_CARE_REPORT_TYPES);
 
@@ -184,6 +196,7 @@ const careReportPrintAuditReportSchema = z
   .object({
     id: z.string(),
     report_type: printableCareReportTypeSchema,
+    updated_at: z.string().datetime(),
     pharmacy_name: z.string().optional(),
     content: requiredPrintableReportContentSchema,
   })
@@ -210,6 +223,7 @@ export const careReportPrintAuditResponseSchema = z
 type CareReportPrintAuditReport = {
   id: string;
   report_type: PrintableCareReportType;
+  updated_at: string;
   pharmacy_name?: string;
   content: PhysicianReportContent | CareManagerReportContent | AudienceReportContent;
 };

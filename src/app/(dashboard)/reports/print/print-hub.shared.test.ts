@@ -115,6 +115,7 @@ function makeReport(overrides: Partial<CareReportForPrint> = {}): CareReportForP
       next_visit_plan: { date: '2026-06-18T12:00:00+09:00', followup_items: ['残薬数を確認'] },
     },
     created_at: '2026-06-10T15:30:00+09:00',
+    updated_at: '2026-06-10T15:35:00+09:00',
     delivery_records: [
       {
         id: 'delivery_1',

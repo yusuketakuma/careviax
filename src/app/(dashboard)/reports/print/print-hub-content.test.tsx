@@ -32,6 +32,8 @@ vi.mock('@/lib/patient/api-paths', async (importOriginal) => {
 
 setupDomTestEnv();
 
+const REPORT_UPDATED_AT_ISO = '2026-06-18T00:05:00.000Z';
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -200,6 +202,7 @@ function careReportsResponse(reportId: string) {
         patient_id: 'patient_1',
         patient_name: '山田 太郎',
         report_type: 'physician_report',
+        updated_at: REPORT_UPDATED_AT_ISO,
         status: 'confirmed',
         created_at: '2026-06-18T00:00:00.000Z',
         delivery_records: [],
@@ -493,6 +496,7 @@ describe('PrintHubContent', () => {
               report: {
                 id: reportId,
                 report_type: 'physician_report',
+                updated_at: REPORT_UPDATED_AT_ISO,
                 content: physicianPrintAuditContent('訪問報告書の監査済み本文'),
               },
             },
@@ -640,6 +644,7 @@ describe('PrintHubContent', () => {
                 patient_id: 'patient_1',
                 patient_name: '山田 太郎',
                 report_type: 'physician_report',
+                updated_at: REPORT_UPDATED_AT_ISO,
                 status: 'confirmed',
                 created_at: '2026-06-18T00:00:00.000Z',
                 delivery_records: [],
@@ -658,6 +663,7 @@ describe('PrintHubContent', () => {
               report: {
                 id: 'report_1',
                 report_type: 'physician_report',
+                updated_at: REPORT_UPDATED_AT_ISO,
                 content: physicianPrintAuditContent('訪問報告書の監査済み本文'),
               },
             },
@@ -687,7 +693,10 @@ describe('PrintHubContent', () => {
       expect(fetch).toHaveBeenCalledWith('/api/care-reports/report_1/print-audit', {
         method: 'POST',
         headers: buildOrgJsonHeaders('org_1'),
-        body: JSON.stringify({ intent: 'print_requested' }),
+        body: JSON.stringify({
+          intent: 'print_requested',
+          expected_report_updated_at: REPORT_UPDATED_AT_ISO,
+        }),
       }),
     );
     expect(window.print).toHaveBeenCalledTimes(1);
@@ -706,6 +715,7 @@ describe('PrintHubContent', () => {
                 patient_id: 'patient_1',
                 patient_name: '山田 太郎',
                 report_type: 'physician_report',
+                updated_at: REPORT_UPDATED_AT_ISO,
                 status: 'confirmed',
                 created_at: '2026-06-18T00:00:00.000Z',
                 delivery_records: [],
@@ -724,6 +734,7 @@ describe('PrintHubContent', () => {
               report: {
                 id: 'report_other',
                 report_type: 'physician_report',
+                updated_at: REPORT_UPDATED_AT_ISO,
                 content: physicianPrintAuditContent('別報告書として返された監査本文'),
               },
             },
@@ -756,6 +767,7 @@ describe('PrintHubContent', () => {
         report: {
           id: 'report_1',
           report_type: 'physician_report',
+          updated_at: REPORT_UPDATED_AT_ISO,
           content: physicianPrintAuditContent('キャッシュ済みの古い監査本文', '2026-06-17'),
         },
       },
@@ -771,6 +783,7 @@ describe('PrintHubContent', () => {
                 patient_id: 'patient_1',
                 patient_name: '山田 太郎',
                 report_type: 'physician_report',
+                updated_at: REPORT_UPDATED_AT_ISO,
                 status: 'confirmed',
                 created_at: '2026-06-18T00:00:00.000Z',
                 delivery_records: [],
@@ -810,6 +823,7 @@ describe('PrintHubContent', () => {
         report: {
           id: 'report_1',
           report_type: 'physician_report',
+          updated_at: REPORT_UPDATED_AT_ISO,
           content: physicianPrintAuditContent('キャッシュ済みの失敗時本文', '2026-06-17'),
         },
       },
@@ -825,6 +839,7 @@ describe('PrintHubContent', () => {
                 patient_id: 'patient_1',
                 patient_name: '山田 太郎',
                 report_type: 'physician_report',
+                updated_at: REPORT_UPDATED_AT_ISO,
                 status: 'confirmed',
                 created_at: '2026-06-18T00:00:00.000Z',
                 delivery_records: [],
@@ -862,6 +877,7 @@ describe('PrintHubContent', () => {
         report: {
           id: 'report_1',
           report_type: 'physician_report',
+          updated_at: REPORT_UPDATED_AT_ISO,
           content: physicianPrintAuditContent('キャッシュ済みの旧本文', '2026-06-17'),
         },
       },
@@ -877,6 +893,7 @@ describe('PrintHubContent', () => {
                 patient_id: 'patient_1',
                 patient_name: '山田 太郎',
                 report_type: 'physician_report',
+                updated_at: REPORT_UPDATED_AT_ISO,
                 status: 'confirmed',
                 created_at: '2026-06-18T00:00:00.000Z',
                 delivery_records: [],
@@ -895,6 +912,7 @@ describe('PrintHubContent', () => {
               report: {
                 id: 'report_1',
                 report_type: 'physician_report',
+                updated_at: REPORT_UPDATED_AT_ISO,
                 content: physicianPrintAuditContent('現在の監査済み本文'),
               },
             },
@@ -925,6 +943,7 @@ describe('PrintHubContent', () => {
                 patient_id: 'patient_1',
                 patient_name: '山田 太郎',
                 report_type: 'physician_report',
+                updated_at: REPORT_UPDATED_AT_ISO,
                 status: 'confirmed',
                 created_at: '2026-06-18T00:00:00.000Z',
                 delivery_records: [],
@@ -946,6 +965,7 @@ describe('PrintHubContent', () => {
                 report: {
                   id: 'report_1',
                   report_type: 'physician_report',
+                  updated_at: REPORT_UPDATED_AT_ISO,
                   content: physicianPrintAuditContent('印刷前に表示済みの監査本文'),
                 },
               },
@@ -960,6 +980,7 @@ describe('PrintHubContent', () => {
               report: {
                 id: 'report_1',
                 report_type: 'physician_report',
+                updated_at: REPORT_UPDATED_AT_ISO,
                 content: physicianPrintAuditContent('印刷前に表示済みの監査本文'),
               },
             },
@@ -997,6 +1018,7 @@ describe('PrintHubContent', () => {
                 patient_id: 'patient_1',
                 patient_name: '山田 太郎',
                 report_type: 'physician_report',
+                updated_at: REPORT_UPDATED_AT_ISO,
                 status: 'confirmed',
                 created_at: '2026-06-18T00:00:00.000Z',
                 delivery_records: [],
@@ -1020,6 +1042,7 @@ describe('PrintHubContent', () => {
               report: {
                 id: 'report_1',
                 report_type: 'physician_report',
+                updated_at: REPORT_UPDATED_AT_ISO,
                 content: physicianPrintAuditContent('印刷前に表示済みの監査本文'),
               },
             },
@@ -1057,6 +1080,7 @@ describe('PrintHubContent', () => {
                 patient_id: 'patient_1',
                 patient_name: '山田 太郎',
                 report_type: 'physician_report',
+                updated_at: REPORT_UPDATED_AT_ISO,
                 status: 'confirmed',
                 created_at: '2026-06-18T00:00:00.000Z',
                 delivery_records: [],
@@ -1078,6 +1102,7 @@ describe('PrintHubContent', () => {
                 report: {
                   id: 'report_other',
                   report_type: 'physician_report',
+                  updated_at: REPORT_UPDATED_AT_ISO,
                   content: physicianPrintAuditContent('別報告書として返された監査本文'),
                 },
               },
@@ -1092,6 +1117,7 @@ describe('PrintHubContent', () => {
               report: {
                 id: 'report_1',
                 report_type: 'physician_report',
+                updated_at: REPORT_UPDATED_AT_ISO,
                 content: physicianPrintAuditContent('印刷前に表示済みの監査本文'),
               },
             },
@@ -1109,6 +1135,73 @@ describe('PrintHubContent', () => {
     fireEvent.click(await screen.findByTestId('print-submit-button'));
 
     await waitFor(() => expect(printRequested).toBe(true));
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      '報告書の印刷監査を記録できませんでした。再読み込みしてください。',
+    );
+    expect(window.print).not.toHaveBeenCalled();
+  });
+
+  it('does not print a visit report when the report changed after preview audit', async () => {
+    useSearchParamsMock.mockReturnValue(new URLSearchParams('type=visit_report'));
+    let printRequestedBody: { intent?: string; expected_report_updated_at?: string } | null = null;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/care-reports?limit=50&status=confirmed') {
+        return new Response(JSON.stringify(careReportsResponse('report_1')), { status: 200 });
+      }
+      if (url === '/api/care-reports/report_1/print-audit') {
+        expect(init?.method).toBe('POST');
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          intent?: string;
+          expected_report_updated_at?: string;
+        };
+        if (body.intent === 'print_requested') {
+          printRequestedBody = body;
+          return new Response(
+            JSON.stringify({
+              data: {
+                audited: true,
+                report: {
+                  id: 'report_1',
+                  report_type: 'physician_report',
+                  updated_at: '2026-06-18T00:06:00.000Z',
+                  content: physicianPrintAuditContent('更新後の監査本文'),
+                },
+              },
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            data: {
+              audited: true,
+              report: {
+                id: 'report_1',
+                report_type: 'physician_report',
+                updated_at: REPORT_UPDATED_AT_ISO,
+                content: physicianPrintAuditContent('印刷前に表示済みの監査本文'),
+              },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    renderPrintHubContent();
+
+    expect(await screen.findByText('印刷前に表示済みの監査本文')).toBeTruthy();
+
+    fireEvent.click(await screen.findByTestId('print-submit-button'));
+
+    await waitFor(() =>
+      expect(printRequestedBody).toEqual({
+        intent: 'print_requested',
+        expected_report_updated_at: REPORT_UPDATED_AT_ISO,
+      }),
+    );
     expect((await screen.findByRole('alert')).textContent).toContain(
       '報告書の印刷監査を記録できませんでした。再読み込みしてください。',
     );

@@ -483,17 +483,26 @@ export default function ReportPrintPage() {
     staleTime: 0,
   });
   const data = printAuditQuery.data?.data.report;
-  const canRenderPrintBody = printAuditQuery.data?.data.audited === true && data?.id === reportId;
+  const canRenderPrintBody =
+    printAuditQuery.data?.data.audited === true && data?.id === reportId && !!data.updated_at;
   const isPrintForbidden =
     printAuditQuery.isError &&
     printAuditQuery.error instanceof Error &&
     printAuditQuery.error.message === 'PRINT_FORBIDDEN';
 
   const recordPrintRequestedAudit = useCallback(async () => {
+    const expectedReportUpdatedAt = data?.updated_at;
+    if (!expectedReportUpdatedAt) {
+      setManualPrintError('印刷監査を記録できないため、再印刷できません。');
+      return false;
+    }
     const res = await fetch(buildCareReportPrintAuditApiPath(reportId), {
       method: 'POST',
       headers: buildOrgJsonHeaders(orgId),
-      body: JSON.stringify({ intent: 'print_requested' }),
+      body: JSON.stringify({
+        intent: 'print_requested',
+        expected_report_updated_at: expectedReportUpdatedAt,
+      }),
     });
     if (res.status === 403) {
       setManualPrintError('印刷権限がないため、再印刷できません。');
@@ -508,12 +517,16 @@ export default function ReportPrintPage() {
         setManualPrintError('印刷監査を記録できないため、再印刷できません。');
         return false;
       }
+      if (audit.data.report.updated_at !== expectedReportUpdatedAt) {
+        setManualPrintError('印刷前に報告書が更新されました。再読み込みしてください。');
+        return false;
+      }
     } catch {
       setManualPrintError('印刷監査を記録できないため、再印刷できません。');
       return false;
     }
     return true;
-  }, [orgId, reportId]);
+  }, [data?.updated_at, orgId, reportId]);
 
   // Auto-print after authorized data loads
   useEffect(() => {

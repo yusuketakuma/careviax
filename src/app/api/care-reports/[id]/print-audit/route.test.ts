@@ -38,9 +38,18 @@ vi.mock('@/server/services/care-report-access', () => ({
 import { POST } from './route';
 import { careReportPrintAuditResponseSchema } from '@/lib/reports/care-report-print-audit-contract';
 
-function createRequest() {
+const REPORT_UPDATED_AT_ISO = '2026-06-18T01:02:03.000Z';
+
+function createRequest(
+  body: Record<string, unknown> = {
+    intent: 'print_requested',
+    expected_report_updated_at: REPORT_UPDATED_AT_ISO,
+  },
+) {
   return new NextRequest('http://localhost/api/care-reports/report_1/print-audit', {
     method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
   });
 }
 
@@ -156,6 +165,7 @@ describe('/api/care-reports/[id]/print-audit', () => {
         report: {
           id: 'report_1',
           report_type: 'physician_report',
+          updated_at: REPORT_UPDATED_AT_ISO,
           content: { patient: { name: '佐藤 花子' }, assessment: '服薬継続可能' },
         },
       },
@@ -235,6 +245,7 @@ describe('/api/care-reports/[id]/print-audit', () => {
         report: {
           id: 'report_1',
           report_type: 'family_share',
+          updated_at: REPORT_UPDATED_AT_ISO,
           content: { report_audience: 'family', summary: '家族共有向け印刷本文' },
         },
       },
@@ -338,6 +349,44 @@ describe('/api/care-reports/[id]/print-audit', () => {
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
     expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('requires the report version for print-requested audits before loading the report', async () => {
+    const response = (await POST(createRequest({ intent: 'print_requested' }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        expected_report_updated_at: expect.any(Array),
+      },
+    });
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale print-requested audits before audit persistence or content output', async () => {
+    const response = (await POST(
+      createRequest({
+        intent: 'print_requested',
+        expected_report_updated_at: '2026-06-18T01:00:00.000Z',
+      }),
+      {
+        params: Promise.resolve({ id: 'report_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expectErrorBodyWithoutPrintContent(response, {
+      code: 'WORKFLOW_CONFLICT',
+      message: '報告書が更新されています。再読み込みしてから印刷してください',
+    });
+    expect(careReportFindFirstMock).toHaveBeenCalledTimes(2);
     expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
   });
 

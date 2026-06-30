@@ -104,11 +104,14 @@ const familyShareContent = {
   warnings: [],
 };
 
+const REPORT_UPDATED_AT_ISO = '2026-05-12T00:00:00.000Z';
+
 function mockReportQueries(
   auditState: 'success' | 'loading' | 'error' | 'forbidden' = 'success',
   reportOverride: Partial<{
     id: string;
     report_type: string;
+    updated_at: string;
     pharmacy_name: string;
     content: unknown;
   }> = {},
@@ -125,6 +128,7 @@ function mockReportQueries(
                   report: {
                     id: 'report_1',
                     report_type: 'physician_report',
+                    updated_at: REPORT_UPDATED_AT_ISO,
                     pharmacy_name: '青葉薬局',
                     content: physicianContent,
                     ...reportOverride,
@@ -183,6 +187,7 @@ describe('ReportPrintPage', () => {
             report: {
               id: 'report_1',
               report_type: 'physician_report',
+              updated_at: REPORT_UPDATED_AT_ISO,
               content: physicianContent,
             },
           },
@@ -205,7 +210,10 @@ describe('ReportPrintPage', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/care-reports/report_1/print-audit', {
       method: 'POST',
       headers: buildOrgJsonHeaders('org_1'),
-      body: JSON.stringify({ intent: 'print_requested' }),
+      body: JSON.stringify({
+        intent: 'print_requested',
+        expected_report_updated_at: REPORT_UPDATED_AT_ISO,
+      }),
     });
     expect(printMock).toHaveBeenCalledTimes(1);
   });
@@ -236,6 +244,7 @@ describe('ReportPrintPage', () => {
             report: {
               id: 'report_1',
               report_type: 'physician_report',
+              updated_at: REPORT_UPDATED_AT_ISO,
               content: physicianContent,
             },
           },
@@ -277,6 +286,7 @@ describe('ReportPrintPage', () => {
             report: {
               id: hostileReportId,
               report_type: 'physician_report',
+              updated_at: REPORT_UPDATED_AT_ISO,
               content: physicianContent,
             },
           },
@@ -315,6 +325,7 @@ describe('ReportPrintPage', () => {
             report: {
               id: 'report_1',
               report_type: 'physician_report',
+              updated_at: REPORT_UPDATED_AT_ISO,
               content: physicianContent,
             },
           },
@@ -335,7 +346,10 @@ describe('ReportPrintPage', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/care-reports/report_1/print-audit', {
       method: 'POST',
       headers: buildOrgJsonHeaders('org_1'),
-      body: JSON.stringify({ intent: 'print_requested' }),
+      body: JSON.stringify({
+        intent: 'print_requested',
+        expected_report_updated_at: REPORT_UPDATED_AT_ISO,
+      }),
     });
     expect(printMock).toHaveBeenCalledTimes(1);
   });
@@ -354,6 +368,7 @@ describe('ReportPrintPage', () => {
             report: {
               id: hostileReportId,
               report_type: 'physician_report',
+              updated_at: REPORT_UPDATED_AT_ISO,
               content: physicianContent,
             },
           },
@@ -377,7 +392,10 @@ describe('ReportPrintPage', () => {
     expect(fetchMock).toHaveBeenCalledWith(expectedAuditUrl, {
       method: 'POST',
       headers: buildOrgJsonHeaders('org_1'),
-      body: JSON.stringify({ intent: 'print_requested' }),
+      body: JSON.stringify({
+        intent: 'print_requested',
+        expected_report_updated_at: REPORT_UPDATED_AT_ISO,
+      }),
     });
     expectNoRawUrlControlChars(expectedAuditUrl, hostileReportId);
     expect(printMock).toHaveBeenCalledTimes(1);
@@ -491,6 +509,48 @@ describe('ReportPrintPage', () => {
 
     expect(screen.getByRole('alert').textContent).toContain(
       '印刷監査を記録できないため、再印刷できません。',
+    );
+    expect(printMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks manual print when the report changed after preview audit', async () => {
+    mockReportQueries();
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            audited: true,
+            report: {
+              id: 'report_1',
+              report_type: 'physician_report',
+              updated_at: '2026-05-12T00:05:00.000Z',
+              content: physicianContent,
+            },
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ReportPrintPage />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '手動印刷' }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/care-reports/report_1/print-audit', {
+      method: 'POST',
+      headers: buildOrgJsonHeaders('org_1'),
+      body: JSON.stringify({
+        intent: 'print_requested',
+        expected_report_updated_at: REPORT_UPDATED_AT_ISO,
+      }),
+    });
+    expect(screen.getByRole('alert').textContent).toContain(
+      '印刷前に報告書が更新されました。再読み込みしてください。',
     );
     expect(printMock).not.toHaveBeenCalled();
   });

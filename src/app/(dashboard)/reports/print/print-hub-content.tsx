@@ -743,13 +743,16 @@ export function PrintHubContent() {
   const canRenderAuditedVisitReport =
     auditedVisitReportPayload?.audited === true &&
     Boolean(visitReportSource) &&
-    auditedVisitReportPayload.report?.id === visitReportSource?.id;
+    auditedVisitReportPayload.report?.id === visitReportSource?.id &&
+    typeof auditedVisitReportPayload.report?.updated_at === 'string';
   const auditedVisitReport = useMemo<CareReportForPrint | null>(() => {
     const audited = auditedVisitReportPayload?.report;
     if (!visitReportSource || !canRenderAuditedVisitReport || !audited) return null;
+    if (!audited.updated_at) return null;
     return {
       ...visitReportSource,
       report_type: audited.report_type,
+      updated_at: audited.updated_at,
       content: audited.content,
     };
   }, [auditedVisitReportPayload, canRenderAuditedVisitReport, visitReportSource]);
@@ -834,10 +837,18 @@ export function PrintHubContent() {
       return;
     }
     if (documentType === 'visit_report' && visitReportSource) {
+      const printableVisitReport = auditedVisitReport;
+      if (!printableVisitReport) {
+        setPrintError('報告書の印刷監査が完了していません。再読み込みしてください。');
+        return;
+      }
       const res = await fetch(buildCareReportPrintAuditApiPath(visitReportSource.id), {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
-        body: JSON.stringify({ intent: 'print_requested' }),
+        body: JSON.stringify({
+          intent: 'print_requested',
+          expected_report_updated_at: printableVisitReport.updated_at,
+        }),
       });
       try {
         const audit = await readApiJson<CareReportPrintAuditResponse>(res, {
@@ -847,7 +858,8 @@ export function PrintHubContent() {
         if (
           audit.data.audited !== true ||
           !audit.data.report ||
-          audit.data.report.id !== visitReportSource.id
+          audit.data.report.id !== visitReportSource.id ||
+          audit.data.report.updated_at !== printableVisitReport.updated_at
         ) {
           setPrintError('報告書の印刷監査を記録できませんでした。再読み込みしてください。');
           return;

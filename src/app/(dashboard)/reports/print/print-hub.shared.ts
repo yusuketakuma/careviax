@@ -148,6 +148,7 @@ export type CareReportForPrint = {
   status: string;
   content?: unknown;
   created_at: string;
+  updated_at: string;
   delivery_records: DeliveryRecordForPrint[];
 };
 

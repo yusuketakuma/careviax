@@ -47,6 +47,9 @@ async function authenticatedPOST(req: NextRequest, { params }: PrintAuditRouteCo
     );
   }
   const intent = parsedIntent.data.intent ?? 'print_requested';
+  const expectedReportUpdatedAt = parsedIntent.data.expected_report_updated_at
+    ? new Date(parsedIntent.data.expected_report_updated_at)
+    : null;
 
   const report = await prisma.careReport.findFirst({
     where: { id, org_id: ctx.orgId },
@@ -88,6 +91,15 @@ async function authenticatedPOST(req: NextRequest, { params }: PrintAuditRouteCo
   });
   if (!printReport) {
     return withSensitiveNoStore(conflict('薬剤師確認済みの報告書のみ印刷できます'));
+  }
+  if (
+    intent === 'print_requested' &&
+    expectedReportUpdatedAt &&
+    printReport.updated_at.getTime() !== expectedReportUpdatedAt.getTime()
+  ) {
+    return withSensitiveNoStore(
+      conflict('報告書が更新されています。再読み込みしてから印刷してください'),
+    );
   }
   if (
     !(await canAccessCareReportSource(prisma, ctx.orgId, ctx, {
@@ -132,6 +144,7 @@ async function authenticatedPOST(req: NextRequest, { params }: PrintAuditRouteCo
       report: {
         id: printReport.id,
         report_type: printReport.report_type,
+        updated_at: printReport.updated_at.toISOString(),
         content: printReport.content as CareReportPrintAuditPrintableReport['content'],
       },
     },

@@ -27568,3 +27568,30 @@ Next loop:
 - Remaining:
   - Broad master/patient objective remains open.
   - Unowned report print-audit dirty files are preserved and not part of this patient archive slice.
+
+### Care Report Print-Audit Version Guard - 2026-07-01 00:10 JST
+
+- Scope:
+  - Continued report-generation / report-output hardening for audited care-report printing.
+  - Focused on `/api/care-reports/[id]/print-audit`, the direct report print page, and the print hub visit-report flow.
+- Fixed:
+  - `print_requested` audit payloads now require `expected_report_updated_at`.
+  - Print-audit API rejects stale print requests with a sanitized 409 before audit persistence or printable content output.
+  - Print-audit responses now include the audited report `updated_at`.
+  - Direct report print and print-hub visit-report printing send the previewed report version and refuse to call `window.print()` if the final audit response id/version does not match the rendered preview.
+- Safety:
+  - Reduces stale report printing and audit/version mismatch risk when a report changes after preview but before print.
+  - Preserves auth, org scoping, no-store responses, printable content validation, PHI-minimized errors, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds scalar timestamp comparison and response metadata only.
+  - No new query, dependency, background job, external call, unbounded loop, or heavy render path was added.
+- Validation:
+  - `pnpm vitest run 'src/lib/reports/care-report-print-audit-contract.test.ts' 'src/app/api/care-reports/[id]/print-audit/route.test.ts' 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/reports/print/print-hub.shared.test.ts' --reporter=dot --testTimeout=60000`: passed, `5` files / `101` tests.
+  - `pnpm typecheck --pretty false`: passed after fixing nullable `auditedVisitReport` narrowing and the shared print-hub test fixture.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit-time/report/collaboration objective remains open.
+  - Shared dirty patient archive/search/QR/prescription changes are unrelated to this slice and were preserved unstaged.

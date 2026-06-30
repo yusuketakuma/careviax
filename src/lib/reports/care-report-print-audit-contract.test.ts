@@ -105,8 +105,18 @@ function printableContentFor(reportType: PrintableCareReportType) {
 describe('care report print audit contract', () => {
   it('accepts the shared print audit intents', () => {
     for (const intent of CARE_REPORT_PRINT_AUDIT_INTENTS) {
-      expect(careReportPrintAuditRequestSchema.safeParse({ intent }).success).toBe(true);
+      const payload =
+        intent === 'print_requested'
+          ? { intent, expected_report_updated_at: '2026-06-18T01:02:03.000Z' }
+          : { intent };
+      expect(careReportPrintAuditRequestSchema.safeParse(payload).success).toBe(true);
     }
+  });
+
+  it('requires a report version for print-requested audits', () => {
+    const result = careReportPrintAuditRequestSchema.safeParse({ intent: 'print_requested' });
+
+    expect(result.success).toBe(false);
   });
 
   it('rejects unknown print audit intents', () => {
@@ -124,6 +134,7 @@ describe('care report print audit contract', () => {
             report: {
               id: 'report_1',
               report_type: reportType,
+              updated_at: '2026-06-18T01:02:03.000Z',
               content: printableContentFor(reportType),
             },
           },
