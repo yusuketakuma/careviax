@@ -32,6 +32,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { hasPermission } from '@/lib/auth/permission-matrix';
+import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { cn } from '@/lib/utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type { VisitHandoff } from '@/types/visit-brief';
@@ -78,6 +79,7 @@ async function fetchHandoffBoard(orgId: string): Promise<HandoffBoardResponse> {
 }
 
 const HANDOFF_BOARD_INVALIDATION_EVENTS = ['workflow_refresh', 'cycle_transition'] as const;
+const COMMUNICATION_WAITING_REQUESTS_HREF = buildCommunicationRequestsHref({ status: 'sent' });
 
 function isHandoffBoardInvalidationEvent(event: unknown) {
   const eventType =
@@ -231,7 +233,7 @@ function HandoffItemCard({
             size="sm"
             className="h-11 shrink-0 sm:h-11 sm:min-h-[44px]"
           >
-            <Link href="/communications">状況を聞く</Link>
+            <Link href={COMMUNICATION_WAITING_REQUESTS_HREF}>状況を聞く</Link>
           </Button>
         ) : null}
         {item.direction === 'incoming' && onConfirmReceipt && !isReadByViewer ? (

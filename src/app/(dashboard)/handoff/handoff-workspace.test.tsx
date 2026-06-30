@@ -295,7 +295,9 @@ describe('HandoffWorkspace', () => {
     expect(screen.getByText('→ ダッシュボードへ')).toBeTruthy();
     expect(screen.getByText('→ セットへ')).toBeTruthy();
     expect(screen.getByText('→ 報告・共有へ')).toBeTruthy();
-    expect(screen.getByText('状況を聞く')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '状況を聞く' }).getAttribute('href')).toBe(
+      '/communications/requests?status=sent',
+    );
 
     // 私に来た: 0 件は done(緑) success 表現ではなく neutral な空状態 + チームルール注記
     const incomingEmpty = screen.getByTestId('handoff-incoming-empty');
