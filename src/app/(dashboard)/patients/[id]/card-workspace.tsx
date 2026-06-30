@@ -156,7 +156,7 @@ const EXCEPTION_ACTIONS: Record<string, { label: string; href: string }> = {
 
 function resolveExceptionAction(exceptionType: string, patientId: string) {
   const action = EXCEPTION_ACTIONS[exceptionType];
-  if (exceptionType === 'family_consent_pending') {
+  if (exceptionType === 'family_consent_pending' || exceptionType === 'awaiting_reply') {
     return {
       label: action?.label ?? '再連絡する',
       href: buildCommunicationRequestsHref({ status: 'sent', patientId }),

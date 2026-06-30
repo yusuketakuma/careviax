@@ -1201,6 +1201,30 @@ describe('CardWorkspace', () => {
     ).toBe('/communications/requests?status=sent&patient_id=patient_1');
   });
 
+  it('focuses awaiting-reply exception links on the patient reply-waiting queue', () => {
+    useUIStore.setState({ workspaceRailOpen: true });
+    mockPatientQuery(
+      buildWorkspace({
+        open_exceptions: [
+          {
+            id: 'exception_reply',
+            exception_type: 'awaiting_reply',
+            description: '主治医からの返信待ち',
+            severity: 'warning',
+            created_at: '2026-06-01T09:30:00.000Z',
+          },
+        ],
+      }),
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const blockedReasons = screen.getByTestId('blocked-reasons-panel');
+    expect(
+      within(blockedReasons).getByRole('link', { name: '再連絡する →' }).getAttribute('href'),
+    ).toBe('/communications/requests?status=sent&patient_id=patient_1');
+  });
+
   it('aligns intervention start with the backend latest-case tie-break (updated_at, created_at, id desc)', () => {
     const sharedUpdatedAt = '2026-06-15T00:00:00.000Z';
     mockPatientQuery(
