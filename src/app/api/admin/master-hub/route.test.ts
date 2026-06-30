@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const { withAuthContextMock, withOrgContextMock, buildTodayOpsRailMock, tx } = vi.hoisted(() => {
@@ -74,7 +74,7 @@ function findMaster(body: unknown, key: string) {
   const masters = (body as { data: { masters: Array<{ key: string }> } }).data.masters;
   const card = masters.find((item) => item.key === key);
   if (!card) throw new Error(`missing master card: ${key}`);
-  return card as {
+  return card as unknown as {
     action_href: string;
     action_label: string;
     note: string;
