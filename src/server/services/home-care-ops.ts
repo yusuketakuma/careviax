@@ -317,6 +317,7 @@ function buildFeatureState(args: {
 
 type MultidisciplinaryShareRequest = {
   id: string;
+  request_type?: string | null;
   patient_id?: string | null;
   status?: string | null;
   related_entity_type?: string | null;
@@ -334,6 +335,7 @@ function buildMultidisciplinaryShareAction(args: {
       return {
         actionHref: buildCommunicationRequestsHref({
           status: request.status ?? null,
+          requestType: request.request_type ?? null,
           patientId: request.patient_id ?? args.patientId,
           requestId: request.id,
           relatedEntityType: request.related_entity_type ?? null,

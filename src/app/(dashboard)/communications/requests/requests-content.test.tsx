@@ -419,6 +419,7 @@ describe('CommunicationRequestsContent', () => {
     render(
       <CommunicationRequestsContent
         initialStatus="sent"
+        initialRequestType="care_report_reply_request"
         initialPatientId={hostilePatientId}
         initialRelatedEntityType="care_report"
         initialRelatedEntityId={hostileRelatedId}
@@ -430,6 +431,7 @@ describe('CommunicationRequestsContent', () => {
     expect(link.getAttribute('href')).not.toContain('/settings');
     expect(link.getAttribute('href')).not.toContain('?x=1');
     expect(link.getAttribute('href')).not.toContain('#y');
+    expect(screen.getByText('依頼種別 報告書返信依頼')).toBeTruthy();
 
     // API フィルタ識別子は生のまま query key に残る(ブラウザ href だけ encode/縮退)。
     const queryArg = useQueryMock.mock.calls.at(-1)?.[0] as {
@@ -440,6 +442,7 @@ describe('CommunicationRequestsContent', () => {
       'communication-requests',
       'org_1',
       'sent',
+      'care_report_reply_request',
       hostilePatientId,
       'care_report',
       hostileRelatedId,
@@ -457,6 +460,7 @@ describe('CommunicationRequestsContent', () => {
     expect(fetchArg.init.headers).toBe(sentinelHeaders);
     expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
     expect(fetchArg.params.get('status')).toBe('sent');
+    expect(fetchArg.params.get('request_type')).toBe('care_report_reply_request');
     expect(fetchArg.params.get('patient_id')).toBe(hostilePatientId);
     expect(fetchArg.params.get('request_id')).toBeNull();
     expect(fetchArg.params.get('related_entity_type')).toBe('care_report');

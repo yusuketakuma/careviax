@@ -12,6 +12,7 @@ export type CommunicationEntityLink = {
 
 type CommunicationFilterInput = {
   status?: string | null;
+  requestType?: string | null;
   patientId?: string | null;
   requestId?: string | null;
   relatedEntityType?: string | null;
@@ -22,6 +23,7 @@ type CommunicationFilterInput = {
 export function buildCommunicationRequestsHref(input: CommunicationFilterInput) {
   const params = new URLSearchParams();
   if (input.status) params.set('status', input.status);
+  if (input.requestType) params.set('request_type', input.requestType);
   if (input.patientId) params.set('patient_id', input.patientId);
   if (input.requestId) params.set('request_id', input.requestId);
   if (input.relatedEntityType) params.set('related_entity_type', input.relatedEntityType);

@@ -49,20 +49,34 @@ vi.mock('@/components/ui/loading', () => ({
 }));
 
 vi.mock('./requests-content', () => ({
-  CommunicationRequestsContent: () => (
-    <section data-testid="communication-requests-content">返信待ち・フォロー</section>
+  CommunicationRequestsContent: ({
+    initialRequestType,
+  }: {
+    initialRequestType?: string | null;
+  }) => (
+    <section
+      data-testid="communication-requests-content"
+      data-request-type={initialRequestType ?? ''}
+    >
+      返信待ち・フォロー
+    </section>
   ),
 }));
 
 describe('CommunicationRequestsPage', () => {
   it('places the communication work queue before the collaboration workflow explainer', async () => {
-    render(await CommunicationRequestsPage({ searchParams: Promise.resolve({}) }));
+    render(
+      await CommunicationRequestsPage({
+        searchParams: Promise.resolve({ request_type: 'care_report_reply_request' }),
+      }),
+    );
 
     const content = screen.getByTestId('communication-requests-content');
     const workflow = screen.getByTestId('collaboration-workflow-panel');
     expect(screen.getByText('コミュニケーション')).toBeTruthy();
     expect(screen.getByRole('heading', { name: '依頼・照会一覧', level: 1 })).toBeTruthy();
     expect(screen.queryByText('最初に見るポイント')).toBeNull();
+    expect(content.getAttribute('data-request-type')).toBe('care_report_reply_request');
     expect(content.compareDocumentPosition(workflow) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );

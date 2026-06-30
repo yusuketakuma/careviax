@@ -376,6 +376,7 @@ describe('home-care-ops', () => {
       count: 1,
       action_href: `/communications/requests?${new URLSearchParams({
         status: 'in_progress',
+        request_type: 'care_report_reply_request',
         patient_id: patientId,
         request_id: requestId,
         related_entity_type: 'care_report',
@@ -387,6 +388,7 @@ describe('home-care-ops', () => {
       expect.objectContaining({
         select: expect.objectContaining({
           id: true,
+          request_type: true,
           patient_id: true,
           status: true,
           related_entity_type: true,

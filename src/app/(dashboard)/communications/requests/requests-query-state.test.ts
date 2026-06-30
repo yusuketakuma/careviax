@@ -6,6 +6,7 @@ describe('requests-query-state', () => {
     expect(
       readCommunicationRequestsState({
         status: 'sent',
+        request_type: 'care_report_reply_request',
         patient_id: 'patient_1',
         request_id: 'request_1',
         related_entity_type: 'care_report',
@@ -14,6 +15,7 @@ describe('requests-query-state', () => {
       }),
     ).toEqual({
       initialStatus: 'sent',
+      initialRequestType: 'care_report_reply_request',
       initialPatientId: 'patient_1',
       initialRequestId: 'request_1',
       initialRelatedEntityType: 'care_report',

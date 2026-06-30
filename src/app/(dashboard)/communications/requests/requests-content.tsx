@@ -113,6 +113,7 @@ function resolveFollowupDueDisplay(item: CommunicationRequestRow): {
 
 type CommunicationRequestsContentProps = {
   initialStatus?: string | null;
+  initialRequestType?: string | null;
   initialPatientId?: string | null;
   initialRequestId?: string | null;
   initialRelatedEntityType?: string | null;
@@ -122,6 +123,7 @@ type CommunicationRequestsContentProps = {
 
 export function CommunicationRequestsContent({
   initialStatus,
+  initialRequestType,
   initialPatientId,
   initialRequestId,
   initialRelatedEntityType,
@@ -136,9 +138,13 @@ export function CommunicationRequestsContent({
     initialRequestId ?? null,
   );
   const [focusedForm, setFocusedForm] = useState(DEFAULT_FOCUSED_FORM);
+  const requestTypeFilter = initialRequestType ?? '';
   const patientFilter = initialPatientId ?? '';
   const relatedEntityTypeFilter = initialRelatedEntityType ?? '';
   const relatedEntityIdFilter = initialRelatedEntityId ?? '';
+  const hasPatientOrEntityContext = Boolean(
+    patientFilter || relatedEntityTypeFilter || relatedEntityIdFilter || initialRequestId,
+  );
   const relatedEntityLink = resolveCommunicationEntityLink({
     entityType: relatedEntityTypeFilter || null,
     entityId: relatedEntityIdFilter || null,
@@ -211,6 +217,7 @@ export function CommunicationRequestsContent({
       'communication-requests',
       orgId,
       statusFilter,
+      requestTypeFilter,
       patientFilter,
       relatedEntityTypeFilter,
       relatedEntityIdFilter,
@@ -218,6 +225,7 @@ export function CommunicationRequestsContent({
     queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter) params.set('status', statusFilter);
+      if (requestTypeFilter) params.set('request_type', requestTypeFilter);
       if (patientFilter) params.set('patient_id', patientFilter);
       if (relatedEntityTypeFilter) params.set('related_entity_type', relatedEntityTypeFilter);
       if (relatedEntityIdFilter) params.set('related_entity_id', relatedEntityIdFilter);
@@ -439,22 +447,34 @@ export function CommunicationRequestsContent({
           ))}
         </div>
 
-        {patientFilter || relatedEntityTypeFilter || relatedEntityIdFilter || initialRequestId ? (
+        {requestTypeFilter || hasPatientOrEntityContext ? (
           <FilterSummaryBar
             items={[
-              {
-                label: '患者',
-                value: patientFilterLink ? (
-                  <Link
-                    href={patientFilterLink.href}
-                    className="inline-flex min-h-11 min-w-11 items-center text-primary underline-offset-4 hover:underline"
-                  >
-                    詳細
-                  </Link>
-                ) : (
-                  'なし'
-                ),
-              },
+              ...(requestTypeFilter
+                ? [
+                    {
+                      label: '依頼種別',
+                      value: formatCommunicationRequestTypeLabel(requestTypeFilter),
+                    },
+                  ]
+                : []),
+              ...(hasPatientOrEntityContext
+                ? [
+                    {
+                      label: '患者',
+                      value: patientFilterLink ? (
+                        <Link
+                          href={patientFilterLink.href}
+                          className="inline-flex min-h-11 min-w-11 items-center text-primary underline-offset-4 hover:underline"
+                        >
+                          詳細
+                        </Link>
+                      ) : (
+                        'なし'
+                      ),
+                    },
+                  ]
+                : []),
               ...(relatedEntityTypeFilter
                 ? [{ label: '関連種別', value: relatedEntityTypeFilter }]
                 : []),

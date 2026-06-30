@@ -540,6 +540,7 @@ const authenticatedGET = withAuthContext(
           select: {
             id: true,
             subject: true,
+            request_type: true,
             patient_id: true,
             status: true,
             related_entity_type: true,
@@ -879,6 +880,7 @@ const authenticatedGET = withAuthContext(
                   label: '依頼を確認',
                   href: buildCommunicationRequestsHref({
                     status: request.status,
+                    requestType: request.request_type,
                     patientId: request.patient_id,
                     requestId: request.id,
                     relatedEntityType: request.related_entity_type,

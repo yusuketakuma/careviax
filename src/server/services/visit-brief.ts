@@ -825,6 +825,7 @@ function buildCommunicationItems(args: {
       severity: severityFromPriority(item.status),
       action_href: buildCommunicationRequestsHref({
         status: item.status,
+        requestType: item.request_type,
         patientId: item.patient_id,
         requestId: item.id,
         relatedEntityType: item.related_entity_type,

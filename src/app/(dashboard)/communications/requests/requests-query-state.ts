@@ -2,6 +2,7 @@ type SearchParamRecord = Record<string, string | string[] | undefined> | null | 
 
 type CommunicationRequestsInitialState = {
   initialStatus?: string | null;
+  initialRequestType?: string | null;
   initialPatientId?: string | null;
   initialRequestId?: string | null;
   initialRelatedEntityType?: string | null;
@@ -18,6 +19,7 @@ export function readCommunicationRequestsState(
 ): CommunicationRequestsInitialState {
   return {
     initialStatus: readString(params?.status),
+    initialRequestType: readString(params?.request_type),
     initialPatientId: readString(params?.patient_id),
     initialRequestId: readString(params?.request_id),
     initialRelatedEntityType: readString(params?.related_entity_type),

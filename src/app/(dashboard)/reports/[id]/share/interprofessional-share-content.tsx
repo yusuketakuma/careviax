@@ -197,6 +197,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   const replyRequestQueueHref = focusedReplyRequestId
     ? buildCommunicationRequestsHref({
         status: activeAudienceRequest?.status ?? 'sent',
+        requestType: 'care_report_reply_request',
         patientId,
         requestId: focusedReplyRequestId,
         relatedEntityType: 'care_report',

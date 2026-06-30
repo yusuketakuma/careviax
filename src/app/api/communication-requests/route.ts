@@ -46,6 +46,7 @@ function normalizeInputJsonObject(value: unknown): Prisma.InputJsonObject {
 
 const communicationRequestQuerySchema = z.object({
   status: communicationRequestStatusSchema.optional(),
+  request_type: optionalTrimmedStringSchema,
   patient_id: optionalTrimmedStringSchema,
   related_entity_type: optionalTrimmedStringSchema,
   related_entity_id: optionalTrimmedStringSchema,
@@ -100,6 +101,12 @@ const authenticatedGET = withAuthContext(
       'ステータスを指定してください',
     );
     if (!statusResult.ok) return statusResult.response;
+    const requestTypeResult = readPresentOptionalSearchParam(
+      searchParams,
+      'request_type',
+      '依頼種別を指定してください',
+    );
+    if (!requestTypeResult.ok) return requestTypeResult.response;
     const patientIdResult = readPresentOptionalSearchParam(
       searchParams,
       'patient_id',
@@ -121,6 +128,7 @@ const authenticatedGET = withAuthContext(
 
     const parsedQuery = communicationRequestQuerySchema.safeParse({
       status: statusResult.value,
+      request_type: requestTypeResult.value,
       patient_id: patientIdResult.value,
       related_entity_type: relatedEntityTypeResult.value,
       related_entity_id: relatedEntityIdResult.value,
@@ -131,6 +139,7 @@ const authenticatedGET = withAuthContext(
 
     const {
       status,
+      request_type: requestType,
       patient_id: patientId,
       related_entity_type: relatedEntityType,
       related_entity_id: relatedEntityId,
@@ -149,6 +158,7 @@ const authenticatedGET = withAuthContext(
     const where: Prisma.CommunicationRequestWhereInput = {
       org_id: ctx.orgId,
       ...(status ? { status } : {}),
+      ...(requestType ? { request_type: requestType } : {}),
       ...(patientId ? { patient_id: patientId } : {}),
       ...(relatedEntityType ? { related_entity_type: relatedEntityType } : {}),
       ...(relatedEntityId ? { related_entity_id: relatedEntityId } : {}),

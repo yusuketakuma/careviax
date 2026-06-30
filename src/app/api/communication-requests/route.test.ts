@@ -141,7 +141,9 @@ describe('/api/communication-requests', () => {
   });
 
   it('lists communication requests', async () => {
-    const response = (await GET(createGetRequest('?status=draft')))!;
+    const response = (await GET(
+      createGetRequest('?status=draft&request_type=care_report_reply_request'),
+    ))!;
 
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
@@ -153,6 +155,7 @@ describe('/api/communication-requests', () => {
         where: expect.objectContaining({
           org_id: 'org_1',
           status: 'draft',
+          request_type: 'care_report_reply_request',
         }),
       }),
     );
@@ -245,7 +248,7 @@ describe('/api/communication-requests', () => {
   it('trims scoped search filters before listing communication requests', async () => {
     const response = (await GET(
       createGetRequest(
-        '?status=%20draft%20&patient_id=%20patient_1%20&related_entity_type=%20tracing_report%20&related_entity_id=%20tracing_1%20',
+        '?status=%20draft%20&request_type=%20tracing_report%20&patient_id=%20patient_1%20&related_entity_type=%20tracing_report%20&related_entity_id=%20tracing_1%20',
       ),
     ))!;
 
@@ -254,6 +257,7 @@ describe('/api/communication-requests', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           status: 'draft',
+          request_type: 'tracing_report',
           patient_id: 'patient_1',
           related_entity_type: 'tracing_report',
           related_entity_id: 'tracing_1',
@@ -265,6 +269,12 @@ describe('/api/communication-requests', () => {
   it.each([
     ['status', '?status=', { status: ['ステータスを指定してください'] }],
     ['blank status', '?status=%20%20', { status: ['ステータスを指定してください'] }],
+    ['request_type', '?request_type=', { request_type: ['依頼種別を指定してください'] }],
+    [
+      'blank request_type',
+      '?request_type=%20%20',
+      { request_type: ['依頼種別を指定してください'] },
+    ],
     ['patient_id', '?patient_id=', { patient_id: ['患者IDを指定してください'] }],
     ['blank patient_id', '?patient_id=%20%20', { patient_id: ['患者IDを指定してください'] }],
     [

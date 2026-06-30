@@ -42,6 +42,7 @@ export default async function CommunicationRequestsPage({
       <Suspense fallback={<Loading />}>
         <CommunicationRequestsContent
           initialStatus={initialState.initialStatus}
+          initialRequestType={initialState.initialRequestType}
           initialPatientId={initialState.initialPatientId}
           initialRequestId={initialState.initialRequestId}
           initialRelatedEntityType={initialState.initialRelatedEntityType}

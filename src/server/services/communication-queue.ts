@@ -833,6 +833,7 @@ export async function listCommunicationQueue(
       due_at: isoOrNull(request.due_date ?? request.requested_at),
       action_href: buildCommunicationRequestsHref({
         status: request.status,
+        requestType: request.request_type,
         patientId: request.patient_id,
         requestId: request.id,
         relatedEntityType: request.related_entity_type,
@@ -913,6 +914,7 @@ export async function listCommunicationQueue(
       occurred_at: request.due_date ?? request.requested_at,
       action_href: buildCommunicationRequestsHref({
         status: request.status,
+        requestType: request.request_type,
         patientId: request.patient_id,
         requestId: request.id,
         relatedEntityType: request.related_entity_type,

@@ -374,7 +374,7 @@ describe('ReportDeliveryDashboard', () => {
         `/reports/${encodeURIComponent('report/1?x=y#z')}`,
       );
       expect(screen.getByRole('link', { name: '関連依頼' }).getAttribute('href')).toBe(
-        `/communications/requests?status=sent&patient_id=${encodeURIComponent(
+        `/communications/requests?status=sent&request_type=care_report_reply_request&patient_id=${encodeURIComponent(
           'pt/1?x=y#z',
         )}&related_entity_type=care_report&related_entity_id=${encodeURIComponent(
           'report/1?x=y#z',

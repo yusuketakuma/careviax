@@ -308,7 +308,7 @@ describe('InterprofessionalShareContent', () => {
       );
     });
     expect(screen.getByTestId('share-open-request-link').getAttribute('href')).toBe(
-      '/communications/requests?status=responded&patient_id=pt_1&request_id=req_1&related_entity_type=care_report&related_entity_id=rep_1',
+      '/communications/requests?status=responded&request_type=care_report_reply_request&patient_id=pt_1&request_id=req_1&related_entity_type=care_report&related_entity_id=rep_1',
     );
   });
 

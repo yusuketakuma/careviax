@@ -640,7 +640,7 @@ describe('getPatientVisitBrief', () => {
           source_type: 'request',
           summary: '処方医フォロー / escalated / ふらつき継続のため確認',
           action_href:
-            '/communications/requests?status=escalated&patient_id=patient_1&request_id=request%2F1%3Fx%3Dy%23frag&related_entity_type=care_report&related_entity_id=report%2F1%3Fx%3Dy%23frag',
+            '/communications/requests?status=escalated&request_type=prescriber_followup&patient_id=patient_1&request_id=request%2F1%3Fx%3Dy%23frag&related_entity_type=care_report&related_entity_id=report%2F1%3Fx%3Dy%23frag',
           action_label: '依頼を確認',
         }),
       ]),
