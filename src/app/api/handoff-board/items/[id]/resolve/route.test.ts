@@ -45,6 +45,11 @@ function createRequest(body: unknown) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/handoff-board/items/[id]/resolve', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -82,6 +87,7 @@ describe('/api/handoff-board/items/[id]/resolve', () => {
     );
 
     expect(response!.status).toBe(200);
+    expectSensitiveNoStore(response!);
     expect(handoffItemUpdateManyMock).toHaveBeenCalledWith({
       where: {
         id: 'item_1',
@@ -105,6 +111,34 @@ describe('/api/handoff-board/items/[id]/resolve', () => {
         }),
       }),
     );
+  });
+
+  it('returns a sanitized no-store 500 when consult resolution fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('鈴木 一郎 処方元へ確認 raw consult resolve failure'),
+    );
+
+    const response = await POST(
+      createRequest({
+        resolution_action: 'returned_to_clerk',
+        resolution_note: '処方元へ確認してから再提出してください',
+      }),
+      { params: Promise.resolve({ id: 'item_1' }) },
+    );
+
+    expect(response!.status).toBe(500);
+    expectSensitiveNoStore(response!);
+    const body = await response!.json();
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('鈴木 一郎');
+    expect(bodyText).not.toContain('処方元へ確認');
+    expect(bodyText).not.toContain('raw consult resolve failure');
+    expect(handoffItemUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('returns conflict without audit when another user resolved the consult first', async () => {

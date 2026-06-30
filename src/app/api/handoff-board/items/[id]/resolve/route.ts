@@ -1,6 +1,8 @@
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
@@ -47,7 +49,7 @@ const NEXT_CONSULT_STATUS: Record<z.infer<typeof resolutionActionSchema>, string
   returned_to_clerk: 'returned_to_clerk',
 };
 
-export const POST = withAuthContext<{ id: string }>(
+const authenticatedPOST = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
     const { id } = await routeContext.params;
 
@@ -137,3 +139,12 @@ export const POST = withAuthContext<{ id: string }>(
     message: '相談に対応する権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
