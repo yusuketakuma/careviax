@@ -26697,3 +26697,83 @@ Next loop:
 - Remaining:
   - The broad schedule/prescription/route objective remains open.
   - Next useful area is prescription-difference/carry-item evidence inside schedule proposal/detail decision surfaces.
+
+### Schedule Preparation Detail Labels - 2026-06-30 21:30 JST
+
+- Scope:
+  - Continued schedule-management and prescription-to-visit preparation explainability.
+  - Focused on the schedule team board route-preview/preparation chip where confirmed visit route decisions are reviewed.
+- Fixed:
+  - Preparation detail labels now include multiple unresolved blockers instead of only the first label.
+  - Route preview keeps `薬歴・前回変更の確認` and `持参薬・物品確認` visible together, with an `他N件` suffix for additional blockers.
+  - Compact gantt chips keep the short status label but expose all blocker labels in `aria-label`.
+  - Regression coverage locks prescription-change + carry-item blockers in both visual route-preview text and accessible gantt labels.
+- Safety:
+  - Reduces missed prescription-change/carry-item evidence when staff review route order and visit readiness from the schedule board.
+  - No new PHI fields, API response expansion, permission changes, live DB operations, external sends, migrations, push/deploy, or destructive operations were added.
+- Performance:
+  - Pure client-side formatting of already returned `preparation_summary.incomplete_labels`; no query, dependency, background job, broad scan, or render-heavy path was added.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx'`: passed, `1` file / `21` tests.
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.helpers.test.ts' src/app/api/visit-schedules/day-board/route.test.ts`: passed, `3` files / `45` tests.
+  - Scoped `pnpm exec eslint` on changed files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - The broad schedule/prescription/route objective remains open.
+  - Next useful area is proposal/reschedule confirmation surfaces where prescription-difference/carry-item evidence must be visible before final confirmation.
+
+### Proposal Confirmation Safe Medication Summary - 2026-06-30 21:34 JST
+
+- Scope:
+  - Continued prescription-to-schedule decision hardening at the final single-proposal approval/date-confirmation boundary.
+  - Focused on `ScheduleProposalsContent` single confirmation dialogs.
+- Fixed:
+  - Single approval/date-confirmation dialogs now show a safe medication scheduling summary: 服薬最終日, 開始日前配薬, 薬剤根拠 presence, and route decision.
+  - The summary is derived from already loaded proposal fields and intentionally omits drug names, addresses, phone numbers, and raw prescription details.
+  - Regression coverage verifies a proposal reason containing a drug name/raw detail does not leak those details while still showing the safe medication summary.
+- Safety:
+  - Reduces final-action confirmation risk by keeping medication-deadline evidence near the approval/date-confirmation action.
+  - No API response expansion, permission changes, live DB operations, external sends, migrations, push/deploy, or destructive operations were added.
+- Performance:
+  - Pure client-side formatting from existing proposal fields; no query, dependency, background job, or render-heavy path was added.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx'`: passed, `1` file / `34` tests.
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' 'src/app/(dashboard)/schedules/schedule-day-view.helpers.test.ts' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx'`: passed, `3` files / `86` tests.
+  - Scoped `pnpm exec eslint` on changed proposal files: passed.
+  - Scoped Prettier check on changed proposal files and `CODEX_GOAL_PROGRESS.md`: passed.
+  - Scoped `git diff --check` on owned files and full `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - Broad schedule/prescription/route objective remains open.
+  - Bulk proposal confirmation and reschedule approval boundaries still need review for the same safe medication evidence pattern.
+
+### Patient Cycle Workspace Focus Links - 2026-06-30 21:38 JST
+
+- Scope:
+  - Continued patient-information and prescription-cycle workspace hardening.
+  - Focused on the "next action" links shown in patient detail, process tab, compare cards, and patient workspace activity rows.
+- Fixed:
+  - `getCycleWorkspaceAction` now accepts guarded context ids and focuses actions on exact prescription intake, patient communication queue, schedule focus, visit record, report, or patient workspace when available.
+  - Patient workspace read models now include `action_context` with patient, current intake, today's schedule, and latest visit-record ids.
+  - Patient detail, process tab, compare cards, transition activity rows, and prescription-intake activity rows now consume shared navigation helpers instead of aggregate `/patients`, `/prescriptions`, `/schedules`, `/visits`, or `/reports` fallbacks when exact context exists.
+- Safety:
+  - Reduces wrong-patient / wrong-workspace navigation risk in prescription-cycle remediation.
+  - Dot-segment ids fail closed through existing patient, prescription, visit, and report navigation helpers; schedule focus keeps encoded query semantics.
+  - No PHI field expansion beyond bounded ids already needed for patient workspace navigation, no permission changes, live DB operations, external sends, migrations, push/deploy, or destructive operations were added.
+- Performance:
+  - Adds one bounded latest recorded visit lookup for the current cycle to populate visit-record context.
+  - Other link focusing is in-memory mapping over already loaded workspace data.
+- Validation:
+  - `pnpm vitest run src/lib/prescription/cycle-workspace.test.ts src/server/services/patient-detail-workspace.test.ts 'src/app/(dashboard)/patients/[id]/process-tab.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/(dashboard)/patients/compare/compare-card-helpers.test.ts' --reporter=dot --testTimeout=60000`: passed, `5` files / `96` tests.
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `1` file / `34` tests.
+  - Scoped `pnpm exec eslint` on changed patient, prescription, schedule proposal, and service files: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - Broad master-management and patient-information goal remains open.
+  - Continue reviewing bulk proposal/reschedule confirmation and remaining capped master APIs.
