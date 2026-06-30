@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   buildRecommendedRouteDetail,
   buildRouteScenarioRequests,
-  buildRouteScenarios,
   buildRouteScenariosFromPlans,
   buildRouteScenarioComparisonRows,
   buildScenarioChartPoints,
@@ -125,68 +124,16 @@ function engineResults(
   ];
 }
 
-describe('buildRouteScenarios', () => {
-  it('案A/案B/案C を順に返し、案A のみ推奨になる', () => {
-    const scenarios = buildRouteScenarios(buildSeedLikeVisits());
-
-    expect(scenarios.map((scenario) => scenario.id)).toEqual([
-      'min_travel',
-      'time_preference',
-      'emergency_slack',
-    ]);
-    expect(scenarios.map((scenario) => scenario.label)).toEqual([
-      '案A 移動少なめ',
-      '案B 希望時間優先',
-      '案C 緊急余力優先',
-    ]);
-    expect(scenarios.map((scenario) => scenario.tone)).toEqual(['blue', 'emerald', 'amber']);
-    expect(scenarios.map((scenario) => scenario.recommended)).toEqual([true, false, false]);
+function engineScenarios(visits: RouteCompareVisitInput[] = buildSeedLikeVisits()) {
+  return buildRouteScenariosFromPlans({
+    visits,
+    results: engineResults(),
   });
+}
 
-  it('seed 相当 4 件で各案の移動分とサマリを近似計算する', () => {
-    const [minTravel, timePreference, emergencySlack] = buildRouteScenarios(buildSeedLikeVisits());
-
-    // 案A: 薬局往復 16*2 + 訪問間 20*3 = 92 分(詰めて回る)
-    expect(minTravel.travelMinutes).toBe(92);
-    // 詰めて回ると 10:30 開始 → 14:46 帰局。終業 18:00 までに 50 分単位で 3 件
-    expect(minTravel.summary).toBe('移動92分 / 余力3件');
-
-    // 案B: 伊藤→田中の空き 180 分 > 60 分のため帰局往復 32 分に置換
-    // 16 + 32 + 20 + 20 + 16 = 104 分
-    expect(timePreference.travelMinutes).toBe(104);
-    expect(timePreference.summary).toBe('移動104分 / 患者希望一致');
-
-    // 案C: 訪問間ごとに帰局 16 + 32*3 + 16 = 128 分
-    expect(emergencySlack.travelMinutes).toBe(128);
-    expect(emergencySlack.summary).toBe('移動128分 / 午後余力大');
-  });
-
-  it('全件時間指定なしの場合、案B のサマリは「時間指定なし」になる', () => {
-    const visits = buildSeedLikeVisits().map((visit) => ({
-      ...visit,
-      startMinutes: null,
-      endMinutes: null,
-    }));
-    const [, timePreference] = buildRouteScenarios(visits);
-    expect(timePreference.summaryDetail).toBe('時間指定なし');
-  });
-
-  it('訪問 0 件では移動 0 分・stops 空で返す', () => {
-    const scenarios = buildRouteScenarios([]);
-    expect(scenarios).toHaveLength(3);
-    for (const scenario of scenarios) {
-      expect(scenario.stops).toEqual([]);
-      expect(scenario.travelMinutes).toBe(0);
-    }
-  });
-
+describe('buildRouteScenarioComparisonRows', () => {
   it('比較行は推奨案との差分と訪問件数を返す', () => {
-    const rows = buildRouteScenarioComparisonRows(
-      buildRouteScenariosFromPlans({
-        visits: buildSeedLikeVisits(),
-        results: engineResults(),
-      }),
-    );
+    const rows = buildRouteScenarioComparisonRows(engineScenarios());
 
     expect(rows).toEqual([
       {
@@ -321,6 +268,19 @@ describe('buildRouteScenariosFromPlans', () => {
       '電話確定済みの訪問順が変わるため、この画面からは採用できません',
     );
   });
+
+  it('採用可能な engine-backed 案がない場合は推奨案を作らない', () => {
+    const scenarios = buildRouteScenariosFromPlans({
+      visits: buildSeedLikeVisits(),
+      results: [
+        { scenarioId: 'min_travel', errorMessage: '経路計算に失敗しました' },
+        { scenarioId: 'time_preference', errorMessage: '経路計算に失敗しました' },
+        { scenarioId: 'emergency_slack', errorMessage: '経路計算に失敗しました' },
+      ],
+    });
+
+    expect(scenarios.every((scenario) => !scenario.recommended)).toBe(true);
+  });
 });
 
 describe('orderByTimePreference', () => {
@@ -375,10 +335,11 @@ describe('orderByMinTravel', () => {
       'visit-tanaka',
       'visit-okada',
     ]);
-
-    const [minTravel] = buildRouteScenarios(visits);
-    // 16*2 + 同一建物 5 + 20*2 = 77 分
-    expect(minTravel.travelMinutes).toBe(77);
+    expect(buildRouteScenarioRequests(visits)[0]).toMatchObject({
+      scenarioId: 'min_travel',
+      scheduleIds: ['visit-ito', 'visit-uchida', 'visit-tanaka', 'visit-okada'],
+      lockedScheduleIds: [],
+    });
   });
 });
 
@@ -424,7 +385,7 @@ describe('computeSpareVisitCapacity', () => {
 
 describe('describeScenarioOrder', () => {
   it('「1 患者名 → 2 患者名」形式の訪問順テキストを作る', () => {
-    const [, timePreference] = buildRouteScenarios(buildSeedLikeVisits());
+    const [, timePreference] = engineScenarios();
     expect(describeScenarioOrder(timePreference.stops)).toBe(
       '1 伊藤 キヨ → 2 田中 一郎 → 3 岡田 達也 → 4 内田 順子',
     );
@@ -433,7 +394,7 @@ describe('describeScenarioOrder', () => {
 
 describe('buildScenarioRouteOrderUpdates', () => {
   it('担当ごとに案の訪問順で 1 から振り直し、施設一括分は末尾に居室順で続ける', () => {
-    const [, timePreference] = buildRouteScenarios(buildSeedLikeVisits());
+    const [, timePreference] = engineScenarios();
 
     const allVisits: RouteOrderTarget[] = [
       // 比較対象の個人宅 4 件
@@ -514,7 +475,7 @@ describe('buildScenarioRouteOrderUpdates', () => {
   });
 
   it('does not include confirmed visits in adoption updates', () => {
-    const [, timePreference] = buildRouteScenarios(buildSeedLikeVisits());
+    const [, timePreference] = engineScenarios();
     const allVisits: RouteOrderTarget[] = [
       {
         scheduleId: 'visit-confirmed',
@@ -567,7 +528,7 @@ describe('buildScenarioRouteOrderUpdates', () => {
 
 describe('buildRecommendedRouteDetail', () => {
   it('推奨案(案A)を候補1、次点(案B)を候補2にした詳細を組み立てる', () => {
-    const detail = buildRecommendedRouteDetail(buildSeedLikeVisits());
+    const detail = buildRecommendedRouteDetail(buildSeedLikeVisits(), engineScenarios());
     expect(detail).not.toBeNull();
     if (!detail) return;
 
@@ -578,17 +539,16 @@ describe('buildRecommendedRouteDetail', () => {
     const [candidate1, candidate2] = detail.candidates;
     expect(candidate1.rankLabel).toBe('候補1');
     expect(candidate1.recommended).toBe(true);
-    // 案A: 移動92分 / 訪問は 30+30+60+60 = 180 分 / 余力3件
-    expect(candidate1.summary).toBe('移動92分 / 訪問180分 / 余力3件');
+    expect(candidate1.summary).toBe('移動23分 / 訪問180分 / 余力3件');
 
     expect(candidate2.rankLabel).toBe('候補2');
     expect(candidate2.scenarioId).toBe('time_preference');
     expect(candidate2.recommended).toBe(false);
-    expect(candidate2.summary.startsWith('移動104分 / 余力')).toBe(true);
+    expect(candidate2.summary.startsWith('移動31分 / 余力')).toBe(true);
   });
 
   it('訪問パケットは候補1の訪問順で番号・希望時間・所要分を持つ', () => {
-    const detail = buildRecommendedRouteDetail(buildSeedLikeVisits());
+    const detail = buildRecommendedRouteDetail(buildSeedLikeVisits(), engineScenarios());
     if (!detail) throw new Error('detail should not be null');
 
     expect(detail.stops.map((stop) => stop.order)).toEqual([1, 2, 3, 4]);
@@ -602,7 +562,7 @@ describe('buildRecommendedRouteDetail', () => {
   });
 
   it('守る条件は付帯情報(施設/正式決定/車両)とデータから充足を判定する', () => {
-    const detail = buildRecommendedRouteDetail(buildSeedLikeVisits(), {
+    const detail = buildRecommendedRouteDetail(buildSeedLikeVisits(), engineScenarios(), {
       hasConfirmedVisit: true,
       hasFacilityVisit: false,
       vehicleLabel: '車両A',
@@ -624,15 +584,51 @@ describe('buildRecommendedRouteDetail', () => {
   });
 
   it('車両ラベル未指定なら担当車両ラベル・未充足になる', () => {
-    const detail = buildRecommendedRouteDetail(buildSeedLikeVisits());
+    const detail = buildRecommendedRouteDetail(buildSeedLikeVisits(), engineScenarios());
     if (!detail) throw new Error('detail should not be null');
     const vehicle = detail.constraints.find((c) => c.id === 'assigned_vehicle');
     expect(vehicle?.label).toBe('担当車両を使用');
     expect(vehicle?.checked).toBe(false);
   });
 
+  it('採用可能な engine-backed 案がない場合は詳細を返さない', () => {
+    const scenarios = buildRouteScenariosFromPlans({
+      visits: buildSeedLikeVisits(),
+      results: [
+        { scenarioId: 'min_travel', errorMessage: '経路計算に失敗しました' },
+        { scenarioId: 'time_preference', errorMessage: '経路計算に失敗しました' },
+        { scenarioId: 'emergency_slack', errorMessage: '経路計算に失敗しました' },
+      ],
+    });
+
+    expect(buildRecommendedRouteDetail(buildSeedLikeVisits(), scenarios)).toBeNull();
+  });
+
+  it('先頭案が採用不可でも後続の採用可能案を詳細の候補1にする', () => {
+    const scenarios = buildRouteScenariosFromPlans({
+      visits: buildSeedLikeVisits(),
+      results: engineResults({
+        min_travel: routePlan({
+          orderedScheduleIds: ['visit-ito', 'visit-tanaka'],
+          totalDurationSeconds: null,
+          status: 'unavailable',
+          note: '座標未設定: 岡田 達也、内田 順子',
+        }),
+      }),
+    });
+
+    const detail = buildRecommendedRouteDetail(buildSeedLikeVisits(), scenarios);
+
+    expect(detail?.recommendedScenarioId).toBe('time_preference');
+    expect(detail?.candidates[0]).toMatchObject({
+      scenarioId: 'time_preference',
+      rankLabel: '候補1',
+      recommended: true,
+    });
+  });
+
   it('訪問 0 件では null を返す', () => {
-    expect(buildRecommendedRouteDetail([])).toBeNull();
+    expect(buildRecommendedRouteDetail([], [])).toBeNull();
   });
 });
 

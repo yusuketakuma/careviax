@@ -519,7 +519,7 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
   const routeDetail = useMemo(
     () =>
       scenarios.length > 0
-        ? buildRecommendedRouteDetail(compareVisits, detailMeta, scenarios)
+        ? buildRecommendedRouteDetail(compareVisits, scenarios, detailMeta)
         : null,
     [compareVisits, detailMeta, scenarios],
   );

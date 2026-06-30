@@ -63,6 +63,7 @@ type FetchCall = {
 
 const fetchCalls: FetchCall[] = [];
 let failTimePreferenceRoute = false;
+let failAllRouteScenarios = false;
 
 function jsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -280,6 +281,9 @@ function installFetchMock() {
       }
       if (url === '/api/visit-routes') {
         const scenario = scenarioForBody(body);
+        if (failAllRouteScenarios) {
+          return jsonResponse({ message: '経路計算に失敗しました' }, 500);
+        }
         if (scenario === 'time_preference' && failTimePreferenceRoute) {
           return jsonResponse({ message: '経路計算に失敗しました' }, 500);
         }
@@ -308,6 +312,7 @@ function installFetchMock() {
 beforeEach(() => {
   fetchCalls.length = 0;
   failTimePreferenceRoute = false;
+  failAllRouteScenarios = false;
   vi.clearAllMocks();
   installFetchMock();
 });
@@ -406,5 +411,26 @@ describe('RouteCompareContent', () => {
         .disabled,
     ).toBe(true);
     expect(screen.getByText('移動35分 / 午後余力大')).not.toBeNull();
+  });
+
+  it('does not render recommended route detail when every route-engine scenario fails', async () => {
+    failAllRouteScenarios = true;
+    renderRouteCompareContent();
+
+    await waitFor(() =>
+      expect(fetchCalls.filter((call) => call.url === '/api/visit-routes')).toHaveLength(3),
+    );
+    await screen.findAllByText(/採用不可: 経路計算に失敗しました/);
+
+    expect(screen.queryByTestId('route-recommended-detail')).toBeNull();
+    expect(screen.queryByText('ルート最適化詳細')).toBeNull();
+    for (const label of ['案A 移動少なめ', '案B 希望時間優先', '案C 緊急余力優先']) {
+      const scenario = screen.getByLabelText(label);
+      expect(within(scenario).getByText(/採用不可: 経路計算に失敗しました/)).not.toBeNull();
+      expect(
+        (within(scenario).getByRole('button', { name: 'この案を使う' }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+    }
   });
 });

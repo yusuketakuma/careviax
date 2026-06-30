@@ -5,26 +5,23 @@ import type { VisitRoutePlan } from '@/types/visit-route';
  * p1_12「ルート案を比べる」: 本日の訪問予定から並べ替え戦略の異なる 3 案を扱う純関数群。
  *
  * 画面本体は /api/visit-routes が返す VisitRoutePlan を buildRouteScenariosFromPlans で
- * 表示モデルへ変換する。下の固定値計算は route engine が無いテスト/フォールバック用であり、
- * 採用可能な経路としては扱わない。
+ * 表示モデルへ変換する。採用候補は実ルートエンジン由来の scenario だけを扱う。
  */
 
 /** 薬局⇔訪問先の片道移動の近似(分) */
-export const PHARMACY_LEG_MINUTES = 16;
+const PHARMACY_LEG_MINUTES = 16;
 /** 訪問先間の移動の近似(分) */
-export const BASE_LEG_MINUTES = 20;
+const BASE_LEG_MINUTES = 20;
 /** 同一建物・同一施設内の移動の近似(分) */
-export const SAME_PLACE_LEG_MINUTES = 5;
-/** 希望時間どおりに回る場合、これ以上の空きが出たら一度帰局するとみなす閾値(分) */
-export const IDLE_RETURN_THRESHOLD_MINUTES = 60;
+const SAME_PLACE_LEG_MINUTES = 5;
 /** 時間帯未指定の訪問 1 件の所要時間の近似(分) */
-export const DEFAULT_VISIT_MINUTES = 30;
+const DEFAULT_VISIT_MINUTES = 30;
 /** 終業時刻(0 時からの分)。余力件数の算出に使う */
-export const WORK_END_MINUTES = 18 * 60;
+const WORK_END_MINUTES = 18 * 60;
 /** 開始時刻が全件未指定のときに使う始業時刻(0 時からの分) */
-export const DEFAULT_DAY_START_MINUTES = 9 * 60;
+const DEFAULT_DAY_START_MINUTES = 9 * 60;
 /** 臨時訪問 1 件の受け入れに必要な時間の近似(訪問 30 分+移動 20 分) */
-export const SLACK_UNIT_MINUTES = DEFAULT_VISIT_MINUTES + BASE_LEG_MINUTES;
+const SLACK_UNIT_MINUTES = DEFAULT_VISIT_MINUTES + BASE_LEG_MINUTES;
 
 export type RouteScenarioId = 'min_travel' | 'time_preference' | 'emergency_slack';
 
@@ -66,7 +63,7 @@ export type RouteScenario = {
   stops: RouteScenarioStop[];
   travelMinutes: number | null;
   totalDistanceMeters: number | null;
-  routeStatus: VisitRoutePlan['status'] | 'error' | 'synthetic';
+  routeStatus: VisitRoutePlan['status'] | 'error';
   note: string | null;
   applyDisabledReason: string | null;
   /** 例: 余力2件 / 患者希望一致 / 午後余力大 */
@@ -240,48 +237,6 @@ export function orderByEmergencySlack(visits: RouteCompareVisitInput[]): RouteCo
   );
 }
 
-/** 案A の移動分: 薬局発着+訪問間を空き時間なしで詰めて回る */
-export function computeCompressedTravelMinutes(ordered: RouteCompareVisitInput[]) {
-  if (ordered.length === 0) return 0;
-  let total = PHARMACY_LEG_MINUTES * 2;
-  for (let index = 0; index < ordered.length - 1; index += 1) {
-    total += interVisitLegMinutes(ordered[index], ordered[index + 1]);
-  }
-  return total;
-}
-
-/** 案B の移動分: 希望時間どおりに回り、空きが閾値を超えるレッグは一度帰局(往復)する */
-export function computeTimePreferenceTravelMinutes(ordered: RouteCompareVisitInput[]) {
-  if (ordered.length === 0) return 0;
-  let total = PHARMACY_LEG_MINUTES * 2;
-  for (let index = 0; index < ordered.length - 1; index += 1) {
-    const current = ordered[index];
-    const next = ordered[index + 1];
-    if (isSamePlace(current, next)) {
-      total += SAME_PLACE_LEG_MINUTES;
-      continue;
-    }
-    const idleGap =
-      current.startMinutes != null && next.startMinutes != null
-        ? next.startMinutes - (current.startMinutes + visitDurationMinutes(current))
-        : 0;
-    total += idleGap > IDLE_RETURN_THRESHOLD_MINUTES ? PHARMACY_LEG_MINUTES * 2 : BASE_LEG_MINUTES;
-  }
-  return total;
-}
-
-/** 案C の移動分: 緊急対応に備え、訪問の合間ごとに薬局近くへ戻る(同一建物は除く) */
-export function computeEmergencySlackTravelMinutes(ordered: RouteCompareVisitInput[]) {
-  if (ordered.length === 0) return 0;
-  let total = PHARMACY_LEG_MINUTES * 2;
-  for (let index = 0; index < ordered.length - 1; index += 1) {
-    total += isSamePlace(ordered[index], ordered[index + 1])
-      ? SAME_PLACE_LEG_MINUTES
-      : PHARMACY_LEG_MINUTES * 2;
-  }
-  return total;
-}
-
 /**
  * 案A の余力件数: 詰めて回った場合の帰局時刻から終業までに、
  * 臨時訪問(訪問+移動の近似 50 分)を何件受けられるか。
@@ -449,7 +404,7 @@ function markRecommendedScenario(scenarios: RouteScenario[]): RouteScenario[] {
         (left.scenario.travelMinutes ?? Number.MAX_SAFE_INTEGER) -
           (right.scenario.travelMinutes ?? Number.MAX_SAFE_INTEGER) || left.index - right.index,
     );
-  const recommendedId = candidates[0]?.scenario.id ?? scenarios[0]?.id ?? null;
+  const recommendedId = candidates[0]?.scenario.id ?? null;
   return scenarios.map((scenario) => ({
     ...scenario,
     recommended: recommendedId === scenario.id,
@@ -547,63 +502,6 @@ export function buildRouteScenariosFromPlans(args: {
 /** 「1 患者名 → 2 患者名 …」形式の訪問順テキスト(確認ダイアログ・読み上げ用) */
 export function describeScenarioOrder(stops: RouteScenarioStop[]) {
   return stops.map((stop) => `${stop.order} ${stop.patientName}`).join(' → ');
-}
-
-/** 本日の訪問予定から比較用の 3 案(案A 移動少なめ / 案B 希望時間優先 / 案C 緊急余力優先)を合成する */
-export function buildRouteScenarios(visits: RouteCompareVisitInput[]): RouteScenario[] {
-  const minTravelOrder = orderByMinTravel(visits);
-  const timePreferenceOrder = orderByTimePreference(visits);
-  const emergencySlackOrder = orderByEmergencySlack(visits);
-
-  const minTravelMinutes = computeCompressedTravelMinutes(minTravelOrder);
-  const timePreferenceMinutes = computeTimePreferenceTravelMinutes(timePreferenceOrder);
-  const emergencySlackMinutes = computeEmergencySlackTravelMinutes(emergencySlackOrder);
-
-  const spareCapacity = computeSpareVisitCapacity(minTravelOrder);
-  const hasTimeWindow = visits.some((visit) => visit.startMinutes != null);
-
-  const minTravelDetail = `余力${spareCapacity}件`;
-  const timePreferenceDetail = hasTimeWindow ? '患者希望一致' : '時間指定なし';
-  const emergencySlackDetail = '午後余力大';
-
-  return [
-    {
-      ...ROUTE_SCENARIO_META.min_travel,
-      recommended: true,
-      stops: toStops(minTravelOrder),
-      travelMinutes: minTravelMinutes,
-      totalDistanceMeters: null,
-      routeStatus: 'synthetic',
-      note: '固定値フォールバックの概算です',
-      applyDisabledReason: '実ルートエンジンの結果ではないため採用できません',
-      summaryDetail: minTravelDetail,
-      summary: `移動${minTravelMinutes}分 / ${minTravelDetail}`,
-    },
-    {
-      ...ROUTE_SCENARIO_META.time_preference,
-      recommended: false,
-      stops: toStops(timePreferenceOrder),
-      travelMinutes: timePreferenceMinutes,
-      totalDistanceMeters: null,
-      routeStatus: 'synthetic',
-      note: '固定値フォールバックの概算です',
-      applyDisabledReason: '実ルートエンジンの結果ではないため採用できません',
-      summaryDetail: timePreferenceDetail,
-      summary: `移動${timePreferenceMinutes}分 / ${timePreferenceDetail}`,
-    },
-    {
-      ...ROUTE_SCENARIO_META.emergency_slack,
-      recommended: false,
-      stops: toStops(emergencySlackOrder),
-      travelMinutes: emergencySlackMinutes,
-      totalDistanceMeters: null,
-      routeStatus: 'synthetic',
-      note: '固定値フォールバックの概算です',
-      applyDisabledReason: '実ルートエンジンの結果ではないため採用できません',
-      summaryDetail: emergencySlackDetail,
-      summary: `移動${emergencySlackMinutes}分 / ${emergencySlackDetail}`,
-    },
-  ];
 }
 
 export function buildRouteScenarioComparisonRows(
@@ -709,7 +607,7 @@ export function buildScenarioRouteOrderUpdates(args: {
 /**
  * p0_21「ルート最適化詳細 + 守る条件」: 3 案比較とは別に、推奨案 1 本を主役にした詳細ビュー
  * (順番付きの訪問パケット + 候補1/候補2 サマリー + 守る条件チェックリスト)を組み立てる純関数群。
- * 余力・移動の算出は上の buildRouteScenarios の結果をそのまま再利用する。
+ * 余力・移動の算出は /api/visit-routes 由来の scenario 結果をそのまま再利用する。
  */
 
 /** 詳細ビューの「訪問パケット」1 行分。希望時間の有無と所要分を持つ */
@@ -807,14 +705,18 @@ function formatMinutesOfDay(minutes: number): string {
  */
 export function buildRecommendedRouteDetail(
   visits: RouteCompareVisitInput[],
+  scenarios: RouteScenario[],
   meta: RouteDetailVisitMeta = {},
-  scenarioModels?: RouteScenario[],
 ): RouteDetail | null {
-  if (visits.length === 0) return null;
+  if (visits.length === 0 || scenarios.length === 0) return null;
 
-  const scenarios = scenarioModels ?? buildRouteScenarios(visits);
-  const recommended = scenarios.find((scenario) => scenario.recommended) ?? scenarios[0];
-  const runnerUp = scenarios.find((scenario) => scenario.id !== recommended.id) ?? null;
+  const adoptableScenarios = scenarios.filter(
+    (scenario) => !scenario.applyDisabledReason && scenario.travelMinutes != null,
+  );
+  const recommended =
+    adoptableScenarios.find((scenario) => scenario.recommended) ?? adoptableScenarios[0] ?? null;
+  if (!recommended) return null;
+  const runnerUp = adoptableScenarios.find((scenario) => scenario.id !== recommended.id) ?? null;
 
   // 訪問パケットは候補1(主役)の並び順を再利用する
   const orderedById = new Map(visits.map((visit) => [visit.scheduleId, visit]));
