@@ -15,7 +15,7 @@ import {
   findLatestPrescriptionIntakeClassification,
   findLatestPrescriptionIntakeClassificationsByCaseIds,
 } from './prescription-intake-classification';
-import type { InsuranceApplicationStatus, InsuranceType } from '@prisma/client';
+import type { InsuranceApplicationStatus, InsuranceType, PrismaClient } from '@prisma/client';
 import type {
   BillingRuntimeHomeComprehensive,
   BillingRuntimeSiteConfigStatus,
@@ -40,6 +40,19 @@ export type VisitScheduleBillingPreview = {
   warnings: string[];
   home_comprehensive_preview: BillingRuntimeHomeComprehensive | null;
 };
+
+export type VisitScheduleBillingPreviewDb = Pick<
+  PrismaClient,
+  | 'careCase'
+  | 'patientInsurance'
+  | 'prescriptionIntake'
+  | 'visitSchedule'
+  | 'visitScheduleProposal'
+  | 'user'
+  | 'consentRecord'
+  | 'managementPlan'
+  | 'pharmacySiteInsuranceConfig'
+>;
 
 const DEFAULT_BILLING_PREVIEW_BATCH_CONCURRENCY = 8;
 const MAX_BILLING_PREVIEW_BATCH_CONCURRENCY = 16;
@@ -169,6 +182,7 @@ function buildRuntimeContextCacheKey(args: {
 }
 
 function resolveBillingRuntimeContextWithCache(args: {
+  db: VisitScheduleBillingPreviewDb;
   cache?: BillingPreviewRuntimeContextCache;
   orgId: string;
   payerBasis: 'medical' | 'care';
@@ -177,7 +191,7 @@ function resolveBillingRuntimeContextWithCache(args: {
   buildingPatientCount: number;
 }): Promise<BillingRuntimeContextResult> {
   if (!args.cache) {
-    return resolveBillingRuntimeContext(prisma, {
+    return resolveBillingRuntimeContext(args.db, {
       orgId: args.orgId,
       payerBasis: args.payerBasis,
       asOfDate: args.asOfDate,
@@ -190,7 +204,7 @@ function resolveBillingRuntimeContextWithCache(args: {
   const cached = args.cache.get(cacheKey);
   if (cached) return cached;
 
-  const context = resolveBillingRuntimeContext(prisma, {
+  const context = resolveBillingRuntimeContext(args.db, {
     orgId: args.orgId,
     payerBasis: args.payerBasis,
     asOfDate: args.asOfDate,
@@ -384,6 +398,7 @@ function buildBillingPreviewWorkflowSnapshot(args: {
 }
 
 async function prefetchBillingPreviewPatientInsurance(args: {
+  db: VisitScheduleBillingPreviewDb;
   orgId: string;
   careCases: BillingPreviewCareCase[];
   proposedDates: string[];
@@ -399,7 +414,7 @@ async function prefetchBillingPreviewPatientInsurance(args: {
 
   const minDate = effectiveDates[0];
   const maxDate = effectiveDates[effectiveDates.length - 1];
-  const records = await prisma.patientInsurance.findMany({
+  const records = await args.db.patientInsurance.findMany({
     where: {
       org_id: args.orgId,
       patient_id: { in: patientIds },
@@ -429,6 +444,8 @@ async function prefetchBillingPreviewPatientInsurance(args: {
 }
 
 async function prefetchBillingPreviewPharmacistWeeklyCaps(args: {
+  db: VisitScheduleBillingPreviewDb;
+  orgId: string;
   items: {
     caseId: string;
     pharmacistId?: string | null;
@@ -447,9 +464,10 @@ async function prefetchBillingPreviewPharmacistWeeklyCaps(args: {
   ];
   if (pharmacistIds.length === 0) return new Map();
 
-  const users = await prisma.user.findMany({
+  const users = await args.db.user.findMany({
     where: {
       id: { in: pharmacistIds },
+      org_id: args.orgId,
     },
     select: {
       id: true,
@@ -467,6 +485,7 @@ async function prefetchBillingPreviewPharmacistWeeklyCaps(args: {
 }
 
 async function prefetchBillingPreviewWorkflowSnapshot(args: {
+  db: VisitScheduleBillingPreviewDb;
   orgId: string;
   careCases: BillingPreviewCareCase[];
   proposedDates: string[];
@@ -488,7 +507,7 @@ async function prefetchBillingPreviewWorkflowSnapshot(args: {
   const consentActiveAsOf = new Date();
 
   const [consents, managementPlans] = await Promise.all([
-    prisma.consentRecord.findMany({
+    args.db.consentRecord.findMany({
       where: {
         org_id: args.orgId,
         patient_id: { in: patientIds },
@@ -505,7 +524,7 @@ async function prefetchBillingPreviewWorkflowSnapshot(args: {
         obtained_date: true,
       },
     }),
-    prisma.managementPlan.findMany({
+    args.db.managementPlan.findMany({
       where: {
         org_id: args.orgId,
         case_id: { in: caseIds },
@@ -530,6 +549,7 @@ async function prefetchBillingPreviewWorkflowSnapshot(args: {
 }
 
 async function prefetchBillingPreviewCadenceSchedules(args: {
+  db: VisitScheduleBillingPreviewDb;
   orgId: string;
   careCases: BillingPreviewCareCase[];
   proposedDates: string[];
@@ -546,7 +566,7 @@ async function prefetchBillingPreviewCadenceSchedules(args: {
     BILLING_PREVIEW_CADENCE_SEARCH_DAYS,
   );
 
-  const schedules = await prisma.visitSchedule.findMany({
+  const schedules = await args.db.visitSchedule.findMany({
     where: {
       org_id: args.orgId,
       cycle: {
@@ -590,6 +610,7 @@ async function prefetchBillingPreviewCadenceSchedules(args: {
 }
 
 async function prefetchBillingPreviewCadenceProposals(args: {
+  db: VisitScheduleBillingPreviewDb;
   orgId: string;
   careCases: BillingPreviewCareCase[];
   proposedDates: string[];
@@ -606,7 +627,7 @@ async function prefetchBillingPreviewCadenceProposals(args: {
     BILLING_PREVIEW_CADENCE_SEARCH_DAYS,
   );
 
-  const proposals = await prisma.visitScheduleProposal.findMany({
+  const proposals = await args.db.visitScheduleProposal.findMany({
     where: {
       org_id: args.orgId,
       finalized_schedule_id: null,
@@ -649,6 +670,7 @@ async function prefetchBillingPreviewCadenceProposals(args: {
 }
 
 async function findPendingPublicSubsidyInsurance(args: {
+  db: VisitScheduleBillingPreviewDb;
   orgId: string;
   patientId: string;
   asOf: Date;
@@ -656,7 +678,7 @@ async function findPendingPublicSubsidyInsurance(args: {
   // valid_from / valid_until(@db.Date)は UTC 深夜で保存されるため UTC 深夜で比較する
   const asOf = effectiveInsuranceDate(args.asOf);
 
-  const [record] = await prisma.patientInsurance.findMany({
+  const [record] = await args.db.patientInsurance.findMany({
     where: {
       org_id: args.orgId,
       patient_id: args.patientId,
@@ -746,21 +768,48 @@ export async function buildVisitScheduleBillingPreview(args: {
   visitType?: string | null;
   excludeScheduleId?: string | null;
   excludeProposalId?: string | null;
-}): Promise<VisitScheduleBillingPreview | null> {
+}): Promise<VisitScheduleBillingPreview | null>;
+export async function buildVisitScheduleBillingPreview(
+  args: {
+    orgId: string;
+    caseId: string;
+    proposedDate: string;
+    pharmacistId?: string | null;
+    siteId?: string | null;
+    visitType?: string | null;
+    excludeScheduleId?: string | null;
+    excludeProposalId?: string | null;
+  },
+  options: { db?: VisitScheduleBillingPreviewDb },
+): Promise<VisitScheduleBillingPreview | null>;
+export async function buildVisitScheduleBillingPreview(
+  args: {
+    orgId: string;
+    caseId: string;
+    proposedDate: string;
+    pharmacistId?: string | null;
+    siteId?: string | null;
+    visitType?: string | null;
+    excludeScheduleId?: string | null;
+    excludeProposalId?: string | null;
+  },
+  options?: { db?: VisitScheduleBillingPreviewDb },
+): Promise<VisitScheduleBillingPreview | null> {
+  const db = options?.db ?? prisma;
   if (
-    typeof prisma.careCase?.findFirst !== 'function' ||
-    typeof prisma.prescriptionIntake?.findFirst !== 'function' ||
-    typeof prisma.visitSchedule?.findMany !== 'function' ||
-    typeof prisma.visitSchedule?.count !== 'function' ||
-    typeof prisma.user?.findFirst !== 'function' ||
-    typeof prisma.pharmacySiteInsuranceConfig?.findFirst !== 'function' ||
-    typeof prisma.patientInsurance?.findFirst !== 'function' ||
-    typeof prisma.patientInsurance?.findMany !== 'function'
+    typeof db.careCase?.findFirst !== 'function' ||
+    typeof db.prescriptionIntake?.findFirst !== 'function' ||
+    typeof db.visitSchedule?.findMany !== 'function' ||
+    typeof db.visitSchedule?.count !== 'function' ||
+    typeof db.user?.findFirst !== 'function' ||
+    typeof db.pharmacySiteInsuranceConfig?.findFirst !== 'function' ||
+    typeof db.patientInsurance?.findFirst !== 'function' ||
+    typeof db.patientInsurance?.findMany !== 'function'
   ) {
     return null;
   }
 
-  const careCase = await prisma.careCase.findFirst({
+  const careCase = await db.careCase.findFirst({
     where: {
       id: args.caseId,
       org_id: args.orgId,
@@ -769,11 +818,12 @@ export async function buildVisitScheduleBillingPreview(args: {
   });
   if (!careCase) return null;
 
-  return buildVisitScheduleBillingPreviewForCareCase(args, careCase);
+  return buildVisitScheduleBillingPreviewForCareCase({ ...args, db }, careCase);
 }
 
 async function buildVisitScheduleBillingPreviewForCareCase(
   args: {
+    db: VisitScheduleBillingPreviewDb;
     orgId: string;
     caseId: string;
     proposedDate: string;
@@ -798,7 +848,7 @@ async function buildVisitScheduleBillingPreviewForCareCase(
     await Promise.all([
       args.latestIntake !== undefined
         ? Promise.resolve(args.latestIntake)
-        : findLatestPrescriptionIntakeClassification(prisma, {
+        : findLatestPrescriptionIntakeClassification(args.db, {
             orgId: args.orgId,
             caseId: args.caseId,
           }),
@@ -810,7 +860,7 @@ async function buildVisitScheduleBillingPreviewForCareCase(
               asOf: proposedDate,
             }),
           )
-        : resolvePatientInsurance(prisma, {
+        : resolvePatientInsurance(args.db, {
             orgId: args.orgId,
             patientId: careCase.patient_id,
             type: 'medical',
@@ -824,7 +874,7 @@ async function buildVisitScheduleBillingPreviewForCareCase(
               asOf: proposedDate,
             }),
           )
-        : resolvePatientInsurance(prisma, {
+        : resolvePatientInsurance(args.db, {
             orgId: args.orgId,
             patientId: careCase.patient_id,
             type: 'care',
@@ -838,6 +888,7 @@ async function buildVisitScheduleBillingPreviewForCareCase(
             }),
           )
         : findPendingPublicSubsidyInsurance({
+            db: args.db,
             orgId: args.orgId,
             patientId: careCase.patient_id,
             asOf: proposedDate,
@@ -864,6 +915,7 @@ async function buildVisitScheduleBillingPreviewForCareCase(
 
   const previewPharmacistId = args.pharmacistId ?? careCase.primary_pharmacist_id ?? '';
   const previewArgs = {
+    db: args.db,
     orgId: args.orgId,
     caseId: args.caseId,
     patientId: careCase.patient_id,
@@ -882,6 +934,7 @@ async function buildVisitScheduleBillingPreviewForCareCase(
   } as const;
 
   const runtimeContext = await resolveBillingRuntimeContextWithCache({
+    db: args.db,
     cache: args.runtimeContextCache,
     orgId: args.orgId,
     payerBasis: payerBasis === 'care' ? 'care' : 'medical',
@@ -936,26 +989,28 @@ export async function buildVisitScheduleBillingPreviewBatch(
     excludeProposalId?: string | null;
   }[],
   orgId: string,
+  options?: { db?: VisitScheduleBillingPreviewDb },
 ) {
+  const db = options?.db ?? prisma;
   if (
-    typeof prisma.careCase?.findMany !== 'function' ||
-    typeof prisma.prescriptionIntake?.findFirst !== 'function' ||
-    typeof prisma.prescriptionIntake?.findMany !== 'function' ||
-    typeof prisma.visitSchedule?.findMany !== 'function' ||
-    typeof prisma.visitSchedule?.count !== 'function' ||
-    typeof prisma.user?.findFirst !== 'function' ||
-    typeof prisma.user?.findMany !== 'function' ||
-    typeof prisma.consentRecord?.findMany !== 'function' ||
-    typeof prisma.managementPlan?.findMany !== 'function' ||
-    typeof prisma.pharmacySiteInsuranceConfig?.findFirst !== 'function' ||
-    typeof prisma.patientInsurance?.findFirst !== 'function' ||
-    typeof prisma.patientInsurance?.findMany !== 'function'
+    typeof db.careCase?.findMany !== 'function' ||
+    typeof db.prescriptionIntake?.findFirst !== 'function' ||
+    typeof db.prescriptionIntake?.findMany !== 'function' ||
+    typeof db.visitSchedule?.findMany !== 'function' ||
+    typeof db.visitSchedule?.count !== 'function' ||
+    typeof db.user?.findFirst !== 'function' ||
+    typeof db.user?.findMany !== 'function' ||
+    typeof db.consentRecord?.findMany !== 'function' ||
+    typeof db.managementPlan?.findMany !== 'function' ||
+    typeof db.pharmacySiteInsuranceConfig?.findFirst !== 'function' ||
+    typeof db.patientInsurance?.findFirst !== 'function' ||
+    typeof db.patientInsurance?.findMany !== 'function'
   ) {
     return {};
   }
 
   const uniqueCaseIds = [...new Set(args.map((item) => item.caseId))];
-  const careCases = await prisma.careCase.findMany({
+  const careCases = await db.careCase.findMany({
     where: {
       id: { in: uniqueCaseIds },
       org_id: orgId,
@@ -963,30 +1018,36 @@ export async function buildVisitScheduleBillingPreviewBatch(
     select: BILLING_PREVIEW_CARE_CASE_SELECT,
   });
   const careCaseById = new Map(careCases.map((careCase) => [careCase.id, careCase]));
-  const latestIntakeByCaseId = await findLatestPrescriptionIntakeClassificationsByCaseIds(prisma, {
+  const latestIntakeByCaseId = await findLatestPrescriptionIntakeClassificationsByCaseIds(db, {
     orgId,
     caseIds: careCases.map((careCase) => careCase.id),
   });
   const insurancePrefetch = await prefetchBillingPreviewPatientInsurance({
+    db,
     orgId,
     careCases,
     proposedDates: args.map((item) => item.proposedDate),
   });
   const pharmacistWeeklyCapById = await prefetchBillingPreviewPharmacistWeeklyCaps({
+    db,
+    orgId,
     items: args,
     careCaseById,
   });
   const cadenceScheduleRows = await prefetchBillingPreviewCadenceSchedules({
+    db,
     orgId,
     careCases,
     proposedDates: args.map((item) => item.proposedDate),
   });
   const cadenceProposalRows = await prefetchBillingPreviewCadenceProposals({
+    db,
     orgId,
     careCases,
     proposedDates: args.map((item) => item.proposedDate),
   });
   const workflowSnapshot = await prefetchBillingPreviewWorkflowSnapshot({
+    db,
     orgId,
     careCases,
     proposedDates: args.map((item) => item.proposedDate),
@@ -1012,6 +1073,7 @@ export async function buildVisitScheduleBillingPreviewBatch(
         preview = careCase
           ? buildVisitScheduleBillingPreviewForCareCase(
               {
+                db,
                 orgId,
                 caseId: item.caseId,
                 proposedDate: item.proposedDate,

@@ -1,33 +1,42 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { withAuthContextMock, careCaseFindFirstMock, buildVisitScheduleBillingPreviewMock } =
-  vi.hoisted(() => ({
-    withAuthContextMock: vi.fn(
-      (
-        handler: (
-          req: NextRequest,
-          ctx: { orgId: string; userId: string; role: 'pharmacist' },
-          routeContext: { params: Promise<Record<string, string>> },
-        ) => Promise<Response>,
-        _options?: unknown,
-      ) => {
-        void _options;
-        return (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
-          handler(
-            req,
-            {
-              orgId: 'org_1',
-              userId: 'user_1',
-              role: 'pharmacist',
-            },
-            routeContext,
-          );
-      },
-    ),
-    careCaseFindFirstMock: vi.fn(),
-    buildVisitScheduleBillingPreviewMock: vi.fn(),
-  }));
+const {
+  withAuthContextMock,
+  withOrgContextMock,
+  careCaseFindFirstMock,
+  membershipFindFirstMock,
+  pharmacySiteFindFirstMock,
+  buildVisitScheduleBillingPreviewMock,
+} = vi.hoisted(() => ({
+  withAuthContextMock: vi.fn(
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: 'pharmacist' },
+        routeContext: { params: Promise<Record<string, string>> },
+      ) => Promise<Response>,
+      _options?: unknown,
+    ) => {
+      void _options;
+      return (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
+        handler(
+          req,
+          {
+            orgId: 'org_1',
+            userId: 'user_1',
+            role: 'pharmacist',
+          },
+          routeContext,
+        );
+    },
+  ),
+  withOrgContextMock: vi.fn(),
+  careCaseFindFirstMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
+  pharmacySiteFindFirstMock: vi.fn(),
+  buildVisitScheduleBillingPreviewMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: withAuthContextMock,
@@ -35,10 +44,20 @@ vi.mock('@/lib/auth/context', () => ({
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
+    membership: {
+      findFirst: membershipFindFirstMock,
+    },
+    pharmacySite: {
+      findFirst: pharmacySiteFindFirstMock,
+    },
     careCase: {
       findFirst: careCaseFindFirstMock,
     },
   },
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
 }));
 
 vi.mock('@/server/services/visit-schedule-billing-preview', () => ({
@@ -61,6 +80,15 @@ describe('/api/visit-schedule-proposals/billing-preview GET', () => {
     careCaseFindFirstMock.mockResolvedValue({
       id: 'case_1',
     });
+    membershipFindFirstMock.mockResolvedValue({ user_id: 'pharm_1' });
+    pharmacySiteFindFirstMock.mockResolvedValue({ id: 'site_1' });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        careCase: {
+          findFirst: careCaseFindFirstMock,
+        },
+      }),
+    );
     buildVisitScheduleBillingPreviewMock.mockResolvedValue({
       suggested_schedule_slot_count: 3,
       cadence: {
@@ -102,16 +130,32 @@ describe('/api/visit-schedule-proposals/billing-preview GET', () => {
     expect(careCaseFindFirstMock.mock.invocationCallOrder[0]).toBeLessThan(
       buildVisitScheduleBillingPreviewMock.mock.invocationCallOrder[0],
     );
-    expect(buildVisitScheduleBillingPreviewMock).toHaveBeenCalledWith({
-      orgId: 'org_1',
-      caseId: 'case_1',
-      proposedDate: '2026-04-03',
-      pharmacistId: null,
-      siteId: null,
-      visitType: null,
-      excludeScheduleId: null,
-      excludeProposalId: null,
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
     });
+    expect(buildVisitScheduleBillingPreviewMock).toHaveBeenCalledWith(
+      {
+        orgId: 'org_1',
+        caseId: 'case_1',
+        proposedDate: '2026-04-03',
+        pharmacistId: null,
+        siteId: null,
+        visitType: null,
+        excludeScheduleId: null,
+        excludeProposalId: null,
+      },
+      {
+        db: expect.objectContaining({
+          careCase: expect.objectContaining({
+            findFirst: careCaseFindFirstMock,
+          }),
+        }),
+      },
+    );
     await expect(response.json()).resolves.toMatchObject({
       suggested_schedule_slot_count: 3,
       cadence: expect.objectContaining({
@@ -138,7 +182,52 @@ describe('/api/visit-schedule-proposals/billing-preview GET', () => {
         excludeScheduleId: 'schedule_1',
         excludeProposalId: 'proposal_1',
       }),
+      expect.objectContaining({ db: expect.any(Object) }),
     );
+  });
+
+  it('rejects pharmacist references outside the org before opening the preview transaction', async () => {
+    membershipFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await GET(
+      new NextRequest(
+        'http://localhost/api/visit-schedule-proposals/billing-preview?case_id=case_1&proposed_date=2026-04-03&pharmacist_id=pharm_other',
+      ),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '指定された薬剤師はこの組織に所属していません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(buildVisitScheduleBillingPreviewMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects site references outside the org before opening the preview transaction', async () => {
+    pharmacySiteFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await GET(
+      new NextRequest(
+        'http://localhost/api/visit-schedule-proposals/billing-preview?case_id=case_1&proposed_date=2026-04-03&site_id=site_other',
+      ),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '指定された店舗が見つかりません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(buildVisitScheduleBillingPreviewMock).not.toHaveBeenCalled();
   });
 
   it('denies unassigned preview requests before calling the billing-preview service', async () => {

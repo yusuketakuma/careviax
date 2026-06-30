@@ -135,6 +135,10 @@ describe('validateBillingRequirements', () => {
     const capAlert = alerts.find((a) => a.type === 'pharmacist_weekly_capacity');
     expect(capAlert).toBeDefined();
     expect(capAlert!.severity).toBe('warning');
+    expect(prismaMock.user.findFirst).toHaveBeenCalledWith({
+      where: { id: 'pharmacist_1', org_id: 'org_1' },
+      select: { max_weekly_visits: true },
+    });
   });
 
   it('uses pharmacist custom weekly cap when set', async () => {

@@ -683,7 +683,7 @@ export async function validateBillingRequirements(
   const pharmacist =
     args.pharmacistWeeklyCap === undefined
       ? await db.user.findFirst({
-          where: { id: args.pharmacistId },
+          where: { id: args.pharmacistId, org_id: args.orgId },
           select: { max_weekly_visits: true },
         })
       : null;

@@ -101,6 +101,7 @@ vi.mock('./billing-runtime-context', () => ({
 import {
   buildVisitScheduleBillingPreview,
   buildVisitScheduleBillingPreviewBatch,
+  type VisitScheduleBillingPreviewDb,
 } from './visit-schedule-billing-preview';
 
 async function waitForAsyncAssertion(assertion: () => void) {
@@ -136,6 +137,62 @@ function makeInsuranceRecord(overrides: Record<string, unknown> = {}) {
     created_at: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides,
   };
+}
+
+function makeInjectedBillingPreviewDb(overrides: Partial<VisitScheduleBillingPreviewDb> = {}) {
+  return {
+    careCase: {
+      findFirst: vi.fn().mockResolvedValue({
+        id: 'case_1',
+        patient_id: 'patient_1',
+        primary_pharmacist_id: 'pharm_1',
+        required_visit_support: null,
+        patient: {
+          id: 'patient_1',
+        },
+      }),
+      findMany: vi.fn().mockResolvedValue([
+        {
+          id: 'case_1',
+          patient_id: 'patient_1',
+          primary_pharmacist_id: 'pharm_1',
+          required_visit_support: null,
+          patient: {
+            id: 'patient_1',
+          },
+        },
+      ]),
+    },
+    patientInsurance: {
+      findFirst: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    prescriptionIntake: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+    },
+    visitSchedule: {
+      findMany: vi.fn().mockResolvedValue([]),
+      count: vi.fn().mockResolvedValue(0),
+    },
+    visitScheduleProposal: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    user: {
+      findFirst: vi.fn().mockResolvedValue({ max_weekly_visits: 24 }),
+      findMany: vi.fn().mockResolvedValue([{ id: 'pharm_1', max_weekly_visits: 24 }]),
+    },
+    consentRecord: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    managementPlan: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    pharmacySiteInsuranceConfig: {
+      findFirst: vi.fn(),
+    },
+    ...overrides,
+  } as unknown as VisitScheduleBillingPreviewDb;
 }
 
 describe('buildVisitScheduleBillingPreview', () => {
@@ -265,6 +322,68 @@ describe('buildVisitScheduleBillingPreview', () => {
       expect.objectContaining({
         type: 'care',
         asOf: new Date('2026-04-03'),
+      }),
+    );
+  });
+
+  it('uses the injected db for single preview reads instead of the module prisma client', async () => {
+    const injectedDb = makeInjectedBillingPreviewDb();
+
+    const preview = await buildVisitScheduleBillingPreview(
+      {
+        orgId: 'org_1',
+        caseId: 'case_1',
+        proposedDate: '2026-04-03',
+        pharmacistId: 'pharm_1',
+        siteId: 'site_1',
+      },
+      { db: injectedDb },
+    );
+
+    expect(preview).toMatchObject({
+      recommended_visit_type: 'regular',
+      suggested_schedule_slot_count: 1,
+    });
+    expect(injectedDb.careCase.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'case_1',
+          org_id: 'org_1',
+        },
+      }),
+    );
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(patientInsuranceFindManyMock).not.toHaveBeenCalled();
+    expect(findLatestPrescriptionIntakeClassificationMock).toHaveBeenCalledWith(injectedDb, {
+      orgId: 'org_1',
+      caseId: 'case_1',
+    });
+    expect(resolvePatientInsuranceMock).toHaveBeenCalledWith(
+      injectedDb,
+      expect.objectContaining({
+        orgId: 'org_1',
+        patientId: 'patient_1',
+      }),
+    );
+    expect(resolveBillingRuntimeContextMock).toHaveBeenCalledWith(
+      injectedDb,
+      expect.objectContaining({
+        orgId: 'org_1',
+        siteId: 'site_1',
+      }),
+    );
+    expect(validateBillingRequirementsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        db: injectedDb,
+        orgId: 'org_1',
+        pharmacistId: 'pharm_1',
+      }),
+    );
+    expect(getBillingCadencePreviewMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        db: injectedDb,
+        orgId: 'org_1',
+        patientId: 'patient_1',
       }),
     );
   });
@@ -718,6 +837,7 @@ describe('buildVisitScheduleBillingPreview', () => {
     expect(userFindManyMock).toHaveBeenCalledWith({
       where: {
         id: { in: ['pharm_1'] },
+        org_id: 'org_1',
       },
       select: {
         id: true,

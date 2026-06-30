@@ -4,7 +4,8 @@ import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { success, validationError, notFound, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildVisitScheduleProposalCaseAccessWhere } from '@/lib/auth/visit-schedule-access';
-import { prisma } from '@/lib/db/client';
+import { validateOrgReferences } from '@/lib/api/org-reference';
+import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { buildVisitScheduleBillingPreviewBatch } from '@/server/services/visit-schedule-billing-preview';
 import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
@@ -40,6 +41,31 @@ const authenticatedPOST = withAuthContext(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
+    const pharmacistIds = Array.from(
+      new Set(
+        parsed.data.items
+          .map((item) => item.pharmacist_id)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0),
+      ),
+    );
+    if (pharmacistIds.length > 0) {
+      const pharmacistRefResult = await validateOrgReferences(ctx.orgId, {
+        pharmacist_ids: pharmacistIds,
+      });
+      if (!pharmacistRefResult.ok) return pharmacistRefResult.response;
+    }
+    const siteIds = Array.from(
+      new Set(
+        parsed.data.items
+          .map((item) => item.site_id)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0),
+      ),
+    );
+    for (const siteId of siteIds) {
+      const siteRefResult = await validateOrgReferences(ctx.orgId, { site_id: siteId });
+      if (!siteRefResult.ok) return siteRefResult.response;
+    }
+
     const accessChecks = Array.from(
       new Map(
         parsed.data.items.map((item) => [
@@ -51,61 +77,74 @@ const authenticatedPOST = withAuthContext(
         ]),
       ).values(),
     );
+    const accessCheckKey = (item: { caseId: string; pharmacistId?: string | null }) =>
+      `${item.caseId}:${item.pharmacistId ?? ''}`;
 
     const accessWhereByCheck = accessChecks.map((item) => ({
       ...item,
       caseAccessWhere: buildVisitScheduleProposalCaseAccessWhere(ctx, item.pharmacistId),
     }));
     const allChecksUseOrgScope = accessWhereByCheck.every((item) => item.caseAccessWhere === null);
-    const accessibleCaseIds = allChecksUseOrgScope
-      ? new Set(
-          (
-            await prisma.careCase.findMany({
-              where: {
-                id: { in: accessWhereByCheck.map((item) => item.caseId) },
-                org_id: ctx.orgId,
-              },
-              select: { id: true },
-            })
-          ).map((careCase) => careCase.id),
-        )
-      : new Set(
-          (
-            await Promise.all(
-              accessWhereByCheck.map((item) =>
-                prisma.careCase.findFirst({
+    const data = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const accessibleCheckKeys = allChecksUseOrgScope
+          ? new Set(
+              (
+                await tx.careCase.findMany({
                   where: {
-                    id: item.caseId,
+                    id: { in: accessWhereByCheck.map((item) => item.caseId) },
                     org_id: ctx.orgId,
-                    ...(item.caseAccessWhere ? { AND: [item.caseAccessWhere] } : {}),
                   },
                   select: { id: true },
-                }),
+                })
+              ).flatMap((careCase) =>
+                accessWhereByCheck
+                  .filter((item) => item.caseId === careCase.id)
+                  .map((item) => accessCheckKey(item)),
               ),
             )
-          )
-            .filter((careCase): careCase is { id: string } => careCase !== null)
-            .map((careCase) => careCase.id),
-        );
-    if (accessWhereByCheck.some((item) => !accessibleCaseIds.has(item.caseId))) {
-      return notFound('ケースが見つかりません');
-    }
+          : new Set(
+              (
+                await Promise.all(
+                  accessWhereByCheck.map(async (item) => {
+                    const careCase = await tx.careCase.findFirst({
+                      where: {
+                        id: item.caseId,
+                        org_id: ctx.orgId,
+                        ...(item.caseAccessWhere ? { AND: [item.caseAccessWhere] } : {}),
+                      },
+                      select: { id: true },
+                    });
+                    return careCase ? accessCheckKey(item) : null;
+                  }),
+                )
+              ).filter((key): key is string => key !== null),
+            );
+        if (accessWhereByCheck.some((item) => !accessibleCheckKeys.has(accessCheckKey(item)))) {
+          return null;
+        }
 
-    return success({
-      data: await buildVisitScheduleBillingPreviewBatch(
-        parsed.data.items.map((item) => ({
-          key: item.key,
-          caseId: item.case_id,
-          proposedDate: item.proposed_date,
-          pharmacistId: item.pharmacist_id,
-          siteId: item.site_id,
-          visitType: item.visit_type,
-          excludeScheduleId: item.exclude_schedule_id,
-          excludeProposalId: item.exclude_proposal_id,
-        })),
-        ctx.orgId,
-      ),
-    });
+        return buildVisitScheduleBillingPreviewBatch(
+          parsed.data.items.map((item) => ({
+            key: item.key,
+            caseId: item.case_id,
+            proposedDate: item.proposed_date,
+            pharmacistId: item.pharmacist_id,
+            siteId: item.site_id,
+            visitType: item.visit_type,
+            excludeScheduleId: item.exclude_schedule_id,
+            excludeProposalId: item.exclude_proposal_id,
+          })),
+          ctx.orgId,
+          { db: tx },
+        );
+      },
+      { requestContext: ctx },
+    );
+    if (!data) return notFound('ケースが見つかりません');
+
+    return success({ data });
   },
   {
     permission: 'canVisit',

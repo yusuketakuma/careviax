@@ -3,8 +3,11 @@ import { NextRequest } from 'next/server';
 
 const {
   withAuthContextMock,
+  withOrgContextMock,
   careCaseFindFirstMock,
   careCaseFindManyMock,
+  membershipFindManyMock,
+  pharmacySiteFindFirstMock,
   buildVisitScheduleBillingPreviewBatchMock,
 } = vi.hoisted(() => ({
   withAuthContextMock: vi.fn(
@@ -29,8 +32,11 @@ const {
         );
     },
   ),
+  withOrgContextMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
+  membershipFindManyMock: vi.fn(),
+  pharmacySiteFindFirstMock: vi.fn(),
   buildVisitScheduleBillingPreviewBatchMock: vi.fn(),
 }));
 
@@ -40,11 +46,21 @@ vi.mock('@/lib/auth/context', () => ({
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
+    membership: {
+      findMany: membershipFindManyMock,
+    },
+    pharmacySite: {
+      findFirst: pharmacySiteFindFirstMock,
+    },
     careCase: {
       findFirst: careCaseFindFirstMock,
       findMany: careCaseFindManyMock,
     },
   },
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
 }));
 
 vi.mock('@/server/services/visit-schedule-billing-preview', () => ({
@@ -84,6 +100,16 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
       id: 'case_1',
     });
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1' }]);
+    membershipFindManyMock.mockResolvedValue([{ user_id: 'pharm_1' }]);
+    pharmacySiteFindFirstMock.mockResolvedValue({ id: 'site_1' });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        careCase: {
+          findFirst: careCaseFindFirstMock,
+          findMany: careCaseFindManyMock,
+        },
+      }),
+    );
     buildVisitScheduleBillingPreviewBatchMock.mockResolvedValue({
       proposal_1: {
         cadence: {
@@ -159,7 +185,21 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
         },
       ],
       'org_1',
+      {
+        db: expect.objectContaining({
+          careCase: expect.objectContaining({
+            findMany: careCaseFindManyMock,
+          }),
+        }),
+      },
     );
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+    });
     await expect(response.json()).resolves.toMatchObject({
       data: {
         proposal_1: expect.objectContaining({
@@ -203,7 +243,68 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
         }),
       ],
       'org_1',
+      expect.objectContaining({ db: expect.any(Object) }),
     );
+  });
+
+  it('rejects pharmacist references outside the org before opening the batch preview transaction', async () => {
+    membershipFindManyMock.mockResolvedValueOnce([]);
+
+    const response = await POST(
+      createPostRequest({
+        items: [
+          {
+            key: 'proposal_1',
+            case_id: 'case_1',
+            proposed_date: '2026-04-03',
+            pharmacist_id: 'pharm_other',
+          },
+        ],
+      }),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '指定された薬剤師はこの組織に所属していません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(buildVisitScheduleBillingPreviewBatchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects site references outside the org before opening the batch preview transaction', async () => {
+    pharmacySiteFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await POST(
+      createPostRequest({
+        items: [
+          {
+            key: 'proposal_1',
+            case_id: 'case_1',
+            proposed_date: '2026-04-03',
+            site_id: 'site_other',
+          },
+        ],
+      }),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '指定された店舗が見つかりません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(buildVisitScheduleBillingPreviewBatchMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object batch preview payloads before case lookup', async () => {

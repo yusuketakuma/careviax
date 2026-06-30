@@ -4,7 +4,8 @@ import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { success, validationError, notFound, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildVisitScheduleProposalCaseAccessWhere } from '@/lib/auth/visit-schedule-access';
-import { prisma } from '@/lib/db/client';
+import { validateOrgReferences } from '@/lib/api/org-reference';
+import { withOrgContext } from '@/lib/db/rls';
 import { buildVisitScheduleBillingPreview } from '@/server/services/visit-schedule-billing-preview';
 import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 
@@ -31,27 +32,42 @@ const authenticatedGET = withAuthContext(
       });
     }
 
-    const caseAccessWhere = buildVisitScheduleProposalCaseAccessWhere(ctx, pharmacistId);
-    const accessibleCase = await prisma.careCase.findFirst({
-      where: {
-        id: caseId,
-        org_id: ctx.orgId,
-        ...(caseAccessWhere ? { AND: [caseAccessWhere] } : {}),
-      },
-      select: { id: true },
+    const refResult = await validateOrgReferences(ctx.orgId, {
+      pharmacist_id: pharmacistId,
+      site_id: siteId,
     });
-    if (!accessibleCase) return notFound('ケースが見つかりません');
+    if (!refResult.ok) return refResult.response;
 
-    const preview = await buildVisitScheduleBillingPreview({
-      orgId: ctx.orgId,
-      caseId,
-      proposedDate: parsedProposedDate.data,
-      pharmacistId,
-      siteId,
-      visitType: visitTypeParam,
-      excludeScheduleId,
-      excludeProposalId,
-    });
+    const caseAccessWhere = buildVisitScheduleProposalCaseAccessWhere(ctx, pharmacistId);
+    const preview = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const accessibleCase = await tx.careCase.findFirst({
+          where: {
+            id: caseId,
+            org_id: ctx.orgId,
+            ...(caseAccessWhere ? { AND: [caseAccessWhere] } : {}),
+          },
+          select: { id: true },
+        });
+        if (!accessibleCase) return null;
+
+        return buildVisitScheduleBillingPreview(
+          {
+            orgId: ctx.orgId,
+            caseId,
+            proposedDate: parsedProposedDate.data,
+            pharmacistId,
+            siteId,
+            visitType: visitTypeParam,
+            excludeScheduleId,
+            excludeProposalId,
+          },
+          { db: tx },
+        );
+      },
+      { requestContext: ctx },
+    );
     if (!preview) return notFound('ケースが見つかりません');
 
     return success(preview);
