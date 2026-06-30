@@ -18,6 +18,7 @@ import { familyNameOf } from '@/lib/utils/person-name';
 import { sanitizeDeliveryFailureReason } from '@/lib/reports/delivery-failure-reasons';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import {
   BILLING_VALIDATION_LAYER_KEYS,
   readBillingValidationLayers,
@@ -503,6 +504,9 @@ const authenticatedGET = withAuthContext(
             id: true,
             subject: true,
             patient_id: true,
+            status: true,
+            related_entity_type: true,
+            related_entity_id: true,
             requested_at: true,
           },
         });
@@ -834,7 +838,17 @@ const authenticatedGET = withAuthContext(
               title: patient ? `${patient} — ${request.subject}` : request.subject,
               subtitle: null,
               actions: [
-                { label: '電話で確認', href: '/communications', kind: 'button' },
+                {
+                  label: '依頼を確認',
+                  href: buildCommunicationRequestsHref({
+                    status: request.status,
+                    patientId: request.patient_id,
+                    requestId: request.id,
+                    relatedEntityType: request.related_entity_type,
+                    relatedEntityId: request.related_entity_id,
+                  }),
+                  kind: 'button',
+                },
                 {
                   label: '→ カードへ',
                   href: request.patient_id ? buildPatientHref(request.patient_id) : '/patients',

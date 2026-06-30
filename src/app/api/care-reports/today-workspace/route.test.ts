@@ -492,6 +492,9 @@ describe('/api/care-reports/today-workspace', () => {
           id: 'req_1',
           subject: 'みどり医院への疑義照会',
           patient_id: inquiryPatientId,
+          status: 'sent',
+          related_entity_type: 'tracing_report',
+          related_entity_id: 'tracing/1?x=y#frag',
           requested_at: twoDaysAgo,
         },
       ],
@@ -531,7 +534,15 @@ describe('/api/care-reports/today-workspace', () => {
     expect(second.title).toBe('高橋 茂 様 — みどり医院への疑義照会');
     expect(second.waiting_days).toBe(2);
     expect(second.actions).toEqual([
-      { label: '電話で確認', href: '/communications', kind: 'button' },
+      {
+        label: '依頼を確認',
+        href: `/communications/requests?status=sent&patient_id=${encodeURIComponent(
+          inquiryPatientId,
+        )}&request_id=req_1&related_entity_type=tracing_report&related_entity_id=${encodeURIComponent(
+          'tracing/1?x=y#frag',
+        )}`,
+        kind: 'button',
+      },
       { label: '→ カードへ', href: inquiryPatientHref, kind: 'link' },
     ]);
     expect(JSON.stringify(json.data.waiting_replies)).not.toContain(
