@@ -30,6 +30,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### PDF Patient Archive Summary Unification - 2026-07-01 01:43 JST
+
+- Scope:
+  - Continued PRE-06 / P-12 patient summary unification across print/PDF surfaces.
+  - Focused on PDF record loaders and common PDF document rendering.
+- Fixed:
+  - Added a shared `PdfPatientSummary` builder/select for PDF patient identity payloads.
+  - Care report, tracing report, management plan, visit record, medication history/calendar, and conference note PDF records now carry minimal patient archive state.
+  - Common PDF rendering now adds `患者状態: アーカイブ中（閲覧専用）` and archive timestamp rows when a PDF is generated for an archived patient.
+- Safety:
+  - Reduces archived-patient wrong-use risk in generated/printed documents.
+  - Keeps archive output minimal and excludes archive ownership fields such as `archived_by`.
+- Performance:
+  - Adds only narrow `archived_at` selects to existing patient lookups and conditional PDF rows.
+  - No new broad scan, dependency, background job, external call, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/pdf-care-report-record.test.ts src/server/services/pdf-management-plan-record.test.ts src/server/services/pdf-tracing-report-record.test.ts src/server/services/pdf-visit-record.test.ts src/server/services/pdf-patient-summary.test.ts src/server/services/pdf-conference-note-record.test.ts src/server/services/pdf-medication-record.test.ts src/server/services/pdf-documents.test.tsx --reporter=dot --testTimeout=60000`: passed, `8` files / `37` tests.
+  - `pnpm typecheck --pretty false`: passed.
+  - `pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - Read-only verifier subagent review: no issues.
+- Remaining:
+  - Schedule/day-view API/UI consumption of the patient operational summary contract remains the next patient-summary follow-up.
+
 ### Care Report Send Finalization Claim Guard - 2026-07-01 01:38 JST
 
 - Scope:

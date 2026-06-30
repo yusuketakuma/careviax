@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0143 JST
+
+- current task: unify minimal patient archive summary across PDF record loaders and common PDF rendering.
+- files inspected: `git status --short --branch --untracked-files=all`, latest commit log, PDF record loader diffs, `src/server/services/pdf-patient-summary.ts`, `src/server/services/pdf-documents.tsx`, PDF record tests, PDF document tests, and focused PDF test output.
+- files changed: `src/server/services/pdf-patient-summary.ts`, `src/server/services/pdf-patient-summary.test.ts`, `src/server/services/pdf-care-report-record.ts`, `src/server/services/pdf-care-report-record.test.ts`, `src/server/services/pdf-tracing-report-record.ts`, `src/server/services/pdf-tracing-report-record.test.ts`, `src/server/services/pdf-management-plan-record.ts`, `src/server/services/pdf-management-plan-record.test.ts`, `src/server/services/pdf-visit-record.ts`, `src/server/services/pdf-medication-record.ts`, `src/server/services/pdf-medication-record.test.ts`, `src/server/services/pdf-conference-note-record.ts`, `src/server/services/pdf-documents.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: PDF record loaders and common document rendering did not carry or render archived-patient state consistently, so printed/exported documents could omit read-only archived context even when screen/shared surfaces showed it.
+- security risks found: reduced archived-patient wrong-use risk in generated documents while keeping archive output minimal; archive ownership fields such as `archived_by` remain excluded. Existing auth/assignment checks, PDF-safe not-found handling, no-store route wrappers, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: adds only narrow `archived_at` selects to existing patient lookups and conditional key-value rows in PDF rendering. No new broad scans, external calls, dependencies, jobs, or unbounded loops were added.
+- validation commands: `pnpm exec vitest run src/server/services/pdf-care-report-record.test.ts src/server/services/pdf-management-plan-record.test.ts src/server/services/pdf-tracing-report-record.test.ts src/server/services/pdf-visit-record.test.ts src/server/services/pdf-patient-summary.test.ts src/server/services/pdf-conference-note-record.test.ts src/server/services/pdf-medication-record.test.ts src/server/services/pdf-documents.test.tsx --reporter=dot --testTimeout=60000`; `pnpm typecheck --pretty false`; `pnpm typecheck:no-unused --pretty false`; `pnpm lint`; `pnpm format:check`; `git diff --check`; read-only verifier subagent review.
+- validation results: focused PDF Vitest passed `8` files / `37` tests; typecheck, no-unused, lint, format check, and diff-check passed; verifier reported no issues.
+- remaining work: broad master-management / patient-information objective remains open. Schedule/day-view API/UI consumption of patient operational summary remains a follow-up.
+- next action: commit PDF patient archive summary unification separately, then continue patient operational summary foundation when ownership is clear.
+
 ### 20260701-0139 JST
 
 - current task: guard care-report send finalization against stale report updates after delivery attempts.

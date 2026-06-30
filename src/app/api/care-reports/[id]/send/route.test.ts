@@ -1713,7 +1713,8 @@ describe('/api/care-reports/[id]/send POST', () => {
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
     expect(learnContactProfileFromCommunicationMock).not.toHaveBeenCalled();
     expect(txMock.careReport.updateMany).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await response.json();
+    expect(json).toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: '同じ送付先への報告書送付が進行中です。送付履歴を確認してください',
       details: {
@@ -1722,6 +1723,61 @@ describe('/api/care-reports/[id]/send POST', () => {
         channel: 'email',
       },
     });
+    expect(JSON.stringify(json)).not.toContain('doctor@example.com');
+  });
+
+  it('stores keyed delivery sent-claim conflicts without raw contact details', async () => {
+    txMock.deliveryRecord.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const response = await POST(
+      createRequest(
+        {
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+          safety_ack: true,
+        },
+        { 'idempotency-key': 'send-key-delivery-sent-race' },
+      ),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(txMock.careReportSendRequest.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'send_request_1',
+          org_id: 'org_1',
+          report_id: 'report_1',
+          status: 'in_progress',
+        }),
+        data: expect.objectContaining({
+          status: 'completed',
+          response_status: 409,
+          response_body: expect.objectContaining({
+            code: 'WORKFLOW_CONFLICT',
+            details: expect.objectContaining({
+              recipient_contact_masked: 'd***@example.com',
+            }),
+          }),
+        }),
+      }),
+    );
+    const json = await response.json();
+    expect(json).toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        report_id: 'report_1',
+        recipient_contact_masked: 'd***@example.com',
+        channel: 'email',
+      },
+    });
+    expect(JSON.stringify(json)).not.toContain('doctor@example.com');
+    expect(JSON.stringify(txMock.careReportSendRequest.updateMany.mock.calls.at(-1))).not.toContain(
+      'doctor@example.com',
+    );
   });
 
   it('stores a completed response for a keyed report send request', async () => {
@@ -2660,6 +2716,60 @@ describe('/api/care-reports/[id]/send POST', () => {
     });
   });
 
+  it('returns conflict without sending when a failed retry claim loses the race', async () => {
+    const failedUpdatedAt = new Date('2026-06-11T00:05:00.000Z');
+    txMock.deliveryRecord.findFirst.mockResolvedValueOnce({
+      id: 'delivery_failed_previous',
+      status: 'failed',
+      updated_at: failedUpdatedAt,
+    });
+    txMock.deliveryRecord.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(txMock.deliveryRecord.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'delivery_failed_previous',
+        org_id: 'org_1',
+        report_id: 'report_1',
+        channel: 'email',
+        status: 'failed',
+        updated_at: failedUpdatedAt,
+      },
+      data: expect.objectContaining({
+        status: 'draft',
+        failure_reason: null,
+        retry_count: { increment: 1 },
+        delivery_intent_key: expect.stringMatching(/^care-report:v1:[a-f0-9]{64}$/),
+      }),
+    });
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(txMock.careReport.updateMany).not.toHaveBeenCalled();
+    const json = await response.json();
+    expect(json).toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        report_id: 'report_1',
+        recipient_contact_masked: 'd***@example.com',
+        channel: 'email',
+      },
+    });
+    expect(JSON.stringify(json)).not.toContain('doctor@example.com');
+  });
+
   it('lets an org-wide pharmacist send a report for a case assigned to other pharmacists', async () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: {
@@ -3018,7 +3128,8 @@ describe('/api/care-reports/[id]/send POST', () => {
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
     expect(learnContactProfileFromCommunicationMock).not.toHaveBeenCalled();
     expect(txMock.careReport.updateMany).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await response.json();
+    expect(json).toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       details: {
         report_id: 'report_1',
@@ -3026,6 +3137,8 @@ describe('/api/care-reports/[id]/send POST', () => {
         channel: 'email',
       },
     });
+    expect(JSON.stringify(json)).not.toContain('doctor@example.com');
+    expect(JSON.stringify(json)).not.toContain('SES unavailable');
   });
 
   it('logs permanent SES failures without exposing provider details to clients', async () => {
