@@ -1620,7 +1620,7 @@ export async function GET(
   }
 }
 
-export async function PUT(
+async function authenticatedPUT(
   req: NextRequest,
   { params }: { params: Promise<{ scheduleId: string }> },
 ) {
@@ -1882,17 +1882,14 @@ export async function PUT(
         };
       }),
     });
-    const missingCoordinatePatientNames = orderedRouteCellSchedules
-      .filter((item) => !routableSchedules.some((candidate) => candidate.id === item.id))
-      .map((item) => item.case_.patient.name);
+    const missingCoordinateCount = orderedRouteCellSchedules.filter(
+      (item) => !routableSchedules.some((candidate) => candidate.id === item.id),
+    ).length;
     const routePlanWithCellNotes =
-      missingCoordinatePatientNames.length > 0
+      missingCoordinateCount > 0
         ? {
             ...routePlan,
-            note: appendRouteNote(
-              routePlan.note,
-              `座標未設定: ${missingCoordinatePatientNames.join('、')}`,
-            ),
+            note: appendRouteNote(routePlan.note, `座標未設定: ${missingCoordinateCount}件`),
           }
         : routePlan;
     const generatedSnapshot = normalizeRoutePlanSnapshotForWrite(routePlanWithCellNotes, {
@@ -1919,102 +1916,106 @@ export async function PUT(
 
   let result;
   try {
-    result = await withOrgContext(ctx.orgId, async (tx) => {
-      const preparation = await tx.visitPreparation.upsert({
-        where: {
-          schedule_id: schedule.id,
-        },
-        create: {
-          org_id: ctx.orgId,
-          schedule_id: schedule.id,
-          checklist: normalizedChecklist,
-          medication_changes_reviewed: parsed.data.medication_changes_reviewed,
-          carry_items_confirmed: parsed.data.carry_items_confirmed,
-          previous_issues_reviewed: parsed.data.previous_issues_reviewed,
-          route_confirmed: parsed.data.route_confirmed,
-          route_plan_snapshot: routePlanSnapshotWriteValue,
-          offline_synced: parsed.data.offline_synced,
-          prepared_by: ctx.userId,
-          prepared_at: preparationReady ? new Date() : null,
-        },
-        update: {
-          checklist: normalizedChecklist,
-          medication_changes_reviewed: parsed.data.medication_changes_reviewed,
-          carry_items_confirmed: parsed.data.carry_items_confirmed,
-          previous_issues_reviewed: parsed.data.previous_issues_reviewed,
-          route_confirmed: parsed.data.route_confirmed,
-          route_plan_snapshot: routePlanSnapshotWriteValue,
-          offline_synced: parsed.data.offline_synced,
-          prepared_by: ctx.userId,
-          prepared_at: preparationReady ? new Date() : null,
-        },
-      });
-
-      if (shouldAdvanceScheduleToReady) {
-        const readyTransition = await evaluateVisitScheduleReadyTransition(tx, {
-          orgId: ctx.orgId,
-          scheduleId: schedule.id,
-        });
-        if (!readyTransition.ok) {
-          throw new VisitPreparationReadyTransitionError(readyTransition.details);
-        }
-      }
-
-      if (shouldAdvanceScheduleToReady) {
-        const updated = await tx.visitSchedule.updateMany({
+    result = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const preparation = await tx.visitPreparation.upsert({
           where: {
-            id: schedule.id,
+            schedule_id: schedule.id,
+          },
+          create: {
             org_id: ctx.orgId,
-            version: schedule.version,
-            confirmed_at: schedule.confirmed_at,
-            pharmacist_id: schedule.pharmacist_id,
-            scheduled_date: schedule.scheduled_date,
-            schedule_status: schedule.schedule_status,
+            schedule_id: schedule.id,
+            checklist: normalizedChecklist,
+            medication_changes_reviewed: parsed.data.medication_changes_reviewed,
+            carry_items_confirmed: parsed.data.carry_items_confirmed,
+            previous_issues_reviewed: parsed.data.previous_issues_reviewed,
+            route_confirmed: parsed.data.route_confirmed,
+            route_plan_snapshot: routePlanSnapshotWriteValue,
+            offline_synced: parsed.data.offline_synced,
+            prepared_by: ctx.userId,
+            prepared_at: preparationReady ? new Date() : null,
           },
-          data: {
-            ...(routeVehicleResourceId ? { vehicle_resource_id: routeVehicleResourceId } : {}),
-            schedule_status: 'ready',
-            pre_visit_checklist_completed: true,
-            version: { increment: 1 },
+          update: {
+            checklist: normalizedChecklist,
+            medication_changes_reviewed: parsed.data.medication_changes_reviewed,
+            carry_items_confirmed: parsed.data.carry_items_confirmed,
+            previous_issues_reviewed: parsed.data.previous_issues_reviewed,
+            route_confirmed: parsed.data.route_confirmed,
+            route_plan_snapshot: routePlanSnapshotWriteValue,
+            offline_synced: parsed.data.offline_synced,
+            prepared_by: ctx.userId,
+            prepared_at: preparationReady ? new Date() : null,
           },
         });
-        if (updated.count !== 1) {
-          throw new VisitPreparationScheduleConflictError();
+
+        if (shouldAdvanceScheduleToReady) {
+          const readyTransition = await evaluateVisitScheduleReadyTransition(tx, {
+            orgId: ctx.orgId,
+            scheduleId: schedule.id,
+          });
+          if (!readyTransition.ok) {
+            throw new VisitPreparationReadyTransitionError(readyTransition.details);
+          }
         }
-      } else if (routeVehicleResourceId) {
-        await tx.visitSchedule.update({
-          where: { id: schedule.id },
-          data: {
-            vehicle_resource_id: routeVehicleResourceId,
-            version: { increment: 1 },
-          },
-        });
-      }
 
-      if (preparationReady) {
-        await resolveOperationalTasks(tx, {
-          orgId: ctx.orgId,
-          dedupeKey: buildPreparationTaskKey(schedule.id),
-          status: 'completed',
-        });
-      } else {
-        await upsertOperationalTask(tx, {
-          orgId: ctx.orgId,
-          taskType: 'visit_preparation',
-          title: '訪問準備が未完了です',
-          description: `未完了: ${readinessBlockers.join('、')}`,
-          priority: 'high',
-          assignedTo: schedule.pharmacist_id,
-          dueDate: schedule.scheduled_date,
-          slaDueAt: schedule.scheduled_date,
-          relatedEntityType: 'visit_schedule',
-          relatedEntityId: schedule.id,
-          dedupeKey: buildPreparationTaskKey(schedule.id),
-        });
-      }
+        if (shouldAdvanceScheduleToReady) {
+          const updated = await tx.visitSchedule.updateMany({
+            where: {
+              id: schedule.id,
+              org_id: ctx.orgId,
+              version: schedule.version,
+              confirmed_at: schedule.confirmed_at,
+              pharmacist_id: schedule.pharmacist_id,
+              scheduled_date: schedule.scheduled_date,
+              schedule_status: schedule.schedule_status,
+            },
+            data: {
+              ...(routeVehicleResourceId ? { vehicle_resource_id: routeVehicleResourceId } : {}),
+              schedule_status: 'ready',
+              pre_visit_checklist_completed: true,
+              version: { increment: 1 },
+            },
+          });
+          if (updated.count !== 1) {
+            throw new VisitPreparationScheduleConflictError();
+          }
+        } else if (routeVehicleResourceId) {
+          await tx.visitSchedule.update({
+            where: { id: schedule.id },
+            data: {
+              vehicle_resource_id: routeVehicleResourceId,
+              version: { increment: 1 },
+            },
+          });
+        }
 
-      return preparation;
-    });
+        if (preparationReady) {
+          await resolveOperationalTasks(tx, {
+            orgId: ctx.orgId,
+            dedupeKey: buildPreparationTaskKey(schedule.id),
+            status: 'completed',
+          });
+        } else {
+          await upsertOperationalTask(tx, {
+            orgId: ctx.orgId,
+            taskType: 'visit_preparation',
+            title: '訪問準備が未完了です',
+            description: `未完了: ${readinessBlockers.join('、')}`,
+            priority: 'high',
+            assignedTo: schedule.pharmacist_id,
+            dueDate: schedule.scheduled_date,
+            slaDueAt: schedule.scheduled_date,
+            relatedEntityType: 'visit_schedule',
+            relatedEntityId: schedule.id,
+            dedupeKey: buildPreparationTaskKey(schedule.id),
+          });
+        }
+
+        return preparation;
+      },
+      { requestContext: ctx },
+    );
   } catch (cause) {
     if (cause instanceof VisitPreparationReadyTransitionError) {
       return validationError(cause.message, sanitizeVisitReadyTransitionDetails(cause.details));
@@ -2026,4 +2027,16 @@ export async function PUT(
   }
 
   return success({ data: result });
+}
+
+export async function PUT(
+  req: NextRequest,
+  routeContext: { params: Promise<{ scheduleId: string }> },
+) {
+  try {
+    return withSensitiveNoStore(await authenticatedPUT(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }

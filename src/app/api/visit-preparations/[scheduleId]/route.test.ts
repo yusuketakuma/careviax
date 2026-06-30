@@ -165,6 +165,11 @@ function createMalformedJsonPutRequest(headers: Record<string, string> = { 'x-or
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 const completePreparationBody = {
   checklist: { legacy_debug: undefined },
   medication_changes_reviewed: true,
@@ -1788,6 +1793,34 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
     resolveOperationalTasksMock.mockResolvedValue({ count: 1 });
   });
 
+  it('returns a sanitized no-store 500 when put auth plumbing fails before schedule lookup', async () => {
+    authMock.mockRejectedValueOnce(
+      new Error('raw put auth patient 山田 花子 token secret preparation memo'),
+    );
+
+    const response = await PUT(createPutRequest(completePreparationBody), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw put auth');
+    expect(bodyText).not.toContain('山田 花子');
+    expect(bodyText).not.toContain('token secret');
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitPreparationUpsertMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
   it('rejects non-object preparation payloads before schedule lookup or upsert', async () => {
     const response = await PUT(createPutRequest([]), {
       params: Promise.resolve({ scheduleId: 'schedule_1' }),
@@ -1795,6 +1828,7 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -1859,7 +1893,14 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(withOrgContextMock).toHaveBeenCalled();
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+    });
     expect(visitPreparationUpsertMock).toHaveBeenCalled();
   });
 
@@ -2009,6 +2050,13 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+    });
     expect(visitPreparationUpsertMock).toHaveBeenCalled();
     expect(txVisitScheduleFindFirstMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2056,6 +2104,34 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
         status: 'completed',
       }),
     );
+  });
+
+  it('returns a sanitized no-store 500 when the preparation transaction fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('raw preparation transaction patient 山田 花子 token secret route memo'),
+    );
+
+    const response = await PUT(createPutRequest(completePreparationBody), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw preparation transaction');
+    expect(bodyText).not.toContain('山田 花子');
+    expect(bodyText).not.toContain('token secret');
+    expect(visitPreparationUpsertMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
   });
 
   it('rejects mark_ready when the schedule changed before the guarded ready update', async () => {
@@ -2402,6 +2478,78 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
       }),
     );
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('does not persist patient names or addresses in generated route notes for missing coordinates', async () => {
+    peerVisitScheduleFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'schedule_1',
+        route_order: 1,
+        priority: 'normal',
+        site: {
+          id: 'site_1',
+          name: '本店',
+          lat: 35.681236,
+          lng: 139.767125,
+        },
+        case_: {
+          patient: {
+            name: '山田太郎',
+            residences: [
+              {
+                address: '東京都千代田区1-1',
+                lat: 35.684,
+                lng: 139.77,
+              },
+            ],
+          },
+        },
+      },
+      {
+        id: 'schedule_missing_coordinates',
+        route_order: 2,
+        priority: 'normal',
+        site: {
+          id: 'site_1',
+          name: '本店',
+          lat: 35.681236,
+          lng: 139.767125,
+        },
+        case_: {
+          patient: {
+            name: '佐藤花子',
+            residences: [
+              {
+                address: '東京都港区9-9',
+                lat: null,
+                lng: null,
+              },
+            ],
+          },
+        },
+      },
+    ]);
+
+    const response = await PUT(createPutRequest(completePreparationBody), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitPreparationUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          route_plan_snapshot: expect.objectContaining({
+            note: 'ヒューリスティック順序を表示しています / 座標未設定: 1件',
+            ordered_schedule_ids: ['schedule_1', 'schedule_missing_coordinates'],
+          }),
+        }),
+      }),
+    );
+    const upsertPayload = visitPreparationUpsertMock.mock.calls[0]?.[0];
+    const snapshotText = JSON.stringify(upsertPayload);
+    expect(snapshotText).not.toContain('佐藤花子');
+    expect(snapshotText).not.toContain('東京都港区9-9');
   });
 
   it('rejects route confirmation when the selected vehicle duration limit is exceeded', async () => {
