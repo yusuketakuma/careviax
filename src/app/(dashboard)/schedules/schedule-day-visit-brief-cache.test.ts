@@ -252,7 +252,7 @@ describe('schedule day visit brief cache helpers', () => {
       data: {
         schedule_missing_late: {
           archive: {
-            status: 'archived',
+            status: 'archived' as const,
             archived: true,
             archived_at: '2026-06-30T09:00:00.000Z',
           },

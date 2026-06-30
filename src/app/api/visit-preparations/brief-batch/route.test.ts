@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import type { VisitBrief } from '@/types/visit-brief';
 
 const {
   requireAuthContextMock,
@@ -63,7 +64,7 @@ function expectSensitiveNoStore(response: Response) {
 }
 
 const brief = {
-  patient: { id: 'patient_1', name: '患者A' },
+  patient: { id: 'patient_1', name: '患者A', archive: null as VisitBrief['patient']['archive'] },
   context: 'schedule',
   generated_at: '2026-03-27T00:00:00.000Z',
   last_prescribed_date: null,
@@ -247,7 +248,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
               id: 'patient_archived',
               name: '患者アーカイブ',
               archive: {
-                status: 'archived',
+                status: 'archived' as const,
                 archived: true,
                 archived_at: '2026-06-30T09:00:00.000Z',
               },
