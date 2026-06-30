@@ -29544,6 +29544,9 @@ Next loop:
   - Scoped ESLint, scoped Prettier check, and `git diff --check`: passed.
   - `pnpm typecheck --pretty false`: passed.
   - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`: passed.
 - Remaining:
   - Broad master/patient/report objective remains open.
   - Additional follow-ups include UI-level bulk snooze controls and audit visibility for grouped report-response reminders.
