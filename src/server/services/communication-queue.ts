@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { formatCommunicationRequestTypeLabel } from '@/lib/communications/request-labels';
+import { buildReportHref } from '@/lib/reports/navigation';
 import { buildExternalAccessGrantVisibilityWhere } from './external-access';
 
 export type CommunicationQueueDbClient = typeof prisma | Prisma.TransactionClient;
@@ -839,7 +840,7 @@ export async function listCommunicationQueue(
         ? (patientNameById.get(record.report.patient_id) ?? null)
         : null,
       due_at: isoOrNull(record.sent_at ?? record.updated_at),
-      action_href: '/reports',
+      action_href: buildReportHref(record.report.id),
       action_label: '報告送達を確認',
     })),
     ...visibleExternalShares.map((grant) => ({
@@ -869,7 +870,7 @@ export async function listCommunicationQueue(
       summary: `状態: ${report.status}`,
       status: report.status,
       occurred_at: report.updated_at ?? report.created_at,
-      action_href: '/reports',
+      action_href: buildReportHref(report.id),
       action_label: '報告書を確認',
     })),
     ...tracingReports.map((report) => ({
@@ -915,7 +916,7 @@ export async function listCommunicationQueue(
         record.failure_reason ?? `${record.recipient_name} / ${record.channel} / ${record.status}`,
       status: record.status,
       occurred_at: record.confirmed_at ?? record.sent_at ?? record.updated_at,
-      action_href: '/reports',
+      action_href: buildReportHref(record.report.id),
       action_label: '送達履歴を確認',
     })),
   ];

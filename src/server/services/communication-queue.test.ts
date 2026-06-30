@@ -182,6 +182,75 @@ describe('listCommunicationQueue', () => {
     ]);
   });
 
+  it('links report delivery queue and timeline entries to the exact report detail', async () => {
+    emptyDbMocks();
+    const reportId = 'report/1?x=y#frag';
+    deliveryRecordFindManyMock.mockResolvedValue([
+      {
+        id: 'delivery-1',
+        channel: 'fax',
+        recipient_name: '在宅主治医',
+        status: 'failed',
+        failure_reason: 'FAX送信に失敗しました',
+        sent_at: new Date('2026-04-02T10:00:00Z'),
+        confirmed_at: null,
+        updated_at: new Date('2026-04-02T11:00:00Z'),
+        report: {
+          id: reportId,
+          patient_id: 'p-1',
+          report_type: 'physician_report',
+        },
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'p-1', name: '佐藤花子' }]);
+
+    const result = await listCommunicationQueue(makeDb(), {
+      orgId: 'org-1',
+    });
+
+    const expectedHref = `/reports/${encodeURIComponent(reportId)}`;
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        queue_type: 'delivery',
+        action_href: expectedHref,
+      }),
+    ]);
+    expect(result.timeline).toEqual([
+      expect.objectContaining({
+        source_type: 'delivery_record',
+        action_href: expectedHref,
+      }),
+    ]);
+  });
+
+  it('links care report timeline entries to the exact report detail', async () => {
+    emptyDbMocks();
+    const reportId = 'care-report/1?x=y#frag';
+    careReportFindManyMock.mockResolvedValue([
+      {
+        id: reportId,
+        patient_id: 'p-1',
+        report_type: 'care_manager_report',
+        status: 'sent',
+        created_at: new Date('2026-04-01T10:00:00Z'),
+        updated_at: new Date('2026-04-02T10:00:00Z'),
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'p-1', name: '佐藤花子' }]);
+
+    const result = await listCommunicationQueue(makeDb(), {
+      orgId: 'org-1',
+    });
+
+    expect(result.timeline).toEqual([
+      expect.objectContaining({
+        source_type: 'care_report',
+        patient_name: '佐藤花子',
+        action_href: `/reports/${encodeURIComponent(reportId)}`,
+      }),
+    ]);
+  });
+
   it('scopes case-backed communication records when caseIds are provided', async () => {
     emptyDbMocks();
     patientFindFirstMock.mockResolvedValue({
