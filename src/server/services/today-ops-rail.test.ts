@@ -50,6 +50,7 @@ function createTx({
     description: string;
     severity: string;
     created_at: Date;
+    patient_id?: string | null;
   }>;
 }) {
   return {
@@ -62,7 +63,14 @@ function createTx({
         })),
       ),
     },
-    workflowException: { findMany: vi.fn().mockResolvedValue(exceptions) },
+    workflowException: {
+      findMany: vi.fn().mockResolvedValue(
+        exceptions.map((exception) => ({
+          patient_id: null,
+          ...exception,
+        })),
+      ),
+    },
   } as unknown as Prisma.TransactionClient;
 }
 
@@ -98,6 +106,7 @@ describe('buildTodayOpsRail', () => {
           description: 'ご家族の同意待ち(新規契約)',
           severity: 'critical',
           created_at: new Date(2026, 5, 10, 8, 42),
+          patient_id: 'patient_1',
         },
         {
           id: 'exception_delivery',
@@ -124,7 +133,7 @@ describe('buildTodayOpsRail', () => {
       severity: 'critical',
       category: '患者',
       action_label: '再連絡する →',
-      action_href: '/communications/requests',
+      action_href: '/communications/requests?status=sent&patient_id=patient_1',
     });
     expect(rail.blocked_reasons[0].age_minutes).toBe(25 * 60);
     expect(rail.blocked_reasons[1]).toMatchObject({

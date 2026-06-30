@@ -277,6 +277,7 @@ describe('buildPatientWorkspace', () => {
         expect.objectContaining({
           id: 'inquiry-inquiry_1',
           label: '用量確認 → 疑義照会 回答受領',
+          href: '/communications/requests?status=responded&patient_id=patient_1',
         }),
         expect.objectContaining({
           id: 'transition-transition_1',

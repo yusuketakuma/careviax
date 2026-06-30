@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { format } from 'date-fns';
 import { extractPackagingInstructionTags } from '@/lib/dispensing/packaging';
+import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import type {
@@ -193,6 +194,7 @@ export async function buildTodayOpsRail(
       description: true,
       severity: true,
       created_at: true,
+      patient_id: true,
     },
   });
 
@@ -225,6 +227,10 @@ export async function buildTodayOpsRail(
 
   const blockedReasons: TodayOpsBlockedReason[] = openExceptions.map((exception) => {
     const action = EXCEPTION_ACTIONS[exception.exception_type] ?? EXCEPTION_ACTION_FALLBACK;
+    const actionHref =
+      exception.exception_type === 'family_consent_pending'
+        ? buildCommunicationRequestsHref({ status: 'sent', patientId: exception.patient_id })
+        : action.href;
     return {
       id: exception.id,
       label: exception.description,
@@ -235,7 +241,7 @@ export async function buildTodayOpsRail(
         Math.floor((now.getTime() - exception.created_at.getTime()) / 60_000),
       ),
       action_label: action.label,
-      action_href: action.href,
+      action_href: actionHref,
     };
   });
 

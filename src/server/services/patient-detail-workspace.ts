@@ -14,6 +14,7 @@ import {
 } from '@/server/services/patient-detail-helpers';
 import { findPreviousPrescriptionIntakeForMedicationDiff } from '@/server/services/prescription-intake-pair';
 import { timeDateToString } from '@/lib/visits/time-of-day';
+import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
 
@@ -265,7 +266,10 @@ export async function buildPatientWorkspace(db: DbClient, args: BuildPatientWork
         : `${inquiry.reason} → 疑義照会 回答待ち`,
       actor: null,
       at: inquiry.resolved_at ?? inquiry.inquired_at,
-      href: '/communications/requests',
+      href: buildCommunicationRequestsHref({
+        status: inquiry.resolved_at ? 'responded' : 'sent',
+        patientId: args.patientId,
+      }),
     })),
     ...cycle.prescription_intakes.map((intake) => ({
       id: `intake-${intake.id}`,

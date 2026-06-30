@@ -68,6 +68,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildPrescriptionIntakeApiPath } from '@/lib/prescriptions/api-paths';
+import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { usePresenceHeartbeat } from '@/lib/hooks/use-presence-heartbeat';
 import { cn } from '@/lib/utils';
 import { CASE_STATUS_LABELS } from '@/lib/constants/status-labels';
@@ -152,6 +153,17 @@ const EXCEPTION_ACTIONS: Record<string, { label: string; href: string }> = {
   family_consent_pending: { label: '再連絡する', href: '/communications/requests' },
   delivery_target_confirmation: { label: '状況を見る', href: '/admin/contact-profiles' },
 };
+
+function resolveExceptionAction(exceptionType: string, patientId: string) {
+  const action = EXCEPTION_ACTIONS[exceptionType];
+  if (exceptionType === 'family_consent_pending') {
+    return {
+      label: action?.label ?? '再連絡する',
+      href: buildCommunicationRequestsHref({ status: 'sent', patientId }),
+    };
+  }
+  return action ?? { label: '状況を見る', href: '/workflow' };
+}
 
 const UNRESOLVED_CATEGORY_LABELS: Record<VisitBriefUnresolvedItem['source_type'], string> = {
   task: '事務',
@@ -4362,15 +4374,15 @@ export function CardWorkspace({
   const unresolved = patient.visit_brief?.unresolved_items ?? [];
   const blockedReasons: BlockedReason[] = [
     ...workspace.open_exceptions.map((exception) => {
-      const action = EXCEPTION_ACTIONS[exception.exception_type];
+      const action = resolveExceptionAction(exception.exception_type, patient.id);
       return {
         id: exception.id,
         label: exception.description,
         severity: exception.severity,
         categoryLabel: EXCEPTION_CATEGORY_LABELS[exception.exception_type] ?? '事務',
         ageLabel: formatAgeLabel(exception.created_at),
-        actionLabel: `${action?.label ?? '状況を見る'} →`,
-        actionHref: action?.href ?? '/workflow',
+        actionLabel: `${action.label} →`,
+        actionHref: action.href,
       };
     }),
     ...unresolved.map((item, index) => ({

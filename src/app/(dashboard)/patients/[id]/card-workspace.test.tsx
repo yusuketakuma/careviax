@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { useUIStore } from '@/lib/stores/ui-store';
 import type {
   PatientDocumentsSnapshot,
   PatientOverview,
@@ -70,6 +71,10 @@ import {
 
 setupDomTestEnv();
 
+beforeEach(() => {
+  useUIStore.setState({ workspaceRailOpen: false, workspaceRailAvailable: false });
+});
+
 function buildWorkspace(overrides: Partial<PatientWorkspace> = {}): PatientWorkspace {
   return {
     cycle_id: 'cycle_1',
@@ -134,7 +139,7 @@ function buildWorkspace(overrides: Partial<PatientWorkspace> = {}): PatientWorks
         label: '残薬調整 → 疑義照会 回答受領',
         actor: null,
         at: '2026-06-01T09:31:00.000Z',
-        href: '/communications/requests',
+        href: '/communications/requests?status=responded&patient_id=patient_1',
       },
       {
         id: 'intake-1',
@@ -1162,6 +1167,30 @@ describe('CardWorkspace', () => {
     // 取得失敗を「データなし」として黙って隠さず、明示的なエラー帯を出す。
     const errorNotice = screen.getByTestId('patient-header-summary-error');
     expect(errorNotice.textContent).toContain('取得できませんでした');
+  });
+
+  it('focuses family consent follow-up links on the patient reply-waiting queue', () => {
+    useUIStore.setState({ workspaceRailOpen: true });
+    mockPatientQuery(
+      buildWorkspace({
+        open_exceptions: [
+          {
+            id: 'exception_consent',
+            exception_type: 'family_consent_pending',
+            description: 'ご家族の同意待ち(新規契約)',
+            severity: 'warning',
+            created_at: '2026-06-01T09:30:00.000Z',
+          },
+        ],
+      }),
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const blockedReasons = screen.getByTestId('blocked-reasons-panel');
+    expect(
+      within(blockedReasons).getByRole('link', { name: '再連絡する →' }).getAttribute('href'),
+    ).toBe('/communications/requests?status=sent&patient_id=patient_1');
   });
 
   it('aligns intervention start with the backend latest-case tie-break (updated_at, created_at, id desc)', () => {
