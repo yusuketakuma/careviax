@@ -375,6 +375,221 @@ describe('generateVisitScheduleProposalDrafts', () => {
     });
   });
 
+  it('maps legacy tube feeding procedures to enteral specialty matching', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      id: 'case_1',
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'pharmacist_primary',
+      backup_pharmacist_id: null,
+      required_visit_support: {
+        home_visit_intake: {
+          special_medical_procedures: ['tube_feeding'],
+        },
+      },
+      patient: {
+        scheduling_preference: null,
+        residences: [
+          {
+            address: '東京都港区1-1-1',
+            lat: 35.0,
+            lng: 139.0,
+            building_id: 'facility_a',
+          },
+        ],
+      },
+    });
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        date: new Date('2026-03-28T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_primary',
+          name: '主担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: ['胃ろう・経管栄養'],
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(result.drafts).toHaveLength(1);
+    expect(result.drafts[0]?.proposal_reason).toContain('登録上の専門対応候補 経管栄養 と照合');
+    expect(result.diagnostics.accepted[0]?.specialty_coverage).toEqual({
+      required_labels: ['経管栄養'],
+      missing_labels: [],
+      unknown_procedure_count: 0,
+      match_status: 'matched',
+      source: 'user_visit_specialties_free_text',
+    });
+  });
+
+  it('keeps unknown special procedure keys visible without leaking raw values', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      id: 'case_1',
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'pharmacist_primary',
+      backup_pharmacist_id: null,
+      required_visit_support: {
+        home_visit_intake: {
+          special_medical_procedures: ['patient-note-yamada-secret'],
+        },
+      },
+      patient: {
+        scheduling_preference: null,
+        residences: [
+          {
+            address: '東京都港区1-1-1',
+            lat: 35.0,
+            lng: 139.0,
+            building_id: 'facility_a',
+          },
+        ],
+      },
+    });
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        date: new Date('2026-03-28T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_primary',
+          name: '主担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: [],
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(result.drafts).toHaveLength(1);
+    expect(result.drafts[0]?.proposal_reason).toContain(
+      '専門対応 未定義手技は要確認のため後方評価',
+    );
+    expect(result.drafts[0]?.proposal_reason).not.toContain('patient-note-yamada-secret');
+    expect(result.diagnostics.accepted[0]?.specialty_coverage).toEqual({
+      required_labels: ['未定義手技'],
+      missing_labels: ['未定義手技'],
+      unknown_procedure_count: 1,
+      match_status: 'unknown',
+      source: 'user_visit_specialties_free_text',
+    });
+  });
+
+  it('does not treat broad palliative text as a narcotic injection specialty match', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      id: 'case_1',
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'pharmacist_primary',
+      backup_pharmacist_id: null,
+      required_visit_support: {
+        home_visit_intake: {
+          special_medical_procedures: ['narcotics_injection'],
+        },
+      },
+      patient: {
+        scheduling_preference: null,
+        residences: [
+          {
+            address: '東京都港区1-1-1',
+            lat: 35.0,
+            lng: 139.0,
+            building_id: 'facility_a',
+          },
+        ],
+      },
+    });
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        date: new Date('2026-03-28T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_primary',
+          name: '主担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: ['緩和ケア'],
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(result.drafts).toHaveLength(1);
+    expect(result.drafts[0]?.proposal_reason).toContain(
+      '登録上の専門対応候補 医療用麻薬持続注射 は未一致のため後方評価',
+    );
+    expect(result.diagnostics.accepted[0]?.specialty_coverage).toEqual({
+      required_labels: ['医療用麻薬持続注射'],
+      missing_labels: ['医療用麻薬持続注射'],
+      unknown_procedure_count: 0,
+      match_status: 'unmatched',
+      source: 'user_visit_specialties_free_text',
+    });
+  });
+
   it('keeps route orders scoped to each pharmacist and day cell', async () => {
     const result = await generateVisitScheduleProposalDrafts({
       orgId: 'org_1',
