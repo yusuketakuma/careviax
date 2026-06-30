@@ -76,8 +76,9 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Adds one conditional patient-row update and bounded before/after condition reads inside the existing replacement transaction.
   - Adds no dependency, polling, background job, external call, broad scan, render fan-out, or unbounded loop.
 - Validation:
-  - `pnpm exec vitest run src/app/api/patients/'[id]'/conditions/route.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `14` tests.
+  - `pnpm exec vitest run src/app/api/patients/'[id]'/conditions/route.test.ts src/server/services/patient-field-revision.test.ts src/lib/audit/audit-entry.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `24` tests.
   - `pnpm exec vitest run src/app/api/patients/'[id]'/conditions/route.test.ts src/app/api/care-reports/'[id]'/send/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `80` tests.
+  - Medical safety and privacy compliance re-reviews on the patient-condition diff: no remaining findings.
   - Scoped ESLint, scoped Prettier check, and scoped diff-check on patient-condition and care-report send files: passed.
   - `pnpm typecheck --pretty false`: passed.
   - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
