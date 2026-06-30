@@ -58,6 +58,30 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Broad visit-time, report, and multi-professional cooperation objective remains open.
   - Remaining report/cooperation candidates include short-lived external PDF tokens, report source-provenance split, and additional audience/attachment gates.
 
+### Visit Planner Patient Cadence Count Precompute - 2026-07-01 04:53 JST
+
+- Scope:
+  - Continued schedule-route P7 performance hardening in `generateVisitScheduleProposalDrafts`.
+  - Focused on P7 perf-4: avoiding repeated patient cadence scans during candidate scoring.
+- Fixed:
+  - Precomputed current-patient confirmed schedule counts by billing month and billing week once after `confirmedSchedulesForPatient` is built.
+  - Candidate scoring now uses O(1) map lookups for monthly and weekly cadence penalties instead of filtering the patient schedule list for every shift.
+  - Added regression coverage that a TPN visit with two existing same-week patient schedules still receives the weekly cadence penalty, and a normal visit with four existing same-month schedules still receives the monthly cadence penalty.
+- Safety:
+  - Preserves billing month/week helper semantics, monthly/weekly cap thresholds, proposal scoring, route/vehicle scoring, workflow gate, auth/RLS callers, operating-hour guards, migrations, live data, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Removes per-candidate re-scans of `confirmedSchedulesForPatient` for cadence scoring.
+  - No DB query shape, dependency, external request, background job, render path, or broad scan was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `42` tests.
+  - `pnpm exec vitest run src/app/api/visit-schedule-proposals/route.test.ts src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `131` tests with the expected sanitized-500 route log.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on the planner code/test: passed.
+  - Full typecheck, no-unused, full lint, full format check, and full diff-check: passed.
+  - Independent verifier reported the implementation correct and flagged only missing monthly regression coverage; the monthly test above closes that finding.
+- Remaining:
+  - Broad visit-time, report, and multi-professional cooperation objective remains open.
+  - P7 still has follow-ups for route matrix batching and candidate-scoped confirmed schedule queries.
+
 ### Facility Master And Contact OCC - 2026-07-01 04:44 JST
 
 - Scope:

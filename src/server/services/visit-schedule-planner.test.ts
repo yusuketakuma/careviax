@@ -70,6 +70,45 @@ vi.mock('./road-routing', async (importOriginal) => {
 
 import { generateVisitScheduleProposalDrafts } from './visit-schedule-planner';
 
+function createExistingPatientSchedule(args: {
+  id: string;
+  scheduledDate: string;
+  pharmacistId?: string;
+  patientId?: string;
+}) {
+  return {
+    id: args.id,
+    scheduled_date: new Date(args.scheduledDate),
+    time_window_start: null,
+    time_window_end: null,
+    route_order: null,
+    priority: 'normal',
+    confirmed_at: null,
+    schedule_status: 'planned',
+    pharmacist_id: args.pharmacistId ?? 'other_pharmacist',
+    vehicle_resource_id: null,
+    case_: {
+      patient: {
+        id: args.patientId ?? 'patient_1',
+        residences: [
+          {
+            address: '東京都港区1-1-1',
+            lat: 35.0,
+            lng: 139.0,
+            building_id: 'facility_a',
+          },
+        ],
+        scheduling_preference: null,
+      },
+    },
+    site: {
+      address: '東京都港区2-2-2',
+      lat: 35.01,
+      lng: 139.01,
+    },
+  };
+}
+
 describe('generateVisitScheduleProposalDrafts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1613,6 +1652,113 @@ describe('generateVisitScheduleProposalDrafts', () => {
           reason_code: 'daily_capacity',
         }),
       ]),
+    );
+  });
+
+  it('uses precomputed patient cadence counts for weekly cap penalties', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      id: 'case_1',
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'pharmacist_primary',
+      backup_pharmacist_id: null,
+      required_visit_support: {
+        home_visit_intake: {
+          special_medical_procedures: ['tpn'],
+        },
+      },
+      patient: {
+        scheduling_preference: null,
+        residences: [
+          {
+            address: '東京都港区1-1-1',
+            lat: 35.0,
+            lng: 139.0,
+            building_id: 'facility_a',
+          },
+        ],
+      },
+    });
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        date: new Date('2026-03-28T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_primary',
+          name: '主担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: ['TPN'],
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+    visitScheduleFindManyMock.mockResolvedValueOnce([
+      createExistingPatientSchedule({
+        id: 'schedule_existing_1',
+        scheduledDate: '2026-03-26T00:00:00.000Z',
+        pharmacistId: 'other_pharmacist_1',
+      }),
+      createExistingPatientSchedule({
+        id: 'schedule_existing_2',
+        scheduledDate: '2026-03-27T00:00:00.000Z',
+        pharmacistId: 'other_pharmacist_2',
+      }),
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(result.drafts).toHaveLength(1);
+    expect(result.diagnostics.accepted[0]?.score_breakdown).toEqual(
+      expect.objectContaining({
+        cadencePenalty: 80,
+      }),
+    );
+  });
+
+  it('uses precomputed patient cadence counts for monthly cap penalties', async () => {
+    visitScheduleFindManyMock.mockResolvedValueOnce(
+      ['2026-03-01', '2026-03-08', '2026-03-15', '2026-03-22'].map((dateKey, index) =>
+        createExistingPatientSchedule({
+          id: `schedule_existing_month_${index + 1}`,
+          scheduledDate: `${dateKey}T00:00:00.000Z`,
+          pharmacistId: `other_pharmacist_month_${index + 1}`,
+        }),
+      ),
+    );
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(result.drafts).toHaveLength(1);
+    expect(result.diagnostics.accepted[0]?.score_breakdown).toEqual(
+      expect.objectContaining({
+        cadencePenalty: 120,
+      }),
     );
   });
 

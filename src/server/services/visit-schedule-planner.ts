@@ -15,7 +15,6 @@ import type { VisitRouteTravelMode } from './visit-route-engine';
 import {
   ACTIVE_BILLING_SCHEDULE_STATUSES,
   buildBillingWeekKey,
-  endOfBillingMonth,
   startOfBillingMonth,
 } from './billing-cadence';
 
@@ -399,8 +398,12 @@ function startOfMonthDate(value: Date) {
   return startOfBillingMonth(value);
 }
 
-function endOfMonthDate(value: Date) {
-  return endOfBillingMonth(value);
+function buildMonthKey(value: Date) {
+  return toDateKey(startOfMonthDate(value));
+}
+
+function incrementCount(counts: Map<string, number>, key: string) {
+  counts.set(key, (counts.get(key) ?? 0) + 1);
 }
 
 function readTimeString(value: Date | null | undefined) {
@@ -1477,6 +1480,12 @@ export async function generateVisitScheduleProposalDrafts(
   const confirmedSchedulesForPatient = confirmedSchedules.filter(
     (schedule) => schedule.case_.patient.id === careCase.patient_id,
   );
+  const confirmedSchedulesForPatientByMonth = new Map<string, number>();
+  const confirmedSchedulesForPatientByWeek = new Map<string, number>();
+  for (const schedule of confirmedSchedulesForPatient) {
+    incrementCount(confirmedSchedulesForPatientByMonth, buildMonthKey(schedule.scheduled_date));
+    incrementCount(confirmedSchedulesForPatientByWeek, buildWeekKey(schedule.scheduled_date));
+  }
   for (const schedule of confirmedSchedules) {
     const dayKey = toDateKey(schedule.scheduled_date);
     const daySchedules = confirmedSchedulesByDay.get(dayKey);
@@ -1822,17 +1831,12 @@ export async function generateVisitScheduleProposalDrafts(
             : remainingSlackMinutes < DEFAULT_VISIT_DURATION_MINUTES * 2
               ? 6
               : 0;
-        const monthlyCountForCandidate = confirmedSchedulesForPatient.filter(
-          (schedule) =>
-            schedule.scheduled_date >= startOfMonthDate(shift.date) &&
-            schedule.scheduled_date <= endOfMonthDate(shift.date),
-        ).length;
+        const monthlyCountForCandidate =
+          confirmedSchedulesForPatientByMonth.get(buildMonthKey(shift.date)) ?? 0;
         const weeklyCountForCandidate =
           weeklyCap == null
             ? 0
-            : confirmedSchedulesForPatient.filter(
-                (schedule) => buildWeekKey(schedule.scheduled_date) === buildWeekKey(shift.date),
-              ).length;
+            : (confirmedSchedulesForPatientByWeek.get(buildWeekKey(shift.date)) ?? 0);
         const cadencePenalty =
           (monthlyCountForCandidate >= monthlyCap ? 120 : 0) +
           (weeklyCap != null && weeklyCountForCandidate >= weeklyCap ? 80 : 0);
