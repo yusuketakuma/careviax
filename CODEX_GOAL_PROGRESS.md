@@ -30,6 +30,51 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Patient Consent Status Active Boundary - 2026-07-01 03:14 JST
+
+- Scope:
+  - Continued patient-information management hardening on the patient list service and `/api/patients` list route.
+  - Focused on `consent_status=complete|missing` filters used to find patients whose visit-medication-management consent is actionable today.
+- Fixed:
+  - Added a shared active visit-consent where builder with `revoked_date = null` and `expiry_date IS NULL OR expiry_date >= now`.
+  - `consent_status=complete` and `consent_status=missing` now use the same active-consent boundary as the list row projection.
+  - Added regression coverage proving both relation filters include the non-expired consent predicate at the DB boundary.
+- Safety:
+  - Reduces the risk that patients with expired, non-revoked consents disappear from "missing consent" worklists before visit preparation.
+  - Preserves existing auth, RLS/assignment filters, archive filters, minimal search views, response masking, no-store wrappers, duplicate checks, migrations, live DB state, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Keeps the existing relation-filter shape and only adds the expiry predicate already used by the selected consent projection.
+  - No new dependency, fan-out query, background job, external call, broad scan, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/patient-service.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `14` tests.
+  - `pnpm exec vitest run src/app/api/patients/route.test.ts src/server/services/patient-service.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `59` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck --pretty false`, and `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+- Remaining:
+  - Broad master-management / patient-information objective remains open.
+
+### Conference Note PATCH RLS Lock - 2026-07-01 03:20 JST
+
+- Scope:
+  - Continued report / interprofessional collaboration hardening on the conference-note update route.
+  - Focused on stale PATCH reads for patient-linked conference notes before update, audit, task, and sync side effects.
+- Fixed:
+  - `PATCH /api/conference-notes/[id]` now enters `withOrgContext` before loading the existing note.
+  - The route claims the target `ConferenceNote` row with `FOR UPDATE` and then reloads the note through the RLS transaction before merging payload fields.
+  - Not-found, validation, audit, care-report draft, task, and sync paths now run from the transaction-scoped note state.
+  - Tests cover lock-before-read/update ordering and the not-visible-after-lock 404 path.
+- Safety:
+  - Reduces stale conference-note overwrite and RLS-context drift risk for patient-linked collaboration records.
+  - Preserves existing route param/body validation before DB work, not-found envelope, sanitized 500 behavior, audit creation, generated-report linkage, migrations, live DB state, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds one target-row lock query and removes the previous global Prisma pre-read.
+  - No broad scan, dependency, background job, external call, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/conference-notes/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `1` file / `11` tests.
+  - Related conference-note sync/report suite passed `4` files / `33` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck --pretty false`, `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`, `pnpm lint`, `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`, and full `git diff --check`: passed.
+- Remaining:
+  - Broad visit-time / report / interprofessional collaboration objective remains open.
+
 ### Visit Route Distance Source Signal - 2026-07-01 03:18 JST
 
 - Scope:
