@@ -541,7 +541,6 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         },
       },
     ]);
-
     const response = await GET(createRequest(undefined, { 'x-org-id': 'org_1' }), {
       params: Promise.resolve({ id: 'proposal_1' }),
     });
@@ -646,6 +645,303 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     expect(JSON.stringify(body)).not.toContain('埼玉県川口市9-9-9');
     expect(JSON.stringify(body)).not.toContain('090-9999-9999');
     expect(JSON.stringify(body)).not.toContain('ワルファリン');
+  });
+
+  it('surfaces ungeocoded schedules and proposals in the route preview note', async () => {
+    proposalFindFirstMock.mockResolvedValueOnce({
+      ...buildProposal({
+        case_: {
+          patient: {
+            id: 'patient_1',
+            name: '患者A',
+            residences: [
+              {
+                address: '東京都千代田区1-1-1',
+                building_id: null,
+                unit_name: null,
+                lat: null,
+                lng: null,
+              },
+            ],
+          },
+        },
+        site: {
+          id: 'site_1',
+          name: '拠点A',
+          address: '東京都千代田区2-2-2',
+          lat: 35.1,
+          lng: 139.1,
+        },
+      }),
+      contact_logs: [],
+      finalized_schedule: null,
+      reschedule_source_schedule: null,
+    });
+    proposalFindManyMock.mockResolvedValueOnce([
+      {
+        ...buildProposal({
+          id: 'proposal_2',
+          case_: {
+            patient: {
+              id: 'patient_2',
+              name: '患者B',
+              residences: [
+                {
+                  address: '東京都港区3-3-3',
+                  building_id: null,
+                  unit_name: null,
+                  lat: 35.3,
+                  lng: 139.3,
+                },
+              ],
+            },
+          },
+          site: {
+            id: 'site_1',
+            name: '拠点A',
+            address: '東京都千代田区2-2-2',
+            lat: 35.1,
+            lng: 139.1,
+          },
+        }),
+      },
+    ]);
+    scheduleFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'schedule_missing',
+        visit_type: 'regular',
+        priority: 'normal',
+        schedule_status: 'planned',
+        route_order: 1,
+        scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
+        time_window_start: new Date('1970-01-01T08:30:00.000Z'),
+        time_window_end: new Date('1970-01-01T09:00:00.000Z'),
+        case_: {
+          patient: {
+            name: '患者C',
+            residences: [
+              {
+                address: '東京都新宿区4-4-4',
+                lat: null,
+                lng: null,
+              },
+            ],
+          },
+        },
+        site: {
+          id: 'site_1',
+          name: '拠点A',
+          address: '東京都千代田区2-2-2',
+          lat: 35.1,
+          lng: 139.1,
+        },
+        vehicle_resource: null,
+      },
+    ]);
+    computeOptimizedVisitRouteMock.mockResolvedValueOnce({
+      status: 'ok',
+      note: 'ヒューリスティック順序を表示しています',
+      travelMode: 'DRIVE',
+      origin: { lat: 35.1, lng: 139.1, label: '拠点A' },
+      encodedPath: 'encoded',
+      orderedScheduleIds: ['proposal:proposal_2'],
+      totalDistanceMeters: 800,
+      totalDurationSeconds: 600,
+      stopSummaries: [
+        {
+          scheduleId: 'proposal:proposal_2',
+          optimizedOrder: 1,
+          arrivalOffsetSeconds: 300,
+          distanceFromPreviousMeters: 800,
+          durationFromPreviousSeconds: 600,
+        },
+      ],
+    });
+
+    const response = await GET(createRequest(undefined, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(computeOptimizedVisitRouteMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        waypoints: [
+          expect.objectContaining({ scheduleId: 'proposal:proposal_2', patientName: '患者B' }),
+        ],
+      }),
+    );
+    const body = await response.json();
+    expect(body.data.route_preview.plan.note).toBe(
+      'ヒューリスティック順序を表示しています / 座標未設定 2件: 患者C、患者A',
+    );
+    expect(body.data.route_preview.points).toEqual([
+      expect.objectContaining({ schedule_id: 'proposal:proposal_2', patient_name: '患者B' }),
+    ]);
+    expect(JSON.stringify(body.data.route_preview)).not.toContain('東京都新宿区4-4-4');
+  });
+
+  it('separates missing addresses from missing coordinates and preserves duplicate patient-name counts', async () => {
+    proposalFindFirstMock.mockResolvedValueOnce({
+      ...buildProposal({
+        case_: {
+          patient: {
+            id: 'patient_1',
+            name: '患者A',
+            residences: [
+              {
+                address: '東京都千代田区1-1-1',
+                building_id: null,
+                unit_name: null,
+                lat: null,
+                lng: 139.2,
+              },
+            ],
+          },
+        },
+        site: {
+          id: 'site_1',
+          name: '拠点A',
+          address: '東京都千代田区2-2-2',
+          lat: 35.1,
+          lng: 139.1,
+        },
+      }),
+      contact_logs: [],
+      finalized_schedule: null,
+      reschedule_source_schedule: null,
+    });
+    proposalFindManyMock.mockResolvedValueOnce([
+      {
+        ...buildProposal({
+          id: 'proposal_2',
+          case_: {
+            patient: {
+              id: 'patient_2',
+              name: '患者A',
+              residences: [
+                {
+                  address: '東京都港区3-3-3',
+                  building_id: null,
+                  unit_name: null,
+                  lat: 35.3,
+                  lng: null,
+                },
+              ],
+            },
+          },
+          site: {
+            id: 'site_1',
+            name: '拠点A',
+            address: '東京都千代田区2-2-2',
+            lat: 35.1,
+            lng: 139.1,
+          },
+        }),
+      },
+    ]);
+    scheduleFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'schedule_ok',
+        visit_type: 'regular',
+        priority: 'normal',
+        schedule_status: 'planned',
+        route_order: 1,
+        scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
+        time_window_start: new Date('1970-01-01T08:30:00.000Z'),
+        time_window_end: new Date('1970-01-01T09:00:00.000Z'),
+        case_: {
+          patient: {
+            name: '患者B',
+            residences: [
+              {
+                address: '東京都渋谷区5-5-5',
+                lat: 35.4,
+                lng: 139.4,
+              },
+            ],
+          },
+        },
+        site: {
+          id: 'site_1',
+          name: '拠点A',
+          address: '東京都千代田区2-2-2',
+          lat: 35.1,
+          lng: 139.1,
+        },
+        vehicle_resource: null,
+      },
+      {
+        id: 'schedule_no_address',
+        visit_type: 'regular',
+        priority: 'normal',
+        schedule_status: 'planned',
+        route_order: 2,
+        scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
+        time_window_start: new Date('1970-01-01T09:30:00.000Z'),
+        time_window_end: new Date('1970-01-01T10:00:00.000Z'),
+        case_: {
+          patient: {
+            name: '患者D',
+            residences: [
+              {
+                address: '   ',
+                lat: null,
+                lng: null,
+              },
+            ],
+          },
+        },
+        site: {
+          id: 'site_1',
+          name: '拠点A',
+          address: '東京都千代田区2-2-2',
+          lat: 35.1,
+          lng: 139.1,
+        },
+        vehicle_resource: null,
+      },
+    ]);
+    computeOptimizedVisitRouteMock.mockResolvedValueOnce({
+      status: 'ok',
+      note: null,
+      travelMode: 'DRIVE',
+      origin: { lat: 35.1, lng: 139.1, label: '拠点A' },
+      encodedPath: 'encoded',
+      orderedScheduleIds: ['schedule_ok'],
+      totalDistanceMeters: 800,
+      totalDurationSeconds: 600,
+      stopSummaries: [
+        {
+          scheduleId: 'schedule_ok',
+          optimizedOrder: 1,
+          arrivalOffsetSeconds: 300,
+          distanceFromPreviousMeters: 800,
+          durationFromPreviousSeconds: 600,
+        },
+      ],
+    });
+
+    const response = await GET(createRequest(undefined, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(computeOptimizedVisitRouteMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        waypoints: [expect.objectContaining({ scheduleId: 'schedule_ok', patientName: '患者B' })],
+      }),
+    );
+    const body = await response.json();
+    expect(body.data.route_preview.plan.note).toBe(
+      '住所未設定 1件: 患者D / 座標未設定 2件: 患者A（2件）',
+    );
+    expect(body.data.route_preview.points).toEqual([
+      expect.objectContaining({ schedule_id: 'schedule_ok', patient_name: '患者B' }),
+    ]);
+    expect(body.data.route_preview.plan.note).not.toContain('東京都千代田区1-1-1');
+    expect(body.data.route_preview.plan.note).not.toContain('東京都港区3-3-3');
   });
 
   it('grants org-wide roles unscoped org-only access to proposal detail, related proposals, and day schedules', async () => {

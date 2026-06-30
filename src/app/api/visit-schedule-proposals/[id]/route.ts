@@ -202,6 +202,22 @@ function isSerializableTransactionConflict(cause: unknown) {
   return cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
 }
 
+function appendRoutePreviewNote(note: string | null, next: string) {
+  return note ? `${note} / ${next}` : next;
+}
+
+function formatRoutePreviewIssueNote(label: string, patientNames: string[]) {
+  const counts = new Map<string, number>();
+  for (const patientName of patientNames) {
+    counts.set(patientName, (counts.get(patientName) ?? 0) + 1);
+  }
+
+  const names = [...counts.entries()].map(([patientName, count]) =>
+    count > 1 ? `${patientName}（${count}件）` : patientName,
+  );
+  return `${label} ${patientNames.length}件: ${names.join('、')}`;
+}
+
 function isUniqueConstraintError(cause: unknown) {
   return cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2002';
 }
@@ -351,10 +367,19 @@ async function buildRoutePreview(args: {
   const waypoints: VisitRouteWaypoint[] = [];
   const points: RoutePreviewPoint[] = [];
   const seenIds = new Set<string>();
+  const missingGeocodePatientNames: string[] = [];
+  const missingAddressPatientNames: string[] = [];
 
   for (const schedule of args.pharmacistDaySchedules) {
     const residence = schedule.case_.patient.residences[0];
-    if (!residence?.address || residence.lat == null || residence.lng == null) continue;
+    if (!residence?.address?.trim()) {
+      missingAddressPatientNames.push(schedule.case_.patient.name);
+      continue;
+    }
+    if (residence.lat == null || residence.lng == null) {
+      missingGeocodePatientNames.push(schedule.case_.patient.name);
+      continue;
+    }
     if (seenIds.has(schedule.id)) continue;
     seenIds.add(schedule.id);
     waypoints.push({
@@ -385,11 +410,16 @@ async function buildRoutePreview(args: {
 
   for (const previewProposal of previewProposals) {
     const residence = previewProposal.case_?.patient.residences[0];
-    if (residence?.address && residence.lat != null && residence.lng != null) {
+    const patientName = previewProposal.case_?.patient.name ?? '患者名未設定';
+    if (!residence?.address?.trim()) {
+      missingAddressPatientNames.push(patientName);
+    } else if (residence.lat == null || residence.lng == null) {
+      missingGeocodePatientNames.push(patientName);
+    } else {
       const scheduleId = `proposal:${previewProposal.id}`;
       waypoints.push({
         scheduleId,
-        patientName: previewProposal.case_.patient.name,
+        patientName,
         address: residence.address,
         lat: residence.lat,
         lng: residence.lng,
@@ -398,7 +428,7 @@ async function buildRoutePreview(args: {
       points.push({
         schedule_id: scheduleId,
         point_kind: 'proposal',
-        patient_name: previewProposal.case_.patient.name,
+        patient_name: patientName,
         address: residence.address,
         lat: residence.lat,
         lng: residence.lng,
@@ -465,6 +495,21 @@ async function buildRoutePreview(args: {
         distanceFromPreviousMeters: null,
         durationFromPreviousSeconds: null,
       })),
+    };
+  }
+
+  if (missingAddressPatientNames.length > 0 || missingGeocodePatientNames.length > 0) {
+    const notes: string[] = [];
+    if (missingAddressPatientNames.length > 0) {
+      notes.push(formatRoutePreviewIssueNote('住所未設定', missingAddressPatientNames));
+    }
+    if (missingGeocodePatientNames.length > 0) {
+      notes.push(formatRoutePreviewIssueNote('座標未設定', missingGeocodePatientNames));
+    }
+
+    plan = {
+      ...plan,
+      note: notes.reduce((note, next) => appendRoutePreviewNote(note, next), plan.note),
     };
   }
 
