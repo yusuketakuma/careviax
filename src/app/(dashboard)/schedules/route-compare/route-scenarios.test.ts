@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildRecommendedRouteDetail,
+  buildRouteScenarioRequests,
   buildRouteScenarios,
+  buildRouteScenariosFromPlans,
   buildRouteScenarioComparisonRows,
   buildScenarioChartPoints,
   buildScenarioRouteOrderUpdates,
@@ -12,7 +14,9 @@ import {
   orderByTimePreference,
   type RouteCompareVisitInput,
   type RouteOrderTarget,
+  type RouteScenarioPlanResult,
 } from './route-scenarios';
+import type { VisitRoutePlan } from '@/types/visit-route';
 
 /** seed-design-demo の本日個人宅訪問 4 件を模した基本フィクスチャ */
 function buildSeedLikeVisits(): RouteCompareVisitInput[] {
@@ -56,6 +60,67 @@ function buildSeedLikeVisits(): RouteCompareVisitInput[] {
       priority: 'normal',
       routeOrder: null,
       proximityKey: null,
+    },
+  ];
+}
+
+function routePlan(args: {
+  orderedScheduleIds: string[];
+  totalDurationSeconds: number | null;
+  note?: string | null;
+  status?: VisitRoutePlan['status'];
+  totalDistanceMeters?: number | null;
+}): VisitRoutePlan {
+  return {
+    status: args.status ?? 'ok',
+    note: args.note ?? null,
+    travelMode: 'DRIVE',
+    origin: { lat: 35, lng: 139, label: '本店' },
+    encodedPath: null,
+    orderedScheduleIds: args.orderedScheduleIds,
+    totalDistanceMeters: args.totalDistanceMeters ?? 1500,
+    totalDurationSeconds: args.totalDurationSeconds,
+    stopSummaries: args.orderedScheduleIds.map((scheduleId, index) => ({
+      scheduleId,
+      optimizedOrder: index + 1,
+      arrivalOffsetSeconds: args.totalDurationSeconds == null ? null : (index + 1) * 300,
+      distanceFromPreviousMeters: 500,
+      durationFromPreviousSeconds: 300,
+    })),
+  };
+}
+
+function engineResults(
+  overrides: Partial<Record<string, VisitRoutePlan>> = {},
+): RouteScenarioPlanResult[] {
+  return [
+    {
+      scenarioId: 'min_travel',
+      plan:
+        overrides.min_travel ??
+        routePlan({
+          orderedScheduleIds: ['visit-ito', 'visit-tanaka', 'visit-okada', 'visit-uchida'],
+          totalDurationSeconds: 23 * 60,
+        }),
+    },
+    {
+      scenarioId: 'time_preference',
+      plan:
+        overrides.time_preference ??
+        routePlan({
+          orderedScheduleIds: ['visit-ito', 'visit-tanaka', 'visit-okada', 'visit-uchida'],
+          totalDurationSeconds: 31 * 60,
+          note: 'ヒューリスティック順序を表示しています',
+        }),
+    },
+    {
+      scenarioId: 'emergency_slack',
+      plan:
+        overrides.emergency_slack ??
+        routePlan({
+          orderedScheduleIds: ['visit-uchida', 'visit-okada', 'visit-ito', 'visit-tanaka'],
+          totalDurationSeconds: 35 * 60,
+        }),
     },
   ];
 }
@@ -116,12 +181,17 @@ describe('buildRouteScenarios', () => {
   });
 
   it('比較行は推奨案との差分と訪問件数を返す', () => {
-    const rows = buildRouteScenarioComparisonRows(buildRouteScenarios(buildSeedLikeVisits()));
+    const rows = buildRouteScenarioComparisonRows(
+      buildRouteScenariosFromPlans({
+        visits: buildSeedLikeVisits(),
+        results: engineResults(),
+      }),
+    );
 
     expect(rows).toEqual([
       {
         scenarioId: 'min_travel',
-        travelMinutes: 92,
+        travelMinutes: 23,
         travelDeltaMinutes: 0,
         stopCount: 4,
         summaryDetail: '余力3件',
@@ -129,21 +199,127 @@ describe('buildRouteScenarios', () => {
       },
       {
         scenarioId: 'time_preference',
-        travelMinutes: 104,
-        travelDeltaMinutes: 12,
+        travelMinutes: 31,
+        travelDeltaMinutes: 8,
         stopCount: 4,
         summaryDetail: '患者希望一致',
-        decisionLabel: '推奨案より+12分',
+        decisionLabel: '推奨案より+8分',
       },
       {
         scenarioId: 'emergency_slack',
-        travelMinutes: 128,
-        travelDeltaMinutes: 36,
+        travelMinutes: 35,
+        travelDeltaMinutes: 12,
         stopCount: 4,
         summaryDetail: '午後余力大',
-        decisionLabel: '推奨案より+36分',
+        decisionLabel: '推奨案より+12分',
       },
     ]);
+  });
+});
+
+describe('buildRouteScenarioRequests', () => {
+  it('案ごとに real route API へ渡す schedule_ids と locked_schedule_ids を作る', () => {
+    const visits = buildSeedLikeVisits().map((visit) => {
+      if (visit.scheduleId === 'visit-uchida') return { ...visit, priority: 'emergency' as const };
+      if (visit.scheduleId === 'visit-okada') return { ...visit, priority: 'urgent' as const };
+      return visit;
+    });
+
+    expect(buildRouteScenarioRequests(visits)).toEqual([
+      {
+        scenarioId: 'min_travel',
+        scheduleIds: ['visit-ito', 'visit-tanaka', 'visit-okada', 'visit-uchida'],
+        lockedScheduleIds: [],
+      },
+      {
+        scenarioId: 'time_preference',
+        scheduleIds: ['visit-ito', 'visit-tanaka', 'visit-okada', 'visit-uchida'],
+        lockedScheduleIds: ['visit-ito', 'visit-tanaka', 'visit-okada', 'visit-uchida'],
+      },
+      {
+        scenarioId: 'emergency_slack',
+        scheduleIds: ['visit-uchida', 'visit-okada', 'visit-ito', 'visit-tanaka'],
+        lockedScheduleIds: ['visit-uchida', 'visit-okada'],
+      },
+    ]);
+  });
+});
+
+describe('buildRouteScenariosFromPlans', () => {
+  it('VisitRoutePlan の順序と duration から scenario を作り、採用可能な最短案を推奨にする', () => {
+    const scenarios = buildRouteScenariosFromPlans({
+      visits: buildSeedLikeVisits(),
+      results: engineResults({
+        min_travel: routePlan({
+          orderedScheduleIds: ['visit-okada', 'visit-tanaka', 'visit-ito', 'visit-uchida'],
+          totalDurationSeconds: 29 * 60,
+        }),
+        time_preference: routePlan({
+          orderedScheduleIds: ['visit-ito', 'visit-tanaka', 'visit-okada', 'visit-uchida'],
+          totalDurationSeconds: 21 * 60 + 1,
+        }),
+      }),
+    });
+
+    const [minTravel, timePreference] = scenarios;
+    expect(minTravel.stops.map((stop) => stop.scheduleId)).toEqual([
+      'visit-okada',
+      'visit-tanaka',
+      'visit-ito',
+      'visit-uchida',
+    ]);
+    expect(minTravel.travelMinutes).toBe(29);
+    expect(timePreference.travelMinutes).toBe(22);
+    expect(scenarios.map((scenario) => scenario.recommended)).toEqual([false, true, false]);
+    expect(timePreference.applyDisabledReason).toBeNull();
+  });
+
+  it('座標未設定や engine unavailable の案は訪問を落とさず採用不可にする', () => {
+    const scenarios = buildRouteScenariosFromPlans({
+      visits: buildSeedLikeVisits(),
+      results: engineResults({
+        min_travel: routePlan({
+          orderedScheduleIds: ['visit-ito', 'visit-tanaka'],
+          totalDurationSeconds: null,
+          status: 'unavailable',
+          note: '座標未設定: 岡田 達也、内田 順子',
+        }),
+      }),
+    });
+
+    const minTravel = scenarios[0];
+    expect(minTravel.routeStatus).toBe('unavailable');
+    expect(minTravel.travelMinutes).toBeNull();
+    expect(minTravel.applyDisabledReason).toBe('座標未設定: 岡田 達也、内田 順子');
+    expect(minTravel.stops.map((stop) => stop.scheduleId)).toEqual([
+      'visit-ito',
+      'visit-tanaka',
+      'visit-okada',
+      'visit-uchida',
+    ]);
+    expect(minTravel.summary).toBe('移動未計算 / 経路要確認');
+  });
+
+  it('確定済み訪問の順序が変わる案は採用不可にする', () => {
+    const visits = buildSeedLikeVisits().map((visit) =>
+      visit.scheduleId === 'visit-tanaka'
+        ? { ...visit, confirmedAt: '2026-04-08T12:00:00.000Z', routeOrder: 1 }
+        : visit,
+    );
+
+    const scenarios = buildRouteScenariosFromPlans({
+      visits,
+      results: engineResults({
+        min_travel: routePlan({
+          orderedScheduleIds: ['visit-ito', 'visit-tanaka', 'visit-okada', 'visit-uchida'],
+          totalDurationSeconds: 20 * 60,
+        }),
+      }),
+    });
+
+    expect(scenarios[0].applyDisabledReason).toBe(
+      '電話確定済みの訪問順が変わるため、この画面からは採用できません',
+    );
   });
 });
 

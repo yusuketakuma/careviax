@@ -1,11 +1,12 @@
 import type { VisitPriority } from '../day-view.shared';
+import type { VisitRoutePlan } from '@/types/visit-route';
 
 /**
- * p1_12「ルート案を比べる」: 本日の訪問予定から並べ替え戦略の異なる 3 案を合成する純関数群。
+ * p1_12「ルート案を比べる」: 本日の訪問予定から並べ替え戦略の異なる 3 案を扱う純関数群。
  *
- * 移動時間は外部地図 API を使わない定数近似(薬局⇔訪問先 16 分 / 訪問先間 20 分 /
- * 同一建物内 5 分)で算出する。地理的な正確さではなく、案ごとの方針差
- * (詰めて回る / 希望時間どおりに回る / 帰局を挟んで緊急余力を残す)を比較できることを目的とする。
+ * 画面本体は /api/visit-routes が返す VisitRoutePlan を buildRouteScenariosFromPlans で
+ * 表示モデルへ変換する。下の固定値計算は route engine が無いテスト/フォールバック用であり、
+ * 採用可能な経路としては扱わない。
  */
 
 /** 薬局⇔訪問先の片道移動の近似(分) */
@@ -38,6 +39,7 @@ export type RouteCompareVisitInput = {
   endMinutes: number | null;
   priority: VisitPriority;
   routeOrder: number | null;
+  confirmedAt?: string | null;
   /** 近接グループキー(同一建物など)。同じキーの訪問は連続配置される */
   proximityKey: string | null;
 };
@@ -62,7 +64,11 @@ export type RouteScenario = {
   /** 推奨案(主操作を強調する)かどうか */
   recommended: boolean;
   stops: RouteScenarioStop[];
-  travelMinutes: number;
+  travelMinutes: number | null;
+  totalDistanceMeters: number | null;
+  routeStatus: VisitRoutePlan['status'] | 'error' | 'synthetic';
+  note: string | null;
+  applyDisabledReason: string | null;
   /** 例: 余力2件 / 患者希望一致 / 午後余力大 */
   summaryDetail: string;
   /** 例: 移動92分 / 余力2件 */
@@ -73,11 +79,70 @@ export type RouteScenario = {
 
 export type RouteScenarioComparisonRow = {
   scenarioId: RouteScenarioId;
-  travelMinutes: number;
-  travelDeltaMinutes: number;
+  travelMinutes: number | null;
+  travelDeltaMinutes: number | null;
   stopCount: number;
   summaryDetail: string;
   decisionLabel: string;
+};
+
+export type RouteScenarioRequest = {
+  scenarioId: RouteScenarioId;
+  scheduleIds: string[];
+  lockedScheduleIds: string[];
+};
+
+export type RouteScenarioPlanResult =
+  | {
+      scenarioId: RouteScenarioId;
+      plan: VisitRoutePlan;
+      errorMessage?: never;
+    }
+  | {
+      scenarioId: RouteScenarioId;
+      plan?: never;
+      errorMessage: string;
+    };
+
+type RouteScenarioMeta = Pick<
+  RouteScenario,
+  'id' | 'label' | 'shortLabel' | 'strategyLabel' | 'tone' | 'description'
+>;
+
+const ROUTE_SCENARIO_ORDER: RouteScenarioId[] = [
+  'min_travel',
+  'time_preference',
+  'emergency_slack',
+];
+
+const ROUTE_SCENARIO_META: Record<RouteScenarioId, RouteScenarioMeta> = {
+  min_travel: {
+    id: 'min_travel',
+    label: '案A 移動少なめ',
+    shortLabel: '案A',
+    strategyLabel: '移動少なめ',
+    tone: 'blue',
+    description:
+      '実ルートエンジンで訪問順を最適化し、移動時間を抑える案です。希望時間帯より効率を優先します。',
+  },
+  time_preference: {
+    id: 'time_preference',
+    label: '案B 希望時間優先',
+    shortLabel: '案B',
+    strategyLabel: '希望時間優先',
+    tone: 'emerald',
+    description:
+      '患者の希望時間帯どおりの順序を実ルートエンジンで評価する案です。移動時間より希望時間を優先します。',
+  },
+  emergency_slack: {
+    id: 'emergency_slack',
+    label: '案C 緊急余力優先',
+    shortLabel: '案C',
+    strategyLabel: '緊急余力優先',
+    tone: 'amber',
+    description:
+      '優先度の高い訪問を前倒しし、残りを実ルートエンジンで最適化して緊急対応の余力を残す案です。',
+  },
 };
 
 const PRIORITY_WEIGHT: Record<VisitPriority, number> = {
@@ -243,6 +308,242 @@ function toStops(ordered: RouteCompareVisitInput[]): RouteScenarioStop[] {
   }));
 }
 
+function formatTravelSummary(minutes: number | null) {
+  return minutes == null ? '移動未計算' : `移動${minutes}分`;
+}
+
+function planDurationMinutes(plan: VisitRoutePlan) {
+  return plan.totalDurationSeconds == null ? null : Math.ceil(plan.totalDurationSeconds / 60);
+}
+
+function planHasMissingGeocodeNote(plan: VisitRoutePlan) {
+  return plan.note?.includes('座標未設定') ?? false;
+}
+
+function planVehicleConstraintStatus(plan: VisitRoutePlan) {
+  const maybeVehicle = (
+    plan as VisitRoutePlan & {
+      vehicle_resource?: { constraint_status?: string; label?: string | null } | null;
+    }
+  ).vehicle_resource;
+  return maybeVehicle?.constraint_status ?? null;
+}
+
+function planVehicleLabel(plan: VisitRoutePlan) {
+  const maybeVehicle = (
+    plan as VisitRoutePlan & {
+      vehicle_resource?: { label?: string | null } | null;
+    }
+  ).vehicle_resource;
+  return maybeVehicle?.label ?? '車両';
+}
+
+function orderedVisitsFromPlan(args: {
+  visits: RouteCompareVisitInput[];
+  fallbackOrder: RouteCompareVisitInput[];
+  plan: VisitRoutePlan;
+}) {
+  const visitById = new Map(args.visits.map((visit) => [visit.scheduleId, visit]));
+  const includedIds = new Set<string>();
+  const ordered = args.plan.orderedScheduleIds
+    .map((scheduleId) => {
+      const visit = visitById.get(scheduleId);
+      if (visit) includedIds.add(scheduleId);
+      return visit;
+    })
+    .filter((visit): visit is RouteCompareVisitInput => visit != null);
+
+  for (const visit of args.fallbackOrder) {
+    if (!includedIds.has(visit.scheduleId)) {
+      ordered.push(visit);
+    }
+  }
+  return ordered;
+}
+
+function confirmedOrderDisabledReason(orderedVisits: RouteCompareVisitInput[]) {
+  const nextRankByPharmacist = new Map<string, number>();
+  for (const visit of orderedVisits) {
+    const nextRank = (nextRankByPharmacist.get(visit.pharmacistId) ?? 0) + 1;
+    nextRankByPharmacist.set(visit.pharmacistId, nextRank);
+    if (!visit.confirmedAt) continue;
+    if (visit.routeOrder == null) {
+      return '電話確定済みの訪問に現在の順路がないため、この画面からは採用できません';
+    }
+    if (visit.routeOrder !== nextRank) {
+      return '電話確定済みの訪問順が変わるため、この画面からは採用できません';
+    }
+  }
+  return null;
+}
+
+function planDisabledReason(args: {
+  plan: VisitRoutePlan;
+  orderedVisits: RouteCompareVisitInput[];
+  visitCount: number;
+}) {
+  if (args.plan.status !== 'ok') {
+    return args.plan.note ?? 'ルートエンジンで経路を計算できないため採用できません';
+  }
+  if (args.plan.totalDurationSeconds == null) {
+    return '移動時間を計算できないため採用できません';
+  }
+  if (planHasMissingGeocodeNote(args.plan)) {
+    return '座標未設定の訪問があるため採用できません';
+  }
+  if (args.plan.orderedScheduleIds.length !== args.visitCount) {
+    return '経路計算から除外された訪問があるため採用できません';
+  }
+
+  const vehicleConstraintStatus = planVehicleConstraintStatus(args.plan);
+  if (vehicleConstraintStatus === 'exceeded') {
+    return `${planVehicleLabel(args.plan)}の稼働上限を超えるため採用できません`;
+  }
+  if (vehicleConstraintStatus === 'unverified') {
+    return `${planVehicleLabel(args.plan)}の稼働上限を確認できないため採用できません`;
+  }
+
+  return confirmedOrderDisabledReason(args.orderedVisits);
+}
+
+function fallbackOrderForScenario(
+  scenarioId: RouteScenarioId,
+  visits: RouteCompareVisitInput[],
+): RouteCompareVisitInput[] {
+  switch (scenarioId) {
+    case 'time_preference':
+      return orderByTimePreference(visits);
+    case 'emergency_slack':
+      return orderByEmergencySlack(visits);
+    case 'min_travel':
+    default:
+      return orderByMinTravel(visits);
+  }
+}
+
+function summaryDetailForScenario(args: {
+  scenarioId: RouteScenarioId;
+  visits: RouteCompareVisitInput[];
+  orderedVisits: RouteCompareVisitInput[];
+  applyDisabledReason: string | null;
+}) {
+  if (args.applyDisabledReason) return '経路要確認';
+  switch (args.scenarioId) {
+    case 'min_travel':
+      return `余力${computeSpareVisitCapacity(args.orderedVisits)}件`;
+    case 'time_preference':
+      return args.visits.some((visit) => visit.startMinutes != null)
+        ? '患者希望一致'
+        : '時間指定なし';
+    case 'emergency_slack':
+      return '午後余力大';
+  }
+}
+
+function markRecommendedScenario(scenarios: RouteScenario[]): RouteScenario[] {
+  const candidates = scenarios
+    .map((scenario, index) => ({ scenario, index }))
+    .filter(({ scenario }) => !scenario.applyDisabledReason && scenario.travelMinutes != null)
+    .sort(
+      (left, right) =>
+        (left.scenario.travelMinutes ?? Number.MAX_SAFE_INTEGER) -
+          (right.scenario.travelMinutes ?? Number.MAX_SAFE_INTEGER) || left.index - right.index,
+    );
+  const recommendedId = candidates[0]?.scenario.id ?? scenarios[0]?.id ?? null;
+  return scenarios.map((scenario) => ({
+    ...scenario,
+    recommended: recommendedId === scenario.id,
+  }));
+}
+
+export function buildRouteScenarioRequests(
+  visits: RouteCompareVisitInput[],
+): RouteScenarioRequest[] {
+  const minTravelOrder = orderByMinTravel(visits).map((visit) => visit.scheduleId);
+  const timePreferenceOrder = orderByTimePreference(visits).map((visit) => visit.scheduleId);
+  const emergencySlackOrder = orderByEmergencySlack(visits);
+  const emergencyLockedIds = emergencySlackOrder
+    .filter((visit) => visit.priority === 'emergency' || visit.priority === 'urgent')
+    .map((visit) => visit.scheduleId);
+
+  return [
+    { scenarioId: 'min_travel', scheduleIds: minTravelOrder, lockedScheduleIds: [] },
+    {
+      scenarioId: 'time_preference',
+      scheduleIds: timePreferenceOrder,
+      lockedScheduleIds: timePreferenceOrder,
+    },
+    {
+      scenarioId: 'emergency_slack',
+      scheduleIds: emergencySlackOrder.map((visit) => visit.scheduleId),
+      lockedScheduleIds: emergencyLockedIds,
+    },
+  ];
+}
+
+export function buildRouteScenariosFromPlans(args: {
+  visits: RouteCompareVisitInput[];
+  results: RouteScenarioPlanResult[];
+}): RouteScenario[] {
+  const resultByScenario = new Map(args.results.map((result) => [result.scenarioId, result]));
+  const scenarios = ROUTE_SCENARIO_ORDER.map((scenarioId) => {
+    const meta = ROUTE_SCENARIO_META[scenarioId];
+    const fallbackOrder = fallbackOrderForScenario(scenarioId, args.visits);
+    const result = resultByScenario.get(scenarioId);
+
+    if (!result || 'errorMessage' in result) {
+      const errorMessage = result?.errorMessage ?? 'ルートエンジンの結果を取得できませんでした';
+      const summaryDetail = '経路要確認';
+      return {
+        ...meta,
+        recommended: false,
+        stops: toStops(fallbackOrder),
+        travelMinutes: null,
+        totalDistanceMeters: null,
+        routeStatus: 'error' as const,
+        note: errorMessage,
+        applyDisabledReason: errorMessage,
+        summaryDetail,
+        summary: `${formatTravelSummary(null)} / ${summaryDetail}`,
+      };
+    }
+
+    const plan = result.plan;
+    const orderedVisits = orderedVisitsFromPlan({
+      visits: args.visits,
+      fallbackOrder,
+      plan,
+    });
+    const applyDisabledReason = planDisabledReason({
+      plan,
+      orderedVisits,
+      visitCount: args.visits.length,
+    });
+    const travelMinutes = planDurationMinutes(plan);
+    const summaryDetail = summaryDetailForScenario({
+      scenarioId,
+      visits: args.visits,
+      orderedVisits,
+      applyDisabledReason,
+    });
+
+    return {
+      ...meta,
+      recommended: false,
+      stops: toStops(orderedVisits),
+      travelMinutes,
+      totalDistanceMeters: plan.totalDistanceMeters,
+      routeStatus: plan.status,
+      note: plan.note,
+      applyDisabledReason,
+      summaryDetail,
+      summary: `${formatTravelSummary(travelMinutes)} / ${summaryDetail}`,
+    };
+  });
+
+  return markRecommendedScenario(scenarios);
+}
+
 /** 「1 患者名 → 2 患者名 …」形式の訪問順テキスト(確認ダイアログ・読み上げ用) */
 export function describeScenarioOrder(stops: RouteScenarioStop[]) {
   return stops.map((stop) => `${stop.order} ${stop.patientName}`).join(' → ');
@@ -267,46 +568,40 @@ export function buildRouteScenarios(visits: RouteCompareVisitInput[]): RouteScen
 
   return [
     {
-      id: 'min_travel',
-      label: '案A 移動少なめ',
-      shortLabel: '案A',
-      strategyLabel: '移動少なめ',
-      tone: 'blue',
+      ...ROUTE_SCENARIO_META.min_travel,
       recommended: true,
       stops: toStops(minTravelOrder),
       travelMinutes: minTravelMinutes,
+      totalDistanceMeters: null,
+      routeStatus: 'synthetic',
+      note: '固定値フォールバックの概算です',
+      applyDisabledReason: '実ルートエンジンの結果ではないため採用できません',
       summaryDetail: minTravelDetail,
       summary: `移動${minTravelMinutes}分 / ${minTravelDetail}`,
-      description:
-        '同じ建物の訪問をまとめ、訪問間の空きを詰めて移動を最小化する案です。希望時間帯より効率を優先します。',
     },
     {
-      id: 'time_preference',
-      label: '案B 希望時間優先',
-      shortLabel: '案B',
-      strategyLabel: '希望時間優先',
-      tone: 'emerald',
+      ...ROUTE_SCENARIO_META.time_preference,
       recommended: false,
       stops: toStops(timePreferenceOrder),
       travelMinutes: timePreferenceMinutes,
+      totalDistanceMeters: null,
+      routeStatus: 'synthetic',
+      note: '固定値フォールバックの概算です',
+      applyDisabledReason: '実ルートエンジンの結果ではないため採用できません',
       summaryDetail: timePreferenceDetail,
       summary: `移動${timePreferenceMinutes}分 / ${timePreferenceDetail}`,
-      description:
-        '患者の希望時間帯どおりに回る案です。空き時間が長い場合は一度帰局するため移動は増えます。',
     },
     {
-      id: 'emergency_slack',
-      label: '案C 緊急余力優先',
-      shortLabel: '案C',
-      strategyLabel: '緊急余力優先',
-      tone: 'amber',
+      ...ROUTE_SCENARIO_META.emergency_slack,
       recommended: false,
       stops: toStops(emergencySlackOrder),
       travelMinutes: emergencySlackMinutes,
+      totalDistanceMeters: null,
+      routeStatus: 'synthetic',
+      note: '固定値フォールバックの概算です',
+      applyDisabledReason: '実ルートエンジンの結果ではないため採用できません',
       summaryDetail: emergencySlackDetail,
       summary: `移動${emergencySlackMinutes}分 / ${emergencySlackDetail}`,
-      description:
-        '優先度の高い訪問から前倒しで回り、訪問の合間は薬局近くへ戻って緊急対応の余力を最大化する案です。',
     },
   ];
 }
@@ -315,21 +610,28 @@ export function buildRouteScenarioComparisonRows(
   scenarios: RouteScenario[],
 ): RouteScenarioComparisonRow[] {
   const recommended = scenarios.find((scenario) => scenario.recommended) ?? scenarios[0] ?? null;
-  const baselineTravelMinutes = recommended?.travelMinutes ?? 0;
+  const baselineTravelMinutes = recommended?.travelMinutes ?? null;
 
   return scenarios.map((scenario) => {
-    const travelDeltaMinutes = Math.max(0, scenario.travelMinutes - baselineTravelMinutes);
+    const travelDeltaMinutes =
+      scenario.travelMinutes == null || baselineTravelMinutes == null
+        ? null
+        : Math.max(0, scenario.travelMinutes - baselineTravelMinutes);
     return {
       scenarioId: scenario.id,
       travelMinutes: scenario.travelMinutes,
       travelDeltaMinutes,
       stopCount: scenario.stops.length,
       summaryDetail: scenario.summaryDetail,
-      decisionLabel: scenario.recommended
-        ? '推奨案'
-        : travelDeltaMinutes > 0
-          ? `推奨案より+${travelDeltaMinutes}分`
-          : '推奨案と同等',
+      decisionLabel: scenario.applyDisabledReason
+        ? '採用不可'
+        : scenario.recommended
+          ? '推奨案'
+          : travelDeltaMinutes == null
+            ? '推奨比未計算'
+            : travelDeltaMinutes > 0
+              ? `推奨案より+${travelDeltaMinutes}分`
+              : '推奨案と同等',
     };
   });
 }
@@ -341,6 +643,7 @@ export type RouteOrderTarget = {
   facilityBatchId: string | null;
   routeOrder: number | null;
   startMinutes: number | null;
+  confirmedAt?: string | null;
 };
 
 export type RouteOrderUpdate = {
@@ -371,14 +674,19 @@ export function buildScenarioRouteOrderUpdates(args: {
 
   const updates: RouteOrderUpdate[] = [];
   for (const visits of byPharmacist.values()) {
+    const fixedRouteOrders = new Set(
+      visits
+        .filter((visit) => visit.confirmedAt && visit.routeOrder != null)
+        .map((visit) => visit.routeOrder as number),
+    );
     const inScenario = visits
-      .filter((visit) => stopRank.has(visit.scheduleId))
+      .filter((visit) => !visit.confirmedAt && stopRank.has(visit.scheduleId))
       .sort(
         (left, right) =>
           (stopRank.get(left.scheduleId) ?? 0) - (stopRank.get(right.scheduleId) ?? 0),
       );
     const excluded = visits
-      .filter((visit) => !stopRank.has(visit.scheduleId))
+      .filter((visit) => !visit.confirmedAt && !stopRank.has(visit.scheduleId))
       .sort(
         (left, right) =>
           (left.facilityBatchId ?? '').localeCompare(right.facilityBatchId ?? '') ||
@@ -386,9 +694,14 @@ export function buildScenarioRouteOrderUpdates(args: {
           compareNullableNumber(left.startMinutes, right.startMinutes) ||
           left.scheduleId.localeCompare(right.scheduleId),
       );
-    [...inScenario, ...excluded].forEach((visit, index) => {
-      updates.push({ scheduleId: visit.scheduleId, route_order: index + 1 });
-    });
+    let nextRouteOrder = 1;
+    for (const visit of [...inScenario, ...excluded]) {
+      while (fixedRouteOrders.has(nextRouteOrder)) {
+        nextRouteOrder += 1;
+      }
+      updates.push({ scheduleId: visit.scheduleId, route_order: nextRouteOrder });
+      nextRouteOrder += 1;
+    }
   }
   return updates;
 }
@@ -417,7 +730,7 @@ export type RouteDetailCandidate = {
   /** 例: 候補1 / 候補2 */
   rankLabel: string;
   /** 移動分 */
-  travelMinutes: number;
+  travelMinutes: number | null;
   /** 全訪問の所要分合計 */
   visitMinutes: number;
   /** 余力件数 */
@@ -489,16 +802,17 @@ function formatMinutesOfDay(minutes: number): string {
 
 /**
  * 推奨案(候補1)を主役にした詳細ビューを組み立てる。
- * 候補1 は buildRouteScenarios の推奨案(案A 移動少なめ)、候補2 はその次点(案B 希望時間優先)。
- * 移動・余力・並び順はすべて既存の scenario 計算を再利用する。
+ * 候補1 は engine-backed scenario の推奨案、候補2 はその次点。
+ * 移動・余力・並び順は渡された scenario 計算を再利用する。
  */
 export function buildRecommendedRouteDetail(
   visits: RouteCompareVisitInput[],
   meta: RouteDetailVisitMeta = {},
+  scenarioModels?: RouteScenario[],
 ): RouteDetail | null {
   if (visits.length === 0) return null;
 
-  const scenarios = buildRouteScenarios(visits);
+  const scenarios = scenarioModels ?? buildRouteScenarios(visits);
   const recommended = scenarios.find((scenario) => scenario.recommended) ?? scenarios[0];
   const runnerUp = scenarios.find((scenario) => scenario.id !== recommended.id) ?? null;
 
@@ -519,7 +833,7 @@ export function buildRecommendedRouteDetail(
     visitMinutes: visitTotal,
     spareCount: recommendedSpare,
     recommended: true,
-    summary: `移動${recommended.travelMinutes}分 / 訪問${visitTotal}分 / 余力${recommendedSpare}件`,
+    summary: `${formatTravelSummary(recommended.travelMinutes)} / 訪問${visitTotal}分 / 余力${recommendedSpare}件`,
   });
   if (runnerUp) {
     const runnerUpVisits = runnerUp.stops
@@ -533,7 +847,7 @@ export function buildRecommendedRouteDetail(
       visitMinutes: totalVisitMinutes(runnerUpVisits),
       spareCount: runnerUpSpare,
       recommended: false,
-      summary: `移動${runnerUp.travelMinutes}分 / 余力${runnerUpSpare}件`,
+      summary: `${formatTravelSummary(runnerUp.travelMinutes)} / 余力${runnerUpSpare}件`,
     });
   }
 

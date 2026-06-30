@@ -15,13 +15,15 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 import { timeIsoToMinutes } from '@/lib/visits/time-of-day';
 import type { ScheduleDayBoardResponse } from '@/types/schedule-day-board';
+import type { VisitRoutePlan, VisitRouteTravelMode } from '@/types/visit-route';
 import type { VisitSchedule } from '../day-view.shared';
 import { fetchVisitSchedulesWindow } from '../visit-schedule-fetch.helpers';
 import { applyVisitScheduleRouteUpdates } from '../visit-route-client';
 import { ScheduleDateNavigator } from '../schedule-date-navigator';
 import {
   buildRecommendedRouteDetail,
-  buildRouteScenarios,
+  buildRouteScenarioRequests,
+  buildRouteScenariosFromPlans,
   buildRouteScenarioComparisonRows,
   buildScenarioChartPoints,
   buildScenarioRouteOrderUpdates,
@@ -31,6 +33,7 @@ import {
   type RouteDetailVisitMeta,
   type RouteOrderTarget,
   type RouteScenario,
+  type RouteScenarioPlanResult,
   type RouteScenarioId,
   type RouteScenarioStop,
   type RouteScenarioTone,
@@ -40,7 +43,7 @@ import {
  * p1_12「ルート案を比べる」: 本日の個人宅訪問から並べ替え方針の異なる 3 案
  * (案A 移動少なめ / 案B 希望時間優先 / 案C 緊急余力優先)を合成して横並びで比較し、
  * 採用した案を既存の route_order 更新 API へ反映する。
- * 移動分は外部地図 API を使わない定数近似(route-scenarios.ts 参照)。
+ * 移動分と採用可否は既存の visit route engine API で計算する。
  */
 
 // 3 案の折れ線は系列の識別であって状態色ではない → chart トークンを使う(状態トークンは流用しない)。
@@ -59,6 +62,13 @@ const VEHICLE_ASSIGNABLE_STATUSES = new Set([
   'departed',
   'in_progress',
 ]);
+const VISIT_ROUTE_TRAVEL_MODES = new Set<VisitRouteTravelMode>([
+  'DRIVE',
+  'BICYCLE',
+  'WALK',
+  'TWO_WHEELER',
+]);
+const EMPTY_ROUTE_SCENARIOS: RouteScenario[] = [];
 
 async function fetchScheduleDayBoard(args: { orgId: string; date: string }) {
   const res = await fetch(`/api/visit-schedules/day-board?date=${args.date}`, {
@@ -67,6 +77,75 @@ async function fetchScheduleDayBoard(args: { orgId: string; date: string }) {
   if (!res.ok) throw new Error('対象日の車両リソース取得に失敗しました');
   const json = (await res.json()) as { data: ScheduleDayBoardResponse };
   return json.data;
+}
+
+function normalizeVisitRouteTravelMode(value: string | null | undefined): VisitRouteTravelMode {
+  return value && VISIT_ROUTE_TRAVEL_MODES.has(value as VisitRouteTravelMode)
+    ? (value as VisitRouteTravelMode)
+    : 'DRIVE';
+}
+
+function routeHeaders(orgId: string) {
+  return { 'Content-Type': 'application/json', 'x-org-id': orgId } as const;
+}
+
+function errorMessageFromUnknown(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+async function computeRoutePlan(args: {
+  orgId: string;
+  scheduleIds: string[];
+  lockedScheduleIds: string[];
+  travelMode: VisitRouteTravelMode;
+  vehicleResourceId?: string;
+}): Promise<VisitRoutePlan> {
+  const res = await fetch('/api/visit-routes', {
+    method: 'POST',
+    headers: routeHeaders(args.orgId),
+    body: JSON.stringify({
+      schedule_ids: args.scheduleIds,
+      travel_mode: args.travelMode,
+      ...(args.lockedScheduleIds.length > 0 ? { locked_schedule_ids: args.lockedScheduleIds } : {}),
+      ...(args.vehicleResourceId ? { vehicle_resource_id: args.vehicleResourceId } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.message ?? 'ルート計算の取得に失敗しました');
+  }
+  const payload = (await res.json()) as { data: VisitRoutePlan };
+  return payload.data;
+}
+
+async function fetchRouteCompareScenarios(args: {
+  orgId: string;
+  visits: RouteCompareVisitInput[];
+  travelMode: VisitRouteTravelMode;
+  vehicleResourceId?: string;
+}) {
+  const requests = buildRouteScenarioRequests(args.visits);
+  const results = await Promise.all(
+    requests.map(async (request): Promise<RouteScenarioPlanResult> => {
+      try {
+        const plan = await computeRoutePlan({
+          orgId: args.orgId,
+          scheduleIds: request.scheduleIds,
+          lockedScheduleIds: request.lockedScheduleIds,
+          travelMode: args.travelMode,
+          vehicleResourceId: args.vehicleResourceId,
+        });
+        return { scenarioId: request.scenarioId, plan };
+      } catch (error) {
+        return {
+          scenarioId: request.scenarioId,
+          errorMessage: errorMessageFromUnknown(error, 'ルート計算の取得に失敗しました'),
+        };
+      }
+    }),
+  );
+
+  return buildRouteScenariosFromPlans({ visits: args.visits, results });
 }
 
 function isoTimeToMinutes(value: string | null): number | null {
@@ -82,6 +161,7 @@ function toCompareVisitInput(schedule: VisitSchedule): RouteCompareVisitInput {
     endMinutes: isoTimeToMinutes(schedule.time_window_end),
     priority: schedule.priority,
     routeOrder: schedule.route_order,
+    confirmedAt: schedule.confirmed_at,
     proximityKey: schedule.case_.patient.residences[0]?.building_id ?? null,
   };
 }
@@ -93,6 +173,7 @@ function toRouteOrderTarget(schedule: VisitSchedule): RouteOrderTarget {
     facilityBatchId: schedule.facility_batch_id,
     routeOrder: schedule.route_order,
     startMinutes: isoTimeToMinutes(schedule.time_window_start),
+    confirmedAt: schedule.confirmed_at,
   };
 }
 
@@ -365,6 +446,7 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
     () => dayBoardQuery.data?.vehicle_resources.find((vehicle) => vehicle.recommended) ?? null,
     [dayBoardQuery.data],
   );
+  const routeTravelMode = normalizeVisitRouteTravelMode(recommendedVehicle?.travel_mode);
 
   // 比較対象は個人宅訪問のみ。施設一括訪問は居室順(施設トラッカー)で管理するため除外する
   const compareVisits = useMemo(
@@ -378,7 +460,39 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
     () => schedules.map((schedule) => toRouteOrderTarget(schedule)),
     [schedules],
   );
-  const scenarios = useMemo(() => buildRouteScenarios(compareVisits), [compareVisits]);
+  const routeScenarioInputKey = useMemo(
+    () =>
+      compareVisits
+        .map(
+          (visit) =>
+            `${visit.scheduleId}:${visit.routeOrder ?? 'none'}:${visit.startMinutes ?? 'none'}:${
+              visit.endMinutes ?? 'none'
+            }:${visit.priority}:${visit.confirmedAt ?? 'mutable'}`,
+        )
+        .join('|'),
+    [compareVisits],
+  );
+  const routeScenariosQuery = useQuery({
+    queryKey: [
+      'visit-routes',
+      'route-compare-scenarios',
+      orgId,
+      targetDate,
+      routeScenarioInputKey,
+      recommendedVehicle?.id ?? 'no-vehicle',
+      routeTravelMode,
+    ],
+    queryFn: () =>
+      fetchRouteCompareScenarios({
+        orgId,
+        visits: compareVisits,
+        travelMode: routeTravelMode,
+        ...(recommendedVehicle ? { vehicleResourceId: recommendedVehicle.id } : {}),
+      }),
+    enabled: !!orgId && compareVisits.length > 0 && !dayBoardQuery.isLoading,
+    staleTime: 30_000,
+  });
+  const scenarios = routeScenariosQuery.data ?? EMPTY_ROUTE_SCENARIOS;
   const scenarioComparisonById = useMemo(
     () =>
       new Map(
@@ -403,8 +517,11 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
     };
   }, [recommendedVehicle?.label, schedules]);
   const routeDetail = useMemo(
-    () => buildRecommendedRouteDetail(compareVisits, detailMeta),
-    [compareVisits, detailMeta],
+    () =>
+      scenarios.length > 0
+        ? buildRecommendedRouteDetail(compareVisits, detailMeta, scenarios)
+        : null,
+    [compareVisits, detailMeta, scenarios],
   );
   const recommendedScenario = useMemo(
     () =>
@@ -416,6 +533,9 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
 
   const applyMutation = useMutation({
     mutationFn: async (scenario: RouteScenario) => {
+      if (scenario.applyDisabledReason) {
+        throw new Error(scenario.applyDisabledReason);
+      }
       const routeUpdates = buildScenarioRouteOrderUpdates({ scenario, allVisits });
       const routeUpdateScheduleIds = new Set(routeUpdates.map((update) => update.scheduleId));
       const vehicleAssignmentScheduleIds =
@@ -468,6 +588,9 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['visit-schedules'] }),
         queryClient.invalidateQueries({ queryKey: ['visit-route-plan', orgId] }),
+        queryClient.invalidateQueries({
+          queryKey: ['visit-routes', 'route-compare-scenarios', orgId],
+        }),
         queryClient.invalidateQueries({ queryKey: ['schedule-day-board', orgId, targetDate] }),
       ]);
     },
@@ -520,6 +643,45 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
     );
   }
 
+  if (dayBoardQuery.isLoading || routeScenariosQuery.isLoading) {
+    return (
+      <div className="space-y-4" data-testid="route-scenario-compare">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-base font-bold text-foreground">ルート最適化</h1>
+          {dateNavigator}
+        </div>
+        <div
+          className="grid gap-4 lg:grid-cols-3 xl:gap-5"
+          role="status"
+          aria-label="ルート案読み込み中"
+        >
+          <Skeleton className="h-96 w-full rounded-xl" />
+          <Skeleton className="h-96 w-full rounded-xl" />
+          <Skeleton className="h-96 w-full rounded-xl" />
+        </div>
+      </div>
+    );
+  }
+
+  if (routeScenariosQuery.isError) {
+    return (
+      <div className="space-y-4" data-testid="route-scenario-compare">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-base font-bold text-foreground">ルート最適化</h1>
+          {dateNavigator}
+        </div>
+        <div className="rounded-xl border border-border/70 bg-card p-4">
+          <ErrorState
+            variant="server"
+            title="ルート案を計算できません"
+            description="対象日の訪問予定をもとにした経路計算に失敗しました。再試行してください。"
+            action={{ label: '再試行', onClick: () => void routeScenariosQuery.refetch() }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -538,15 +700,18 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
                 : ''}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              移動時間は地図 API
-              を使わない固定値の概算です。実際の所要時間は道路状況により異なります。
+              移動時間は既存のルートエンジンで再計算しています。座標未設定や車両制約がある案は採用できません。
             </p>
           </div>
           <RecommendedRouteDetail
             detail={routeDetail}
             isApplied={recommendedScenario != null && appliedScenarioId === recommendedScenario.id}
             isApplying={recommendedScenario != null && pendingScenarioId === recommendedScenario.id}
-            disabled={applyMutation.isPending || recommendedScenario == null}
+            disabled={
+              applyMutation.isPending ||
+              recommendedScenario == null ||
+              recommendedScenario.applyDisabledReason != null
+            }
             onApply={() => {
               if (recommendedScenario) setConfirmScenario(recommendedScenario);
             }}
@@ -561,8 +726,8 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
             並べ替え方針の異なる 3 案を比較して採用します。
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            移動時間は地図 API を使わない概算（薬局⇔訪問先 16 分・訪問先間 20 分・同一建物 5
-            分の固定値）です。実際の所要時間ではなく、案ごとの方針差（詰めて回る／希望時間優先／緊急余力を残す）の比較にお使いください。
+            移動時間と訪問順は /api/visit-routes
+            のルートエンジン結果を使います。未計算・座標未設定・車両制約超過の案は比較表示だけに留めます。
           </p>
         </div>
         <div className="grid gap-4 lg:grid-cols-3 xl:gap-5" data-testid="route-scenario-compare">
@@ -581,6 +746,11 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
                   <h2 className="text-[15px] font-bold text-foreground">{scenario.label}</h2>
                   <div className="flex flex-wrap justify-end gap-1.5">
                     {scenario.recommended ? <StateBadge role="info">推奨</StateBadge> : null}
+                    {scenario.applyDisabledReason ? (
+                      <StateBadge role="blocked">採用不可</StateBadge>
+                    ) : (
+                      <StateBadge role="done">経路計算済み</StateBadge>
+                    )}
                     {isApplied ? <StateBadge role="done">適用済み</StateBadge> : null}
                   </div>
                 </div>
@@ -594,15 +764,19 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
                       <div className="rounded-md bg-muted/50 px-2 py-1.5">
                         <p className="text-muted-foreground">移動</p>
                         <p className="font-semibold text-foreground tabular-nums">
-                          {comparison.travelMinutes}分
+                          {comparison.travelMinutes == null
+                            ? '未計算'
+                            : `${comparison.travelMinutes}分`}
                         </p>
                       </div>
                       <div className="rounded-md bg-muted/50 px-2 py-1.5">
                         <p className="text-muted-foreground">推奨比</p>
                         <p className="font-semibold text-foreground tabular-nums">
-                          {comparison.travelDeltaMinutes === 0
-                            ? '±0分'
-                            : `+${comparison.travelDeltaMinutes}分`}
+                          {comparison.travelDeltaMinutes == null
+                            ? '未計算'
+                            : comparison.travelDeltaMinutes === 0
+                              ? '±0分'
+                              : `+${comparison.travelDeltaMinutes}分`}
                         </p>
                       </div>
                       <div className="rounded-md bg-muted/50 px-2 py-1.5">
@@ -619,13 +793,29 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
 
                 <p className="text-[15px] font-bold text-foreground">{scenario.summary}</p>
 
+                {scenario.note || scenario.applyDisabledReason ? (
+                  <div
+                    className="rounded-lg border border-border/70 bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+                    data-testid="route-scenario-note"
+                  >
+                    {scenario.applyDisabledReason ? (
+                      <p className="font-medium text-foreground">
+                        採用不可: {scenario.applyDisabledReason}
+                      </p>
+                    ) : null}
+                    {scenario.note ? (
+                      <p className="mt-1 first:mt-0">計算メモ: {scenario.note}</p>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 <div>
                   <Button
                     type="button"
                     size="lg"
                     variant={scenario.recommended ? 'default' : 'outline'}
                     className={scenario.recommended ? 'w-44 sm:h-10' : 'w-44 text-primary sm:h-10'}
-                    disabled={applyMutation.isPending}
+                    disabled={applyMutation.isPending || scenario.applyDisabledReason != null}
                     onClick={() => setConfirmScenario(scenario)}
                   >
                     {isApplying ? '適用中…' : 'この案を使う'}
