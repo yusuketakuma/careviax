@@ -7,6 +7,12 @@ exports[`/api/patients GET > supports advanced patient filters and enriches risk
       "_count": {
         "contacts": 1,
       },
+      "archive": {
+        "archived": false,
+        "archived_at": null,
+        "status": "active",
+      },
+      "archived_at": null,
       "billing_support_flag": true,
       "birth_date": "1948-05-20T00:00:00.000Z",
       "care_insurance_number": null,
@@ -139,6 +145,8 @@ exports[`/api/patients GET > supports advanced patient filters and enriches risk
     "sensitive_fields_masked": false,
   },
   "summary": {
+    "active_count": 1,
+    "archived_count": 0,
     "by_risk": {
       "high": 0,
       "stable": 0,

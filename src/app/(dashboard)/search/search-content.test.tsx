@@ -202,6 +202,7 @@ describe('SearchContent', () => {
     // condition/next-visit fields required for the row subtitle without the full
     // patient-list enrichment payload.
     expect(patientUrl).toContain('view=search');
+    expect(patientUrl).toContain('archive_status=active');
     expect(patientUrl).toContain('limit=8');
     expect(proposalUrl).toContain('view=palette');
     expect(proposalUrl).toContain('limit=8');

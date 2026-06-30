@@ -316,7 +316,7 @@ export function SearchContent({
         ] = await Promise.all([
           fetchSearchCategory(
             'patient',
-            `/api/patients?view=search&q=${q}&limit=${SEARCH_RESULT_LIMIT}`,
+            `/api/patients?view=search&archive_status=active&q=${q}&limit=${SEARCH_RESULT_LIMIT}`,
             {
               headers,
               signal: sig,

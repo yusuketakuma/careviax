@@ -68,9 +68,14 @@ export type PaletteCategory = {
  */
 export const PALETTE_RESULT_LIMIT = 8;
 
-function buildPaletteEndpoint(path: string, query: string, options: { view?: 'palette' } = {}) {
+function buildPaletteEndpoint(
+  path: string,
+  query: string,
+  options: { view?: 'palette'; archive_status?: 'active' } = {},
+) {
   const entries: Array<[string, string]> = [];
   if (options.view) entries.push(['view', options.view]);
+  if (options.archive_status) entries.push(['archive_status', options.archive_status]);
   entries.push(['q', query], ['limit', String(PALETTE_RESULT_LIMIT)]);
   const queryString = entries
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
@@ -199,7 +204,11 @@ export const PALETTE_CATEGORIES: PaletteCategory[] = [
     // view=palette で F-012 の最小投影({id,name,name_kana})を消費する。
     // これを付けないと full list 分岐に当たり phone/住所/保険等の over-wide payload が
     // ブラウザへ届く(UI zod の strip は fetch 後＝転送は発生済)。bounded/minimal 契約を守る。
-    endpoint: (query) => buildPaletteEndpoint('/api/patients', query, { view: 'palette' }),
+    endpoint: (query) =>
+      buildPaletteEndpoint('/api/patients', query, {
+        view: 'palette',
+        archive_status: 'active',
+      }),
     schema: patientSchema,
     normalize: dataItems,
     build: (item) => buildPatientResult(item as Parameters<typeof buildPatientResult>[0]),

@@ -48,6 +48,7 @@ type PatientRow = {
   medical_insurance_number: string | null;
   care_insurance_number: string | null;
   billing_support_flag: boolean;
+  archived_at?: Date | null;
   residences: Array<{
     address: string | null;
     building_id: string | null;
@@ -173,6 +174,12 @@ export function mapPatientListItem(
 
   return {
     ...patient,
+    archived_at: patient.archived_at?.toISOString() ?? null,
+    archive: {
+      status: patient.archived_at ? 'archived' : 'active',
+      archived: Boolean(patient.archived_at),
+      archived_at: patient.archived_at?.toISOString() ?? null,
+    },
     contacts,
     cases,
     scheduling_preference: toPatientListSchedulingPreference(patient.scheduling_preference),
@@ -220,6 +227,8 @@ export type MappedPatientListItem = ReturnType<typeof mapPatientListItem>;
 export function buildPatientListSummary(items: MappedPatientListItem[]) {
   return {
     total: items.length,
+    active_count: items.filter((p) => !p.archive.archived).length,
+    archived_count: items.filter((p) => p.archive.archived).length,
     facility_count: items.filter((p) => p.facility_mode === 'facility').length,
     missing_consent_count: items.filter((p) => !p.consent.has_visit_medication_management).length,
     by_risk: {

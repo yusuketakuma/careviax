@@ -54,6 +54,7 @@ describe('listPatients', () => {
 
     expect(db.patient.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: expect.objectContaining({ archived_at: null }),
         take: 151,
       }),
     );
@@ -68,7 +69,38 @@ describe('listPatients', () => {
 
     expect(db.patient.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: expect.objectContaining({ archived_at: null }),
         take: 251,
+      }),
+    );
+  });
+
+  it('can list only archived patients when archive_status=archived is explicit', async () => {
+    const db = makeDb();
+
+    await listPatients(db, 'org_1', 'pharmacist', {
+      archive_status: 'archived',
+      limit: 10,
+    });
+
+    expect(db.patient.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ archived_at: { not: null } }),
+      }),
+    );
+  });
+
+  it('can list active and archived patients together when archive_status=all is explicit', async () => {
+    const db = makeDb();
+
+    await listPatients(db, 'org_1', 'pharmacist', {
+      archive_status: 'all',
+      limit: 10,
+    });
+
+    expect(db.patient.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.not.objectContaining({ archived_at: expect.anything() }),
       }),
     );
   });

@@ -51,6 +51,7 @@ const patientListQuerySchema = z.object({
   limit: optionalBoundedIntegerSearchParam('limit', 1, 500),
   sort: z.enum(['name_kana', 'name', 'created_at']).optional(),
   order: z.enum(['asc', 'desc']).optional(),
+  archive_status: z.enum(['active', 'archived', 'all']).optional(),
   facility_mode: z.enum(['facility', 'home']).optional(),
   consent_status: z.enum(['complete', 'missing']).optional(),
   risk_level: z.enum(['stable', 'watch', 'high']).optional(),
@@ -90,6 +91,7 @@ const patientListSingleValueQueryNames = [
   'limit',
   'sort',
   'order',
+  'archive_status',
   'facility_mode',
   'consent_status',
   'risk_level',
@@ -161,6 +163,10 @@ function validatePatientMatchQuery(query: string | undefined) {
   });
 }
 
+function unsupportedMinimalPatientFilterMessage(view: 'palette' | 'search' | 'match') {
+  return `${view} 表示では q/limit/sort/order/archive_status のみ指定できます`;
+}
+
 function normalizeAssignmentId(value: string | undefined) {
   return value === undefined ? undefined : value === '' ? null : value;
 }
@@ -186,7 +192,7 @@ const authenticatedGET = withAuthContext(
           Object.fromEntries(
             unsupportedPaletteFilters.map((key) => [
               key,
-              ['palette 表示では q/limit/sort/order のみ指定できます'],
+              [unsupportedMinimalPatientFilterMessage('palette')],
             ]),
           ),
         );
@@ -210,7 +216,7 @@ const authenticatedGET = withAuthContext(
           Object.fromEntries(
             unsupportedSearchFilters.map((key) => [
               key,
-              ['search 表示では q/limit/sort/order のみ指定できます'],
+              [unsupportedMinimalPatientFilterMessage('search')],
             ]),
           ),
         );
@@ -234,7 +240,7 @@ const authenticatedGET = withAuthContext(
           Object.fromEntries(
             unsupportedMatchFilters.map((key) => [
               key,
-              ['match 表示では q/limit/sort/order のみ指定できます'],
+              [unsupportedMinimalPatientFilterMessage('match')],
             ]),
           ),
         );

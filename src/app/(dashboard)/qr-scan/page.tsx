@@ -133,9 +133,12 @@ export default function QRScanPage() {
           return;
         }
 
-        const res = await fetch(`/api/patients?view=match&q=${encodeURIComponent(q)}&limit=10`, {
-          headers: orgId ? { 'x-org-id': orgId } : undefined,
-        });
+        const res = await fetch(
+          `/api/patients?view=match&archive_status=active&q=${encodeURIComponent(q)}&limit=10`,
+          {
+            headers: orgId ? { 'x-org-id': orgId } : undefined,
+          },
+        );
         if (!res.ok) throw new Error('患者検索に失敗しました');
         const json = await res.json();
         const matched: PatientMatch[] = json.data ?? [];

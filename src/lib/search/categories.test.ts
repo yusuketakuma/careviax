@@ -76,7 +76,7 @@ describe('palette category registry (F-009 MVP)', () => {
     // view=palette を付けないと full list 分岐に当たり over-wide payload(住所/保険/pdf_url 等)が
     // ブラウザへ転送される。最小投影 endpoint を必ず叩くことを固定する。
     expect(byId('patient').endpoint('山田')).toBe(
-      `/api/patients?view=palette&q=${encodeURIComponent('山田')}&limit=8`,
+      `/api/patients?view=palette&archive_status=active&q=${encodeURIComponent('山田')}&limit=8`,
     );
     expect(byId('proposal').endpoint('山田')).toBe(
       `/api/visit-schedule-proposals?view=palette&q=${encodeURIComponent('山田')}&limit=8`,
@@ -92,7 +92,7 @@ describe('palette category registry (F-009 MVP)', () => {
 
   it('keeps palette endpoint query order and encodeURIComponent-compatible escaping', () => {
     expect(byId('patient').endpoint('a b/服薬?')).toBe(
-      '/api/patients?view=palette&q=a%20b%2F%E6%9C%8D%E8%96%AC%3F&limit=8',
+      '/api/patients?view=palette&archive_status=active&q=a%20b%2F%E6%9C%8D%E8%96%AC%3F&limit=8',
     );
     expect(byId('contact').endpoint('a b/服薬?')).toBe(
       '/api/contact-profiles?q=a%20b%2F%E6%9C%8D%E8%96%AC%3F&limit=8',

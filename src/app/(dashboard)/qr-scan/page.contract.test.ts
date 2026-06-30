@@ -32,7 +32,8 @@ describe('QRScanPage accessibility status contract', () => {
   });
 
   it('uses the minimal patient match view for QR patient lookup', () => {
-    expect(SOURCE).toContain('/api/patients?view=match&q=');
+    expect(SOURCE).toContain('/api/patients?view=match&archive_status=active&q=');
+    expect(SOURCE).toContain('archive_status=active');
     expect(SOURCE).toContain('&limit=10');
   });
 

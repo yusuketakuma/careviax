@@ -50,6 +50,7 @@ export type PatientListFilters = {
   limit?: number;
   sort?: 'name_kana' | 'name' | 'created_at';
   order?: 'asc' | 'desc';
+  archive_status?: 'active' | 'archived' | 'all';
   facility_mode?: 'facility' | 'home';
   consent_status?: 'complete' | 'missing';
   risk_level?: 'stable' | 'watch' | 'high';
@@ -89,6 +90,7 @@ function buildPatientSelect(referenceDate: Date, accessContext?: VisitScheduleAc
     medical_insurance_number: true,
     care_insurance_number: true,
     billing_support_flag: true,
+    archived_at: true,
     residences: {
       where: { is_primary: true },
       take: 1,
@@ -179,6 +181,13 @@ function buildDbWhere(orgId: string, filters: PatientListFilters) {
     org_id: orgId,
     ...buildSearchFilter(filters.q, ['name', 'name_kana']),
   };
+
+  const archiveStatus = filters.archive_status ?? 'active';
+  if (archiveStatus === 'active') {
+    where.archived_at = null;
+  } else if (archiveStatus === 'archived') {
+    where.archived_at = { not: null };
+  }
 
   // case_status → DB filter
   const requestedCaseStatuses = parseCaseStatusList(filters.case_status);

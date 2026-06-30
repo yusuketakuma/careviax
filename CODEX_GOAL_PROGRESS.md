@@ -27540,3 +27540,31 @@ Next loop:
 - Remaining:
   - Broad schedule/prescription/route-management objective remains open.
   - Concurrent patient/report dirty files belong to separate slices and were preserved.
+
+### Patient Archive Lookup Contract - 2026-07-01 00:06 JST
+
+- Scope:
+  - Continued Phase 5-PRE patient archive-state work.
+  - Focused on patient list/search API contracts and patient lookup callers used by global search, QR intake, and prescription intake.
+- Fixed:
+  - `/api/patients` now defaults to active patients (`archived_at: null`) for full list, palette, search, and match views.
+  - Added explicit `archive_status=active|archived|all` filtering for patient list/search services.
+  - Full patient list responses now expose minimal archive state (`archive.status`, `archive.archived`, `archive.archived_at`) and summary `active_count` / `archived_count`.
+  - Global search palette, search page patient lookup, QR patient match, and prescription intake patient match now explicitly request `archive_status=active`.
+- Safety:
+  - Reduces archived-patient wrong-selection risk in patient lookup flows while preserving an explicit archived-list path for restore/archive management.
+  - No PHI fields were added to minimal palette/search/match responses.
+  - Existing auth, org/RLS assignment scope, no-store responses, write guards, archive/restore APIs, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- Performance:
+  - Adds one indexed/null scalar predicate to existing patient list queries and local count derivation from already mapped results.
+  - No new query fan-out, dependency, background job, broad scan, external call, unbounded loop, or heavy render path was added.
+- Validation:
+  - `pnpm vitest run src/app/api/patients/route.test.ts src/server/services/patient-service.test.ts src/lib/search/categories.test.ts src/app/'(dashboard)'/search/search-content.test.tsx src/app/'(dashboard)'/qr-scan/page.contract.test.ts --reporter=dot --testTimeout=60000`: passed, `5` files / `95` tests.
+  - Additional related lookup suite `pnpm vitest run src/components/features/search/use-global-search.test.ts src/app/'(dashboard)'/prescriptions/new/prescription-intake-form.test.tsx --reporter=dot --testTimeout=60000`: passed, `2` files / `19` tests, with pre-existing React act warnings.
+  - Scoped ESLint: passed.
+  - Scoped Prettier check: passed after excluding `.snap` (Prettier has no inferred parser for Vitest snapshot files).
+  - Scoped `git diff --check`: passed.
+  - `pnpm typecheck`: failed on concurrent unowned report print-audit WIP (`print-hub-content.tsx` nullable `auditedVisitReport`, `print-hub.shared.test.ts` missing required `updated_at`).
+- Remaining:
+  - Broad master/patient objective remains open.
+  - Unowned report print-audit dirty files are preserved and not part of this patient archive slice.

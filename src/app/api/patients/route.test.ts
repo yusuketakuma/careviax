@@ -458,6 +458,7 @@ describe('/api/patients GET', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           org_id: 'org_1',
+          archived_at: null,
         }),
       }),
     );
@@ -523,9 +524,16 @@ describe('/api/patients GET', () => {
           scope_keys: string[];
         };
         risk_summary: { level: 'stable' | 'watch' | 'high' };
+        archive: {
+          status: 'active' | 'archived';
+          archived: boolean;
+          archived_at: string | null;
+        };
       }>;
       summary: {
         total: number;
+        active_count: number;
+        archived_count: number;
         facility_count: number;
         missing_consent_count: number;
         by_risk: Record<'stable' | 'watch' | 'high', number>;
@@ -550,6 +558,11 @@ describe('/api/patients GET', () => {
       },
       risk_summary: {
         level: 'watch',
+      },
+      archive: {
+        status: 'active',
+        archived: false,
+        archived_at: null,
       },
     });
     expect(payload.data[0].contacts[0]).toEqual({
@@ -585,6 +598,8 @@ describe('/api/patients GET', () => {
     expect(serializedPayload).not.toContain('03-2222-0000');
     expect(payload.summary).toMatchObject({
       total: 1,
+      active_count: 1,
+      archived_count: 0,
       facility_count: 1,
       missing_consent_count: 0,
       by_risk: {
@@ -594,6 +609,77 @@ describe('/api/patients GET', () => {
       },
     });
     expect(payload).toMatchSnapshot();
+  });
+
+  it('returns archived patient state only when archive_status=archived is explicit', async () => {
+    patientFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'patient_archived',
+        name: '保管 太郎',
+        name_kana: 'ホカン タロウ',
+        birth_date: new Date('1948-05-20'),
+        gender: 'male',
+        phone: null,
+        medical_insurance_number: null,
+        care_insurance_number: null,
+        billing_support_flag: false,
+        archived_at: new Date('2026-04-01T09:30:00.000Z'),
+        scheduling_preference: null,
+        residences: [],
+        _count: { contacts: 0 },
+        contacts: [],
+        conditions: [],
+        cases: [
+          {
+            id: 'case_archived',
+            status: 'terminated',
+            updated_at: new Date('2026-03-27T09:00:00.000Z'),
+            primary_pharmacist_id: null,
+            care_team_links: [],
+          },
+        ],
+        consents: [],
+      },
+    ]);
+
+    const response = (await GET(
+      createAuthenticatedRequest('http://localhost/api/patients?archive_status=archived'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(patientFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          archived_at: { not: null },
+        }),
+      }),
+    );
+    const payload = (await response.json()) as {
+      data: Array<{
+        id: string;
+        archived_at: string | null;
+        archive: { status: 'active' | 'archived'; archived: boolean; archived_at: string | null };
+      }>;
+      summary: { total: number; active_count: number; archived_count: number };
+    };
+
+    expect(payload.data).toHaveLength(1);
+    expect(payload.data[0]).toMatchObject({
+      id: 'patient_archived',
+      archived_at: '2026-04-01T09:30:00.000Z',
+      archive: {
+        status: 'archived',
+        archived: true,
+        archived_at: '2026-04-01T09:30:00.000Z',
+      },
+    });
+    expect(payload.summary).toMatchObject({
+      total: 1,
+      active_count: 0,
+      archived_count: 1,
+    });
   });
 
   it('preserves legacy unknown query keys while validating known patient filters', async () => {
@@ -607,6 +693,7 @@ describe('/api/patients GET', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           org_id: 'org_1',
+          archived_at: null,
         }),
       }),
     );
@@ -690,6 +777,7 @@ describe('/api/patients GET', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           org_id: 'org_1',
+          archived_at: null,
         }),
         take: 2,
         select: {
@@ -780,6 +868,10 @@ describe('/api/patients GET', () => {
     });
     expect(patientFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          archived_at: null,
+        }),
         take: 2,
         select: expect.objectContaining({
           id: true,
@@ -899,6 +991,7 @@ describe('/api/patients GET', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           org_id: 'org_1',
+          archived_at: null,
         }),
         take: 2,
         select: {
@@ -948,7 +1041,9 @@ describe('/api/patients GET', () => {
     },
     {
       url: 'http://localhost/api/patients?view=match&q=青葉&risk_level=watch',
-      details: { risk_level: ['match 表示では q/limit/sort/order のみ指定できます'] },
+      details: {
+        risk_level: ['match 表示では q/limit/sort/order/archive_status のみ指定できます'],
+      },
     },
     {
       url: 'http://localhost/api/patients?view=match&view=palette&q=青葉',
@@ -988,7 +1083,7 @@ describe('/api/patients GET', () => {
       code: 'VALIDATION_ERROR',
       message: 'palette 表示では対応していない検索条件です',
       details: {
-        risk_level: ['palette 表示では q/limit/sort/order のみ指定できます'],
+        risk_level: ['palette 表示では q/limit/sort/order/archive_status のみ指定できます'],
       },
     });
     expect(patientFindManyMock).not.toHaveBeenCalled();
