@@ -96,6 +96,13 @@ describe('visit-workflow-projection', () => {
         href: '/reports/report_1',
       },
     });
+    expect(actions.find((action) => action.key === 'care_team_share')).toMatchObject({
+      primary_action: {
+        operation: 'review_share',
+        href: '/reports/report_1/share',
+      },
+      href: '/reports/report_1/share',
+    });
     expect(actions.find((action) => action.key === 'next_visit')).toMatchObject({
       primary_action: {
         operation: 'create_next_visit',
@@ -173,7 +180,7 @@ describe('visit-workflow-projection', () => {
 
     const encodedScheduleHref = `/visits/${encodeURIComponent(scheduleId)}/record`;
     const encodedReportHref = `/reports/${encodeURIComponent(reportId)}`;
-    const encodedCollaborationHref = `/patients/${encodeURIComponent(patientId)}/collaboration`;
+    const encodedReportShareHref = `/reports/${encodeURIComponent(reportId)}/share`;
 
     expect(actions.find((action) => action.key === 'report')).toMatchObject({
       primary_action: {
@@ -185,9 +192,9 @@ describe('visit-workflow-projection', () => {
     expect(actions.find((action) => action.key === 'care_team_share')).toMatchObject({
       primary_action: {
         operation: 'review_share',
-        href: encodedCollaborationHref,
+        href: encodedReportShareHref,
       },
-      href: encodedCollaborationHref,
+      href: encodedReportShareHref,
     });
     expect(actions.find((action) => action.key === 'billing_review')).toMatchObject({
       primary_action: {
@@ -209,6 +216,30 @@ describe('visit-workflow-projection', () => {
       `/conferences?${new URLSearchParams({ patient_id: patientId }).toString()}`,
     );
     expect(new URLSearchParams(conferenceHref?.split('?')[1]).get('patient_id')).toBe(patientId);
+  });
+
+  it('keeps care-team sharing on patient collaboration when no report exists yet', () => {
+    const actions = buildPostVisitWorkflowActions({
+      recordId: 'record_1',
+      scheduleId: 'schedule_1',
+      patientId: 'patient/1?tab=team#frag',
+      soapComplete: true,
+      collaborationMentioned: true,
+      medicationManagementComplete: true,
+      billingBlockerCount: 0,
+      careTeamContactCount: 1,
+      hasNextVisitSuggestion: false,
+      reports: [],
+    });
+
+    const expectedHref = `/patients/${encodeURIComponent('patient/1?tab=team#frag')}/collaboration`;
+    expect(actions.find((action) => action.key === 'care_team_share')).toMatchObject({
+      primary_action: {
+        operation: 'review_share',
+        href: expectedHref,
+      },
+      href: expectedHref,
+    });
   });
 
   it.each(['.', '..'])('rejects exact dot-segment report id %s', (reportId) => {

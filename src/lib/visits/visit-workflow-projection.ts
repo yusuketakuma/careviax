@@ -190,8 +190,12 @@ export function buildPostVisitWorkflowActions(args: {
     .slice(0, 2)
     .map((note) => `${getConferenceTypeLabel(note.note_type)}: ${note.title}`);
   const preferredReportHref = preferredReport ? buildReportHref(preferredReport.id) : undefined;
+  const preferredReportShareHref = preferredReport
+    ? buildReportHref(preferredReport.id, '/share')
+    : undefined;
   const visitRecordHref = args.scheduleId ? buildVisitRecordHref(args.scheduleId) : undefined;
   const patientCollaborationHref = buildPatientCollaborationHref(args.patientId);
+  const careTeamShareHref = preferredReportShareHref ?? patientCollaborationHref;
   const visitBillingCandidatesHref = buildVisitBillingCandidatesHref({
     billingMonth: args.billingMonth,
     patientId: args.patientId,
@@ -298,9 +302,9 @@ export function buildPostVisitWorkflowActions(args: {
       primary_action: {
         operation: 'review_share',
         label: '共有先を確認',
-        href: patientCollaborationHref,
+        href: careTeamShareHref,
       },
-      href: patientCollaborationHref,
+      href: careTeamShareHref,
       action_label: '連携を確認',
       evidence: [
         args.careTeamContactCount > 0 ? `共有先 ${args.careTeamContactCount}件` : '共有先未登録',
