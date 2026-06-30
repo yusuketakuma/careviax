@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 const {
   authPlumbingFailureRef,
   conferenceNoteFindFirstMock,
+  conferenceNoteLockMock,
   conferenceNoteUpdateMock,
   careCaseFindFirstMock,
   careCaseUpdateMock,
@@ -28,6 +29,7 @@ const {
 } = vi.hoisted(() => ({
   authPlumbingFailureRef: { current: null as Error | null },
   conferenceNoteFindFirstMock: vi.fn(),
+  conferenceNoteLockMock: vi.fn(),
   conferenceNoteUpdateMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   careCaseUpdateMock: vi.fn(),
@@ -235,7 +237,9 @@ describe('/api/conference-notes/[id] PATCH', () => {
     visitScheduleProposalFindManyMock.mockResolvedValue([]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        $queryRaw: conferenceNoteLockMock,
         conferenceNote: {
+          findFirst: conferenceNoteFindFirstMock,
           update: conferenceNoteUpdateMock,
         },
         careCase: {
@@ -307,6 +311,21 @@ describe('/api/conference-notes/[id] PATCH', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectNoStore(response);
+    expect(conferenceNoteLockMock).toHaveBeenCalledTimes(1);
+    expect(conferenceNoteFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'note_1',
+          org_id: 'org_1',
+        },
+      }),
+    );
+    expect(conferenceNoteLockMock.mock.invocationCallOrder[0]).toBeLessThan(
+      conferenceNoteFindFirstMock.mock.invocationCallOrder[0],
+    );
+    expect(conferenceNoteFindFirstMock.mock.invocationCallOrder[0]).toBeLessThan(
+      conferenceNoteUpdateMock.mock.invocationCallOrder[0],
+    );
     expect(conferenceNoteUpdateMock).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -449,6 +468,36 @@ describe('/api/conference-notes/[id] PATCH', () => {
     expect(serializedBody).not.toContain('service manager note');
     expect(conferenceNoteFindFirstMock).toHaveBeenCalled();
     expect(withOrgContextMock).toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(taskCreateManyMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 after claiming the row lock when the note is not visible in the org', async () => {
+    conferenceNoteFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await PATCH(
+      createRequest({
+        title: '担当者会議（更新）',
+      }),
+      {
+        params: Promise.resolve({ id: 'missing_note' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expectNoStore(response);
+    expect(conferenceNoteLockMock).toHaveBeenCalledTimes(1);
+    expect(conferenceNoteFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'missing_note',
+          org_id: 'org_1',
+        },
+      }),
+    );
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(taskCreateManyMock).not.toHaveBeenCalled();
     expect(careReportCreateManyMock).not.toHaveBeenCalled();
