@@ -105,6 +105,11 @@ function createMalformedJsonRequest(headers?: Record<string, string>) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function buildUniqueConstraintError() {
   return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
     code: 'P2002',
@@ -356,6 +361,34 @@ describe('/api/communication-requests/[id] PATCH', () => {
         },
       }),
     );
+  });
+
+  it('returns a sanitized no-store 500 when auth context fails before mutation work', async () => {
+    requireAuthContextMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 090-1234-5678 communication update raw detail'),
+    );
+
+    const response = await PATCH(
+      createRequest(
+        { status: 'in_progress', status_change_reason: '電話で受領確認し対応を開始' },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+
+    const json = await response.json();
+    expect(json).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(json)).not.toContain('山田花子');
+    expect(JSON.stringify(json)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(json)).not.toContain('communication update raw detail');
+    expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('rejects care report communication mutations for callers without report send permission', async () => {
@@ -700,6 +733,32 @@ describe('/api/communication-requests/[id] PATCH', () => {
         }),
       }),
     });
+  });
+
+  it('returns a sanitized no-store 500 when the update transaction fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 090-1234-5678 raw transaction detail'),
+    );
+
+    const response = await PATCH(
+      createRequest(
+        { status: 'in_progress', status_change_reason: '電話で受領確認し対応を開始' },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+
+    const json = await response.json();
+    expect(json).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(json)).not.toContain('山田花子');
+    expect(JSON.stringify(json)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(json)).not.toContain('raw transaction detail');
   });
 
   it('rejects archived patients before request update, response creation, tracing sync, or audit', async () => {

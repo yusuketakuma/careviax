@@ -180,7 +180,10 @@ const patchCommunicationRequestSchema = z.object({
     .optional(),
 });
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedPATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const authResult = await requireAuthContext(req, {
     permission: 'canReport',
     message: '連携依頼の更新権限がありません',
@@ -571,4 +574,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   return success({ data: result });
+}
+
+export async function PATCH(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }
