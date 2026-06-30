@@ -11,6 +11,18 @@ setupDomTestEnv();
 const mutationMutateMock = vi.hoisted(() => vi.fn());
 const queryErrorKeysMock = vi.hoisted(() => new Set<string>());
 const queryRefetchMock = vi.hoisted(() => vi.fn());
+const adminUsersResponseMock = vi.hoisted(() => ({
+  current: null as null | {
+    data: unknown[];
+    total_count?: number;
+    visible_count?: number;
+    hidden_count?: number;
+    truncated?: boolean;
+    count_basis?: string;
+    filters_applied?: Record<string, unknown>;
+    limit?: number;
+  },
+}));
 
 const user = {
   id: 'user_1',
@@ -60,7 +72,16 @@ vi.mock('@tanstack/react-query', () => ({
 
     if (key === 'admin-users') {
       return {
-        data: queryErrorKeysMock.has('admin-users') ? undefined : { data: [user] },
+        data: queryErrorKeysMock.has('admin-users')
+          ? undefined
+          : (adminUsersResponseMock.current ?? {
+              data: [user],
+              total_count: 1,
+              visible_count: 1,
+              hidden_count: 0,
+              truncated: false,
+              count_basis: 'unique_users',
+            }),
         isLoading: false,
         isError: queryErrorKeysMock.has('admin-users'),
         refetch: queryRefetchMock,
@@ -130,6 +151,7 @@ describe('UsersContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     queryErrorKeysMock.clear();
+    adminUsersResponseMock.current = null;
     Object.assign(user, defaultUser);
   });
 
@@ -326,5 +348,31 @@ describe('UsersContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
 
     expect(queryRefetchMock).toHaveBeenCalled();
+  });
+
+  it('shows hidden user counts when the staff master list is truncated', () => {
+    adminUsersResponseMock.current = {
+      data: [user],
+      total_count: 3,
+      visible_count: 1,
+      hidden_count: 2,
+      truncated: true,
+      count_basis: 'unique_users',
+      filters_applied: {
+        site_id: null,
+        include_collaborators: true,
+      },
+      limit: 500,
+    };
+
+    render(<UsersContent />);
+
+    expect(screen.getByText('先頭1件を表示 / 他2件')).toBeTruthy();
+    expect(
+      screen.getByText((_content, element) => element?.textContent === '総ユーザー数: 3'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText((_content, element) => element?.textContent === '表示中 稼働中: 1'),
+    ).toBeTruthy();
   });
 });

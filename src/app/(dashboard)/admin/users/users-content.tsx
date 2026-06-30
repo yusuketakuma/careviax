@@ -76,6 +76,20 @@ type UserItem = {
   monthly_visit_count: number;
 };
 
+type UsersListResponse = {
+  data: UserItem[];
+  total_count?: number;
+  visible_count?: number;
+  hidden_count?: number;
+  truncated?: boolean;
+  count_basis?: 'memberships' | 'unique_users';
+  filters_applied?: {
+    site_id: string | null;
+    include_collaborators: boolean;
+  };
+  limit?: number;
+};
+
 type SiteOption = {
   id: string;
   name: string;
@@ -263,7 +277,7 @@ export function UsersContent() {
         headers: { 'x-org-id': orgId },
       });
       if (!response.ok) throw new Error('ユーザー一覧の取得に失敗しました');
-      return response.json() as Promise<{ data: UserItem[] }>;
+      return response.json() as Promise<UsersListResponse>;
     },
     enabled: !!orgId,
   });
@@ -539,13 +553,21 @@ export function UsersContent() {
   ];
 
   const summary = {
-    total: users.length,
+    total: data?.total_count ?? users.length,
     active: users.filter((user) => user.account_status === 'active').length,
     invited: users.filter((user) => user.account_status === 'invited').length,
     suspended: users.filter(
       (user) => user.account_status === 'suspended' || user.account_status === 'retired',
     ).length,
   };
+  const visibleUserCount = data?.visible_count ?? users.length;
+  const hiddenUserCount = data?.hidden_count ?? Math.max(summary.total - users.length, 0);
+  const isUserListTruncated = Boolean(data?.truncated || hiddenUserCount > 0);
+  const userListSummary = data
+    ? isUserListTruncated
+      ? `先頭${visibleUserCount.toLocaleString()}件を表示 / 他${hiddenUserCount.toLocaleString()}件`
+      : `登録${summary.total.toLocaleString()}件`
+    : null;
   const userCountsUnavailable = (isLoading || isError) && !data;
 
   const operationalRole = detailForm ? isOperationalMemberRole(detailForm.role) : false;
@@ -589,6 +611,11 @@ export function UsersContent() {
           </Field>
 
           <div className="-mx-4 border-t border-border/70 pt-1 sm:-mx-6">
+            {userListSummary ? (
+              <div className="border-b border-border/70 px-4 py-3 text-xs text-muted-foreground sm:px-6">
+                {userListSummary}
+              </div>
+            ) : null}
             <DataTable
               columns={columns}
               data={filteredUsers}
@@ -602,9 +629,18 @@ export function UsersContent() {
           <div className="flex flex-wrap gap-2 rounded-xl border border-border/70 bg-background/70 px-3 py-3">
             {[
               ['総ユーザー数', userCountsUnavailable ? '—' : summary.total],
-              ['稼働中', userCountsUnavailable ? '—' : summary.active],
-              ['招待済', userCountsUnavailable ? '—' : summary.invited],
-              ['停止/退職', userCountsUnavailable ? '—' : summary.suspended],
+              [
+                `${isUserListTruncated ? '表示中 ' : ''}稼働中`,
+                userCountsUnavailable ? '—' : summary.active,
+              ],
+              [
+                `${isUserListTruncated ? '表示中 ' : ''}招待済`,
+                userCountsUnavailable ? '—' : summary.invited,
+              ],
+              [
+                `${isUserListTruncated ? '表示中 ' : ''}停止/退職`,
+                userCountsUnavailable ? '—' : summary.suspended,
+              ],
             ].map(([label, value]) => (
               <Badge key={label} variant="outline" className="min-h-7 rounded-full px-3">
                 {label}: <span className="font-semibold tabular-nums">{value}</span>

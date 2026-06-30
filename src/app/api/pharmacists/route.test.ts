@@ -5,6 +5,8 @@ const {
   authMock,
   membershipFindFirstMock,
   membershipFindManyMock,
+  membershipCountMock,
+  membershipGroupByMock,
   visitScheduleGroupByMock,
   userFindFirstMock,
   validateOrgReferencesMock,
@@ -19,6 +21,8 @@ const {
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   membershipFindManyMock: vi.fn(),
+  membershipCountMock: vi.fn(),
+  membershipGroupByMock: vi.fn(),
   visitScheduleGroupByMock: vi.fn(),
   userFindFirstMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
@@ -43,6 +47,8 @@ vi.mock('@/lib/db/client', () => ({
     membership: {
       findFirst: membershipFindFirstMock,
       findMany: membershipFindManyMock,
+      count: membershipCountMock,
+      groupBy: membershipGroupByMock,
     },
     visitSchedule: {
       groupBy: visitScheduleGroupByMock,
@@ -155,11 +161,15 @@ describe('/api/pharmacists GET', () => {
         },
       },
     ]);
+    membershipCountMock.mockResolvedValue(1);
+    membershipGroupByMock.mockResolvedValue([{ user_id: 'user_1' }]);
     visitScheduleGroupByMock.mockResolvedValue([]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         membership: {
           findMany: membershipFindManyMock,
+          count: membershipCountMock,
+          groupBy: membershipGroupByMock,
         },
         visitSchedule: {
           groupBy: visitScheduleGroupByMock,
@@ -229,6 +239,8 @@ describe('/api/pharmacists GET', () => {
         },
       });
       expect(membershipFindManyMock).not.toHaveBeenCalled();
+      expect(membershipCountMock).not.toHaveBeenCalled();
+      expect(membershipGroupByMock).not.toHaveBeenCalled();
       expect(visitScheduleGroupByMock).not.toHaveBeenCalled();
     },
   );
@@ -262,6 +274,12 @@ describe('/api/pharmacists GET', () => {
       }),
     );
     expect(membershipFindManyMock.mock.calls[0]?.[0]?.where).not.toHaveProperty('is_active');
+    expect(membershipGroupByMock).toHaveBeenCalledWith({
+      by: ['user_id'],
+      where: expect.objectContaining({
+        org_id: 'org_1',
+      }),
+    });
     await expect(response.json()).resolves.toMatchObject({
       data: [
         expect.objectContaining({
@@ -270,6 +288,46 @@ describe('/api/pharmacists GET', () => {
           deactivation_reason: '長期休職',
         }),
       ],
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'unique_users',
+      filters_applied: {
+        site_id: null,
+        include_collaborators: true,
+      },
+      limit: 500,
+    });
+  });
+
+  it('returns counted metadata for bounded active pharmacist membership lists', async () => {
+    membershipCountMock.mockResolvedValueOnce(3);
+
+    const response = await GET(createGetRequest('?limit=1'));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(membershipCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        is_active: true,
+        role: {
+          in: ['owner', 'admin', 'pharmacist', 'pharmacist_trainee'],
+        },
+      },
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      total_count: 3,
+      visible_count: 1,
+      hidden_count: 2,
+      truncated: true,
+      count_basis: 'memberships',
+      filters_applied: {
+        site_id: null,
+        include_collaborators: false,
+      },
+      limit: 1,
     });
   });
 
@@ -410,8 +468,55 @@ describe('/api/pharmacists GET', () => {
     const payload = await response.json();
     expect(payload).toMatchObject({
       data: [expect.objectContaining({ id: 'user_1', name: '重複 ユーザー' })],
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'unique_users',
     });
     expect(payload.data).toHaveLength(1);
+  });
+
+  it('counts collaborator lists by unique users instead of duplicate site memberships', async () => {
+    membershipGroupByMock.mockResolvedValueOnce([
+      { user_id: 'user_1' },
+      { user_id: 'user_2' },
+      { user_id: 'user_3' },
+    ]);
+
+    const response = await GET(createGetRequest('?include_collaborators=true&limit=1'));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(membershipGroupByMock).toHaveBeenCalledWith({
+      by: ['user_id'],
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        role: {
+          in: [
+            'owner',
+            'admin',
+            'pharmacist',
+            'pharmacist_trainee',
+            'clerk',
+            'driver',
+            'external_viewer',
+          ],
+        },
+      }),
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      total_count: 3,
+      visible_count: 1,
+      hidden_count: 2,
+      truncated: true,
+      count_basis: 'unique_users',
+      filters_applied: {
+        site_id: null,
+        include_collaborators: true,
+      },
+      limit: 1,
+    });
   });
 
   it('returns a sanitized no-store 500 when pharmacist listing fails unexpectedly', async () => {

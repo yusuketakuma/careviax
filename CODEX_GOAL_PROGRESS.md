@@ -25402,3 +25402,61 @@ Next loop:
   - The broad master-management/patient-information goal remains open.
   - Continue scanning capped admin master APIs such as pharmacist/staff lists, facility standards, external professionals, and patient-linked master selectors for count metadata, stale preconditions, audit-near-action gaps, and false-empty states.
   - Do not broad-stage because the worktree remains mixed dirty with operating-hours, service-areas, facilities, patient-form, and schedule-planner work.
+
+### Communication Queue Callback Schedule Focus - 2026-06-30 18:36 JST
+
+- Scope:
+  - Continued interprofessional collaboration and visit-time navigation hardening for the communication queue.
+  - Focused on callback follow-up items sourced from `VisitScheduleContactLog`, which had a concrete `schedule_id` available in the schema but still routed users to the broad schedules hub.
+- Fixed:
+  - `listCommunicationQueue` now selects `schedule_id` for callback logs.
+  - Callback queue items now route to `buildScheduleFocusHref(log.schedule_id)` when a linked visit schedule exists, preserving `/schedules` only as the no-schedule fallback.
+  - Added regression coverage proving callback queue items focus a hostile schedule ID through the shared schedule navigation helper.
+  - Unblocked current worktree type validation for the concurrently dirty pharmacist counted-metadata slice by typing `listRoles` as `MemberRole[]`; codex was notified and those pharmacist/users files were not staged by codex2.
+- Safety:
+  - Reduces wrong-day/wrong-patient navigation risk when staff follow up missed or unreachable visit-related calls from the communication queue.
+  - Schedule IDs are encoded through the existing schedule navigation helper; no raw path interpolation, PHI export, auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+  - The fallback behavior for callback logs without `schedule_id` remains unchanged.
+- Performance:
+  - Adds one scalar field to an existing bounded `visitScheduleContactLog.findMany` select.
+  - No new query, dependency, background job, network call, broad scan, unbounded loop, or render-heavy path was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/communication-queue.test.ts src/lib/schedules/navigation.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `22` tests.
+  - `pnpm exec vitest run src/server/services/communication-queue.test.ts src/lib/schedules/navigation.test.ts src/app/api/pharmacists/route.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `47` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` on communication queue, schedule navigation, and pharmacist route files: passed.
+  - `pnpm typecheck`: passed after the external pharmacist dirty-slice type unblock.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - The broad visit/report/interprofessional collaboration goal remains open.
+  - The worktree still has unrelated dirty pharmacist/users counted-metadata files owned by another slice; stage only `communication-queue` files plus this codex2 ledger entry.
+
+### Pharmacist Staff Counted Metadata - 2026-06-30 18:36 JST
+
+- Scope:
+  - Continued master-management and patient-information hardening for the staff/pharmacist master list used by patient care-team selectors, schedules, shifts, search, and the admin user-management page.
+  - Focused on preventing capped `/api/pharmacists` responses from looking complete when more staff rows or unique users exist beyond the returned page.
+- Fixed:
+  - `GET /api/pharmacists` now returns `total_count`, `visible_count`, `hidden_count`, `truncated`, `count_basis`, `filters_applied`, and `limit`.
+  - Normal pharmacist-list mode counts visible membership rows as `count_basis: "memberships"` to preserve the existing row-based response semantics.
+  - Admin collaborator mode counts distinct `user_id` values as `count_basis: "unique_users"` so users with memberships across multiple sites are not overcounted.
+  - The admin users page now consumes the count metadata, shows `先頭N件を表示 / 他N件` for truncated staff masters, and uses the API total for the total-user summary.
+  - State breakdown chips are labeled as `表示中` when hidden rows exist, avoiding a false precise status breakdown for rows the API did not return.
+- Safety:
+  - Reduces false-complete staff-master risk for patient assignment, pharmacist readiness, and admin account management.
+  - Hidden staff names, emails, phone numbers, credentials, PHI, raw internals, and secrets are not exposed; metadata contains only counts, count basis, filters, and limit.
+  - Existing `canVisit`/admin collaborator authorization, RLS request context, no-store responses, monthly visit count behavior, collaborator dedupe, and sanitized 500 logging remain intact.
+  - No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Adds one scoped `membership.count` query for normal list mode and one scoped `membership.groupBy({ by: ["user_id"] })` for collaborator mode, using the same org/site/role predicates as the bounded row query.
+  - No new dependency, background job, broad scan outside the same predicate, unbounded loop, network call, or render-heavy path was added.
+- Validation:
+  - Read `docs/ui-ux-design-guidelines.md` and Next route-handler docs before the API/UI-facing change.
+  - `pnpm exec vitest run src/app/api/pharmacists/route.test.ts 'src/app/(dashboard)/admin/users/users-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `2` files / `35` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` on pharmacist API/admin-users files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - The broad master-management/patient-information goal remains open.
+  - Continue scanning capped admin master APIs such as facility standards, external professionals, staff metrics/KPI surfaces, and patient-linked selectors for count metadata, stale preconditions, audit-near-action gaps, and false-empty states.
+  - Separate unrelated dirty `src/server/services/communication-queue*` changes appeared during this slice and were preserved outside the owned commit scope.

@@ -1,4 +1,5 @@
 import { unstable_rethrow } from 'next/navigation';
+import type { MemberRole, Prisma } from '@prisma/client';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
@@ -84,60 +85,76 @@ async function authenticatedGET(req: NextRequest) {
     );
     const nextMonthStart = new Date(Date.UTC(currentYear, currentMonth, 1));
 
-    const { pharmacists, monthlyVisitCounts } = await withOrgContext(
+    const listRoles: MemberRole[] = includeCollaborators
+      ? ['owner', ...MANAGEABLE_MEMBER_ROLES]
+      : ['owner', 'admin', 'pharmacist', 'pharmacist_trainee'];
+    const membershipWhere = {
+      org_id: ctx.orgId,
+      ...(includeCollaborators ? {} : { is_active: true }),
+      role: {
+        in: listRoles,
+      },
+      ...(siteId ? { site_id: siteId } : {}),
+    } satisfies Prisma.MembershipWhereInput;
+    const countBasis = includeCollaborators ? 'unique_users' : 'memberships';
+
+    const { pharmacists, monthlyVisitCounts, totalCount } = await withOrgContext(
       ctx.orgId,
       async (tx) => {
-        const pharmacistMemberships = await tx.membership.findMany({
-          where: {
-            org_id: ctx.orgId,
-            ...(includeCollaborators ? {} : { is_active: true }),
-            role: {
-              in: includeCollaborators
-                ? ['owner', ...MANAGEABLE_MEMBER_ROLES]
-                : ['owner', 'admin', 'pharmacist', 'pharmacist_trainee'],
-            },
-            ...(siteId ? { site_id: siteId } : {}),
-          },
-          include: {
-            user: {
-              select: {
-                id: true,
-                cognito_username: true,
-                name: true,
-                name_kana: true,
-                email: true,
-                phone: true,
-                is_active: true,
-                account_status: true,
-                invited_at: true,
-                last_invited_at: true,
-                activated_at: true,
-                deactivated_at: true,
-                deactivation_reason: true,
-                updated_at: true,
-                max_daily_visits: true,
-                max_weekly_visits: true,
-                max_travel_minutes: true,
-                can_accept_emergency: true,
-                visit_specialties: true,
-                coverage_area: true,
-                credentials: {
-                  select: {
-                    certification_type: true,
+        const totalCountPromise = includeCollaborators
+          ? tx.membership
+              .groupBy({
+                by: ['user_id'],
+                where: membershipWhere,
+              })
+              .then((rows) => rows.length)
+          : tx.membership.count({ where: membershipWhere });
+
+        const [pharmacistMemberships, totalMembershipCount] = await Promise.all([
+          tx.membership.findMany({
+            where: membershipWhere,
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  cognito_username: true,
+                  name: true,
+                  name_kana: true,
+                  email: true,
+                  phone: true,
+                  is_active: true,
+                  account_status: true,
+                  invited_at: true,
+                  last_invited_at: true,
+                  activated_at: true,
+                  deactivated_at: true,
+                  deactivation_reason: true,
+                  updated_at: true,
+                  max_daily_visits: true,
+                  max_weekly_visits: true,
+                  max_travel_minutes: true,
+                  can_accept_emergency: true,
+                  visit_specialties: true,
+                  coverage_area: true,
+                  credentials: {
+                    select: {
+                      certification_type: true,
+                    },
                   },
                 },
               },
-            },
-            site: {
-              select: {
-                id: true,
-                name: true,
+              site: {
+                select: {
+                  id: true,
+                  name: true,
+                },
               },
             },
-          },
-          orderBy: [{ user: { name_kana: 'asc' } }],
-          take: limit,
-        });
+            orderBy: [{ user: { name_kana: 'asc' } }],
+            take: limit,
+          }),
+          totalCountPromise,
+        ]);
 
         const pharmacistIds = pharmacistMemberships.map((membership) => membership.user.id);
         const visitCounts =
@@ -164,6 +181,7 @@ async function authenticatedGET(req: NextRequest) {
         return {
           pharmacists: pharmacistMemberships,
           monthlyVisitCounts: visitCounts,
+          totalCount: totalMembershipCount,
         };
       },
       { requestContext: ctx },
@@ -213,8 +231,22 @@ async function authenticatedGET(req: NextRequest) {
       monthly_visit_count: monthlyVisitCountByUserId.get(membership.user.id) ?? 0,
     }));
 
+    const visibleData = includeCollaborators ? dedupePharmacistsByUserId(data) : data;
+    const visibleCount = visibleData.length;
+    const hiddenCount = Math.max(totalCount - visibleCount, 0);
+
     return success({
-      data: includeCollaborators ? dedupePharmacistsByUserId(data) : data,
+      data: visibleData,
+      total_count: totalCount,
+      visible_count: visibleCount,
+      hidden_count: hiddenCount,
+      truncated: hiddenCount > 0,
+      count_basis: countBasis,
+      filters_applied: {
+        site_id: siteId,
+        include_collaborators: includeCollaborators,
+      },
+      limit,
     });
   });
 }
