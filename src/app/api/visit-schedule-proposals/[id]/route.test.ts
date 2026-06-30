@@ -892,6 +892,8 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(proposalFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(proposalUpdateMock).not.toHaveBeenCalled();
@@ -910,10 +912,45 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
     });
+    expect(proposalFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(proposalUpdateMock).not.toHaveBeenCalled();
+    expect(contactLogCreateMock).not.toHaveBeenCalled();
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when patch auth plumbing fails before loading the proposal', async () => {
+    requireAuthContextMock.mockRejectedValueOnce(
+      new Error('raw patch auth patient 山田 花子 token secret proposal memo'),
+    );
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw patch auth');
+    expect(bodyText).not.toContain('山田 花子');
+    expect(bodyText).not.toContain('token secret');
     expect(proposalFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(proposalUpdateMock).not.toHaveBeenCalled();
@@ -2725,6 +2762,46 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     });
     expect(scheduleUpdateManyMock).not.toHaveBeenCalled();
     expect(scheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects proposal confirmation when an active schedule for the same case/date already exists', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+      }),
+    );
+    scheduleFindFirstMock.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: 'schedule_duplicate',
+    });
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同一ケース・同一日付の訪問予定が既に存在します。既存予定を確認してください',
+    });
+    expect(scheduleFindFirstMock).toHaveBeenNthCalledWith(2, {
+      where: {
+        org_id: 'org_1',
+        case_id: 'case_1',
+        visit_type: 'regular',
+        scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
+        schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+      },
+      select: { id: true },
+    });
+    expect(scheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+    expect(proposalUpdateMock).not.toHaveBeenCalled();
+    expect(contactLogUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('excludes the reschedule source schedule from proposal confirmation overlap checks', async () => {

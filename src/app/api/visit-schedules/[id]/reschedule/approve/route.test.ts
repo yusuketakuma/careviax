@@ -233,6 +233,13 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: {
+        orgId: 'org_1',
+        userId: 'admin_1',
+        role: 'admin',
+      },
+    });
     expect(visitScheduleOverrideUpdateManyMock).toHaveBeenCalledWith({
       where: {
         id: 'override_1',

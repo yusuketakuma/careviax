@@ -206,7 +206,10 @@ export async function GET(req: NextRequest, routeContext: { params: Promise<{ id
   }
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedPATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問予定の更新権限がありません',
@@ -704,6 +707,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
 
   return success(schedule.schedule);
+}
+
+export async function PATCH(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }
 
 function readPatchTimeString(value: Date | null | undefined) {

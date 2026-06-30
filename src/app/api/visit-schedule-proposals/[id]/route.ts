@@ -48,6 +48,7 @@ import { validateVisitScheduleBlockingBillingRequirements } from '@/server/servi
 import {
   findVisitScheduleTimeConflict,
   getVisitScheduleTimeConflictMessage,
+  type VisitScheduleTimeConflictKind,
 } from '@/server/services/visit-schedule-service';
 import { buildProposalRejectAuditChanges } from '@/lib/audit-logs/proposal-rejection';
 import {
@@ -161,6 +162,20 @@ class VisitProposalOverrideStateChangedError extends Error {
   constructor() {
     super('visit proposal reschedule override state changed');
     this.name = 'VisitProposalOverrideStateChangedError';
+  }
+}
+
+class VisitProposalConfirmTimeConflictError extends Error {
+  constructor(readonly conflictKind: VisitScheduleTimeConflictKind) {
+    super('visit proposal confirmation time conflict');
+    this.name = 'VisitProposalConfirmTimeConflictError';
+  }
+}
+
+class VisitProposalConfirmDuplicateActiveScheduleError extends Error {
+  constructor() {
+    super('visit proposal confirmation duplicate active schedule');
+    this.name = 'VisitProposalConfirmDuplicateActiveScheduleError';
   }
 }
 
@@ -821,7 +836,10 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
   }
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedPATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問候補の更新権限がありません',
@@ -1619,10 +1637,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       excludeScheduleId: confirmedProposal.reschedule_source_schedule_id ?? undefined,
     });
     if (timeConflict) {
-      return {
-        error: 'time_conflict' as const,
-        conflictKind: timeConflict.kind,
-      };
+      throw new VisitProposalConfirmTimeConflictError(timeConflict.kind);
+    }
+
+    const duplicateActiveSchedule = await tx.visitSchedule.findFirst({
+      where: {
+        org_id: ctx.orgId,
+        case_id: confirmedProposal.case_id,
+        visit_type: confirmedProposal.visit_type,
+        scheduled_date: confirmedProposal.proposed_date,
+        ...(confirmedProposal.reschedule_source_schedule_id
+          ? { id: { not: confirmedProposal.reschedule_source_schedule_id } }
+          : {}),
+        schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+      },
+      select: { id: true },
+    });
+    if (duplicateActiveSchedule) {
+      throw new VisitProposalConfirmDuplicateActiveScheduleError();
     }
 
     const lockedRouteSchedules = await tx.visitSchedule.findMany({
@@ -1831,6 +1863,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     return { proposal, schedule, alreadyFinalized: false };
   }).catch((cause: unknown) => {
+    if (cause instanceof VisitProposalConfirmTimeConflictError) {
+      return {
+        error: 'time_conflict' as const,
+        conflictKind: cause.conflictKind,
+      };
+    }
+    if (cause instanceof VisitProposalConfirmDuplicateActiveScheduleError) {
+      return {
+        error: 'duplicate_active_schedule' as const,
+      };
+    }
     if (cause instanceof VisitProposalOverrideStateChangedError) {
       return {
         error: 'override_state_changed' as const,
@@ -1859,6 +1902,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     if (result.error === 'time_conflict') {
       return conflict(getVisitScheduleTimeConflictMessage(result.conflictKind));
+    }
+    if (result.error === 'duplicate_active_schedule') {
+      return conflict('同一ケース・同一日付の訪問予定が既に存在します。既存予定を確認してください');
     }
     if (result.error === 'finalized_schedule_unavailable') {
       return conflict('確定済み訪問を取得できません。再読み込みしてください');
@@ -1893,4 +1939,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       proposal: omitProposalRejectReason(result.proposal),
     },
   });
+}
+
+export async function PATCH(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedPATCH(req, context));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }
