@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0146 JST
+
+- current task: guard care-report delivery-record retry and final status claims.
+- files inspected: `git status --short --branch --untracked-files=all`, `src/app/api/care-reports/[id]/send/route.ts` diff, existing send route tests around delivery-record `updateMany` claims, and focused send route test output.
+- files changed: `src/app/api/care-reports/[id]/send/route.ts`, `src/app/api/care-reports/[id]/send/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: delivery-record retry and final sent/failed writes could update by id after a prior lookup, leaving room for concurrent send/retry requests to reuse stale delivery state.
+- security risks found: reduced duplicate/stale delivery-status side effects by claiming failed retries with org/report/channel/status/`updated_at` and claiming draft delivery rows before marking them `sent` or `failed`. Existing recipient validation, idempotency behavior, sanitized conflicts, no-store wrappers, PHI/error sanitization, external-send boundaries, migrations, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: replaces id-only delivery updates with narrow conditional `updateMany` claims. No new broad scans, dependencies, jobs, extra external calls, render paths, or unbounded loops were added.
+- validation commands: `pnpm vitest run 'src/app/api/care-reports/[id]/send/route.test.ts' --reporter=dot --testTimeout=60000`; `pnpm vitest run 'src/app/api/care-reports/[id]/send/route.test.ts' src/server/services/pdf-care-report-record.test.ts src/server/services/pdf-management-plan-record.test.ts src/server/services/pdf-tracing-report-record.test.ts src/server/services/pdf-visit-record.test.ts src/server/services/pdf-patient-summary.test.ts src/server/services/pdf-conference-note-record.test.ts src/server/services/pdf-medication-record.test.ts src/server/services/pdf-documents.test.tsx src/lib/patient/operational-summary.test.ts src/server/services/visit-schedule-patient-summary.test.ts --reporter=dot --testTimeout=60000`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck --pretty false`; `pnpm typecheck:no-unused --pretty false`; scoped ESLint; scoped Prettier check; `git diff --check`.
+- validation results: focused send route Vitest passed `1` file / `59` tests; combined focused suite passed `11` files / `101` tests; typecheck, no-unused, scoped ESLint, scoped Prettier check, and diff-check passed.
+- remaining work: broad master-management / patient-information objective remains open. Schedule/day-view API/UI consumption of patient operational summary remains a follow-up.
+- next action: commit the remaining ledger update, then continue schedule/day-view patient operational summary wiring.
+
 ### 20260701-0143 JST
 
 - current task: unify minimal patient archive summary across PDF record loaders and common PDF rendering.
@@ -28,10 +41,10 @@ Backup directory:
 - bugs found: PDF record loaders and common document rendering did not carry or render archived-patient state consistently, so printed/exported documents could omit read-only archived context even when screen/shared surfaces showed it.
 - security risks found: reduced archived-patient wrong-use risk in generated documents while keeping archive output minimal; archive ownership fields such as `archived_by` remain excluded. Existing auth/assignment checks, PDF-safe not-found handling, no-store route wrappers, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
 - performance issues found: adds only narrow `archived_at` selects to existing patient lookups and conditional key-value rows in PDF rendering. No new broad scans, external calls, dependencies, jobs, or unbounded loops were added.
-- validation commands: `pnpm exec vitest run src/server/services/pdf-care-report-record.test.ts src/server/services/pdf-management-plan-record.test.ts src/server/services/pdf-tracing-report-record.test.ts src/server/services/pdf-visit-record.test.ts src/server/services/pdf-patient-summary.test.ts src/server/services/pdf-conference-note-record.test.ts src/server/services/pdf-medication-record.test.ts src/server/services/pdf-documents.test.tsx --reporter=dot --testTimeout=60000`; `pnpm typecheck --pretty false`; `pnpm typecheck:no-unused --pretty false`; `pnpm lint`; `pnpm format:check`; `git diff --check`; read-only verifier subagent review.
-- validation results: focused PDF Vitest passed `8` files / `37` tests; typecheck, no-unused, lint, format check, and diff-check passed; verifier reported no issues.
+- validation commands: `pnpm vitest run src/server/services/pdf-care-report-record.test.ts src/server/services/pdf-management-plan-record.test.ts src/server/services/pdf-tracing-report-record.test.ts src/server/services/pdf-visit-record.test.ts src/server/services/pdf-patient-summary.test.ts src/server/services/pdf-conference-note-record.test.ts src/server/services/pdf-medication-record.test.ts src/server/services/pdf-documents.test.tsx --reporter=dot --testTimeout=60000`; combined PDF + patient-summary focused suite; combined send + PDF + patient-summary focused suite; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck --pretty false`; `pnpm typecheck:no-unused --pretty false`; scoped ESLint; scoped Prettier check; `git diff --check`.
+- validation results: focused PDF Vitest passed `8` files / `35` tests; combined PDF + patient-summary focused suite passed `10` files / `38` tests; combined send + PDF + patient-summary focused suite passed `11` files / `101` tests; typecheck, no-unused, scoped ESLint, scoped Prettier check, and diff-check passed.
 - remaining work: broad master-management / patient-information objective remains open. Schedule/day-view API/UI consumption of patient operational summary remains a follow-up.
-- next action: commit PDF patient archive summary unification separately, then continue patient operational summary foundation when ownership is clear.
+- next action: commit the remaining ledger update, then continue schedule/day-view patient operational summary wiring.
 
 ### 20260701-0139 JST
 
@@ -57,7 +70,7 @@ Backup directory:
 - validation commands: `pnpm vitest run 'src/app/api/care-reports/[id]/send/route.test.ts' src/lib/patient/operational-summary.test.ts src/server/services/visit-schedule-patient-summary.test.ts --reporter=dot --testTimeout=60000`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck --pretty false`; `pnpm typecheck:no-unused --pretty false`; scoped ESLint on changed send and patient-summary files; scoped Prettier check; `git diff --check`.
 - validation results: focused Vitest passed `3` files / `62` tests; typecheck, no-unused, scoped ESLint, scoped Prettier check, and diff-check passed.
 - remaining work: broad master-management / patient-information objective remains open. The schedule/day-view include, API, and UI consumers still need follow-up wiring to use this contract.
-- next action: commit the patient operational summary foundation separately, then commit progress ledgers.
+- next action: commit the remaining ledger update, then continue schedule/day-view patient operational summary wiring.
 
 ### 20260701-0130 JST
 

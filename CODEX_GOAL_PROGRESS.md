@@ -30,6 +30,29 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Care Report Delivery Record Claim Guard - 2026-07-01 01:46 JST
+
+- Scope:
+  - Continued report / interprofessional collaboration integrity hardening.
+  - Focused on delivery-record retry and final sent/failed status claims inside `POST /api/care-reports/[id]/send`.
+- Fixed:
+  - Retrying a previously failed same-recipient delivery now reclaims the row by org, report, channel, failed status, and `updated_at`.
+  - Draft delivery records are claimed by org, report, draft status, and delivery intent before being marked `sent` or `failed`.
+- Safety:
+  - Reduces duplicate or stale delivery-status side effects under concurrent send/retry requests.
+  - Preserves recipient validation, idempotency behavior, sanitized conflict responses, no-store wrappers, PHI/error sanitization, external-send boundaries, migrations, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Replaces id-only delivery updates with narrow conditional `updateMany` claims.
+  - No new broad scan, dependency, background job, external call beyond the existing send path, or unbounded loop was added.
+- Validation:
+  - `pnpm vitest run 'src/app/api/care-reports/[id]/send/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `1` file / `59` tests.
+  - Combined send + PDF + patient-summary focused suite passed `11` files / `101` tests.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck --pretty false`: passed.
+  - `pnpm typecheck:no-unused --pretty false`: passed.
+  - Scoped ESLint, scoped Prettier check, and `git diff --check`: passed.
+- Remaining:
+  - Broad master-management / patient-information objective remains open.
+
 ### PDF Patient Archive Summary Unification - 2026-07-01 01:43 JST
 
 - Scope:
