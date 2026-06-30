@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-2041 JST
+
+- current task: guard vehicle route-duration caps when reorder changes affect an already assigned vehicle without changing `vehicle_resource_id`.
+- files inspected: `git status --short --branch --untracked-files=all`, `git log --oneline -n 10`, local Next Route Handler docs, `src/app/api/visit-schedules/reorder/route.ts`, `src/app/api/visit-schedules/reorder/route.test.ts`, `src/server/services/visit-schedule-service.ts`, `src/server/services/visit-schedule-planner.ts`, commit `c31f7510`, and focused validation output.
+- files changed: `src/app/api/visit-schedules/reorder/route.ts`, `src/app/api/visit-schedules/reorder/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Recurring generation route-duration changes are already in commit `c31f7510`; this slice is the reorder-only follow-up.
+- bugs found: the base reorder guard covered explicit vehicle assignment changes, but route-order/date/pharmacist changes on a schedule that already had `vehicle_resource_id` could still reshape the route without loading that vehicle or applying `max_route_duration_minutes`.
+- security risks found: reduced false-ok vehicle assignment risk on patient visit scheduling without exposing hidden patient route details. Existing auth, org scoping, no-store/sanitized error behavior, audit/notification behavior, live DB safety, external-send safety, migrations, secret handling, push/deploy, and destructive-operation boundaries remain intact.
+- performance issues found: reuses the existing route-duration estimator and only adds the already assigned vehicle to the affected vehicle/date constraint cells when a route-shaping field changes. No dependency, background job, broad scan, unbounded loop, or external routing requirement was added.
+- validation commands: `pnpm exec vitest run src/app/api/visit-schedules/generate/route.test.ts src/app/api/visit-schedules/reorder/route.test.ts src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`; current-head follow-up `pnpm exec vitest run src/app/api/visit-schedules/reorder/route.test.ts src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`; scoped Prettier write/check; scoped ESLint; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`.
+- validation results: broad focused Vitest passed `3` files / `109` tests; current-head reorder follow-up Vitest passed `2` files / `65` tests, with expected sanitized no-store 500 stderr cases in route tests. Scoped Prettier, scoped ESLint, scoped diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint` passed.
+- remaining work: broad master-management/patient-information/schedule safety goal remains open. Continue scanning remaining final-save paths and capped patient/master selectors.
+- next action: stage and commit only the reorder route-duration follow-up slice, send agmsg FYI, then re-check dirty status.
+
 ### 20260630-2035 JST
 
 - current task: focus patient-board reply-wait cards on the exact pending report when a failed or response-waiting care report exists.
@@ -13595,7 +13608,20 @@ Backup directory:
 - bugs found: `PATCH /api/visit-schedules/reorder` validated selected vehicle existence, site, assignment status, and stop count, but route adoption could assign a vehicle to multiple same-day schedules without enforcing the vehicle's persisted `max_route_duration_minutes`.
 - security risks found: reduced unsafe route adoption risk for patient visit schedules by checking authoritative vehicle/site constraints inside the existing serializable guarded write. The implementation reads only org-scoped vehicle/site coordinates, existing same-day vehicle schedules, and primary residence coordinates needed for route estimation. No new PHI surface, raw internals, hidden schedule detail response, or secrets are exposed. Existing auth, assignment access, duplicate route-order checks, shift validation, status locks, optimistic guarded update, audit, no-store, and notification behavior remain intact. No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation changed.
 - performance issues found: reused the existing batched vehicle-capacity lookup for route-duration point loading when a selected vehicle has `max_route_duration_minutes`. No extra query is added for vehicles without route-duration limits. No new dependency, background job, broad scan, unbounded loop, or network requirement was added; the existing route estimator fallback remains available without a routing provider.
-- validation commands: focused generate/reorder/planner Vitest; scoped ESLint; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
-- validation results: focused generate/reorder/planner suite passed `3` files / `109` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- validation commands: focused `pnpm vitest run src/app/api/visit-schedules/generate/route.test.ts`; focused `pnpm vitest run src/app/api/visit-schedules/reorder/route.test.ts`; scoped ESLint on generate/reorder route files; scoped Prettier check on generate/reorder route files; scoped `git diff --check`; `pnpm typecheck`.
+- validation results: focused generate suite passed `1` file / `45` tests and focused reorder suite passed `1` file / `33` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, and `pnpm typecheck` passed.
 - remaining work: the broad schedule-management goal remains open. Pure route-order changes for already assigned vehicles and proposal finalization/reorder paths still need review for persisted vehicle-duration or stale route-plan gaps.
 - next action: inspect already-assigned vehicle route-order mutations and proposal finalization/reorder save boundaries after rechecking dirty ownership.
+
+### 20260630-2043 JST
+
+- current task: close the remaining `visit-schedules/reorder` gap for route-order changes on schedules that already have a persisted vehicle resource.
+- files inspected: `src/app/api/visit-schedules/reorder/route.ts` and `src/app/api/visit-schedules/reorder/route.test.ts`.
+- files changed: `src/app/api/visit-schedules/reorder/route.ts`, `src/app/api/visit-schedules/reorder/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: after adding route-duration validation for vehicle assignment, pure route-order/date/pharmacist mutations on schedules that already had `vehicle_resource_id` could still bypass persisted vehicle route-duration validation because the vehicle lookup was driven only by `item.vehicle_resource_id`.
+- security risks found: reduced stale vehicle-route finalization risk by validating the effective persisted vehicle for route mutations and by adding a guarded `vehicle_resource_id` predicate to route updates when a vehicle is already assigned. No new response exposure, PHI surface, permission change, live DB operation, external send, or secret handling was added.
+- performance issues found: existing-vehicle route mutations now load the relevant vehicle only when a route/date/pharmacist mutation has an effective vehicle resource. No extra query is added for unassigned schedules.
+- validation commands: focused `pnpm vitest run src/app/api/visit-schedules/reorder/route.test.ts`; scoped ESLint; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`.
+- validation results: focused reorder route suite passed `1` file / `34` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint` passed.
+- remaining work: the broad schedule-management goal remains open. Continue reviewing proposal finalization/reorder and reschedule save boundaries for persisted vehicle-duration or stale route-plan gaps.
+- next action: inspect visit-schedule proposal confirmation/reorder paths and reschedule route boundaries after rechecking dirty ownership.

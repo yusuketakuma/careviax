@@ -30,6 +30,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Visit Schedule Reorder Route Duration Follow-up - 2026-06-30 20:41 JST
+
+- Scope:
+  - Continued schedule-management and vehicle-resource master safety hardening.
+  - Focused on route reorder changes after commit `c31f7510`, complementing the previously committed proposal/manual/generation route-duration guards.
+- Fixed:
+  - Reorder now loads an already assigned vehicle when route-shaping fields change even if `vehicle_resource_id` is omitted from the request.
+  - Route-order/date/pharmacist changes now validate `max_route_duration_minutes` for the existing vehicle/date cell before persisting reorder updates.
+  - The optimistic update guard now includes the existing vehicle assignment for route-shaping changes, so concurrent vehicle changes cannot silently bypass the duration check.
+- Safety:
+  - Reduces false-ok route changes where persisted reorder operations could bypass an existing vehicle-resource master constraint.
+  - Hidden same-vehicle patient route details are used only server-side for estimation and are not returned to clients.
+  - Existing auth, org scoping, conflict handling, no-store/sanitized errors, audit/notification behavior, migrations, live DB operations, external sends, secret handling, push/deploy, and destructive operations remain unchanged.
+- Performance:
+  - Reuses existing route-duration estimator and vehicle/date constraint lookup.
+  - Adds only the existing vehicle assignment to the constraint cells when route-shaping fields change.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-schedules/generate/route.test.ts src/app/api/visit-schedules/reorder/route.test.ts src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `109` tests.
+  - `pnpm exec vitest run src/app/api/visit-schedules/reorder/route.test.ts src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`: passed against current HEAD plus this follow-up, `2` files / `65` tests.
+  - Scoped Prettier write/check, scoped ESLint, and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - Continue scanning final-save paths and capped patient/master selectors under the broad goal.
+
 ### Patient Board Report Reply Focus - 2026-06-30 20:35 JST
 
 - Scope:
@@ -26286,10 +26312,36 @@ Next loop:
   - Adds route-duration estimation only for selected vehicles that define `max_route_duration_minutes`.
   - No new dependency, background job, broad scan, unbounded loop, or network requirement was added; local coordinate fallback remains available when no routing provider is configured.
 - Validation:
-  - `pnpm exec vitest run src/app/api/visit-schedules/generate/route.test.ts src/app/api/visit-schedules/reorder/route.test.ts src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `109` tests.
+  - `pnpm vitest run src/app/api/visit-schedules/generate/route.test.ts`: passed, `1` file / `45` tests.
+  - `pnpm vitest run src/app/api/visit-schedules/reorder/route.test.ts`: passed, `1` file / `33` tests.
   - Scoped Prettier check, scoped ESLint, and scoped `git diff --check` on generate/reorder route files: passed.
   - `pnpm typecheck`: passed.
-  - `pnpm typecheck:no-unused`: passed.
 - Remaining:
   - The broad schedule-management goal remains open.
   - Continue reviewing pure route-order changes for already assigned vehicles and proposal finalization/reorder save paths for persisted vehicle-duration and stale route-plan gaps.
+
+### Existing Vehicle Route-Order Duration Enforcement - 2026-06-30 20:43 JST
+
+- Scope:
+  - Continued `PATCH /api/visit-schedules/reorder` hardening for schedules that already have a persisted `vehicle_resource_id`.
+  - Focused on route-order/date/pharmacist mutations that do not explicitly send `vehicle_resource_id`.
+- Fixed:
+  - Reorder now derives the effective vehicle resource from the existing schedule when a route mutation keeps an already assigned vehicle.
+  - Existing-vehicle route mutations now participate in the same max-stops and max-route-duration validation cells as newly assigned vehicles.
+  - Guarded writes now include `vehicle_resource_id` when a route mutation depends on an already assigned vehicle, closing a stale vehicle-change window before `updateMany`.
+  - Regression coverage verifies a route-order-only payload is rejected before write when the existing vehicle's route duration would exceed 30 minutes.
+- Safety:
+  - Reduces stale vehicle-route finalization risk without adding response exposure.
+  - Existing authorization, status locks, duplicate route-order validation, audit behavior, and notification behavior remain intact.
+- Performance:
+  - Loads vehicle constraints only for route mutations whose effective schedule already has a vehicle resource.
+  - No extra query is added for unassigned route-order changes.
+- Validation:
+  - `pnpm vitest run src/app/api/visit-schedules/reorder/route.test.ts`: passed, `1` file / `34` tests.
+  - `pnpm exec eslint src/app/api/visit-schedules/reorder/route.ts src/app/api/visit-schedules/reorder/route.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/visit-schedules/reorder/route.ts src/app/api/visit-schedules/reorder/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/visit-schedules/reorder/route.ts src/app/api/visit-schedules/reorder/route.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - The broad schedule-management goal remains open.
+  - Continue reviewing proposal finalization/reorder and reschedule save boundaries for persisted vehicle-duration and stale route-plan gaps.

@@ -1414,6 +1414,108 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     expectNoWriteAuditOrNotify();
   });
 
+  it('rejects route order changes for already assigned vehicles when route duration would be exceeded', async () => {
+    vehicleFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'vehicle_1',
+        site_id: 'site_1',
+        label: '軽バン1号',
+        max_stops: 8,
+        max_route_duration_minutes: 30,
+        travel_mode: 'DRIVE',
+        site: {
+          address: '薬局',
+          lat: 35.681236,
+          lng: 139.767125,
+        },
+      },
+    ]);
+    scheduleFindManyMock.mockImplementation(
+      ({
+        where,
+      }: {
+        where: { id?: { in?: string[] }; vehicle_resource_id?: { in?: string[] } };
+      }) => {
+        if (where.vehicle_resource_id?.in) return Promise.resolve([]);
+        return Promise.resolve([
+          {
+            id: 'schedule_1',
+            case_id: 'case_1',
+            pharmacist_id: 'pharmacist_1',
+            scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+            time_window_start: null,
+            time_window_end: null,
+            confirmed_at: null,
+            route_order: 2,
+            site_id: 'site_1',
+            schedule_status: 'planned',
+            vehicle_resource_id: 'vehicle_1',
+            version: 1,
+            case_: {
+              patient: {
+                residences: [
+                  {
+                    address: '近隣患者宅',
+                    lat: 35.681236,
+                    lng: 139.78,
+                  },
+                ],
+              },
+            },
+          },
+          {
+            id: 'schedule_2',
+            case_id: 'case_1',
+            pharmacist_id: 'pharmacist_1',
+            scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+            time_window_start: null,
+            time_window_end: null,
+            confirmed_at: null,
+            route_order: 1,
+            site_id: 'site_1',
+            schedule_status: 'planned',
+            vehicle_resource_id: 'vehicle_1',
+            version: 1,
+            case_: {
+              patient: {
+                residences: [
+                  {
+                    address: '遠方患者宅',
+                    lat: 35.681236,
+                    lng: 139.95,
+                  },
+                ],
+              },
+            },
+          },
+        ]);
+      },
+    );
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [
+          { schedule_id: 'schedule_1', route_order: 1 },
+          { schedule_id: 'schedule_2', route_order: 2 },
+        ],
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: expect.stringContaining('上限 30分を超えます'),
+    });
+    expect(scheduleUpdateManyMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'schedule_1',
+          vehicle_resource_id: 'vehicle_1',
+        }),
+      }),
+    );
+    expectNoWriteAuditOrNotify();
+  });
+
   it('rejects route order changes for confirmed visits', async () => {
     scheduleFindManyMock.mockResolvedValueOnce([
       {

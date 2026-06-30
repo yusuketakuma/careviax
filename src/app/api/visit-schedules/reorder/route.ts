@@ -516,7 +516,16 @@ const authenticatedPATCH = withAuthContext(
           const vehicleResourceIds = Array.from(
             new Set(
               effectiveUpdates
-                .map((item) => item.vehicle_resource_id)
+                .map((item) => {
+                  const schedule = scheduleById.get(item.schedule_id);
+                  const routeMutationRequested =
+                    item.route_order !== undefined ||
+                    item.scheduled_date !== undefined ||
+                    item.pharmacist_id !== undefined;
+                  if (item.vehicle_resource_id !== undefined) return item.vehicle_resource_id;
+                  if (routeMutationRequested) return schedule?.vehicle_resource_id ?? null;
+                  return null;
+                })
                 .filter((value): value is string => typeof value === 'string' && value.length > 0),
             ),
           );
@@ -552,19 +561,29 @@ const authenticatedPATCH = withAuthContext(
 
           const vehicleUpdateTargets = effectiveUpdates
             .map((item) => {
-              if (item.vehicle_resource_id === undefined) return null;
               const schedule = scheduleById.get(item.schedule_id);
               if (!schedule) return null;
               const targetDate = item.scheduled_date ?? formatUtcDateKey(schedule.scheduled_date);
               const targetPharmacistId = item.pharmacist_id ?? schedule.pharmacist_id;
               const targetShift = shiftByTarget.get(`${targetPharmacistId}:${targetDate}`) ?? null;
               const targetSiteId = targetShift?.site_id ?? schedule.site_id;
+              const routeMutationRequested =
+                item.route_order !== undefined ||
+                item.scheduled_date !== undefined ||
+                item.pharmacist_id !== undefined;
+              const vehicleResourceId =
+                item.vehicle_resource_id !== undefined
+                  ? item.vehicle_resource_id
+                  : routeMutationRequested
+                    ? schedule.vehicle_resource_id
+                    : undefined;
+              if (vehicleResourceId === undefined) return null;
               return {
                 item,
                 schedule,
                 targetDate,
                 targetSiteId,
-                vehicleResourceId: item.vehicle_resource_id,
+                vehicleResourceId,
               };
             })
             .filter((item): item is NonNullable<typeof item> => Boolean(item));
@@ -812,6 +831,13 @@ const authenticatedPATCH = withAuthContext(
               if (!schedule || !targetDate || !targetPharmacistId) {
                 throw new VisitScheduleReorderConflictError();
               }
+              const routeMutationRequested =
+                item.route_order !== undefined ||
+                item.scheduled_date !== undefined ||
+                item.pharmacist_id !== undefined;
+              const shouldGuardVehicleResource =
+                item.vehicle_resource_id !== undefined ||
+                (routeMutationRequested && schedule.vehicle_resource_id != null);
 
               const updateResult = await tx.visitSchedule.updateMany({
                 where: {
@@ -821,7 +847,7 @@ const authenticatedPATCH = withAuthContext(
                   scheduled_date: schedule.scheduled_date,
                   confirmed_at: schedule.confirmed_at,
                   version: schedule.version,
-                  ...(item.vehicle_resource_id !== undefined
+                  ...(shouldGuardVehicleResource
                     ? { vehicle_resource_id: schedule.vehicle_resource_id }
                     : {}),
                   ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
