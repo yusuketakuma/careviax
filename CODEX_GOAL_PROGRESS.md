@@ -117,6 +117,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Broad master-management, patient-information, report, schedule, and multi-professional cooperation objective remains open.
   - Planner still has broader route optimization and additional candidate-pruning follow-ups.
 
+### Facility Master Real Data Editor - 2026-07-01 05:45 JST
+
+- Scope:
+  - Continued master-management and patient-information implementation on `/admin/facilities`.
+  - Focused on replacing the shared fabricated `MasterEditorView` sample screen with a real facility master management surface backed by the existing facility CRUD APIs.
+- Fixed:
+  - `/admin/facilities` now renders a real admin page with `AdminPageHeader`, facility list, local search, count/status metadata, loading/error/empty separation, and row actions.
+  - Added `FacilitiesContent` with real `GET /api/admin/facilities` reads, new facility `POST`, facility `PATCH`, delete confirmation, editable visit acceptance times/weekdays, notes, and facility contact rows.
+  - Edit saves include `expected_updated_at` from the displayed facility version, so stale facility/contact writes use the OCC contract already enforced by the backend.
+  - Added shared admin facility API path helpers using `encodePathSegment`, including fail-closed exact dot-segment handling.
+  - Regression coverage proves the page no longer renders sample master rows, delegates org headers/path helpers, sends `expected_updated_at` and contacts on PATCH, normalizes create payloads, fails closed before PATCH on dot-segment ids, and does not collapse fetch errors into an empty state.
+- Safety:
+  - Reduces false-operational master risk where a critical patient destination master looked editable but saved nothing.
+  - Preserves existing canVisit/canAdmin API permissions, facility OCC backend checks, org scoping, no-store response behavior, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+  - Facility deletion remains confirmation-gated in UI and disabled when linked patient residences are visible.
+- Performance:
+  - Adds one bounded React Query list read and local filtering over the loaded facility list; no new backend query, dependency, background job, external call, unbounded loop, or render-heavy polling was added.
+- Validation:
+  - Facility UI/path focused Vitest passed `2` files / `15` tests.
+  - Facility UI/path + admin facility API suite passed `4` files / `36` tests with the expected sanitized-500 route log.
+  - Scoped ESLint and scoped Prettier check on facility UI/path files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master-management and patient-information objective remains open.
+  - Facility unit/floor management remains backend-supported but not yet surfaced in this UI slice.
+  - Concurrent dirty CareReport list and VisitSchedule audit files remain outside this facility commit.
+
 ### Visit Planner Route Insertion Matrix - 2026-07-01 05:24 JST
 
 - Scope:
