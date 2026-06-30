@@ -27133,13 +27133,71 @@ Next loop:
   - Reduces ambiguous PHI export scope and meaningless whitespace predicates.
   - Existing auth, role checks, assignment scope, care-report row exclusion, CSV formula neutralization, no-store responses, row caps, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
 - Performance:
-  - Validation/filename-only change; no new query, dependency, or row-processing cost.
+  - Validation/filename-only change; no new query, dependency, fan-out, broad scan, or row-processing cost.
 - Validation:
-  - Export route focused Vitest passed `1` file / `20` tests.
+  - Export route focused Vitest passed `1` file / `21` tests.
+  - Related request-type suite passed `6` files / `99` tests.
+  - Scoped ESLint: passed.
+  - Scoped Prettier check: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad schedule/prescription/route objective remains open.
+  - Continue scanning schedule/route mutation and export surfaces for missing current-state evidence or filter/audit drift.
+
+### Patient/Report Share Request-Type Narrowing - 2026-06-30 22:48 JST
+
+- Scope:
+  - Continued patient/report share reply-request hardening.
+  - Focused on the list query used before selecting the active audience request.
+- Fixed:
+  - Patient share now fetches only `patient_share_reply_request` rows for the patient related entity.
+  - Report interprofessional share now fetches only `care_report_reply_request` rows for the report related entity.
+  - Patient share queue links now preserve `request_type=patient_share_reply_request`; report share links already preserve `care_report_reply_request`.
+- Safety:
+  - Reduces wrong-request / wrong-audience follow-up risk when multiple request types share the same patient/report and recipient role.
+  - Existing auth, org/RLS scope, care-report visibility, no-store responses, external sends, migrations, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- Performance:
+  - Adds only scalar filters to existing request-list calls.
+- Validation:
+  - Patient/report share focused Vitest passed `2` files / `31` tests.
   - `pnpm typecheck`: passed.
   - `pnpm typecheck:no-unused`: passed.
   - `pnpm lint`: passed.
   - `git diff --check`: passed.
 - Remaining:
   - Broad visit/report/collaboration objective remains open.
-  - Continue scanning communication/report export and follow-up entrypoints.
+  - Continue checking share/follow-up surfaces for aggregate related-entity queries that should include request type or exact request id.
+
+### Patient/Report Share Reply Request-Type Focus - 2026-06-30 22:47 JST
+
+- Scope:
+  - Continued request-type queue hardening for patient external share and report interprofessional share reply workflows.
+  - Focused on keeping the on-page reply-status fetch aligned with the focused communication request queue link.
+- Fixed:
+  - Patient external-share reply fetches now include `request_type=patient_share_reply_request`.
+  - Patient external-share queue links now include `request_type=patient_share_reply_request`.
+  - Report interprofessional-share reply fetches now include `request_type=care_report_reply_request`.
+  - Tests now assert hostile patient/report ids remain raw query identities while request type is present, and the patient-share mutation success test no longer emits React `act` warnings.
+- Safety:
+  - Reduces wrong-request / wrong-queue follow-up risk when multiple request types exist for the same patient or report.
+  - Existing path encoding helpers, auth, org/RLS assignment scope, permissions, migrations, live DB operations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- Performance:
+  - Adds only scalar `request_type` filters to existing request-list fetches; no new query fan-out, dependency, or broad scan.
+- Validation:
+  - Patient share focused Vitest passed `1` file / `8` tests.
+  - Patient/report share focused Vitest passed `2` files / `31` tests.
+  - Related share/helper/API/navigation suite passed `6` files / `116` tests.
+  - Scoped ESLint: passed.
+  - Scoped Prettier check: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad schedule/prescription/route objective remains open.
+  - Continue scanning focused communication request links and schedule/route mutation surfaces for request-type or current-state drift.

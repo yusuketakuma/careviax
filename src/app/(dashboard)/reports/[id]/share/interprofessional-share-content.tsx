@@ -147,6 +147,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
     queryKey: ['communication-requests', 'care_report', reportId, orgId],
     queryFn: async () => {
       const params = new URLSearchParams({
+        request_type: 'care_report_reply_request',
         related_entity_type: 'care_report',
         related_entity_id: reportId,
       });

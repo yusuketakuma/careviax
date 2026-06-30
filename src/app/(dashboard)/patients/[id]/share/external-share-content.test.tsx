@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
@@ -247,7 +247,9 @@ describe('ExternalShareContent', () => {
     const requestListUrl = urls.find((url) => url.startsWith('/api/communication-requests?'));
     expect(requestListUrl).toBeTruthy();
     const params = new URLSearchParams(requestListUrl?.split('?')[1]);
+    expect(params.get('request_type')).toBe('patient_share_reply_request');
     expect(params.get('related_entity_id')).toBe(patientId);
+    expect(requestListUrl).toContain('request_type=patient_share_reply_request');
     expect(requestListUrl).toContain(`related_entity_id=${encodeURIComponent(patientId)}`);
   });
 
@@ -367,7 +369,9 @@ describe('ExternalShareContent', () => {
     });
     expect(body.content).toContain('ケアマネ向けに共有する患者情報です');
 
-    await mutationConfigs[2]?.onSuccess?.();
+    await act(async () => {
+      await mutationConfigs[2]?.onSuccess?.();
+    });
     expect(invalidateQueriesMock).toHaveBeenCalledWith({
       queryKey: ['communication-requests', 'patient', 'patient_1', 'org_1'],
     });
@@ -436,7 +440,7 @@ describe('ExternalShareContent', () => {
     render(<ExternalShareContent patientId="patient_1" />);
 
     expect(screen.getByTestId('share-open-request-link').getAttribute('href')).toBe(
-      '/communications/requests?status=sent&patient_id=patient_1&request_id=request_1&related_entity_type=patient&related_entity_id=patient_1',
+      '/communications/requests?status=sent&request_type=patient_share_reply_request&patient_id=patient_1&request_id=request_1&related_entity_type=patient&related_entity_id=patient_1',
     );
   });
 

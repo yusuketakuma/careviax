@@ -810,7 +810,9 @@ describe('InterprofessionalShareContent', () => {
       .find((url) => url.startsWith('/api/communication-requests?'));
     expect(requestListUrl).toBeTruthy();
     const requestParams = new URLSearchParams(requestListUrl?.split('?')[1]);
+    expect(requestParams.get('request_type')).toBe('care_report_reply_request');
     expect(requestParams.get('related_entity_id')).toBe(hostileReportId);
+    expect(requestListUrl).toContain('request_type=care_report_reply_request');
     expect(requestListUrl).toContain(`related_entity_id=${encodeURIComponent(hostileReportId)}`);
     expect(
       fetchMock.mock.calls.some(([input]) =>

@@ -230,6 +230,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
     enabled: Boolean(patientId && orgId),
     queryFn: async () => {
       const params = new URLSearchParams({
+        request_type: 'patient_share_reply_request',
         related_entity_type: 'patient',
         related_entity_id: patientId,
       });
@@ -355,6 +356,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
   const replyRequestQueueHref = focusedReplyRequestId
     ? buildCommunicationRequestsHref({
         status: activeAudienceRequest?.status ?? 'sent',
+        requestType: 'patient_share_reply_request',
         patientId,
         requestId: focusedReplyRequestId,
         relatedEntityType: 'patient',
