@@ -26897,3 +26897,28 @@ Next loop:
   - Scoped ESLint, `pnpm format:check`, `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint` passed.
 - Remaining:
   - Broad report/collaboration and patient-information objective remains open.
+
+### Weekly Optimizer Mixed Route Medication Summary - 2026-06-30 21:52 JST
+
+- Scope:
+  - Continued visit-route decision hardening at the weekly optimizer mixed schedule/proposal `route_order` write boundary.
+  - Focused on the "週間ルートの route_order を反映しますか" confirmation dialog.
+- Fixed:
+  - Proposal rows in the mixed weekly route confirmation now show the safe medication scheduling summary: 服薬最終日, 開始日前配薬, 薬剤根拠 presence, and reflected next route order.
+  - Confirmed schedule rows remain unchanged because this UI model does not currently carry medication deadline fields for confirmed schedules.
+  - Regression coverage verifies drug names, phone numbers, addresses, and raw prescription details still do not leak into the confirmation dialog.
+- Safety:
+  - Reduces unsafe mixed route-order updates by keeping proposal medication-deadline evidence visible beside route ordering evidence.
+  - No API response expansion, permission changes, live DB operations, external sends, migrations, push/deploy, or destructive operations were added.
+- Performance:
+  - Pure client-side formatting from already loaded proposal fields; no new query, dependency, background job, or render-heavy path was added.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx'`: passed, `1` file / `7` tests.
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx' 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' 'src/app/(dashboard)/schedules/schedule-day-reschedule-approval-dialog.test.tsx' 'src/app/(dashboard)/schedules/schedule-day-view.helpers.test.ts'`: passed, `4` files / `78` tests.
+  - Scoped `pnpm exec eslint` on changed weekly/proposal/reschedule files: passed.
+  - Scoped Prettier check on changed weekly/proposal/reschedule files: passed.
+  - Scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - Broad schedule/prescription/route objective remains open.
+  - Confirmed-schedule route comparison and route API final write boundaries still need review for preparation/carry-item evidence and precondition/audit coverage.
