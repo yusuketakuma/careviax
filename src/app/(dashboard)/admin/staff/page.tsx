@@ -1,17 +1,32 @@
 import { Metadata } from 'next';
-import { MasterEditorView } from '../master-editor-view';
+import { Suspense } from 'react';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import { getAdminStaffShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
+import { PageScaffold } from '@/components/layout/page-scaffold';
+import { Loading } from '@/components/ui/loading';
+import { UsersContent } from '../users/users-content';
+import { StaffKpiPanel } from './staff-kpi-panel';
 
 export const metadata: Metadata = {
-  title: 'スタッフ運用管理 — PH-OS',
+  title: 'スタッフ管理 — PH-OS',
 };
 
 export default function StaffPage() {
   return (
-    <MasterEditorView
-      activeCategory="スタッフ"
-      listTitle="スタッフ一覧"
-      itemPrefix="スタッフ"
-      testId="staff-master-editor"
-    />
+    <PageScaffold>
+      <AdminPageHeader
+        title="スタッフ管理"
+        description="スタッフの稼働KPI、招待、権限、停止状態を管理します。"
+        shortcuts={getAdminStaffShortcutLinks()}
+        supportingContent={null}
+      />
+
+      <Suspense fallback={<Loading />}>
+        <div className="space-y-4">
+          <StaffKpiPanel />
+          <UsersContent />
+        </div>
+      </Suspense>
+    </PageScaffold>
   );
 }

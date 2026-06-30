@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0648 JST
+
+- current task: commit pending `/admin/staff` real-surface composition as a validated group.
+- files inspected: `git status --short --untracked-files=all`, `git log --oneline -n 8`, current `src/app/(dashboard)/admin/staff/page.tsx` diff, `src/app/(dashboard)/admin/staff/page.tsx`, validation output, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/(dashboard)/admin/staff/page.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: `/admin/staff` still pointed at the fabricated `MasterEditorView`, leaving a core staff master entrypoint disconnected from the existing real staff KPI and user-management workflows.
+- security risks found: reduced false-operational master risk by composing existing real staff management components instead of sample data. Existing staff API permissions, org scoping, audit behavior, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: no meaningful performance issue was introduced; the route composes existing bounded staff KPI and user-management components and adds no new backend query shape, dependency, polling, broad scan, or unbounded loop.
+- validation commands: `pnpm exec vitest run 'src/app/(dashboard)/admin/staff/staff-kpi-panel.test.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx' --reporter=dot --testTimeout=60000`; `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/staff/page.tsx'`; `pnpm exec prettier --check 'src/app/(dashboard)/admin/staff/page.tsx'`; `git diff --check -- 'src/app/(dashboard)/admin/staff/page.tsx'`; `pnpm typecheck --pretty false`.
+- validation results: staff KPI/admin users focused Vitest passed `2` files / `12` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed; full typecheck passed.
+- remaining work: broad master-management and patient-information objective remains active. Deeper staff API hardening and staff-page-specific test coverage remain possible follow-ups.
+- next action: stage only the staff page and matching progress-ledger hunks, commit the group, send agmsg FYI, then re-check status for a clean worktree.
+
 ### 20260701-0646 JST
 
 - current task: commit pending shared-viewer self-report draft autosave changes as a validated group.

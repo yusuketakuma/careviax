@@ -54,6 +54,28 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Broad master-management and patient-information objective remains open.
   - This slice does not change the backend self-report API or external-access token/OTP policy.
 
+### Staff Master Real Surface Composition - 2026-07-01 06:48 JST
+
+- Scope:
+  - Continued master-management hardening for `/admin/staff`.
+  - Focused on replacing the staff sample editor shell with existing real staff management surfaces.
+- Fixed:
+  - `/admin/staff` now uses `PageScaffold` and `AdminPageHeader` with staff shortcut links.
+  - The page mounts the existing `StaffKpiPanel` and `UsersContent`, so staff KPI, invitation, role/site assignment, permission, suspension, retirement, and reactivation workflows are reachable from the staff master entrypoint.
+  - Removed the fabricated `MasterEditorView` staff list from this route.
+- Safety:
+  - Reduces false-operational master risk where a core staff master screen appeared editable but was backed by sample data.
+  - Reuses existing real staff APIs/components and preserves their backend permissions, org scoping, audit behavior, validation, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds no new backend query shape or dependency; the page composes existing bounded staff KPI and user-management data fetches.
+- Validation:
+  - Existing staff KPI and admin users content Vitest passed `2` files / `12` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on `src/app/(dashboard)/admin/staff/page.tsx`: passed.
+  - `pnpm typecheck --pretty false`: passed.
+- Remaining:
+  - Broad master-management and patient-information objective remains open.
+  - Staff API hardening and deeper staff-specific page tests remain possible follow-ups, but this slice restores the real operational staff surface.
+
 ### External Professional Linked Patient Evidence - 2026-07-01 06:34 JST
 
 - Scope:
