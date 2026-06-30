@@ -24,6 +24,624 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Latest User Goal Expansion - 2026-06-30 14:25 JST
+
+- The latest user message expands the requested scope from master-management-only to **master management plus patient information management** across backend, frontend, DB, and API, with refactoring while implementing.
+- The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
+- Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
+
+### MHLW Price List Dry-Run Preview - 2026-06-30 15:54 JST
+
+- Scope:
+  - Continued master-management stabilization by adding a read-only preview path for MHLW price list DrugMaster upserts and price/expiry change events.
+  - Updated MHLW price import service/API route/tests and the code-master architecture memo.
+  - No live DB mutation, migration, auth/RLS change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `POST /api/drug-master-imports/mhlw-price` now accepts `dryRun: true` and optional `previewLimit`.
+  - Dry-run returns `dryRun`, workbook URL(s), `sourceFileHash`, `sourcePublishedAt`, workbook count, parsed/upsert counts, invalid-YJ skip count, price/expiry change-event counts, and sampled rows.
+  - Dry-run does not call import-log creation/update, `DrugMaster.upsert`, or `DrugMasterChangeEvent.create`.
+  - MHLW price parsing now rejects non-empty malformed YJ values before DrugMaster upsert and reports them as `skipped_invalid_yj`.
+  - After medical-safety review, the MHLW price importer uses a stricter official-source YJ shape (`7 digits + 1 uppercase letter + 4 digits`) instead of accepting any 12 alphanumeric characters.
+  - Import and preview share the same price/expiry change-event comparison helper so preview counts match normal import's change-event units.
+- Safety:
+  - Reduces broad global DrugMaster mutation risk by allowing backend read-only inspection before MHLW price execution.
+  - Uses the existing MHLW import URL policy, so credential-bearing, private-IP, or disallowed source URLs remain blocked by the shared import guard.
+  - Preview payload contains master codes/names and aggregate counts only, not PHI or patient data.
+  - API-contract review returned `APPROVED`. Medical-safety review initially rejected the permissive same-length YJ validation; after the stricter importer-local YJ guard and regression tests, medical-safety re-review returned `APPROVED`.
+- Performance:
+  - MHLW price preview resolves the same workbook URLs as import, reads existing DrugMaster price/expiry rows in 200-record chunks, and caps sampled preview rows at 100.
+  - No dependency, render path, unbounded DB read, or unbounded response payload was added.
+- Validation:
+  - `pnpm exec prettier --write` on the four MHLW price route/service/test files: passed.
+  - `pnpm exec vitest run src/server/services/drug-master-import/mhlw.test.ts src/app/api/drug-master-imports/mhlw-price/route.test.ts --reporter=dot --testTimeout=60000`: final passed, `2` files / `32` tests.
+  - Scoped ESLint on the MHLW price files: passed.
+  - Scoped Prettier check on the MHLW price files: passed.
+  - Scoped `git diff --check` on the MHLW price files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+  - API-contract review: `APPROVED`.
+  - Medical-safety re-review after strict YJ fix: `APPROVED`.
+- Remaining:
+  - Equivalent read-only previews for MHLW generic flags/mappings were implemented in the 2026-06-30 16:11 JST slice below.
+  - Add UI wiring so admins can inspect preview rows before executing broad official-source imports.
+
+### MHLW Generic Flags/Mapping Dry-Run Preview - 2026-06-30 16:11 JST
+
+- Scope:
+  - Continued master-management stabilization by adding read-only preview paths for MHLW generic flags and generic-name mapping imports.
+  - Updated the MHLW import service, generic import API route/tests, and the code-master architecture memo.
+  - No live DB mutation, migration, auth/RLS change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `POST /api/drug-master-imports/mhlw-generic` now accepts `dryRun: true` and optional `previewLimit`.
+  - Dry-run returns mode-scoped `flags` / `mappings` previews without calling import log writes, `DrugMaster.upsert`, `GenericDrugMapping.deleteMany`, or `GenericDrugMapping.create`.
+  - Generic flag preview reports parsed records, DrugMaster upsert units, invalid YJ skips, changed flag count, and sampled rows with previous/next `is_generic`.
+  - Generic-name mapping preview reports parsed records, replace-mapping count, brand-candidate count, invalid exception-YJ skips, and sampled rows.
+  - `importMhlwGenericFlags` now records `skipped_invalid_yj` in its import summary, matching the stricter MHLW YJ parser used by price import.
+  - `parseGenericNameWorkbook` now applies the same strict MHLW YJ guard to exception-sheet `薬価基準収載医薬品コード`, so malformed exception codes are not persisted into `price_comparison.exception_codes` or used as brand candidates.
+  - Normal `mhlw-generic` import responses now include top-level aggregate `importedCount` while preserving nested `flags` / `mappings`, keeping the shared admin import success handler compatible.
+  - Generic mapping candidate extraction is shared between import and preview, preserving official exception-code and exact generic-name matching while avoiding name-only false positives.
+- Safety:
+  - Reduces broad DrugMaster / GenericDrugMapping mutation risk by allowing backend read-only inspection before MHLW generic execution.
+  - Uses the existing MHLW import URL policy, so credential-bearing, private-IP, or disallowed source URLs remain blocked by the shared import guard.
+  - Preview payload contains medication master codes/names and aggregate counts only, not PHI or patient data.
+- Performance:
+  - Generic flags preview reads existing `is_generic` rows in 200-record chunks and caps sampled rows at 100.
+  - Generic mapping preview reuses one existing `DrugMaster.findMany` read and the same in-memory grouping used by import.
+  - No dependency, render path, unbounded response payload, or extra source fetch beyond the requested preview source was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/drug-master-import/mhlw.test.ts src/app/api/drug-master-imports/mhlw-generic/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `36` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - Scoped ESLint on the MHLW generic service/route/test files: passed.
+  - Scoped Prettier check on the MHLW generic service/route/test files: passed.
+  - Scoped `git diff --check` on the MHLW generic service/route/test/docs/ledger files: passed.
+  - Full `pnpm format:check`: blocked by unrelated dirty `src/app/api/facility-visit-batches/[id]/route.ts`; scoped Prettier for owned files passed.
+  - Clinical Safety re-review: `APPROVED`.
+  - Compatibility/API contract re-review: `APPROVED`.
+- Remaining:
+  - UI wiring for official-source dry-run preview was implemented in the 2026-06-30 16:33 JST slice below.
+  - Continue patient information management gap inventory and implementation under the active broader goal.
+
+### Official Master Import Preview UI - 2026-06-30 16:33 JST
+
+- Scope:
+  - Continued master-management stabilization by wiring official-source dry-run previews into the admin drug master confirmation dialog.
+  - Updated `DrugMasterContent` and its regression tests, plus the code-master architecture memo.
+  - No backend mutation, schema migration, auth/RLS change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Official import confirmation dialogs now include a `差分確認` action that calls the selected import endpoint with `dryRun: true` and `previewLimit: 5`.
+  - Dry-run preview summaries are displayed inside the confirmation dialog before executing the broad import.
+  - Preview sample rows are rendered for each preview group, including MHLW generic `後発フラグ` and `一般名mapping` rows.
+  - The existing typed confirmation and normal import mutation remain unchanged; the dry-run preview does not call the production import mutation.
+  - Master import / auto-refresh success still synchronously clears formulary copy/template/CSV previews, and now also clears the official import preview state.
+- Safety:
+  - Reduces accidental broad master mutation risk by putting read-only source diff evidence next to the final typed confirmation.
+  - Uses existing import endpoints and org JSON headers; no raw URL concatenation or new source allowlist path was added.
+  - Preview display is bounded to summary plus first 3 rows per group, avoiding unbounded UI payload rendering.
+- Performance:
+  - Adds one user-triggered dry-run POST only when the admin asks for a preview.
+  - UI rendering is bounded to existing summary fields and up to 3 sampled rows per group.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' src/server/services/drug-master-import/mhlw.test.ts src/app/api/drug-master-imports/mhlw-generic/route.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `106` tests.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=60000`: final passed, `1` file / `70` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - Scoped ESLint / Prettier / `git diff --check` on the admin UI and MHLW generic files: passed.
+  - Full `pnpm format:check` remains blocked by unrelated dirty `src/app/api/facility-visit-batches/[id]/route.ts`; scoped Prettier for owned files passed.
+- Remaining:
+  - Improve source-specific preview row layouts beyond the generic compact renderer.
+  - Continue patient information management gap inventory and implementation under the active broader goal.
+
+### Schedule P10 Safety Evidence Hardening - 2026-06-30 15:57 JST
+
+- Scope:
+  - Continued schedule-management/display implementation with Codex/Codex2 only.
+  - Focused on the P10 follow-up blockers from route preview, emergency-route 案2, and route-compare adoption safety.
+  - Preserved unrelated drug-master, patient, report/communication, prescription, residual-medication, visit-record, dispensing, compliance, schema/migration, and mixed ledger dirty paths.
+- Fixed:
+  - `VisitRoutePreviewPanel` and `VisitRouteMap` now keep route issue notes visible when every point is dropped, so `座標未設定` / missing-data notes are not hidden behind an empty map state.
+  - Emergency-route 案2 application now carries `released_schedule_id` and `patient_reconfirmation_required` in the reorder confirmation context when a confirmed schedule is released.
+  - `/api/visit-schedules/reorder` validates emergency reconfirmation context server-side: the released schedule must exist, be confirmed, be same-day, not be one of the mutated schedules, and match the target pharmacist when the route has one pharmacist.
+  - Reorder audit payloads now add server-side `patient_reconfirmation_acknowledged_by` and `patient_reconfirmation_acknowledged_at` when patient reconfirmation is required.
+  - Emergency-route blocks applying 案2 when the route engine marks the scenario unavailable.
+  - Route-compare adoption payloads now explicitly keep confirmed visits out of updates even when `/api/visit-routes` returns them, and assign mutable route orders after the confirmed slots.
+- Safety:
+  - Reduces false-complete route preview risk from all-waypoint geocode drops.
+  - Reduces patient-contact/audit ambiguity when an emergency route releases a confirmed visit and requires reconfirmation.
+  - Reduces confirmed-visit mutation risk in route-compare adoption.
+  - No auth/RLS weakening, schema migration, live DB mutation outside tested route handlers, external send, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Adds only bounded UI rendering of existing route notes and small server-side validation over already loaded reorder schedules.
+  - No dependency, new query family, background job, broad scan, unbounded loop, or heavy render path was added.
+- Validation:
+  - Focused P10 safety Vitest passed, `6` files / `71` tests.
+  - Broader P10 route suite passed, `10` files / `166` tests.
+  - `pnpm test:schedule-time:tz` passed, `30` files / `520` tests.
+  - `pnpm typecheck` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - `pnpm lint` passed.
+  - `pnpm format:check` passed.
+  - Scoped `git diff --check` on owned schedule/route files passed.
+  - Medical-safety/verifier subagent re-review attempts were blocked by usage limits, so this slice relies on local validation and the earlier review findings being directly covered by tests.
+- Remaining:
+  - Commit only owned schedule/route code/test files because ledger files contain mixed dirty entries from multiple agents and the schedule plan document would require unrelated whole-file Prettier churn.
+  - Continue the broader schedule-management objective with the next uncovered audit/API lifecycle item after rechecking dirty ownership.
+
+### Visit Vehicle Resource Audit Coverage - 2026-06-30 16:06 JST
+
+- Scope:
+  - Continued schedule-management backend/API audit-log hardening from P8.
+  - Focused on `POST /api/visit-vehicle-resources` and `PATCH /api/visit-vehicle-resources/[id]`.
+  - Preserved unrelated drug-master, patient, report/communication, prescription, residual-medication, visit-record, dispensing, compliance, schema/migration, and mixed ledger dirty paths.
+- Fixed:
+  - Vehicle-resource creation now writes `visit_vehicle_resource_created` audit entries in the same org-scoped transaction as the create.
+  - Vehicle-resource PATCH now reads the prior row and records structured `{ from, to }` changes for label, code, travel mode, max stops, route-duration cap, availability, and next-inspection date.
+  - Free-text vehicle `notes` are no longer copied into audit changes; only a minimized `notes.changed` plus present/not-present flags is recorded.
+  - No-op PATCHes that do not change an effective value no longer create empty audit entries.
+- Safety:
+  - Improves 3省2GL-style operation evidence for route vehicle capacity and availability changes.
+  - Reduces audit free-text leakage risk from vehicle notes while preserving that a notes change occurred.
+  - No auth/RLS weakening, schema migration, live DB mutation outside existing route handlers/tests, external send, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - PATCH adds one narrow prior-row select that is already needed for org ownership and audit; POST reuses the created row.
+  - No new dependency, background job, broad scan, unbounded loop, or heavy response payload was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-vehicle-resources/route.test.ts 'src/app/api/visit-vehicle-resources/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `19` tests.
+  - Scoped ESLint on the five owned vehicle-audit files: passed.
+  - Scoped Prettier check on the five owned vehicle-audit files: passed.
+  - Scoped `git diff --check` on the five owned vehicle-audit files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm typecheck:no-unused`: blocked by unrelated dirty `src/server/services/drug-master-import/mhlw.ts` unused declarations.
+  - `pnpm format:check`: blocked by unrelated dirty `src/server/services/drug-master-import/mhlw.ts` formatting.
+- Remaining:
+  - Commit only owned vehicle-resource audit files because ledger files contain mixed dirty entries from multiple agents.
+  - Continue P8 facility-visit-batch audit create/delete/reorder after rechecking dirty ownership.
+
+### HOT Master Dry-Run Preview - 2026-06-30 15:15 JST
+
+- Scope:
+  - Continued master-management stabilization by adding a read-only preview path for HOT master and package upserts.
+  - Updated HOT import service/API route/tests and the code-master architecture memo.
+  - No live DB mutation, migration, auth/RLS change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `POST /api/drug-master-imports/hot` now accepts `dryRun: true` and optional `previewLimit`.
+  - Dry-run returns `dryRun`, `fileUrl`, `sourceFileHash`, `sourcePublishedAt`, parsed count, `drug_master_upsert_count`, `package_upsert_count`, YJ欠損件数, 包装コード不正件数, and sampled rows.
+  - Dry-run does not call import-log creation/update, `DrugMaster.upsert`, or `DrugPackage.upsert`.
+  - HOT preview names counts by the real import's upsert units instead of pretending to know create/update/unchanged without querying existing master rows.
+  - HOT preview/import now skip non-empty malformed YJ values as `skip_invalid_yj` rather than creating canonical `DrugMaster` rows.
+  - HOT preview/import now read existing `DrugPackage.gtin` ownership and skip cross-master conflicts as `conflict_existing_gtin` / `skipped_package_conflict_count` instead of reassigning a package to a different DrugMaster.
+  - HOT parser no longer treats `販売包装単位コード` / JAN / GTIN / GS1 code columns as `package_quantity_unit`; a distinct `包装単位` column is still accepted.
+- Safety:
+  - Reduces broad global package-master mutation risk by allowing backend read-only inspection before HOT execution.
+  - Uses the existing HOT import URL policy, so credential-bearing or disallowed source URLs remain blocked by the shared import guard.
+  - Preview payload contains master/package codes, names, and aggregate counts only, not PHI or patient data.
+  - API-contract review returned `APPROVED`. Medical-safety review initially rejected invalid-YJ, GTIN-reassignment, and package-unit header risks; after the fail-closed fixes, medical-safety re-review returned `APPROVED`.
+- Performance:
+  - HOT preview parses the source once, performs one bounded `DrugPackage.findMany` for valid GTIN candidates, and caps sampled preview rows at 100.
+  - Normal import also prefetches candidate package GTINs once to avoid per-row conflict reads before upserts.
+  - No dependency, render path, broad unbounded DB read, or unbounded response payload was added.
+- Validation:
+  - `pnpm exec prettier --write` on the four HOT route/service/test files: passed.
+  - `pnpm exec vitest run src/server/services/drug-master-import/hot.test.ts src/app/api/drug-master-imports/hot/route.test.ts --reporter=dot --testTimeout=60000`: final passed, `2` files / `31` tests.
+  - Scoped ESLint on the HOT files: passed.
+  - Scoped Prettier check on the HOT files: passed.
+  - Scoped `git diff --check` on the HOT files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+  - API-contract review: `APPROVED`.
+  - Medical-safety re-review: `APPROVED`.
+- Remaining:
+  - Extend equivalent read-only previews to MHLW.
+  - Add UI wiring so admins can inspect preview rows before executing broad official-source imports.
+
+### PMDA Package Insert Dry-Run Preview - 2026-06-30 14:54 JST
+
+- Scope:
+  - Continued master-management stabilization by adding a read-only preview path for PMDA package insert and interaction imports.
+  - Updated PMDA import service/API route/tests and the code-master architecture memo.
+  - No live DB mutation, migration, auth/RLS change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `POST /api/drug-master-imports/pmda` now accepts `dryRun: true` and optional `previewLimit`.
+  - Dry-run returns `dryRun`, `zipUrl`, `sourceFileHash`, `sourcePublishedAt`, mode, create/update/unchanged/skip counts, matched primary counts, matched interaction-pair counts, and sampled rows.
+  - Dry-run does not call import-log creation/update, `DrugPackageInsert.create/update/findFirst`, or `DrugInteraction.upsert`.
+  - Normal import now uses the same package-insert changed-field comparison as dry-run and skips `DrugPackageInsert.update` when the latest stored clinical content is unchanged, so `unchanged_count` no longer hides an `updated_at` write.
+  - Normal import `changeSummary` now records `create_count`, `update_count`, `unchanged_count`, `skipped_unmatched_primary_records`, and `matched_interaction_pair_count`.
+  - Matched interaction pairs are counted by the same unique pair unit that the real import upserts, so severity variants do not inflate the write-preview count.
+  - PMDA route tests now align to the service-produced `skipped_unmatched_primary_records` key and reject the legacy `skipped_unmatched_primary` shape.
+- Safety:
+  - Reduces broad clinical master mutation risk by allowing backend read-only inspection before PMDA package insert execution.
+  - Uses the existing PMDA import URL policy, so credential-bearing or disallowed source URLs remain blocked by the shared import guard.
+  - Preview payload contains master codes/names and aggregate clinical-master counts only, not PHI or patient data.
+  - Medical-safety review initially rejected the update-count mismatch; after the normal import no-update fix and unchanged tests, the re-review returned `APPROVED`.
+  - API-contract review initially rejected the route test key drift and thin validation coverage; after the fixture/key and validation tests were updated, the re-review returned `APPROVED`.
+- Performance:
+  - DrugMaster rows are fetched once, latest package inserts are fetched with one ordered `findMany` for matched masters, and sampled preview rows are capped at 100.
+  - Normal import still uses the existing per-record latest-insert lookup, but unchanged package insert rows are no longer rewritten.
+  - No dependency, render path, or unbounded response payload was added.
+- Validation:
+  - `pnpm exec prettier --write` on the four PMDA route/service/test files: passed.
+  - `pnpm exec vitest run src/server/services/drug-master-import/pmda.test.ts src/app/api/drug-master-imports/pmda/route.test.ts --reporter=dot --testTimeout=60000`: final passed, `2` files / `23` tests.
+  - `pnpm exec vitest run src/server/services/org-realtime.test.ts src/server/services/drug-master-import/pmda.test.ts src/app/api/drug-master-imports/pmda/route.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `67` tests.
+  - Scoped ESLint on the PMDA files: passed.
+  - Scoped Prettier check on the PMDA files: passed.
+  - Scoped `git diff --check` on the PMDA files: passed.
+  - Full `git diff --check`: passed.
+  - First post-review `pnpm typecheck`: failed on unrelated untracked `src/app/api/visit-schedules/[id]/conflict-reconfirmation/route.ts` using `schedule_conflict_resolution` outside the workflow realtime source allowlist; fixed by adding that source to `WORKFLOW_REALTIME_SOURCES`.
+  - Final `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: exited `0` with three existing `react-hooks/exhaustive-deps` warnings in `src/app/(dashboard)/schedules/conflicts/conflict-resolution-content.tsx`.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Extend equivalent read-only previews to MHLW/HOT.
+  - Add UI wiring so admins can inspect preview rows before executing broad official-source imports.
+  - Continue patient information management hardening under the expanded goal.
+
+### Patient Insurance Temporal Consistency - 2026-06-30 14:31 JST
+
+- Scope:
+  - Started the patient information management portion of the latest goal by auditing patient schema, patient list/detail routes, response mappers, field-revision services, insurance service, and existing route tests.
+  - Updated `PATCH /api/patients/[id]` insurance synchronization and focused regression tests.
+  - No schema migration, live DB mutation outside tests, auth/RLS change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Clearing `medical_insurance_number` or `care_insurance_number` now closes active `PatientInsurance` rows with `valid_until` set to the same local-date UTC midnight used by replacement writes.
+  - Re-submitting the same insurance number no longer creates a new active row, but it now closes stale duplicate active rows for the same patient/type while preserving the current row.
+  - Insurance active-row closing is centralized in a small in-transaction helper so replacement, deletion, and duplicate cleanup share the same validity-window behavior.
+- Safety:
+  - Reduces billing, qualification-check, and audit-history risk from active insurance rows that are inactive without an end date or from multiple active rows for one patient/type.
+  - Maintains existing no-store/fixed-error patient PATCH boundary and existing duplicate-patient guard behavior.
+- Performance:
+  - Adds only one bounded `updateMany` for submitted same-number insurance fields and reuses existing transaction state.
+  - No broad scan, new dependency, render path, external request, or unbounded loop was added.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/patients/[id]/route.ts' 'src/app/api/patients/[id]/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/patients/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `1` file / `42` tests.
+  - Scoped ESLint on the two owned patient PATCH files: passed.
+  - Scoped Prettier check on the two owned patient PATCH files: passed.
+  - Scoped `git diff --check`: passed.
+  - First `pnpm typecheck`: failed on a local `currentInsurance` null-narrowing issue after the same-number duplicate cleanup refactor; fixed with an explicit guard.
+  - Final `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: exited `0` with unrelated warnings in `src/app/(dashboard)/schedules/route-compare/route-scenarios.ts`.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+- Remaining:
+  - Continue the expanded goal; this fixes one patient information management root-cause gap but does not complete the whole master/patient management objective.
+
+### Patient Insurance API Response Boundaries - 2026-06-30 14:45 JST
+
+- Scope:
+  - Continued patient information management hardening on the dedicated insurance API routes.
+  - Updated `src/app/api/patients/[id]/insurance/route.ts`, `src/app/api/patients/[id]/insurance/route.test.ts`, `src/app/api/patients/[id]/insurance/[insuranceId]/route.ts`, and `src/app/api/patients/[id]/insurance/[insuranceId]/route.test.ts`.
+  - Also fixed route-compare WIP blockers in `route-scenarios.ts` and `route-compare-content.tsx` so broad validation could run cleanly.
+- Fixed:
+  - `POST /api/patients/[id]/insurance` now uses the same sensitive no-store and fixed-error route boundary as GET.
+  - `PUT` and `DELETE /api/patients/[id]/insurance/[insuranceId]` now wrap auth, validation, success, conflict/not-found, and unexpected failures with sensitive no-store.
+  - Unexpected insurance create/update/delete failures now return the fixed `INTERNAL_ERROR` envelope without echoing patient names, insurance numbers, or token-like diagnostics.
+  - Route-compare plan-result narrowing now uses a discriminated check before reading `plan`, the unused travel-mode import was removed, and the empty scenario fallback is stable across renders.
+- Safety:
+  - Reduces browser/proxy cache leakage and raw-error leakage risk for insurance CRUD responses.
+  - Preserves existing patient write guard, assignment scope checks, overlap validation, and response shapes.
+  - No auth/RLS rule, schema migration, live DB mutation outside tests, external send, push, deploy, secret handling, or destructive operation was performed.
+- Performance:
+  - Route wrappers add no database work.
+  - Route-compare uses a module-level empty array to avoid unstable hook dependencies without changing API request count.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/patients/[id]/insurance/route.test.ts' 'src/app/api/patients/[id]/insurance/[insuranceId]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `2` files / `41` tests.
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/route-compare/route-scenarios.test.ts'`: passed, `1` file / `25` tests.
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx'`: passed, `1` file / `2` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - First `pnpm typecheck`: failed on pre-existing route-compare union narrowing; fixed and rerun.
+  - Final `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - First `pnpm lint`: exited `0` with route-compare hook warnings; fixed and rerun.
+  - Final `pnpm lint`: passed with no warnings.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+- Remaining:
+  - Continue the expanded goal; master management and patient information management still have more surfaces to audit and improve.
+
+### SSK DrugMaster Import Dry-Run Preview - 2026-06-30 14:25 JST
+
+- Scope:
+  - Continued master-management stabilization by adding a read-only preview path for the base SSK DrugMaster import.
+  - Updated SSK import service/route/tests and the code-master architecture memo.
+  - No live DB mutation, migration, RLS/auth change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `POST /api/drug-master-imports/ssk` now accepts `dryRun: true` and optional `previewLimit`.
+  - Dry-run returns `dryRun`, `entryName`, `zipUrl`, `sourceFileHash`, `sourcePublishedAt`, create/update/unchanged counts, and sampled diff rows with changed fields.
+  - Dry-run does not call `drugMasterImportLog.create`, `drugMasterImportLog.update`, or `drugMaster.upsert`.
+  - Normal SSK import still returns provenance metadata via `sourceFileHash`, `sourcePublishedAt`, `importMode`, and `changeSummary`.
+- Safety:
+  - Reduces broad global-master mutation risk by allowing backend read-only inspection before execution.
+  - Uses the existing SSK import URL policy, so credential-bearing URLs are rejected without echoing credentials.
+  - Preview payload contains master codes/names and aggregate counts only, not PHI or patient data.
+- Performance:
+  - Existing DrugMaster rows are fetched in 500-code chunks and sampled preview rows are capped at 100.
+  - No dependency, unbounded per-row query, render path, or write path was added.
+- Validation:
+  - `pnpm exec prettier --write` on SSK route/service/test/doc files: passed.
+  - `pnpm exec vitest run src/server/services/drug-master-import/ssk.test.ts src/app/api/drug-master-imports/ssk/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `16` tests.
+  - Scoped ESLint on the owned SSK files: passed.
+  - Scoped Prettier check on the owned SSK/doc files: passed.
+  - Scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+- Remaining:
+  - Extend equivalent read-only previews to MHLW/PMDA/HOT if needed.
+  - Start patient information management inventory and implementation under the latest user goal expansion.
+
+### QR Name Fallback Ambiguity Guard - 2026-06-30 14:17 JST
+
+- Scope:
+  - Continued downstream master identity hardening by auditing `drug_name` keying and tightening JAHIS QR intake name fallback suggestions.
+  - Updated `src/lib/pharmacy/qr-intake-mapper.ts`, its focused test, and progress ledgers.
+  - No live DB operation, schema change, RLS change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - QR intake name fallback no longer suggests an arbitrary `DrugMaster` when exact `drug_name` matches are ambiguous.
+  - Partial-name fallback now also requires exactly one candidate.
+  - Ambiguous name-only QR rows remain `unresolved` / `none` with review required, rather than carrying a misleading candidate master id/code/name.
+- Safety:
+  - Reduces manual-confirmation risk where a pharmacist could see a strong candidate produced only by DB return order.
+  - Keeps the existing code-first behavior unchanged: code matches still resolve; name matches remain review-only suggestions.
+- Performance:
+  - Ambiguity detection filters already-fetched candidate rows only.
+  - No new query, dependency, source fetch, render path, or unbounded loop was added.
+- Validation:
+  - `pnpm exec prettier --write src/lib/pharmacy/qr-intake-mapper.ts src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts`: passed.
+  - `pnpm exec vitest run src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `48` tests.
+  - Scoped ESLint on the QR mapper files: passed.
+  - Scoped Prettier check on the QR mapper files and ledgers: passed.
+  - Scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - Latest `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+- Remaining:
+  - Broad master-management objective remains open. Next candidates are dry-run preview/update diff before broad imports, additional display-name-only UI key audits, and live official-file retrieval proof once source URL env vars are configured.
+
+### HOT Package Count Response And Package Coverage Freshness - 2026-06-30 14:11 JST
+
+- Scope:
+  - Continued master-management stabilization by making HOT package-import results visible in the POST response and adding daily package-linked `DrugMaster` coverage monitoring.
+  - Updated the HOT import route/test, drug-master freshness job/test, and the code-master architecture memo.
+  - Checked source URL environment presence without printing values; `HOT_MASTER_URL`, SSK, MHLW, and PMDA source URL env vars were unset in this shell, so no live official file was fetched.
+- Fixed:
+  - `POST /api/drug-master-imports/hot` now returns `packageImportedCount` alongside `importedCount` and provenance metadata.
+  - `checkDrugMasterFreshness` now checks active `DrugPackage` linkage coverage using aggregate counts and sends PHI-free admin notifications when coverage falls below `DRUG_PACKAGE_COVERAGE_ALERT_THRESHOLD_PERCENT` (default 1%).
+  - Existing stale-source notification construction was refactored through a shared admin-notification helper.
+  - `docs/drug-code-master-architecture.md` records the package coverage freshness alert behavior.
+- Safety:
+  - Reduces the risk that `DrugMaster` appears fresh while package-level GTIN/JAN evidence is effectively missing.
+  - Notifications include only aggregate counts/percentages and link to `/admin/drug-masters`; they do not include patient data, PHI, drug free text rows, raw source rows, credentials, or secrets.
+  - No live DB migration, live import execution, auth/RLS rule change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Performance:
+  - Adds two aggregate `DrugMaster.count` calls to the freshness check and one admin-membership query only when an alert must be sent.
+  - No dependency, source fetch, broad scan, render path, unbounded loop, or N+1 query was added.
+- Validation:
+  - `pnpm exec prettier --write` on the HOT route/job/doc files: passed.
+  - `pnpm exec vitest run src/server/jobs/drug-master.test.ts src/app/api/drug-master-imports/hot/route.test.ts src/server/services/drug-master-import/hot.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `21` tests.
+  - Scoped ESLint on the owned HOT route/job files: passed.
+  - Scoped Prettier check on the owned HOT route/job/doc files: passed.
+  - Scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - Full `git diff --check`: passed.
+  - An earlier `pnpm format:check` run reported unrelated dirty formatting paths, but the latest post-QR-slice `pnpm format:check`: passed.
+- Remaining:
+  - Broad master-management objective remains open. Next candidates are dry-run preview/update diff before broad imports and continued downstream `drug_name` keying audits.
+  - Preserve mixed dirty worktree; do not broad-stage or format unrelated dirty files without claiming that work.
+
+### HOT DrugPackage Import And Package-Code Helper - 2026-06-30 13:59 JST
+
+- Scope:
+  - Continued master-management stabilization by extending HOT import from DrugMaster HOT-code enrichment into package-level `DrugPackage` population when the HOT file supplies JAN/GTIN/package-code columns.
+  - Added shared package-code normalization used by barcode verification, QR OTC promotion, and DrugPackage JAN backfill review.
+  - No schema change, live DB mutation outside tests, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `parseHotMasterFile` now detects package JAN/GTIN/GS1/package-code columns, package quantity/unit columns, and sales/manufacturer names when present.
+  - `importHotMaster` upserts `DrugPackage` rows by normalized GTIN for YJ-linked records with valid package codes.
+  - HOT import does not treat HOT code itself as GTIN. Missing package-code columns preserve prior DrugMaster-only behavior; invalid package codes are skipped and counted.
+  - `change_summary` now records `package_records` and `skipped_invalid_package_code`.
+  - `src/lib/pharmacy/package-code.ts` centralizes 8/13-digit JAN and 14-digit GTIN normalization/candidate expansion.
+  - Barcode verification, QR OTC promotion, and the DrugPackage JAN backfill analyzer now share the same package-code expansion.
+- Safety:
+  - Reduces medication/package identity drift by letting HOT files fill `DrugPackage` evidence instead of relying only on legacy `DrugMaster.jan_code`.
+  - Preserves fail-closed behavior for ambiguous DrugPackage lookups and keeps legacy fallback only when no package rows exist.
+  - Does not expose PHI, patient data, raw source rows, credentials, or secrets.
+- Performance:
+  - Adds one `DrugPackage.upsert` per imported YJ-linked HOT row only when a valid package code exists.
+  - No extra source fetch, dependency, broad scan, external request, render path, or unbounded loop was added.
+- Validation:
+  - `pnpm exec prettier --write` on HOT/package-code/barcode/QR/backfill files: passed.
+  - First focused Vitest run failed on `Prisma.Decimal` being imported type-only; fixed by importing `Prisma` as a runtime value.
+  - `pnpm exec vitest run src/lib/pharmacy/package-code.test.ts src/lib/dispensing/dispense-barcode-verification.test.ts src/server/services/qr-otc-promotion.test.ts src/server/services/drug-master-import/hot.test.ts tools/scripts/backfill-drug-packages-from-drug-master-jan.test.ts --reporter=dot --testTimeout=60000`: passed, `5` files / `36` tests.
+  - Scoped ESLint on the owned files: passed.
+  - Scoped Prettier check on the owned files: passed.
+  - Scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+- Remaining:
+  - Broad master-management objective remains open. Next candidates are current live retrieval proof for the actual licensed HOT/MEDIS file URL in environment, dry-run preview/update diff before broad imports, and continued downstream `drug_name` keying audits.
+  - Preserve mixed dirty worktree; stage only explicit owned paths if committing later.
+
+### DrugPackage JAN Backfill Analyzer Safety - 2026-06-30 13:48 JST
+
+- Scope:
+  - Continued master-management stabilization by tightening the read-only analyzer that reviews legacy `DrugMaster.jan_code` rows before package-level `DrugPackage` migration.
+  - Updated only `tools/scripts/backfill-drug-packages-from-drug-master-jan.ts`, its focused tests, and the progress ledgers in this slice.
+  - No schema change, live DB mutation, RLS policy change, import execution, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Unknown CLI flags now fail fast instead of being silently ignored.
+  - `--apply` remains explicitly rejected.
+  - The DrugMaster query now probes `maxRows + 1` rows and slices back to `maxRows`, so `truncated` is true only when there is evidence of an extra row.
+  - Package lookup still receives only the bounded `maxRows` review rows.
+  - Tests lock typo rejection, exact-size non-truncation, true truncation, and read-only SQL behavior.
+- Safety:
+  - Reduces operator-error risk where a typoed bound could produce a misleading package backfill review artifact.
+  - Keeps the analyzer SELECT-only and separates safe candidates from duplicate JAN, invalid JAN, and existing-package conflicts.
+  - Generated artifacts can include internal drug master ids and drug names, so they remain internal operational artifacts.
+- Performance:
+  - Adds one-row probe overhead to the existing bounded DrugMaster read.
+  - No mutation, dependency, external request, broad unbounded scan, or N+1 path was added.
+- Validation:
+  - `pnpm exec prettier --write tools/scripts/backfill-drug-packages-from-drug-master-jan.ts tools/scripts/backfill-drug-packages-from-drug-master-jan.test.ts`: passed.
+  - `pnpm exec vitest run tools/scripts/backfill-drug-packages-from-drug-master-jan.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `6` tests.
+  - Scoped ESLint on the two backfill files: passed.
+  - Scoped Prettier check on the two backfill files: passed.
+  - Scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+- Remaining:
+  - Broad master-management objective remains open. Next candidates are official DrugPackage GTIN/JAN source import or an approved insert-mode backfill with runbook, dry-run preview/update diff before broad imports, and continued downstream `drug_name` keying audits.
+  - Preserve mixed dirty worktree; stage only explicit owned paths if committing later.
+
+### DrugPackage Status Coverage Visibility - 2026-06-30 13:44 JST
+
+- Scope:
+  - Continued master-management stabilization by making package-level GTIN/JAN coverage visible in the import status API and admin Drug Master freshness panel.
+  - Updated the status response type, `GET /api/drug-master-imports/status`, route tests, admin status panel, admin UI tests, and architecture docs.
+  - No schema change, live DB mutation, RLS policy change, import execution, external send, push, deploy, secret handling, or destructive operation was performed in this slice.
+- Fixed:
+  - Status totals now include `drug_package_count` and `drug_package_coverage`.
+  - Coverage is calculated as active-package-linked `DrugMaster` rows divided by total `DrugMaster` rows, with zero-total protection.
+  - The admin freshness summary now shows `包装GTIN: <count>件 / <coverage>%`.
+  - Tests now lock package count, package coverage, auth short-circuit behavior, and zero-total coverage behavior.
+  - `docs/drug-code-master-architecture.md` records that DrugPackage count and active package-linked coverage are visible in the status API/admin card.
+- Safety:
+  - Reduces medication data-integrity risk where DrugPackage rows could be missing while the master screen still looked healthy.
+  - Keeps existing admin-only auth, no-store/fixed-error boundary, provenance display, and broad import confirmation guardrails unchanged.
+  - Does not expose PHI, patient data, raw official source rows, free-text drug names, credentials, or secrets.
+- Performance:
+  - Adds two bounded aggregate counts to the existing status `Promise.all`: total DrugPackage rows and DrugMaster rows with active packages.
+  - No source fetch, dependency, N+1 path, unbounded loop, external request, or additional render polling was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/drug-master-imports/status/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `2` files / `82` tests.
+  - Scoped ESLint on the owned status/type/UI/test files: passed.
+  - Scoped Prettier check on the owned status/type/UI/test/doc files: passed.
+  - Scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+- Remaining:
+  - Broad master-management objective remains open. Next candidates are official DrugPackage GTIN/JAN source import or reviewed backfill, dry-run preview/update diff before broad imports, and continued downstream `drug_name` keying audits.
+  - Preserve mixed dirty worktree; stage only explicit owned paths if committing later.
+
+### Drug Master Import POST Provenance Response - 2026-06-30 13:16 JST
+
+- Scope:
+  - Continued master-management stabilization after the import-log provenance schema/API/UI slice.
+  - Updated SSK, MHLW price, MHLW generic, PMDA, HOT, and manual clinical import POST success responses.
+  - Added a small response projection helper for `DrugMasterImportLog` provenance metadata.
+  - No schema change, live DB mutation, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed in this slice.
+- Fixed:
+  - Import execution APIs now return `sourceFileHash`, `sourcePublishedAt`, `importMode`, and `changeSummary` from the completed import log in the success payload.
+  - Existing response fields such as `logId`, `status`, `importedCount`, `zipUrl`, `workbookUrl`, `fileUrl`, and manual clinical counts are preserved.
+  - Date-like `source_published_at` values are serialized to ISO strings; missing values remain `null`.
+  - Route tests now lock the provenance fields for all import POST routes.
+  - `docs/drug-code-master-architecture.md` records that import POST responses expose the same provenance as the admin import-history view.
+- Safety:
+  - Improves broad master-import auditability without adding PHI, source payload bytes, raw credentials, or free-text drug names to responses.
+  - Response remains admin-only and keeps existing URL allowlist, credential-bearing URL rejection, no-store/fixed-error handling, auth, and request validation behavior.
+- Performance:
+  - Avoids a follow-up import-log lookup for callers that need source hash/date/mode/summary immediately after import.
+  - No new DB query, source fetch, dependency, broad scan, render path, or unbounded work was added.
+- Validation:
+  - `pnpm exec prettier --write` on the owned import-route files and `docs/drug-code-master-architecture.md`: passed.
+  - `pnpm exec vitest run` for the six import POST route tests: passed, `6` files / `42` tests.
+  - Scoped ESLint on the owned import-route files: passed.
+  - Scoped Prettier check on the owned import-route files: passed.
+  - Scoped and full `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Broad master-management objective remains open. Next candidates are confirmation/dry-run guardrails for broad imports, official DrugPackage GTIN/JAN source import, and downstream `drug_name` keying audits.
+  - Preserve mixed dirty worktree; stage only explicit owned paths if committing later.
+
+### Drug Master Import Status Provenance Cards - 2026-06-30 13:24 JST
+
+- Scope:
+  - Continued master-management stabilization by extending the import status API and admin freshness cards.
+  - Updated `GET /api/drug-master-imports/status`, its response type, and the admin Drug Master status panel.
+  - No schema change, live DB mutation, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed in this slice.
+- Fixed:
+  - Latest successful import status now includes `source_file_hash`, `source_published_at`, `import_mode`, and `change_summary`.
+  - The admin freshness card shows the same hash prefix, source publication date, mode, and summary as the import history when those fields exist.
+  - Route tests lock the expanded status query/select contract and serialized last-success provenance.
+  - UI tests lock the displayed provenance on the master status panel.
+- Safety:
+  - Improves admin auditability for source freshness without exposing raw source bytes, credentials, PHI, patient data, or free-text drug names.
+  - Keeps existing admin-only auth, no-store/fixed-error response boundary, and import status freshness semantics.
+- Performance:
+  - Reuses the latest successful import-log query; no additional DB lookup or source fetch was added.
+  - No new dependency, broad scan, render loop, or unbounded work was added.
+- Validation:
+  - `pnpm exec prettier --write` on the owned status/type/UI/doc files: passed.
+  - `pnpm exec vitest run src/app/api/drug-master-imports/status/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `2` files / `80` tests.
+  - Scoped ESLint on the owned status/type/UI files: passed.
+  - Scoped Prettier check on the owned status/type/UI files: passed.
+  - Scoped and full `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Broad master-management objective remains open. Next candidates are confirmation/dry-run guardrails for broad imports, official DrugPackage GTIN/JAN source import, and downstream `drug_name` keying audits.
+  - Preserve mixed dirty worktree; stage only explicit owned paths if committing later.
+
+### Drug Master Broad Import Confirmation Guardrails - 2026-06-30 13:31 JST
+
+- Scope:
+  - Added pre-execution confirmation for broad official master imports and free-master auto-refresh in the admin Drug Master page.
+  - Reused the existing `ConfirmDialog`; no API, schema, live DB, RLS, external-send, push, deploy, secret, or destructive operation changed.
+- Fixed:
+  - SSK, MHLW price, MHLW generic, HOT, and PMDA import buttons now open a typed confirmation dialog before calling the import mutation.
+  - Free-master auto-refresh now opens a typed confirmation dialog before calling the job mutation.
+  - Existing stale preview invalidation on successful import/auto-refresh remains intact.
+  - UI tests now assert the mutations do not run until `取込実行` or `一括更新` is entered.
+- Safety:
+  - Reduces accidental broad master mutation risk for the master-data foundation used by drug search, safety flags, package inserts, and formulary previews.
+  - Keeps admin-only auth, route validation, no-store/fixed-error boundaries, and source URL protections unchanged.
+- Performance:
+  - No new query, source fetch, dependency, or expensive render path was added.
+  - The dialogs only gate existing mutation calls and preserve synchronous stale-preview clearing after success.
+- Validation:
+  - `pnpm exec prettier --write` on admin drug-master UI/test and docs: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `1` file / `69` tests.
+  - Scoped ESLint on the two admin drug-master UI files: passed.
+  - Scoped Prettier check on the two admin drug-master UI files: passed.
+  - Scoped and full `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Broad master-management objective remains open. Next candidates are dry-run preview/update diff for import APIs, official DrugPackage GTIN/JAN source import, and downstream `drug_name` keying audits.
+  - Preserve mixed dirty worktree; stage only explicit owned paths if committing later.
+
 ### Patient Create POST No-Store / PHI-Minimized Duplicate And Webhook Payload - 2026-06-30 10:03 JST
 
 - Scope:
@@ -21560,3 +22178,2643 @@ Next loop:
 - Remaining:
   - Commit only the two generate route/test files plus these ledger updates.
   - Watch for delayed codex review and handle any finding as fix-forward.
+
+### QR/JAHIS DrugMaster Candidate Confirmation UI — 2026-06-30 10:47 JST
+
+- Scope:
+  - Continued master-management stabilization from the drug-code master architecture.
+  - Connected QR/JAHIS `review_required` DrugMaster candidates to the QR draft review page instead of leaving the confirm contract reachable only indirectly.
+  - Reused shared org-header and patient-href helpers on the same surface.
+- Fixed:
+  - QR draft lines now carry source drug code, resolution status/source, and candidate DrugMaster metadata from parsed data into review state.
+  - `review_required` lines with a candidate now show an explicit `候補を採用` action and stay unconfirmable until adoption.
+  - Confirm payloads now send `drug_master_id` when the operator adopts a candidate, without fabricating `drug_code`.
+  - Unknown or unresolved drug-code resolution states fail closed before confirm.
+  - QR draft shortcut links now use `buildPatientHref`; QR draft fetch/delete/confirm headers now use `buildOrgHeaders` / `buildOrgJsonHeaders`.
+- Safety:
+  - Reduces master-data drift at the QR prescription intake boundary.
+  - Preserves backend confirm contract and tenant boundary behavior.
+  - No auth, DB query, migration, external send, PHI response shape, or live data operation changed.
+- Validation:
+  - Focused QR draft/confirm suite passed: `4` files / `39` tests.
+  - `pnpm typecheck` passed.
+  - Scoped Prettier check on the four owned QR draft files passed.
+  - Full `git diff --check` passed.
+  - Full `pnpm typecheck:no-unused` is blocked by unrelated dirty visit-schedule test symbols.
+  - Full `pnpm format:check` is blocked by unrelated dirty `src/app/api/visit-schedules/[id]/reschedule/approve/route.ts`.
+  - `pnpm lint` exited `0` with unrelated visit-schedule warnings.
+- Remaining:
+  - Continue the prescription-line drug-code review UI, backfill review, and DrugPackage/GTIN master-management roadmap.
+  - Resolve or isolate unrelated visit-schedule dirty files before claiming whole-tree no-unused/format gates are green.
+
+### New Prescription DrugMaster Identity Preservation — 2026-06-30 10:58 JST
+
+- Scope:
+  - Continued master-management stabilization at the manual prescription intake boundary.
+  - Preserved selected DrugMaster identity from typeahead and generic candidate selection through create-intake payloads.
+  - Converged the same surface on shared org-header and drug-master path helpers.
+- Fixed:
+  - `DrugSuggest` now returns `drug_master_id` together with YJ code and display attributes.
+  - New prescription lines now store the selected `drug_master_id` and submit it to `/api/prescription-intakes`.
+  - Generic candidate selection also preserves `drug_master_id`.
+  - Manual edits to a selected drug name now clear stale `drug_master_id` and `drug_code`.
+  - DrugMaster suggestion/generic search and prescription intake/file JSON calls now use shared helper APIs.
+- Safety:
+  - Reduces code-only drift after explicit master selection.
+  - Prevents stale master/code identity from surviving after text edits.
+  - No auth, DB query, migration, external send, PHI response shape, or live data operation changed.
+- Validation:
+  - Focused suite passed: `src/lib/pharmacy/drug-master-suggestions.test.ts`, `src/components/features/pharmacy/drug-suggest.test.tsx`, and `src/app/(dashboard)/prescriptions/new/prescription-intake-form.test.tsx` => `3` files / `13` tests.
+  - `pnpm typecheck` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - `pnpm lint` passed.
+  - `pnpm format:check` passed.
+  - Full `git diff --check` passed.
+  - The focused form suite still emits existing React `act(...)` warnings, but no test failed.
+- Remaining:
+  - Continue post-registration `PrescriptionLine` manual DrugMaster resolution UI, backfill review, and DrugPackage/GTIN master-management roadmap.
+  - Preserve unrelated care-report/visit-schedule dirty files unless explicitly claimed.
+
+### Registered PrescriptionLine DrugMaster Confirmation UI — 2026-06-30 11:09 JST
+
+- Scope:
+  - Continued master-management stabilization after intake creation.
+  - Connected unresolved registered `PrescriptionLine` rows in patient prescription history to the existing `PATCH /api/prescription-lines/[id]` DrugMaster confirmation contract.
+- Fixed:
+  - Unresolved history rows without an existing `drug_master_id` now show a DrugMaster candidate selector and explicit confirmation button.
+  - The confirmation request sends only `expected_updated_at` and `drug_master_id`.
+  - Successful confirmation invalidates patient prescription history and DrugMaster batch enrichment queries.
+  - Existing server-side OCC, conflict, and server-derived code checks remain the authority.
+- Safety:
+  - Existing `drug_master_id` rows are not offered a client-side overwrite path.
+  - Line IDs use `buildPrescriptionLineApiPath`; headers use `buildOrgJsonHeaders`.
+  - No auth, DB query, migration, external send, PHI response shape, or live data operation changed.
+- Validation:
+  - Focused prescription-history suite passed: `1` file / `25` tests.
+  - `pnpm typecheck` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - `pnpm lint` passed after replacing an effect-based state reset with key-based remount.
+  - `pnpm format:check` passed.
+  - Full `git diff --check` passed.
+- Remaining:
+  - Continue backfill dry-run review UX/reporting, DrugPackage/GTIN separation, and downstream `drug_name` keying audits.
+  - Preserve unrelated communication/visit-schedule dirty files unless explicitly claimed.
+
+### Care Report Workspace Response Boundary Slice — 2026-06-30 10:53 JST
+
+- Scope:
+  - Continued codex2's report-function work in `/api/care-reports/analytics` and `/api/care-reports/today-workspace`.
+  - Kept analytics aggregation, today-workspace aggregation, permissions, query validation, and response payload shapes unchanged.
+  - Preserved codex-owned QR/JAHIS, visit schedule reschedule/proposal, and related ledger dirty hunks without staging them.
+- Fixed:
+  - Added `unstable_rethrow(err)` to both exported GET catch blocks before returning the existing fixed no-store `INTERNAL_ERROR` response.
+  - Added a sanitized no-store auth/plumbing 500 regression test for report analytics.
+  - Added a sanitized no-store auth/plumbing 500 regression test for today's report workspace.
+  - Strengthened the today-workspace workspace-read 500 test to assert raw patient/token text is not exposed.
+- Safety:
+  - Reduces risk of swallowing Next.js framework-controlled route exceptions.
+  - Maintains fixed, no-store report/PHI 500 envelopes for application failures.
+  - Unexpected 500 bodies do not expose seeded patient names, token text, or raw thrown messages.
+  - No database migration, live data operation, external send, authorization change, query rewrite, or aggregation logic change was run.
+- Review:
+  - Sent agmsg `PATCH_REVIEW_REQUEST` to codex with scope and validation details.
+  - No review reply arrived before the commit window; in Codex+codex2-only mode, any later finding will be handled as fix-forward.
+- Validation:
+  - `pnpm exec vitest run src/app/api/care-reports/analytics/route.test.ts src/app/api/care-reports/today-workspace/route.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `31` tests; forced workspace-read 500 emitted expected structured `route_handler_unhandled_error` stderr.
+  - Scoped ESLint on the four owned report files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the four owned report files: passed.
+  - Scoped `git diff --check` on the four owned report files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: exited `0`; two warnings remain in codex-owned dirty `src/app/api/visit-schedules/[id]/reschedule/approve/route.ts`.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the four report route/test files because these ledger files also contain codex-owned QR/JAHIS progress hunks.
+  - Keep this ledger update dirty until codex commits/releases its ledger slice or exact-hunk staging is safe.
+
+### Care Report Print Audit Response Boundary Slice — 2026-06-30 11:00 JST
+
+- Scope:
+  - Continued codex2's report-function work in `/api/care-reports/[id]/print-audit`.
+  - Kept printable report eligibility, report content validation, audit persistence, authorization checks, and response payload shape unchanged.
+  - Preserved codex-owned QR/JAHIS, prescription drug-suggest, visit schedule reschedule/proposal, and related ledger dirty hunks without staging them.
+- Fixed:
+  - Split print-audit POST into `authenticatedPOST` plus an exported wrapper.
+  - Wrapped exported POST responses in `withSensitiveNoStore`.
+  - Converted exported-route auth/plumbing failures and unexpected report-loading failures to fixed `INTERNAL_ERROR` responses after `unstable_rethrow`.
+  - Added no-store assertion for permission-denied auth responses.
+  - Added sanitized no-store 500 tests for auth context failure and unexpected report load failure.
+- Safety:
+  - Reduces cache leakage risk for print-audit permission failures and printable report output route boundaries.
+  - Unexpected 500 bodies do not expose seeded patient names, printable body text, token text, or raw thrown messages.
+  - No database migration, live data operation, external send, authorization rule change, print eligibility change, audit payload expansion, or report content schema change was run.
+- Review:
+  - Sent agmsg `PATCH_REVIEW_REQUEST` to codex with scope and validation details.
+  - No print-audit review reply arrived before the commit window; in Codex+codex2-only mode, any later finding will be handled as fix-forward.
+  - Completed codex's reschedule lifecycle blocker re-review and returned `APPROVED`; no blockers found.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/care-reports/[id]/print-audit/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `18` tests.
+  - Scoped ESLint on the two owned print-audit files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned print-audit files: passed.
+  - Scoped `git diff --check` on the two owned print-audit files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Codex blocker re-review validation: focused reschedule/proposal Vitest passed `4` files / `140` tests; scoped ESLint, Prettier check, and diff-check passed.
+- Remaining:
+  - Commit only the two print-audit route/test files because these ledger files also contain codex-owned progress hunks.
+  - Keep this ledger update dirty until codex commits/releases its ledger slice or exact-hunk staging is safe.
+
+### Care Report Detail Response Boundary Slice — 2026-06-30 11:05 JST
+
+- Scope:
+  - Continued codex2's report-function work in `/api/care-reports/[id]`.
+  - Kept report detail payload, permissions, edit status rules, server-managed content preservation, confirmation audit behavior, and query/update semantics unchanged.
+  - Preserved codex-owned prescription history/drug-suggest, QR/JAHIS, visit schedule reschedule/proposal, and related ledger dirty hunks without staging them.
+- Fixed:
+  - Added `unstable_rethrow(err)` to the exported GET catch block before returning fixed no-store `INTERNAL_ERROR`.
+  - Split PATCH into `authenticatedPATCH` plus an exported wrapper.
+  - Wrapped exported PATCH responses in `withSensitiveNoStore`.
+  - Converted exported-route PATCH auth/plumbing failures to fixed `INTERNAL_ERROR` responses after `unstable_rethrow`.
+  - Added sanitized no-store 500 tests for GET auth failure and PATCH auth failure.
+  - Strengthened GET scoped-load 500 coverage to assert raw patient/token text is not exposed.
+  - Added a no-store assertion for PATCH permission-denied responses.
+- Safety:
+  - Reduces cache leakage risk for care report detail read/update permission failures.
+  - Reduces raw-error leakage risk for report detail read/update auth and scoped-loading failures.
+  - Unexpected 500 bodies do not expose seeded patient names, token text, or raw thrown messages.
+  - No database migration, live data operation, external send, authorization rule change, report edit-state change, audit payload expansion, or report content schema change was run.
+- Review:
+  - Sent agmsg `PATCH_REVIEW_REQUEST` to codex with scope and validation details.
+  - Completed codex's latest reschedule lifecycle blocker re-review and returned `APPROVED`; no blockers found.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/care-reports/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `24` tests.
+  - Scoped ESLint on the two owned care-report detail files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned care-report detail files: passed.
+  - Scoped `git diff --check` on the two owned care-report detail files: passed.
+  - Full `pnpm typecheck`: blocked by unrelated codex-owned `prescription-history-content.tsx` missing `onResolveDrugMaster` and `resolvingLineId` props.
+  - Full `pnpm lint`: blocked by unrelated codex-owned `prescription-history-content.tsx` `react-hooks/set-state-in-effect` and an unused `waitFor` warning.
+  - Full `pnpm format:check`: blocked by unrelated codex-owned `prescription-history-content.tsx` formatting.
+  - Codex blocker re-review validation: focused reschedule/proposal Vitest passed `4` files / `140` tests; scoped ESLint, Prettier check, and diff-check passed.
+- Remaining:
+  - Commit only the two care-report detail route/test files because these ledger files also contain codex-owned progress hunks.
+  - Re-run full gates after codex resolves the prescription-history WIP blockers.
+
+### Communication Follow-Up Response Boundary Slice — 2026-06-30 11:09 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration work in `/api/communication-requests/[id]/resolve-followup`.
+  - Kept request-close transition rules, follow-up task creation, response upsert behavior, tracing-report acknowledgment, audit digest behavior, permissions, and response payload shape unchanged.
+  - Preserved codex-owned prescription history/drug-suggest, QR/JAHIS, visit schedule reschedule/proposal, and related ledger dirty hunks without staging them.
+- Fixed:
+  - Split resolve-followup POST into `authenticatedPOST` plus an exported wrapper.
+  - Wrapped exported POST responses in `withSensitiveNoStore`.
+  - Converted exported-route auth/plumbing failures and unexpected transaction failures to fixed `INTERNAL_ERROR` responses after `unstable_rethrow`.
+  - Added no-store assertions for success, stale conflict, permission failures, care-report follow-up, tracing-report acknowledgment, and hostile tracing-report ID paths.
+  - Added sanitized no-store 500 tests for auth context failure and unexpected transaction failure.
+- Safety:
+  - Reduces cache leakage risk for interprofessional response/follow-up/tracing-report resolution data.
+  - Unexpected 500 bodies do not expose seeded patient names, token text, follow-up text, or raw thrown messages.
+  - No database migration, live data operation, external send, authorization rule change, tracing acknowledgment change, audit payload expansion, or task dedupe change was run.
+- Review:
+  - Sent agmsg `PATCH_REVIEW_REQUEST` to codex with scope and validation details.
+  - No review reply arrived before the commit window; in Codex+codex2-only mode, any later finding will be handled as fix-forward.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/communication-requests/[id]/resolve-followup/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `9` tests.
+  - Scoped ESLint on the two owned resolve-followup files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned resolve-followup files: passed.
+  - Scoped `git diff --check` on the two owned resolve-followup files: passed.
+  - Full gates were not rerun because unrelated codex-owned `prescription-history-content.tsx` currently blocks typecheck, lint, and format check.
+- Remaining:
+  - Commit only the two resolve-followup route/test files because these ledger files also contain codex-owned progress hunks.
+  - Re-run full gates after codex resolves the prescription-history WIP blockers.
+
+### Communication Request Detail Response Boundary Slice — 2026-06-30 11:14 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration work in `/api/communication-requests/[id]`.
+  - Kept GET behavior, PATCH status transitions, response idempotency, tracing-report sync, audit behavior, permissions, and response payload shape unchanged.
+  - Preserved codex-owned prescription history/drug-suggest, QR/JAHIS, visit schedule reschedule/proposal, and related ledger dirty hunks without staging them.
+- Fixed:
+  - Split communication request detail PATCH into `authenticatedPATCH` plus an exported wrapper.
+  - Wrapped exported PATCH responses in `withSensitiveNoStore`.
+  - Converted exported-route auth/plumbing failures and unexpected transaction failures to fixed `INTERNAL_ERROR` responses after `unstable_rethrow`.
+  - Added sanitized no-store 500 tests for auth context failure and unexpected transaction failure.
+- Safety:
+  - Reduces cache leakage risk for interprofessional communication request update data.
+  - Unexpected 500 bodies do not expose seeded patient names, phone numbers, or raw thrown messages.
+  - No database migration, live data operation, external send, authorization rule change, status-transition change, response idempotency change, tracing sync change, or audit payload expansion was run.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/communication-requests/[id]/route.test.ts'`: passed, `1` file / `31` tests.
+  - Scoped ESLint on the two owned communication request detail files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned communication request detail files: passed.
+  - Scoped `git diff --check` on the two owned communication request detail files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the two communication request detail route/test files because these ledger files also contain codex-owned progress hunks.
+  - Continue the next visit/report/interprofessional hardening slice after re-checking inbox and dirty tree.
+
+### PrescriptionLine DrugMaster Backfill Review Artifacts — 2026-06-30 11:20 JST
+
+- Scope:
+  - Continued master-management stabilization by making the existing `PrescriptionLine.drug_master_id` dry-run backfill analyzer reviewable before any future mutation.
+  - Kept the analyzer read-only; `--apply` still throws and no database mutation logic was added.
+  - Preserved unrelated dirty communication-request files.
+- Fixed:
+  - Added `--json-output PATH` and `--markdown-output PATH` options to the dry-run helper.
+  - Added durable artifact writing after the existing dry-run classification result is computed.
+  - Added `renderPrescriptionLineDrugMasterBackfillMarkdown()` with summary, counts, blocking issues, and sample tables by classification.
+  - Documented the output options in the script README and drug-code master architecture note.
+- Safety:
+  - Safe candidates remain limited to resolver-unique, conflict-free rows.
+  - Ambiguous receipt/HOT, missing code, code-not-found, existing master/code conflict, JAN/GTIN, already-resolved, and name-only cases remain non-auto-backfilled.
+  - Markdown explicitly states apply mode is disabled and the report is for review before any separately approved migration or manual correction.
+  - Generated reports can include patient ids, prescription-line ids, and drug names, so they are internal operational artifacts.
+- Performance:
+  - No query shape, resolver pass, dependency, external request, or unbounded loop changed.
+  - Artifact writing is file I/O only and runs after the bounded dry-run result exists.
+- Validation:
+  - `pnpm exec prettier --write tools/scripts/README.md docs/drug-code-master-architecture.md tools/scripts/backfill-prescription-line-drug-master-ids.ts tools/scripts/backfill-prescription-line-drug-master-ids.test.ts`: passed.
+  - `pnpm exec vitest run tools/scripts/backfill-prescription-line-drug-master-ids.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `6` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm exec prettier --check .codex/ralph-state.md CODEX_GOAL_PROGRESS.md docs/drug-code-master-architecture.md tools/scripts/README.md tools/scripts/backfill-prescription-line-drug-master-ids.ts tools/scripts/backfill-prescription-line-drug-master-ids.test.ts`: passed after ledger update.
+  - `git diff --check`: passed.
+  - Latest full `pnpm format:check`: blocked by unrelated dirty `src/app/api/care-reports/[id]/pdf/route.ts`, `src/app/api/visit-schedules/[id]/route.ts`, and `src/app/api/visit-schedules/route.test.ts`.
+- Remaining:
+  - Leave unrelated care-report PDF and visit-schedule formatting to their owner or a separate claimed slice.
+  - Continue DrugPackage/GTIN model separation, downstream `drug_name` keying audits, and DrugMaster import source-hash/publication metadata/admin confirmation hardening.
+
+### Communication Request Create Response Boundary Slice — 2026-06-30 11:19 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration work in `/api/communication-requests`.
+  - Kept GET behavior, POST validation, assignment checks, care-report/tracing-report scope resolution, recipient suggestions, and create payload shape unchanged.
+  - Preserved codex-owned master-management dirty paths and related ledger dirty hunks without staging them.
+- Fixed:
+  - Split communication request POST into `authenticatedPOST` plus an exported wrapper.
+  - Wrapped exported POST responses in `withSensitiveNoStore`.
+  - Converted exported-route unexpected creation failures to fixed `INTERNAL_ERROR` responses after `unstable_rethrow`.
+  - Added no-store assertion for successful creation responses.
+  - Added a sanitized no-store 500 test for unexpected request creation failure.
+- Safety:
+  - Reduces cache leakage risk for interprofessional communication request create responses.
+  - Unexpected 500 bodies do not expose seeded patient names, phone numbers, or raw thrown messages.
+  - No database migration, live data operation, external send, authorization rule change, scope rule change, recipient suggestion change, or persistence payload expansion was run.
+- Validation:
+  - `pnpm exec vitest run src/app/api/communication-requests/route.test.ts`: passed, `1` file / `35` tests.
+  - Scoped ESLint on the two owned communication requests files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned communication requests files: passed.
+  - Scoped `git diff --check` on the two owned communication requests files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the two communication requests route/test files because these ledger files also contain codex-owned progress hunks.
+  - Continue the next visit/report/interprofessional hardening slice after re-checking inbox and dirty tree.
+
+### Communication Export Response Boundary Slice — 2026-06-30 11:23 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration work in `/api/communication-requests/export`.
+  - Kept internal/external CSV profiles, redaction behavior, audit persistence, row caps, filename behavior, and explicit export failure codes unchanged.
+  - Preserved codex-owned master-management dirty paths and related ledger dirty hunks without staging them.
+- Fixed:
+  - Split communication request export GET into `authenticatedGET` plus an exported wrapper.
+  - Wrapped route-level GET responses in `withSensitiveNoStore`, including auth/plumbing failures before the export handler runs.
+  - Converted exported-route auth/plumbing failures to fixed `INTERNAL_ERROR` responses after `unstable_rethrow`.
+  - Added a sanitized no-store 500 test for unexpected auth lookup failure before export/audit work.
+- Safety:
+  - Reduces cache leakage risk for interprofessional CSV export auth/plumbing responses.
+  - Unexpected 500 bodies do not expose seeded patient names, phone numbers, or raw thrown messages.
+  - Existing CSV redaction, CSV injection neutralization, audit fail-closed behavior, row cap, authorization rule, migration state, external send behavior, and live data behavior were not changed.
+- Validation:
+  - `pnpm exec vitest run src/app/api/communication-requests/export/route.test.ts`: passed, `1` file / `15` tests.
+  - Scoped ESLint on the two owned communication export files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned communication export files: passed after formatting the test file.
+  - Scoped `git diff --check` on the two owned communication export files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the two communication export route/test files because these ledger files also contain codex-owned progress hunks.
+  - Continue the next visit/report/interprofessional hardening slice after re-checking inbox and dirty tree.
+
+### Visit Schedule Create Response Boundary Slice — 2026-06-30 11:27 JST
+
+- Scope:
+  - Continued codex2's visit-time work in `/api/visit-schedules`.
+  - Kept GET behavior, POST validation, duplicate/proposal guards, billing cap guard, workflow gate, route-order calculation, creation payload, and workflow notification payload unchanged.
+  - Preserved codex-owned master-management dirty paths and related ledger dirty hunks without staging them.
+- Fixed:
+  - Split visit schedule POST into `authenticatedPOST` plus an exported wrapper.
+  - Wrapped exported POST responses in `withSensitiveNoStore`.
+  - Added no-store assertion for successful manual schedule creation.
+  - Added a sanitized no-store 500 test for unexpected manual schedule creation failure.
+- Safety:
+  - Reduces cache leakage risk for manual visit schedule creation responses.
+  - Unexpected 500 bodies do not expose seeded patient names, phone numbers, or raw thrown messages.
+  - No database migration, live data operation, external send, authorization rule change, scheduling rule change, billing cap change, workflow gate change, or notification payload change was run.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-schedules/route.test.ts`: passed, `1` file / `33` tests.
+  - Scoped ESLint on the two owned visit schedule files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned visit schedule files: passed.
+  - Scoped `git diff --check` on the two owned visit schedule files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the two visit schedule route/test files because these ledger files also contain codex-owned progress hunks.
+  - Continue the next visit/report/interprofessional hardening slice after re-checking inbox and dirty tree.
+
+### DrugPackage GTIN/JAN Foundation — 2026-06-30 11:41 JST
+
+- Scope:
+  - Continued master-management stabilization by separating package-level GS1 GTIN/JAN identity from canonical `DrugMaster` medicine identity.
+  - Added an expand-only `DrugPackage` global reference model and migration; the migration file was created but not applied.
+  - Preserved existing `DrugMaster.jan_code` as a compatibility fallback.
+  - Preserved unrelated dirty visit-schedule/proposal files and prior master-management UI/backfill WIP.
+- Fixed:
+  - Added `DrugPackage` with `gtin`, optional `jan_code`, package level, package quantity/unit, manufacturer, source, source file hash, source record id, effective dates, and active flag.
+  - Added the `DrugMaster.drug_packages` relation and global no-RLS documentation for `DrugPackage`.
+  - Added `DrugPackage` to Data Explorer coverage/global model handling and `gtin` to searchable fields.
+  - Updated barcode verification to resolve GS1 AI `01` through active `DrugPackage` rows before legacy `DrugMaster.jan_code`.
+  - Added focused helper coverage for package-first match, package mismatch without legacy fallback, ambiguous package fail-closed behavior, and legacy fallback when no package row exists.
+- Safety:
+  - `DrugPackage` is global reference data with no `org_id`; no RLS policy or tenant table write was added.
+  - If package lookup resolves to a different YJ or to multiple DrugMaster YJ codes, verification fails closed and does not fall back to legacy `DrugMaster.jan_code`.
+  - No live DB migration application, data backfill, auth/permission change, external send, push, deploy, or destructive operation was performed.
+- Performance:
+  - Barcode verification adds one indexed exact-match `DrugPackage.findMany` lookup over GTIN/JAN candidates.
+  - If a package row is found, the legacy DrugMaster lookup is skipped.
+  - No dependency, external request, broad scan, or N+1 class was added.
+- Validation:
+  - `pnpm db:generate`: passed.
+  - `pnpm exec prisma format --schema=prisma/schema/`: passed.
+  - `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+  - `pnpm exec vitest run src/lib/dispensing/dispense-barcode-verification.test.ts 'src/app/api/dispense-tasks/[id]/verify-barcode/route.test.ts' src/app/api/dispense-results/route.test.ts src/lib/admin/data-explorer-catalog.test.ts src/server/services/data-explorer.test.ts --reporter=dot --testTimeout=30000`: passed, `5` files / `79` tests.
+  - Scoped Prettier check on owned TS/MD/ledger files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - Initial direct Prettier attempt on `.prisma`/`.sql` files failed because Prettier has no parser for those file types; Prisma format/validate were used for schema validation.
+- Remaining:
+  - Continue DrugPackage import/backfill from official GS1/JAN/HOT sources with source hash/publication metadata.
+  - Continue downstream `drug_name` keying audits.
+  - Harden broad DrugMaster imports with admin confirmation and dry-run summaries.
+
+### Care Report PDF Response Boundary Slice — 2026-06-30 11:30 JST
+
+- Scope:
+  - Continued codex2's report-function work in `/api/care-reports/[id]/pdf`.
+  - Kept confirmed-report gating, render failure code, audit fail-closed behavior, PDF filename/body response, and explicit render/audit response shapes unchanged.
+  - Preserved codex-owned master-management and visit schedule conflict-guard dirty paths plus related ledger dirty hunks without staging them.
+- Fixed:
+  - Split care report PDF GET into `authenticatedGET` plus an exported wrapper.
+  - Wrapped route-level GET responses in `withSensitiveNoStore`.
+  - Converted exported-route auth/plumbing failures to fixed `INTERNAL_ERROR` responses after `unstable_rethrow`.
+  - Added a sanitized no-store 500 test for unexpected auth context failure before PDF rendering/auditing.
+- Safety:
+  - Reduces cache leakage risk for report PDF auth/plumbing responses.
+  - Unexpected 500 bodies do not expose seeded patient names, phone numbers, or raw thrown messages.
+  - Existing PDF render behavior, audit fail-closed behavior, authorization rule, migration state, external send behavior, and live data behavior were not changed.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/care-reports/[id]/pdf/route.test.ts'`: passed, `1` file / `9` tests.
+  - Scoped ESLint on the two owned care report PDF files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned care report PDF files: passed after formatting route.ts.
+  - Scoped `git diff --check` on the two owned care report PDF files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the two care report PDF route/test files because these ledger files also contain codex-owned progress hunks.
+  - Continue the next visit/report/interprofessional hardening slice after re-checking inbox and dirty tree.
+
+### Visit Schedule Conflict / Capacity Guard Slice — 2026-06-30 11:38 JST
+
+- Scope:
+  - Continued schedule-management implementation under Codex/codex2-only operation.
+  - Hardened manual `POST /api/visit-schedules` and `PATCH /api/visit-schedules/[id]` save paths.
+  - Kept schema, migrations, auth, workflow gate, billing guard, notification payloads, route-order allocation, and response shapes unchanged.
+- Fixed:
+  - Added a shared active schedule time-window overlap guard for same-day pharmacist and selected vehicle occupancy.
+  - Manual schedule create now checks pharmacist/vehicle overlap inside the existing Serializable create transaction.
+  - Manual schedule create now rechecks selected vehicle `max_stops` inside the write transaction, after the preflight check.
+  - PATCH now rechecks time-window overlap and selected vehicle capacity inside Serializable transactions when the update changes active occupancy.
+  - PATCH skips vehicle capacity validation for active-to-inactive cleanup, so cancelling/rescheduling an already over-capacity vehicle day remains possible.
+- Safety:
+  - Reduces patient-safety and operations risk from double-booked pharmacists, double-booked vehicles, and race-created vehicle capacity overflow.
+  - Overlap uses half-open time ranges, so adjacent visits such as `09:00-10:00` and `10:00-11:00` remain allowed.
+  - No database migration, live data operation, external send, authorization rule change, or destructive action was run.
+- Review:
+  - codex2 returned `APPROVED` after reviewing create/PATCH transaction rechecks and running independent focused validation.
+  - verifier subagent confirmed focused tests, scoped lint/diff-check, and typecheck.
+  - medical_safety_reviewer found a Medium active-to-inactive capacity cleanup blocker; fixed with a regression test.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-schedules/route.test.ts 'src/app/api/visit-schedules/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `100` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm test:schedule-time:tz`: passed, `30` files / `499` tests.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Scoped `git diff --check` on the four owned schedule files: passed.
+- Remaining:
+  - Commit only the four schedule implementation/test files plus safely separable ledger hunks.
+  - Next schedule candidates: proposal draft/finalization time-window overlap checks and DB-level preflight planning for tenant composite FKs / partial uniqueness / time-window CHECKs.
+
+### Visit Proposal Confirmation Conflict Guard Slice — 2026-06-30 11:48 JST
+
+- Scope:
+  - Continued schedule-management hardening in `/api/visit-schedule-proposals/[id]`.
+  - Focused only on finalizing confirmed proposals into `VisitSchedule` rows.
+  - Kept approval/contact/reject behavior, route-order floor handling, billing guard, vehicle `max_stops` recheck, workflow gate, and response shapes unchanged.
+- Fixed:
+  - Proposal confirmation now calls the shared active time-window overlap guard inside the Serializable confirm transaction.
+  - The guard runs after the proposal claim/reload and before route-order shifting / `visitSchedule.create`.
+  - Same-pharmacist and same-vehicle active overlaps now return the same 409 messages as manual create/PATCH.
+  - Reschedule proposal confirmation passes `excludeScheduleId` for the source schedule so replacement confirmation is not blocked by its own old slot.
+- Safety:
+  - Reduces patient-safety risk from finalized visits with an unavailable pharmacist or vehicle.
+  - Preserves cleanup/replacement flow for approved reschedules.
+  - No database migration, live data operation, external send, authorization rule change, or destructive action was run.
+- Review:
+  - code_mapper, concurrency_reviewer, and medical_safety_reviewer all identified the missing proposal-finalization overlap guard.
+  - Their findings were fixed with focused implementation and tests.
+  - codex2 review was requested; no reply arrived before commit preparation.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/visit-schedule-proposals/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `58` tests.
+  - `pnpm test:schedule-time:tz`: passed, `30` files / `500` tests.
+  - Scoped ESLint on the two owned proposal files: passed with `--max-warnings=0`.
+  - Scoped Prettier check and scoped `git diff --check`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm typecheck`: blocked by unrelated dirty master-management type drift in `src/app/api/medication-issues/[id]/route.ts(136,60)`.
+- Remaining:
+  - Commit only the two proposal detail route/test files because the ledger files contain mixed progress hunks.
+  - Next schedule candidates: proposal draft PUT overlap guard and DB-level preflight planning for tenant composite FKs / partial uniqueness / time-window CHECKs.
+
+### Visit Schedule Proposal Response Boundary Slice — 2026-06-30 11:41 JST
+
+- Scope:
+  - Continued codex2's visit-time work in `/api/visit-schedule-proposals`.
+  - Kept proposal filtering, generated draft behavior, duplicate guards, retry behavior, workflow notification payloads, and authorization rules unchanged.
+  - Preserved codex-owned master-management/compliance/dispensing dirty paths and related mixed ledger dirty hunks without staging them.
+- Fixed:
+  - Split proposal POST and PUT handlers into authenticated inner handlers plus exported wrappers.
+  - Wrapped GET/POST/PUT exported responses in `withSensitiveNoStore`.
+  - Converted route-level auth/plumbing and unexpected transaction failures to fixed `INTERNAL_ERROR` responses after `unstable_rethrow`.
+  - Added sanitized no-store 500 tests for proposal list auth failure, generated proposal failure, and draft drawer auth failure.
+- Safety:
+  - Reduces cache leakage risk for visit schedule proposal list, generation, and draft drawer responses.
+  - Unexpected 500 bodies do not expose seeded patient names, phone numbers, or raw thrown messages.
+  - No database migration, live data operation, external send, authorization rule change, scheduling rule change, or destructive action was run.
+- Validation:
+  - `pnpm vitest run src/app/api/visit-schedule-proposals/route.test.ts`: passed, `1` file / `89` tests.
+  - Scoped ESLint on the two owned visit schedule proposal files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned visit schedule proposal files: passed.
+  - Scoped `git diff --check` on the two owned visit schedule proposal files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the two visit schedule proposal route/test files because these ledger files also contain mixed codex/codex2 progress hunks.
+  - Continue the next visit/report/interprofessional hardening slice after re-checking inbox and dirty tree.
+
+### Visit Schedule Reschedule Response Boundary Slice — 2026-06-30 11:47 JST
+
+- Scope:
+  - Continued codex2's visit-time work in `/api/visit-schedules/[id]/reschedule`.
+  - Kept reschedule validation, proposal generation, emergency impacted schedule handling, communication request/event creation, operational task creation, audit logging, and authorization rules unchanged.
+  - Preserved codex-owned master-management/compliance/dispensing/QR/proposal-detail dirty paths and related mixed ledger dirty hunks without staging them.
+- Fixed:
+  - Split reschedule POST into an authenticated inner handler plus an exported wrapper.
+  - Wrapped exported POST responses in `withSensitiveNoStore`.
+  - Converted route-level auth/plumbing failures to fixed `INTERNAL_ERROR` responses after `unstable_rethrow`.
+  - Added a sanitized no-store 500 test for unexpected auth lookup failure and a no-store assertion for successful reschedule request creation.
+- Safety:
+  - Reduces cache leakage risk for visit schedule reschedule responses.
+  - Unexpected 500 bodies do not expose seeded patient names, phone numbers, or raw thrown messages.
+  - No database migration, live data operation, external send, authorization rule change, scheduling rule change, or destructive action was run.
+- Validation:
+  - `pnpm vitest run 'src/app/api/visit-schedules/[id]/reschedule/route.test.ts'`: passed, `1` file / `15` tests.
+  - Scoped ESLint on the two owned reschedule files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned reschedule files: passed.
+  - Scoped `git diff --check` on the two owned reschedule files: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm typecheck`: blocked by unrelated master-management type drift at `src/app/api/medication-issues/[id]/route.ts(136,60)` after dirty Prisma DrugPackage changes; codex was notified.
+- Remaining:
+  - Commit only the two reschedule route/test files because these ledger files also contain mixed codex/codex2 progress hunks.
+  - Re-run full typecheck after the master-management owner resolves the unrelated Prisma type drift.
+  - Continue the next visit/report/interprofessional hardening slice after re-checking inbox and dirty tree.
+
+### Visit Brief Feedback Response Boundary Slice — 2026-06-30 11:58 JST
+
+- Scope:
+  - Continued codex2's visit-time work in `/api/visit-brief-feedback`.
+  - Kept feedback validation, audit action selection, and audit changes payload unchanged.
+  - Preserved codex-owned master-management/compliance/dispensing/QR dirty paths and related mixed ledger dirty hunks without staging them.
+- Fixed:
+  - Split visit brief feedback POST into an authenticated inner handler plus an exported wrapper.
+  - Wrapped exported POST responses in `withSensitiveNoStore`.
+  - Converted route-level auth/RLS/audit failures to fixed `INTERNAL_ERROR` responses after `unstable_rethrow`.
+  - Added sanitized no-store 500 tests for unexpected auth lookup failure and audit logging failure, plus a success no-store assertion.
+- Safety:
+  - Reduces cache leakage risk for visit brief feedback responses.
+  - Unexpected 500 bodies do not expose seeded patient names, phone numbers, raw thrown messages, or corrected-summary feedback content.
+  - No database migration, live data operation, external send, authorization rule change, audit payload change, or destructive action was run.
+- Validation:
+  - `pnpm vitest run src/app/api/visit-brief-feedback/route.test.ts`: passed, `1` file / `7` tests.
+  - Scoped ESLint on the two owned visit brief feedback files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned visit brief feedback files: passed.
+  - Scoped `git diff --check` on the two owned visit brief feedback files: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm typecheck`: blocked by unrelated master-management WIP at `tools/scripts/backfill-drug-packages-from-drug-master-jan.test.ts(183,53)`; codex was notified.
+- Remaining:
+  - Commit only the two visit brief feedback route/test files because these ledger files also contain mixed codex/codex2 progress hunks.
+  - Re-run full typecheck after the master-management owner resolves the unrelated generic mock typing drift.
+  - Continue the next visit/report/interprofessional hardening slice after re-checking inbox and dirty tree.
+
+### Facility Visit Batch Response Boundary Slice — 2026-06-30 12:03 JST
+
+- Scope:
+  - Continued codex2's visit-time work in `/api/facility-visit-batches`.
+  - Kept batch grouping, unit/facility validation, route-order conflict detection, carry-item confirmation guard, audit memo behavior, and workflow notification unchanged.
+  - Preserved codex-owned master-management/compliance/dispensing/QR/schedule dirty paths and related mixed ledger dirty hunks without staging them.
+- Fixed:
+  - Split facility visit batch POST into an authenticated inner handler plus an exported wrapper.
+  - Wrapped exported POST responses in `withSensitiveNoStore`.
+  - Converted route-level RLS/batch-write failures to fixed `INTERNAL_ERROR` responses after `unstable_rethrow`.
+  - Added a sanitized no-store 500 test for unexpected transaction failure and a no-store assertion for successful batch creation.
+- Safety:
+  - Reduces cache leakage risk for facility visit batch creation/update responses.
+  - Unexpected 500 bodies do not expose seeded patient names, phone numbers, or raw thrown messages.
+  - No database migration, live data operation, external send, authorization rule change, scheduling rule change, audit payload change, or destructive action was run.
+- Validation:
+  - `pnpm vitest run src/app/api/facility-visit-batches/route.test.ts`: passed, `1` file / `19` tests.
+  - Scoped ESLint on the two owned facility batch files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned facility batch files: passed.
+  - Scoped `git diff --check` on the two owned facility batch files: passed.
+  - `pnpm lint`: passed.
+  - `pnpm typecheck`: blocked by unrelated master-management WIP at `tools/scripts/backfill-drug-packages-from-drug-master-jan.test.ts(236,53)`.
+  - `pnpm format:check`: blocked by unrelated Prettier issues in `tools/scripts/backfill-drug-packages-from-drug-master-jan.test.ts`.
+- Remaining:
+  - Commit only the two facility visit batch route/test files because these ledger files also contain mixed codex/codex2 progress hunks.
+  - Re-run full typecheck/format after the master-management owner resolves the unrelated backfill test drift.
+  - Continue the next visit/report/interprofessional hardening slice after re-checking inbox and dirty tree.
+
+### Facility Visit Batch Detail Response Boundary Slice — 2026-06-30 12:08 JST
+
+- Scope:
+  - Continued codex2's visit-time work in `/api/facility-visit-batches/[id]`.
+  - Kept batch access checks, assignment scoping, guarded unlink/delete behavior, guarded reorder behavior, and workflow notification unchanged.
+  - Preserved codex-owned master-management/compliance/dispensing/QR/schedule dirty paths and related mixed ledger dirty hunks without staging them.
+- Fixed:
+  - Split DELETE and PATCH into authenticated inner handlers plus exported wrappers.
+  - Wrapped exported DELETE/PATCH responses in `withSensitiveNoStore`.
+  - Converted route-level RLS/delete/reorder failures to fixed `INTERNAL_ERROR` responses after `unstable_rethrow`.
+  - Added sanitized no-store 500 tests for unexpected delete and reorder transaction failures, plus no-store assertions for authorization denial and representative success responses.
+- Safety:
+  - Reduces cache leakage risk for facility visit batch delete/reorder responses.
+  - Unexpected 500 bodies do not expose seeded patient names, phone numbers, or raw thrown messages.
+  - No database migration, live data operation, external send, authorization rule change, scheduling rule change, or destructive action was run.
+- Validation:
+  - `pnpm vitest run 'src/app/api/facility-visit-batches/[id]/route.test.ts'`: passed, `1` file / `24` tests.
+  - Scoped ESLint on the two owned facility batch detail files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned facility batch detail files: passed.
+  - Scoped `git diff --check` on the two owned facility batch detail files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the two facility visit batch detail route/test files because these ledger files also contain mixed codex/codex2 progress hunks.
+  - Continue the next visit/report/interprofessional hardening slice after re-checking inbox and dirty tree.
+
+### Facility Visit Day Response Boundary Slice — 2026-06-30 12:16 JST
+
+- Scope:
+  - Continued codex2's visit-time work in `/api/facility-visit-batches/visit-days`.
+  - Kept schedule lookup, facility grouping, patient preference upsert payload, and workflow notification unchanged.
+  - Preserved codex-owned master-management/compliance/dispensing/QR/medication/visit-preparation dirty paths and related mixed ledger dirty hunks without staging them.
+- Fixed:
+  - Split facility visit day preference POST into an authenticated inner handler plus an exported wrapper.
+  - Wrapped exported POST responses in `withSensitiveNoStore`.
+  - Converted route-level RLS/preference upsert failures to fixed `INTERNAL_ERROR` responses after `unstable_rethrow`.
+  - Added a sanitized no-store 500 test for unexpected transaction failure and a no-store assertion for successful preference upsert.
+- Safety:
+  - Reduces cache leakage risk for facility visit day preference responses.
+  - Unexpected 500 bodies do not expose seeded patient names, phone numbers, or raw thrown messages.
+  - No database migration, live data operation, external send, authorization rule change, preference payload change, or destructive action was run.
+- Validation:
+  - `pnpm vitest run src/app/api/facility-visit-batches/visit-days/route.test.ts`: passed, `1` file / `8` tests.
+  - Scoped ESLint on the two owned facility visit day files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned facility visit day files: passed.
+  - Scoped `git diff --check` on the two owned facility visit day files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the two facility visit day route/test files because these ledger files also contain mixed codex/codex2 progress hunks.
+  - Continue the next visit/report/interprofessional hardening slice after re-checking inbox and dirty tree.
+
+### Pharmacy Visit Request Response Boundary Slice — 2026-06-30 12:20 JST
+
+- Scope:
+  - Continued codex2's visit-time/interprofessional work in `/api/pharmacy-visit-requests`.
+  - Kept patient-share/partnership validity checks, contract estimate behavior, compact audit payload, and safe response projection unchanged.
+  - Preserved codex-owned master-management/compliance/dispensing/QR/medication/visit-preparation dirty paths and related mixed ledger dirty hunks without staging them.
+- Fixed:
+  - Split pharmacy visit request POST into an authenticated inner handler plus an exported wrapper.
+  - Wrapped exported POST responses in `withSensitiveNoStore`, matching the existing GET boundary.
+  - Converted route-level creation failures to fixed `INTERNAL_ERROR` responses after `unstable_rethrow`.
+  - Added a sanitized no-store 500 test for unexpected visit request creation failure and a no-store assertion for successful creation.
+- Safety:
+  - Reduces cache leakage risk for inter-pharmacy visit request creation responses.
+  - Unexpected 500 bodies do not expose seeded patient names, phone numbers, physician instructions, home notes, or raw thrown messages.
+  - No database migration, live data operation, external send, authorization rule change, audit payload change, or destructive action was run.
+- Validation:
+  - `pnpm vitest run src/app/api/pharmacy-visit-requests/route.test.ts`: passed, `1` file / `12` tests.
+  - Scoped ESLint on the two owned pharmacy visit request files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned pharmacy visit request files: passed.
+  - Scoped `git diff --check` on the two owned pharmacy visit request files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the two pharmacy visit request route/test files because these ledger files also contain mixed codex/codex2 progress hunks.
+  - Continue the next visit/report/interprofessional hardening slice after re-checking inbox and dirty tree.
+
+### QR OTC Promotion DrugPackage JAN Resolution — 2026-06-30 11:50 JST
+
+- Scope:
+  - Continued master-management stabilization by moving OTC QR JAN promotion onto the new package-level identity layer.
+  - Kept explicit OTC issue promotion behavior, start-date/end-date guards, patient scoping, duplicate detection, and MedicationProfile payload shape unchanged.
+  - Preserved existing legacy `DrugMaster.jan_code` fallback when no `DrugPackage` row exists.
+  - Preserved unrelated dirty visit-schedule/proposal files and prior master-management UI/backfill/schema WIP.
+- Fixed:
+  - Added a QR OTC JAN resolver that checks active `DrugPackage` rows by `gtin` or `jan_code` before reading legacy `DrugMaster.jan_code`.
+  - Unique package DrugMaster matches now populate `MedicationProfile.drug_master_id`.
+  - Package ambiguity no longer falls back to legacy JAN; promotion remains name-only with `drug_master_id: null`.
+  - Added regressions for package-first linking, legacy fallback, and ambiguous package fail-closed behavior.
+- Safety:
+  - Prevents package-level JAN ambiguity from silently master-linking an OTC profile to a legacy single `DrugMaster.jan_code` row.
+  - Keeps explicit operator promotion and patient/org scoping as the gate before MedicationProfile creation.
+  - No schema migration application, live DB mutation outside unit mocks, auth/permission change, external send, push, deploy, or destructive operation was performed.
+- Performance:
+  - JAN-bearing OTC promotion adds one indexed exact-match package lookup.
+  - If package resolution succeeds, the legacy DrugMaster lookup is skipped.
+  - No dependency, external request, broad scan, or N+1 class was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/qr-otc-promotion.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `11` tests.
+  - `pnpm exec vitest run src/server/services/qr-otc-promotion.test.ts src/lib/dispensing/dispense-barcode-verification.test.ts 'src/app/api/dispense-tasks/[id]/verify-barcode/route.test.ts' src/app/api/dispense-results/route.test.ts src/lib/admin/data-explorer-catalog.test.ts src/server/services/data-explorer.test.ts --reporter=dot --testTimeout=30000`: passed, `6` files / `90` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Continue DrugPackage import/backfill from official GS1/JAN/HOT sources.
+  - Continue downstream `drug_name` keying audits.
+  - Harden broad DrugMaster imports with source hash, publication metadata, admin confirmation, and dry-run summaries.
+
+### DrugPackage Legacy JAN/GTIN Backfill Review Artifacts — 2026-06-30 12:06 JST
+
+- Scope:
+  - Continued master-management stabilization by adding an operational dry-run analyzer for migrating legacy `DrugMaster.jan_code` values into package-level `DrugPackage` GTIN/JAN rows.
+  - Kept the workflow read-only: this slice does not apply a backfill and `--apply` is explicitly rejected.
+  - Preserved unrelated visit/facility schedule dirty files and prior master-management WIP.
+- Fixed:
+  - Added `tools/scripts/backfill-drug-packages-from-drug-master-jan.ts`.
+  - Added `pnpm db:drug-packages:backfill-from-drug-master-jan`.
+  - Added JSON/Markdown review artifacts via `--json-output` and `--markdown-output`.
+  - Classified rows as `backfillable`, `already_present`, `duplicate_jan`, `invalid_jan`, or `package_conflict`.
+  - Treats 8-digit JAN, 13-digit JAN, 14-digit leading-zero GTIN, and non-leading-zero 14-digit GTIN correctly; non-leading-zero GTIN remains package-only and does not force JAN normalization.
+  - Added DB CLI convention coverage so the script remains import-safe, help-readable before `DATABASE_URL`, timeout-bounded, and structured on CLI failures.
+- Safety:
+  - The script performs only bounded SELECTs and rejects mutation mode.
+  - Safe candidates require a valid single-master JAN/GTIN and no existing package conflict.
+  - Duplicate JAN/GTIN, invalid code, and package-conflict rows are blocking review findings, not auto-backfill targets.
+  - Generated artifacts can include internal DrugMaster ids, YJ codes, drug names, manufacturer names, and source JAN/GTIN values, so they are internal operational artifacts.
+- Performance:
+  - Uses one bounded legacy `DrugMaster` scan and one exact-match `DrugPackage` lookup over distinct code candidates.
+  - Avoids N+1 package lookups, broad unbounded scans, external calls, and new dependencies.
+- Validation:
+  - `pnpm exec prettier --write tools/scripts/backfill-drug-packages-from-drug-master-jan.ts tools/scripts/backfill-drug-packages-from-drug-master-jan.test.ts`: passed.
+  - `pnpm exec vitest run tools/scripts/backfill-drug-packages-from-drug-master-jan.test.ts tools/scripts/db-precheck-cli-conventions.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `11` tests.
+  - Related master-management Vitest suite covering both backfill analyzers, DB CLI conventions, barcode verification, QR OTC promotion, DrugSuggest, prescription intake, QR draft review, and prescription history: passed, `10` files / `74` tests; existing React `act(...)` warnings were printed by prescription intake tests but did not fail the suite.
+  - `pnpm db:generate`: passed.
+  - `pnpm exec prisma format --schema=prisma/schema/`: passed.
+  - `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+  - Initial `pnpm typecheck`: failed on the new test's non-generic `pg` query mock; fixed in the test.
+  - Final `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Continue official GS1/JAN/HOT source import/backfill with source hash and publication metadata.
+  - Continue downstream `drug_name` keying audits.
+  - Harden broad DrugMaster imports with admin confirmation and dry-run summaries.
+
+### MedicationProfile Manual DrugMaster ID Validation — 2026-06-30 12:14 JST
+
+- Scope:
+  - Continued downstream master-management stabilization in manual current-medication profile creation.
+  - Focused on `POST /api/medication-profiles`, where user-entered profiles can now carry `drug_master_id`.
+  - Preserved existing patient access checks, response envelopes, date normalization, and name-only manual profile behavior.
+- Fixed:
+  - `createMedicationProfileSchema` now trims optional `drug_master_id` and treats blank strings as unspecified.
+  - Manual MedicationProfile creation validates supplied `drug_master_id` inside the existing RLS transaction before create.
+  - Unknown DrugMaster ids now return `400 VALIDATION_ERROR` before any `MedicationProfile.create`.
+  - Valid selected DrugMaster ids are persisted in normalized form.
+  - Added tests for selected DrugMaster persistence, unknown id rejection, and blank id non-persistence.
+- Safety:
+  - Prevents stale/typo/hostile master ids from creating master-linked current medication profiles.
+  - Keeps unresolved manual profiles possible only as name-based profiles without a fake `drug_master_id`.
+  - No auth/permission rule, schema migration, live DB operation, external send, push, deploy, secret handling, or destructive operation was performed.
+- Performance:
+  - Adds at most one exact `DrugMaster.findFirst` by id only when a manual create payload supplies `drug_master_id`.
+  - No broad scan, N+1 path, dependency, or external request was added.
+- Validation:
+  - `pnpm exec prettier --write src/lib/validations/medication.ts src/app/api/medication-profiles/route.ts src/app/api/medication-profiles/route.test.ts`: passed.
+  - `pnpm exec vitest run src/app/api/medication-profiles/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `19` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Continue downstream `drug_name` keying audits.
+  - Consider schema-backed residual-medication `drug_master_id` expansion instead of request-only passthrough.
+  - Continue official DrugPackage import/backfill/source-metadata hardening.
+
+### Schedule Mutation Response Boundary + Proposal Confirm Guard — 2026-06-30 12:08 JST
+
+- Scope:
+  - Switched coordination notices to Codex/codex2-only; Claude was sent a stop/no-reply notice and codex2 was notified that schedule-management work continues without Claude gates.
+  - Hardened visit schedule detail PATCH and visit schedule proposal detail PATCH exported-route boundaries.
+  - Preserved unrelated drug-master, prescription, dispensing, compliance, facility-batch, and mixed ledger dirty paths.
+- Fixed:
+  - Split schedule/proposal PATCH handlers into authenticated inner handlers plus exported wrappers.
+  - Wrapped exported PATCH responses in `withSensitiveNoStore`.
+  - Converted route-level auth/plumbing failures to fixed `INTERNAL_ERROR` responses after `unstable_rethrow`.
+  - Changed proposal confirmation time conflicts to throw transaction-local errors so earlier claim updates roll back.
+  - Added a duplicate active schedule guard for same org/case/visit type/date before schedule creation.
+  - Asserted reschedule approval passes RLS `requestContext` into `withOrgContext`.
+- Safety:
+  - Reduces cache leakage and raw-error leakage risk for schedule/proposal mutation responses.
+  - Unexpected 500 bodies do not expose seeded patient names, token text, or raw thrown details.
+  - Duplicate active schedule conflicts now stop before schedule creation, contact-log updates, audit writes, operational-task resolution, or notifications.
+  - No database migration, live data operation, external send, authorization rule change, RLS policy change, push, deploy, or destructive action was run.
+- Performance:
+  - Adds one bounded duplicate active schedule lookup during proposal confirmation.
+  - No broad query fanout, dependency, render loop, or external network call was added.
+- Validation:
+  - Scoped ESLint on the five owned schedule/proposal files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the five owned files: passed.
+  - Scoped `git diff --check` on the five owned files: passed.
+  - Focused Vitest for schedule detail, proposal detail, and reschedule approval tests: passed, `3` files / `135` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm test:schedule-time:tz`: passed, `30` files / `501` tests; existing forced-error stderr was expected.
+- Remaining:
+  - Commit only the five owned schedule/proposal route/test files because these ledger files contain mixed codex/codex2/master-management progress hunks.
+  - Continue remaining schedule hardening candidates: billing-preview RLS scoping, day-board RLS `requestContext`, visit-route transaction scope, visit-preparations PUT response boundary, schedule PATCH duplicate guard, completed/cancelled mutation guards, and reschedule lifecycle state guard.
+
+### Visit Preparation PUT Boundary + PHI-Minimized Route Notes — 2026-06-30 12:21 JST
+
+- Scope:
+  - Continued schedule-management P0 hardening in `/api/visit-preparations/[scheduleId]`.
+  - Kept visit preparation validation, readiness gates, route optimization behavior, vehicle assignment rules, operational-task transitions, and authorization policy unchanged.
+  - Preserved unrelated drug-master, prescription, medication-profile, pharmacy-visit-request, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - Split PUT into an authenticated inner handler plus exported wrapper.
+  - Wrapped PUT success, validation, auth, conflict, and unexpected failure responses in `withSensitiveNoStore`.
+  - Converted unexpected auth/plumbing and transaction failures to fixed `INTERNAL_ERROR` after `unstable_rethrow`.
+  - Passed `{ requestContext: ctx }` into the PUT `withOrgContext` transaction for actor/site/IP/user-agent RLS/audit metadata.
+  - Replaced generated missing-coordinate route notes from patient-name lists to a count-only note such as `座標未設定: 1件`.
+- Safety:
+  - Reduces cache leakage and raw-error leakage risk for visit preparation updates.
+  - Unexpected 500 bodies do not expose seeded patient names, token text, or raw thrown details.
+  - Generated `route_plan_snapshot` notes no longer persist patient names or addresses for missing-coordinate cases.
+  - No database migration, live data operation, external send, authorization rule change, workflow rule change, push, deploy, or destructive action was run.
+- Performance:
+  - No query count, transaction count, route-engine call count, dependency, broad scan, or external network behavior changed.
+- Validation:
+  - Focused Vitest for `visit-preparations/[scheduleId]`: passed, `1` file / `37` tests.
+  - Scoped ESLint on the two owned visit-preparation files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned files: passed.
+  - Scoped `git diff --check` on the two owned files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm test:schedule-time:tz`: passed, `30` files / `502` tests; existing forced-error stderr was expected.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - verifier subagent independently confirmed the focused/scoped checks and found no blocking defect.
+- Remaining:
+  - Commit only the two owned visit-preparation route/test files because these ledger files contain mixed codex/codex2/master-management progress hunks.
+  - Next P0 is billing-preview/billing-preview-batch service tx-awareness, pharmacist/site org reference validation, and batch access-check keying.
+
+### Billing Preview RLS-Scoped Service Reads — 2026-06-30 12:33 JST
+
+- Scope:
+  - Continued schedule-management P0 hardening in visit schedule proposal billing preview GET/POST.
+  - Preserved existing response boundary/no-store behavior, preview payload shape, batch prefetching, runtime-context caching, and validation semantics.
+  - Preserved unrelated staged `pharmacy-visit-requests` files and unrelated master-management/visit-record dirty paths.
+- Fixed:
+  - Added route-level pharmacist/site org reference validation before preview generation.
+  - Moved billing-preview access checks into `withOrgContext(ctx.orgId, ..., { requestContext: ctx })`.
+  - Added optional `db` injection to `buildVisitScheduleBillingPreview` and `buildVisitScheduleBillingPreviewBatch`.
+  - Passed the RLS transaction client through care case, insurance, prescription-intake, cadence, proposal, consent, management-plan, runtime-context, and billing requirement reads.
+  - Added `org_id` to weekly-cap `user.findFirst` and `user.findMany` lookups.
+  - Kept batch access checks keyed by `caseId:pharmacistId` instead of collapsing to case id only.
+- Safety:
+  - Reduces PHI/insurance/billing/consent/management-plan read risk from global Prisma reads bypassing RLS request metadata.
+  - Blocks cross-org pharmacist/site ids before the billing-preview service runs.
+  - Prevents cross-tenant `max_weekly_visits` metadata probing through pharmacist ids.
+  - No database migration, live data operation, external send, authorization broadening, push, deploy, or destructive action was run.
+- Performance:
+  - No new broad scan or external request.
+  - Adds bounded membership/site reference checks and one RLS transaction around the existing preview read set.
+- Validation:
+  - Focused billing-preview/validator Vitest: passed, `4` files / `65` tests.
+  - Scoped ESLint on the eight owned files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the eight owned files: passed.
+  - Scoped `git diff --check` on the eight owned files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm test:schedule-time:tz`: passed, `30` files / `503` tests; existing forced-error stderr was expected.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the eight owned billing-preview/validator files because these ledger files contain mixed progress hunks and another slice has `pharmacy-visit-requests` staged.
+  - Continue P1 schedule candidates: visit-routes stale target filters, day-board access policy, completed/cancelled schedule mutation guards, and reschedule lifecycle policy tests.
+
+### Referral Intake Response Boundary Slice — 2026-06-30 12:28 JST
+
+- Scope:
+  - Continued codex2's other-profession collaboration hardening in `POST /api/referrals`.
+  - Kept referral validation, duplicate detection, duplicate acknowledgement behavior, minimal success projection, authorization policy, and referral intake service behavior unchanged.
+  - Preserved unrelated billing-preview, drug-master, prescription, medication, residual-medication, visit-record, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - Split referral POST into an authenticated inner handler plus exported wrapper.
+  - Wrapped referral success, validation, duplicate, transaction-error, and unexpected failure responses in `withSensitiveNoStore`.
+  - Converted unexpected auth/plumbing and creation failures to fixed `INTERNAL_ERROR` after `unstable_rethrow`.
+  - Added tests for success no-store headers, transaction-error no-store headers, and unexpected raw-error redaction.
+- Safety:
+  - Reduces cache leakage and raw-error/PHI leakage risk for other-profession referral intake.
+  - Unexpected 500 bodies do not expose seeded patient names, phone numbers, addresses, insurance identifiers, referral source, referral notes, or raw thrown details.
+  - No database migration, live data operation, external send, authorization rule change, push, deploy, or destructive action was run.
+- Performance:
+  - No query shape, transaction behavior, dependency, broad scan, render path, or external request changed.
+- Validation:
+  - Local Next.js Route Handlers and `unstable_rethrow` docs were read before editing route handler code.
+  - `pnpm exec prettier --write src/app/api/referrals/route.ts src/app/api/referrals/route.test.ts`: passed, unchanged.
+  - `pnpm vitest run src/app/api/referrals/route.test.ts`: passed, `1` file / `6` tests.
+  - Scoped ESLint on the two owned referral files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned referral files: passed.
+  - Scoped `git diff --check` on the two owned referral files: passed.
+  - `pnpm lint`: passed on the current dirty tree.
+  - `pnpm typecheck`: blocked by unrelated dirty billing-preview WIP at `src/app/api/visit-schedule-proposals/billing-preview/route.ts(66,11)`, `TS2554 Expected 1 arguments, but got 2`.
+  - `pnpm format:check`: blocked by unrelated dirty billing-preview files: `src/app/api/visit-schedule-proposals/billing-preview-batch/route.test.ts`, `src/app/api/visit-schedule-proposals/billing-preview-batch/route.ts`, and `src/app/api/visit-schedule-proposals/billing-preview/route.test.ts`.
+- Remaining:
+  - Commit only the two owned referral route/test files because these ledger files contain mixed codex/codex2/master-management progress hunks.
+  - Re-run full typecheck and format after the billing-preview owner resolves the unrelated WIP blockers.
+
+### Patient Self-Report PATCH Response Boundary Slice — 2026-06-30 12:32 JST
+
+- Scope:
+  - Continued codex2's report hardening in `PATCH /api/patient-self-reports/[id]`.
+  - Kept optimistic concurrency, assignment checks, triage stamping, audit minimization, privacy masking, authorization policy, and self-report response projection unchanged.
+  - Preserved unrelated billing-preview, drug-master, prescription, medication, residual-medication, visit-record, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - Split PATCH into an authenticated inner handler plus exported wrapper.
+  - Wrapped PATCH success, validation, conflict, not-found, auth, and unexpected failure responses in the same sensitive no-store boundary used by GET.
+  - Converted unexpected auth/plumbing and update failures to fixed `INTERNAL_ERROR` after `unstable_rethrow`.
+  - Added a regression test for unexpected update failure redaction and no-store headers.
+- Safety:
+  - Reduces cache leakage and raw-error/PHI leakage risk for patient self-report update responses.
+  - Unexpected 500 bodies do not expose seeded reporter name, self-report content, or raw thrown details.
+  - No database migration, live data operation, external send, authorization rule change, push, deploy, or destructive action was run.
+- Performance:
+  - No query shape, transaction behavior, dependency, broad scan, render path, or external request changed.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/patient-self-reports/[id]/route.ts' 'src/app/api/patient-self-reports/[id]/route.test.ts'`: passed, unchanged.
+  - `pnpm vitest run 'src/app/api/patient-self-reports/[id]/route.test.ts'`: passed, `1` file / `18` tests.
+  - Scoped ESLint on the two owned self-report files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned self-report files: passed.
+  - Scoped `git diff --check` on the two owned self-report files: passed.
+  - `pnpm lint`: passed on the current dirty tree.
+  - Full `pnpm typecheck` and `pnpm format:check` were not re-run for this slice because unrelated dirty billing-preview WIP is still blocking those gates, as recorded in the referral slice.
+- Remaining:
+  - Commit only the two owned patient self-report route/test files because these ledger files contain mixed codex/codex2/master-management progress hunks.
+  - Re-run full typecheck and format after billing-preview is resolved.
+
+### Handoff Item Creation Response Boundary Slice — 2026-06-30 12:40 JST
+
+- Scope:
+  - Continued codex2's team/interprofessional collaboration hardening in `POST /api/handoff-board/items`.
+  - Kept handoff 3-point transfer guard, message/consult behavior, recipient validation, audit actions, authorization policy, and creation payload behavior unchanged.
+  - Preserved unrelated billing-preview, drug-master, prescription, medication, residual-medication, visit-record, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - Split handoff item POST into an authenticated inner handler plus exported wrapper.
+  - Wrapped success, validation, not-found, recipient validation, auth, and unexpected failure responses in `withSensitiveNoStore`.
+  - Converted unexpected auth/plumbing and write/audit failures to fixed `INTERNAL_ERROR` after `unstable_rethrow`.
+  - Added tests for success no-store headers and unexpected transaction failure redaction.
+- Safety:
+  - Reduces cache leakage and raw-error/PHI leakage risk for handoff item creation.
+  - Unexpected 500 bodies do not expose seeded recipient labels, visit-note content, or raw thrown details.
+  - No database migration, live data operation, external send, authorization rule change, push, deploy, or destructive action was run.
+- Performance:
+  - No query shape, transaction behavior, dependency, broad scan, render path, or external request changed.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/handoff-board/items/route.ts src/app/api/handoff-board/items/route.test.ts`: passed, unchanged.
+  - `pnpm vitest run src/app/api/handoff-board/items/route.test.ts`: passed, `1` file / `14` tests.
+  - Scoped ESLint on the two owned handoff item files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned handoff item files: passed.
+  - Scoped `git diff --check` on the two owned handoff item files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Commit only the two owned handoff item route/test files because these ledger files contain mixed codex/codex2/master-management progress hunks.
+
+### Schedule Day-Board RLS Read Slice — 2026-06-30 12:48 JST
+
+- Scope:
+  - Took the non-overlapping schedule-management P1 day-board access/RLS requestContext slice delegated by codex.
+  - Kept day-board response shape, assignment-scope filtering, date-key handling, hidden proposal behavior, vehicle recommendations, readiness summaries, and authorization policy unchanged.
+  - Preserved unrelated `visit-routes`, newly locked `visit-schedules/[id]`, drug-master import WIP, prescription, medication, residual-medication, visit-record, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - Added a focused `DayBoardDb` delegate surface for day-board reads.
+  - Wrapped day-board aggregation reads in `withOrgContext(ctx.orgId, ..., { requestContext: ctx })`.
+  - Passed the same db into ready-blocker side reads and dashboard assignment-scope reads.
+  - Updated tests to execute the handler through a tx mock and assert `requestContext` is passed.
+- Safety:
+  - Improves RLS/audit-context consistency for a high-PHI schedule board read path.
+  - Keeps existing no-store exported wrapper and sanitized error behavior.
+  - No database migration, live data operation, external send, authorization rule change, push, deploy, or destructive action was run.
+- Performance:
+  - No query count, query shape, ordering, limits, dependency, broad scan, render path, or external request changed.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/visit-schedules/day-board/route.ts src/app/api/visit-schedules/day-board/route.test.ts`: passed.
+  - `pnpm vitest run src/app/api/visit-schedules/day-board/route.test.ts`: passed, `1` file / `20` tests.
+  - Scoped ESLint on the two owned day-board files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned day-board files: passed.
+  - Scoped `git diff --check` on the two owned day-board files: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm test:schedule-time:tz`: passed, `30` files / `503` tests; expected forced-error stderr appeared.
+  - `pnpm typecheck`: blocked by unrelated dirty drug-master import WIP at `src/server/services/drug-master-import/ssk.test.ts(277,46)`, `TS2345` mock db missing full `DrugMasterDelegate` members for `ImportDbClient`; codex was notified.
+- Remaining:
+  - Commit only the two owned day-board route/test files because these ledger files contain mixed codex/codex2/master-management progress hunks.
+  - Re-run full typecheck after the drug-master import owner resolves the unrelated WIP blocker.
+
+### ResidualMedication DrugMaster Identity Expansion — 2026-06-30 12:32 JST
+
+- Scope:
+  - Continued the master-management stabilization objective by making residual medication records preserve canonical DrugMaster identity.
+  - Kept the existing residual medication UI fields, name-only fallback, code-based residual reduction issue lookup, tracing report workflow, and visit record readiness gates compatible.
+  - Read local Next.js Route Handler / `unstable_rethrow` docs and PH-OS UI/UX SSOT before touching route/UI-adjacent code.
+- Fixed:
+  - Added nullable `ResidualMedication.drug_master_id` with a `DrugMaster(id)` FK, indexes, and expand-only migration `20260630122500_add_residual_medication_drug_master_id`.
+  - `POST /api/residual-medications`, `POST /api/visit-records`, and `PATCH /api/visit-records/[id]` now trim optional residual `drug_master_id`, validate it against `DrugMaster` in the write transaction, and reject unknown ids before residual rows are written or replaced.
+  - `replaceVisitRecordResidualMedications` now persists `drug_master_id`, and residual reduction tracing/task metadata preserves it.
+  - Residual follow-up task dedupe now prefers `master:<drug_master_id>`, then `code:<drug_code>`, then `name:<drug_name>`.
+  - Visit-record conflict snapshots, offline sync conflict payloads, SOAP draft residual metadata, structured SOAP validation/type definitions, and residual medication form types now preserve optional `drug_master_id`.
+  - Documented ResidualMedication master-first identity in `docs/drug-code-master-architecture.md`.
+  - While validating the dirty tree, fixed the pre-existing billing-preview service overload mismatch so `buildVisitScheduleBillingPreview(args, { db })` typechecks.
+- Safety:
+  - Reduces medication identity drift where residual-medication records could fall back to stale names/codes after DrugMaster-based prescription workflows were introduced.
+  - Unknown or hostile `drug_master_id` values now return validation errors before clinical residual rows, tracing reports, or operational tasks are created.
+  - FK uses `ON DELETE RESTRICT` so referenced master records cannot be silently removed from residual audit evidence.
+  - No migration was applied to a live DB; only schema/migration files were added. No push, deploy, external send, secret operation, or destructive DB operation was run.
+- Performance:
+  - Adds a single batched `DrugMaster.findMany({ id: { in } })` only when residual payloads include master ids.
+  - Name-only and code-only residual entries keep the previous write-path shape. No N+1 lookup, broad scan, dependency, render path, or external request was added.
+- Validation:
+  - `pnpm exec prisma format --schema=prisma/schema/`: passed.
+  - `pnpm db:generate`: passed.
+  - `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+  - Focused residual/API Vitest passed, `3` files / `121` tests.
+  - Focused offline/structured SOAP Vitest passed, `3` files / `27` tests.
+  - Final focused suite including billing-preview validation-unblock coverage passed, `9` files / `178` tests.
+  - `pnpm typecheck`: initially failed on dirty billing-preview overload mismatch, then passed after the overload fix.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - The larger master-management objective remains open: continue official DrugPackage source import/backfill/source metadata, downstream `drug_name` keying audits, and manual review workflows for unresolved medication identities.
+  - The tree still contains many pre-existing dirty files from other slices; do not broad-stage.
+
+### Visit Routes Stale Target Filter - 2026-06-30 12:45 JST
+
+- Scope:
+  - Continued schedule-management P1 hardening in `POST /api/visit-routes`.
+  - Kept route request shape, assignment scoping, vehicle-resource constraints, locked route IDs, route engine input shape, and response envelopes unchanged.
+  - Preserved unrelated SSK import, master-management, prescription, medication, residual-medication, visit-record, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - Schedule route targets now require `schedule_status` in the shared active status set: `planned`, `in_preparation`, `ready`, `departed`, `in_progress`.
+  - Proposal route targets now require `finalized_schedule_id: null` and shared open proposal status: `proposed`, `patient_contact_pending`, `reschedule_pending`.
+  - Added regression coverage for inactive schedules, finalized/non-open proposals, and mixed route requests where one stale proposal must reject the whole request instead of optimizing a partial route.
+- Safety:
+  - Reduces risk of cancelled/completed/rescheduled/no-show schedules and confirmed/superseded/finalized proposals being converted into route waypoints with stale patient names/addresses.
+  - Stale targets now fail as not found before the route engine receives waypoints.
+  - No auth rule, RLS policy, schema migration, live DB operation, external send, push, deploy, or destructive action changed.
+- Performance:
+  - No additional query or external request was added; existing lookups now return fewer stale rows through indexed status/finalization predicates.
+- Validation:
+  - Focused visit-routes Vitest passed, `2` files / `23` tests.
+  - Scoped ESLint on visit-routes route/test/locked-test passed.
+  - Scoped Prettier check on visit-routes route/test/locked-test passed.
+  - Scoped `git diff --check` on the two changed visit-routes files passed.
+  - `pnpm test:schedule-time:tz` passed, `30` files / `503` tests; expected forced-error stderr was emitted by existing tests.
+  - `pnpm lint` passed.
+  - `pnpm typecheck` is blocked by unrelated dirty SSK import WIP at `src/server/services/drug-master-import/ssk.test.ts(273,46)`.
+  - `pnpm format:check` is blocked by unrelated formatting drift in `src/server/services/drug-master-import/ssk.ts`.
+- Remaining:
+  - Commit only the two owned visit-routes files because ledger files contain mixed progress hunks.
+  - Re-run full typecheck/format after unrelated SSK import WIP is fixed.
+  - Continue day-board access/RLS policy, completed/cancelled schedule mutation guards, and reschedule lifecycle policy tests.
+
+### Drug Master Import Source Fingerprints - 2026-06-30 12:49 JST
+
+- Scope:
+  - Continued the master-management stabilization objective by making official drug master imports auditable by source file fingerprint.
+  - Focused on SSK/MHLW free official sources and the SSK auto-refresh skip condition; PMDA/HOT/manual imports keep nullable source metadata until their source-specific hash work is expanded.
+  - Preserved unrelated staged day-board files and the existing mixed schedule/prescription/residual/dispensing dirty tree.
+- Fixed:
+  - Added nullable `DrugMasterImportLog.source_url` / `source_file_hash` with an index on `[source, source_file_hash]` and migration `20260630131500_add_drug_master_import_source_fingerprint`.
+  - Added shared import SHA-256 helpers and extended `withImportLog` so successful imports persist source metadata when provided.
+  - SSK import now computes the ZIP hash, writes source URL/hash to the import log, and exposes `buildSskDrugMasterDedupeKey`.
+  - SSK auto-refresh now fetches the latest ZIP payload once, dedupes by `ssk:<source_file_hash>` instead of URL, and passes the prefetched payload into import so same-URL content changes are not skipped.
+  - MHLW price/generic workbook parsing now computes workbook hashes; multi-workbook price imports store a combined fingerprint.
+  - `/api/drug-master-import-logs` returns source URL/hash, and the admin master history shows a short source path plus SHA-256 prefix without collapsing fetch errors into empty history.
+  - Documented the source fingerprint contract and updated the remaining roadmap toward PMDA/HOT hash/diff summaries.
+  - Fixed the previously recorded unrelated SSK test type blocker by casting only the mock DB argument in the SSK import-log regression test.
+- Safety:
+  - Reduces data-provenance and medication master freshness risk where a public source could publish a changed ZIP under the same URL and the monthly SSK job would skip it.
+  - Keeps existing official-host allowlist, DNS/private-IP rejection, redirect validation, size limits, and ZIP expansion limits in the shared import fetch path.
+  - Does not apply migrations, mutate live data, push, deploy, rotate secrets, or perform destructive DB actions.
+- Performance:
+  - Hashing uses bytes already downloaded for parsing. SSK auto-refresh avoids a second ZIP fetch by passing the prefetched payload into import.
+  - Adds one nullable metadata index for import-log provenance queries; no new broad scans, external calls, dependencies, or render loops.
+- Validation:
+  - `pnpm exec prisma format --schema=prisma/schema/`: passed.
+  - `pnpm db:generate`: passed.
+  - `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+  - Focused Vitest on import shared/SSK/MHLW/manual/PMDA/HOT, SSK job, import-log API, and admin drug-master UI passed, `9` files / `133` tests.
+  - Focused SSK import test rerun passed, `1` file / `7` tests.
+  - `pnpm typecheck`: initially failed on the new SSK test mock typing, then passed after the mock-argument cast.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - The broad master-management objective remains open. Next useful master slices are PMDA/HOT source fingerprints and diff summaries, DrugPackage official GTIN/JAN import, and downstream `drug_name` keying audits.
+  - The worktree still contains unrelated staged day-board files plus multiple existing dirty schedule/prescription/residual/dispensing files; do not broad-stage.
+
+### Handoff Consult Resolution Response Hardening - 2026-06-30 12:56 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration lane by hardening pharmacist consult resolution at `POST /api/handoff-board/items/[id]/resolve`.
+  - Kept request shape, consult claim/update semantics, conflict response, audit action, authorization policy, and live data behavior unchanged.
+  - Preserved unrelated codex-owned `visit-schedules/[id]`, drug-master, residual/visit-record, prescription, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - Wrapped the exported POST with the standard sensitive no-store response boundary.
+  - Preserved Next.js control-flow exceptions through `unstable_rethrow`.
+  - Normalized unexpected exported-route failures to fixed `INTERNAL_ERROR` responses.
+  - Added regression coverage for success no-store headers and an unexpected consult-resolution failure seeded with patient-like name, consult text, and raw error details.
+- Safety:
+  - Reduces browser/proxy cache leakage risk for consult resolution responses.
+  - Reduces raw-error/PHI leakage risk when consult resolution fails before or during the RLS transaction.
+  - No auth rule, migration, live DB operation, external send, push, deploy, secret operation, or destructive action changed.
+- Performance:
+  - No query count, query shape, transaction behavior, dependency, render path, or external request changed.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/handoff-board/items/[id]/resolve/route.ts' 'src/app/api/handoff-board/items/[id]/resolve/route.test.ts'`: unchanged.
+  - `pnpm vitest run 'src/app/api/handoff-board/items/[id]/resolve/route.test.ts'`: passed, `1` file / `5` tests.
+  - Scoped ESLint on the two owned handoff consult resolve files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned files: passed.
+  - Scoped `git diff --check` on the two owned files: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - Commit only the two owned handoff consult resolve files because ledger files contain mixed progress hunks.
+  - Continue another non-overlapping visit/report/interprofessional slice after notifying codex.
+
+### Handoff Read-Marking RLS and Response Hardening - 2026-06-30 13:01 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration lane by hardening `PATCH /api/handoff-board/items/[id]/read`.
+  - Kept request shape, permission policy, idempotent read behavior, raw SQL parameterization, and live data behavior unchanged.
+  - Preserved unrelated codex-owned `visit-schedules/[id]`, drug-master, residual/visit-record, prescription, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - Moved handoff item lookup and read-marking update into `withOrgContext(ctx.orgId, ..., { requestContext: ctx })`.
+  - Kept the board org check as defense-in-depth after the RLS-scoped lookup.
+  - Wrapped the exported PATCH with the standard sensitive no-store response boundary.
+  - Preserved Next.js control-flow exceptions through `unstable_rethrow`.
+  - Normalized unexpected exported-route failures to fixed `INTERNAL_ERROR` responses.
+  - Added regression coverage for success, already-read, not-found, cross-org defense, and unexpected RLS failure no-store behavior.
+- Safety:
+  - Reduces tenant/RLS attribution gaps for handoff read confirmations.
+  - Reduces browser/proxy cache leakage and raw-error/PHI leakage risk for read-marking responses.
+  - No auth rule, migration, live DB operation, external send, push, deploy, secret operation, or destructive action changed.
+- Performance:
+  - No query count, broad scan, dependency, render path, or external request changed.
+  - The existing lookup moved under the existing write-side RLS transaction.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/handoff-board/items/[id]/read/route.ts' 'src/app/api/handoff-board/items/[id]/read/route.test.ts'`: unchanged.
+  - `pnpm vitest run 'src/app/api/handoff-board/items/[id]/read/route.test.ts'`: passed, `1` file / `5` tests.
+  - Scoped ESLint on the two owned handoff read files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned files: passed.
+  - Scoped `git diff --check` on the two owned files: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - Commit only the two owned handoff read files because ledger files contain mixed progress hunks.
+  - Continue another non-overlapping visit/report/interprofessional slice after notifying codex.
+
+### Incident Report Update Response Hardening - 2026-06-30 13:05 JST
+
+- Scope:
+  - Continued codex2's report-function lane by hardening `PATCH /api/incident-reports/[id]`.
+  - Kept request shape, validation behavior, admin-only status-change gate, service contract, and live data behavior unchanged.
+  - Preserved unrelated codex-owned `visit-schedules/[id]` / `reopen`, drug-master, residual/visit-record, prescription, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - Wrapped the exported PATCH with the standard sensitive no-store response boundary.
+  - Preserved Next.js control-flow exceptions through `unstable_rethrow`.
+  - Normalized unexpected exported-route failures to fixed `INTERNAL_ERROR` responses.
+  - Added regression coverage for success, forbidden, not-found, validation, and unexpected service failure no-store behavior.
+- Safety:
+  - Reduces browser/proxy cache leakage risk for incident report update responses.
+  - Reduces raw-error/PHI leakage risk when incident report updates fail unexpectedly.
+  - No auth rule, migration, live DB operation, external send, push, deploy, secret operation, or destructive action changed.
+- Performance:
+  - No query count, query shape, transaction behavior, dependency, render path, or external request changed.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/incident-reports/[id]/route.ts' 'src/app/api/incident-reports/[id]/route.test.ts'`: unchanged.
+  - `pnpm vitest run 'src/app/api/incident-reports/[id]/route.test.ts'`: passed, `1` file / `6` tests.
+  - Scoped ESLint on the two owned incident files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned files: passed.
+  - Scoped `git diff --check` on the two owned files: passed.
+  - `pnpm lint`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm format:check`: blocked by unrelated dirty `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`; owned files passed scoped Prettier.
+- Remaining:
+  - Commit only the two owned incident files because ledger files contain mixed progress hunks.
+  - Re-run full format after the unrelated drug-master UI formatting drift is resolved.
+  - Continue another non-overlapping visit/report/interprofessional slice after notifying codex.
+
+### Communication Event Creation RLS and Response Hardening - 2026-06-30 13:10 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration lane by hardening `POST /api/communication-events`.
+  - Kept GET behavior, request shape, assignment policy, attachment validation, contact-profile learning, and live data behavior unchanged.
+  - Preserved unrelated codex-owned `visit-schedules/[id]` / `reopen` / `reschedule`, drug-master, residual/visit-record, prescription, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - Moved POST access checking into `withOrgContext(ctx.orgId, ..., { requestContext: ctx })`.
+  - Reused the same RLS transaction for access check, attachment validation, event creation, and contact-profile learning.
+  - Wrapped the exported POST with the standard sensitive no-store response boundary.
+  - Preserved Next.js control-flow exceptions through `unstable_rethrow`.
+  - Normalized unexpected exported-route failures to fixed `INTERNAL_ERROR` responses.
+  - Added regression coverage for POST no-store headers, RLS requestContext, and unexpected create failure PHI/raw-error redaction.
+- Safety:
+  - Reduces tenant/RLS attribution gaps for communication-event creation.
+  - Reduces browser/proxy cache leakage and raw-error/PHI leakage risk for interprofessional communication responses.
+  - No auth rule, migration, live DB operation, external send, push, deploy, secret operation, or destructive action changed.
+- Performance:
+  - No query count, query shape, dependency, render path, or external request changed.
+  - Existing access-check reads now run in the same transaction as the write path.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/communication-events/route.ts src/app/api/communication-events/route.test.ts`: unchanged.
+  - `pnpm vitest run src/app/api/communication-events/route.test.ts`: passed, `1` file / `24` tests.
+  - Scoped ESLint on the two owned communication-event files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned files: passed.
+  - Scoped `git diff --check` on the two owned files: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - Commit only the two owned communication-event files because ledger files contain mixed progress hunks.
+  - Continue another non-overlapping visit/report/interprofessional slice after notifying codex.
+
+### Visit Billing Candidate Response and RLS Context Hardening - 2026-06-30 13:17 JST
+
+- Scope:
+  - Continued codex2's visit/report-adjacent lane by hardening `GET/POST /api/visit-billing-candidates`.
+  - Kept request shape, billing month validation, confirmed-record eligibility, consent/contract/amount evaluation, locked candidate protection, unique-conflict reuse, audit action, and live data behavior unchanged.
+  - Preserved unrelated codex-owned `visit-schedules/[id]` / `reopen` / `reschedule`, drug-master, residual/visit-record, prescription, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - Wrapped exported GET and POST with the standard sensitive no-store response boundary.
+  - Preserved Next.js control-flow exceptions through `unstable_rethrow`.
+  - Normalized unexpected exported-route failures to fixed `INTERNAL_ERROR` responses.
+  - Passed `{ requestContext: ctx }` into the RLS transactions for both list and generation paths.
+  - Added regression coverage for GET/POST no-store headers, RLS requestContext, and unexpected list/generation failure PHI/raw-error redaction.
+- Safety:
+  - Reduces RLS/audit attribution gaps for visit billing candidate reads and writes.
+  - Reduces browser/proxy cache leakage and raw-error/PHI leakage risk for visit billing candidate responses.
+  - No auth rule, migration, live DB operation, external send, push, deploy, secret operation, or destructive action changed.
+- Performance:
+  - No query count, query shape, dependency, render path, or external request changed.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/visit-billing-candidates/route.ts src/app/api/visit-billing-candidates/route.test.ts`: passed; route formatting updated.
+  - `pnpm vitest run src/app/api/visit-billing-candidates/route.test.ts`: passed, `1` file / `18` tests.
+  - Scoped ESLint on the two owned visit-billing-candidate files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned files: passed.
+  - Scoped `git diff --check` on the two owned files: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - Commit only the two owned visit-billing-candidate files because ledger files contain mixed progress hunks.
+  - Continue another non-overlapping visit/report/interprofessional slice after notifying codex.
+
+### Partner Visit Record RLS Request Context - 2026-06-30 13:21 JST
+
+- Scope:
+  - Continued codex2's visit-time functionality lane by hardening `GET/POST /api/partner-visit-records`.
+  - Kept request shape, active share-case filtering, payload validation, draft overwrite guard, source visit record validation, clinical content redaction, audit minimization, and live data behavior unchanged.
+  - Preserved unrelated codex-owned `visit-schedules/[id]` / `reopen` / `reschedule`, drug-master, residual/visit-record, prescription, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - Passed `{ requestContext: ctx }` into partner visit record list and save RLS transactions.
+  - Added regression coverage that GET list and POST save provide request metadata to `withOrgContext`.
+- Safety:
+  - Reduces RLS/audit attribution gaps for partner visit record reads and draft-save writes.
+  - No auth rule, migration, live DB operation, external send, push, deploy, secret operation, or destructive action changed.
+- Performance:
+  - No query count, query shape, dependency, render path, or external request changed.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/partner-visit-records/route.ts src/app/api/partner-visit-records/route.test.ts`: passed; route formatting updated.
+  - `pnpm vitest run src/app/api/partner-visit-records/route.test.ts`: passed, `1` file / `15` tests.
+  - Scoped ESLint on the two owned partner-visit-record files: passed with `--max-warnings=0`.
+  - Scoped Prettier check on the two owned files: passed.
+  - Scoped `git diff --check` on the two owned files: passed.
+  - `pnpm lint`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm format:check`: blocked by unrelated dirty `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx` and `src/app/api/drug-master-imports/status/route.test.ts`; owned files passed scoped Prettier.
+- Remaining:
+  - Commit only the two owned partner-visit-record files because ledger files contain mixed progress hunks.
+  - Re-run full format after unrelated drug-master formatting drift is resolved.
+
+### PMDA/HOT Import Source Fingerprints - 2026-06-30 12:55 JST
+
+- Scope:
+  - Completed the source-fingerprint expansion for PMDA package-insert and HOT imports.
+  - Kept existing PMDA/HOT parsing, import counts, dry-run semantics, official source constraints, and import-log status behavior unchanged.
+  - Preserved the existing mixed dirty tree; no broad staging, live migration apply, push, deploy, external send, secret operation, or destructive DB operation was performed.
+- Fixed:
+  - `parsePmdaPackageInsertArchive` now computes a SHA-256 hash of the downloaded package-insert ZIP and returns it with the source URL.
+  - `importPmdaPackageInserts` now writes `source_url` and `source_file_hash` to successful `DrugMasterImportLog` rows.
+  - `parseHotMasterFile` now computes a SHA-256 hash of the downloaded HOT CSV/text payload and returns it with the source URL.
+  - `importHotMaster` now writes `source_url` and `source_file_hash` to successful `DrugMasterImportLog` rows.
+  - PMDA/HOT tests now assert parser hashes and import-log source fingerprint persistence.
+  - Architecture docs now state that SSK, MHLW, PMDA, and HOT imports persist official source SHA-256 evidence.
+- Safety:
+  - Improves auditability and operational trust for official master data refreshes by making every supported official source family carry source evidence in the import log.
+  - Keeps existing URL allowlists, private-IP/DNS rejection, redirect checks, ZIP/file limits, parsing validations, and no-live-DB-mutation boundaries.
+  - Does not weaken auth, RLS, schema constraints, or import failure handling.
+- Performance:
+  - Hashing reuses bytes already fetched for parsing; PMDA/HOT do not perform a second download.
+  - No new broad scan, dependency, external call, render path, or N+1 query was added.
+- Validation:
+  - `pnpm exec prettier --write src/server/services/drug-master-import/pmda.ts src/server/services/drug-master-import/pmda.test.ts src/server/services/drug-master-import/hot.ts src/server/services/drug-master-import/hot.test.ts docs/drug-code-master-architecture.md`: passed, unchanged after formatting.
+  - `pnpm exec vitest run src/server/services/drug-master-import/pmda.test.ts src/server/services/drug-master-import/hot.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `11` tests.
+  - Focused import shared/SSK/MHLW/manual/PMDA/HOT, SSK job, import-log API, and admin drug-master UI suite: passed, `9` files / `133` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - The broad master-management objective is not fully exhausted. Next useful master slices are import publication-date/delta summaries, official DrugPackage GTIN/JAN source import, and downstream `drug_name` keying audits.
+  - The worktree remains intentionally dirty with mixed master-management, schedule, prescription, residual-medication, dispensing, compliance, and ledger changes; do not broad-stage.
+
+### Terminal Schedule PATCH Guard - 2026-06-30 12:56 JST
+
+- Scope:
+  - Continued schedule-management P1 hardening under Codex/codex2-only operation.
+  - Focused on `PATCH /api/visit-schedules/[id]` and preserved codex2-owned day-board/handoff work plus unrelated drug-master and medication-master dirty files.
+- Fixed:
+  - Generic schedule PATCH now rejects effective mutations when the existing schedule is terminal: `completed`, `cancelled`, `postponed`, `rescheduled`, or `no_show`.
+  - Terminal schedules can no longer be reopened to `planned` through the generic PATCH path.
+  - No-op terminal PATCH responses remain available, and active schedules can still transition to `cancelled`.
+  - Tests cover completed/cancelled reopening attempts, mutations for every terminal status, no-op terminal PATCH, and active-to-cancelled audit/notification behavior.
+- Safety:
+  - Reduces patient-safety and audit-integrity risk by requiring terminal lifecycle changes to go through explicit lifecycle controls instead of generic field mutation.
+  - Blocks before reference validation, RLS transaction writes, audit log creation, and workflow notification.
+  - No auth, RLS policy, migration, live DB mutation, push, deploy, external send, secret operation, or destructive command was changed.
+- Performance:
+  - Uses the already-computed audit-change object and returns early for blocked terminal mutations.
+  - No new query, broad scan, dependency, external request, or render path was added.
+- Validation:
+  - Focused `src/app/api/visit-schedules/[id]/route.test.ts` Vitest passed, `1` file / `74` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` passed for the two owned files.
+  - `pnpm test:schedule-time:tz` passed, `30` files / `512` tests.
+  - `pnpm format:check` passed.
+  - `pnpm lint` passed.
+  - `pnpm typecheck` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Remaining:
+  - Commit only the two owned route files because ledger files and unrelated master-management paths are mixed dirty work.
+  - Continue remaining schedule-management work around reschedule lifecycle policy tests and any codex2 handoff follow-up.
+
+### Drug Master Import Provenance Summary - 2026-06-30 13:07 JST
+
+- Scope:
+  - Continued master-management stabilization by upgrading official import logs from source URL/hash to richer provenance.
+  - Added nullable metadata only; no live migration apply, broad staging, push, deploy, external send, secret operation, or destructive DB operation was performed.
+  - Kept import parsing, official URL policies, auth, response boundaries, and existing source-hash behavior intact.
+- Fixed:
+  - Added nullable `DrugMasterImportLog.source_published_at`, `import_mode`, and `change_summary`.
+  - Added migration `20260630133000_add_drug_master_import_provenance_summary`.
+  - Added shared source-date extraction helpers for official URL date tokens.
+  - SSK logs now record inferred ZIP date, `full` mode, parsed/imported counts, and source entry name.
+  - MHLW price logs now record inferred source date, `full` mode, workbook count, parsed/imported counts, and created change-event count.
+  - MHLW generic flag and generic mapping logs now record source date, mode, operation, parsed/imported counts, and brand-candidate count where relevant.
+  - PMDA logs now record `full`/`delta` mode, parsed/imported counts, and skipped unmatched-primary count.
+  - HOT logs now record `full` mode, parsed/imported counts, and skipped missing-YJ count.
+  - Manual clinical import logs now record manual operation counts.
+  - `/api/drug-master-import-logs` returns the new fields, and the admin import history shows `published`, `mode`, and compact count summary alongside source/hash.
+- Safety:
+  - Improves auditability for broad master refreshes: operators can distinguish which official file, date, mode, row counts, changes, and skipped records produced the current master state.
+  - `change_summary` intentionally stores only counts/operation labels, not PHI, patient data, free-text drug names, or raw source rows.
+  - Existing allowlists, private-IP/DNS rejection, redirect checks, file/ZIP limits, schema constraints, and import failure handling remain in place.
+- Performance:
+  - Publication dates are parsed from already-known URLs.
+  - Hashing and summaries reuse already-fetched bytes and in-memory counters.
+  - MHLW price change-event counting returns counts from the existing event creation loop; no new DB read or source fetch was added.
+- Validation:
+  - `pnpm exec prisma format --schema=prisma/schema/`: passed.
+  - `pnpm db:generate`: passed.
+  - `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+  - Focused import shared/SSK/MHLW/manual/PMDA/HOT, SSK job, import-log API, and admin drug-master UI suite: passed, `9` files / `135` tests.
+  - `pnpm typecheck`: initially failed on admin UI `unknown` summary rendering, then passed after rendering through string/null helper output.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - The broad master-management objective remains active. Next high-value slices are official DrugPackage GTIN/JAN source import, confirmation/dry-run guardrails before broad imports, and downstream `drug_name` keying audits.
+  - The worktree remains intentionally dirty with mixed master-management, schedule, prescription, residual-medication, dispensing, compliance, and ledger changes; do not broad-stage.
+
+### Schedule Reschedule Lifecycle Guards - 2026-06-30 13:18 JST
+
+- Scope:
+  - Continued schedule-management backend hardening with Codex/codex2 only.
+  - Focused on terminal cancel/reopen safety and reschedule lifecycle invariants.
+  - Preserved unrelated drug-master, billing-candidate, prescription, medication, residual-medication, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - `DELETE /api/visit-schedules/[id]` now rejects terminal schedules before cancellation side effects and claims the source status in `updateMany`.
+  - `POST /api/visit-schedules/[id]/reopen` now rejects cancelled schedules that are completed reschedule sources or have replacement schedule lineage, and claims `cancelled` in the reopen update.
+  - `POST /api/visit-schedules/[id]/reschedule` now only allows `planned` / `in_preparation` source schedules and uses the same allow-list in the transaction claim.
+  - Emergency-insert auto-reschedule now only considers `planned` / `in_preparation` impacted schedules and defensively filters any in-flight rows returned by mocks or stale reads.
+  - Pending reschedule retry only reuses open/unfinalized replacement proposals; stale pending overrides with no open proposal now return conflict instead of `reused_existing`.
+- Safety:
+  - Reduces duplicate-visit, wrong route-capacity, patient/family miscommunication, and audit rollback risk.
+  - Prevents `rescheduled -> cancelled -> planned` lifecycle reversal after replacement finalization.
+  - Prevents in-flight `ready/departed/in_progress`, `postponed`, and `no_show` schedules from receiving automatic reschedule proposals/overrides.
+  - No auth, RLS policy, migration, live DB mutation, external send, push, deploy, secret operation, or destructive command was changed.
+- Performance:
+  - Existing queries now use narrower status predicates.
+  - No new dependency, broad scan, extra source fetch, render path, or unbounded loop was added.
+- Validation:
+  - Focused route/reopen/reschedule Vitest passed, `3` files / `113` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` passed for the six owned files.
+  - `pnpm test:schedule-time:tz` passed, `30` files / `517` tests.
+  - `pnpm lint` passed.
+  - `pnpm typecheck` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - Full `pnpm format:check` is blocked by unrelated dirty `src/app/api/visit-billing-candidates/route.ts`; scoped Prettier for this slice passed.
+- Remaining:
+  - Commit only the six owned schedule lifecycle files because ledger and many unrelated files are mixed dirty work.
+  - Continue proposal finalization source-status guard or the master-management roadmap as a separate slice.
+
+### Care Report Reminder RLS Request Context - 2026-06-30 13:27 JST
+
+- Scope:
+  - Continued codex2's report-function workstream.
+  - Focused on overdue care-report reminder queueing attribution.
+  - Preserved unrelated schedule, drug-master, prescription, residual/visit-record, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - `POST /api/care-reports/reminders` now passes `{ requestContext: ctx }` into `withOrgContext`.
+  - Added a route test assertion that the authenticated org/user/role context is supplied to the RLS transaction.
+  - Confirmed `/api/care-reports/analytics` already had the same request context and no-store/error boundary pattern.
+- Safety:
+  - Improves audit/RLS attribution for queued report-response reminders without changing care-report send permission, payload validation, reminder creation semantics, raw-error redaction, migrations, external sends, or live data behavior.
+- Performance:
+  - No query count, query shape, dependency, broad scan, render path, or network behavior changed.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/care-reports/reminders/route.ts src/app/api/care-reports/reminders/route.test.ts`: unchanged.
+  - `pnpm vitest run src/app/api/care-reports/reminders/route.test.ts`: passed, `1` file / `7` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - Commit only the two owned reminders files because ledger and unrelated worktree changes are mixed dirty work.
+  - Continue another non-overlapping visit/report/interprofessional hardening candidate after commit.
+
+### Handoff Board RLS Request Context - 2026-06-30 13:33 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration workstream.
+  - Focused on handoff-board board load/create, item creation, and pharmacist consult resolution attribution.
+  - Preserved unrelated schedule, drug-master, prescription, residual/visit-record, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - `GET /api/handoff-board` now passes `requestContext` into `withOrgContext` while preserving existing `maxWaitMs` / `timeoutMs`.
+  - `POST /api/handoff-board/items` now passes `requestContext` into the handoff item create/audit transaction.
+  - `POST /api/handoff-board/items/[id]/resolve` now passes `requestContext` into the consult claim/update/audit transaction.
+  - Route tests assert org/user/role context for all three changed transaction paths.
+  - Confirmed `PATCH /api/handoff-board/items/[id]/read` already had request context.
+- Safety:
+  - Improves RLS/audit attribution for interprofessional handoffs and pharmacist consult handling without changing permissions, board/recipient validation, 3-point handoff rules, consult pharmacist gate, no-store/error wrappers, audit payloads, migrations, external sends, or live data behavior.
+- Performance:
+  - No query count, query shape, dependency, broad scan, render path, or network behavior changed.
+- Validation:
+  - `pnpm exec prettier --write` on the six owned handoff-board route/test files: unchanged.
+  - Focused handoff-board Vitest: passed, `3` files / `28` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - Commit only the six owned handoff-board files because ledger and unrelated worktree changes are mixed dirty work.
+  - Continue another non-overlapping visit/report/interprofessional hardening candidate after commit.
+
+### Communication Request Export RLS Request Context - 2026-06-30 13:39 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration/report-export workstream.
+  - Focused on PHI-bearing internal and redacted external communication request CSV exports.
+  - Preserved unrelated schedule, drug-master, prescription, residual/visit-record, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - `GET /api/communication-requests/export` now passes `requestContext` into the export/audit `withOrgContext` transaction.
+  - Added a route test assertion that authenticated org/user/role metadata reaches the RLS transaction.
+- Safety:
+  - Improves RLS/audit attribution for communication-request exports without changing internal/external redaction, CSV formula neutralization, row cap, audit fail-closed behavior, assignment filtering, permissions, no-store/error wrappers, migrations, external sends, or live data behavior.
+- Performance:
+  - No query count, query shape, dependency, broad scan, render path, or network behavior changed.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/communication-requests/export/route.ts src/app/api/communication-requests/export/route.test.ts`: unchanged.
+  - `pnpm vitest run src/app/api/communication-requests/export/route.test.ts`: passed, `1` file / `15` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - Commit only the two owned export files because ledger and unrelated worktree changes are mixed dirty work.
+  - Continue response/followup communication-request attribution audit as a separate slice.
+
+### Communication Request Response RLS Request Context - 2026-06-30 13:43 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration workstream.
+  - Focused on communication request response recording and status-update attribution.
+  - Preserved unrelated schedule, drug-master, prescription, residual/visit-record, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - `POST /api/communication-requests/[id]/responses` now passes `requestContext` into the response create/status update/audit `withOrgContext` transaction.
+  - Added a route test assertion that authenticated org/user/role metadata reaches the RLS transaction.
+  - Confirmed `POST /api/communication-requests/[id]/resolve-followup` already had request context.
+- Safety:
+  - Improves RLS/audit attribution for interprofessional replies without changing optimistic concurrency, care-report communication permission checks, archived-patient protection, idempotent replay, no-store/error wrappers, sanitized logging, audit digest behavior, migrations, external sends, or live data behavior.
+- Performance:
+  - No query count, query shape, dependency, broad scan, render path, or network behavior changed.
+- Validation:
+  - `pnpm exec prettier --write` on the two owned response files: unchanged.
+  - `pnpm vitest run 'src/app/api/communication-requests/[id]/responses/route.test.ts'`: passed, `1` file / `24` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - Commit only the two owned response files because ledger and unrelated worktree changes are mixed dirty work.
+  - Continue another clean visit/report/interprofessional hardening candidate or stop with the current validated commits summarized.
+
+### Reschedule Proposal Source-State Guard - 2026-06-30 13:38 JST
+
+- Scope:
+  - Continued schedule-management backend hardening with Codex/codex2 only.
+  - Focused on approving/finalizing reschedule proposals only while the original source schedule is still held as `rescheduled`.
+  - Preserved unrelated drug-master, communication, prescription, residual-medication, visit-record, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - Reschedule proposal approval now requires an approved pending override whose `source_schedule.schedule_status` is still `rescheduled`.
+  - The approval transaction rechecks the same override/source state immediately before proposal claim.
+  - The approval `updateMany` claim now includes `reschedule_source_schedule_id` and `reschedule_source_schedule.schedule_status = rescheduled`, closing the race between source recheck and state claim.
+  - Proposal finalization now rejects stale source schedules before schedule creation/finalization side effects.
+  - Override completion now requires the source schedule relation to still be `rescheduled`.
+- Safety:
+  - Reduces patient-contact, duplicate-visit, audit, and workflow-notification risk when a reschedule source is cancelled, reopened, or otherwise changed after approval.
+  - Blocks stale approval/finalization paths before audit/task/notify side effects.
+  - No auth, RLS policy, migration, live DB mutation, external send, push, deploy, secret operation, or destructive command was changed.
+- Performance:
+  - Adds bounded relation predicates/checks on existing reschedule approval/finalization paths.
+  - No new dependency, broad scan, unbounded loop, external request, source fetch, or render path was added.
+- Validation:
+  - Focused proposal route Vitest passed, `1` file / `67` tests.
+  - Related reschedule/proposal route Vitest passed, `3` files / `101` tests.
+  - `pnpm test:schedule-time:tz` passed, `30` files / `517` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` passed for the two owned files.
+  - `pnpm typecheck` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - `pnpm lint` passed.
+  - `pnpm format:check` passed.
+- Remaining:
+  - Commit only the two owned proposal route/test files because ledger and unrelated worktree changes are mixed dirty work.
+  - Continue another schedule-management safety candidate or return to master-management roadmap after commit.
+
+### Proposal Route Preview Missing-Geocode Notes - 2026-06-30 13:51 JST
+
+- Scope:
+  - Continued schedule-management/display hardening with Codex/codex2 only.
+  - Focused on the proposal detail route preview shown in schedule planning screens.
+  - Preserved unrelated drug-master, communication, report, prescription, residual-medication, visit-record, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - Proposal route previews no longer silently omit visits/proposals whose residence is missing route-map prerequisites.
+  - Address-present coordinate gaps are surfaced as `座標未設定 N件`.
+  - Missing/blank addresses are surfaced separately as `住所未設定 N件`.
+  - Duplicate patient display names preserve counts, e.g. `患者A（2件）`, so multiple skipped route targets are not collapsed.
+  - Existing route-engine notes are preserved and missing-data notes are appended.
+- Safety:
+  - Reduces visit-omission and false-complete route-preview risk when route targets cannot be mapped.
+  - Skipped route targets stay out of `waypoints` / `points`, while the note tells staff what must be fixed.
+  - Notes include only patient display names and counts; they do not add addresses, phone numbers, medication text, insurance numbers, contact fingerprints, or raw route errors.
+  - No auth, RLS policy, migration, live DB mutation, external send, push, deploy, secret operation, or destructive command was changed.
+- Performance:
+  - Adds small in-memory classification/count formatting while building the existing route preview.
+  - No new DB query, dependency, network call, broad scan, unbounded loop, or render path was added.
+- Validation:
+  - Focused proposal route Vitest passed, `1` file / `69` tests.
+  - Related reschedule/proposal route Vitest passed, `3` files / `103` tests.
+  - `pnpm test:schedule-time:tz` passed, `30` files / `517` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` passed for the two owned files.
+  - `pnpm typecheck` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - `pnpm lint` passed.
+  - `pnpm format:check` passed.
+  - Verifier subagent returned `APPROVED`.
+- Remaining:
+  - Commit only the two owned proposal route/test files because ledger and unrelated worktree changes are mixed dirty work.
+  - Continue emergency-route 案2 apply/impact or route-compare real-engine integration as a later schedule-management slice.
+
+### Report Workspace Audience Draft Generation - 2026-06-30 13:56 JST
+
+- Scope:
+  - Continued codex2's visit/report/interprofessional collaboration workstream.
+  - Focused on the report workspace path that turns completed visit records into professional-audience report drafts.
+  - Preserved unrelated drug-master, schedule proposal, prescription, residual/visit-record, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - `/api/care-reports/today-workspace` now returns `generation_targets` per draft row, derived from care-team roles and excluding report types that already exist for the visit record.
+  - Existing reports are grouped by `visit_record_id` and `report_type`, so an existing physician report no longer hides a missing care-manager report draft.
+  - The report workspace renders audience-specific generation buttons and passes the selected `report_type` to `/api/care-reports/generate-from-visit`.
+- Safety:
+  - Reduces wrong-recipient draft generation and false-complete reporting for care-manager, visiting-nurse, and facility handoff workflows.
+  - No auth, RLS, permission, PHI exposure, external send, print/PDF audit, migration, live DB state, push/deploy, secret handling, or destructive operation changed.
+- Performance:
+  - Uses already-fetched existing report rows and in-memory grouping/filtering.
+  - No new DB query, dependency, broad scan, network call, render-heavy loop, or unbounded work was added.
+- Validation:
+  - `pnpm exec prettier --write` on the five owned code/test/type files: passed.
+  - `pnpm vitest run src/app/api/care-reports/today-workspace/route.test.ts 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`: passed, `2` files / `40` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm typecheck`: failed only on unrelated dirty drug-master import files (`hot.test.ts` missing `drugPackage` mock and `hot.ts` using `Prisma` after `import type`); no failure referenced the owned report workspace files.
+- Remaining:
+  - Commit only the five owned report workspace files because ledger and unrelated worktree changes are mixed dirty work.
+  - Continue voice-memo transcription persistence/upload and remaining visit-time/report/collaboration gaps as separate bounded slices.
+
+### Voice Memo Manual Transcript Fallback - 2026-06-30 14:02 JST
+
+- Scope:
+  - Continued codex2's visit-time feature workstream.
+  - Focused on the voice memo page while external STT remains unconnected.
+  - Preserved unrelated drug-master, schedule proposal, report workspace, prescription, residual/visit-record, dispensing, compliance, and mixed ledger dirty paths.
+- Fixed:
+  - Added a hand-entered transcript fallback to the voice memo page so pharmacists can listen to a local recording and enter the memo text immediately.
+  - Manual text now normalizes blank lines/whitespace, caps at 2000 characters, and becomes the same `transcript` state used by highlights and `訪問記録へ入れる`.
+  - Added a component test proving manual transcript entry surfaces the transcript, highlights, and append button without external STT.
+- Safety:
+  - Reduces production workflow dead-end risk while STT is blocked.
+  - No external transcription call, audio upload, transcript persistence, new PHI endpoint, auth/RLS change, migration, live DB state change, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Only local string normalization and a small textarea render were added.
+  - No DB query, network call, dependency, background job, broad scan, unbounded loop, or heavy render path was added.
+- Validation:
+  - `pnpm exec prettier --write` on the four owned voice-memo files: passed.
+  - `pnpm vitest run 'src/app/(dashboard)/visits/[id]/voice-memo/voice-memo.shared.test.ts' 'src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.test.tsx'`: passed, `2` files / `23` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - Commit only the four owned voice-memo files because ledger and unrelated worktree changes are mixed dirty work.
+  - Full STT upload/job persistence still needs an external transcription provider/storage contract decision.
+
+### Emergency Route Plan Selection and Safe Apply - 2026-06-30 14:11 JST
+
+- Scope:
+  - Continued schedule-management/display implementation with Codex/Codex2 only.
+  - Focused on `/schedules/emergency-route` where emergency prescription route interruption compares plan1/plan2.
+  - Included the `/api/visit-schedules/reorder` confirmation-context contract so the selected emergency route plan can be applied through the real API.
+  - Preserved unrelated drug-master, report/communication, prescription, residual-medication, visit-record, dispensing, compliance, schema/migration, and mixed ledger dirty paths.
+- Fixed:
+  - Plan1/plan2 are now real selectable scenarios; chart, selected badge, impact checklist, apply button, toast, and confirmation dialog all derive from the selected plan.
+  - Scenario results keep their own locked/released schedule IDs, so plan2 no longer colors a released confirmed visit as still fixed.
+  - Static impact checks were replaced with selected-plan data: fixed confirmed count, patient-confirmation count, vehicle/route constraints, pharmacist workload summary, route status/note, and apply target count.
+  - Apply now computes a safe sparse route_order update for mutable/unconfirmed schedules only, preserving confirmed visits and blocking plans that cannot be represented without moving confirmed route_order values.
+  - Reorder requests now include schema-accepted `confirmation_context` with `source = emergency_route_interruption`, date, travel mode, target count, and diff count.
+  - The reorder API schema and tests now accept and audit the emergency-route source while still rejecting arbitrary source text.
+  - Plan2 confirmation shows the released visit's minimal summary and requires typed `再確認済み` before confirm.
+- Safety:
+  - Reduces false-choice risk where plan2 appeared comparable but plan1 was always applied.
+  - Reduces patient-confirmation and confirmed-visit mutation risk by excluding confirmed visits from update payloads and requiring explicit reconfirmation for plan2.
+  - Reduces audit-context drift by typing the shared route confirmation source union and testing the real API schema.
+  - Avoids adding address/phone/drug text to the plan2 confirmation; only patient display name, time window, and current route order are shown for disambiguation.
+  - No auth/RLS policy, migration, live DB mutation outside existing reorder API, external send, push, deploy, secret operation, or destructive command was changed.
+- Performance:
+  - Adds bounded in-memory route_order slot assignment and impact classification over the currently loaded personal visits.
+  - No new DB query, dependency, network call, broad scan, unbounded loop, source fetch, or heavy render path was added.
+- Validation:
+  - `pnpm exec prettier --write` on the five owned emergency-route/reorder files: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/emergency-route/emergency-route-content.test.tsx' 'src/app/api/visit-schedules/reorder/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `33` tests.
+  - `pnpm exec eslint` on the five owned emergency-route/reorder files: passed.
+  - `pnpm exec prettier --check` on the five owned emergency-route/reorder files: passed.
+  - Scoped `git diff --check` on the five owned emergency-route/reorder files: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/schedule-day-route-order-apply.test.ts' 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx' --reporter=dot --testTimeout=30000`: passed, `2` files / `10` tests.
+  - `pnpm test:schedule-time:tz`: passed, `30` files / `518` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: failed only on unrelated dirty `src/app/(dashboard)/patients/[id]/share/external-share-content.tsx` and `src/app/(dashboard)/patients/[id]/share/patient-share.helpers.ts`; owned emergency-route/reorder files pass scoped Prettier.
+- Remaining:
+  - Commit only the five owned emergency-route/reorder files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue route-compare real-engine integration and broader schedule UI/browser verification as separate bounded slices.
+
+### Report Share Reply Request Creation - 2026-06-30 14:15 JST
+
+- Scope:
+  - Continued codex2's report/interprofessional collaboration workstream.
+  - Focused on `/reports/[id]/share`, where users can preview report content per professional audience and later process replies.
+  - Preserved unrelated drug-master, schedule, prescription, residual-medication, visit-record, dispensing, compliance, schema/migration, and mixed ledger dirty paths.
+- Fixed:
+  - Added a recipient-specific `返信依頼を起票` action to the report share page.
+  - The action builds a `POST /api/communication-requests` body from the selected audience, resolved care-team/contact recipient, care-report identity, patient/case scope, and displayed preview sections.
+  - Existing active requests for the selected audience disable duplicate creation.
+  - Missing recipient registration disables creation with a clear message.
+  - Reply-status fetch errors disable creation to avoid blind duplicate requests.
+  - `POST /api/communication-requests` now passes request metadata into `withOrgContext` for RLS/audit attribution.
+- Safety:
+  - Uses the existing communication-request backend validation for care-report permission, patient/case consistency, source accessibility, and writable-patient checks.
+  - Creates an in-app reply-waiting record only; it does not send email/FAX/MCS messages or publish external links.
+  - Context snapshot stores source/report/audience metadata and section keys, not raw external credentials or new free-form PHI beyond the request content itself.
+  - No auth weakening, RLS policy change, migration, live DB operation, external send, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Reuses already-loaded audience cards, preview sections, and communication-request rows.
+  - Adds only bounded in-memory filtering/formatting and one user-triggered POST.
+  - No new dependency, background job, broad scan, unbounded loop, extra list query, or heavy render path was added.
+- Validation:
+  - `pnpm exec prettier --write` on the six owned files: passed.
+  - `pnpm vitest run 'src/app/(dashboard)/reports/[id]/share/interprofessional-share.helpers.test.ts' 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx' src/app/api/communication-requests/route.test.ts`: passed, `3` files / `76` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+- Remaining:
+  - Commit only the six owned share/API files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue full STT upload/job persistence and remaining collaboration workflow gaps as separate bounded slices.
+
+### Patient Share Reply Request Creation - 2026-06-30 14:23 JST
+
+- Scope:
+  - Continued codex2's patient-sharing and interprofessional collaboration workstream.
+  - Focused on `/patients/[id]/share`, where users preview patient facts per professional audience and issue external access links.
+  - Preserved unrelated drug-master, schedule, prescription, residual-medication, visit-record, dispensing, compliance, schema/migration, and mixed ledger dirty paths.
+- Fixed:
+  - Added a recipient-specific `返信依頼を起票` action to the patient external-share page.
+  - The action builds a `POST /api/communication-requests` body from the selected audience, resolved care-team/contact recipient, patient identity, and displayed patient-share sections.
+  - Existing active requests for the selected audience disable duplicate creation.
+  - Missing recipient registration disables creation with a clear message.
+  - Reply-status fetch errors disable creation to avoid blind duplicate requests.
+  - Moved the audience-to-recipient-role mapping into `src/lib/communications/share-audience.ts` so report-share and patient-share use the same taxonomy.
+- Safety:
+  - Uses the existing communication-request backend validation for patient assignment and writable-patient checks.
+  - Creates an in-app reply-waiting record only; it does not generate a public link, send email/FAX/MCS messages, or change external-access scope.
+  - Context snapshot stores source/patient/audience metadata and section keys, not raw external credentials or new free-form PHI beyond the request content itself.
+  - No auth weakening, RLS policy change, migration, live DB operation, external send, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Reuses already-loaded audience cards, patient-share sections, and communication-request rows.
+  - Adds only bounded in-memory filtering/formatting and one user-triggered POST.
+  - No new dependency, background job, broad scan, unbounded loop, extra list query, or heavy render path was added.
+- Validation:
+  - `pnpm exec prettier --write` on the seven owned files: passed.
+  - `pnpm vitest run 'src/app/(dashboard)/patients/[id]/share/patient-share.helpers.test.ts' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' 'src/app/(dashboard)/reports/[id]/share/interprofessional-share.helpers.test.ts'`: passed, `3` files / `28` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+- Remaining:
+  - Commit only the six owned patient/share files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue full STT upload/job persistence and remaining collaboration workflow gaps as separate bounded slices.
+
+### Patient Share Supporting Data Warning - 2026-06-30 14:28 JST
+
+- Scope:
+  - Continued codex2's patient-sharing and interprofessional collaboration workstream.
+  - Focused on `/patients/[id]/share` partial support-data failures after adding patient-scoped reply-request creation.
+  - Preserved unrelated drug-master, schedule, prescription, residual-medication, visit-record, dispensing, compliance, schema/migration, and mixed ledger dirty paths.
+- Fixed:
+  - Care-team, contact, communication-request, or reply-detail query failures now show a visible warning instead of silently looking like missing recipients or missing replies.
+  - Added a `再取得` action that refetches the existing supporting queries.
+  - Locked the behavior with a DOM test.
+- Safety:
+  - Reduces false-empty recipient/reply interpretation and duplicate-request risk during partial API failures.
+  - The retry action only re-runs existing read queries.
+  - No auth weakening, RLS policy change, migration, live DB operation, external send, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Adds only bounded in-memory error-label formatting.
+  - No new dependency, background job, broad scan, unbounded loop, eager extra query, or heavy render path was added.
+- Validation:
+  - `pnpm exec prettier --write` on the two owned files: passed.
+  - `pnpm vitest run 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx'`: passed, `1` file / `7` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+- Remaining:
+  - Commit only the two owned patient-share files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Voice Memo Duplicate Append Guard - 2026-06-30 14:33 JST
+
+- Scope:
+  - Continued codex2's visit-time feature workstream.
+  - Focused on the voice memo manual/STT transcript append action after a transcript has already been written to a visit record.
+  - Preserved unrelated patient-route, drug-master, schedule, prescription, residual-medication, dispensing, compliance, schema/migration, and mixed ledger dirty paths.
+- Fixed:
+  - `訪問記録へ入れる` becomes disabled after a successful append.
+  - The button label changes to `記録へ反映済み`.
+  - Added a DOM test proving a second click does not issue a second visit-record PATCH.
+- Safety:
+  - Reduces duplicate clinical-note insertion risk in `soap_subjective`.
+  - Existing org headers, visit schedule/record resolution, versioned PATCH body, manual transcript normalization, IndexedDB draft storage, and external STT blocked state remain unchanged.
+  - No auth weakening, RLS policy change, migration, live DB operation outside the existing PATCH flow, external send, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Adds only a local disabled-state check and label switch.
+  - No new dependency, background job, broad scan, unbounded loop, eager extra query, or heavy render path was added.
+- Validation:
+  - `pnpm exec prettier --write` on the two owned files: passed.
+  - `pnpm vitest run 'src/app/(dashboard)/visits/[id]/voice-memo/voice-memo.shared.test.ts' 'src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.test.tsx'`: passed, `2` files / `24` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+  - `pnpm typecheck`: blocked by unrelated dirty `src/app/api/patients/[id]/route.ts` line 2436 (`currentInsurance` possibly null); no failure referenced the owned voice-memo files.
+- Remaining:
+  - Commit only the two owned voice-memo files because ledger files and unrelated patient-route changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Route Compare Real Engine Integration - 2026-06-30 14:50 JST
+
+- Scope:
+  - Continued schedule-management/display implementation with Codex/Codex2 only.
+  - Focused on `/schedules/route-compare`, which was still using fixed route-leg constants for three route choices.
+  - Preserved unrelated drug-master, patient/share, report, voice-memo, prescription, residual-medication, dispensing, compliance, schema/migration, and mixed ledger dirty paths.
+- Fixed:
+  - Route compare now builds the three scenarios from existing `/api/visit-routes` engine results instead of fixed `16/20/5` minute leg constants.
+  - Added scenario request generation for `min_travel`, `time_preference`, and `emergency_slack`, including strategy-specific `locked_schedule_ids`.
+  - Added `VisitRoutePlan` adapter logic for engine order, duration, distance, note, route status, recommendation selection, and adoption-disabled reason.
+  - Route compare UI waits for engine scenarios, removes the fixed-value explanation, shows engine notes, and disables adoption for unavailable, missing-geocode, null-duration, vehicle-unverified/exceeded, or confirmed-order-changing scenarios.
+  - Per-scenario route calculation failures remain visible as disabled cards instead of collapsing the whole comparison into an empty state.
+  - Apply now rejects disabled scenarios and preserves confirmed schedules from the route_order update payload.
+  - Added a new DOM test covering three `/api/visit-routes` requests, selected 案B adoption, facility visit tail preservation, vehicle assignment context, and partial route failure handling.
+- Safety:
+  - Reduces risk of adopting a synthetic route as if it were engine-verified.
+  - Prevents missing-geocode or route-engine failure from being hidden as a valid route.
+  - Prevents non-emergency route compare from changing phone-confirmed visit order.
+  - Uses the existing visit route and reorder APIs; no auth/RLS policy, route provider secret, migration, push/deploy, or destructive operation changed.
+- Performance:
+  - Adds three bounded route-plan POSTs after schedules/day-board data load, cached by React Query with the selected date, visit input fingerprint, vehicle, and travel mode in the query key.
+  - No new dependency, background job, broad scan, unbounded loop, or heavy render path was added.
+- Validation:
+  - `pnpm exec prettier --write` on the four owned route-compare files: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/route-compare/route-scenarios.test.ts' 'src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx'`: passed, `2` files / `27` tests.
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/route-compare/route-scenarios.test.ts' 'src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx' src/app/api/visit-routes/route.test.ts src/app/api/visit-schedules/reorder/route.test.ts`: passed, `4` files / `77` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm test:schedule-time:tz`: passed, `30` files / `518` tests.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the four owned route-compare files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue schedule-management slices: conflict-resolution persistence, weekly optimizer false-empty/partial-batch handling, and browser/UI verification.
+
+### Communication Request Queue Labels and Links - 2026-06-30 14:48 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration and report-sharing workstream.
+  - Focused on the surfaces that consume newly created report/patient-share reply requests: communication request follow-up, communication queue/timeline, and workflow communication cards.
+  - Preserved unrelated drug-master, schedule, prescription, residual-medication, visit-record, dispensing, compliance, schema/migration, patient-route, and mixed ledger dirty paths.
+- Fixed:
+  - Added shared communication request type and recipient-role label helpers.
+  - Labeled `care_report_reply_request`, `patient_share_reply_request`, existing inquiry/tracing types, and emergency request types in Japanese.
+  - Communication queue and timeline summaries now show readable request intent instead of raw enums.
+  - Communication queue request cards now link back to `/communications/requests` with status, patient, and related entity filters.
+  - Workflow communication cards now render their existing `action_href`/`action_label`.
+  - Emergency draft request types in the workflow dashboard no longer leak raw `emergency_*` enums.
+- Safety:
+  - Reduces wrong-item handling and false context risk by placing request intent beside recipient/subject and using the existing encoded communication-request URL builder.
+  - Unknown request types remain visible as `未登録種別: ...` instead of being silently hidden.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Adds only constant-map label lookup and rendering of existing action links.
+  - The server query selects related entity IDs already stored on communication requests; no new query family, dependency, background job, broad scan, unbounded loop, network call, or heavy render path was added.
+- Validation:
+  - `pnpm exec prettier --write` on the eight owned files: passed.
+  - `pnpm vitest run src/lib/communications/request-labels.test.ts src/server/services/communication-queue.test.ts 'src/app/(dashboard)/communications/requests/requests-content.test.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx'`: passed, `4` files / `34` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+- Remaining:
+  - Commit only the eight owned communication/workflow files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue deeper STT/upload persistence and remaining visit/report/collaboration gaps as separate bounded slices.
+
+### Visit Brief Communication Request Labels - 2026-06-30 14:52 JST
+
+- Scope:
+  - Continued codex2's visit-time and interprofessional collaboration workstream.
+  - Focused on visit brief multidisciplinary updates, which feed visit preparation with recent communication requests.
+  - Preserved unrelated drug-master, schedule, prescription, residual-medication, visit-record, dispensing, compliance, schema/migration, patient-route, and mixed ledger dirty paths.
+- Fixed:
+  - Visit brief communication request summaries now use the shared communication request label helper.
+  - Existing `prescriber_followup` rows render as `処方医フォロー` instead of a raw enum.
+  - Added a visit-brief test that locks the labeled multidisciplinary update summary.
+- Safety:
+  - Reduces wrong-context visit preparation risk by showing request intent in clinical Japanese beside status/content.
+  - Unknown request types remain visibly flagged by the shared helper as `未登録種別: ...`.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Adds only a constant-map label lookup over already-fetched brief communication items.
+  - No query shape, dependency, background job, broad scan, unbounded loop, network call, or heavy render path changed.
+- Validation:
+  - `pnpm exec prettier --write src/server/services/visit-brief.ts src/server/services/visit-brief.test.ts`: passed.
+  - `pnpm vitest run src/server/services/visit-brief.test.ts src/lib/communications/request-labels.test.ts`: passed, `2` files / `11` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+- Remaining:
+  - Commit only the two owned visit-brief files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Communication Request Direct Focus Links - 2026-06-30 14:58 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration and report-sharing workstream.
+  - Focused on queue/timeline actions that navigate into `/communications/requests`.
+  - Avoided Codex's active schedule conflict-resolution lock paths.
+- Fixed:
+  - Added `request_id` to the communication request URL builder and query-state reader.
+  - Communication queue and timeline request actions now include the exact request ID.
+  - The request follow-up workspace initializes selection from `request_id` instead of always taking the first matching row.
+  - Selecting a different request updates `request_id` in the URL.
+  - Changing status tabs clears stale request focus.
+  - The filter summary shows the focused request ID when present.
+- Safety:
+  - Reduces wrong-recipient/wrong-request handling risk when several requests share the same patient/report context.
+  - `request_id` is used only for client-side focus; the API list query keeps existing status/patient/related-entity filters unchanged.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Adds only query-string state and an in-memory lookup over already-fetched request rows.
+  - No DB query, dependency, background job, broad scan, unbounded loop, network call, or heavy render path was added.
+- Validation:
+  - `pnpm exec prettier --write` on the nine owned files: passed.
+  - `pnpm vitest run src/lib/communications/navigation.test.ts 'src/app/(dashboard)/communications/requests/requests-query-state.test.ts' 'src/app/(dashboard)/communications/requests/page.test.tsx' 'src/app/(dashboard)/communications/requests/requests-content.test.tsx' src/server/services/communication-queue.test.ts src/lib/communications/request-labels.test.ts`: passed, `6` files / `56` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+- Remaining:
+  - Commit only the nine owned communication files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Share Reply Request Exact Links - 2026-06-30 15:09 JST
+
+- Scope:
+  - Continued codex2's report-sharing, patient-sharing, and interprofessional collaboration workstream.
+  - Focused on returning from report/patient share pages to the exact communication request row.
+  - Avoided Codex's active schedule conflict-resolution lock paths.
+- Fixed:
+  - Report share now shows `連携依頼を開く` when the selected audience already has an active reply request.
+  - Patient share now shows the same exact communication request link.
+  - Existing active requests use the fetched request row ID/status.
+  - Newly created requests capture the POST response ID so the link can appear before list refetch completes.
+  - Added DOM coverage for report-share and patient-share exact `request_id` hrefs.
+- Safety:
+  - Reduces wrong-request handling risk when several audience-specific reply requests exist for the same patient/report.
+  - Links use the existing communication request URL builder with status, patient, request ID, and related entity context.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Adds only local state for created request IDs and a link render.
+  - Existing list queries and POST responses are reused; no new query, dependency, background job, broad scan, unbounded loop, network call, or heavy render path was added.
+- Validation:
+  - `pnpm exec prettier --write` on the four owned files: passed.
+  - `pnpm vitest run 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' src/lib/communications/navigation.test.ts`: passed, `3` files / `56` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+  - `pnpm lint`: exited 0 with 3 unrelated warnings in Codex's locked schedule conflict file; codex was notified.
+- Remaining:
+  - Commit only the four owned share files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Report Workspace Waiting Request Direct Links - 2026-06-30 15:16 JST
+
+- Scope:
+  - Continued codex2's report workspace and interprofessional collaboration workstream.
+  - Focused on the BFF that feeds the `/reports` today's workspace waiting-replies section.
+  - Avoided Codex's active schedule conflict-resolution lock paths.
+- Fixed:
+  - Waiting communication-request actions now link to `/communications/requests` with exact `request_id`.
+  - The BFF selects request status and related entity fields needed for focused navigation.
+  - The action label changed from generic `電話で確認` to `依頼を確認`.
+  - Tests lock URL encoding for hostile patient and related entity IDs.
+- Safety:
+  - Reduces wrong-request/wrong-patient handling risk from the report dashboard.
+  - Uses the shared communication request URL builder; no raw path concatenation was added.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Adds only three scalar fields to an existing bounded `take: WAITING_LIMIT` query.
+  - No new query family, dependency, background job, broad scan, unbounded loop, network call, or heavy render path was added.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/care-reports/today-workspace/route.ts' 'src/app/api/care-reports/today-workspace/route.test.ts'`: passed.
+  - `pnpm vitest run 'src/app/api/care-reports/today-workspace/route.test.ts' src/lib/communications/navigation.test.ts`: passed, `2` files / `50` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - Full `git diff --check`: passed.
+  - `pnpm format:check`: blocked by unrelated dirty `src/app/api/drug-master-imports/hot/route.test.ts`; owned files passed scoped Prettier.
+- Remaining:
+  - Commit only the two owned BFF files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Schedule Conflict Resolution Persistence - 2026-06-30 15:14 JST
+
+- Scope:
+  - Continued schedule-management implementation under Codex/Codex2-only operation.
+  - Focused on `/schedules/conflicts`, which detected overlaps but did not persist recommended actions.
+  - Preserved unrelated drug-master, patient/share, report/communication, prescription, residual-medication, dispensing, compliance, schema/migration, and mixed ledger dirty paths.
+- Fixed:
+  - `案Aを採用する` now persists the selected movable visit through the existing `/api/visit-schedules/reorder` API.
+  - Adoption success state is set only after the API succeeds; failed reorder calls no longer show `採用済み`.
+  - Confirmed schedules are excluded from automatic conflict adjustment plan targets, and all-confirmed conflicts no longer generate automatic Plan A/B.
+  - Added `schedule_conflict_resolution` to the route confirmation context contract and audit path.
+  - Added `POST /api/visit-schedules/[id]/conflict-reconfirmation` for schedule-validated patient reconfirmation task creation.
+  - Patient reconfirmation responses are minimized to `task_id/status`; audit changes exclude dedupe keys and nested metadata after privacy review.
+  - Added DOM/API/pure-function tests for persistence payloads, failure states, confirmed-schedule exclusion, reconfirmation idempotency, and PHI-minimized responses.
+- Safety:
+  - Reduces false-complete scheduling risk where a local toast looked like a saved route change.
+  - Keeps phone-confirmed visits from being automatically moved.
+  - Reconfirmation tasks are created only after schedule existence/org/date/status validation and use `case` linkage instead of unvalidated `visit_schedule` task linkage.
+  - No auth/RLS weakening, migration, external send, live DB operation outside existing route handlers, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Adds bounded in-memory pharmacist candidate selection over already-loaded schedules/pharmacists.
+  - Adds only user-triggered reorder and reconfirmation writes.
+  - No new dependency, background job, broad scan, unbounded loop, or heavy render path was added.
+- Validation:
+  - `pnpm exec prettier --write` on the ten owned files: passed.
+  - Focused conflict/reorder/realtime Vitest: passed, `6` files / `106` tests.
+  - `pnpm test:schedule-time:tz`: passed, `30` files / `519` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Scoped `git diff --check`: passed.
+  - Verifier subagent returned PASS; privacy reviewer returned two must-fix findings and both were fixed.
+- Remaining:
+  - Commit only the ten owned schedule conflict/realtime files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue schedule-management slices such as weekly optimizer partial-batch/false-empty verification and browser/UI verification.
+
+### Report Workspace Request Link UI Contract - 2026-06-30 15:21 JST
+
+- Scope:
+  - Continued codex2's report workspace and interprofessional collaboration workstream.
+  - Focused on the `/reports` UI test fixture that consumes `/api/care-reports/today-workspace`.
+  - Avoided Codex's schedule conflict-resolution paths and unrelated dirty worktree files.
+- Fixed:
+  - Updated the mocked waiting communication request action from generic `/communications` + `電話で確認` to exact `/communications/requests?...request_id=...` + `依頼を確認`.
+  - Added a hostile related entity ID query string to lock encoded link rendering in the UI.
+- Safety:
+  - Reduces regression risk where the BFF can produce exact request links but the UI contract drifts back to generic navigation.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Test-only change; no runtime query, dependency, network call, render path, background job, or loop changed.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`: passed with no changes.
+  - `pnpm vitest run 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' 'src/app/api/care-reports/today-workspace/route.test.ts' src/lib/communications/navigation.test.ts`: passed, `3` files / `65` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+- Remaining:
+  - Commit only `src/app/(dashboard)/reports/report-share-workspace.test.tsx` because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Handoff Communication Request Follow-up Link - 2026-06-30 15:24 JST
+
+- Scope:
+  - Continued codex2's handoff and interprofessional collaboration workstream.
+  - Focused on confirming handoff cards in `/handoff`.
+  - Avoided Codex's schedule paths and unrelated dirty worktree files.
+- Fixed:
+  - Replaced the generic `/communications` handoff follow-up link with the shared communication request link builder.
+  - Confirming handoffs now open `/communications/requests?status=sent`, keeping users in the reply-waiting request workflow.
+  - UI test now asserts the exact href behind `状況を聞く`.
+- Safety:
+  - Reduces wrong-workspace follow-up risk for handoff items that are blocked on external status confirmation.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Constant link-target change only; no runtime query, dependency, network call, render path, background job, or loop changed.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/handoff/handoff-workspace.tsx' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx'`: passed with no changes.
+  - `pnpm vitest run 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' src/lib/communications/navigation.test.ts`: passed, `2` files / `43` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Commit only the two owned handoff files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Voice Memo Manual Transcript Persistence - 2026-06-30 15:31 JST
+
+- Scope:
+  - Continued codex2's visit-time voice memo workstream.
+  - Kept external STT disabled because PHI egress policy is still unresolved in the project spec.
+  - Focused on preserving the manual transcript fallback that already feeds the visit-record append workflow.
+- Fixed:
+  - Manual voice memo transcripts now save to the latest offline voice memo draft as a separate encrypted payload.
+  - Reloading a saved voice memo draft restores the decrypted manual transcript into the transcript/append workflow.
+  - Tests assert that manual transcript PHI is not written as plaintext to the draft update payload.
+- Safety:
+  - Reduces PHI loss and unsafe workaround risk during home visits while keeping audio/transcript data local and encrypted.
+  - Does not enable external STT, auth/RLS changes, permission changes, PHI export, external send, migrations, live DB operation, push/deploy, secret handling, or destructive operation.
+- Performance:
+  - Adds one latest-draft lookup/update only when the user applies a manual transcript and one optional decrypt during existing draft restore.
+  - No dependency, background job, network call, unbounded loop, broad scan, or heavy render path was added.
+- Validation:
+  - `pnpm exec prettier --write` on the five owned voice memo/offline files: passed.
+  - `pnpm vitest run 'src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.test.tsx' 'src/app/(dashboard)/visits/[id]/voice-memo/voice-memo.shared.test.ts' src/lib/offline/voice-memo-drafts.test.ts`: passed, `3` files / `31` tests.
+  - `pnpm vitest run src/lib/offline/voice-memo-drafts.integration.test.ts`: passed, `1` file / `1` test.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, and `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: blocked by unrelated dirty `src/server/services/drug-master-import/mhlw.ts` unused declarations; no owned file error.
+- Remaining:
+  - Commit only the five owned voice memo/offline files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Voice Memo Late Restore Guard - 2026-06-30 15:36 JST
+
+- Scope:
+  - Follow-up hardening for the voice memo manual transcript persistence slice.
+  - Focused on the reload race between delayed draft restore and fresh manual typing.
+- Fixed:
+  - Manual transcript textarea edits now mark the page as interacted before updating local state.
+  - A late IndexedDB draft restore no longer overwrites newly typed visit-time text.
+  - Added a delayed restore test for this race.
+- Safety:
+  - Reduces PHI integrity/loss risk during visit-time capture.
+  - No storage format, auth/RLS, permission, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation changed.
+- Performance:
+  - One ref assignment in the textarea change handler only.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.tsx' 'src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.test.tsx'`: passed with no changes.
+  - `pnpm vitest run 'src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.test.tsx'`: passed, `1` file / `4` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, and `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused` remains blocked by unrelated dirty drug-master import declarations from the previous run and was not rerun for this follow-up.
+- Remaining:
+  - Commit only the two owned voice memo content files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Report Delivery Reply-Waiting Link Focus - 2026-06-30 15:54 JST
+
+- Scope:
+  - Continued codex2's report follow-up and interprofessional collaboration workstream.
+  - Focused on overdue report cards in `ReportDeliveryDashboard`.
+- Fixed:
+  - The `関連依頼` link now includes `status=sent` so overdue report follow-up opens the reply-waiting request workflow.
+  - The hostile ID test now verifies the communication request URL query encoding as well as patient/report path encoding.
+- Safety:
+  - Reduces wrong-workspace follow-up risk when moving from未確認フォロー to communication requests.
+  - Uses the shared URL builder; no raw query concatenation was added.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Link query change only; no runtime query, dependency, network call, render path, background job, or loop changed.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/reports/report-delivery-dashboard.tsx' 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx'`: passed with no changes.
+  - `pnpm vitest run 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx' src/lib/communications/navigation.test.ts`: passed, `2` files / `32` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, and `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused` remains blocked by unrelated dirty drug-master import declarations and was not rerun for this link-only slice.
+- Remaining:
+  - Commit only the two owned dashboard files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Patient Follow-Up Request Link Focus - 2026-06-30 16:02 JST
+
+- Scope:
+  - Continued codex2's visit-time and interprofessional collaboration workstream.
+  - Focused on patient detail inquiry history, patient card blocked reasons, and the shared today-ops rail.
+- Fixed:
+  - Patient detail inquiry activities now open the communication request workspace with patient and status context (`responded` for answered inquiries, `sent` for waiting inquiries).
+  - Family-consent follow-up actions in the patient card auxiliary rail and today-ops rail now open `/communications/requests?status=sent&patient_id=...`.
+  - Added a patient card UI regression test that opens the auxiliary rail and verifies the focused `再連絡する →` link.
+- Safety:
+  - Reduces wrong-patient/wrong-workspace follow-up risk during visit preparation and patient communication.
+  - Uses the shared communication request URL builder; no raw query concatenation was added.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Link generation plus one selected `WorkflowException.patient_id` field only.
+  - No runtime-heavy query, dependency, network call, render path, background job, or loop changed.
+- Validation:
+  - `pnpm exec prettier --write` on the six owned patient/today-ops files: passed.
+  - `pnpm vitest run src/server/services/patient-detail-workspace.test.ts src/server/services/today-ops-rail.test.ts 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' src/lib/communications/navigation.test.ts`: passed, `4` files / `91` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Commit only the six owned patient/today-ops files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Workflow Reply-Waiting Aggregate Link Focus - 2026-06-30 16:07 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration workstream.
+  - Focused on the workflow dashboard workbench aggregate for reply-waiting communications.
+- Fixed:
+  - The `多職種連携の返信待ちがあります` aggregate now opens `/communications/requests?status=sent` instead of the broad request list.
+  - Added a service-level regression test for the aggregate action URL.
+- Safety:
+  - Reduces wrong-workspace follow-up risk from the workflow dashboard.
+  - Uses the shared communication request URL builder; no raw query concatenation was added.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Link generation only; no runtime-heavy query, dependency, network call, render path, background job, or loop changed.
+- Validation:
+  - `pnpm exec prettier --write src/server/services/workflow-dashboard-sections.ts src/server/services/workflow-dashboard-sections.test.ts`: passed with no changes.
+  - `pnpm vitest run src/server/services/workflow-dashboard-sections.test.ts src/lib/communications/navigation.test.ts`: passed, `2` files / `32` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Commit only the two owned workflow dashboard files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Communication Follow-Up Task Link Focus - 2026-06-30 16:11 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration workstream.
+  - Focused on operational task presentation used by Tasks/My Day.
+- Fixed:
+  - `communication_request_followup` tasks with patient context now open `/communications/requests?status=sent&patient_id=...`.
+  - Added hostile patient ID coverage using the shared `URLSearchParams` encoding contract.
+- Safety:
+  - Reduces wrong-patient/wrong-workspace follow-up risk from task queues.
+  - Uses the shared communication request URL builder; no raw query concatenation was added.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Link generation only; no runtime-heavy query, dependency, network call, render path, background job, or loop changed.
+- Validation:
+  - First focused test run failed due test expectation using `encodeURIComponent` `%20` instead of `URLSearchParams` `+`; fixed the test expectation.
+  - `pnpm vitest run src/lib/tasks/operational-task-presentation.test.ts src/lib/communications/navigation.test.ts`: passed, `2` files / `36` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Commit only the two owned operational task files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Shared Blocked-Reason Request Link Focus - 2026-06-30 16:15 JST
+
+- Scope:
+  - Continued codex2's visit/report/interprofessional collaboration workstream.
+  - Focused on the shared blocked-reason projection consumed by dashboard cockpit, patient board, and visit-preparation board.
+- Fixed:
+  - `family_consent_pending` and `awaiting_reply` blockers now open `/communications/requests?status=sent&patient_id=...`.
+  - The consuming APIs now select `WorkflowException.patient_id` so the shared projection can keep patient context.
+  - Added direct unit coverage for the blocked-reason projection, including hostile patient ID encoding and unchanged non-communication destinations.
+- Safety:
+  - Reduces wrong-patient/wrong-workspace follow-up risk across dashboard, patient board, and visit-prep surfaces.
+  - Visit-prep still does not select free-text exception descriptions and keeps its sanitized blocker label.
+  - Uses the shared communication request URL builder; no raw query concatenation was added.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - One additional scalar field on bounded workflow-exception queries plus link generation only.
+  - No runtime-heavy query, dependency, network call, render path, background job, or loop changed.
+- Validation:
+  - `pnpm vitest run src/lib/workflow/blocked-reason-projection.test.ts src/lib/communications/navigation.test.ts src/app/api/dashboard/cockpit/route.test.ts src/app/api/patients/board/route.test.ts src/app/api/visits/today-preparation/route.test.ts`: passed, `5` files / `71` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Commit only the six owned blocked-reason/API files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Patient Compare Reply-Wait Link Focus - 2026-06-30 16:22 JST
+
+- Scope:
+  - Continued codex2's visit/report/interprofessional collaboration workstream.
+  - Focused on the patient split-card compare helper.
+- Fixed:
+  - `external_wait` and `reply_wait` compare-card actions now open `/communications/requests?status=sent&patient_id=...`.
+  - Added hostile patient ID coverage using the shared `URLSearchParams` encoding contract.
+- Safety:
+  - Reduces wrong-patient/wrong-workspace follow-up risk from patient compare cards.
+  - Uses the shared communication request URL builder; no raw query concatenation was added.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Pure link derivation only; no runtime-heavy query, dependency, network call, render path, background job, or loop changed.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/patients/compare/compare-card-helpers.test.ts' src/lib/communications/navigation.test.ts`: passed, `2` files / `43` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Commit only the two owned compare-card files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Inquiry-Pending Cycle Request Link Focus - 2026-06-30 16:25 JST
+
+- Scope:
+  - Continued codex2's visit/report/interprofessional collaboration workstream.
+  - Focused on the shared medication cycle workspace action for `inquiry_pending`.
+- Fixed:
+  - `照会状況を確認する` now opens `/communications/requests?status=sent` instead of the broad request list.
+  - Added a unit regression for the shared cycle action.
+- Safety:
+  - Reduces wrong-workspace follow-up risk from process tabs and card actions.
+  - Uses the shared communication request URL builder; no raw query concatenation was added.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Static link generation only; no runtime-heavy query, dependency, network call, render path, background job, or loop changed.
+- Validation:
+  - `pnpm vitest run src/lib/prescription/cycle-workspace.test.ts 'src/app/(dashboard)/patients/compare/compare-card-helpers.test.ts' src/lib/communications/navigation.test.ts`: passed, `3` files / `51` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Commit only the two owned cycle-workspace files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Facility Visit Batch Audit Coverage - 2026-06-30 16:24 JST
+
+- Scope:
+  - Continued schedule-management P8 audit coverage for facility visit batch create/update/delete/reorder operations.
+  - Kept Claude out of the loop per current Codex/Codex2-only operation; used Codex subagents for verifier and privacy/medical-safety review.
+- Fixed:
+  - Facility batch create/update now writes structured audit records with stable facility metadata, date, pharmacist, schedule IDs, case IDs, previous batch/order, new order, packet-memo update flag, and carry-confirmation flag.
+  - Facility batch delete now audits detached schedule IDs/case IDs/previous order after authorization passes.
+  - Facility batch reorder now audits previous and new order per schedule.
+  - Non-bypass delete authorization now runs count-based access checks before reading child schedule audit details.
+  - Audit payloads no longer persist display facility labels that may contain address/home labels; create/update records only stable facility IDs when present plus `facility_group_kind`, and delete records do not copy stored `facility_id`.
+- Safety:
+  - Reduces missing accountability for facility batch mutations and route-order changes.
+  - Regression tests cover no patient names, address fallback labels, home labels, packet memo text, or stored facility labels in audit payloads.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Adds bounded audit writes inside existing org-scoped transactions and small scalar selects for route order/case IDs.
+  - No new dependency, background job, external network call, unbounded loop, or broad query was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/facility-visit-batches/route.test.ts 'src/app/api/facility-visit-batches/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `47` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, `pnpm lint`, `pnpm typecheck:no-unused`, and `pnpm format:check`: passed.
+  - Codex verifier initially found pre-authorization detail reads; fixed and covered.
+  - Codex medical-safety reviewer found PHI-like facility-label audit persistence; fixed and privacy re-review reported no remaining narrow privacy findings.
+- Remaining:
+  - Commit only the four owned facility batch files because ledger files and unrelated worktree paths remain mixed dirty.
+  - Continue broader schedule-management/display gap implementation; the active goal is not complete.
+
+### Communication Timeline Action Link Focus - 2026-06-30 16:33 JST
+
+- Scope:
+  - Continued codex2's visit/report/interprofessional collaboration workstream.
+  - Focused on the workflow communication timeline and tracing report follow-up navigation.
+- Fixed:
+  - Workflow shared timeline now renders each existing `action_href` / `action_label` beside the timeline evidence.
+  - Tracing report timeline actions now open `/communications/requests?patient_id=...&related_entity_type=tracing_report&related_entity_id=...` instead of the broad request list.
+  - Added backend hostile-ID encoding coverage and workflow UI coverage for the rendered timeline action link.
+- Safety:
+  - Reduces wrong-patient/wrong-request follow-up risk from the communication timeline.
+  - Uses the shared communication request URL builder; no raw query concatenation was added.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Link generation and rendering one existing action link per displayed timeline row only.
+  - No new query, dependency, network call, render-heavy path, background job, or loop changed.
+- Validation:
+  - `pnpm vitest run src/server/services/communication-queue.test.ts 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx' src/lib/communications/navigation.test.ts`: passed, `3` files / `45` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, and `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused` remains blocked by unrelated dirty work. First run reported `src/app/api/visit-schedules/[id]/reschedule/route.ts`; rerun reported `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`. No owned file was reported.
+- Remaining:
+  - Commit only the four owned communication/workflow files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Tracing Follow-Up Task Request Link Focus - 2026-06-30 16:40 JST
+
+- Scope:
+  - Continued codex2's report/interprofessional collaboration workstream.
+  - Focused on tracing-report reply follow-up tasks created from `/api/communication-requests/[id]/resolve-followup`.
+- Fixed:
+  - Tracing reply follow-up tasks now persist `related_entity_type=tracing_report` and the related tracing report ID instead of collapsing the task relation to the patient.
+  - `tracing_report_followup` task presentation now opens the related communication request filter instead of generic `/workflow`.
+  - The queue label is now Japanese (`服薬情報提供書`) instead of raw `Tracing`.
+- Safety:
+  - Reduces wrong-workspace/wrong-request follow-up risk from My Day, Tasks, and workflow workbench task links.
+  - Uses the shared communication request URL builder with hostile ID coverage.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Task relation fields and link generation only.
+  - No new query, dependency, network call, render-heavy path, background job, or loop changed.
+- Validation:
+  - `pnpm vitest run src/lib/tasks/operational-task-presentation.test.ts src/server/services/operational-tasks.test.ts src/app/api/communication-requests/'[id]'/resolve-followup/route.test.ts src/lib/communications/navigation.test.ts`: passed, `4` files / `60` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Commit only the four owned task/resolve-followup files because ledger files and unrelated worktree changes are mixed dirty.
+  - Visit-record-origin tracing follow-up tasks still use their existing visit-record relation; defer until the active dirty visit-record slice can be owned or coordinated.
+
+### Report Follow-Up Task Report Link Focus - 2026-06-30 16:47 JST
+
+- Scope:
+  - Continued codex2's report/interprofessional collaboration workstream.
+  - Focused on report delivery/response follow-up tasks across presentation, communication reply resolution, and overdue report reminders.
+- Fixed:
+  - `report_delivery_followup` and `report_response_followup` tasks now open the related report detail when the task relation is `care_report`.
+  - Care-report communication reply follow-up tasks now persist `related_entity_type=care_report` / report ID instead of collapsing to patient.
+  - Overdue report response reminder tasks now use the care report as the task relation and keep the delivery record ID in metadata.
+- Safety:
+  - Reduces wrong-report/wrong-workspace follow-up risk from My Day, Tasks, and workflow workbench.
+  - Uses `buildReportHref` for hostile report ID path encoding; no raw URL concatenation was added.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Task relation fields and link generation only.
+  - No new query, dependency, network call, render-heavy path, background job, or loop changed.
+- Validation:
+  - `pnpm vitest run src/lib/tasks/operational-task-presentation.test.ts src/server/services/operational-tasks.test.ts src/app/api/communication-requests/'[id]'/resolve-followup/route.test.ts src/server/services/report-reminders.test.ts src/lib/communications/navigation.test.ts`: passed, `5` files / `65` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Commit only the six owned report-task files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Patient Insurance Open-Ended Overlap Guard - 2026-06-30 16:43 JST
+
+- Scope:
+  - Continued the patient information management part of the active master/patient-management goal.
+  - Focused on patient insurance validity-window integrity for `/api/patients/[id]/insurance` and `/api/patients/[id]/insurance/[insuranceId]`.
+- Fixed:
+  - Extracted the duplicated active-insurance overlap predicate into `src/lib/patient/insurance-overlap.ts`.
+  - Open-ended new insurance intervals now correctly omit only the bounded side of the interval predicate instead of requiring existing rows to have `valid_from=null` or `valid_until=null`.
+  - POST and PUT now share the same interval overlap guard, including update-time exclusion of the edited insurance record.
+  - Added direct helper coverage for bounded, open-ended, startless, and fully unbounded intervals, plus API regression coverage for open-ended active insurance checks.
+- Safety:
+  - Reduces the risk of a patient having multiple active medical/care/public-subsidy insurance records for overlapping periods when `valid_from` or `valid_until` is unset.
+  - Preserves existing org, patient, assignment, archive, and writable-patient checks. No auth/RLS weakening, PHI export, migration, live DB operation, secret handling, push/deploy, or destructive operation was added.
+  - Existing dirty no-store/sanitized-error changes in the same insurance route files were preserved and not reverted.
+- Performance:
+  - Keeps the same single `findFirst` overlap check and only narrows/removes impossible interval predicates for open-ended windows.
+  - No dependency, background job, external call, broad scan, unbounded loop, or heavy render path was added.
+- Validation:
+  - `pnpm exec vitest run src/lib/patient/insurance-overlap.test.ts 'src/app/api/patients/[id]/insurance/route.test.ts' 'src/app/api/patients/[id]/insurance/[insuranceId]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `3` files / `47` tests.
+  - Scoped ESLint, Prettier write/check via formatting, scoped `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint`: passed.
+- Remaining:
+  - Broader patient information management remains open. Next useful slice is a patient edit/read model audit for field-revision coverage and UI surfacing of revision history/current snapshots.
+  - Do not broad-stage because the worktree still contains many mixed dirty files from other slices.
+
+### Patient Field Revision Count Metadata - 2026-06-30 16:50 JST
+
+- Scope:
+  - Continued patient information management hardening for the patient-detail change-history layer.
+  - Applied the PH-OS counted-list contract to `/api/patients/[id]/field-revisions` and its timeline UI.
+- Fixed:
+  - Added `listPatientFieldRevisionPage()` so the field-revision API returns `data` plus `meta`.
+  - `meta` now includes `total_count`, `visible_count`, `hidden_count`, `truncated`, `count_basis`, `filters_applied`, `sort_basis`, and `limit`.
+  - The timeline UI now displays `先頭N件を表示 / 他N件` when the backend reports truncation, avoiding a false impression that the visible rows are the full history.
+  - Existing raw-value masking in `listPatientFieldRevisions()` is preserved; hidden-row metadata contains counts only, not patient notes, phone numbers, addresses, allergy text, or other PHI.
+- Safety:
+  - Reduces false-empty and false-complete risk in patient master change history.
+  - Keeps existing auth, assignment scoping, sensitive no-store behavior, PHI masking, and fixed 500 response behavior.
+  - No auth/RLS weakening, migration, PHI export, live DB operation, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Adds one scoped `count` query for the field-revision page endpoint. The visible rows remain bounded by `limit` and ordered by `created_at desc`.
+  - No unbounded payload, new dependency, background job, external call, or heavy render path was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/patient-field-revision-list.test.ts 'src/app/api/patients/[id]/field-revisions/route.test.ts' src/components/features/patients/patient-field-revision-timeline.test.tsx --reporter=dot --testTimeout=60000`: passed, `3` files / `19` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint`: passed.
+- Remaining:
+  - Broader patient information management remains open. Next patient slice should inspect whether patient-edit PATCH uses stale-state/precondition guards for high-risk basic information changes.
+  - Do not broad-stage because the worktree still contains many mixed dirty files from other slices.
+
+### Patient Master Edit Stale-State Guard - 2026-06-30 17:00 JST
+
+- Scope:
+  - Continued patient information management hardening for high-risk patient master edits.
+  - Focused on stale-state prevention for `/api/patients/[id]` PATCH and the current patient edit form.
+- Fixed:
+  - Added optional `expected_updated_at` validation to `updatePatientSchema`.
+  - Patient PATCH now rejects stale edits with a sanitized no-store `409` and `conflict_type=stale_patient` before entering the write transaction.
+  - Matching `expected_updated_at` is treated as an OCC anchor only and is not written to the Patient model.
+  - `findPatientOverviewBase()` now selects patient `updated_at`, `PatientOverview` exposes it, and `PatientEditContent` passes it to `PatientForm`.
+  - `PatientForm` now submits edit PATCH requests through `buildPatientApiPath(patientId)` instead of raw string interpolation and includes `expected_updated_at` for edits.
+- Safety:
+  - Reduces stale overwrite risk for patient name, demographics, phone, residence, insurance summary fields, allergies, notes, care-team assignment, and related intake fields edited from the patient form.
+  - Reduces hostile patient-id path risk in the edit PATCH path by using the shared encoded patient API path helper.
+  - Preserves existing auth, org scoping, assignment access, archive conflict, duplicate-patient conflict, sensitive no-store, and fixed 500 behavior. No auth/RLS weakening, migration, PHI export, live DB operation, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Reuses the existing patient lookup already performed before PATCH writes; no additional DB query is added for stale-state checks.
+  - No new dependency, background job, external call, broad scan, unbounded loop, or heavy render path was added.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/patients/[id]/route.test.ts' src/components/features/patients/patient-form.test.tsx 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx' src/server/services/patient-state-snapshot.test.ts --reporter=dot --testTimeout=60000`: passed, `4` files / `65` tests.
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-facility-multi-visit-card.test.tsx' --reporter=dot --testTimeout=60000`: passed, `2` files / `64` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint`: passed. First `typecheck:no-unused` attempt briefly saw another dirty `home-care-ops.ts` state; rerun against the current file passed.
+- Remaining:
+  - Broader patient information management remains open. Next patient slice should inspect whether legacy `PatientMasterCard` is still reachable; if not, remove or route it behind the current card workspace to avoid duplicate edit paths.
+  - Do not broad-stage because the worktree still contains many mixed dirty files from other slices.
+
+### Report Queue Detail Links - 2026-06-30 16:53 JST
+
+- Scope:
+  - Continued codex2's visit/report/interprofessional collaboration workstream.
+  - Focused on communication queue report delivery and timeline actions.
+- Fixed:
+  - Report delivery backlog items now open the exact report detail instead of the generic reports index.
+  - Care-report timeline rows now open the exact report detail.
+  - Delivery-record timeline rows now open the exact report detail.
+  - Added regression coverage for hostile report IDs so `/reports/[id]` links are encoded through `buildReportHref()`.
+- Safety:
+  - Reduces wrong-report and wrong-patient navigation risk from the communication workbench.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Link construction only.
+  - No new query, dependency, network call, render-heavy path, background job, or loop changed.
+- Validation:
+  - `pnpm exec vitest run src/server/services/communication-queue.test.ts src/lib/reports/navigation.test.ts src/lib/communications/navigation.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `45` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Commit only the two owned communication queue files because ledger files and unrelated worktree changes are mixed dirty.
+  - Visit-record-origin tracing follow-up tasks still need coordination before touching dirty visit-record route files.
+
+### Home-Care Multidisciplinary Share Action Focus - 2026-06-30 16:59 JST
+
+- Scope:
+  - Continued codex2's visit/report/interprofessional collaboration workstream.
+  - Focused on the home-care feature summary consumed by workflow, patient detail, and visit-prep surfaces.
+- Fixed:
+  - `multidisciplinary_share_summary` no longer always inherits the generic `/reports` action.
+  - When collaboration requests exist, the feature opens `/communications/requests`, scoped to the patient when available.
+  - When there is exactly one stalled report and no request, the feature opens that report detail.
+  - Added patient-level regression coverage for hostile patient IDs and hostile report IDs.
+- Safety:
+  - Reduces wrong-patient/wrong-report navigation risk from home-care and visit-preparation actions.
+  - Uses shared navigation helpers; no raw query/path concatenation was added.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Link selection over already-loaded bounded arrays only.
+  - No new query, dependency, network call, render-heavy path, background job, or loop changed.
+- Validation:
+  - `pnpm exec vitest run src/server/services/home-care-ops.test.ts src/lib/communications/navigation.test.ts src/lib/reports/navigation.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `38` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Commit only the two owned home-care files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Visit Brief Action Links - 2026-06-30 17:08 JST
+
+- Scope:
+  - Continued codex2's visit-time/report/interprofessional collaboration workstream.
+  - Focused on the visit brief card used during patient/visit preparation.
+- Fixed:
+  - Visit brief delivery-status rows now render their existing report delivery `action_href` beside the evidence.
+  - Communication-request multidisciplinary updates now include exact `/communications/requests` action links with request ID, patient ID, and related entity filters.
+  - The visit brief card renders those communication actions inline with the update evidence.
+  - Added service/UI regression coverage for hostile request/report IDs and rendered action links.
+- Safety:
+  - Reduces wrong-request and wrong-report navigation risk during visit-time review.
+  - Follows PH-OS UI/UX SSOT `Action beside evidence` by placing the action next to the report/request evidence row.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Adds four scalar fields to an existing bounded communication-request query.
+  - Optional link rendering only; no new query family, dependency, network call, render-heavy path, background job, broad scan, or loop changed.
+- Validation:
+  - `pnpm exec vitest run src/server/services/visit-brief.test.ts src/components/visit-brief/visit-brief-card.test.tsx src/lib/communications/navigation.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `41` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Commit only the five owned visit brief files because ledger files and unrelated worktree changes are mixed dirty.
+  - Continue bounded visit/report/collaboration slices.
+
+### Visit Brief Unresolved Action Links - 2026-06-30 17:14 JST
+
+- Scope:
+  - Continued visit-time follow-up after rendering report/communication evidence actions.
+  - Focused on unresolved task blockers inside the visit brief card.
+- Fixed:
+  - Visit-brief task blockers now use `describeOperationalTask()` instead of generic `/workflow`.
+  - Report follow-up task blockers can now open the exact report detail from the visit brief.
+  - The visit brief card now renders unresolved-item `href` values beside blocker evidence.
+  - Added service/UI regression coverage for report-detail task hrefs and rendered unresolved actions.
+- Safety:
+  - Reduces wrong-workspace/wrong-report navigation risk during visit-time blocker resolution.
+  - Reuses the shared operational task presentation helper; no raw path concatenation was added.
+  - No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Adds three scalar fields to an existing bounded task query.
+  - Optional UI rendering over already-displayed unresolved rows only.
+- Validation:
+  - `pnpm exec vitest run src/server/services/visit-brief.test.ts src/components/visit-brief/visit-brief-card.test.tsx src/lib/communications/navigation.test.ts src/lib/tasks/operational-task-presentation.test.ts --reporter=dot --testTimeout=60000`: passed, `4` files / `56` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Commit only the four owned visit brief files because ledger files and unrelated worktree changes are mixed dirty.
+  - Visit-record-origin tracing follow-up relation remains blocked by dirty visit-record route ownership.
+
+### Schedule Reschedule Override Lifecycle Hardening - 2026-06-30 17:00 JST
+
+- Scope:
+  - Continued schedule-management P9 lifecycle hardening for confirmed/planned visit reschedule requests and schedule cancellation cleanup.
+  - Focused on `VisitScheduleOverride.source_schedule_id` uniqueness, stale reschedule proposals, stale approval tasks, impacted-schedule races, and PHI minimization in reschedule metadata.
+- Fixed:
+  - A cancelled `VisitScheduleOverride` for the same source schedule is now reused by updating it back to `pending` instead of attempting a duplicate create that would violate the unique source-schedule constraint.
+  - Reusing a cancelled override now supersedes prior open source proposals before creating new proposals, preventing old candidates from remaining actionable beside the new request.
+  - Reuse now writes append-only audit evidence with the reused source/impacted override IDs and previous status/request/approval timestamps and actor IDs, without copying raw snapshots into audit changes.
+  - Cancelling a schedule now cancels the dedupe-keyed reschedule approval task even when no pending override row remains.
+  - Emergency impact override/proposal metadata no longer persists patient display names for impacted/source patients; persisted metadata uses schedule IDs, patient IDs, and counts instead.
+  - Emergency impacted schedules are now version-claimed before proposal/override creation; stale or cancelled impacted schedules are recorded as `skipped_state_changed` without creating new artifacts.
+- Safety:
+  - Reduces duplicate override conflict risk, stale proposal approval risk, stale approval-task queue risk, cancelled-impacted-schedule artifact risk, and unnecessary PHI duplication in operational JSON/reason fields.
+  - Preserves existing schedule assignment authorization, optimistic version claim, Serializable transaction retry behavior, sensitive no-store responses, and fixed/sanitized 500 responses.
+  - No auth/RLS weakening, migration, live DB operation, external send, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Adds one bounded proposal `updateMany` only when reusing a cancelled override, one dedupe-key task `updateMany` during schedule cancellation, and one version-claim `updateMany` per impacted emergency candidate before artifact creation.
+  - No dependency, background job, unbounded loop, broad scan, external network call, or render-heavy path was added.
+- Validation:
+  - Focused `pnpm exec vitest run 'src/app/api/visit-schedules/[id]/reschedule/route.test.ts' 'src/app/api/visit-schedules/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `2` files / `108` tests.
+  - `pnpm test:schedule-time:tz`: passed, `30` files / `522` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm format:check`, and `pnpm lint`: passed.
+  - Codex verifier found no blocking issues after the initial change; Codex medical-safety and concurrency reviewers found stale audit/proposal/task/PHI and impacted-race concerns, which were fixed in this slice.
+- Remaining:
+  - DB-backed integration coverage for the actual unique constraint would further raise confidence, but the route unit tests now assert cancelled reuse updates rather than creates.
+  - Exact-path stage only the four owned visit-schedule route/test files because ledger files and unrelated worktree paths remain mixed dirty.
+
+### Patient Master Current Edit Path Consolidation - 2026-06-30 17:11 JST
+
+- Scope:
+  - Continued the patient information management goal by retiring the unreachable legacy patient master card and consolidating patient master edits on the current `patients/[id]/edit` path.
+  - Focused on preventing duplicate edit paths while preserving the online qualification-check capability on the active form.
+- Fixed:
+  - Removed unreachable `PatientMasterCard` implementation and its dedicated legacy test after confirming no non-test `src/app`, `src/components`, `src/server`, or `src/lib` path references it.
+  - Added the online qualification-check action to `PatientForm` in edit mode, using `buildPatientApiPath(patientId, '/qualification-check')` and org headers.
+  - Qualification-check success, warning, and failure states now render beside the insurance field instead of being reduced to an empty/absent result.
+  - Updated `Plans.md` and patient SSOT docs from the deleted `patient-master-card.tsx` path to the current `PatientForm` / `patient-edit-content.tsx` source.
+- Safety:
+  - Reduces duplicate patient master edit surface risk and keeps the stale-state guarded `PatientForm` as the single active edit path.
+  - Reduces wrong-patient qualification-check path risk by keeping hostile patient IDs behind the shared patient API path helper.
+  - Qualification-check failure remains visible with `role="alert"`; hidden/missing qualification data is not shown as an empty success state.
+  - No auth/RLS policy, permission, PHI export, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Removes an unused client component and test file.
+  - Qualification check remains an explicit user action only; no new background query, dependency, broad scan, unbounded loop, or render-heavy path was added.
+- Validation:
+  - `rg -n "PatientMasterCard|patient-master-card" src/app src/components src/server src/lib docs/ssot-home-visit-intake.md docs/ssot-first-visit-document.md Plans.md`: returned no active current-path references after the update.
+  - `pnpm exec vitest run src/components/features/patients/patient-form.test.tsx 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx' --reporter=dot --testTimeout=60000`: passed, `2` files / `19` tests.
+  - Scoped ESLint, scoped Prettier check for code/Plans, scoped `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint`: passed.
+- Remaining:
+  - The broad master-management/patient-information goal remains open. Next patient slice should inspect current edit-form facility-unit path encoding and false-empty handling, because the deleted legacy card had separate coverage for those behaviors.
+  - Do not broad-stage because the worktree contains many mixed dirty files from other slices.
+
+### Patient Form Facility Unit Safety - 2026-06-30 17:16 JST
+
+- Scope:
+  - Continued patient information management by moving the deleted legacy card's facility-unit safety coverage onto the current `PatientForm`.
+  - Focused on path safety and false-empty prevention for facility/unit master selection in the patient edit/register form.
+- Fixed:
+  - `PatientForm` now builds `/api/admin/facilities/[facilityId]/units` with `encodePathSegment(selectedFacilityId)`.
+  - Exact dot-segment facility IDs now fail before fetch instead of being normalized by the URL path.
+  - Facility list and facility-unit fetch failures now render inline retryable errors instead of looking like empty option lists.
+  - Unit empty-state text is shown only after a successful unit query returns zero rows.
+- Safety:
+  - Reduces wrong-facility-unit lookup risk from hostile facility IDs containing `/`, `?`, or `#`.
+  - Reduces false-empty risk for facility master and unit master failures in patient registration/editing.
+  - No auth/RLS policy, permission, PHI export, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - No new query family or automatic network call was added; existing facility/unit queries were hardened in place.
+  - The extra render work is a small conditional error/status message only.
+- Validation:
+  - `pnpm exec vitest run src/components/features/patients/patient-form.test.tsx --reporter=dot --testTimeout=60000`: passed, `1` file / `18` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint`: passed.
+- Remaining:
+  - The broad master-management/patient-information goal remains open. Next patient slice should inspect whether current patient edit/register facility-service-area and care-team queries need the same false-empty/error-near-field treatment.
+  - Do not broad-stage because the worktree contains many mixed dirty files from other slices.
