@@ -18,7 +18,10 @@ import { familyNameOf } from '@/lib/utils/person-name';
 import { sanitizeDeliveryFailureReason } from '@/lib/reports/delivery-failure-reasons';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
-import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+import {
+  buildCommunicationRequestsHref,
+  resolveCommunicationEntityLink,
+} from '@/lib/communications/navigation';
 import { buildVisitRecordHref } from '@/lib/visits/navigation';
 import {
   BILLING_VALIDATION_LAYER_KEYS,
@@ -157,6 +160,39 @@ function selectExistingScheduleReport(
     reports[0] ??
     null
   );
+}
+
+const WAITING_REQUEST_SECONDARY_ENTITY_TYPES = new Set([
+  'care_report',
+  'visit_record',
+  'visit_schedule',
+]);
+
+function buildWaitingRequestSecondaryAction(request: {
+  patient_id: string | null;
+  related_entity_type: string | null;
+  related_entity_id: string | null;
+}): ReportWaitingReply['actions'][number] {
+  const relatedLink = WAITING_REQUEST_SECONDARY_ENTITY_TYPES.has(request.related_entity_type ?? '')
+    ? resolveCommunicationEntityLink({
+        entityType: request.related_entity_type,
+        entityId: request.related_entity_id,
+      })
+    : null;
+
+  if (relatedLink) {
+    return {
+      label: `→ ${relatedLink.label}`,
+      href: relatedLink.href,
+      kind: 'link',
+    };
+  }
+
+  return {
+    label: '→ カードへ',
+    href: request.patient_id ? buildPatientHref(request.patient_id) : '/patients',
+    kind: 'link',
+  };
 }
 
 /**
@@ -850,11 +886,7 @@ const authenticatedGET = withAuthContext(
                   }),
                   kind: 'button',
                 },
-                {
-                  label: '→ カードへ',
-                  href: request.patient_id ? buildPatientHref(request.patient_id) : '/patients',
-                  kind: 'link',
-                },
+                buildWaitingRequestSecondaryAction(request),
               ],
             };
           }),

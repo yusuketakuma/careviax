@@ -568,6 +568,95 @@ describe('/api/care-reports/today-workspace', () => {
     });
   });
 
+  it('focuses waiting inquiry secondary actions on related report, visit, and schedule records', async () => {
+    const now = Date.now();
+    const reportEntityId = 'care/report?x=y#frag';
+    const visitRecordEntityId = 'visit/record?x=y#frag';
+    const scheduleEntityId = 'schedule/1?x=y#frag';
+    const fallbackPatientId = 'patient/fallback?x=y#frag';
+    mockTx({
+      requests: [
+        {
+          id: 'req_report',
+          subject: '報告書返信確認',
+          patient_id: 'patient_1',
+          status: 'sent',
+          related_entity_type: 'care_report',
+          related_entity_id: reportEntityId,
+          requested_at: new Date(now - 4 * 86_400_000),
+        },
+        {
+          id: 'req_visit',
+          subject: '訪問記録確認',
+          patient_id: 'patient_1',
+          status: 'sent',
+          related_entity_type: 'visit_record',
+          related_entity_id: visitRecordEntityId,
+          requested_at: new Date(now - 3 * 86_400_000),
+        },
+        {
+          id: 'req_schedule',
+          subject: '訪問予定確認',
+          patient_id: 'patient_1',
+          status: 'sent',
+          related_entity_type: 'visit_schedule',
+          related_entity_id: scheduleEntityId,
+          requested_at: new Date(now - 2 * 86_400_000),
+        },
+        {
+          id: 'req_dot_report',
+          subject: '不正な報告書ID',
+          patient_id: fallbackPatientId,
+          status: 'sent',
+          related_entity_type: 'care_report',
+          related_entity_id: '.',
+          requested_at: new Date(now - 86_400_000),
+        },
+      ],
+      patients: [
+        { id: 'patient_1', name: '田中 一郎' },
+        { id: fallbackPatientId, name: '佐藤 花子' },
+      ],
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+    type WaitingReplyResult = {
+      id: string;
+      actions: Array<{ label: string; href: string; kind: string }>;
+    };
+    const repliesById = new Map<string, WaitingReplyResult>(
+      (json.data.waiting_replies as WaitingReplyResult[]).map((reply) => [reply.id, reply]),
+    );
+
+    expect(repliesById.get('request-req_report')?.actions[1]).toEqual({
+      label: '→ 報告書詳細',
+      href: `/reports/${encodeURIComponent(reportEntityId)}`,
+      kind: 'link',
+    });
+    expect(repliesById.get('request-req_visit')?.actions[1]).toEqual({
+      label: '→ 訪問詳細',
+      href: `/visits/${encodeURIComponent(visitRecordEntityId)}`,
+      kind: 'link',
+    });
+    expect(repliesById.get('request-req_schedule')?.actions[1]).toEqual({
+      label: '→ スケジュール',
+      href: `/schedules?focus=schedule&schedule_id=${encodeURIComponent(scheduleEntityId)}`,
+      kind: 'link',
+    });
+    expect(repliesById.get('request-req_dot_report')?.actions[1]).toEqual({
+      label: '→ カードへ',
+      href: `/patients/${encodeURIComponent(fallbackPatientId)}`,
+      kind: 'link',
+    });
+    expect(JSON.stringify(json.data.waiting_replies)).not.toContain(`/reports/${reportEntityId}`);
+    expect(JSON.stringify(json.data.waiting_replies)).not.toContain(
+      `/visits/${visitRecordEntityId}`,
+    );
+  });
+
   it('lists created reports with professional delivery status and open report issues', async () => {
     mockTx({
       recentReports: [
