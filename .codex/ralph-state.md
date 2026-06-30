@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0912 JST
+
+- current task: switch active coordination away from Claude because the user reported Claude is near its usage limit; notify all agents that CareViaX is now Codex + codex2 only.
+- files inspected: `git status --short --untracked-files=all`, agmsg `team.sh phos`, agmsg `whoami.sh`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `CODEX_GOAL_PROGRESS.md` and this Ralph state file.
+- bugs found: none in application code. Operational risk found: the previous latest coordination note still described Claude review gates as active despite the user's new instruction to stop using Claude.
+- security risks found: none in application runtime. Process risk reduced by making explicit that high-risk work should use codex/codex2 peer review, project subagents, and validation rather than Claude ACK/review gates.
+- performance issues found: none.
+- validation commands: agmsg notifications sent to `claude` and `codex2`; scoped `git diff --check` on the two ledger files.
+- validation results: agmsg sent `OPERATION_MODE_UPDATE` to Claude and codex2. Scoped diff-check passed.
+- remaining work: commit this ledger-only operation-mode update, send agmsg FYI, then continue with Codex/Codex2-only backend/API hardening or incoming codex2 review interrupts.
+- next action: exact-path stage and commit the ledger-only operation-mode update.
+
 ### 20260630-0908 JST
 
 - current task: harden `POST /api/partner-visit-records/[id]/physician-report-draft` so physician-report draft creation failures use fixed no-store sanitized envelopes.
