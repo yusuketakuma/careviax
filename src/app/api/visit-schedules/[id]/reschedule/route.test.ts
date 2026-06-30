@@ -109,6 +109,11 @@ function createMalformedJsonRequest(headers?: Record<string, string>) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function buildExpectedRescheduleRequestIntentKey(args?: {
   reason?: string;
   reasonCode?: string;
@@ -393,6 +398,41 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
     );
   });
 
+  it('returns a sanitized no-store 500 when reschedule auth lookup fails unexpectedly', async () => {
+    requireAuthContextMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 090-1234-5678 raw reschedule auth detail'),
+    );
+
+    const response = await POST(
+      createRequest(
+        {
+          reason: '患者都合で変更',
+          reason_code: 'patient_request',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'schedule_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('raw reschedule auth detail');
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('rejects completed schedules', async () => {
     visitScheduleFindFirstMock.mockResolvedValue(
       buildSchedule({
@@ -564,6 +604,7 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: {
         orgId: 'org_1',

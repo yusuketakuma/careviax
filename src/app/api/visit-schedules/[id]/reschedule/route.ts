@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { addDays, format, parseISO } from 'date-fns';
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import type { ScheduleStatus, VisitAssignmentMode, VisitPriority, VisitType } from '@prisma/client';
@@ -9,7 +10,8 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { z } from 'zod';
@@ -306,7 +308,10 @@ async function loadExistingPendingReschedule(args: {
   };
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+const authenticatedPOST = async (
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) => {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問予定のリスケ権限がありません',
@@ -1125,4 +1130,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     },
     proposals.reusedExisting ? 200 : 201,
   );
-}
+};
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
