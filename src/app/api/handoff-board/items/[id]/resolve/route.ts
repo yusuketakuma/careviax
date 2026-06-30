@@ -83,47 +83,51 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
     const resolutionNote = parsed.data.resolution_note ?? null;
     const resolvedAt = new Date();
 
-    const updated = await withOrgContext(ctx.orgId, async (tx) => {
-      const claim = await tx.handoffItem.updateMany({
-        where: {
-          id,
-          consult_status: item.consult_status,
-          resolution_action: null,
-          resolved_at: null,
-        },
-        data: {
-          consult_status: nextConsultStatus,
-          resolution_action: resolutionAction,
-          resolution_note: resolutionNote,
-          resolved_by: ctx.userId,
-          resolved_at: resolvedAt,
-        },
-      });
-      if (claim.count !== 1) {
-        return { error: 'state_changed' as const };
-      }
+    const updated = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const claim = await tx.handoffItem.updateMany({
+          where: {
+            id,
+            consult_status: item.consult_status,
+            resolution_action: null,
+            resolved_at: null,
+          },
+          data: {
+            consult_status: nextConsultStatus,
+            resolution_action: resolutionAction,
+            resolution_note: resolutionNote,
+            resolved_by: ctx.userId,
+            resolved_at: resolvedAt,
+          },
+        });
+        if (claim.count !== 1) {
+          return { error: 'state_changed' as const };
+        }
 
-      const result = await tx.handoffItem.findFirst({
-        where: { id },
-      });
-      if (!result) {
-        return { error: 'state_changed' as const };
-      }
+        const result = await tx.handoffItem.findFirst({
+          where: { id },
+        });
+        if (!result) {
+          return { error: 'state_changed' as const };
+        }
 
-      await createAuditLogEntry(tx, ctx, {
-        action: 'handoff_consult_resolved',
-        targetType: 'handoff_item',
-        targetId: id,
-        changes: {
-          consult_status: nextConsultStatus,
-          resolution_action: resolutionAction,
-          resolution_note: resolutionNote,
-          resolved_at: resolvedAt.toISOString(),
-        },
-      });
+        await createAuditLogEntry(tx, ctx, {
+          action: 'handoff_consult_resolved',
+          targetType: 'handoff_item',
+          targetId: id,
+          changes: {
+            consult_status: nextConsultStatus,
+            resolution_action: resolutionAction,
+            resolution_note: resolutionNote,
+            resolved_at: resolvedAt.toISOString(),
+          },
+        });
 
-      return result;
-    });
+        return result;
+      },
+      { requestContext: ctx },
+    );
 
     if ('error' in updated) {
       return conflict('この相談は他のユーザーによって更新されています。再読み込みしてください');

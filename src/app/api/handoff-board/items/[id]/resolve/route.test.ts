@@ -88,6 +88,13 @@ describe('/api/handoff-board/items/[id]/resolve', () => {
 
     expect(response!.status).toBe(200);
     expectSensitiveNoStore(response!);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+    });
     expect(handoffItemUpdateManyMock).toHaveBeenCalledWith({
       where: {
         id: 'item_1',

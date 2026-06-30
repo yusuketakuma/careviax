@@ -129,74 +129,78 @@ const authenticatedPOST = withAuthContext(
       !parsed.data.consult_status &&
       Boolean(parsed.data.recipient_label || parsed.data.recipient_user_id);
 
-    const created = await withOrgContext(ctx.orgId, async (tx) => {
-      const item = await tx.handoffItem.create({
-        data: {
-          board_id: parsed.data.board_id,
-          content: parsed.data.content,
-          priority: parsed.data.priority,
-          entity_type: parsed.data.entity_type ?? null,
-          entity_id: parsed.data.entity_id ?? null,
-          recipient_user_id: parsed.data.recipient_user_id ?? null,
-          recipient_label: parsed.data.recipient_label ?? null,
-          // 伝言(message)・相談(consult)は lifecycle を持たない。責任移転のみ proposed 既定。
-          lifecycle_status:
-            isMessage || parsed.data.consult_status
-              ? null
-              : (parsed.data.lifecycle_status ?? 'proposed'),
-          scope: isMessage ? null : (parsed.data.scope ?? null),
-          rationale: isMessage ? null : (parsed.data.rationale ?? null),
-          deadline: !isMessage && parsed.data.deadline ? new Date(parsed.data.deadline) : null,
-          progress_done: isMessage ? null : (parsed.data.progress_done ?? null),
-          progress_total: isMessage ? null : (parsed.data.progress_total ?? null),
-          consult_status: isMessage ? null : (parsed.data.consult_status ?? null),
-          read_by: [],
-          created_by: ctx.userId,
-        },
-      });
+    const created = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const item = await tx.handoffItem.create({
+          data: {
+            board_id: parsed.data.board_id,
+            content: parsed.data.content,
+            priority: parsed.data.priority,
+            entity_type: parsed.data.entity_type ?? null,
+            entity_id: parsed.data.entity_id ?? null,
+            recipient_user_id: parsed.data.recipient_user_id ?? null,
+            recipient_label: parsed.data.recipient_label ?? null,
+            // 伝言(message)・相談(consult)は lifecycle を持たない。責任移転のみ proposed 既定。
+            lifecycle_status:
+              isMessage || parsed.data.consult_status
+                ? null
+                : (parsed.data.lifecycle_status ?? 'proposed'),
+            scope: isMessage ? null : (parsed.data.scope ?? null),
+            rationale: isMessage ? null : (parsed.data.rationale ?? null),
+            deadline: !isMessage && parsed.data.deadline ? new Date(parsed.data.deadline) : null,
+            progress_done: isMessage ? null : (parsed.data.progress_done ?? null),
+            progress_total: isMessage ? null : (parsed.data.progress_total ?? null),
+            consult_status: isMessage ? null : (parsed.data.consult_status ?? null),
+            read_by: [],
+            created_by: ctx.userId,
+          },
+        });
 
-      if (isTransfer) {
-        // 責任の移転は「受領確認と根拠が必ず記録されます」(12_handoff)。
-        await createAuditLogEntry(tx, ctx, {
-          action: 'handoff_transfer_created',
-          targetType: 'handoff_item',
-          targetId: item.id,
-          changes: {
-            recipient_user_id: item.recipient_user_id,
-            recipient_label: item.recipient_label,
-            scope: item.scope,
-            rationale: item.rationale,
-            deadline: item.deadline?.toISOString() ?? null,
-          },
-        });
-      } else if (isMessage) {
-        // 薬局内フリー連絡も監査既定方針に沿って軽量に記録する。
-        await createAuditLogEntry(tx, ctx, {
-          action: 'handoff_message_created',
-          targetType: 'handoff_item',
-          targetId: item.id,
-          changes: {
-            recipient_user_id: item.recipient_user_id,
-            recipient_label: item.recipient_label,
-          },
-        });
-      } else if (isConsult) {
-        // 相談の起票(誰が誰に相談したか)も監査既定方針に沿って記録する。
-        // 対応(resolve)側は handoff_consult_resolved を記録しており、起票/対応で対称にする。
-        await createAuditLogEntry(tx, ctx, {
-          action: 'handoff_consult_created',
-          targetType: 'handoff_item',
-          targetId: item.id,
-          changes: {
-            recipient_user_id: item.recipient_user_id,
-            recipient_label: item.recipient_label,
-            consult_status: item.consult_status,
-          },
-        });
-      }
+        if (isTransfer) {
+          // 責任の移転は「受領確認と根拠が必ず記録されます」(12_handoff)。
+          await createAuditLogEntry(tx, ctx, {
+            action: 'handoff_transfer_created',
+            targetType: 'handoff_item',
+            targetId: item.id,
+            changes: {
+              recipient_user_id: item.recipient_user_id,
+              recipient_label: item.recipient_label,
+              scope: item.scope,
+              rationale: item.rationale,
+              deadline: item.deadline?.toISOString() ?? null,
+            },
+          });
+        } else if (isMessage) {
+          // 薬局内フリー連絡も監査既定方針に沿って軽量に記録する。
+          await createAuditLogEntry(tx, ctx, {
+            action: 'handoff_message_created',
+            targetType: 'handoff_item',
+            targetId: item.id,
+            changes: {
+              recipient_user_id: item.recipient_user_id,
+              recipient_label: item.recipient_label,
+            },
+          });
+        } else if (isConsult) {
+          // 相談の起票(誰が誰に相談したか)も監査既定方針に沿って記録する。
+          // 対応(resolve)側は handoff_consult_resolved を記録しており、起票/対応で対称にする。
+          await createAuditLogEntry(tx, ctx, {
+            action: 'handoff_consult_created',
+            targetType: 'handoff_item',
+            targetId: item.id,
+            changes: {
+              recipient_user_id: item.recipient_user_id,
+              recipient_label: item.recipient_label,
+              consult_status: item.consult_status,
+            },
+          });
+        }
 
-      return item;
-    });
+        return item;
+      },
+      { requestContext: ctx },
+    );
 
     return success({ data: created }, 201);
   },

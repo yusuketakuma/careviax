@@ -90,6 +90,13 @@ describe('/api/handoff-board/items', () => {
     expectSensitiveNoStore(res!);
     const json = await res!.json();
     expect(json.data.id).toBe('item_1');
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+    });
   });
 
   it('returns a sanitized no-store 500 when handoff item creation fails unexpectedly', async () => {

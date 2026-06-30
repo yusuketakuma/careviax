@@ -146,7 +146,7 @@ const authenticatedGET = withAuthContext(
 
         return { board: resolvedBoard, monthItemCount: count };
       },
-      { maxWaitMs: 10_000, timeoutMs: 20_000 },
+      { maxWaitMs: 10_000, timeoutMs: 20_000, requestContext: ctx },
     );
 
     const userIds = [

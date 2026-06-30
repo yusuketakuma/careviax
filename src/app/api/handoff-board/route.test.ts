@@ -126,6 +126,15 @@ describe('/api/handoff-board', () => {
     expect(json.data.recipient_options).toEqual([
       { id: 'user_2', name: 'Hanako', role: 'clerk', role_label: '事務スタッフ' },
     ]);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      maxWaitMs: 10_000,
+      timeoutMs: 20_000,
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+    });
     expect(JSON.stringify(json.data.recipient_options)).not.toContain('hanako@example.test');
     expect(JSON.stringify(json.data.recipient_options)).not.toContain('090-0000-0000');
     expect(membershipFindManyMock).toHaveBeenCalledWith({
