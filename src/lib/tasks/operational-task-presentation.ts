@@ -271,6 +271,7 @@ export function describeOperationalTask(
     case 'tracing_report_followup':
       return {
         actionHref: buildCommunicationRequestsHref({
+          requestType: 'tracing_report',
           relatedEntityType:
             task.related_entity_type === 'tracing_report' && task.related_entity_id
               ? 'tracing_report'

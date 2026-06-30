@@ -27177,6 +27177,34 @@ Next loop:
   - Broad schedule/prescription/route objective remains open.
   - Continue scanning focused communication request links and schedule/route mutation surfaces for request-type or current-state drift.
 
+### Reschedule Approval Expected Override Guard - 2026-06-30 22:58 JST
+
+- Scope:
+  - Continued schedule/route mutation hardening for direct reschedule approval.
+  - Focused on making the approve endpoint fail closed when a caller confirms an older pending override target.
+- Fixed:
+  - `POST /api/visit-schedules/:id/reschedule/approve` now accepts an optional `expected_override_id`.
+  - Malformed, non-object, or blank approval payloads are rejected before override lookup or transaction work.
+  - If the current pending override id differs from `expected_override_id`, the endpoint returns 409 before schedule updates, audit writes, operational-task resolution, notifications, or workflow cache invalidation.
+  - Audit changes include `expected_override_id` when the caller supplied the precondition.
+- Safety:
+  - Reduces stale-state / wrong-approval risk for reschedule confirmation flows.
+  - Existing auth, org scope, self-approval rejection, source schedule status guard, no-store responses, migration boundaries, live DB safety, external sends, push/deploy, and secret handling remain unchanged.
+- Performance:
+  - Reuses the already loaded pending override row; no extra DB query, fan-out, dependency, or broad scan was added.
+- Validation:
+  - Reschedule approval focused Vitest passed `1` file / `14` tests.
+  - Scoped ESLint: passed.
+  - Scoped Prettier check: passed.
+  - Scoped/full `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Broad schedule/prescription/route objective remains open.
+  - The existing reschedule approval dialog is not wired to this direct approval endpoint yet; the API precondition is available for callers but still needs a future end-to-end UI integration where that flow is used.
+
 ### External Professional Communication Timeline Links - 2026-06-30 22:56 JST
 
 - Scope:
@@ -27201,3 +27229,25 @@ Next loop:
 - Remaining:
   - Broad visit/report/collaboration objective remains open.
   - Concurrent communication-request and reschedule-approve API WIP remains unstaged and owner-separated.
+
+### Tracing Follow-Up Task Link Scope - 2026-06-30 23:02 JST
+
+- Scope:
+  - Continued communication request-type scoping for operational task links.
+  - Focused on `tracing_report_followup` tasks.
+- Fixed:
+  - `tracing_report_followup` operational tasks now link to `/communications/requests` with `request_type=tracing_report` plus the related tracing report filter.
+- Safety:
+  - Reduces wrong-queue / wrong-request follow-up risk for tracing-report tasks.
+  - Existing task permissions, patient access, URL encoding, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- Performance:
+  - Pure href construction change.
+- Validation:
+  - Operational-task focused Vitest passed `1` file / `39` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit/report/collaboration objective remains open.
+  - Continue scanning focused communication links and avoid unrelated API WIP.

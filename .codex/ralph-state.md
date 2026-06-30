@@ -13990,6 +13990,19 @@ Backup directory:
 - remaining work: broad schedule/prescription/route objective remains open. Continue scanning schedule/route and communication follow-up surfaces where a focused queue href has request type but the source list fetch does not.
 - next action: inspect remaining `buildCommunicationRequestsHref({ requestType: ... })` callers against their source fetches, then return to schedule/route mutation surfaces.
 
+### 20260630-2258 JST
+
+- current task: reject stale reschedule approvals when a caller confirms an older pending override request.
+- files inspected: `git status --short --branch --untracked-files=all`, memory/gbrain recall for schedule/route stale confirmation patterns, `src/app/api/visit-schedules/[id]/reschedule/approve/route.ts`, `src/app/api/visit-schedules/[id]/reschedule/approve/route.test.ts`, `src/lib/api/request-body.ts`, `src/app/(dashboard)/schedules/schedule-day-reschedule-approval-dialog.tsx`, `src/app/(dashboard)/schedules/schedule-day-reschedule-approval-dialog.test.tsx`, `src/app/(dashboard)/schedules/day-view.shared.ts`, `src/app/api/visit-schedule-proposals/route.ts`, and `src/app/api/visit-schedule-proposals/[id]/route.ts`.
+- files changed: `src/app/api/visit-schedules/[id]/reschedule/approve/route.ts`, `src/app/api/visit-schedules/[id]/reschedule/approve/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Existing dirty communication/task files were observed but left untouched.
+- bugs found: direct reschedule approval accepted whichever pending override request was current for the schedule, so a client confirming an older approval target had no API precondition to fail closed before write/audit side effects.
+- security risks found: reduced stale-state / wrong-approval risk by accepting an optional `expected_override_id`, validating the JSON body before DB work, returning 409 before transaction/audit/task/notification side effects when the pending override differs, and recording the expected override in audit changes when supplied. Existing auth, org scope, self-approval rejection, source schedule status claim, no-store errors, migrations, live DB operations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: no new query fan-out or broad scan; the guard reuses the already loaded pending override row and only adds bounded request-body parsing.
+- validation commands: focused `pnpm vitest run src/app/api/visit-schedules/'[id]'/reschedule/approve/route.test.ts --reporter=dot --testTimeout=60000`; scoped `pnpm exec eslint`; scoped `pnpm exec prettier --check`; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`; full `git diff --check`.
+- validation results: reschedule approval focused suite passed `1` file / `14` tests. Scoped ESLint, scoped Prettier check, scoped/full diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed.
+- remaining work: broad schedule/prescription/route objective remains open. The approval dialog is currently not connected to this direct approval endpoint, so the new API precondition is available for callers but not yet surfaced as an end-to-end UI flow.
+- next action: continue with the next bounded schedule/route mutation or schedule display surface, prioritizing user-visible flows where current-state preconditions are still not carried through the UI.
+
 ### 20260630-2256 JST
 
 - current task: make external-professional communication timeline rows link back to the exact communication request.
@@ -14002,3 +14015,16 @@ Backup directory:
 - validation results: external-professional focused suite passed `2` files / `5` tests; protected GET smoke passed `1` file / `372` tests; `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `git diff --check` passed.
 - remaining work: broad visit/report/collaboration objective remains open. Continue preserving unrelated API WIP and scanning remaining communication/schedule surfaces.
 - next action: commit the external-professional timeline link slice and notify `phos`.
+
+### 20260630-2302 JST
+
+- current task: keep tracing-report follow-up operational-task links request-type scoped.
+- files inspected: `src/lib/tasks/operational-task-presentation.ts`, `src/lib/tasks/operational-task-presentation.test.ts`, shared communication href helper callsites, current dirty tree, and validation output.
+- files changed: operational task presentation helper/test, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Concurrent dirty API WIP remained unstaged.
+- bugs found: `tracing_report_followup` operational tasks linked by related tracing report only, while the communication queue now supports `request_type`. That could mix non-tracing requests attached to the same related entity surface.
+- security risks found: reduced wrong-queue/wrong-request follow-up risk by including `request_type=tracing_report` in the focused link. Existing task auth, patient access, encoding, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: pure href construction change; no query, dependency, fan-out, or render cost was added.
+- validation commands: focused operational-task presentation Vitest; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `git diff --check`.
+- validation results: operational-task focused suite passed `1` file / `39` tests; `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `git diff --check` passed.
+- remaining work: broad visit/report/collaboration objective remains open. Continue scanning focused communication links and avoid unrelated API WIP.
+- next action: commit the tracing-report operational-task link slice and notify `phos`.

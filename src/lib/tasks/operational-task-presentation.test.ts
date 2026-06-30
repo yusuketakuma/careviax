@@ -283,7 +283,7 @@ describe('describeOperationalTask', () => {
       }),
     ).toMatchObject({
       actionHref:
-        '/communications/requests?related_entity_type=tracing_report&related_entity_id=tracing%2F1%3Fx%3Dy%23frag',
+        '/communications/requests?request_type=tracing_report&related_entity_type=tracing_report&related_entity_id=tracing%2F1%3Fx%3Dy%23frag',
       actionLabel: '関連依頼を確認',
       queueLabel: '服薬情報提供書',
     });
