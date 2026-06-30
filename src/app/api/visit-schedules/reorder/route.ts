@@ -20,7 +20,7 @@ import {
   buildVisitScheduleAssignmentWhere,
   canBypassVisitScheduleAssignmentAccess,
 } from '@/lib/auth/visit-schedule-access';
-import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
+import { scheduleStatusValues, visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import { findVisitRouteOrderConflict } from '@/lib/visits/route-order-conflicts';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { validateScheduleTimeDatesFitShift } from '@/server/services/visit-schedule-shift';
@@ -80,6 +80,15 @@ const visitScheduleReorderSchema = z.object({
       mode: z.literal('assign_if_unassigned'),
       vehicle_resource_id: z.string().trim().min(1),
       schedule_ids: z.array(z.string().trim().min(1)).min(1).max(100),
+      expected_schedule_statuses: z
+        .array(
+          z.object({
+            schedule_id: z.string().trim().min(1),
+            schedule_status: z.enum(scheduleStatusValues),
+          }),
+        )
+        .max(100)
+        .optional(),
     })
     .optional(),
   confirmation_context: routeOrderConfirmationContextSchema.optional(),
@@ -101,6 +110,7 @@ type VisitScheduleReorderError =
   | 'vehicle_capacity_exceeded'
   | 'vehicle_route_duration_exceeded'
   | 'vehicle_status_locked'
+  | 'stale_vehicle_schedule_status'
   | 'vehicle_assignment_target_mismatch'
   | 'vehicle_already_assigned'
   | 'duplicate_route_order';
@@ -230,6 +240,24 @@ const authenticatedPATCH = withAuthContext(
       if (duplicateVehicleTargets.size > 0) {
         return validationError('同じ訪問予定を複数回指定できません');
       }
+      if (vehicleAssignment.expected_schedule_statuses !== undefined) {
+        const expectedStatusIds = new Set<string>();
+        for (const expected of vehicleAssignment.expected_schedule_statuses) {
+          if (expectedStatusIds.has(expected.schedule_id)) {
+            return validationError('同じ訪問予定の現在ステータスを複数回指定できません');
+          }
+          expectedStatusIds.add(expected.schedule_id);
+        }
+        const missingExpectedStatus = vehicleAssignment.schedule_ids.some(
+          (scheduleId) => !expectedStatusIds.has(scheduleId),
+        );
+        const unexpectedExpectedStatus = vehicleAssignment.expected_schedule_statuses.some(
+          (expected) => !seenVehicleTargets.has(expected.schedule_id),
+        );
+        if (missingExpectedStatus || unexpectedExpectedStatus) {
+          return validationError('車両反映対象の現在ステータスが一致しません');
+        }
+      }
     }
     const targetScheduleIds = Array.from(
       new Set([...uniqueScheduleIds, ...(vehicleAssignment?.schedule_ids ?? [])]),
@@ -291,6 +319,12 @@ const authenticatedPATCH = withAuthContext(
 
           const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
           const vehicleAssignmentScheduleIds = new Set(vehicleAssignment?.schedule_ids ?? []);
+          const vehicleAssignmentExpectedStatusByScheduleId = new Map(
+            vehicleAssignment?.expected_schedule_statuses?.map((expected) => [
+              expected.schedule_id,
+              expected.schedule_status,
+            ]) ?? [],
+          );
           const updateByScheduleId = new Map(
             dedupedUpdates.map((item) => [item.schedule_id, item]),
           );
@@ -308,6 +342,16 @@ const authenticatedPATCH = withAuthContext(
           });
           if (staleRouteOrder) {
             return { error: 'stale_route_order' as const };
+          }
+          const staleVehicleScheduleStatus = effectiveUpdates.find((item) => {
+            const expectedStatus = vehicleAssignmentExpectedStatusByScheduleId.get(
+              item.schedule_id,
+            );
+            if (expectedStatus === undefined) return false;
+            return scheduleById.get(item.schedule_id)?.schedule_status !== expectedStatus;
+          });
+          if (staleVehicleScheduleStatus) {
+            return { error: 'stale_vehicle_schedule_status' as const };
           }
 
           if (!canBypassVisitScheduleAssignmentAccess(ctx)) {
@@ -860,6 +904,13 @@ const authenticatedPATCH = withAuthContext(
                   ...(item.expected_route_order !== undefined
                     ? { route_order: item.expected_route_order }
                     : {}),
+                  ...(vehicleAssignmentExpectedStatusByScheduleId.has(item.schedule_id)
+                    ? {
+                        schedule_status: vehicleAssignmentExpectedStatusByScheduleId.get(
+                          item.schedule_id,
+                        ),
+                      }
+                    : {}),
                   ...(shouldGuardVehicleResource
                     ? { vehicle_resource_id: schedule.vehicle_resource_id }
                     : {}),
@@ -891,6 +942,13 @@ const authenticatedPATCH = withAuthContext(
                 route_order: item.route_order,
                 ...(item.expected_route_order !== undefined
                   ? { expected_route_order: item.expected_route_order }
+                  : {}),
+                ...(vehicleAssignmentExpectedStatusByScheduleId.has(item.schedule_id)
+                  ? {
+                      expected_schedule_status: vehicleAssignmentExpectedStatusByScheduleId.get(
+                        item.schedule_id,
+                      ),
+                    }
                   : {}),
                 scheduled_date: item.scheduled_date ?? null,
                 pharmacist_id: item.pharmacist_id ?? null,
@@ -974,6 +1032,9 @@ const authenticatedPATCH = withAuthContext(
       }
       if (result.error === 'vehicle_status_locked') {
         return validationError('完了済みまたは中止済みの訪問予定には車両を反映できません');
+      }
+      if (result.error === 'stale_vehicle_schedule_status') {
+        return conflict('車両反映対象が同時に更新されました。再読み込みしてください');
       }
       if (result.error === 'vehicle_assignment_target_mismatch') {
         return validationError('車両反映対象は順路更新対象の訪問予定だけ指定できます');

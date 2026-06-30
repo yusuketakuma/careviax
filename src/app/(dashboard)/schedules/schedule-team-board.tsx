@@ -361,7 +361,7 @@ type StatusChangePayload = {
 
 type ApplyRecommendedVehiclePayload = {
   vehicleId: string;
-  scheduleIds: string[];
+  targets: Array<{ scheduleId: string; expectedStatus: ScheduleStatus }>;
 };
 
 function visitBlocksForLane(lane: StaffLane): VisitStatusBlock[] {
@@ -754,7 +754,10 @@ function VehicleRoutePanel({
     if (!recommendedVehicle || recommendedVehicleTargets.length === 0) return;
     onApplyRecommendedVehicle({
       vehicleId: recommendedVehicle.id,
-      scheduleIds: recommendedVehicleTargets.map((visit) => visit.id),
+      targets: recommendedVehicleTargets.map((visit) => ({
+        scheduleId: visit.id,
+        expectedStatus: visit.schedule_status as ScheduleStatus,
+      })),
     });
   };
 
@@ -1644,18 +1647,23 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
   });
   const applyRecommendedVehicleMutation = useMutation({
     mutationFn: async (payload: ApplyRecommendedVehiclePayload) => {
+      const scheduleIds = payload.targets.map((target) => target.scheduleId);
       await applyVisitScheduleRouteUpdates({
         orgId,
         updates: [],
         vehicleAssignment: {
           mode: 'assign_if_unassigned',
           vehicle_resource_id: payload.vehicleId,
-          schedule_ids: payload.scheduleIds,
+          schedule_ids: scheduleIds,
+          expected_schedule_statuses: payload.targets.map((target) => ({
+            schedule_id: target.scheduleId,
+            schedule_status: target.expectedStatus,
+          })),
         },
         confirmationContext: {
           source: 'schedule_day_route_preview',
           date: dateKey,
-          vehicle_assignment_count: payload.scheduleIds.length,
+          vehicle_assignment_count: scheduleIds.length,
         },
       });
     },

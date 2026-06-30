@@ -414,6 +414,11 @@ type TaskStatusPayload = {
   status: 'in_progress';
 };
 
+type VehicleAssignmentPayload = {
+  vehicleId: string;
+  targets: Array<{ scheduleId: string; expectedStatus: 'planned' }>;
+};
+
 function findQueryConfig(
   configs: readonly QueryConfig[],
   matcher: (queryKey: readonly unknown[]) => boolean,
@@ -693,6 +698,7 @@ describe('ScheduleTeamBoard', () => {
     const taskId = 'task/1?x=y#z';
     const statusMutation = mutationConfigs[0] as MutationConfig<VisitStatusPayload>;
     const taskStatusMutation = mutationConfigs[1] as MutationConfig<TaskStatusPayload>;
+    const vehicleMutation = mutationConfigs[2] as MutationConfig<VehicleAssignmentPayload>;
 
     await statusMutation.mutationFn({
       scheduleId,
@@ -700,8 +706,12 @@ describe('ScheduleTeamBoard', () => {
       expectedStatus: 'planned',
     });
     await taskStatusMutation.mutationFn({ taskId, status: 'in_progress' });
+    await vehicleMutation.mutationFn({
+      vehicleId: 'vehicle/1?x=y#z',
+      targets: [{ scheduleId, expectedStatus: 'planned' }],
+    });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       `/api/visit-schedules/${encodeURIComponent(scheduleId)}`,
     );
@@ -717,8 +727,20 @@ describe('ScheduleTeamBoard', () => {
     expect(JSON.parse((fetchMock.mock.calls[1]?.[1] as RequestInit).body as string)).toEqual({
       status: 'in_progress',
     });
+    expect(fetchMock.mock.calls[2]?.[0]).toBe('/api/visit-schedules/reorder');
+    expect((fetchMock.mock.calls[2]?.[1] as RequestInit).method).toBe('PATCH');
+    expect((fetchMock.mock.calls[2]?.[1] as RequestInit).headers).toBe(orgJsonHeaders);
+    expect(JSON.parse((fetchMock.mock.calls[2]?.[1] as RequestInit).body as string)).toMatchObject({
+      vehicle_assignment: {
+        mode: 'assign_if_unassigned',
+        vehicle_resource_id: 'vehicle/1?x=y#z',
+        schedule_ids: [scheduleId],
+        expected_schedule_statuses: [{ schedule_id: scheduleId, schedule_status: 'planned' }],
+      },
+    });
     expect(buildOrgJsonHeadersMock).toHaveBeenNthCalledWith(1, 'org_1');
     expect(buildOrgJsonHeadersMock).toHaveBeenNthCalledWith(2, 'org_1');
+    expect(buildOrgJsonHeadersMock).toHaveBeenNthCalledWith(3, 'org_1');
 
     const calledUrls = fetchMock.mock.calls.map((call) => String(call[0])).join('\n');
     expect(calledUrls).not.toContain('/api/visit-schedules/schedule/1?x=y#z');
@@ -1202,7 +1224,7 @@ describe('ScheduleTeamBoard', () => {
 
     expect(mutate).toHaveBeenCalledWith({
       vehicleId: 'vehicle_1',
-      scheduleIds: ['visit_4'],
+      targets: [{ scheduleId: 'visit_4', expectedStatus: 'planned' }],
     });
   });
 

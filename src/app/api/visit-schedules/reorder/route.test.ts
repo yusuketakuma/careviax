@@ -1045,6 +1045,10 @@ describe('/api/visit-schedules/reorder PATCH', () => {
           mode: 'assign_if_unassigned',
           vehicle_resource_id: 'vehicle_1',
           schedule_ids: ['schedule_1', 'schedule_2'],
+          expected_schedule_statuses: [
+            { schedule_id: 'schedule_1', schedule_status: 'planned' },
+            { schedule_id: 'schedule_2', schedule_status: 'planned' },
+          ],
         },
         confirmation_context: {
           source: 'route_compare_adoption',
@@ -1117,6 +1121,7 @@ describe('/api/visit-schedules/reorder PATCH', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           id: 'schedule_1',
+          schedule_status: 'planned',
           vehicle_resource_id: null,
         }),
         data: expect.objectContaining({
@@ -1134,6 +1139,10 @@ describe('/api/visit-schedules/reorder PATCH', () => {
               mode: 'assign_if_unassigned',
               vehicle_resource_id: 'vehicle_1',
               schedule_ids: ['schedule_1', 'schedule_2'],
+              expected_schedule_statuses: [
+                { schedule_id: 'schedule_1', schedule_status: 'planned' },
+                { schedule_id: 'schedule_2', schedule_status: 'planned' },
+              ],
             },
             confirmation_context: expect.objectContaining({
               source: 'route_compare_adoption',
@@ -1143,6 +1152,7 @@ describe('/api/visit-schedules/reorder PATCH', () => {
               expect.objectContaining({
                 schedule_id: 'schedule_1',
                 route_order: 1,
+                expected_schedule_status: 'planned',
                 vehicle_resource_id: 'vehicle_1',
               }),
             ]),
@@ -1150,6 +1160,45 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         }),
       }),
     );
+  });
+
+  it('rejects vehicle assignment when the reviewed schedule status is stale', async () => {
+    scheduleFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        pharmacist_id: 'pharmacist_1',
+        scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+        time_window_start: new Date('1970-01-01T09:00:00.000Z'),
+        time_window_end: new Date('1970-01-01T10:00:00.000Z'),
+        confirmed_at: null,
+        route_order: 1,
+        site_id: 'site_1',
+        schedule_status: 'ready',
+        vehicle_resource_id: null,
+        version: 1,
+      },
+    ]);
+
+    const response = (await PATCH(
+      createRequest({
+        vehicle_assignment: {
+          mode: 'assign_if_unassigned',
+          vehicle_resource_id: 'vehicle_1',
+          schedule_ids: ['schedule_1'],
+          expected_schedule_statuses: [{ schedule_id: 'schedule_1', schedule_status: 'planned' }],
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '車両反映対象が同時に更新されました。再読み込みしてください',
+    });
+    expect(vehicleFindManyMock).not.toHaveBeenCalled();
+    expectNoWriteAuditOrNotify();
   });
 
   it('applies a vehicle-only assignment without changing route order', async () => {
