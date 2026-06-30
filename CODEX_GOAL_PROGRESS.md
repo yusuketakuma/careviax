@@ -30,6 +30,38 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Visit Schedule Proposal Action Version Guard - 2026-06-30 23:40 JST
+
+- Scope:
+  - Continued schedule-management, prescription-to-schedule decision, and route finalization hardening.
+  - Focused on the human approval/contact/confirmation boundary for visit schedule proposals.
+- Fixed:
+  - `PATCH /api/visit-schedule-proposals/[id]` now accepts optional `expected_updated_at` for approve, reject, contact-attempt, and confirm actions.
+  - The API rejects stale proposal actions with a sanitized 409 conflict that returns the expected/current timestamps and avoids side effects.
+  - Existing finalized-confirm retry remains idempotent: already-finalized proposals still return the schedule instead of failing on an old precondition.
+  - The proposals dashboard sends each visible proposal/detail `updated_at` value for single approve/confirm, bulk approve/reject, contact-result save, and reproposal contact-change recording.
+  - Shared proposal fixtures now include `updated_at`, and route/UI regression tests cover stale precondition rejection and request payload propagation.
+- Safety:
+  - Reduces stale same-day scheduling decisions where another staff member changes a proposal after a user opens the list/detail.
+  - Adds compare-and-set `updated_at` predicates to existing `updateMany` claims when a precondition is supplied.
+  - Preserves auth, org scoping, idempotency replay, PHI-minimized contact/audit behavior, no-store wrappers, live DB safety, migrations, external sends, secret handling, push/deploy, and destructive-operation boundaries.
+- Performance:
+  - Adds timestamp comparisons and conditional indexed update predicates only.
+  - No new query, dependency, background job, external call, broad scan, unbounded loop, or heavy render path was added.
+- Validation:
+  - Read `docs/ui-ux-design-guidelines.md` and local Next Route Handler docs before the API/UI change.
+  - `pnpm exec vitest run 'src/app/api/visit-schedule-proposals/[id]/route.test.ts' 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `2` files / `105` tests.
+  - Scoped Prettier write: passed with all target files unchanged.
+  - Scoped ESLint: passed.
+  - `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Commit:
+  - `94ff8bb5 fix(schedules): guard proposal action versions`
+- Remaining:
+  - Continue schedule/prescription/route-management gap closure.
+  - Next high-priority mapped gap: facility visit batch route-order PATCH paths can save batch ordering outside the generic route decision guards.
+
 ### Visit Schedule Reorder Route Duration Follow-up - 2026-06-30 20:41 JST
 
 - Scope:
