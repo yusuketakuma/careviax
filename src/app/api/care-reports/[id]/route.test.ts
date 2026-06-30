@@ -272,7 +272,9 @@ describe('care-reports/[id] route', () => {
   });
 
   it('returns a fixed sensitive no-store 500 when scoped report loading fails', async () => {
-    withOrgContextMock.mockRejectedValueOnce(new Error('database unavailable'));
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('raw report detail load patient 山田 太郎 token secret'),
+    );
 
     const response = await GET(createRequest(), {
       params: Promise.resolve({ id: 'report_1' }),
@@ -281,10 +283,39 @@ describe('care-reports/[id] route', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       code: 'INTERNAL_ERROR',
       message: 'サーバー内部でエラーが発生しました',
     });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw report detail');
+    expect(bodyText).not.toContain('山田 太郎');
+    expect(bodyText).not.toContain('token secret');
+  });
+
+  it('returns a sanitized no-store 500 when report detail auth context fails', async () => {
+    requireAuthContextMock.mockRejectedValueOnce(
+      new Error('raw report detail auth patient 山田 太郎 token secret'),
+    );
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw report detail auth');
+    expect(bodyText).not.toContain('山田 太郎');
+    expect(bodyText).not.toContain('token secret');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('returns report action permissions for the current role without widening view access', async () => {
@@ -459,6 +490,52 @@ describe('care-reports/[id] route', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
     expectSensitiveNoStore(response);
+  });
+
+  it('requires report author permission before loading or updating the report', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(
+        JSON.stringify({ code: 'FORBIDDEN', message: '報告書の更新権限がありません' }),
+        { status: 403 },
+      ),
+    });
+
+    const response = await PATCH(createRequest({ content: { summary: '更新後メモ' } }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when report update auth context fails', async () => {
+    requireAuthContextMock.mockRejectedValueOnce(
+      new Error('raw report update auth patient 山田 太郎 token secret'),
+    );
+
+    const response = await PATCH(createRequest({ content: { summary: '更新後メモ' } }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw report update auth');
+    expect(bodyText).not.toContain('山田 太郎');
+    expect(bodyText).not.toContain('token secret');
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank report ids before updating the report', async () => {

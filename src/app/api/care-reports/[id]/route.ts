@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import {
@@ -268,12 +269,16 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
 export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
   try {
     return sensitiveResponse(await authenticatedGET(req, routeContext));
-  } catch {
+  } catch (err) {
+    unstable_rethrow(err);
     return sensitiveResponse(internalError());
   }
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedPATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAuthorReport',
     message: '報告書の更新権限がありません',
@@ -397,4 +402,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   return sensitiveResponse(success({ data: report }));
+}
+
+export async function PATCH(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return sensitiveResponse(await authenticatedPATCH(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return sensitiveResponse(internalError());
+  }
 }
