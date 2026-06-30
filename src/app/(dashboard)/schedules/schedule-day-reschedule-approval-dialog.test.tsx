@@ -121,8 +121,15 @@ function target(overrides: Partial<ScheduleDayRescheduleApprovalTarget> = {}) {
     impactCount: 2,
     proposedReplacementCount: 1,
     impactedPatientNames: ['佐藤太郎', '鈴木花子'],
+    medicationSummary: [],
     ...overrides,
   };
+}
+
+function expectTextExcludesSensitiveDetails(text: string | null | undefined) {
+  expect(text ?? '').not.toContain('アムロジピン');
+  expect(text ?? '').not.toContain('処方詳細');
+  expect(text ?? '').not.toContain('09:00-12:00');
 }
 
 describe('ScheduleDayRescheduleApprovalDialog', () => {
@@ -151,6 +158,47 @@ describe('ScheduleDayRescheduleApprovalDialog', () => {
       impactedPatientNames: ['佐藤太郎'],
     });
     expect(result?.proposedScheduleLabel).toContain('2026/04/10');
+    expect(result?.medicationSummary).toEqual([
+      { label: '服薬最終日', value: '2026/04/12' },
+      { label: '開始日前配薬', value: '2026/04/11までの候補' },
+      { label: '薬剤根拠', value: '候補理由に根拠未記録' },
+      { label: 'ルート', value: '順路 1' },
+    ]);
+  });
+
+  it('separates prescription-sensitive proposal reasons into a safe medication summary', () => {
+    const result = buildScheduleDayRescheduleApprovalTargetFromProposal(
+      proposal({
+        medication_end_date: '2026-04-10',
+        proposal_reason:
+          '緊急訪問が割り込んだため / アムロジピン増量 / 処方詳細 変更 / 患者条件 09:00-12:00',
+      }),
+    );
+
+    expect(result?.reason).toBe('緊急訪問が割り込んだため');
+    expect(result?.medicationSummary).toEqual([
+      { label: '服薬最終日', value: '2026/04/10' },
+      { label: '開始日前配薬', value: '2026/04/11までの候補' },
+      { label: '薬剤根拠', value: '候補理由に根拠あり' },
+      { label: 'ルート', value: '患者希望枠で順路 1' },
+    ]);
+
+    render(
+      <ScheduleDayRescheduleApprovalDialog
+        target={result}
+        approving={false}
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('薬剤判断: 服薬最終日')).toBeTruthy();
+    expect(screen.getByText('2026/04/10')).toBeTruthy();
+    expect(screen.getByText('薬剤判断: 開始日前配薬')).toBeTruthy();
+    expect(screen.getByText('2026/04/11までの候補')).toBeTruthy();
+    expect(screen.getByText('薬剤判断: 薬剤根拠')).toBeTruthy();
+    expect(screen.getByText('候補理由に根拠あり')).toBeTruthy();
+    expectTextExcludesSensitiveDetails(screen.getByRole('dialog').textContent);
   });
 
   it('does not build a proposal target without a source schedule id', () => {

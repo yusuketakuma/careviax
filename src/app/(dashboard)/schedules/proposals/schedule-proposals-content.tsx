@@ -82,6 +82,7 @@ import { mergeScheduleProposalSearchParams } from './proposal-query-state';
 import { buildDashboardDiagnosticActions } from './schedule-proposal-diagnostic-actions';
 import {
   AUTO_VEHICLE_RESOURCE_VALUE,
+  buildSafeMedicationConfirmationFacts,
   caseOptionPrimaryPharmacistLabel,
   caseOptionTargetLabel,
   type CaseOption,
@@ -546,41 +547,6 @@ function buildMedicationWorkflowChecks(proposal: Proposal) {
         proposal.proposal_status === 'confirmed' || proposal.patient_contact_status === 'confirmed'
           ? 'ok'
           : 'info',
-    },
-  ];
-}
-
-function buildSafeMedicationConfirmationFacts(proposal: Proposal) {
-  const proposedDateKey = toDateKey(proposal.proposed_date);
-  const deadlineKey = proposal.visit_deadline_date ? toDateKey(proposal.visit_deadline_date) : null;
-  const hasMedicationReason = splitProposalReason(proposal.proposal_reason ?? '').some((reason) =>
-    /変更|新規|開始|服薬|算定|患者条件/.test(reason),
-  );
-  const deadlineLabel =
-    deadlineKey === null
-      ? '配薬期限未設定'
-      : proposedDateKey <= deadlineKey
-        ? `${formatNullableDateLabel(proposal.visit_deadline_date)}までの候補`
-        : `${formatNullableDateLabel(proposal.visit_deadline_date)}を超過`;
-
-  return [
-    {
-      label: '服薬最終日',
-      value: proposal.medication_end_date
-        ? formatNullableDateLabel(proposal.medication_end_date)
-        : '未設定',
-    },
-    {
-      label: '開始日前配薬',
-      value: deadlineLabel,
-    },
-    {
-      label: '薬剤根拠',
-      value: hasMedicationReason ? '候補理由に根拠あり' : '候補理由に根拠未記録',
-    },
-    {
-      label: 'ルート',
-      value: proposalRouteDecisionLabel(proposal),
     },
   ];
 }
@@ -1506,6 +1472,12 @@ export function ScheduleProposalsContent({
         return {
           id: proposal.id,
           patientName: proposal.case_.patient.name,
+          medicationSummary: buildSafeMedicationConfirmationFacts({
+            ...proposal,
+            route_order: update.route_order,
+          })
+            .map((fact) => `${fact.label} ${fact.value}`)
+            .join(' / '),
           safeIdentifier: proposalSafeIdentifierLabel(proposal),
           time: `${formatNullableDateLabel(proposal.proposed_date)} ${timeLabel(
             proposal.time_window_start,
@@ -2474,24 +2446,35 @@ export function ScheduleProposalsContent({
               aria-label="一括操作の対象候補"
               className="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-border/70 p-2"
             >
-              {bulkConfirmEligibleProposals.map((proposal) => (
-                <li key={proposal.id} className="rounded-md bg-muted/30 px-3 py-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium">{proposal.case_.patient.name}</span>
-                    <Badge variant="outline" className={statusBadgeClass(proposal.proposal_status)}>
-                      {PROPOSAL_STATUS_LABELS[proposal.proposal_status]}
-                    </Badge>
-                    <Badge variant="outline">{PRIORITY_LABELS[proposal.priority]}</Badge>
-                    <Badge variant="outline">{proposalSafeIdentifierLabel(proposal)}</Badge>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {formatNullableDateLabel(proposal.proposed_date)}{' '}
-                    {timeLabel(proposal.time_window_start, proposal.time_window_end)} /{' '}
-                    {proposal.proposed_pharmacist?.name ?? '担当未解決'} /{' '}
-                    {formatVehicleResourceLabel(proposal.vehicle_resource, '社用車未指定')}
-                  </p>
-                </li>
-              ))}
+              {bulkConfirmEligibleProposals.map((proposal) => {
+                const medicationFacts = buildSafeMedicationConfirmationFacts(proposal);
+
+                return (
+                  <li key={proposal.id} className="rounded-md bg-muted/30 px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{proposal.case_.patient.name}</span>
+                      <Badge
+                        variant="outline"
+                        className={statusBadgeClass(proposal.proposal_status)}
+                      >
+                        {PROPOSAL_STATUS_LABELS[proposal.proposal_status]}
+                      </Badge>
+                      <Badge variant="outline">{PRIORITY_LABELS[proposal.priority]}</Badge>
+                      <Badge variant="outline">{proposalSafeIdentifierLabel(proposal)}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {formatNullableDateLabel(proposal.proposed_date)}{' '}
+                      {timeLabel(proposal.time_window_start, proposal.time_window_end)} /{' '}
+                      {proposal.proposed_pharmacist?.name ?? '担当未解決'} /{' '}
+                      {formatVehicleResourceLabel(proposal.vehicle_resource, '社用車未指定')}
+                    </p>
+                    <p className="mt-1 text-xs text-state-confirm">
+                      薬剤判断:{' '}
+                      {medicationFacts.map((fact) => `${fact.label} ${fact.value}`).join(' / ')}
+                    </p>
+                  </li>
+                );
+              })}
             </ul>
 
             {bulkConfirmAction === 'reject' ? (
@@ -2523,12 +2506,12 @@ export function ScheduleProposalsContent({
                 ) : null}
                 <p id="bulk-reject-reason-help" className="text-xs leading-5 text-muted-foreground">
                   入力した理由は実行対象 {bulkConfirmEligibleCount}{' '}
-                  件すべてに記録されます。住所、電話番号、薬剤名、処方詳細は入力しないでください。
+                  件すべてに記録されます。住所、電話番号、薬剤名、処方の細部は入力しないでください。
                 </p>
               </div>
             ) : null}
             <p className="text-xs leading-5 text-muted-foreground">
-              住所、電話番号、薬剤名、処方詳細はこの確認画面には表示しません。対象患者・候補日・担当・社用車・識別子だけを確認してから実行してください。
+              住所、電話番号、薬剤名、処方の細部はこの確認画面には表示しません。対象患者・候補日・担当・社用車・識別子と、薬剤判断サマリーだけを確認してから実行してください。
             </p>
           </div>
 
@@ -2621,11 +2604,14 @@ export function ScheduleProposalsContent({
                     </Badge>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{proposal.time}</p>
+                  <p className="mt-1 text-xs text-state-confirm">
+                    薬剤判断: {proposal.medicationSummary}
+                  </p>
                 </li>
               ))}
             </ul>
             <p className="text-xs leading-5 text-muted-foreground">
-              住所、電話番号、薬剤名、処方詳細はこの確認画面には表示しません。候補日・担当・患者順序が一致している場合のみ反映してください。
+              住所、電話番号、薬剤名、処方の細部はこの確認画面には表示しません。候補日・担当・患者順序と、薬剤判断サマリーが一致している場合のみ反映してください。
             </p>
           </div>
 

@@ -592,6 +592,56 @@ export function proposalRouteDecisionLabel(
   return `順路 ${proposal.route_order ?? '未設定'}`;
 }
 
+export type SafeMedicationConfirmationFact = {
+  label: string;
+  value: string;
+};
+
+export function buildSafeMedicationConfirmationFacts(
+  proposal: Pick<
+    Proposal,
+    | 'medication_end_date'
+    | 'priority'
+    | 'proposal_reason'
+    | 'proposed_date'
+    | 'route_order'
+    | 'visit_deadline_date'
+  >,
+): SafeMedicationConfirmationFact[] {
+  const proposedDateKey = toDateKey(proposal.proposed_date);
+  const deadlineKey = proposal.visit_deadline_date ? toDateKey(proposal.visit_deadline_date) : null;
+  const hasMedicationReason = splitProposalReason(proposal.proposal_reason ?? '').some((reason) =>
+    /変更|新規|開始|服薬|算定|患者条件/.test(reason),
+  );
+  const deadlineLabel =
+    deadlineKey === null
+      ? '配薬期限未設定'
+      : proposedDateKey <= deadlineKey
+        ? `${formatNullableDateLabel(proposal.visit_deadline_date)}までの候補`
+        : `${formatNullableDateLabel(proposal.visit_deadline_date)}を超過`;
+
+  return [
+    {
+      label: '服薬最終日',
+      value: proposal.medication_end_date
+        ? formatNullableDateLabel(proposal.medication_end_date)
+        : '未設定',
+    },
+    {
+      label: '開始日前配薬',
+      value: deadlineLabel,
+    },
+    {
+      label: '薬剤根拠',
+      value: hasMedicationReason ? '候補理由に根拠あり' : '候補理由に根拠未記録',
+    },
+    {
+      label: 'ルート',
+      value: proposalRouteDecisionLabel(proposal),
+    },
+  ];
+}
+
 export function singleProposalActionLabel(action: SingleProposalConfirmAction) {
   return action === 'approve' ? '承認して患者連絡へ進める' : '日時確定する';
 }

@@ -12,10 +12,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  buildSafeMedicationConfirmationFacts,
   readImpactCount,
   readImpactedPatientNames,
+  splitProposalReason,
   timeLabel,
   type Proposal,
+  type SafeMedicationConfirmationFact,
   type VisitSchedule,
 } from './day-view.shared';
 
@@ -29,6 +32,7 @@ export type ScheduleDayRescheduleApprovalTarget = {
   impactCount: number | null;
   proposedReplacementCount: number | null;
   impactedPatientNames: string[];
+  medicationSummary: SafeMedicationConfirmationFact[];
 };
 
 export type ScheduleDayRescheduleApprovalDialogProps = {
@@ -50,7 +54,7 @@ export function ScheduleDayRescheduleApprovalDialog({
         <DialogHeader>
           <DialogTitle>変更承認の確認</DialogTitle>
           <DialogDescription>
-            患者、対象予定、変更理由、影響範囲を確認してから承認します。
+            患者、対象予定、変更理由、影響範囲、薬剤判断サマリーを確認してから承認します。
           </DialogDescription>
         </DialogHeader>
 
@@ -95,6 +99,18 @@ export function ScheduleDayRescheduleApprovalDialog({
                   <dd className="text-foreground">{target.impactedPatientNames.join('、')}</dd>
                 </div>
               ) : null}
+              {target.medicationSummary.length > 0 ? (
+                <div className="grid gap-2 rounded-lg border border-state-confirm/25 bg-state-confirm/5 px-3 py-2">
+                  {target.medicationSummary.map((fact) => (
+                    <div key={fact.label} className="grid gap-1">
+                      <dt className="text-xs font-medium text-state-confirm">
+                        薬剤判断: {fact.label}
+                      </dt>
+                      <dd className="text-foreground">{fact.value}</dd>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </dl>
           </div>
         ) : null}
@@ -137,6 +153,7 @@ export function buildScheduleDayRescheduleApprovalTargetFromSchedule(
     impactCount: readImpactCount(impactSummary),
     proposedReplacementCount: readProposedReplacementCount(impactSummary),
     impactedPatientNames: readImpactedPatientNames(impactSummary),
+    medicationSummary: [],
   };
 }
 
@@ -160,11 +177,33 @@ export function buildScheduleDayRescheduleApprovalTargetFromProposal(
       proposal.time_window_start,
       proposal.time_window_end,
     ),
-    reason: proposal.proposal_reason || '理由未記録',
+    reason: buildSafeRescheduleProposalReason(proposal.proposal_reason),
     impactCount: readImpactCount(impactSummary),
     proposedReplacementCount: readProposedReplacementCount(impactSummary),
     impactedPatientNames: readImpactedPatientNames(impactSummary),
+    medicationSummary: buildSafeMedicationConfirmationFacts(proposal),
   };
+}
+
+function buildSafeRescheduleProposalReason(reason: string | null | undefined) {
+  const safeReasons = splitProposalReason(reason).filter(isSafeOperationalRescheduleReason);
+  return safeReasons.length > 0
+    ? safeReasons.join(' / ')
+    : '薬剤・処方理由は薬剤判断サマリーで確認';
+}
+
+function isSafeOperationalRescheduleReason(reason: string) {
+  if (
+    /処方|薬剤(?!師)|薬歴|服薬|算定|患者条件|変更|新規|開始|増量|減量|用法|用量|錠|mg|ｍｇ|mL|ml|包|貼付|注射|内服|外用|頓服|残薬|アレルギー/u.test(
+      reason,
+    )
+  ) {
+    return false;
+  }
+
+  return /緊急訪問|再提案|患者都合|患者連絡|連絡|不在|キャンセル|天候|交通|移動|ルート|訪問順|時間帯|日程|予定|勤務|担当|薬剤師|施設|振替|枠/u.test(
+    reason,
+  );
 }
 
 function formatScheduleLabel(date: string, start: string | null, end: string | null) {

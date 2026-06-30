@@ -1102,6 +1102,8 @@ describe('ScheduleProposalsContent', () => {
     const relatedProposal = buildProposal({
       id: 'proposal_2',
       case_id: 'case_2',
+      medication_end_date: '2026-04-08',
+      proposal_reason: 'アムロジピン増量 / 処方詳細 変更 / 患者条件 09:00-12:00',
       route_order: 2,
       time_window_start: '2026-04-09T10:30:00.000Z',
       time_window_end: '2026-04-09T11:30:00.000Z',
@@ -1115,6 +1117,8 @@ describe('ScheduleProposalsContent', () => {
     });
     const detail = buildProposalDetail({
       id: 'proposal_1',
+      medication_end_date: '2026-04-10',
+      proposal_reason: 'アムロジピン増量 / 処方詳細 変更 / 患者条件 09:00-12:00',
       route_order: 1,
       related_proposals: [relatedProposal],
       route_preview: {
@@ -1192,10 +1196,18 @@ describe('ScheduleProposalsContent', () => {
     expect(confirmDialog.textContent).toContain('佐藤太郎');
     expect(confirmDialog.textContent).toContain('現在 2 → 1');
     expect(confirmDialog.textContent).toContain('現在 1 → 2');
+    const routeTargetItems = within(confirmDialog).getAllByRole('listitem');
+    expect(within(routeTargetItems[0]).getByText(/薬剤判断: 服薬最終日 2026\/04\/08/)).toBeTruthy();
+    expect(
+      within(routeTargetItems[0]).getByText(/開始日前配薬 2026\/04\/11までの候補/),
+    ).toBeTruthy();
+    expect(within(routeTargetItems[0]).getByText(/薬剤根拠 候補理由に根拠あり/)).toBeTruthy();
+    expect(within(routeTargetItems[0]).getByText(/患者希望枠で順路 1/)).toBeTruthy();
     expect(within(confirmDialog).getByText('車')).toBeTruthy();
     expect(confirmDialog.textContent ?? '').not.toContain('東京都港区2-2-2');
     expect(confirmDialog.textContent ?? '').not.toContain('090-1234-5678');
     expect(confirmDialog.textContent ?? '').not.toContain('アムロジピン');
+    expect(confirmDialog.textContent ?? '').not.toContain('処方詳細');
 
     fireEvent.click(within(confirmDialog).getByRole('button', { name: 'キャンセル' }));
     expect(fetchMock).not.toHaveBeenCalled();
@@ -1358,7 +1370,12 @@ describe('ScheduleProposalsContent', () => {
         return {
           data: {
             data: [
-              buildProposal({ id: 'proposal_1' }),
+              buildProposal({
+                id: 'proposal_1',
+                medication_end_date: '2026-04-10',
+                visit_deadline_date: '2026-04-11',
+                proposal_reason: 'アムロジピン増量 / 処方詳細 変更 / 患者条件 09:00-12:00',
+              }),
               buildProposal({
                 id: 'proposal_2',
                 case_id: 'case_2',
@@ -1423,6 +1440,11 @@ describe('ScheduleProposalsContent', () => {
     expect(within(approveDialog).getByText(/承認後は患者連絡待ちへ進みます/)).toBeTruthy();
     expect(within(approveDialog).getByText('山田花子')).toBeTruthy();
     expect(within(approveDialog).getByText('佐藤太郎')).toBeTruthy();
+    const firstTarget = within(approveDialog).getAllByRole('listitem')[0];
+    expect(within(firstTarget).getByText(/薬剤判断: 服薬最終日 2026\/04\/10/)).toBeTruthy();
+    expect(within(firstTarget).getByText(/開始日前配薬 2026\/04\/11までの候補/)).toBeTruthy();
+    expect(within(firstTarget).getByText(/薬剤根拠 候補理由に根拠あり/)).toBeTruthy();
+    expectElementTextExcludesSensitiveDetails(approveDialog);
 
     fireEvent.click(within(approveDialog).getByRole('button', { name: 'キャンセル' }));
     expect(fetchMock).not.toHaveBeenCalled();
