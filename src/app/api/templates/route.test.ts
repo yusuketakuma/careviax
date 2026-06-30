@@ -1,13 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { withOrgContextMock, templateFindManyMock, templateCreateMock, templateUpdateManyMock } =
-  vi.hoisted(() => ({
-    withOrgContextMock: vi.fn(),
-    templateFindManyMock: vi.fn(),
-    templateCreateMock: vi.fn(),
-    templateUpdateManyMock: vi.fn(),
-  }));
+const {
+  withOrgContextMock,
+  templateFindManyMock,
+  templateCountMock,
+  templateCreateMock,
+  templateUpdateManyMock,
+} = vi.hoisted(() => ({
+  withOrgContextMock: vi.fn(),
+  templateFindManyMock: vi.fn(),
+  templateCountMock: vi.fn(),
+  templateCreateMock: vi.fn(),
+  templateUpdateManyMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext:
@@ -55,11 +61,14 @@ describe('/api/templates', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     templateFindManyMock.mockResolvedValue([]);
+    templateCountMock.mockResolvedValue(0);
     templateCreateMock.mockResolvedValue({ id: 'template_1', name: '主治医報告 基本' });
     templateUpdateManyMock.mockResolvedValue({ count: 1 });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         template: {
+          findMany: templateFindManyMock,
+          count: templateCountMock,
           create: templateCreateMock,
           updateMany: templateUpdateManyMock,
         },
@@ -68,6 +77,9 @@ describe('/api/templates', () => {
   });
 
   it('lists templates filtered by org and template_type', async () => {
+    templateFindManyMock.mockResolvedValue([{ id: 'template_1' }]);
+    templateCountMock.mockResolvedValue(3);
+
     const response = await GET(
       createRequest('http://localhost/api/templates?template_type=care_report'),
       { params: Promise.resolve({}) },
@@ -84,6 +96,25 @@ describe('/api/templates', () => {
         take: 100,
       }),
     );
+    expect(templateCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        template_type: 'care_report',
+      },
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: 'template_1' }],
+      total_count: 3,
+      visible_count: 1,
+      hidden_count: 2,
+      truncated: true,
+      count_basis: 'templates',
+      filters_applied: {
+        template_type: 'care_report',
+        target_role: null,
+      },
+      limit: 100,
+    });
   });
 
   it('trims template_type query filters before listing templates', async () => {
@@ -124,6 +155,13 @@ describe('/api/templates', () => {
         take: 5,
       }),
     );
+    expect(templateCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        template_type: 'contract_document',
+        target_role: 'patient_family',
+      },
+    });
   });
 
   it('clamps overly large template list limits', async () => {
@@ -282,6 +320,7 @@ describe('/api/templates', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     expect(templateFindManyMock).not.toHaveBeenCalled();
+    expect(templateCountMock).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -299,6 +338,7 @@ describe('/api/templates', () => {
       },
     });
     expect(templateFindManyMock).not.toHaveBeenCalled();
+    expect(templateCountMock).not.toHaveBeenCalled();
   });
 
   it('returns validation error for blank target_role query', async () => {
@@ -309,5 +349,6 @@ describe('/api/templates', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     expect(templateFindManyMock).not.toHaveBeenCalled();
+    expect(templateCountMock).not.toHaveBeenCalled();
   });
 });

@@ -92,6 +92,13 @@ describe('DocumentTemplateContent', () => {
                   updated_at: '2026-06-19T10:30:00.000Z',
                 },
               ],
+              total_count: 3,
+              visible_count: 1,
+              hidden_count: 2,
+              truncated: true,
+              count_basis: 'templates',
+              filters_applied: { template_type: null, target_role: null },
+              limit: 1,
             }),
             { status: 200 },
           );
@@ -139,6 +146,14 @@ describe('DocumentTemplateContent', () => {
         expect.objectContaining({ method: 'DELETE', headers: { 'x-org-id': 'org_1' } }),
       );
     });
+  });
+
+  it('surfaces hidden document template counts from the bounded template list', async () => {
+    renderContent();
+
+    expect(await screen.findByText('先頭1件を表示 / 他2件')).toBeTruthy();
+    expect(screen.getByText(/表示上限 1 件に達しています/)).toBeTruthy();
+    expect(screen.getByText(/非表示のテンプレートを確認できます/)).toBeTruthy();
   });
 
   it('single-encodes template update paths and preserves payloads', async () => {

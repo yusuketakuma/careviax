@@ -61,6 +61,20 @@ type DocumentTemplateRow = {
   updated_at: string;
 };
 
+type DocumentTemplatesResponse = {
+  data: DocumentTemplateRow[];
+  total_count?: number;
+  visible_count?: number;
+  hidden_count?: number;
+  truncated?: boolean;
+  count_basis?: 'templates';
+  filters_applied?: {
+    template_type?: TemplateType | null;
+    target_role?: string | null;
+  };
+  limit?: number;
+};
+
 const TEMPLATE_TYPE_LABELS: Record<TemplateType, string> = {
   care_report: '報告書',
   tracing_report: 'トレーシング',
@@ -150,10 +164,21 @@ export function DocumentTemplateContent() {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('文書テンプレートの取得に失敗しました');
-      return res.json() as Promise<{ data: DocumentTemplateRow[] }>;
+      return res.json() as Promise<DocumentTemplatesResponse>;
     },
     enabled: !!orgId,
   });
+
+  const visibleTemplateCount = data?.visible_count ?? data?.data.length ?? 0;
+  const totalTemplateCount = data?.total_count ?? visibleTemplateCount;
+  const hiddenTemplateCount = Math.max(
+    data?.hidden_count ?? totalTemplateCount - visibleTemplateCount,
+    0,
+  );
+  const isTemplateListTruncated = Boolean(data?.truncated ?? hiddenTemplateCount > 0);
+  const templateListCountLabel = isTemplateListTruncated
+    ? `先頭${visibleTemplateCount}件を表示 / 他${hiddenTemplateCount}件`
+    : `登録${totalTemplateCount}件`;
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -501,9 +526,20 @@ export function DocumentTemplateContent() {
             <CardTitle asChild className="text-base">
               <h3>登録済みテンプレート</h3>
             </CardTitle>
+            {data ? (
+              <Badge variant={isTemplateListTruncated ? 'secondary' : 'outline'}>
+                {templateListCountLabel}
+              </Badge>
+            ) : null}
             <CardDescription>
               主要文書ごとの既定テンプレートと更新状況を確認できます。
             </CardDescription>
+            {isTemplateListTruncated ? (
+              <p className="text-xs leading-5 text-state-confirm">
+                表示上限 {data?.limit ?? visibleTemplateCount} 件に達しています。種別で絞り込むと、
+                非表示のテンプレートを確認できます。
+              </p>
+            ) : null}
             <div className="flex flex-wrap gap-2 pt-2">
               <Button
                 size="sm"

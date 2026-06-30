@@ -4,12 +4,12 @@ import { withAuthContext } from '@/lib/auth/context';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
-import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 
 const DEFAULT_TEMPLATE_LIST_LIMIT = 100;
 const MAX_TEMPLATE_LIST_LIMIT = 200;
+const TEMPLATE_COUNT_BASIS = 'templates' as const;
 
 const templateTypeSchema = z.enum([
   'care_report',
@@ -91,36 +91,63 @@ export const GET = withAuthContext(
       });
     }
 
-    const templates = await prisma.template.findMany({
-      where: {
-        org_id: authCtx.orgId,
-        ...(parsedTemplateType.data ? { template_type: parsedTemplateType.data } : {}),
-        ...(parsedTargetRole?.success ? { target_role: parsedTargetRole.data } : {}),
-      },
-      orderBy: [
-        { is_default: 'desc' },
-        { template_type: 'asc' },
-        { version: 'desc' },
-        { updated_at: 'desc' },
-      ],
-      take: limit,
-      select: {
-        id: true,
-        name: true,
-        template_type: true,
-        target_role: true,
-        format: true,
-        version: true,
-        effective_from: true,
-        effective_to: true,
-        content: true,
-        is_default: true,
-        created_at: true,
-        updated_at: true,
-      },
-    });
+    const where = {
+      org_id: authCtx.orgId,
+      ...(parsedTemplateType.data ? { template_type: parsedTemplateType.data } : {}),
+      ...(parsedTargetRole?.success ? { target_role: parsedTargetRole.data } : {}),
+    };
 
-    return success({ data: templates });
+    const { templates, totalCount } = await withOrgContext(
+      authCtx.orgId,
+      async (tx) => {
+        const [rows, count] = await Promise.all([
+          tx.template.findMany({
+            where,
+            orderBy: [
+              { is_default: 'desc' },
+              { template_type: 'asc' },
+              { version: 'desc' },
+              { updated_at: 'desc' },
+            ],
+            take: limit,
+            select: {
+              id: true,
+              name: true,
+              template_type: true,
+              target_role: true,
+              format: true,
+              version: true,
+              effective_from: true,
+              effective_to: true,
+              content: true,
+              is_default: true,
+              created_at: true,
+              updated_at: true,
+            },
+          }),
+          tx.template.count({ where }),
+        ]);
+        return { templates: rows, totalCount: count };
+      },
+      { requestContext: authCtx },
+    );
+
+    const visibleCount = templates.length;
+    const hiddenCount = Math.max(totalCount - visibleCount, 0);
+
+    return success({
+      data: templates,
+      total_count: totalCount,
+      visible_count: visibleCount,
+      hidden_count: hiddenCount,
+      truncated: hiddenCount > 0,
+      count_basis: TEMPLATE_COUNT_BASIS,
+      filters_applied: {
+        template_type: parsedTemplateType.data ?? null,
+        target_role: parsedTargetRole?.success ? parsedTargetRole.data : null,
+      },
+      limit,
+    });
   },
   { permission: 'canAdmin', message: '文書テンプレートの閲覧権限がありません' },
 );
