@@ -299,4 +299,54 @@ describe('home-care-ops', () => {
       action_label: '報告書を確認',
     });
   });
+
+  it('focuses single patient schedule preparation actions on the matching schedule', async () => {
+    const patientId = 'patient_1';
+    const scheduleId = 'schedule/1?x=y#frag';
+    const db = makePatientSummaryDb(patientId);
+    db.visitSchedule.findMany.mockResolvedValue([
+      {
+        id: scheduleId,
+        priority: 'normal',
+        visit_type: 'regular',
+        carry_items_status: 'blocked',
+        preparation: {
+          medication_changes_reviewed: true,
+          carry_items_confirmed: false,
+          previous_issues_reviewed: true,
+          route_confirmed: true,
+          offline_synced: false,
+        },
+      },
+    ]);
+
+    const summary = await getPatientHomeCareFeatureSummary(
+      db as unknown as Parameters<typeof getPatientHomeCareFeatureSummary>[0],
+      { orgId: 'org_1', patientId },
+    );
+
+    const scheduleHref = `/schedules?focus=schedule&schedule_id=${encodeURIComponent(scheduleId)}`;
+    expect(summary.features).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'previsit_preparation_pack',
+          count: 1,
+          action_href: scheduleHref,
+          action_label: '準備を開く',
+        }),
+        expect.objectContaining({
+          key: 'carry_item_fallback',
+          count: 1,
+          action_href: scheduleHref,
+          action_label: '持参物を確認',
+        }),
+        expect.objectContaining({
+          key: 'mobile_visit_mode',
+          count: 1,
+          action_href: scheduleHref,
+          action_label: '同期状況を確認',
+        }),
+      ]),
+    );
+  });
 });

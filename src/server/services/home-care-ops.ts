@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
+import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
 import type {
   HomeCareFeatureDefinition,
@@ -333,6 +334,15 @@ function buildMultidisciplinaryShareAction(args: {
   }
 
   return {};
+}
+
+function buildSingleScheduleFocusAction(schedules: Array<{ id: string }>, actionLabel: string) {
+  if (schedules.length !== 1) return {};
+
+  return {
+    actionHref: buildScheduleFocusHref(schedules[0].id),
+    actionLabel,
+  };
 }
 
 function summarizeTotals(features: HomeCareFeatureState[]): HomeCareFeatureSummary['totals'] {
@@ -1232,7 +1242,7 @@ export async function getPatientHomeCareFeatureSummary(
   const urgentSchedules = upcomingSchedules.filter(
     (schedule) => schedule.priority !== 'normal' || schedule.visit_type === 'emergency',
   ).length;
-  const preparationPending = upcomingSchedules.filter((schedule) => {
+  const preparationPendingSchedules = upcomingSchedules.filter((schedule) => {
     const preparation = schedule.preparation;
     return !(
       preparation?.medication_changes_reviewed &&
@@ -1241,7 +1251,7 @@ export async function getPatientHomeCareFeatureSummary(
       preparation?.route_confirmed &&
       preparation?.offline_synced
     );
-  }).length;
+  });
   const adherenceSignals = selfReports.filter((report) =>
     hasAnyKeyword([report.category, report.subject, report.content], ADHERENCE_KEYWORDS),
   ).length;
@@ -1251,12 +1261,12 @@ export async function getPatientHomeCareFeatureSummary(
   const changeSignals = selfReports.filter((report) =>
     hasAnyKeyword([report.category, report.subject, report.content], CHANGE_KEYWORDS),
   ).length;
-  const carryFallback = upcomingSchedules.filter((schedule) =>
+  const carryFallbackSchedules = upcomingSchedules.filter((schedule) =>
     ['blocked', 'partial'].includes(schedule.carry_items_status ?? ''),
-  ).length;
-  const mobilePending = upcomingSchedules.filter(
+  );
+  const mobilePendingSchedules = upcomingSchedules.filter(
     (schedule) => !schedule.preparation?.offline_synced,
-  ).length;
+  );
   const billingEvidenceBlockerCount = billingEvidenceBlockers.reduce(
     (total, item) => total + item.blockers.length,
     0,
@@ -1270,12 +1280,15 @@ export async function getPatientHomeCareFeatureSummary(
   const features = [
     buildFeatureState({
       key: 'emergency_medication_playbook',
-      count: urgentSchedules + carryFallback,
+      count: urgentSchedules + carryFallbackSchedules.length,
       summary:
-        urgentSchedules + carryFallback > 0
+        urgentSchedules + carryFallbackSchedules.length > 0
           ? 'この患者では緊急時の薬剤供給確認が必要です。'
           : '緊急供給のシグナルはありません。',
-      evidence: [`緊急/至急訪問 ${urgentSchedules}件`, `持参物不足 ${carryFallback}件`],
+      evidence: [
+        `緊急/至急訪問 ${urgentSchedules}件`,
+        `持参物不足 ${carryFallbackSchedules.length}件`,
+      ],
     }),
     buildFeatureState({
       key: 'after_hours_rotation_board',
@@ -1297,9 +1310,13 @@ export async function getPatientHomeCareFeatureSummary(
     }),
     buildFeatureState({
       key: 'previsit_preparation_pack',
-      count: preparationPending,
-      summary: preparationPending > 0 ? '訪問前準備が未完了です。' : '訪問前準備は整っています。',
-      evidence: [`準備未完了 ${preparationPending}件`],
+      count: preparationPendingSchedules.length,
+      summary:
+        preparationPendingSchedules.length > 0
+          ? '訪問前準備が未完了です。'
+          : '訪問前準備は整っています。',
+      evidence: [`準備未完了 ${preparationPendingSchedules.length}件`],
+      ...buildSingleScheduleFocusAction(preparationPendingSchedules, '準備を開く'),
     }),
     buildFeatureState({
       key: 'emergency_contact_template',
@@ -1368,9 +1385,13 @@ export async function getPatientHomeCareFeatureSummary(
     }),
     buildFeatureState({
       key: 'carry_item_fallback',
-      count: carryFallback,
-      summary: carryFallback > 0 ? '持参物の代替確認が必要です。' : '持参物不足はありません。',
-      evidence: [`不足 ${carryFallback}件`],
+      count: carryFallbackSchedules.length,
+      summary:
+        carryFallbackSchedules.length > 0
+          ? '持参物の代替確認が必要です。'
+          : '持参物不足はありません。',
+      evidence: [`不足 ${carryFallbackSchedules.length}件`],
+      ...buildSingleScheduleFocusAction(carryFallbackSchedules, '持参物を確認'),
     }),
     buildFeatureState({
       key: 'multidisciplinary_share_summary',
@@ -1487,12 +1508,13 @@ export async function getPatientHomeCareFeatureSummary(
     }),
     buildFeatureState({
       key: 'mobile_visit_mode',
-      count: mobilePending + countTask(taskCounts, 'mobile_visit_mode'),
+      count: mobilePendingSchedules.length + countTask(taskCounts, 'mobile_visit_mode'),
       summary:
-        mobilePending + countTask(taskCounts, 'mobile_visit_mode') > 0
+        mobilePendingSchedules.length + countTask(taskCounts, 'mobile_visit_mode') > 0
           ? 'オフライン同期または端末準備が未完了です。'
           : 'モバイル訪問準備は整っています。',
-      evidence: [`未同期 ${mobilePending}件`],
+      evidence: [`未同期 ${mobilePendingSchedules.length}件`],
+      ...buildSingleScheduleFocusAction(mobilePendingSchedules, '同期状況を確認'),
     }),
   ];
 
