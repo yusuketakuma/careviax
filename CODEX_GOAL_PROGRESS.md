@@ -27087,27 +27087,59 @@ Next loop:
   - Broad schedule/prescription/route objective remains open.
   - Continue scanning remaining route-order entrypoints and schedule displays for missing current-state or preparation evidence.
 
-### Communication Request Type Filter - 2026-06-30 22:30 JST
+### Grouped Commits - 2026-06-30 22:30 JST
 
 - Scope:
-  - Continued visit/report/collaboration queue hardening for mixed report返信、患者共有、訪問予定変更、緊急連絡、処方医フォロー依頼.
-  - Focused on preserving `request_type` from request-producing links into the communication request list API/UI.
+  - Committed the validated schedule-team-board recommended-vehicle confirmation slice.
+  - Committed the visit/report/collaboration `request_type` queue-filter slice for mixed report返信、患者共有、訪問予定変更、緊急連絡、処方医フォロー依頼.
 - Fixed:
-  - `/communications/requests` now reads, displays, query-keys, and sends `request_type` as a filter.
-  - `GET /api/communication-requests` trims and validates explicit `request_type`, rejects blank values, and applies it to the Prisma `where`.
-  - Report share, report delivery, today-workspace, home-care multidisciplinary share, communication queue, and visit brief links now preserve known request type when opening a focused request.
+  - `dcb8191a fix(schedules): confirm recommended vehicle assignment`
+    - 推奨車両の一括反映前に対象訪問、順路、時間、出発前準備サマリーを確認する dialog を追加。
+    - 確認 dialog では住所、電話番号、薬剤名、処方の細部を表示しない。
+  - `e779f62c fix(communications): preserve request type filters`
+    - `/communications/requests` now reads, displays, query-keys, and sends `request_type` as a filter.
+    - `GET /api/communication-requests` trims and validates explicit `request_type`, rejects blank values, and applies it to the Prisma `where`.
+    - Report share, report delivery, today-workspace, home-care multidisciplinary share, communication queue, and visit brief links now preserve known request type when opening a focused request.
 - Safety:
-  - Reduces wrong-queue / wrong-request follow-up risk in mixed multidisciplinary queues.
+  - Reduces accidental wrong-target bulk vehicle assignment and wrong-queue / wrong-request follow-up risk in mixed multidisciplinary queues.
   - Existing auth, org/RLS assignment scope, care-report visibility filtering, no-store responses, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
 - Performance:
-  - Adds only a scalar predicate to the existing paginated request list and uses already selected request metadata.
+  - Adds only a client confirmation step and a scalar predicate to the existing paginated request list, using already selected request metadata.
 - Validation:
-  - Communication focused Vitest passed `5` files / `78` tests.
-  - Related report/home-care/queue/visit/today-workspace Vitest passed `6` files / `91` tests.
+  - Combined schedule/communication/report/home-care/queue/visit Vitest passed `10` files / `141` tests.
+  - Interprofessional-share/API Vitest passed `2` files / `60` tests.
+  - Scoped ESLint: passed.
+  - Scoped Prettier check: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master/patient/visit/report/collaboration objective remains open.
+  - No code WIP remains after the grouped commits; only this progress ledger is pending commit.
+
+### Communication Request Export Filter Validation - 2026-06-30 22:40 JST
+
+- Scope:
+  - Continued report/collaboration export-boundary hardening for communication request CSV output.
+  - Focused on keeping export `status` / `request_type` filters consistent with the main communication request queue.
+- Fixed:
+  - `GET /api/communication-requests/export` now trims explicit `status` and `request_type` filters before query/audit use.
+  - Explicit blank or whitespace-only `status` / `request_type` filters now return 400 before assignment-scope resolution.
+  - Export audit filters now receive the same trimmed request type that is applied to the Prisma `where`.
+  - Export filenames now include a safe `request_type` token, hashing non-slug values instead of putting raw Japanese labels into `Content-Disposition`.
+- Safety:
+  - Reduces ambiguous PHI export scope and meaningless whitespace predicates.
+  - Existing auth, role checks, assignment scope, care-report row exclusion, CSV formula neutralization, no-store responses, row caps, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- Performance:
+  - Validation/filename-only change; no new query, dependency, or row-processing cost.
+- Validation:
+  - Export route focused Vitest passed `1` file / `20` tests.
   - `pnpm typecheck`: passed.
   - `pnpm typecheck:no-unused`: passed.
   - `pnpm lint`: passed.
   - `git diff --check`: passed.
 - Remaining:
   - Broad visit/report/collaboration objective remains open.
-  - `src/app/(dashboard)/schedules/schedule-team-board*.tsx` is separate dirty WIP and should stay out of this communication slice unless explicitly claimed.
+  - Continue scanning communication/report export and follow-up entrypoints.
