@@ -3,6 +3,7 @@ import {
   MAX_VOICE_MEMO_SECONDS,
   VOICE_MEMO_DEMO_DURATION_SECONDS,
   VOICE_MEMO_DEMO_TRANSCRIPT,
+  VOICE_MEMO_MANUAL_TRANSCRIPT_MAX_LENGTH,
   VOICE_MEMO_WAVEFORM_BAR_COUNT,
   audioMimeTypeToExtension,
   buildVoiceMemoFileName,
@@ -12,6 +13,7 @@ import {
   buildVoiceMemoWaveformHeights,
   deriveVoiceMemoView,
   formatVoiceMemoDuration,
+  normalizeVoiceMemoManualTranscript,
   pickPreferredAudioMimeType,
 } from './voice-memo.shared';
 
@@ -133,6 +135,22 @@ describe('buildVoiceMemoTranscriptHighlights', () => {
   it('空の転写は要点なし、長文は先頭3文だけを表示する', () => {
     expect(buildVoiceMemoTranscriptHighlights(null)).toEqual([]);
     expect(buildVoiceMemoTranscriptHighlights('一文目。二文目。三文目。四文目。')).toHaveLength(3);
+  });
+});
+
+describe('normalizeVoiceMemoManualTranscript', () => {
+  it('手入力メモの空行・前後空白・CRLFを訪問記録向けに正規化する', () => {
+    expect(
+      normalizeVoiceMemoManualTranscript('  夕食後は飲めている。 \r\n\r\n  便秘あり。  '),
+    ).toBe('夕食後は飲めている。\n便秘あり。');
+  });
+
+  it('空白だけなら null、上限超過は 2000 文字で切る', () => {
+    expect(normalizeVoiceMemoManualTranscript('   \n  ')).toBeNull();
+    const longText = 'あ'.repeat(VOICE_MEMO_MANUAL_TRANSCRIPT_MAX_LENGTH + 5);
+    expect(normalizeVoiceMemoManualTranscript(longText)).toHaveLength(
+      VOICE_MEMO_MANUAL_TRANSCRIPT_MAX_LENGTH,
+    );
   });
 });
 

@@ -7,6 +7,7 @@ import { Mic, Square } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { resolveScheduleVisitRecordId } from '@/lib/offline/evidence-drafts.shared';
 import { loadLatestVoiceMemoDraft, saveVoiceMemoDraft } from '@/lib/offline/voice-memo-drafts';
@@ -15,12 +16,14 @@ import {
   MAX_VOICE_MEMO_SECONDS,
   VOICE_MEMO_DEMO_DURATION_SECONDS,
   VOICE_MEMO_DEMO_TRANSCRIPT,
+  VOICE_MEMO_MANUAL_TRANSCRIPT_MAX_LENGTH,
   buildVoiceMemoFileName,
   buildVoiceMemoRecordPatchBody,
   buildVoiceMemoTranscriptHighlights,
   buildVoiceMemoTitle,
   buildVoiceMemoWaveformHeights,
   deriveVoiceMemoView,
+  normalizeVoiceMemoManualTranscript,
   pickPreferredAudioMimeType,
   type VoiceMemoPhase,
 } from './voice-memo.shared';
@@ -56,6 +59,7 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
   const [playing, setPlaying] = useState(false);
   const [recordingUnavailable, setRecordingUnavailable] = useState(false);
   const [transcribeRequested, setTranscribeRequested] = useState(false);
+  const [manualTranscript, setManualTranscript] = useState('');
   const [appendedRecordId, setAppendedRecordId] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -116,6 +120,7 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
       setPhase('recorded');
       setDurationSeconds(VOICE_MEMO_DEMO_DURATION_SECONDS);
       setTranscript(VOICE_MEMO_DEMO_TRANSCRIPT);
+      setManualTranscript(VOICE_MEMO_DEMO_TRANSCRIPT);
       setTranscribeRequested(false);
       setPlaying(false);
       // デモは実音声を持たない(旧 blob URL の解放は audioUrl effect の cleanup が行う)
@@ -176,6 +181,7 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
 
     setAudioUrl(URL.createObjectURL(blob));
     setTranscript(null); // 新しい録音は転写待ちへ戻す
+    setManualTranscript('');
     setTranscribeRequested(false);
     setAppendedRecordId(null);
     setDurationSeconds(recordedSeconds);
@@ -270,7 +276,20 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
   function handleTranscribeClick() {
     // 転写ジョブ投入は外部 STT サービス接続後(cc:blocked)のためスタブ
     setTranscribeRequested(true);
-    toast.info('文字起こしは外部サービス接続後に利用できます(準備中)');
+    toast.info('自動文字起こしは準備中です。手入力メモは先に記録へ反映できます');
+  }
+
+  function handleApplyManualTranscript() {
+    const normalized = normalizeVoiceMemoManualTranscript(manualTranscript);
+    if (!normalized) {
+      toast.error('手入力メモを入力してください');
+      return;
+    }
+    setManualTranscript(normalized);
+    setTranscript(normalized);
+    setTranscribeRequested(false);
+    setAppendedRecordId(null);
+    toast.success('手入力メモを文字起こしとして反映しました');
   }
 
   // p1_03 と同じ二段解決(訪問予定 → 紐づく記録 / 直接訪問記録 ID)で
@@ -542,6 +561,38 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
                 ? '外部の文字起こしサービス接続後に、録音メモから自動で文字起こしできるようになります。録音メモは転写待ちとして端末に保存されています。'
                 : '左の録音メモで「文字にする」を押すと、ここに文字起こし結果が表示されます(外部サービス接続後に利用できます)。'}
             </p>
+            <div className="mt-4 space-y-2">
+              <label
+                htmlFor="voice-memo-manual-transcript"
+                className="block text-sm font-bold text-foreground"
+              >
+                聞きながら手入力
+              </label>
+              <Textarea
+                id="voice-memo-manual-transcript"
+                value={manualTranscript}
+                maxLength={VOICE_MEMO_MANUAL_TRANSCRIPT_MAX_LENGTH}
+                rows={5}
+                placeholder="患者・家族の言葉、症状、次回確認したいこと"
+                onChange={(event) => setManualTranscript(event.target.value)}
+                data-testid="voice-memo-manual-transcript"
+              />
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11 px-3 text-[15px] font-bold text-primary"
+                  onClick={handleApplyManualTranscript}
+                  disabled={!manualTranscript.trim()}
+                  data-testid="voice-memo-manual-apply-button"
+                >
+                  手入力を反映
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {manualTranscript.length}/{VOICE_MEMO_MANUAL_TRANSCRIPT_MAX_LENGTH}
+                </span>
+              </div>
+            </div>
           </div>
         )}
       </section>

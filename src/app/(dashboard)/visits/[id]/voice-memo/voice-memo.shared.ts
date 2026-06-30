@@ -22,6 +22,9 @@ export const VOICE_MEMO_DEMO_DURATION_SECONDS = 83;
 export const VOICE_MEMO_DEMO_TRANSCRIPT =
   '夕食後の薬は家族が声をかけると飲めている。便秘は続いているが、腹痛はなし。次回も便通を確認する。';
 
+/** 手入力文字起こしの上限。訪問中メモ用途なので長文カルテ化を防ぐ。 */
+export const VOICE_MEMO_MANUAL_TRANSCRIPT_MAX_LENGTH = 2000;
+
 const TRANSCRIPT_HIGHLIGHT_LABELS = ['服薬', '症状', '次回確認'] as const;
 
 /** MediaRecorder へ渡す候補 mime(対応順。全滅ならブラウザ既定 = undefined) */
@@ -61,6 +64,19 @@ export function buildVoiceMemoTranscriptHighlights(
     label: TRANSCRIPT_HIGHLIGHT_LABELS[index] ?? 'メモ',
     text,
   }));
+}
+
+/** STT未接続時の手入力文字起こしを、訪問記録へ入れられる形へ正規化する。 */
+export function normalizeVoiceMemoManualTranscript(value: string): string | null {
+  const normalized = value
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+  if (!normalized) return null;
+  return normalized.slice(0, VOICE_MEMO_MANUAL_TRANSCRIPT_MAX_LENGTH);
 }
 
 /** MediaRecorder の isTypeSupported から優先 mime を選ぶ(未対応のみなら undefined) */
