@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createRoadTravelEstimator } from './road-routing';
+import { createRoadTravelEstimator, estimateFallbackTravelMinutes } from './road-routing';
 
 const originalEnv = { ...process.env };
 
@@ -297,5 +297,19 @@ describe('createRoadTravelEstimator', () => {
     await expect(
       estimateTravel({ lat: 35.0, lng: 139.0 }, { lat: 35.1, lng: 139.1 }),
     ).resolves.toBeNull();
+  });
+});
+
+describe('estimateFallbackTravelMinutes', () => {
+  it('converts fallback distances to minutes by travel mode', () => {
+    expect(estimateFallbackTravelMinutes(1, 'WALK')).toBe(15);
+    expect(estimateFallbackTravelMinutes(14, 'BICYCLE')).toBe(60);
+    expect(estimateFallbackTravelMinutes(28, 'TWO_WHEELER')).toBe(60);
+    expect(estimateFallbackTravelMinutes(30, 'DRIVE')).toBe(60);
+  });
+
+  it('rejects invalid fallback distances', () => {
+    expect(estimateFallbackTravelMinutes(Number.NaN, 'DRIVE')).toBeNaN();
+    expect(estimateFallbackTravelMinutes(-1, 'DRIVE')).toBeNaN();
   });
 });

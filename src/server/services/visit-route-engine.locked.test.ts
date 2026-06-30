@@ -4,9 +4,13 @@ const { createRoadTravelEstimatorMock } = vi.hoisted(() => ({
   createRoadTravelEstimatorMock: vi.fn(),
 }));
 
-vi.mock('./road-routing', () => ({
-  createRoadTravelEstimator: createRoadTravelEstimatorMock,
-}));
+vi.mock('./road-routing', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./road-routing')>();
+  return {
+    ...actual,
+    createRoadTravelEstimator: createRoadTravelEstimatorMock,
+  };
+});
 
 import { computeOptimizedVisitRoute } from './visit-route-engine';
 

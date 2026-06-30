@@ -6,6 +6,7 @@ import type { VisitRouteOrigin, VisitRoutePlan, VisitRouteTravelMode } from '@/t
 import { createFetchTimeout } from './fetch-timeout';
 import {
   createRoadTravelEstimator,
+  estimateFallbackTravelMinutes,
   type RoadTravelEstimator,
   type TravelEstimate,
 } from './road-routing';
@@ -198,19 +199,6 @@ function resolveGoogleMapsServerApiKey() {
   );
 }
 
-function localSpeedKph(travelMode: VisitRouteTravelMode) {
-  switch (travelMode) {
-    case 'WALK':
-      return 4;
-    case 'BICYCLE':
-      return 14;
-    case 'TWO_WHEELER':
-      return 28;
-    default:
-      return 30;
-  }
-}
-
 function routePriorityBonusSeconds(priority: string | null | undefined) {
   switch (priority) {
     case 'emergency':
@@ -276,7 +264,7 @@ function estimateToMatrixCell(
   const meters = fallbackDistanceKm * 1000;
   return {
     meters,
-    seconds: Math.round((meters / 1000 / localSpeedKph(travelMode)) * 3600),
+    seconds: Math.round(estimateFallbackTravelMinutes(fallbackDistanceKm, travelMode) * 60),
   };
 }
 

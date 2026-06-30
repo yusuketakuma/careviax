@@ -23,6 +23,24 @@ export type RoadTravelEstimator = {
   estimateMatrix(points: RoutePoint[]): Promise<TravelEstimateMatrix | null>;
 };
 
+export function fallbackTravelSpeedKph(travelMode: RouteTravelMode) {
+  switch (travelMode) {
+    case 'WALK':
+      return 4;
+    case 'BICYCLE':
+      return 14;
+    case 'TWO_WHEELER':
+      return 28;
+    default:
+      return 30;
+  }
+}
+
+export function estimateFallbackTravelMinutes(distanceKm: number, travelMode: RouteTravelMode) {
+  if (!Number.isFinite(distanceKm) || distanceKm < 0) return Number.NaN;
+  return (distanceKm / fallbackTravelSpeedKph(travelMode)) * 60;
+}
+
 function readFiniteNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }

@@ -7,7 +7,7 @@ import { prisma } from '@/lib/db/client';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { getHomeVisitSpecialMedicalProcedures } from '@/lib/patient/home-visit-intake';
 import { applyTimeDateToDate, timeDateToString } from '@/lib/visits/time-of-day';
-import { createRoadTravelEstimator } from './road-routing';
+import { createRoadTravelEstimator, estimateFallbackTravelMinutes } from './road-routing';
 import { evaluateVisitWorkflowGate } from './management-plans';
 import { resolveMedicationDeadlineSummary } from './visit-medication-deadline';
 import type { VisitRouteTravelMode } from './visit-route-engine';
@@ -82,6 +82,7 @@ type ProposalDraft = {
 
 type TravelCost = {
   score: number;
+  limitMinutes: number | null;
   summary: string;
 };
 
@@ -107,6 +108,7 @@ export type ProposalCandidateRejectionCode =
   | 'vehicle_capacity'
   | 'no_slot'
   | 'travel_limit'
+  | 'travel_limit_unverified'
   | 'billing_constraint'
   | 'not_selected'
   | 'evaluation_error';
@@ -177,6 +179,7 @@ const REJECTION_REASON_LABELS: Record<ProposalCandidateRejectionCode, string> = 
   vehicle_capacity: '車両上限超過',
   no_slot: '空き枠なし',
   travel_limit: '移動上限超過',
+  travel_limit_unverified: '移動上限未検証',
   billing_constraint: '算定制約',
   not_selected: '候補上限外',
   evaluation_error: '評価エラー',
@@ -302,19 +305,29 @@ function addressFallbackScore(a: SchedulePoint, b: SchedulePoint) {
   return left === right ? 0 : 1;
 }
 
-function getFallbackTravelCost(a: SchedulePoint, b: SchedulePoint): TravelCost {
+function getFallbackTravelCost(
+  a: SchedulePoint,
+  b: SchedulePoint,
+  travelMode: VisitRouteTravelMode,
+): TravelCost {
   const geoDistance = haversineKm(a, b);
   if (Number.isFinite(geoDistance)) {
+    const durationMinutes = estimateFallbackTravelMinutes(geoDistance, travelMode);
     return {
-      score: geoDistance,
-      summary: `直線距離 ${geoDistance.toFixed(1)}km`,
+      score: durationMinutes,
+      limitMinutes: durationMinutes,
+      summary: `直線距離 ${geoDistance.toFixed(1)}km（推定${Math.round(durationMinutes)}分）`,
     };
   }
 
   const score = addressFallbackScore(a, b);
   return {
     score,
-    summary: score === 0 ? '同一住所フォールバック' : '住所一致優先フォールバック',
+    limitMinutes: null,
+    summary:
+      score === 0
+        ? '座標未設定のため同一住所フォールバック（移動上限は未検証）'
+        : '座標未設定のため住所一致優先フォールバック（移動上限は未検証）',
   };
 }
 
@@ -336,18 +349,20 @@ async function getTravelCost(
   a: SchedulePoint,
   b: SchedulePoint,
   estimateRoadTravel: ReturnType<typeof createRoadTravelEstimator>,
+  travelMode: VisitRouteTravelMode,
 ) {
   const roadEstimate = await estimateRoadTravel(a, b);
   if (roadEstimate) {
     return {
       score: roadEstimate.durationMinutes,
+      limitMinutes: roadEstimate.durationMinutes,
       summary: `実道路移動 約${Math.round(roadEstimate.durationMinutes)}分${
         Number.isFinite(roadEstimate.distanceKm) ? ` / ${roadEstimate.distanceKm.toFixed(1)}km` : ''
       }`,
     } satisfies TravelCost;
   }
 
-  return getFallbackTravelCost(a, b);
+  return getFallbackTravelCost(a, b, travelMode);
 }
 
 async function computeRouteInsertion(
@@ -355,14 +370,20 @@ async function computeRouteInsertion(
   existingPoints: SchedulePoint[],
   candidatePoint: SchedulePoint,
   estimateRoadTravel: ReturnType<typeof createRoadTravelEstimator>,
+  travelMode: VisitRouteTravelMode,
 ) {
   if (existingPoints.length === 0) {
     const initialCost = sitePoint
-      ? await getTravelCost(sitePoint, candidatePoint, estimateRoadTravel)
-      : { score: 0, summary: '単独訪問' };
+      ? await getTravelCost(sitePoint, candidatePoint, estimateRoadTravel, travelMode)
+      : {
+          score: 0,
+          limitMinutes: null,
+          summary: '拠点座標未設定のため単独訪問（移動上限は未検証）',
+        };
     return {
       routeOrder: 1,
       travelScore: initialCost.score,
+      travelLimitMinutes: initialCost.limitMinutes,
       travelSummary: initialCost.summary,
     };
   }
@@ -370,37 +391,52 @@ async function computeRouteInsertion(
   const ordered = sortRoutePoints(existingPoints);
   let bestIndex = ordered.length;
   let bestScore = Number.POSITIVE_INFINITY;
+  let bestLimitMinutes: number | null = null;
   let bestSummary = '移動負荷未計算';
 
   for (let insertIndex = 0; insertIndex <= ordered.length; insertIndex++) {
     const prev = insertIndex === 0 ? sitePoint : ordered[insertIndex - 1];
     const next = ordered[insertIndex] ?? null;
     let score = 0;
+    let candidateAdjacentMinutes = 0;
+    let isTravelLimitVerifiable = !(insertIndex === 0 && !prev);
     const summaries: string[] = [];
     if (prev) {
-      const prevCost = await getTravelCost(prev, candidatePoint, estimateRoadTravel);
+      const prevCost = await getTravelCost(prev, candidatePoint, estimateRoadTravel, travelMode);
       score += prevCost.score;
+      if (prevCost.limitMinutes == null) {
+        isTravelLimitVerifiable = false;
+      } else {
+        candidateAdjacentMinutes += prevCost.limitMinutes;
+      }
       summaries.push(`前訪問から ${prevCost.summary}`);
     }
     if (next) {
-      const nextCost = await getTravelCost(candidatePoint, next, estimateRoadTravel);
+      const nextCost = await getTravelCost(candidatePoint, next, estimateRoadTravel, travelMode);
       score += nextCost.score;
+      if (nextCost.limitMinutes == null) {
+        isTravelLimitVerifiable = false;
+      } else {
+        candidateAdjacentMinutes += nextCost.limitMinutes;
+      }
       summaries.push(`次訪問へ ${nextCost.summary}`);
     }
     if (prev && next) {
-      const bypassCost = await getTravelCost(prev, next, estimateRoadTravel);
+      const bypassCost = await getTravelCost(prev, next, estimateRoadTravel, travelMode);
       score -= bypassCost.score;
     }
     if (score < bestScore) {
       bestScore = score;
       bestIndex = insertIndex;
       bestSummary = summaries.join(' / ');
+      bestLimitMinutes = isTravelLimitVerifiable ? Math.max(0, candidateAdjacentMinutes) : null;
     }
   }
 
   return {
     routeOrder: bestIndex + 1,
     travelScore: Number.isFinite(bestScore) ? bestScore : ordered.length,
+    travelLimitMinutes: bestLimitMinutes,
     travelSummary: bestSummary,
   };
 }
@@ -1235,17 +1271,29 @@ export async function generateVisitScheduleProposalDrafts(
           })),
           candidatePoint,
           estimateRoadTravel,
+          travelMode,
         );
         if (
           shift.user.max_travel_minutes != null &&
-          routeInsertion.travelScore > shift.user.max_travel_minutes
+          routeInsertion.travelLimitMinutes != null &&
+          routeInsertion.travelLimitMinutes > shift.user.max_travel_minutes
         ) {
           return {
             kind: 'rejected' as const,
             diagnostic: buildRejectedDiagnostic({
               shift,
               reasonCode: 'travel_limit',
-              detail: `移動負荷 ${routeInsertion.travelScore.toFixed(1)} が上限 ${shift.user.max_travel_minutes} を超えます`,
+              detail: `移動負荷 ${routeInsertion.travelLimitMinutes.toFixed(1)}分 が上限 ${shift.user.max_travel_minutes}分を超えます`,
+            }),
+          };
+        }
+        if (shift.user.max_travel_minutes != null && routeInsertion.travelLimitMinutes == null) {
+          return {
+            kind: 'rejected' as const,
+            diagnostic: buildRejectedDiagnostic({
+              shift,
+              reasonCode: 'travel_limit_unverified',
+              detail: `移動上限 ${shift.user.max_travel_minutes}分を検証できないため、住所座標を整備してから提案してください`,
             }),
           };
         }
