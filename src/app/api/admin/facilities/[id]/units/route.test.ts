@@ -5,11 +5,13 @@ const {
   facilityFindFirstMock,
   facilityUnitFindManyMock,
   facilityUnitCreateMock,
+  createAuditLogEntryMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   facilityFindFirstMock: vi.fn(),
   facilityUnitFindManyMock: vi.fn(),
   facilityUnitCreateMock: vi.fn(),
+  createAuditLogEntryMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -35,6 +37,10 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
+}));
+
 import { GET, POST } from './route';
 
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
@@ -56,6 +62,11 @@ function createMalformedJsonRequest() {
     body: '{bad-json',
     headers: { 'content-type': 'application/json' },
   });
+}
+
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/admin/facilities/[id]/units', () => {
@@ -83,8 +94,12 @@ describe('/api/admin/facilities/[id]/units', () => {
       notes: null,
       display_order: 2,
     });
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit_unit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        facility: {
+          findFirst: facilityFindFirstMock,
+        },
         facilityUnit: {
           create: facilityUnitCreateMock,
         },
@@ -98,6 +113,7 @@ describe('/api/admin/facilities/[id]/units', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'unit_1', name: '2F 東', patient_count: 3 }],
     });
@@ -118,6 +134,8 @@ describe('/api/admin/facilities/[id]/units', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
     expect(facilityUnitCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -127,6 +145,20 @@ describe('/api/admin/facilities/[id]/units', () => {
         unit_type: 'wing',
       }),
     });
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      {
+        action: 'facility_unit_created',
+        targetType: 'FacilityUnit',
+        targetId: 'unit_2',
+        changes: expect.objectContaining({
+          facility_id: 'facility_1',
+          name: '3F 西',
+          unit_type: 'wing',
+        }),
+      },
+    );
   });
 
   it('rejects non-object create payloads before loading the facility', async () => {
@@ -135,9 +167,11 @@ describe('/api/admin/facilities/[id]/units', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     expect(facilityFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(facilityUnitCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON create payloads before loading the facility', async () => {
@@ -146,11 +180,32 @@ describe('/api/admin/facilities/[id]/units', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
     expect(facilityFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(facilityUnitCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sensitive no-store internal error without leaking raw failure details', async () => {
+    const rawErrorMessage = 'raw facility unit create failure';
+    withOrgContextMock.mockRejectedValueOnce(new Error(rawErrorMessage));
+
+    const response = (await POST(
+      createRequest({
+        name: '3F 西',
+        unit_type: 'wing',
+      }),
+      {
+        params: Promise.resolve({ id: 'facility_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    await expect(response.text()).resolves.not.toContain(rawErrorMessage);
   });
 });

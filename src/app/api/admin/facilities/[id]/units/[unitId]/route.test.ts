@@ -6,12 +6,14 @@ const {
   facilityUnitUpdateMock,
   facilityUnitDeleteMock,
   residenceFindFirstMock,
+  createAuditLogEntryMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   facilityUnitFindFirstMock: vi.fn(),
   facilityUnitUpdateMock: vi.fn(),
   facilityUnitDeleteMock: vi.fn(),
   residenceFindFirstMock: vi.fn(),
+  createAuditLogEntryMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -32,6 +34,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
 }));
 
 import { DELETE, PATCH } from './route';
@@ -57,10 +63,24 @@ function createMalformedJsonRequest() {
   });
 }
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/admin/facilities/[id]/units/[unitId]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    facilityUnitFindFirstMock.mockResolvedValue({ id: 'unit_1' });
+    facilityUnitFindFirstMock.mockResolvedValue({
+      id: 'unit_1',
+      facility_id: 'facility_1',
+      name: '2F 東',
+      floor: '2F',
+      unit_type: 'wing',
+      capacity: 24,
+      notes: null,
+      display_order: 1,
+    });
     facilityUnitUpdateMock.mockResolvedValue({
       id: 'unit_1',
       name: '2F 東',
@@ -72,9 +92,11 @@ describe('/api/admin/facilities/[id]/units/[unitId]', () => {
       _count: { residences: 4 },
     });
     residenceFindFirstMock.mockResolvedValue(null);
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit_unit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         facilityUnit: {
+          findFirst: facilityUnitFindFirstMock,
           update: facilityUnitUpdateMock,
           delete: facilityUnitDeleteMock,
         },
@@ -97,6 +119,21 @@ describe('/api/admin/facilities/[id]/units/[unitId]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
+    expect(facilityUnitFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'unit_1', facility_id: 'facility_1', org_id: 'org_1' },
+      select: {
+        id: true,
+        facility_id: true,
+        name: true,
+        floor: true,
+        unit_type: true,
+        capacity: true,
+        notes: true,
+        display_order: true,
+      },
+    });
     expect(facilityUnitUpdateMock).toHaveBeenCalledWith({
       where: { id: 'unit_1' },
       data: {
@@ -111,6 +148,20 @@ describe('/api/admin/facilities/[id]/units/[unitId]', () => {
         },
       },
     });
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      {
+        action: 'facility_unit_updated',
+        targetType: 'FacilityUnit',
+        targetId: 'unit_1',
+        changes: {
+          facility_id: 'facility_1',
+          previous: expect.objectContaining({ capacity: 24 }),
+          next: expect.objectContaining({ capacity: 30, notes: '更新' }),
+        },
+      },
+    );
   });
 
   it('rejects non-object update payloads before loading the unit', async () => {
@@ -119,9 +170,11 @@ describe('/api/admin/facilities/[id]/units/[unitId]', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     expect(facilityUnitFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(facilityUnitUpdateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON update payloads before loading the unit', async () => {
@@ -130,12 +183,14 @@ describe('/api/admin/facilities/[id]/units/[unitId]', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
     expect(facilityUnitFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(facilityUnitUpdateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('blocks deleting a unit that still has residents', async () => {
@@ -146,8 +201,59 @@ describe('/api/admin/facilities/[id]/units/[unitId]', () => {
     }))!;
 
     expect(response.status).toBe(409);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '患者が在籍中のユニットは削除できません',
     });
+    expect(facilityUnitDeleteMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('deletes a facility unit with an audit entry', async () => {
+    const response = (await DELETE(createRequest('DELETE'), {
+      params: Promise.resolve({ id: 'facility_1', unitId: 'unit_1' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(facilityUnitDeleteMock).toHaveBeenCalledWith({ where: { id: 'unit_1' } });
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      {
+        action: 'facility_unit_deleted',
+        targetType: 'FacilityUnit',
+        targetId: 'unit_1',
+        changes: expect.objectContaining({
+          facility_id: 'facility_1',
+          name: '2F 東',
+          capacity: 24,
+        }),
+      },
+    );
+  });
+
+  it('rejects blank facility or unit route parameters before opening a transaction', async () => {
+    const response = (await DELETE(createRequest('DELETE'), {
+      params: Promise.resolve({ id: 'facility_1', unitId: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sensitive no-store internal error without leaking raw update failures', async () => {
+    const rawErrorMessage = 'raw facility unit update failure';
+    withOrgContextMock.mockRejectedValueOnce(new Error(rawErrorMessage));
+
+    const response = (await PATCH(createRequest('PATCH', { notes: '更新' }), {
+      params: Promise.resolve({ id: 'facility_1', unitId: 'unit_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    await expect(response.text()).resolves.not.toContain(rawErrorMessage);
   });
 });
