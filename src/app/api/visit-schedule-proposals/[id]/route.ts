@@ -142,6 +142,12 @@ type CreationDiagnostics = {
 };
 
 const ROUTE_ORDER_LOCKED_STATUSES = ['ready', 'departed', 'in_progress', 'completed'] as const;
+const CONFIRMABLE_MEDICATION_CYCLE_STATUSES = new Set<string>([
+  'audited',
+  'setting',
+  'set_audited',
+  'visit_ready',
+]);
 const CONFIRM_SERIALIZABLE_RETRY_LIMIT = 3;
 
 function readOperatingDayOverrideReason(changes: unknown): string | null {
@@ -1517,6 +1523,28 @@ async function authenticatedPATCH(
       };
     }
 
+    if (currentProposal.cycle_id) {
+      const medicationCycle = await tx.medicationCycle.findFirst({
+        where: {
+          id: currentProposal.cycle_id,
+          org_id: ctx.orgId,
+          case_id: currentProposal.case_id,
+          patient_id: currentProposal.case_.patient_id,
+        },
+        select: {
+          overall_status: true,
+        },
+      });
+      if (
+        !medicationCycle ||
+        !CONFIRMABLE_MEDICATION_CYCLE_STATUSES.has(medicationCycle.overall_status)
+      ) {
+        return {
+          error: 'cycle_not_schedulable' as const,
+        };
+      }
+    }
+
     if (currentProposal.reschedule_source_schedule_id) {
       const override = await tx.visitScheduleOverride.findFirst({
         where: {
@@ -2169,6 +2197,11 @@ async function authenticatedPATCH(
   if ('error' in result) {
     if (result.error === 'workflow_gate') {
       return validationError(formatVisitWorkflowGateIssues(result.issues));
+    }
+    if (result.error === 'cycle_not_schedulable') {
+      return conflict(
+        '処方サイクルが訪問予定化できない状態に更新されました。処方内容を確認して候補を再生成してください',
+      );
     }
     if (result.error === 'override_not_approved') {
       return validationError('確定済み訪問の変更は承認後に新候補を確定してください');

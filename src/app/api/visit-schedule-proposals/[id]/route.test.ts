@@ -19,6 +19,7 @@ const {
   pharmacyOperatingHoursFindManyMock,
   businessHolidayFindManyMock,
   vehicleResourceFindFirstMock,
+  medicationCycleFindFirstMock,
   patientInsuranceFindFirstMock,
   userFindFirstMock,
   consentRecordFindFirstMock,
@@ -54,6 +55,7 @@ const {
   pharmacyOperatingHoursFindManyMock: vi.fn(),
   businessHolidayFindManyMock: vi.fn(),
   vehicleResourceFindFirstMock: vi.fn(),
+  medicationCycleFindFirstMock: vi.fn(),
   patientInsuranceFindFirstMock: vi.fn(),
   userFindFirstMock: vi.fn(),
   consentRecordFindFirstMock: vi.fn(),
@@ -242,6 +244,9 @@ function buildTxMock() {
     visitVehicleResource: {
       findFirst: vehicleResourceFindFirstMock,
     },
+    medicationCycle: {
+      findFirst: medicationCycleFindFirstMock,
+    },
     patientInsurance: {
       findFirst: patientInsuranceFindFirstMock,
     },
@@ -346,6 +351,9 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       travel_mode: 'DRIVE',
       max_stops: 8,
       max_route_duration_minutes: null,
+    });
+    medicationCycleFindFirstMock.mockResolvedValue({
+      overall_status: 'set_audited',
     });
     patientInsuranceFindFirstMock.mockResolvedValue(null);
     userFindFirstMock.mockResolvedValue({ max_weekly_visits: null });
@@ -2228,11 +2236,23 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       data: expect.objectContaining({
         org_id: 'org_1',
         case_id: 'case_1',
+        cycle_id: 'cycle_1',
         pharmacist_id: 'pharmacist_1',
         schedule_status: 'planned',
         vehicle_resource_id: 'vehicle_1',
         confirmed_by: 'user_1',
       }),
+    });
+    expect(medicationCycleFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'cycle_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+      },
+      select: {
+        overall_status: true,
+      },
     });
     expect(proposalUpdateManyMock).toHaveBeenCalledWith({
       where: expect.objectContaining({
@@ -2268,6 +2288,82 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
+  });
+
+  it.each([
+    ['missing', null],
+    ['cancelled', { overall_status: 'cancelled' }],
+  ] as const)(
+    'rejects proposal finalization when the medication cycle is %s at confirmation time',
+    async (_label, cycleResult) => {
+      proposalFindFirstMock.mockResolvedValue(
+        buildProposal({
+          proposal_status: 'patient_contact_pending',
+          patient_contact_status: 'confirmed',
+          cycle_id: 'cycle_1',
+        }),
+      );
+      medicationCycleFindFirstMock.mockResolvedValueOnce(cycleResult);
+
+      const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+        params: Promise.resolve({ id: 'proposal_1' }),
+      });
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'WORKFLOW_CONFLICT',
+        message:
+          '処方サイクルが訪問予定化できない状態に更新されました。処方内容を確認して候補を再生成してください',
+      });
+      expect(medicationCycleFindFirstMock).toHaveBeenCalledWith({
+        where: {
+          id: 'cycle_1',
+          org_id: 'org_1',
+          case_id: 'case_1',
+          patient_id: 'patient_1',
+        },
+        select: {
+          overall_status: true,
+        },
+      });
+      expect(pharmacistShiftFindFirstMock).not.toHaveBeenCalled();
+      expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+      expect(scheduleUpdateManyMock).not.toHaveBeenCalled();
+      expect(scheduleCreateMock).not.toHaveBeenCalled();
+      expect(proposalUpdateMock).not.toHaveBeenCalled();
+      expect(contactLogUpdateManyMock).not.toHaveBeenCalled();
+      expect(overrideUpdateManyMock).not.toHaveBeenCalled();
+      expect(auditLogCreateMock).not.toHaveBeenCalled();
+      expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+      expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('preserves confirmation for proposals without a medication cycle link', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        cycle_id: null,
+      }),
+    );
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(scheduleCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        cycle_id: null,
+        schedule_status: 'planned',
+        confirmed_by: 'user_1',
+      }),
+    });
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledTimes(1);
   });
 
   it('rejects finalizing a reschedule proposal when the approved override was cancelled', async () => {

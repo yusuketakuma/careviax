@@ -83,6 +83,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Broad master-management / patient-information objective remains open.
   - Concurrent unrelated dirty changes appeared in `src/app/api/visit-schedule-proposals/[id]/route.ts`, `src/app/api/visit-schedule-proposals/[id]/route.test.ts`, `src/app/api/care-reports/today-workspace/route.ts`, `src/app/api/care-reports/today-workspace/route.test.ts`, `src/lib/visits/navigation.ts`, and `src/lib/visits/navigation.test.ts`; they were inspected, preserved, and excluded from this MCS slice.
 
+### Proposal Confirm Medication Cycle Revalidation - 2026-07-01 02:50 JST
+
+- Scope:
+  - Continued prescription-to-schedule workflow hardening on `PATCH /api/visit-schedule-proposals/[id]`.
+  - Focused on proposal confirmation after a linked medication cycle changes between proposal generation and phone-confirmed finalization.
+- Fixed:
+  - Proposal confirmation now reloads the linked `MedicationCycle` inside the serializable confirm transaction when `cycle_id` is present.
+  - The cycle lookup is scoped by `org_id`, `case_id`, and `patient_id`.
+  - Missing cycles and cycles outside the same schedulable set used by schedule generation (`audited`, `setting`, `set_audited`, `visit_ready`) now fail with a sanitized `409 WORKFLOW_CONFLICT` before writes or side effects.
+  - Existing already-finalized replay and proposals with `cycle_id: null` remain compatible and covered by tests.
+- Safety:
+  - Reduces stale prescription-to-visit scheduling, cross-patient/case cycle drift, and wrong-workflow finalization risk.
+  - The rejection happens before proposal claim, route-order shifts, schedule create, contact-log updates, sibling proposal superseding, audit logs, operational task resolution, and workflow notifications.
+  - Preserves existing auth, RLS org context, no-store wrappers, migration/live-DB boundaries, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds one narrow scalar cycle lookup only for proposals that have `cycle_id`.
+  - No new dependency, background job, external call, broad scan, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/visit-schedule-proposals/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `1` file / `74` tests.
+  - Related schedule generation/planner suite passed `3` files / `151` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, verifier focused Vitest/diff-check, `pnpm typecheck --pretty false`, `pnpm lint`, `pnpm typecheck:no-unused --pretty false`, `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`, and full `git diff --check`: passed.
+- Remaining:
+  - Broad schedule-management / prescription-to-schedule / route-decision objective remains open.
+  - Concurrent unrelated today-workspace facility-packet link files and ledger hunks remain preserved outside this proposal-confirm slice.
+
 ### Master Hub Expired Vehicle Freshness - 2026-07-01 02:28 JST
 
 - Scope:

@@ -46,6 +46,19 @@ Backup directory:
 - remaining work: broad master-management / patient-information objective remains open. Concurrent unrelated dirty changes appeared in `src/app/api/visit-schedule-proposals/[id]/route.ts`, `src/app/api/visit-schedule-proposals/[id]/route.test.ts`, `src/app/api/care-reports/today-workspace/route.ts`, `src/app/api/care-reports/today-workspace/route.test.ts`, `src/lib/visits/navigation.ts`, and `src/lib/visits/navigation.test.ts`; they were inspected, preserved, and must remain outside this MCS commit.
 - next action: run final scoped checks including ledgers, stage only the MCS data-retention slice, commit it as one group, then continue patient/master inventory from a clean owned slice.
 
+### 20260701-0250 JST
+
+- current task: guard visit-schedule proposal confirmation against stale medication-cycle state.
+- files inspected: `git status --short --branch --untracked-files=all`, local Next route-handler docs, `src/app/api/visit-schedules/generate/route.ts`, `src/server/services/visit-schedule-planner.ts`, `prisma/schema/prescription.prisma`, `src/app/api/visit-schedule-proposals/[id]/route.ts`, `src/app/api/visit-schedule-proposals/[id]/route.test.ts`, verifier output, validation output, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/visit-schedule-proposals/[id]/route.ts`, `src/app/api/visit-schedule-proposals/[id]/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: `PATCH /api/visit-schedule-proposals/[id]` confirm could create a `VisitSchedule` from a proposal whose linked `MedicationCycle` had been deleted, moved to another patient/case, or changed to a non-schedulable status after proposal generation.
+- security risks found: reduced stale prescription-to-visit workflow and tenant/patient mix-up risk by reloading the linked medication cycle inside the serializable confirmation transaction with `org_id`, `case_id`, and `patient_id`, then rejecting missing or non-schedulable cycle state before proposal claim, schedule writes, contact-log updates, audit logs, task resolution, or workflow notifications. Existing auth, RLS org context, already-finalized replay, null `cycle_id` compatibility, no-store wrappers, migrations, DB mutation scripts, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: adds one narrow scalar `MedicationCycle` lookup only when a proposal has `cycle_id`. Proposals without a medication-cycle link skip the lookup. No new dependency, background job, external call, broad scan, or unbounded loop was added.
+- validation commands: `pnpm exec vitest run src/app/api/visit-schedule-proposals/[id]/route.test.ts --reporter=dot --testTimeout=60000`; related route/planner suite; scoped ESLint; scoped Prettier check; scoped `git diff --check`; verifier focused Vitest and diff-check; `pnpm typecheck --pretty false`; `pnpm lint`; `pnpm typecheck:no-unused --pretty false`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: focused proposal Vitest passed `1` file / `74` tests; related schedule generation/planner suite passed `3` files / `151` tests with the expected sanitized-500 test log; scoped ESLint, scoped Prettier, scoped diff-check, verifier review, typecheck, lint, no-unused, format check, and full diff-check passed.
+- remaining work: broad schedule-management / prescription-to-schedule / route-decision objective remains open. Concurrent unrelated dirty today-workspace facility-packet link files and ledger hunks remain preserved outside this proposal-confirm commit.
+- next action: stage only the proposal-confirm code and this proposal-confirm ledger hunk, commit, send agmsg FYI, then re-check status before selecting the next bounded schedule/route gap.
+
 ### 20260701-0228 JST
 
 - current task: harden master-hub vehicle freshness status and count alignment.
