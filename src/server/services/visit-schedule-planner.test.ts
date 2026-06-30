@@ -349,6 +349,59 @@ describe('generateVisitScheduleProposalDrafts', () => {
     );
   });
 
+  it('rejects candidates when patient and facility visit windows conflict', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      id: 'case_1',
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'pharmacist_primary',
+      backup_pharmacist_id: 'pharmacist_backup',
+      patient: {
+        scheduling_preference: {
+          preferred_weekdays: [],
+          preferred_time_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+          preferred_time_to: new Date(Date.UTC(1970, 0, 1, 10, 0, 0, 0)),
+          facility_time_from: new Date(Date.UTC(1970, 0, 1, 13, 0, 0, 0)),
+          facility_time_to: new Date(Date.UTC(1970, 0, 1, 14, 0, 0, 0)),
+          family_presence_required: false,
+          visit_buffer_minutes: null,
+        },
+        residences: [
+          {
+            address: '東京都港区1-1-1',
+            lat: 35.0,
+            lng: 139.0,
+            building_id: 'facility_a',
+          },
+        ],
+      },
+    });
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 2,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(result.drafts).toHaveLength(0);
+    expect(result.diagnostics.rejected).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          pharmacist_id: 'pharmacist_primary',
+          reason_code: 'no_slot',
+          detail: '患者在宅時間帯と施設受入時間帯が重ならないため候補外です',
+        }),
+        expect.objectContaining({
+          pharmacist_id: 'pharmacist_backup',
+          reason_code: 'no_slot',
+          detail: '患者在宅時間帯と施設受入時間帯が重ならないため候補外です',
+        }),
+      ]),
+    );
+  });
+
   it('rejects only matching-site candidates on a site-specific business holiday', async () => {
     pharmacistShiftFindManyMock.mockResolvedValueOnce([
       {

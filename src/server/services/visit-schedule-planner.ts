@@ -1377,6 +1377,16 @@ export async function generateVisitScheduleProposalDrafts(
           }),
         };
       }
+      if (mergedVisitWindow == null) {
+        return {
+          kind: 'rejected' as const,
+          diagnostic: buildRejectedDiagnostic({
+            shift,
+            reasonCode: 'no_slot',
+            detail: '患者在宅時間帯と施設受入時間帯が重ならないため候補外です',
+          }),
+        };
+      }
 
       try {
         const shiftDateKey = toDateKey(shift.date);
