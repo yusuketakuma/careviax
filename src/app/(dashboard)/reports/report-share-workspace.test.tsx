@@ -22,6 +22,9 @@ function localIso(year: number, monthIndex: number, day: number, hour: number, m
   return new Date(year, monthIndex, day, hour, minute).toISOString();
 }
 
+const WAITING_REPLY_REQUEST_HREF =
+  '/communications/requests?status=sent&patient_id=p_1&request_id=req_1&related_entity_type=tracing_report&related_entity_id=tracing%2F1%3Fx%3Dy%23frag';
+
 beforeEach(() => {
   useUIStore.setState({ workspaceRailOpen: true });
 });
@@ -113,7 +116,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       title: '高橋 茂 様 — みどり医院への疑義照会',
       subtitle: null,
       actions: [
-        { label: '電話で確認', href: '/communications', kind: 'button' },
+        { label: '依頼を確認', href: WAITING_REPLY_REQUEST_HREF, kind: 'button' },
         { label: '→ カードへ', href: '/patients/p_1', kind: 'link' },
       ],
     },
@@ -392,7 +395,9 @@ describe('ReportShareWorkspace', () => {
     expect(screen.getByText('返信待ち')).toBeTruthy();
     expect(screen.getByText('3日経過')).toBeTruthy();
     expect(screen.getByText('再送する')).toBeTruthy();
-    expect(screen.getByText('電話で確認')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '依頼を確認' }).getAttribute('href')).toBe(
+      WAITING_REPLY_REQUEST_HREF,
+    );
     expect(screen.getByText('今日解決した待ち')).toBeTruthy();
     expect(screen.getByText(/回答受領/)).toBeTruthy();
     expect(screen.getByText('佐々木 ハル 様 — 残薬照会(やまもと内科)')).toBeTruthy();
