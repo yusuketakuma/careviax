@@ -571,6 +571,10 @@ describe('getPatientVisitBrief', () => {
           source_type: 'self_report',
           counterpart: '家族A',
         }),
+        expect.objectContaining({
+          source_type: 'request',
+          summary: '処方医フォロー / escalated / ふらつき継続のため確認',
+        }),
       ]),
     );
     expect(result.unresolved_items).toEqual(

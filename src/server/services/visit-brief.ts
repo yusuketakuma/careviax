@@ -12,6 +12,7 @@ import {
   getInquiryPrimaryDetail,
 } from '@/lib/inquiries/presentation';
 import { listCommunicationQueue } from '@/server/services/communication-queue';
+import { formatCommunicationRequestTypeLabel } from '@/lib/communications/request-labels';
 import { generateVisitBriefAiSummary } from '@/server/services/visit-brief-ai';
 import { buildPatientStateSnapshot } from '@/server/services/patient-state-snapshot';
 import { diffPatientStateSnapshots } from '@/server/services/visit-brief-patient-diff';
@@ -754,7 +755,9 @@ function buildCommunicationItems(args: {
     ...args.communicationRequests.map((item) => ({
       source_type: 'request' as const,
       title: item.subject,
-      summary: `${item.request_type} / ${item.status}${item.content ? ` / ${item.content}` : ''}`,
+      summary: `${formatCommunicationRequestTypeLabel(item.request_type)} / ${item.status}${
+        item.content ? ` / ${item.content}` : ''
+      }`,
       occurred_at: (item.due_date ?? item.requested_at).toISOString(),
       counterpart: null,
       severity: severityFromPriority(item.status),
