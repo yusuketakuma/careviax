@@ -103,33 +103,32 @@ function schedulePatchAuditChanges(
     recurrence_rule: string | null;
   },
 ) {
-  const changes: Record<string, string | number | null> = {};
+  const changes: Record<string, { from: string | number | null; to: string | number | null }> = {};
   const add = (key: string, fromValue: string | number | null, toValue: string | number | null) => {
     if (fromValue === toValue) return;
-    changes[`${key}From`] = fromValue;
-    changes[`${key}To`] = toValue;
+    changes[key] = { from: fromValue, to: toValue };
   };
 
-  add('caseId', from.case_id, to.case_id);
-  add('siteId', from.site_id, to.site_id);
-  add('visitType', from.visit_type, to.visit_type);
+  add('case_id', from.case_id, to.case_id);
+  add('site_id', from.site_id, to.site_id);
+  add('visit_type', from.visit_type, to.visit_type);
   add('priority', from.priority, to.priority);
-  add('scheduledDate', formatUtcDateKey(from.scheduled_date), formatUtcDateKey(to.scheduled_date));
+  add('scheduled_date', formatUtcDateKey(from.scheduled_date), formatUtcDateKey(to.scheduled_date));
   add(
-    'timeWindowStart',
+    'time_window_start',
     timeDateToString(from.time_window_start) ?? null,
     timeDateToString(to.time_window_start) ?? null,
   );
   add(
-    'timeWindowEnd',
+    'time_window_end',
     timeDateToString(from.time_window_end) ?? null,
     timeDateToString(to.time_window_end) ?? null,
   );
-  add('pharmacistId', from.pharmacist_id, to.pharmacist_id);
-  add('vehicleResourceId', from.vehicle_resource_id, to.vehicle_resource_id);
-  add('scheduleStatus', from.schedule_status, to.schedule_status);
-  add('routeOrder', from.route_order, to.route_order);
-  add('recurrenceRule', from.recurrence_rule, to.recurrence_rule);
+  add('pharmacist_id', from.pharmacist_id, to.pharmacist_id);
+  add('vehicle_resource_id', from.vehicle_resource_id, to.vehicle_resource_id);
+  add('schedule_status', from.schedule_status, to.schedule_status);
+  add('route_order', from.route_order, to.route_order);
+  add('recurrence_rule', from.recurrence_rule, to.recurrence_rule);
 
   return {
     ...changes,

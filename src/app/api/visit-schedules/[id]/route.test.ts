@@ -618,10 +618,8 @@ describe('/api/visit-schedules/[id] GET', () => {
         target_type: 'VisitSchedule',
         target_id: 'schedule_1',
         changes: expect.objectContaining({
-          timeWindowStartFrom: null,
-          timeWindowStartTo: '09:30',
-          timeWindowEndFrom: null,
-          timeWindowEndTo: '10:30',
+          time_window_start: { from: null, to: '09:30' },
+          time_window_end: { from: null, to: '10:30' },
         }),
       }),
     });
@@ -709,8 +707,7 @@ describe('/api/visit-schedules/[id] GET', () => {
       data: expect.objectContaining({
         action: 'visit_schedule_updated',
         changes: {
-          scheduleStatusFrom: 'planned',
-          scheduleStatusTo: 'in_progress',
+          schedule_status: { from: 'planned', to: 'in_progress' },
         },
       }),
     });
@@ -1210,8 +1207,7 @@ describe('/api/visit-schedules/[id] GET', () => {
         target_type: 'VisitSchedule',
         target_id: 'schedule_1',
         changes: {
-          scheduleStatusFrom: 'planned',
-          scheduleStatusTo: 'cancelled',
+          schedule_status: { from: 'planned', to: 'cancelled' },
         },
       }),
     });
@@ -1222,6 +1218,24 @@ describe('/api/visit-schedules/[id] GET', () => {
   });
 
   it('assigns selected vehicle resources during schedule PATCH', async () => {
+    visitScheduleTxFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      site_id: 'site_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      schedule_status: 'planned',
+      scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+      time_window_start: null,
+      time_window_end: null,
+      route_order: 1,
+      recurrence_rule: null,
+      version: 2,
+      confirmed_at: null,
+      pharmacist_id: 'user_1',
+      vehicle_resource_id: 'vehicle_1',
+    });
+
     const response = await PATCH(createPatchRequest({ vehicle_resource_id: 'vehicle_1' }), {
       params: Promise.resolve({ id: 'schedule_1' }),
     });
@@ -1268,6 +1282,16 @@ describe('/api/visit-schedules/[id] GET', () => {
         }),
       }),
     );
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'visit_schedule_updated',
+        target_type: 'VisitSchedule',
+        target_id: 'schedule_1',
+        changes: {
+          vehicle_resource_id: { from: null, to: 'vehicle_1' },
+        },
+      }),
+    });
   });
 
   it('rejects vehicle assignment when the vehicle is full across other pharmacists', async () => {
@@ -2215,8 +2239,7 @@ describe('/api/visit-schedules/[id] GET', () => {
       data: expect.objectContaining({
         action: 'visit_schedule_updated',
         changes: expect.objectContaining({
-          routeOrderFrom: 1,
-          routeOrderTo: 2,
+          route_order: { from: 1, to: 2 },
         }),
       }),
     });
