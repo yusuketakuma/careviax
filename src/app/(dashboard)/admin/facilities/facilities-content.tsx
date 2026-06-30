@@ -34,6 +34,8 @@ import {
   ADMIN_FACILITIES_API_PATH,
   buildAdminFacilitiesApiPath,
   buildAdminFacilityApiPath,
+  buildAdminFacilityUnitApiPath,
+  buildAdminFacilityUnitsApiPath,
 } from '@/lib/facilities/api-paths';
 
 type FacilityType =
@@ -81,6 +83,21 @@ type FacilitiesResponse = {
   truncated?: boolean;
 };
 
+export type FacilityUnit = {
+  id: string;
+  name: string;
+  floor: string | null;
+  unit_type: 'floor' | 'wing' | 'unit';
+  capacity: number | null;
+  notes: string | null;
+  display_order: number;
+  patient_count: number;
+};
+
+type FacilityUnitsResponse = {
+  data: FacilityUnit[];
+};
+
 type ContactForm = {
   id?: string;
   name: string;
@@ -105,6 +122,15 @@ type FacilityForm = {
   contacts: ContactForm[];
 };
 
+type UnitForm = {
+  name: string;
+  floor: string;
+  unit_type: FacilityUnit['unit_type'];
+  capacity: string;
+  notes: string;
+  display_order: string;
+};
+
 const FACILITY_TYPES: Array<{ value: FacilityType; label: string }> = [
   { value: 'nursing_home', label: '介護施設' },
   { value: 'group_home', label: 'グループホーム' },
@@ -127,6 +153,13 @@ const WEEKDAYS = [
 ] as const;
 
 const EMPTY_FACILITIES: Facility[] = [];
+const EMPTY_UNITS: FacilityUnit[] = [];
+
+const UNIT_TYPES: Array<{ value: FacilityUnit['unit_type']; label: string }> = [
+  { value: 'unit', label: 'ユニット' },
+  { value: 'floor', label: 'フロア' },
+  { value: 'wing', label: '棟' },
+];
 
 function createEmptyForm(): FacilityForm {
   return {
@@ -155,6 +188,17 @@ function createEmptyContact(): ContactForm {
   };
 }
 
+function createEmptyUnitForm(): UnitForm {
+  return {
+    name: '',
+    floor: '',
+    unit_type: 'unit',
+    capacity: '',
+    notes: '',
+    display_order: '0',
+  };
+}
+
 function toForm(facility: Facility): FacilityForm {
   return {
     name: facility.name,
@@ -179,6 +223,17 @@ function toForm(facility: Facility): FacilityForm {
   };
 }
 
+function toUnitForm(unit: FacilityUnit): UnitForm {
+  return {
+    name: unit.name,
+    floor: unit.floor ?? '',
+    unit_type: unit.unit_type,
+    capacity: unit.capacity == null ? '' : String(unit.capacity),
+    notes: unit.notes ?? '',
+    display_order: String(unit.display_order),
+  };
+}
+
 function trimOrUndefined(value: string) {
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
@@ -187,6 +242,13 @@ function trimOrUndefined(value: string) {
 function trimOrNull(value: string) {
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function parseOptionalInteger(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function contactHasInput(contact: ContactForm) {
@@ -238,6 +300,18 @@ function getFormBlocker(form: FacilityForm, editingFacility: Facility | null) {
   return null;
 }
 
+function getUnitFormBlocker(form: UnitForm | null) {
+  if (!form) return null;
+  if (!form.name.trim()) return 'ユニット名は必須です。';
+  if (form.capacity.trim() && parseOptionalInteger(form.capacity) === undefined) {
+    return '定員は整数で入力してください。';
+  }
+  if (form.display_order.trim() && parseOptionalInteger(form.display_order) === undefined) {
+    return '表示順は整数で入力してください。';
+  }
+  return null;
+}
+
 function buildCreatePayload(form: FacilityForm) {
   return {
     name: form.name.trim(),
@@ -266,6 +340,28 @@ function buildUpdatePayload(form: FacilityForm, facility: Facility) {
     regular_visit_weekdays: [...form.regular_visit_weekdays].sort((a, b) => a - b),
     notes: trimOrNull(form.notes),
     contacts: normalizeContacts(form.contacts),
+  };
+}
+
+function buildCreateUnitPayload(form: UnitForm) {
+  return {
+    name: form.name.trim(),
+    floor: trimOrUndefined(form.floor),
+    unit_type: form.unit_type,
+    capacity: parseOptionalInteger(form.capacity),
+    notes: trimOrUndefined(form.notes),
+    display_order: parseOptionalInteger(form.display_order) ?? 0,
+  };
+}
+
+function buildUpdateUnitPayload(form: UnitForm) {
+  return {
+    name: form.name.trim(),
+    floor: trimOrNull(form.floor),
+    unit_type: form.unit_type,
+    capacity: form.capacity.trim() ? parseOptionalInteger(form.capacity) : null,
+    notes: trimOrNull(form.notes),
+    display_order: parseOptionalInteger(form.display_order) ?? 0,
   };
 }
 
@@ -299,6 +395,9 @@ export function FacilitiesContent() {
   const [editingFacility, setEditingFacility] = useState<Facility | null>(null);
   const [form, setForm] = useState<FacilityForm>(createEmptyForm);
   const [deleteTarget, setDeleteTarget] = useState<Facility | null>(null);
+  const [unitForm, setUnitForm] = useState<UnitForm | null>(null);
+  const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
+  const [unitDeleteTarget, setUnitDeleteTarget] = useState<FacilityUnit | null>(null);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-facilities', orgId],
@@ -313,17 +412,34 @@ export function FacilitiesContent() {
   });
 
   const facilities = data?.data ?? EMPTY_FACILITIES;
+  const unitsQuery = useQuery({
+    queryKey: ['admin-facility-units', orgId, editingFacility?.id],
+    queryFn: async () => {
+      if (!editingFacility) throw new Error('施設が選択されていません');
+      const response = await fetch(buildAdminFacilityUnitsApiPath(editingFacility.id), {
+        headers: buildOrgHeaders(orgId),
+      });
+      if (!response.ok) throw new Error('施設ユニットの取得に失敗しました');
+      return response.json() as Promise<FacilityUnitsResponse>;
+    },
+    enabled: !!orgId && !!editingFacility && sheetOpen,
+  });
+  const units = unitsQuery.data?.data ?? EMPTY_UNITS;
   const filteredFacilities = useMemo(
     () => facilities.filter((facility) => matchesFacilityQuery(facility, query)),
     [facilities, query],
   );
   const formBlocker = getFormBlocker(form, editingFacility);
+  const unitFormBlocker = getUnitFormBlocker(unitForm);
   const totalCount = data?.total_count ?? facilities.length;
   const hiddenCount = data?.hidden_count ?? 0;
 
   function resetForm() {
     setEditingFacility(null);
     setForm(createEmptyForm());
+    setUnitForm(null);
+    setEditingUnitId(null);
+    setUnitDeleteTarget(null);
   }
 
   function openCreate() {
@@ -334,6 +450,8 @@ export function FacilitiesContent() {
   function openEdit(facility: Facility) {
     setEditingFacility(facility);
     setForm(toForm(facility));
+    setUnitForm(null);
+    setEditingUnitId(null);
     setSheetOpen(true);
   }
 
@@ -411,6 +529,66 @@ export function FacilitiesContent() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '削除に失敗しました');
+    },
+  });
+
+  const saveUnitMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingFacility || !unitForm) throw new Error('施設とユニットを選択してください');
+      const blocker = getUnitFormBlocker(unitForm);
+      if (blocker) throw new Error(blocker);
+      const endpoint = editingUnitId
+        ? buildAdminFacilityUnitApiPath(editingFacility.id, editingUnitId)
+        : buildAdminFacilityUnitsApiPath(editingFacility.id);
+      const method = editingUnitId ? 'PATCH' : 'POST';
+      const response = await fetch(endpoint, {
+        method,
+        headers: buildOrgJsonHeaders(orgId),
+        body: JSON.stringify(
+          editingUnitId ? buildUpdateUnitPayload(unitForm) : buildCreateUnitPayload(unitForm),
+        ),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error((payload as { message?: string }).message ?? 'ユニット保存に失敗しました');
+      }
+      return payload;
+    },
+    onSuccess: async () => {
+      toast.success(editingUnitId ? 'ユニットを更新しました' : 'ユニットを登録しました');
+      setUnitForm(null);
+      setEditingUnitId(null);
+      await queryClient.invalidateQueries({
+        queryKey: ['admin-facility-units', orgId, editingFacility?.id],
+      });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'ユニット保存に失敗しました');
+    },
+  });
+
+  const deleteUnitMutation = useMutation({
+    mutationFn: async (unitId: string) => {
+      if (!editingFacility) throw new Error('施設が選択されていません');
+      const response = await fetch(buildAdminFacilityUnitApiPath(editingFacility.id, unitId), {
+        method: 'DELETE',
+        headers: buildOrgHeaders(orgId),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error((payload as { message?: string }).message ?? 'ユニット削除に失敗しました');
+      }
+      return payload;
+    },
+    onSuccess: async () => {
+      toast.success('ユニットを削除しました');
+      setUnitDeleteTarget(null);
+      await queryClient.invalidateQueries({
+        queryKey: ['admin-facility-units', orgId, editingFacility?.id],
+      });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'ユニット削除に失敗しました');
     },
   });
 
@@ -526,6 +704,24 @@ export function FacilitiesContent() {
           if (!deleteTarget) return;
           deleteMutation.mutate(deleteTarget.id);
           setDeleteTarget(null);
+        }}
+      />
+      <ConfirmDialog
+        open={unitDeleteTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setUnitDeleteTarget(null);
+        }}
+        title="ユニットを削除しますか？"
+        description={
+          unitDeleteTarget
+            ? `${unitDeleteTarget.name} を削除します。患者が在籍中の場合は削除できません。`
+            : ''
+        }
+        variant="destructive"
+        confirmLabel="削除する"
+        onConfirm={() => {
+          if (!unitDeleteTarget) return;
+          deleteUnitMutation.mutate(unitDeleteTarget.id);
         }}
       />
 
@@ -861,6 +1057,232 @@ export function FacilitiesContent() {
                   ))}
                 </div>
               )}
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">ユニット・フロア</h3>
+                  <p className="text-sm text-muted-foreground">
+                    患者居宅のユニットIDに使うフロア・棟・ユニットを管理します。
+                  </p>
+                </div>
+                {editingFacility ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="!h-11 !min-h-[44px]"
+                    onClick={() => {
+                      setEditingUnitId(null);
+                      setUnitForm(createEmptyUnitForm());
+                    }}
+                  >
+                    <Plus aria-hidden className="mr-2 h-4 w-4" />
+                    ユニットを追加
+                  </Button>
+                ) : null}
+              </div>
+
+              {!editingFacility ? (
+                <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+                  ユニットは施設登録後に追加できます。
+                </p>
+              ) : unitsQuery.isError ? (
+                <Alert variant="destructive" role="alert">
+                  <AlertTitle>ユニットを取得できませんでした</AlertTitle>
+                  <AlertDescription>
+                    施設の保存内容は保持したまま、ユニット一覧だけ再読み込みしてください。
+                  </AlertDescription>
+                </Alert>
+              ) : unitsQuery.isLoading ? (
+                <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+                  ユニットを読み込み中...
+                </p>
+              ) : units.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+                  ユニットは未登録です。施設内で訪問順や居室管理を分ける場合に追加してください。
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {units.map((unit) => (
+                    <div
+                      key={unit.id}
+                      className="flex flex-col gap-3 rounded-lg border border-border/70 p-3 sm:flex-row sm:items-start sm:justify-between"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium text-foreground">{unit.name}</p>
+                          <StateBadge role="readonly">
+                            {UNIT_TYPES.find((type) => type.value === unit.unit_type)?.label ??
+                              unit.unit_type}
+                          </StateBadge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {[unit.floor, unit.capacity == null ? null : `定員${unit.capacity}名`]
+                            .filter(Boolean)
+                            .join(' / ') || '階・定員未設定'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          入居患者 {unit.patient_count}名 / 表示順 {unit.display_order}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="!h-11 !min-h-[44px]"
+                          aria-label={`${unit.name}を編集`}
+                          onClick={() => {
+                            setEditingUnitId(unit.id);
+                            setUnitForm(toUnitForm(unit));
+                          }}
+                        >
+                          編集
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="!h-11 !min-h-[44px]"
+                          aria-label={`${unit.name}を削除`}
+                          disabled={unit.patient_count > 0 || deleteUnitMutation.isPending}
+                          onClick={() => setUnitDeleteTarget(unit)}
+                        >
+                          削除
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {unitForm ? (
+                <div className="space-y-3 rounded-lg border border-border/70 bg-muted/20 p-3">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="facility-unit-name">ユニット名</Label>
+                      <Input
+                        id="facility-unit-name"
+                        value={unitForm.name}
+                        onChange={(event) =>
+                          setUnitForm((current) =>
+                            current ? { ...current, name: event.target.value } : current,
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="facility-unit-type">ユニット種別</Label>
+                      <Select
+                        value={unitForm.unit_type}
+                        onValueChange={(value) =>
+                          setUnitForm((current) =>
+                            current
+                              ? { ...current, unit_type: value as FacilityUnit['unit_type'] }
+                              : current,
+                          )
+                        }
+                      >
+                        <SelectTrigger id="facility-unit-type" className="!h-11 !min-h-[44px]">
+                          <SelectValue placeholder="ユニット種別" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {UNIT_TYPES.map((type) => (
+                            <SelectItem key={type.value} value={type.value}>
+                              {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="facility-unit-floor">階・棟</Label>
+                      <Input
+                        id="facility-unit-floor"
+                        value={unitForm.floor}
+                        onChange={(event) =>
+                          setUnitForm((current) =>
+                            current ? { ...current, floor: event.target.value } : current,
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="facility-unit-capacity">定員</Label>
+                      <Input
+                        id="facility-unit-capacity"
+                        type="number"
+                        min={0}
+                        value={unitForm.capacity}
+                        onChange={(event) =>
+                          setUnitForm((current) =>
+                            current ? { ...current, capacity: event.target.value } : current,
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="facility-unit-display-order">表示順</Label>
+                      <Input
+                        id="facility-unit-display-order"
+                        type="number"
+                        min={0}
+                        value={unitForm.display_order}
+                        onChange={(event) =>
+                          setUnitForm((current) =>
+                            current ? { ...current, display_order: event.target.value } : current,
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1.5 md:col-span-2">
+                      <Label htmlFor="facility-unit-notes">ユニットメモ</Label>
+                      <Textarea
+                        id="facility-unit-notes"
+                        rows={2}
+                        value={unitForm.notes}
+                        onChange={(event) =>
+                          setUnitForm((current) =>
+                            current ? { ...current, notes: event.target.value } : current,
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {unitFormBlocker ? (
+                    <p
+                      id="facility-unit-save-blocker"
+                      className="text-sm text-destructive"
+                      role="alert"
+                    >
+                      {unitFormBlocker}
+                    </p>
+                  ) : null}
+
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="!h-11 !min-h-[44px]"
+                      onClick={() => {
+                        setUnitForm(null);
+                        setEditingUnitId(null);
+                      }}
+                    >
+                      ユニット編集を閉じる
+                    </Button>
+                    <Button
+                      type="button"
+                      className="!h-11 !min-h-[44px]"
+                      onClick={() => saveUnitMutation.mutate()}
+                      disabled={Boolean(unitFormBlocker) || saveUnitMutation.isPending}
+                      aria-describedby={unitFormBlocker ? 'facility-unit-save-blocker' : undefined}
+                    >
+                      {saveUnitMutation.isPending ? '保存中...' : 'ユニットを保存'}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             {formBlocker ? (

@@ -8,7 +8,7 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { toast } from 'sonner';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildAdminFacilityApiPath } from '@/lib/facilities/api-paths';
-import { FacilitiesContent, type Facility } from './facilities-content';
+import { FacilitiesContent, type Facility, type FacilityUnit } from './facilities-content';
 
 setupDomTestEnv();
 
@@ -134,7 +134,23 @@ function facilityFixture(id = 'facility_1'): Facility {
   };
 }
 
-function stubFetchWithFacility(facility = facilityFixture()) {
+function unitFixture(id = 'unit_1'): FacilityUnit {
+  return {
+    id,
+    name: '2F 東',
+    floor: '2F',
+    unit_type: 'wing',
+    capacity: 24,
+    notes: 'エレベーター東側',
+    display_order: 1,
+    patient_count: 3,
+  };
+}
+
+function stubFetchWithFacility(
+  facility = facilityFixture(),
+  units: FacilityUnit[] = [unitFixture()],
+) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
 
@@ -151,10 +167,34 @@ function stubFetchWithFacility(facility = facilityFixture()) {
       );
     }
 
+    if (url === `/api/admin/facilities/${encodeURIComponent(facility.id)}/units` && !init?.method) {
+      return new Response(JSON.stringify({ data: units }), { status: 200 });
+    }
+
     if (url === '/api/admin/facilities' && init?.method === 'POST') {
       return new Response(JSON.stringify({ data: { ...facility, id: 'facility_new' } }), {
         status: 201,
       });
+    }
+
+    if (
+      url === `/api/admin/facilities/${encodeURIComponent(facility.id)}/units` &&
+      init?.method === 'POST'
+    ) {
+      return new Response(
+        JSON.stringify({ data: { ...unitFixture('unit_new'), patient_count: 0 } }),
+        {
+          status: 201,
+        },
+      );
+    }
+
+    if (url.includes('/units/') && init?.method === 'PATCH') {
+      return new Response(JSON.stringify({ data: units[0] ?? unitFixture() }), { status: 200 });
+    }
+
+    if (url.includes('/units/') && init?.method === 'DELETE') {
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
     }
 
     if (url.startsWith('/api/admin/facilities/') && init?.method === 'PATCH') {
@@ -288,6 +328,88 @@ describe('FacilitiesContent', () => {
       facility_type: 'nursing_home',
       address: '東京都新宿区2-2',
       contacts: [],
+    });
+  });
+
+  it('loads facility units when editing a facility', async () => {
+    const fetchMock = stubFetchWithFacility();
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'グリーンヒル を編集' }));
+
+    expect(await screen.findByText('2F 東')).toBeTruthy();
+    expect(screen.getByText('入居患者 3名 / 表示順 1')).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/facilities/facility_1/units', {
+      headers: buildOrgHeaders('org_1'),
+    });
+  });
+
+  it('POST creates a facility unit through the encoded facility units path', async () => {
+    const fetchMock = stubFetchWithFacility();
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'グリーンヒル を編集' }));
+    await screen.findByText('2F 東');
+    fireEvent.click(screen.getByRole('button', { name: 'ユニットを追加' }));
+    fireEvent.change(screen.getByLabelText('ユニット名'), {
+      target: { value: '3F 西' },
+    });
+    fireEvent.change(screen.getByLabelText('階・棟'), {
+      target: { value: '3F' },
+    });
+    fireEvent.change(screen.getByLabelText('定員'), {
+      target: { value: '18' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'ユニットを保存' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/admin/facilities/facility_1/units',
+        expect.objectContaining({ method: 'POST', headers: buildOrgJsonHeaders('org_1') }),
+      );
+    });
+    const postCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input) === '/api/admin/facilities/facility_1/units' &&
+        (init as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(JSON.parse((postCall?.[1] as RequestInit).body as string)).toMatchObject({
+      name: '3F 西',
+      floor: '3F',
+      unit_type: 'unit',
+      capacity: 18,
+      display_order: 0,
+    });
+  });
+
+  it('PATCH updates an existing facility unit through the encoded unit path', async () => {
+    const fetchMock = stubFetchWithFacility();
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'グリーンヒル を編集' }));
+    fireEvent.click(await screen.findByRole('button', { name: '2F 東を編集' }));
+    fireEvent.change(screen.getByLabelText('定員'), {
+      target: { value: '30' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'ユニットを保存' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/admin/facilities/facility_1/units/unit_1',
+        expect.objectContaining({ method: 'PATCH', headers: buildOrgJsonHeaders('org_1') }),
+      );
+    });
+    const patchCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input) === '/api/admin/facilities/facility_1/units/unit_1' &&
+        (init as RequestInit | undefined)?.method === 'PATCH',
+    );
+    expect(JSON.parse((patchCall?.[1] as RequestInit).body as string)).toMatchObject({
+      name: '2F 東',
+      floor: '2F',
+      unit_type: 'wing',
+      capacity: 30,
+      display_order: 1,
     });
   });
 

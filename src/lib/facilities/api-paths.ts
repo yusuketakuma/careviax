@@ -13,3 +13,11 @@ export function buildAdminFacilityApiPath(facilityId: string) {
 export function buildAdminFacilityContactsApiPath(facilityId: string) {
   return `${buildAdminFacilityApiPath(facilityId)}/contacts`;
 }
+
+export function buildAdminFacilityUnitsApiPath(facilityId: string) {
+  return `${buildAdminFacilityApiPath(facilityId)}/units`;
+}
+
+export function buildAdminFacilityUnitApiPath(facilityId: string, unitId: string) {
+  return `${buildAdminFacilityUnitsApiPath(facilityId)}/${encodePathSegment(unitId)}`;
+}

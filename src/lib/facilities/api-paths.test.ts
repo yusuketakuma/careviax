@@ -4,6 +4,8 @@ import {
   buildAdminFacilitiesApiPath,
   buildAdminFacilityApiPath,
   buildAdminFacilityContactsApiPath,
+  buildAdminFacilityUnitApiPath,
+  buildAdminFacilityUnitsApiPath,
 } from './api-paths';
 
 describe('facility admin API path helpers', () => {
@@ -39,7 +41,23 @@ describe('facility admin API path helpers', () => {
     );
   });
 
+  it('builds unit collection paths from the encoded facility path', () => {
+    expect(buildAdminFacilityUnitsApiPath('facility/1')).toBe(
+      '/api/admin/facilities/facility%2F1/units',
+    );
+  });
+
+  it('builds unit detail paths with separately encoded facility and unit ids', () => {
+    expect(buildAdminFacilityUnitApiPath('facility/1', 'unit 2/東')).toBe(
+      '/api/admin/facilities/facility%2F1/units/unit%202%2F%E6%9D%B1',
+    );
+  });
+
   it.each(['.', '..'])('rejects exact dot-segment facility id %s', (facilityId) => {
     expect(() => buildAdminFacilityApiPath(facilityId)).toThrow(RangeError);
+  });
+
+  it.each(['.', '..'])('rejects exact dot-segment facility unit id %s', (unitId) => {
+    expect(() => buildAdminFacilityUnitApiPath('facility_1', unitId)).toThrow(RangeError);
   });
 });
