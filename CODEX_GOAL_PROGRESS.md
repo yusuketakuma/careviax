@@ -39,7 +39,7 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Added a route-insertion travel-cost lookup that asks the existing road estimator `estimateMatrix` once for the site, ordered shift points, and candidate point.
   - Route insertion scoring now reads candidate previous/next/bypass costs from that one-shot matrix when available, falls back to the existing pair estimator path when the matrix provider is unavailable, and uses the existing fallback travel cost for missing matrix cells.
   - Shared road-estimate-to-cost formatting now keeps the existing travel summary and fallback semantics.
-  - Regression coverage proves matrix use for a single existing visit and for multi-point insertion scoring, including route order, score, summary, and avoiding single-pair estimator calls when a matrix is available.
+  - Regression coverage proves matrix use for multi-point insertion scoring, including route order, score, summary, matrix node order, and avoiding single-pair estimator calls when a matrix is available.
 - Safety:
   - No auth, RLS, PHI, permission, audit, migration, external-send, push/deploy, secret, or destructive-operation surface was changed.
   - Existing operating-hour, cadence, capacity, workflow-gate, specialty, route-order, and max-travel guards remain in place.
@@ -48,8 +48,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Preserves fallback behavior when the provider has no matrix or returns incomplete matrix cells.
   - No new dependency, DB query, background job, render path, broad scan, or unbounded loop was added.
 - Validation:
-  - Planner focused Vitest passed `1` file / `44` tests.
-  - Proposal API + planner Vitest passed `2` files / `133` tests with the expected sanitized-500 route log.
+  - Planner focused Vitest passed `1` file / `43` tests.
+  - Proposal API + planner Vitest passed `2` files / `132` tests with the expected sanitized-500 route log.
   - Scoped ESLint, scoped Prettier check, and scoped diff-check on planner files: passed.
   - `pnpm typecheck --pretty false`: passed.
   - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
