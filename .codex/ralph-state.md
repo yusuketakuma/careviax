@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0524 JST
+
+- current task: use the existing road travel matrix for visit planner route insertion scoring.
+- files inspected: `git status --short --branch --untracked-files=all`, `src/server/services/visit-schedule-planner.ts`, `src/server/services/visit-schedule-planner.test.ts`, `src/server/services/road-routing.ts`, focused diffs, and validation output.
+- files changed: `src/server/services/visit-schedule-planner.ts`, `src/server/services/visit-schedule-planner.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: route insertion scoring repeatedly called the road travel estimator for adjacent previous/candidate, candidate/next, and bypass pairs while evaluating insertion positions for the same shift/candidate. With a road-routing provider available, that duplicated provider work even though the same site/existing/candidate point set can be evaluated as one matrix.
+- security risks found: no auth, RLS, PHI, permission, audit, migration, external-send, push/deploy, secret, or destructive-operation surface was changed. Existing planner guards for workflow readiness, operating hours, cadence, capacity, specialty matching, route order, and max-travel limits remain in place.
+- performance issues found: reduced repeated route-estimator calls by using one `estimateMatrix` lookup per shift candidate when available, while retaining pair-estimator/fallback behavior if the matrix provider is unavailable or a matrix cell is missing. No new dependency, DB query, background job, render path, broad scan, or unbounded loop was added.
+- validation commands: `pnpm exec vitest run src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`; `pnpm exec vitest run src/app/api/visit-schedule-proposals/route.test.ts src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`; `pnpm typecheck --pretty false`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`; `pnpm lint`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: planner focused Vitest passed `1` file / `44` tests; proposal API + planner Vitest passed `2` files / `133` tests with the expected sanitized-500 route log; full typecheck passed; no-unused passed; full lint passed; full format check passed; full diff-check passed.
+- remaining work: broad master-management, patient-information, report, schedule, and multi-professional cooperation objective remains active. Planner still has deeper follow-ups such as candidate-scoped confirmed schedule query narrowing and broader route optimization.
+- next action: stage only planner code/test plus matching ledger hunks, commit this schedule performance group, send agmsg FYI, then re-check that the worktree is clean.
+
 ### 20260701-0515 JST
 
 - current task: finish patient contact OCC production-surface integration and PHI-safe audit visibility.

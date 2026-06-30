@@ -1495,6 +1495,129 @@ describe('generateVisitScheduleProposalDrafts', () => {
     );
   });
 
+  it('uses a one-shot road travel matrix for route insertion scoring', async () => {
+    const durationByAddressPair = new Map<string, number>([
+      ['東京都港区2-2-2->既存A', 10],
+      ['東京都港区2-2-2->東京都港区1-1-1', 30],
+      ['既存A->東京都港区1-1-1', 5],
+      ['東京都港区1-1-1->既存A', 30],
+      ['既存A->既存B', 40],
+      ['東京都港区1-1-1->既存B', 5],
+      ['既存B->東京都港区1-1-1', 30],
+    ]);
+    const estimateOne = vi.fn(async () => ({ durationMinutes: 999, distanceKm: 1 }));
+    const estimateMatrix = vi.fn(async (points: Array<{ address?: string | null }>) =>
+      points.map((from, fromIndex) =>
+        points.map((to, toIndex) => {
+          if (fromIndex === toIndex) return null;
+          const durationMinutes = durationByAddressPair.get(`${from.address}->${to.address}`);
+          return {
+            durationMinutes: durationMinutes ?? 100,
+            distanceKm: 1,
+          };
+        }),
+      ),
+    );
+    createRoadTravelEstimatorMock.mockReturnValue(Object.assign(estimateOne, { estimateMatrix }));
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        date: new Date('2026-03-28T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_primary',
+          name: '主担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: [],
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+    visitScheduleFindManyMock.mockResolvedValueOnce([
+      {
+        pharmacist_id: 'pharmacist_primary',
+        route_order: 1,
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        time_window_start: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        time_window_end: new Date(Date.UTC(1970, 0, 1, 10, 0, 0, 0)),
+        schedule_status: 'planned',
+        confirmed_at: null,
+        vehicle_resource_id: null,
+        case_: {
+          patient: {
+            id: 'existing_a',
+            residences: [{ address: '既存A', lat: 35.02, lng: 139.02 }],
+          },
+        },
+        site: {
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+      {
+        pharmacist_id: 'pharmacist_primary',
+        route_order: 2,
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        time_window_start: new Date(Date.UTC(1970, 0, 1, 11, 0, 0, 0)),
+        time_window_end: new Date(Date.UTC(1970, 0, 1, 12, 0, 0, 0)),
+        schedule_status: 'planned',
+        confirmed_at: null,
+        vehicle_resource_id: null,
+        case_: {
+          patient: {
+            id: 'existing_b',
+            residences: [{ address: '既存B', lat: 35.03, lng: 139.03 }],
+          },
+        },
+        site: {
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(result.drafts).toHaveLength(1);
+    expect(result.drafts[0]).toMatchObject({
+      route_order: 2,
+      route_distance_score: -30,
+    });
+    expect(result.diagnostics.accepted[0]).toMatchObject({
+      route_order: 2,
+      travel_summary: expect.stringContaining('前訪問から 実道路移動 約5分'),
+    });
+    expect(estimateMatrix).toHaveBeenCalledTimes(1);
+    expect(estimateMatrix.mock.calls[0]?.[0].map((point) => point.address)).toEqual([
+      '東京都港区2-2-2',
+      '既存A',
+      '既存B',
+      '東京都港区1-1-1',
+    ]);
+    expect(estimateOne).not.toHaveBeenCalled();
+  });
+
   it('rejects max_travel_minutes candidates when missing geocodes make the travel limit unverifiable', async () => {
     careCaseFindFirstMock.mockResolvedValueOnce({
       id: 'case_1',

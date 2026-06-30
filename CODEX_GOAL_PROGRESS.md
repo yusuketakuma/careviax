@@ -30,6 +30,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Visit Planner Route Insertion Matrix - 2026-07-01 05:24 JST
+
+- Scope:
+  - Continued visit-schedule planner P7 performance hardening.
+  - Focused on route insertion scoring, which repeatedly asked the road estimator for adjacent pair costs while evaluating the same shift/candidate insertion positions.
+- Fixed:
+  - Added a route-insertion travel-cost lookup that asks the existing road estimator `estimateMatrix` once for the site, ordered shift points, and candidate point.
+  - Route insertion scoring now reads candidate previous/next/bypass costs from that one-shot matrix when available, and falls back to the existing pair estimator/fallback distance path when matrix data is unavailable.
+  - Shared road-estimate-to-cost formatting now keeps the existing travel summary and fallback semantics.
+  - Regression coverage proves matrix use for a single existing visit and for multi-point insertion scoring, including route order, score, summary, and avoiding single-pair estimator calls when a matrix is available.
+- Safety:
+  - No auth, RLS, PHI, permission, audit, migration, external-send, push/deploy, secret, or destructive-operation surface was changed.
+  - Existing operating-hour, cadence, capacity, workflow-gate, specialty, route-order, and max-travel guards remain in place.
+- Performance:
+  - Reduces repeated road-estimator calls during route insertion scoring by batching the candidate/site/existing route points into one matrix lookup per shift candidate.
+  - Preserves fallback behavior when the provider has no matrix or returns incomplete matrix cells.
+  - No new dependency, DB query, background job, render path, broad scan, or unbounded loop was added.
+- Validation:
+  - Planner focused Vitest passed `1` file / `44` tests.
+  - Proposal API + planner Vitest passed `2` files / `133` tests with the expected sanitized-500 route log.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master-management, patient-information, report, schedule, and multi-professional cooperation objective remains open.
+  - Planner still has deeper follow-ups such as candidate-scoped confirmed schedule query narrowing and broader route optimization.
+
 ### Patient Contacts Production Surface And Audit Timeline - 2026-07-01 05:15 JST
 
 - Scope:

@@ -8,7 +8,11 @@ import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concu
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { getHomeVisitSpecialMedicalProcedures } from '@/lib/patient/home-visit-intake';
 import { applyTimeDateToDate, timeDateToString } from '@/lib/visits/time-of-day';
-import { createRoadTravelEstimator, estimateFallbackTravelMinutes } from './road-routing';
+import {
+  createRoadTravelEstimator,
+  estimateFallbackTravelMinutes,
+  type TravelEstimate,
+} from './road-routing';
 import { evaluateVisitWorkflowGate } from './management-plans';
 import { resolveMedicationDeadlineSummary } from './visit-medication-deadline';
 import type { VisitRouteTravelMode } from './visit-route-engine';
@@ -558,6 +562,25 @@ function getFallbackTravelCost(
   };
 }
 
+function travelEstimateToCost(
+  estimate: TravelEstimate | null,
+  a: SchedulePoint,
+  b: SchedulePoint,
+  travelMode: VisitRouteTravelMode,
+) {
+  if (estimate) {
+    return {
+      score: estimate.durationMinutes,
+      limitMinutes: estimate.durationMinutes,
+      summary: `実道路移動 約${Math.round(estimate.durationMinutes)}分${
+        Number.isFinite(estimate.distanceKm) ? ` / ${estimate.distanceKm.toFixed(1)}km` : ''
+      }`,
+    } satisfies TravelCost;
+  }
+
+  return getFallbackTravelCost(a, b, travelMode);
+}
+
 function sortRoutePoints(points: SchedulePoint[]) {
   return [...points].sort((left, right) => {
     const leftOrder = left.routeOrder ?? Number.MAX_SAFE_INTEGER;
@@ -595,17 +618,45 @@ async function getTravelCost(
   travelMode: VisitRouteTravelMode,
 ) {
   const roadEstimate = await estimateRoadTravel(a, b);
-  if (roadEstimate) {
-    return {
-      score: roadEstimate.durationMinutes,
-      limitMinutes: roadEstimate.durationMinutes,
-      summary: `実道路移動 約${Math.round(roadEstimate.durationMinutes)}分${
-        Number.isFinite(roadEstimate.distanceKm) ? ` / ${roadEstimate.distanceKm.toFixed(1)}km` : ''
-      }`,
-    } satisfies TravelCost;
+  return travelEstimateToCost(roadEstimate, a, b, travelMode);
+}
+
+async function buildRouteInsertionTravelCostLookup(args: {
+  sitePoint: SchedulePoint | null;
+  orderedPoints: SchedulePoint[];
+  candidatePoint: SchedulePoint;
+  estimateRoadTravel: ReturnType<typeof createRoadTravelEstimator>;
+  travelMode: VisitRouteTravelMode;
+}) {
+  const nodes = [
+    ...(args.sitePoint ? [args.sitePoint] : []),
+    ...args.orderedPoints,
+    args.candidatePoint,
+  ];
+  if (nodes.length < 2) {
+    return (a: SchedulePoint, b: SchedulePoint) =>
+      getTravelCost(a, b, args.estimateRoadTravel, args.travelMode);
   }
 
-  return getFallbackTravelCost(a, b, travelMode);
+  const matrix =
+    'estimateMatrix' in args.estimateRoadTravel &&
+    typeof args.estimateRoadTravel.estimateMatrix === 'function'
+      ? await args.estimateRoadTravel.estimateMatrix(nodes)
+      : null;
+  if (!matrix) {
+    return (a: SchedulePoint, b: SchedulePoint) =>
+      getTravelCost(a, b, args.estimateRoadTravel, args.travelMode);
+  }
+
+  const indexByPoint = new Map(nodes.map((point, index) => [point, index]));
+  return async (a: SchedulePoint, b: SchedulePoint) => {
+    const fromIndex = indexByPoint.get(a);
+    const toIndex = indexByPoint.get(b);
+    if (fromIndex == null || toIndex == null) {
+      return getTravelCost(a, b, args.estimateRoadTravel, args.travelMode);
+    }
+    return travelEstimateToCost(matrix[fromIndex]?.[toIndex] ?? null, a, b, args.travelMode);
+  };
 }
 
 async function computeRouteInsertion(
@@ -616,13 +667,22 @@ async function computeRouteInsertion(
   travelMode: VisitRouteTravelMode,
 ) {
   if (existingPoints.length === 0) {
-    const initialCost = sitePoint
-      ? await getTravelCost(sitePoint, candidatePoint, estimateRoadTravel, travelMode)
-      : {
-          score: 0,
-          limitMinutes: null,
-          summary: '拠点座標未設定のため単独訪問（移動上限は未検証）',
-        };
+    if (!sitePoint) {
+      return {
+        routeOrder: 1,
+        travelScore: 0,
+        travelLimitMinutes: null,
+        travelSummary: '拠点座標未設定のため単独訪問（移動上限は未検証）',
+      };
+    }
+    const lookupTravelCost = await buildRouteInsertionTravelCostLookup({
+      sitePoint,
+      orderedPoints: [],
+      candidatePoint,
+      estimateRoadTravel,
+      travelMode,
+    });
+    const initialCost = await lookupTravelCost(sitePoint, candidatePoint);
     return {
       routeOrder: 1,
       travelScore: initialCost.score,
@@ -632,6 +692,13 @@ async function computeRouteInsertion(
   }
 
   const ordered = sortRoutePoints(existingPoints);
+  const lookupTravelCost = await buildRouteInsertionTravelCostLookup({
+    sitePoint,
+    orderedPoints: ordered,
+    candidatePoint,
+    estimateRoadTravel,
+    travelMode,
+  });
   let bestIndex = ordered.length;
   let bestScore = Number.POSITIVE_INFINITY;
   let bestLimitMinutes: number | null = null;
@@ -645,7 +712,7 @@ async function computeRouteInsertion(
     let isTravelLimitVerifiable = !(insertIndex === 0 && !prev);
     const summaries: string[] = [];
     if (prev) {
-      const prevCost = await getTravelCost(prev, candidatePoint, estimateRoadTravel, travelMode);
+      const prevCost = await lookupTravelCost(prev, candidatePoint);
       score += prevCost.score;
       if (prevCost.limitMinutes == null) {
         isTravelLimitVerifiable = false;
@@ -655,7 +722,7 @@ async function computeRouteInsertion(
       summaries.push(`前訪問から ${prevCost.summary}`);
     }
     if (next) {
-      const nextCost = await getTravelCost(candidatePoint, next, estimateRoadTravel, travelMode);
+      const nextCost = await lookupTravelCost(candidatePoint, next);
       score += nextCost.score;
       if (nextCost.limitMinutes == null) {
         isTravelLimitVerifiable = false;
@@ -665,7 +732,7 @@ async function computeRouteInsertion(
       summaries.push(`次訪問へ ${nextCost.summary}`);
     }
     if (prev && next) {
-      const bypassCost = await getTravelCost(prev, next, estimateRoadTravel, travelMode);
+      const bypassCost = await lookupTravelCost(prev, next);
       score -= bypassCost.score;
     }
     if (score < bestScore) {
