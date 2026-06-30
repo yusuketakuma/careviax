@@ -54,6 +54,7 @@ const careCase = {
     name: '山田 太郎',
     birth_date: new Date(1940, 0, 1),
     gender: 'male',
+    archived_at: null,
     residences: [
       {
         unit_name: '2A',
@@ -128,6 +129,7 @@ describe('getConferenceNoteRecord', () => {
       patient: {
         id: 'patient_1',
         name: '山田 太郎',
+        archive: { status: 'active', archived: false, archived_at: null },
       },
       facility_name: 'ケアホーム',
       unit_name: '2A',

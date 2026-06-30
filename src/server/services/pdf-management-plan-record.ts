@@ -5,6 +5,11 @@ import {
 } from '@/lib/auth/visit-schedule-access';
 import { readPdfJsonObject } from '@/server/services/pdf-document-json';
 import { PdfNotFoundError } from './pdf-errors';
+import {
+  buildPdfPatientSummary,
+  PDF_PATIENT_SUMMARY_SELECT,
+  type PdfPatientSummary,
+} from './pdf-patient-summary';
 
 export type ManagementPlanRecord = {
   id: string;
@@ -17,12 +22,7 @@ export type ManagementPlanRecord = {
   approved_at: Date | null;
   updated_at: Date;
   content: Record<string, unknown>;
-  patient: {
-    id: string;
-    name: string;
-    birth_date: Date;
-    gender: string;
-  };
+  patient: PdfPatientSummary;
 };
 
 export async function getManagementPlanRecord(
@@ -51,12 +51,7 @@ export async function getManagementPlanRecord(
       case_: {
         select: {
           patient: {
-            select: {
-              id: true,
-              name: true,
-              birth_date: true,
-              gender: true,
-            },
+            select: PDF_PATIENT_SUMMARY_SELECT,
           },
         },
       },
@@ -78,6 +73,6 @@ export async function getManagementPlanRecord(
     approved_at: plan.approved_at,
     updated_at: plan.updated_at,
     content: readPdfJsonObject(plan.content),
-    patient: plan.case_.patient,
+    patient: buildPdfPatientSummary(plan.case_.patient),
   };
 }

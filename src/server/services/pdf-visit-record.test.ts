@@ -98,6 +98,16 @@ describe('pdf visit record fetchers', () => {
     );
 
     expect(patientFindFirstMock).toHaveBeenCalledOnce();
+    expect(patientFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'patient_1', org_id: 'org_1' },
+      select: {
+        id: true,
+        name: true,
+        birth_date: true,
+        gender: true,
+        archived_at: true,
+      },
+    });
     expect(visitRecordFindManyMock).not.toHaveBeenCalled();
   });
 
@@ -162,7 +172,10 @@ describe('pdf visit record fetchers', () => {
 
     await expect(getVisitRecordEntry('org_1', 'visit_1')).resolves.toMatchObject({
       id: 'visit_1',
-      patient,
+      patient: {
+        ...patient,
+        archive: { status: 'active', archived: false, archived_at: null },
+      },
       pharmacist_name: '佐藤 薬剤師',
       last_modified_by_id: 'modifier_1',
       last_modified_by_name: '田中 管理者',
@@ -182,6 +195,19 @@ describe('pdf visit record fetchers', () => {
         where: { org_id: 'org_1', id: 'visit_1' },
       }),
     );
+    expect(patientFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: { in: ['patient_1'] },
+      },
+      select: {
+        id: true,
+        name: true,
+        birth_date: true,
+        gender: true,
+        archived_at: true,
+      },
+    });
     expect(userFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',

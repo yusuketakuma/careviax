@@ -37,6 +37,7 @@ describe('getMedicationHistoryRecord', () => {
         name: true,
         birth_date: true,
         gender: true,
+        archived_at: true,
       },
     });
     expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
@@ -48,6 +49,7 @@ describe('getMedicationHistoryRecord', () => {
       name: '山田 太郎',
       birth_date: new Date(1940, 0, 1),
       gender: 'male',
+      archived_at: null,
     };
     const medications = [
       {
@@ -70,7 +72,13 @@ describe('getMedicationHistoryRecord', () => {
         role: 'pharmacist',
       }),
     ).resolves.toEqual({
-      patient,
+      patient: {
+        id: 'patient_1',
+        name: '山田 太郎',
+        birth_date: new Date(1940, 0, 1),
+        gender: 'male',
+        archive: { status: 'active', archived: false, archived_at: null },
+      },
       medications,
     });
 
@@ -84,6 +92,7 @@ describe('getMedicationHistoryRecord', () => {
         name: true,
         birth_date: true,
         gender: true,
+        archived_at: true,
       },
     });
     expect(medicationProfileFindManyMock).toHaveBeenCalledWith({

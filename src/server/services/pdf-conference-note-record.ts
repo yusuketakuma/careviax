@@ -11,6 +11,11 @@ import {
   readPdfJsonObjects,
 } from '@/server/services/pdf-document-json';
 import { PdfNotFoundError } from './pdf-errors';
+import {
+  buildPdfPatientSummary,
+  PDF_PATIENT_SUMMARY_SELECT,
+  type PdfPatientSummary,
+} from './pdf-patient-summary';
 
 export type ConferenceNoteParticipant = {
   name?: string;
@@ -44,12 +49,7 @@ export type ConferenceNotePdfRecord = {
   structured_sections: ConferenceNoteStructuredSection[];
   action_items: ConferenceNoteActionItem[];
   metadata: Record<string, unknown>;
-  patient: {
-    id: string;
-    name: string;
-    birth_date: Date;
-    gender: string;
-  } | null;
+  patient: PdfPatientSummary | null;
   facility_name: string | null;
   unit_name: string | null;
 };
@@ -146,10 +146,7 @@ export async function getConferenceNoteRecord(
         select: {
           patient: {
             select: {
-              id: true,
-              name: true,
-              birth_date: true,
-              gender: true,
+              ...PDF_PATIENT_SUMMARY_SELECT,
               residences: {
                 where: { is_primary: true },
                 take: 1,
@@ -182,7 +179,7 @@ export async function getConferenceNoteRecord(
     structured_sections: parseConferenceStructuredSections(note.structured_content),
     action_items: parseConferenceActionItems(note.action_items),
     metadata: readPdfJsonObject(note.metadata),
-    patient: careCase?.patient ?? null,
+    patient: careCase ? buildPdfPatientSummary(careCase.patient) : null,
     facility_name: careCase?.patient.residences[0]?.facility?.name ?? null,
     unit_name: careCase?.patient.residences[0]?.unit_name ?? null,
   };

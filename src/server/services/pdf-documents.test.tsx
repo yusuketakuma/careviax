@@ -131,6 +131,7 @@ describe('buildCareReportPdf', () => {
       name: '山田 太郎',
       birth_date: new Date('1940-01-01T00:00:00.000Z'),
       gender: 'male',
+      archived_at: null,
     });
     medicationProfileFindManyMock.mockResolvedValue([]);
     visitRecordFindManyMock.mockResolvedValue([]);
@@ -266,6 +267,51 @@ describe('buildCareReportPdf', () => {
     expect(text).not.toContain('外部提出用PDFとして表示できません');
     expect(text).not.toContain('source_provenance');
     expect(text).not.toContain('patient_1');
+  });
+
+  it('renders archived-patient state in care report PDFs without internal archive ownership', async () => {
+    patientFindFirstMock.mockResolvedValueOnce({
+      id: 'patient_1',
+      name: '山田 太郎',
+      birth_date: new Date('1940-01-01T00:00:00.000Z'),
+      gender: 'male',
+      archived_at: new Date(2026, 5, 30, 9, 0),
+      archived_by: 'internal_user',
+    });
+    careReportFindFirstMock.mockResolvedValue({
+      ...baseReport,
+      report_type: 'physician_report',
+      content: {
+        patient: { name: '山田 太郎', birth_date: '1940-01-01', gender: 'male' },
+        report_date: '2026-06-15',
+        visit_date: '2026-06-14',
+        pharmacist_name: '鈴木 薬剤師',
+        prescriber: { name: '佐藤 医師', institution: '在宅クリニック' },
+        prescriptions: [
+          { drug_name: 'アムロジピン錠5mg', dose: '1錠', frequency: '朝食後', days: 14 },
+        ],
+        medication_management: {
+          compliance_summary: '全量服用。',
+          adherence_score: 5,
+          self_management: '支援あり',
+          calendar_used: true,
+        },
+        residual_medications: [],
+        assessment: '服薬管理は安定。',
+        plan: '服薬指導を継続。',
+        warnings: [],
+      },
+    });
+
+    await buildCareReportPdf('org_1', 'report_1');
+
+    const text = collectPdfText(renderToBufferMock.mock.calls[0][0]).join('\n');
+    expect(text).toContain('患者状態');
+    expect(text).toContain('アーカイブ中（閲覧専用）');
+    expect(text).toContain('アーカイブ日時');
+    expect(text).toContain('2026/06/30');
+    expect(text).not.toContain('archived_by');
+    expect(text).not.toContain('internal_user');
   });
 
   it('renders nurse share PDFs from an external allowlist and hides provenance keys', async () => {
@@ -555,6 +601,28 @@ describe('buildMedicationHistoryPdf', () => {
     expect(patientFindFirstMock).toHaveBeenCalledOnce();
     expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
     expect(renderToBufferMock).not.toHaveBeenCalled();
+  });
+
+  it('renders archived-patient state in medication history PDFs', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '山田 太郎',
+      birth_date: new Date('1940-01-01T00:00:00.000Z'),
+      gender: 'male',
+      archived_at: new Date(2026, 5, 30, 9, 0),
+      archived_by: 'internal_user',
+    });
+    medicationProfileFindManyMock.mockResolvedValue([]);
+
+    const result = await buildMedicationHistoryPdf('org_1', 'patient_1');
+
+    expect(result.fileName).toBe('medications-_-patient_1.pdf');
+    const text = collectPdfText(renderToBufferMock.mock.calls[0][0]).join('\n');
+    expect(text).toContain('患者状態');
+    expect(text).toContain('アーカイブ中（閲覧専用）');
+    expect(text).toContain('2026/06/30');
+    expect(text).not.toContain('archived_by');
+    expect(text).not.toContain('internal_user');
   });
 });
 

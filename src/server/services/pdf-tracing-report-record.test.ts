@@ -54,6 +54,7 @@ describe('getTracingReportRecord', () => {
       name: '山田 太郎',
       birth_date: new Date(1940, 0, 1),
       gender: 'male',
+      archived_at: null,
     });
   });
 
@@ -123,6 +124,7 @@ describe('getTracingReportRecord', () => {
       patient: {
         id: 'patient_1',
         name: '山田 太郎',
+        archive: { status: 'active', archived: false, archived_at: null },
       },
       issue: {
         title: '副作用確認',
@@ -148,6 +150,7 @@ describe('getTracingReportRecord', () => {
         name: true,
         birth_date: true,
         gender: true,
+        archived_at: true,
       },
     });
   });

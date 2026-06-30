@@ -5,6 +5,11 @@ import {
   type VisitScheduleAccessContext,
 } from '@/lib/auth/visit-schedule-access';
 import { PdfNotFoundError } from './pdf-errors';
+import {
+  buildPdfPatientSummary,
+  PDF_PATIENT_SUMMARY_SELECT,
+  type PdfPatientSummary,
+} from './pdf-patient-summary';
 
 export type VisitRecordResidualRow = {
   id: string;
@@ -43,12 +48,7 @@ export type VisitRecordPdfEntry = {
     visit_type: string;
     scheduled_date: Date;
   } | null;
-  patient: {
-    id: string;
-    name: string;
-    birth_date: Date;
-    gender: string;
-  };
+  patient: PdfPatientSummary;
   residuals: VisitRecordResidualRow[];
 };
 
@@ -137,10 +137,7 @@ async function getVisitRecordEntries(
         id: { in: patientIds },
       },
       select: {
-        id: true,
-        name: true,
-        birth_date: true,
-        gender: true,
+        ...PDF_PATIENT_SUMMARY_SELECT,
       },
     }),
     prisma.residualMedication.findMany({
@@ -176,7 +173,9 @@ async function getVisitRecordEntries(
     }),
   ]);
 
-  const patientById = new Map(patients.map((patient) => [patient.id, patient]));
+  const patientById = new Map(
+    patients.map((patient) => [patient.id, buildPdfPatientSummary(patient)]),
+  );
   const latestAuditByRecordId = new Map<string, { actor_id: string; created_at: Date }>();
   const userIds = new Set(records.map((record) => record.pharmacist_id));
 
@@ -282,10 +281,7 @@ export async function getPatientVisitRecordRecord(
       ? applyPatientAssignmentWhere({ id: patientId, org_id: orgId }, accessContext)
       : { id: patientId, org_id: orgId },
     select: {
-      id: true,
-      name: true,
-      birth_date: true,
-      gender: true,
+      ...PDF_PATIENT_SUMMARY_SELECT,
     },
   });
 
@@ -300,7 +296,7 @@ export async function getPatientVisitRecordRecord(
   );
 
   return {
-    patient,
+    patient: buildPdfPatientSummary(patient),
     dateFrom: dateFrom ?? null,
     dateTo: dateTo ?? null,
     records,

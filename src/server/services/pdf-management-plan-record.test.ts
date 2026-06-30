@@ -39,6 +39,7 @@ describe('getManagementPlanRecord', () => {
       name: '山田 太郎',
       birth_date: new Date(1940, 0, 1),
       gender: 'male',
+      archived_at: null,
     };
     managementPlanFindFirstMock.mockResolvedValue({
       id: 'plan_1',
@@ -67,7 +68,11 @@ describe('getManagementPlanRecord', () => {
       status: 'approved',
       version: 2,
       content: { goals: ['服薬継続'] },
-      patient,
+      patient: {
+        id: 'patient_1',
+        name: '山田 太郎',
+        archive: { status: 'active', archived: false, archived_at: null },
+      },
     });
 
     expect(managementPlanFindFirstMock).toHaveBeenCalledWith({
@@ -94,6 +99,7 @@ describe('getManagementPlanRecord', () => {
                 name: true,
                 birth_date: true,
                 gender: true,
+                archived_at: true,
               },
             },
           },

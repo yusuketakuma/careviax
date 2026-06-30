@@ -4,6 +4,11 @@ import {
   type VisitScheduleAccessContext,
 } from '@/lib/auth/visit-schedule-access';
 import { PdfNotFoundError } from './pdf-errors';
+import {
+  buildPdfPatientSummary,
+  PDF_PATIENT_SUMMARY_SELECT,
+  type PdfPatientSummary,
+} from './pdf-patient-summary';
 
 export type MedicationProfileRow = {
   id: string;
@@ -17,12 +22,7 @@ export type MedicationProfileRow = {
 };
 
 export type MedicationHistoryRecord = {
-  patient: {
-    id: string;
-    name: string;
-    birth_date: Date;
-    gender: string;
-  };
+  patient: PdfPatientSummary;
   medications: MedicationProfileRow[];
 };
 
@@ -35,12 +35,7 @@ export async function getMedicationHistoryRecord(
     where: accessContext
       ? applyPatientAssignmentWhere({ id: patientId, org_id: orgId }, accessContext)
       : { id: patientId, org_id: orgId },
-    select: {
-      id: true,
-      name: true,
-      birth_date: true,
-      gender: true,
-    },
+    select: PDF_PATIENT_SUMMARY_SELECT,
   });
 
   if (!patient) {
@@ -63,7 +58,7 @@ export async function getMedicationHistoryRecord(
   });
 
   return {
-    patient,
+    patient: buildPdfPatientSummary(patient),
     medications,
   };
 }

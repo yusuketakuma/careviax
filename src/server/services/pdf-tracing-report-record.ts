@@ -3,6 +3,11 @@ import type { VisitScheduleAccessContext } from '@/lib/auth/visit-schedule-acces
 import { readPdfJsonObject } from '@/server/services/pdf-document-json';
 import { canAccessCaseScopedPatientResource } from '@/server/services/patient-access';
 import { PdfNotFoundError } from './pdf-errors';
+import {
+  buildPdfPatientSummary,
+  PDF_PATIENT_SUMMARY_SELECT,
+  type PdfPatientSummary,
+} from './pdf-patient-summary';
 
 export type TracingReportRecord = {
   id: string;
@@ -13,12 +18,7 @@ export type TracingReportRecord = {
   created_at: Date;
   updated_at: Date;
   content: Record<string, unknown>;
-  patient: {
-    id: string;
-    name: string;
-    birth_date: Date;
-    gender: string;
-  };
+  patient: PdfPatientSummary;
   issue: {
     title: string;
     description: string;
@@ -87,12 +87,7 @@ export async function getTracingReportRecord(
 
   const patient = await prisma.patient.findFirst({
     where: { id: report.patient_id, org_id: orgId },
-    select: {
-      id: true,
-      name: true,
-      birth_date: true,
-      gender: true,
-    },
+    select: PDF_PATIENT_SUMMARY_SELECT,
   });
 
   if (!patient) {
@@ -108,7 +103,7 @@ export async function getTracingReportRecord(
     created_at: report.created_at,
     updated_at: report.updated_at,
     content: readPdfJsonObject(report.content),
-    patient,
+    patient: buildPdfPatientSummary(patient),
     issue: report.issue
       ? {
           title: report.issue.title,

@@ -11,6 +11,7 @@ import {
   dementiaLabels,
   specialProcedureLabels,
 } from '@/lib/patient/home-visit-intake';
+import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
 import type { VisitScheduleAccessContext } from '@/lib/auth/visit-schedule-access';
 import { flattenPdfJson, readPdfJsonObject } from '@/server/services/pdf-document-json';
 import { formatYen } from '@/lib/format/currency';
@@ -73,6 +74,11 @@ type KeyValueRow = {
   label: string;
   value: string;
 };
+
+type PatientArchiveRowsSource =
+  | Pick<PatientArchiveSummary, 'archived' | 'archived_at'>
+  | null
+  | undefined;
 
 type MedicationCalendarRecord = MedicationHistoryRecord & {
   month: Date;
@@ -489,6 +495,14 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
+function patientArchiveRows(archive: PatientArchiveRowsSource): KeyValueRow[] {
+  if (!archive?.archived) return [];
+  return [
+    { label: '患者状態', value: 'アーカイブ中（閲覧専用）' },
+    { label: 'アーカイブ日時', value: formatPdfDate(archive.archived_at, true) },
+  ];
+}
+
 function isOptionalString(value: unknown) {
   return value === undefined || typeof value === 'string';
 }
@@ -678,6 +692,7 @@ function renderCareReportContent(report: CareReportRecord) {
                 { label: '患者名', value: content.patient.name },
                 { label: '生年月日', value: content.patient.birth_date },
                 { label: '性別', value: content.patient.gender },
+                ...patientArchiveRows(report.patient.archive),
                 { label: '訪問日', value: content.visit_date },
                 { label: '報告日', value: content.report_date },
                 { label: '報告書種別', value: '訪問薬剤管理指導報告書' },
@@ -789,6 +804,7 @@ function renderCareReportContent(report: CareReportRecord) {
               rows={[
                 { label: '患者名', value: content.patient.name },
                 { label: '生年月日', value: content.patient.birth_date },
+                ...patientArchiveRows(report.patient.archive),
                 { label: '報告日', value: content.report_date },
                 { label: '訪問日', value: content.visit_date },
                 { label: '報告書種別', value: '居宅療養管理指導情報提供書' },
@@ -875,6 +891,7 @@ function renderCareReportContent(report: CareReportRecord) {
               rows={[
                 { label: '患者名', value: content.patient.name },
                 { label: '生年月日', value: content.patient.birth_date },
+                ...patientArchiveRows(report.patient.archive),
                 { label: '訪問日', value: content.visit_date },
                 { label: '報告日', value: content.report_date },
                 {
@@ -938,6 +955,7 @@ function renderManagementPlanContent(plan: ManagementPlanRecord) {
             { label: '患者名', value: plan.patient.name },
             { label: '生年月日', value: formatPdfDate(plan.patient.birth_date) },
             { label: '性別', value: plan.patient.gender },
+            ...patientArchiveRows(plan.patient.archive),
             { label: '版数', value: `v${plan.version}` },
             { label: '状態', value: plan.status },
             { label: '適用開始日', value: formatPdfDate(plan.effective_from) },
@@ -970,6 +988,7 @@ function renderMedicationHistoryContent(record: MedicationHistoryRecord) {
             { label: '生年月日', value: formatPdfDate(record.patient.birth_date) },
             { label: '性別', value: record.patient.gender },
             { label: '患者ID', value: record.patient.id },
+            ...patientArchiveRows(record.patient.archive),
           ]}
         />
       </Section>
@@ -1009,6 +1028,7 @@ function renderMedicationCalendarContent(record: MedicationCalendarRecord) {
               value: `${record.month.getFullYear()}年${record.month.getMonth() + 1}月`,
             },
             { label: '患者ID', value: record.patient.id },
+            ...patientArchiveRows(record.patient.archive),
             { label: '薬剤数', value: `${record.medications.length}件` },
           ]}
         />
@@ -1083,6 +1103,7 @@ function renderVisitRecordEntryContent(record: VisitRecordPdfEntry) {
             { label: '患者ID', value: record.patient.id },
             { label: '生年月日', value: formatPdfDate(record.patient.birth_date) },
             { label: '性別', value: record.patient.gender },
+            ...patientArchiveRows(record.patient.archive),
           ]}
         />
       </Section>
@@ -1179,6 +1200,7 @@ function renderPatientVisitRecordsContent(record: PatientVisitRecordPdfRecord) {
             { label: '患者ID', value: record.patient.id },
             { label: '生年月日', value: formatPdfDate(record.patient.birth_date) },
             { label: '性別', value: record.patient.gender },
+            ...patientArchiveRows(record.patient.archive),
             {
               label: '期間',
               value:
@@ -1249,6 +1271,7 @@ function renderTracingReportContent(report: TracingReportRecord) {
             { label: '患者名', value: report.patient.name },
             { label: '生年月日', value: formatPdfDate(report.patient.birth_date) },
             { label: '性別', value: report.patient.gender },
+            ...patientArchiveRows(report.patient.archive),
             { label: '送付先医師', value: report.sent_to_physician ?? '—' },
             { label: '状態', value: report.status },
             { label: '送付日時', value: formatPdfDate(report.sent_at, true) },
@@ -1319,6 +1342,7 @@ function renderConferenceNoteContent(record: ConferenceNotePdfRecord) {
             { label: '開催日時', value: formatPdfDate(record.conference_date, true) },
             { label: 'タイトル', value: record.title },
             { label: '患者名', value: record.patient?.name ?? '未紐付け' },
+            ...patientArchiveRows(record.patient?.archive),
             { label: '施設', value: record.facility_name ?? '—' },
             { label: 'ユニット', value: record.unit_name ?? '—' },
           ]}

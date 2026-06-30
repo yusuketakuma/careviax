@@ -49,6 +49,7 @@ describe('getCareReportRecord', () => {
       name: '山田 太郎',
       birth_date: new Date(1940, 0, 1),
       gender: 'male',
+      archived_at: null,
     });
   });
 
@@ -127,6 +128,7 @@ describe('getCareReportRecord', () => {
       patient: {
         id: 'patient_1',
         name: '山田 太郎',
+        archive: { status: 'active', archived: false, archived_at: null },
       },
     });
 
@@ -137,7 +139,31 @@ describe('getCareReportRecord', () => {
         name: true,
         birth_date: true,
         gender: true,
+        archived_at: true,
       },
     });
+  });
+
+  it('returns archived-patient state without exposing archive ownership', async () => {
+    careReportFindFirstMock.mockResolvedValue(baseReport);
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '山田 太郎',
+      birth_date: new Date(1940, 0, 1),
+      gender: 'male',
+      archived_at: new Date('2026-06-30T09:00:00.000Z'),
+      archived_by: 'internal_user',
+    });
+
+    const record = await getCareReportRecord('org_1', 'report_1');
+
+    expect(record.patient.archive).toEqual({
+      status: 'archived',
+      archived: true,
+      archived_at: '2026-06-30T09:00:00.000Z',
+    });
+    expect(record.patient).not.toHaveProperty('archived_at');
+    expect(record.patient).not.toHaveProperty('archived_by');
+    expect(JSON.stringify(record)).not.toContain('internal_user');
   });
 });
