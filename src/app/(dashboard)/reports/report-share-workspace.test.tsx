@@ -375,7 +375,7 @@ describe('ReportShareWorkspace', () => {
     });
 
     // ヘッダーメタ(書く/待つ/解決の当日件数)
-    expect(screen.getByText(/書く3件・課題2件・作成済み3件・待つ2件・解決1件/)).toBeTruthy();
+    expect(screen.getByText(/書く3件・課題抽出内2件・作成済み3件・待つ2件・解決1件/)).toBeTruthy();
     // テンプレート編集はアウトライン副操作
     expect(screen.getByTestId('report-edit-templates').textContent).toContain('テンプレートを編集');
 
@@ -531,8 +531,8 @@ describe('ReportShareWorkspace', () => {
     expect(screen.getByText('先頭2件 / 他4件')).toBeTruthy();
     expect(screen.getByText('先頭1件 / 他3件')).toBeTruthy();
     expect(screen.getByText('先頭3件 / 他9件')).toBeTruthy();
-    expect(screen.getByText('先頭2件 / 他3件')).toBeTruthy();
-    expect(screen.getByText(/書く3件・課題5件・作成済み12件・待つ6件・解決4件/)).toBeTruthy();
+    expect(screen.getByText('抽出内先頭2件 / 他3件')).toBeTruthy();
+    expect(screen.getByText(/書く3件・課題抽出内5件・作成済み12件・待つ6件・解決4件/)).toBeTruthy();
   });
 
   it('renders billing candidate open issues using their own action href', async () => {
@@ -769,6 +769,20 @@ describe('ReportShareWorkspace', () => {
 describe('report-share-workspace helpers', () => {
   it('builds header meta with counts', () => {
     expect(buildHeaderMeta(new Date(2026, 5, 11), TODAY_WORKSPACE.counts)).toMatch(
+      /^6\/11\(木\) — 書く3件・課題抽出内2件・作成済み3件・待つ2件・解決1件$/,
+    );
+  });
+
+  it('does not mark open issue counts as extracted when the API supplies a database total', () => {
+    const countMetadata: ReportsTodayWorkspaceResponse['count_metadata'] = {
+      ...TODAY_WORKSPACE.count_metadata,
+      open_issues: {
+        ...TODAY_WORKSPACE.count_metadata.open_issues,
+        count_basis: 'database_total',
+      },
+    };
+
+    expect(buildHeaderMeta(new Date(2026, 5, 11), TODAY_WORKSPACE.counts, countMetadata)).toMatch(
       /^6\/11\(木\) — 書く3件・課題2件・作成済み3件・待つ2件・解決1件$/,
     );
   });

@@ -32,24 +32,32 @@ export const familyNameOf = sharedFamilyNameOf;
 export function buildHeaderMeta(
   now: Date,
   counts: ReportsTodayWorkspaceResponse['counts'] | null,
+  countMetadata?: ReportsTodayWorkspaceResponse['count_metadata'] | null,
 ): string {
   const dateLabel = format(now, 'M/d(EEE)', { locale: ja });
   if (!counts) return dateLabel;
-  return `${dateLabel} — 書く${counts.to_write}件・課題${counts.open_issues}件・作成済み${counts.created}件・待つ${counts.waiting}件・解決${counts.resolved}件`;
+  const openIssueLabel =
+    countMetadata?.open_issues?.count_basis === 'database_total' ||
+    countMetadata?.open_issues?.count_basis === 'full_result'
+      ? `${counts.open_issues}件`
+      : `抽出内${counts.open_issues}件`;
+  return `${dateLabel} — 書く${counts.to_write}件・課題${openIssueLabel}・作成済み${counts.created}件・待つ${counts.waiting}件・解決${counts.resolved}件`;
 }
 
+type WorkspaceCount =
+  ReportsTodayWorkspaceResponse['count_metadata'][keyof ReportsTodayWorkspaceResponse['count_metadata']];
+
 export function formatWorkspaceCountLabel(
-  count:
-    | ReportsTodayWorkspaceResponse['count_metadata'][keyof ReportsTodayWorkspaceResponse['count_metadata']]
-    | null
-    | undefined,
+  count: WorkspaceCount | null | undefined,
   visibleFallback: number,
 ): string {
   if (!count) return `${visibleFallback}件`;
+  const prefix =
+    count.count_basis === 'database_total' || count.count_basis === 'full_result' ? '' : '抽出内';
   if (count.hidden_count > 0) {
-    return `先頭${count.visible_count}件 / 他${count.hidden_count}件`;
+    return `${prefix}先頭${count.visible_count}件 / 他${count.hidden_count}件`;
   }
-  return `${count.visible_count}件`;
+  return `${prefix}${count.visible_count}件`;
 }
 
 /** 返信待ちの経過バッジ「3日経過」(送付当日は「本日送付」) */

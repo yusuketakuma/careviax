@@ -669,7 +669,7 @@ export function ReportShareWorkspace() {
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-xl font-bold text-foreground">報告・共有</h1>
           <p className="text-sm text-muted-foreground">
-            {buildHeaderMeta(now, data?.counts ?? null)}
+            {buildHeaderMeta(now, data?.counts ?? null, data?.count_metadata ?? null)}
           </p>
         </div>
         <Link
