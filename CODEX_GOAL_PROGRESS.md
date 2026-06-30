@@ -30,6 +30,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Visit Brief Latest Lab Projection - 2026-06-30 19:44 JST
+
+- Scope:
+  - Continued visit-time, report, and patient-information integration work for the documented `PatientLabObservation` latest-lab projection gap.
+  - Read `docs/ui-ux-design-guidelines.md` before the UI change and kept the display inside the existing visit brief Section/Card pattern.
+  - No schema migration, live DB operation, auth/RLS change, external send, push/deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `VisitBrief` now includes `latest_labs` with analyte label, numeric value, unit, measured timestamp/date label, stale flag, abnormal flag, and value label.
+  - `getPatientVisitBrief` now reads patient-scoped latest key labs through existing `listPatientLabSummary` and adds the projection to visit brief generation.
+  - Rule/AI summary input and `must_check_today` now include abnormal/stale latest-lab cues without modifying visit-record SOAP snapshots.
+  - `VisitBriefCard` now renders a "最新検査値" section with value, measured date, abnormal flag, and stale label.
+  - Added shared lab analyte display labels in `src/lib/patient/lab-analytes.ts`.
+- Safety:
+  - Reduces clinical-context omission risk during visit preparation when patient latest labs exist but the visit SOAP snapshot has no lab values.
+  - Latest lab reads are org + patient scoped and bounded by existing key-analyte projection; no new PHI export or permission path was added.
+- Performance:
+  - Adds one bounded `PatientLabObservation` read (`KEY_LAB_ANALYTE_CODES`, `take: 50`) per visit brief when the delegate exists.
+  - Existing schedule brief batch concurrency remains in place; no new dependency, background job, unbounded scan, external network call, or render loop was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/visit-brief.test.ts src/components/visit-brief/visit-brief-card.test.tsx src/server/services/visit-brief-ai.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `28` tests.
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-facility-multi-visit-card.test.tsx' 'src/app/(dashboard)/schedules/schedule-day-preparation.test.ts' --reporter=dot --testTimeout=60000`: passed, `3` files / `83` tests.
+  - Scoped ESLint on all changed source/test files: passed.
+  - Scoped Prettier write/check on all changed source/test files: passed.
+  - Scoped `git diff --check` on all changed source/test files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Continue broader lab projection work for visit-record lab backfill verification, medication-specific safety displays, and any remaining PDF/text builders that still read only visit-record SOAP or local text.
+
 ### Care Report Latest Lab Projection - 2026-06-30 19:32 JST
 
 - Scope:
@@ -25858,3 +25887,36 @@ Next loop:
   - The broad master-management/patient-information goal remains open.
   - Continue scanning capped master APIs such as pharmacist shift templates/shifts, vehicle resources, business holidays, packaging methods, templates, document delivery rules, drug alert rules, and saved views.
   - Separate dirty `src/lib/patient/lab-analytes.ts` label-helper changes are present and intentionally not included in this webhook commit.
+
+### Visit Brief Latest Labs - 2026-06-30 19:44 JST
+
+- Scope:
+  - Continued patient-information hardening by surfacing recent key lab observations inside visit brief generation and the visit brief card.
+  - Focused on making pharmacologically relevant latest labs visible before visits, without creating new routes or unbounded patient-data reads.
+- Fixed:
+  - Added lab analyte labels and a shared formatter for key lab codes.
+  - Visit brief generation now loads the latest key lab observations through the existing patient lab summary service when the DB client supports it.
+  - Visit briefs now include bounded `latest_labs` rows with label, value, measurement date, stale flag, and abnormal flag.
+  - Rule summaries, must-check items, AI input, and source references now include latest labs when relevant.
+  - The visit brief card renders a dedicated latest-labs section with abnormal/stale badges and an empty state.
+  - Existing `VisitBrief` test fixtures were updated with `latest_labs: []` so current patient/schedule UI tests follow the expanded contract.
+- Safety:
+  - Reduces missed-lab-context risk for patient visit preparation by putting abnormal or stale key labs next to the visit evidence.
+  - The backend fetch is org/patient scoped, limited to key analytes, bounded to 50 source rows and 6 displayed summary rows, and does not expose unrelated lab history.
+  - Missing `patientLabObservation` delegates fail closed to an empty latest-labs list, preserving schedule batch and minimal mock paths.
+  - Existing patient authorization entrypoints, visit brief audit logging, AI fallback behavior, medication/communication/JAHIS sections, and path helpers remain intact.
+  - No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Adds one bounded `patientLabObservation.findMany` query only when the DB client provides that delegate.
+  - Reuses `listPatientLabSummary` dedupe behavior and slices UI/AI summaries before rendering/sending.
+  - No new dependency, background job, unbounded loop, broad patient scan, network call, or render-heavy path was added.
+- Validation:
+  - Read `docs/ui-ux-design-guidelines.md` earlier in this turn before the UI-facing change.
+  - `pnpm exec vitest run src/server/services/visit-brief.test.ts src/server/services/visit-brief-ai.test.ts src/components/visit-brief/visit-brief-card.test.tsx 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-facility-multi-visit-card.test.tsx' 'src/app/(dashboard)/schedules/schedule-day-preparation.test.ts' --reporter=dot --testTimeout=60000`: passed, `6` files / `111` tests.
+  - Scoped ESLint, scoped Prettier check/write, and scoped `git diff --check` on visit-brief and affected fixture files: passed.
+  - `pnpm typecheck`: passed after fixture updates.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - The broad master-management/patient-information goal remains open.
+  - Continue scanning capped master APIs and patient-facing visit/preparation surfaces for count metadata, stale preconditions, audit-near-action gaps, and false-empty states.

@@ -33,6 +33,7 @@ function buildBrief(): VisitBrief {
     dosage_form_support: [],
     multidisciplinary_updates: [],
     jahis_supplemental_records: [],
+    latest_labs: [],
     unresolved_items: [],
     must_check_today: [],
     rule_summary: {
@@ -299,6 +300,40 @@ describe('VisitBriefCard', () => {
 
     const link = screen.getByRole('link', { name: /共有を確認/ });
     expect(link.getAttribute('href')).toBe(href);
+  });
+
+  it('renders latest lab excerpts with abnormal and stale labels', () => {
+    const queryClient = new QueryClient();
+    const brief: VisitBrief = {
+      ...buildBrief(),
+      latest_labs: [
+        {
+          analyte_code: 'egfr',
+          analyte_label: 'eGFR',
+          value_numeric: 38,
+          unit: 'mL/min/1.73m2',
+          value_label: '38 mL/min/1.73m2',
+          measured_at: '2025-01-01T00:00:00.000Z',
+          measured_at_label: '2025-01-01',
+          stale: true,
+          abnormal: true,
+          abnormal_flag: 'L',
+        },
+      ],
+    };
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VisitBriefCard brief={brief} />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText('最新検査値')).toBeTruthy();
+    expect(screen.getByText('eGFR')).toBeTruthy();
+    expect(screen.getByText('38 mL/min/1.73m2')).toBeTruthy();
+    expect(screen.getByText('測定日 2025-01-01')).toBeTruthy();
+    expect(screen.getByText('異常 L')).toBeTruthy();
+    expect(screen.getByText('測定日確認')).toBeTruthy();
   });
 
   it('renders unresolved item actions beside the blocker evidence', () => {

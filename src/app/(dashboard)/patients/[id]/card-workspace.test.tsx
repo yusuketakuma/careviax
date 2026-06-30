@@ -217,6 +217,7 @@ function buildVisitBrief(
     dosage_form_support: [],
     multidisciplinary_updates: [],
     jahis_supplemental_records: [],
+    latest_labs: [],
     unresolved_items: [],
     must_check_today: [],
     rule_summary: {

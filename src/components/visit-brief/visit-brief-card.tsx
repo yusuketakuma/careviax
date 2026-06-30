@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import {
+  Activity,
   AlertTriangle,
   ArrowUpRight,
   FileStack,
@@ -86,6 +87,7 @@ export function VisitBriefCard({
   const dosageSupport = brief.dosage_form_support.slice(0, compact ? 3 : 4);
   const communicationItems = brief.multidisciplinary_updates.slice(0, compact ? 3 : 4);
   const jahisRecords = brief.jahis_supplemental_records.slice(0, compact ? 3 : 4);
+  const latestLabs = brief.latest_labs.slice(0, compact ? 4 : 6);
   const unresolvedItems = brief.unresolved_items.slice(0, compact ? 3 : 4);
   const feedbackMutation = useMutation({
     mutationFn: async ({
@@ -302,6 +304,49 @@ export function VisitBriefCard({
                     className="rounded-lg border border-border/70 bg-background px-3 py-2"
                   >
                     {item}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+
+          <Section title="最新検査値" icon={Activity}>
+            {latestLabs.length === 0 ? (
+              <p className="text-xs text-muted-foreground">薬学判断に使う検査値は未登録です。</p>
+            ) : (
+              <ul className="space-y-2">
+                {latestLabs.map((item) => (
+                  <li
+                    key={`${item.analyte_code}:${item.measured_at}`}
+                    className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-foreground">{item.analyte_label}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          測定日 {item.measured_at_label}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap justify-end gap-1.5">
+                        {item.abnormal ? (
+                          <Badge
+                            variant="outline"
+                            className="border-state-confirm/30 bg-state-confirm/10 text-state-confirm"
+                          >
+                            異常{item.abnormal_flag ? ` ${item.abnormal_flag}` : ''}
+                          </Badge>
+                        ) : null}
+                        {item.stale ? (
+                          <Badge
+                            variant="outline"
+                            className="border-state-readonly/30 bg-state-readonly/10 text-state-readonly"
+                          >
+                            測定日確認
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </div>
+                    <p className="mt-2 text-sm font-semibold text-foreground">{item.value_label}</p>
                   </li>
                 ))}
               </ul>

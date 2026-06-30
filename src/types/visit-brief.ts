@@ -118,6 +118,19 @@ export type VisitBriefJahisSupplementalRecord = {
   created_at: string;
 };
 
+export type VisitBriefLatestLab = {
+  analyte_code: string;
+  analyte_label: string;
+  value_numeric: number | null;
+  unit: string | null;
+  value_label: string;
+  measured_at: string;
+  measured_at_label: string;
+  stale: boolean;
+  abnormal: boolean;
+  abnormal_flag: string | null;
+};
+
 export type VisitBriefUnresolvedItem = {
   source_type: 'task' | 'issue' | 'inquiry' | 'billing';
   title: string;
@@ -199,6 +212,7 @@ export type VisitBrief = {
   dosage_form_support: VisitBriefDosageFormCandidate[];
   multidisciplinary_updates: VisitBriefCommunicationItem[];
   jahis_supplemental_records: VisitBriefJahisSupplementalRecord[];
+  latest_labs: VisitBriefLatestLab[];
   unresolved_items: VisitBriefUnresolvedItem[];
   must_check_today: string[];
   rule_summary: VisitBriefRuleSummary;

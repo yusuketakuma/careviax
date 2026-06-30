@@ -11,6 +11,7 @@ type VisitBriefAiInput = {
   medicationChanges: string[];
   dispensing: string[];
   multidisciplinary: string[];
+  latestLabs?: string[];
   unresolved: string[];
   mustCheckToday: string[];
   fallbackHeadline: string;

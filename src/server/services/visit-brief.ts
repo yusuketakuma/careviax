@@ -14,11 +14,16 @@ import {
 import { listCommunicationQueue } from '@/server/services/communication-queue';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { formatLabAnalyteLabel } from '@/lib/patient/lab-analytes';
 import { formatCommunicationRequestTypeLabel } from '@/lib/communications/request-labels';
 import { describeOperationalTask } from '@/lib/tasks/operational-task-presentation';
 import { generateVisitBriefAiSummary } from '@/server/services/visit-brief-ai';
 import { buildPatientStateSnapshot } from '@/server/services/patient-state-snapshot';
 import { diffPatientStateSnapshots } from '@/server/services/visit-brief-patient-diff';
+import {
+  listPatientLabSummary,
+  type PatientLabSummaryDb,
+} from '@/server/services/patient-detail-labs';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
 import { SET_METHOD_LABELS } from '@/lib/dispensing/set-methods';
 import {
@@ -38,6 +43,7 @@ import type {
   VisitBriefDosageFormCandidate,
   VisitBriefDrugCaution,
   VisitBriefFacilityContext,
+  VisitBriefLatestLab,
   VisitBriefMedicationChange,
   VisitBriefMedicationItem,
   VisitBriefJahisSupplementalRecord,
@@ -272,6 +278,7 @@ const OPEN_TASK_STATUSES = ['pending', 'in_progress'] as const;
 const OPEN_SELF_REPORT_STATUSES = ['submitted', 'triaged', 'converted_to_task'] as const;
 const OPEN_REQUEST_STATUSES = ['draft', 'sent', 'received', 'in_progress', 'escalated'] as const;
 const OPEN_ISSUE_STATUSES = ['open', 'in_progress'] as const;
+const VISIT_BRIEF_LAB_STALE_DAYS = 90;
 
 async function listVisitBriefBillingRefs(
   db: DbClient,
@@ -341,6 +348,45 @@ const SET_AUDIT_LABELS: Record<string, string> = {
 // here (local tz) renders the wrong time on a non-UTC server (e.g. JST +9).
 function timeToHHMM(value: Date | null | undefined): string | null {
   return timeDateToString(value) ?? null;
+}
+
+async function listLatestLabsForVisitBrief(
+  db: DbClient,
+  args: Pick<BuildVisitBriefArgs, 'orgId' | 'patientId'>,
+) {
+  const labDb = db as Partial<PatientLabSummaryDb>;
+  if (!labDb.patientLabObservation?.findMany) return [];
+  return listPatientLabSummary(labDb as PatientLabSummaryDb, args);
+}
+
+function formatVisitBriefLabValue(lab: { value_numeric: number | null; unit: string | null }) {
+  if (lab.value_numeric != null) {
+    return `${lab.value_numeric}${lab.unit ? ` ${lab.unit}` : ''}`;
+  }
+  return lab.unit ? `値なし ${lab.unit}` : '値なし';
+}
+
+function buildVisitBriefLatestLabs(
+  labs: Awaited<ReturnType<typeof listPatientLabSummary>>,
+  now: Date,
+): VisitBriefLatestLab[] {
+  return labs.slice(0, 6).map((lab) => {
+    const ageDays = Math.floor((now.getTime() - lab.measured_at.getTime()) / (24 * 60 * 60_000));
+    const stale = ageDays > VISIT_BRIEF_LAB_STALE_DAYS;
+    const measuredAtLabel = formatDateKey(lab.measured_at) ?? '測定日未設定';
+    return {
+      analyte_code: lab.analyte_code,
+      analyte_label: formatLabAnalyteLabel(lab.analyte_code),
+      value_numeric: lab.value_numeric,
+      unit: lab.unit,
+      value_label: formatVisitBriefLabValue(lab),
+      measured_at: lab.measured_at.toISOString(),
+      measured_at_label: measuredAtLabel,
+      stale,
+      abnormal: Boolean(lab.abnormal_flag),
+      abnormal_flag: lab.abnormal_flag,
+    };
+  });
 }
 
 async function listJahisSupplementalRecordsForBrief(
@@ -899,6 +945,7 @@ function buildMustCheckToday(args: {
   dosageFormSupport: VisitBriefDosageFormCandidate[];
   communicationItems: VisitBriefCommunicationItem[];
   jahisSupplementalRecords: VisitBriefJahisSupplementalRecord[];
+  latestLabs: VisitBriefLatestLab[];
   unresolvedItems: VisitBriefUnresolvedItem[];
   previousVisitPlan: string | null;
 }): string[] {
@@ -939,6 +986,13 @@ function buildMustCheckToday(args: {
       items.add('JAHISかかりつけ薬剤師情報の確認');
     }
   }
+  for (const lab of args.latestLabs.filter((item) => item.abnormal).slice(0, 2)) {
+    items.add(`検査値要確認: ${lab.analyte_label} ${lab.value_label}`);
+  }
+  const staleLab = args.latestLabs.find((item) => item.stale);
+  if (staleLab) {
+    items.add(`検査値測定日確認: ${staleLab.analyte_label} ${staleLab.measured_at_label}`);
+  }
   for (const item of args.unresolvedItems.slice(0, 2)) {
     items.add(item.title);
   }
@@ -954,6 +1008,7 @@ function buildFallbackHeadline(args: {
   communicationItems: VisitBriefCommunicationItem[];
   unresolvedItems: VisitBriefUnresolvedItem[];
   dispensingItems: VisitBriefDispensingItem[];
+  latestLabs: VisitBriefLatestLab[];
 }) {
   const urgentCommunication = args.communicationItems.find((item) => item.severity === 'urgent');
   if (urgentCommunication) {
@@ -975,6 +1030,11 @@ function buildFallbackHeadline(args: {
     return '調剤方法と包装指示の確認が必要です。';
   }
 
+  const abnormalLab = args.latestLabs.find((item) => item.abnormal);
+  if (abnormalLab) {
+    return `${abnormalLab.analyte_label} ${abnormalLab.value_label} の確認が必要です。`;
+  }
+
   if (args.communicationItems.length > 0) {
     return '他職種・家族からの更新があります。';
   }
@@ -987,6 +1047,7 @@ function buildRuleBullets(args: {
   dispensingItems: VisitBriefDispensingItem[];
   communicationItems: VisitBriefCommunicationItem[];
   unresolvedItems: VisitBriefUnresolvedItem[];
+  latestLabs: VisitBriefLatestLab[];
 }) {
   const bullets: string[] = [];
 
@@ -1005,6 +1066,14 @@ function buildRuleBullets(args: {
   if (args.communicationItems.length > 0) {
     const item = args.communicationItems[0];
     bullets.push(`連携更新: ${item.title}${item.counterpart ? ` / ${item.counterpart}` : ''}`);
+  }
+
+  if (args.latestLabs.length > 0) {
+    const top = args.latestLabs
+      .slice(0, 3)
+      .map((item) => `${item.analyte_label} ${item.value_label}`)
+      .join(' / ');
+    bullets.push(`最新検査値: ${top}`);
   }
 
   if (bullets.length === 0 && args.unresolvedItems.length > 0) {
@@ -1027,6 +1096,7 @@ function sourceRefs(args: {
   dosageFormSupport: VisitBriefDosageFormCandidate[];
   communicationItems: VisitBriefCommunicationItem[];
   jahisSupplementalRecords: VisitBriefJahisSupplementalRecord[];
+  latestLabs: VisitBriefLatestLab[];
   unresolvedItems: VisitBriefUnresolvedItem[];
 }) {
   const refs = new Set<string>();
@@ -1036,6 +1106,7 @@ function sourceRefs(args: {
   if (args.dosageFormSupport.length > 0) refs.add('自己申告・薬学的課題');
   if (args.communicationItems.length > 0) refs.add('他職種/家族からの更新');
   if (args.jahisSupplementalRecords.length > 0) refs.add('JAHIS補足情報');
+  if (args.latestLabs.length > 0) refs.add('最新検査値');
   if (args.unresolvedItems.length > 0) refs.add('未解決タスク・課題');
   return Array.from(refs);
 }
@@ -1047,6 +1118,7 @@ function buildRuleSummary(args: {
   dosageFormSupport: VisitBriefDosageFormCandidate[];
   communicationItems: VisitBriefCommunicationItem[];
   jahisSupplementalRecords: VisitBriefJahisSupplementalRecord[];
+  latestLabs: VisitBriefLatestLab[];
   unresolvedItems: VisitBriefUnresolvedItem[];
   mustCheckToday: string[];
 }): VisitBriefRuleSummary {
@@ -1113,6 +1185,7 @@ async function buildAiSummary(args: {
   dosageFormSupport: VisitBriefDosageFormCandidate[];
   communicationItems: VisitBriefCommunicationItem[];
   jahisSupplementalRecords: VisitBriefJahisSupplementalRecord[];
+  latestLabs: VisitBriefLatestLab[];
   unresolvedItems: VisitBriefUnresolvedItem[];
   mustCheckToday: string[];
 }): Promise<VisitBriefAiSummary> {
@@ -1135,6 +1208,14 @@ async function buildAiSummary(args: {
         .slice(0, 3)
         .map((item) => `${item.record_label} / ${item.summary ?? item.raw_line}`),
     ],
+    latestLabs: args.latestLabs
+      .slice(0, 6)
+      .map(
+        (item) =>
+          `${item.analyte_label} ${item.value_label} / ${item.measured_at_label}${
+            item.abnormal_flag ? ` / 異常${item.abnormal_flag}` : ''
+          }${item.stale ? ' / 測定日確認' : ''}`,
+      ),
     unresolved: args.unresolvedItems.slice(0, 5).map((item) => `${item.title} / ${item.summary}`),
     mustCheckToday: args.mustCheckToday,
     fallbackHeadline,
@@ -1189,6 +1270,7 @@ export async function getPatientVisitBrief(
     recentConferenceNotes,
     facilityResidence,
     jahisSupplementalRows,
+    latestLabRows,
     currentPatientSnapshot,
   ] = await Promise.all([
     db.patient.findFirst({
@@ -1528,6 +1610,10 @@ export async function getPatientVisitBrief(
       orgId: args.orgId,
       patientId: args.patientId,
     }),
+    listLatestLabsForVisitBrief(db, {
+      orgId: args.orgId,
+      patientId: args.patientId,
+    }),
     // patient_changes 用の現在側スナップショット。context==='patient' かつ role/userId が揃う経路のみ。
     // schedule バッチ(role/userId 未指定)は null=差分なしで perf 退行を避ける。snapshot 構築は
     // 既存 Promise.all に同居させ直列レイテンシ増を避ける。
@@ -1652,6 +1738,7 @@ export async function getPatientVisitBrief(
     contactLogs,
   });
   const jahisSupplementalRecords = normalizeJahisSupplementalRecordsForBrief(jahisSupplementalRows);
+  const latestLabs = buildVisitBriefLatestLabs(latestLabRows, new Date());
   const unresolvedInquiries = inquiries.map((item) => ({
     ...item,
     proposal_origin: (item.proposal_origin === 'pre_issuance' ? 'pre_issuance' : 'post_inquiry') as
@@ -1672,6 +1759,7 @@ export async function getPatientVisitBrief(
     dosageFormSupport,
     communicationItems,
     jahisSupplementalRecords,
+    latestLabs,
     unresolvedItems,
     previousVisitPlan: previousVisit?.soap_plan ?? null,
   });
@@ -1682,6 +1770,7 @@ export async function getPatientVisitBrief(
     dosageFormSupport,
     communicationItems,
     jahisSupplementalRecords,
+    latestLabs,
     unresolvedItems,
     mustCheckToday,
   });
@@ -1694,6 +1783,7 @@ export async function getPatientVisitBrief(
     dosageFormSupport,
     communicationItems,
     jahisSupplementalRecords,
+    latestLabs,
     unresolvedItems,
     mustCheckToday,
   });
@@ -1761,6 +1851,7 @@ export async function getPatientVisitBrief(
     dosage_form_support: dosageFormSupport,
     multidisciplinary_updates: communicationItems,
     jahis_supplemental_records: jahisSupplementalRecords,
+    latest_labs: latestLabs,
     unresolved_items: unresolvedItems,
     must_check_today: mustCheckToday,
     rule_summary: ruleSummary,

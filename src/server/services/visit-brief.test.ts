@@ -193,6 +193,24 @@ describe('getPatientVisitBrief', () => {
       patient: {
         findFirst: vi.fn().mockResolvedValue({ id: 'patient_1', name: '患者A' }),
       },
+      patientLabObservation: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            analyte_code: 'egfr',
+            measured_at: new Date('2025-01-01T00:00:00Z'),
+            value_numeric: 38,
+            unit: 'mL/min/1.73m2',
+            abnormal_flag: 'L',
+          },
+          {
+            analyte_code: 'k',
+            measured_at: new Date('2025-01-02T00:00:00Z'),
+            value_numeric: 5.4,
+            unit: 'mEq/L',
+            abnormal_flag: 'H',
+          },
+        ]),
+      },
       prescriptionIntake: {
         findMany: vi.fn().mockResolvedValue([
           {
@@ -490,6 +508,18 @@ describe('getPatientVisitBrief', () => {
         }),
       }),
     );
+    expect(db.patientLabObservation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          analyte_code: expect.objectContaining({
+            in: expect.arrayContaining(['egfr', 'k', 'hba1c']),
+          }),
+        }),
+        take: 50,
+      }),
+    );
     expect(listCommunicationQueueMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'org_1',
       patientId: 'patient_1',
@@ -517,6 +547,10 @@ describe('getPatientVisitBrief', () => {
           '睡眠薬A [789] / removed / 中止',
         ]),
         fallbackBullets: expect.arrayContaining([expect.stringContaining('アムロジピン錠 [123]')]),
+        latestLabs: expect.arrayContaining([
+          'eGFR 38 mL/min/1.73m2 / 2025-01-01 / 異常L / 測定日確認',
+          'K 5.4 mEq/L / 2025-01-02 / 異常H / 測定日確認',
+        ]),
       }),
     );
     expect(result.drug_cautions).toHaveLength(7);
@@ -564,6 +598,28 @@ describe('getPatientVisitBrief', () => {
         expect.objectContaining({
           title: 'care_report の送達',
           status_bucket: 'reply_waiting',
+        }),
+      ]),
+    );
+    expect(result.latest_labs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          analyte_code: 'egfr',
+          analyte_label: 'eGFR',
+          value_label: '38 mL/min/1.73m2',
+          measured_at_label: '2025-01-01',
+          stale: true,
+          abnormal: true,
+          abnormal_flag: 'L',
+        }),
+        expect.objectContaining({
+          analyte_code: 'k',
+          analyte_label: 'K',
+          value_label: '5.4 mEq/L',
+          measured_at_label: '2025-01-02',
+          stale: true,
+          abnormal: true,
+          abnormal_flag: 'H',
         }),
       ]),
     );
