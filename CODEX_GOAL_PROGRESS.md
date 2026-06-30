@@ -27262,6 +27262,36 @@ Next loop:
   - Broad schedule/prescription/route objective remains open.
   - Continue scanning live schedule surfaces where API state context exists but the UI still opens generic queues or lacks current-state preconditions.
 
+### Schedule Status Expected-State Guard - 2026-06-30 23:20 JST
+
+- Scope:
+  - Continued schedule-board mutation hardening for live `/schedules` gantt status changes.
+  - Focused on making direct status changes fail closed when the board is stale.
+- Fixed:
+  - `PATCH /api/visit-schedules/:id` now accepts optional `expected_schedule_status`.
+  - If the current DB `schedule_status` differs from `expected_schedule_status`, the route returns 409 before org-reference validation, transaction work, schedule update, audit, workflow cache notification, or task side effects.
+  - `ScheduleTeamBoard` now includes the visible row status as `expected_schedule_status` when staff change a visit status from the gantt control.
+  - Tests cover encoded schedule IDs, raw mutation body preservation, stale status mismatch, and side-effect prevention.
+- Safety:
+  - Reduces stale-board wrong-transition risk such as intending `planned -> in_progress` while a newer row had already become `ready`.
+  - Existing auth, org/RLS assignment scope, terminal-state restrictions, ready-transition gates, version/confirmed guards, no-store responses, live DB safety, migration boundaries, external sends, push/deploy, and secret handling remain unchanged.
+- Performance:
+  - Adds scalar request validation and an in-memory comparison only; no extra DB query, fan-out, dependency, broad scan, or render-heavy path.
+- Validation:
+  - Visit-schedule detail route focused Vitest passed `1` file / `83` tests.
+  - ScheduleTeamBoard focused Vitest passed `1` file / `22` tests.
+  - Combined focused suite passed `2` files / `105` tests.
+  - Scoped ESLint: passed.
+  - Scoped Prettier check: passed.
+  - Scoped/full `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Broad schedule/prescription/route objective remains open.
+  - Continue scanning live schedule mutation entrypoints for missing caller-state preconditions, especially vehicle assignment and other board-side direct actions.
+
 ### Tracing Follow-Up Task Link Scope - 2026-06-30 23:02 JST
 
 - Scope:
