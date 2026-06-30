@@ -30,6 +30,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Partner Visit Record Review/Submit OCC - 2026-07-01 04:08 JST
+
+- Scope:
+  - Continued pharmacy-cooperation workflow hardening for partner visit record submit/review actions.
+  - Focused on stale UI actions after another user or workflow transition updates the same partner visit record.
+- Fixed:
+  - Submit and review routes now require `expected_updated_at` and compare it against the persisted `PartnerVisitRecord.updated_at` before state transitions.
+  - Submit/review `updateMany` predicates now claim the same row version, reducing lost-update risk between validation and write.
+  - Submit now rolls back the record transition when the linked `PharmacyVisitRequest` transition loses the race, preventing notification/audit side effects on a partial workflow update.
+  - The pharmacy cooperation UI now carries `updated_at` through row parsing and sends it with submit, confirm, return, and doctor-report-required review actions.
+- Safety:
+  - Reduces stale cooperation-report submission/review and cross-pharmacy workflow inconsistency risk.
+  - Preserves existing org/RLS context, active share/partner/request guards, transition rules, sensitive no-store wrappers, sanitized 500 behavior, notifications, audit logging, live data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds one scalar selected field, one request body field, and one scalar row-version predicate per action.
+  - No new dependency, background job, external call, broad scan, render-heavy path, or unbounded loop was added.
+- Validation:
+  - Partner visit record submit/review route tests and pharmacy cooperation workflow UI tests passed.
+  - Related partner visit record suite passed `4` files / `52` tests.
+  - Dirty-slice targeted Vitest passed `7` files / `189` tests with expected sanitized-500 route logs.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit-time, report, and multi-professional cooperation objective remains open.
+
 ### Pharmacy Drug Stock List Count Contract - 2026-07-01 04:05 JST
 
 - Scope:
