@@ -160,26 +160,101 @@ const authenticatedGET = withAuthContext(
         accessContext: ctx,
       });
 
-      exportResult = await withOrgContext(ctx.orgId, async (tx) => {
-        const where = {
-          org_id: ctx.orgId,
-          ...(status ? { status: status.data } : {}),
-          ...(requestType ? { request_type: requestType } : {}),
-          ...(!canReadCareReportOutput ? { NOT: { related_entity_type: 'care_report' } } : {}),
-          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
-        };
+      exportResult = await withOrgContext(
+        ctx.orgId,
+        async (tx) => {
+          const where = {
+            org_id: ctx.orgId,
+            ...(status ? { status: status.data } : {}),
+            ...(requestType ? { request_type: requestType } : {}),
+            ...(!canReadCareReportOutput ? { NOT: { related_entity_type: 'care_report' } } : {}),
+            ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+          };
 
-        if (profile === 'external') {
+          if (profile === 'external') {
+            const requests = await tx.communicationRequest.findMany({
+              where,
+              orderBy: [{ requested_at: 'desc' }, { id: 'desc' }],
+              take: COMMUNICATION_REQUEST_EXPORT_MAX_ROWS + 1,
+              select: {
+                id: true,
+                request_type: true,
+                recipient_role: true,
+                related_entity_type: true,
+                status: true,
+                due_date: true,
+                requested_at: true,
+                context_snapshot: true,
+                responses: {
+                  orderBy: [{ responded_at: 'desc' }, { id: 'desc' }],
+                  take: 1,
+                  select: {
+                    responded_at: true,
+                  },
+                },
+              },
+            });
+            if (requests.length > COMMUNICATION_REQUEST_EXPORT_MAX_ROWS) {
+              return { error: 'too_many_rows' as const };
+            }
+
+            const rows = requests.map((request) => {
+              const latestResponse = request.responses[0] ?? null;
+              return [
+                csvCell(hashExportScopeId(request.id)),
+                csvCell(request.request_type),
+                csvCell(request.status),
+                csvCell(request.recipient_role ?? ''),
+                csvCell(request.related_entity_type ?? ''),
+                csvCell(request.requested_at.toISOString()),
+                csvCell(request.due_date?.toISOString() ?? ''),
+                csvCell(latestResponse?.responded_at.toISOString() ?? ''),
+                csvCell(resolveFaxReady(request.context_snapshot)),
+                csvCell('handoff-external-redacted'),
+                csvCell(profile),
+              ];
+            });
+            try {
+              await recordDataExportAudit(tx, {
+                orgId: ctx.orgId,
+                actorId: ctx.userId,
+                targetType: 'communication_request',
+                format: 'csv',
+                recordCount: rows.length,
+                filters: {
+                  status: status?.data ?? null,
+                  request_type: requestType ?? null,
+                  profile,
+                  redaction_profile: 'external',
+                  care_report_rows_excluded: !canReadCareReportOutput,
+                },
+                metadata: buildExportAuditMetadata({
+                  requestIds: requests.map((request) => request.id),
+                }),
+                ipAddress: ctx.ipAddress,
+                userAgent: ctx.userAgent,
+              });
+            } catch (cause) {
+              throw new CommunicationRequestExportAuditError(cause);
+            }
+            return { rows };
+          }
+
           const requests = await tx.communicationRequest.findMany({
             where,
             orderBy: [{ requested_at: 'desc' }, { id: 'desc' }],
             take: COMMUNICATION_REQUEST_EXPORT_MAX_ROWS + 1,
             select: {
               id: true,
+              patient_id: true,
               request_type: true,
+              recipient_name: true,
               recipient_role: true,
               related_entity_type: true,
+              related_entity_id: true,
               status: true,
+              subject: true,
+              content: true,
               due_date: true,
               requested_at: true,
               context_snapshot: true,
@@ -187,6 +262,7 @@ const authenticatedGET = withAuthContext(
                 orderBy: [{ responded_at: 'desc' }, { id: 'desc' }],
                 take: 1,
                 select: {
+                  responder_name: true,
                   responded_at: true,
                 },
               },
@@ -196,20 +272,55 @@ const authenticatedGET = withAuthContext(
             return { error: 'too_many_rows' as const };
           }
 
+          const patientIds = Array.from(
+            new Set(
+              requests
+                .map((request) => request.patient_id)
+                .filter((value): value is string => typeof value === 'string' && value.length > 0),
+            ),
+          );
+
+          const patients =
+            patientIds.length === 0
+              ? []
+              : await tx.patient.findMany({
+                  where: {
+                    org_id: ctx.orgId,
+                    id: { in: patientIds },
+                  },
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                });
+
+          const patientById = new Map(patients.map((patient) => [patient.id, patient.name]));
+
           const rows = requests.map((request) => {
             const latestResponse = request.responses[0] ?? null;
+            const contextSnapshot =
+              request.context_snapshot && typeof request.context_snapshot === 'object'
+                ? JSON.stringify(request.context_snapshot)
+                : '';
             return [
-              csvCell(hashExportScopeId(request.id)),
+              csvCell(request.id),
+              csvCell(request.patient_id ?? ''),
+              csvCell(request.patient_id ? (patientById.get(request.patient_id) ?? '') : ''),
               csvCell(request.request_type),
               csvCell(request.status),
+              csvCell(request.subject),
+              csvCell(request.recipient_name ?? ''),
               csvCell(request.recipient_role ?? ''),
               csvCell(request.related_entity_type ?? ''),
+              csvCell(request.related_entity_id ?? ''),
               csvCell(request.requested_at.toISOString()),
               csvCell(request.due_date?.toISOString() ?? ''),
+              csvCell(latestResponse?.responder_name ?? ''),
               csvCell(latestResponse?.responded_at.toISOString() ?? ''),
               csvCell(resolveFaxReady(request.context_snapshot)),
-              csvCell('handoff-external-redacted'),
-              csvCell(profile),
+              csvCell('handoff-prep'),
+              csvCell(contextSnapshot),
+              csvCell(request.content),
             ];
           });
           try {
@@ -223,11 +334,12 @@ const authenticatedGET = withAuthContext(
                 status: status?.data ?? null,
                 request_type: requestType ?? null,
                 profile,
-                redaction_profile: 'external',
+                redaction_profile: 'internal',
                 care_report_rows_excluded: !canReadCareReportOutput,
               },
               metadata: buildExportAuditMetadata({
                 requestIds: requests.map((request) => request.id),
+                patientIds: requests.map((request) => request.patient_id),
               }),
               ipAddress: ctx.ipAddress,
               userAgent: ctx.userAgent,
@@ -236,117 +348,9 @@ const authenticatedGET = withAuthContext(
             throw new CommunicationRequestExportAuditError(cause);
           }
           return { rows };
-        }
-
-        const requests = await tx.communicationRequest.findMany({
-          where,
-          orderBy: [{ requested_at: 'desc' }, { id: 'desc' }],
-          take: COMMUNICATION_REQUEST_EXPORT_MAX_ROWS + 1,
-          select: {
-            id: true,
-            patient_id: true,
-            request_type: true,
-            recipient_name: true,
-            recipient_role: true,
-            related_entity_type: true,
-            related_entity_id: true,
-            status: true,
-            subject: true,
-            content: true,
-            due_date: true,
-            requested_at: true,
-            context_snapshot: true,
-            responses: {
-              orderBy: [{ responded_at: 'desc' }, { id: 'desc' }],
-              take: 1,
-              select: {
-                responder_name: true,
-                responded_at: true,
-              },
-            },
-          },
-        });
-        if (requests.length > COMMUNICATION_REQUEST_EXPORT_MAX_ROWS) {
-          return { error: 'too_many_rows' as const };
-        }
-
-        const patientIds = Array.from(
-          new Set(
-            requests
-              .map((request) => request.patient_id)
-              .filter((value): value is string => typeof value === 'string' && value.length > 0),
-          ),
-        );
-
-        const patients =
-          patientIds.length === 0
-            ? []
-            : await tx.patient.findMany({
-                where: {
-                  org_id: ctx.orgId,
-                  id: { in: patientIds },
-                },
-                select: {
-                  id: true,
-                  name: true,
-                },
-              });
-
-        const patientById = new Map(patients.map((patient) => [patient.id, patient.name]));
-
-        const rows = requests.map((request) => {
-          const latestResponse = request.responses[0] ?? null;
-          const contextSnapshot =
-            request.context_snapshot && typeof request.context_snapshot === 'object'
-              ? JSON.stringify(request.context_snapshot)
-              : '';
-          return [
-            csvCell(request.id),
-            csvCell(request.patient_id ?? ''),
-            csvCell(request.patient_id ? (patientById.get(request.patient_id) ?? '') : ''),
-            csvCell(request.request_type),
-            csvCell(request.status),
-            csvCell(request.subject),
-            csvCell(request.recipient_name ?? ''),
-            csvCell(request.recipient_role ?? ''),
-            csvCell(request.related_entity_type ?? ''),
-            csvCell(request.related_entity_id ?? ''),
-            csvCell(request.requested_at.toISOString()),
-            csvCell(request.due_date?.toISOString() ?? ''),
-            csvCell(latestResponse?.responder_name ?? ''),
-            csvCell(latestResponse?.responded_at.toISOString() ?? ''),
-            csvCell(resolveFaxReady(request.context_snapshot)),
-            csvCell('handoff-prep'),
-            csvCell(contextSnapshot),
-            csvCell(request.content),
-          ];
-        });
-        try {
-          await recordDataExportAudit(tx, {
-            orgId: ctx.orgId,
-            actorId: ctx.userId,
-            targetType: 'communication_request',
-            format: 'csv',
-            recordCount: rows.length,
-            filters: {
-              status: status?.data ?? null,
-              request_type: requestType ?? null,
-              profile,
-              redaction_profile: 'internal',
-              care_report_rows_excluded: !canReadCareReportOutput,
-            },
-            metadata: buildExportAuditMetadata({
-              requestIds: requests.map((request) => request.id),
-              patientIds: requests.map((request) => request.patient_id),
-            }),
-            ipAddress: ctx.ipAddress,
-            userAgent: ctx.userAgent,
-          });
-        } catch (cause) {
-          throw new CommunicationRequestExportAuditError(cause);
-        }
-        return { rows };
-      });
+        },
+        { requestContext: ctx },
+      );
     } catch (cause) {
       if (!(cause instanceof CommunicationRequestExportAuditError)) {
         return withSensitiveNoStore(

@@ -133,6 +133,13 @@ describe('/api/communication-requests/export GET', () => {
     expect(body).toContain('"handoff-prep"');
     expect(body).toContain('03-1234-5678');
     expect(body).toContain('東京都千代田区1-1-1');
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'admin',
+      }),
+    });
     expect(communicationRequestFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         orderBy: [{ requested_at: 'desc' }, { id: 'desc' }],
