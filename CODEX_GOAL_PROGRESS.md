@@ -24,6 +24,47 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Patient Create POST No-Store / PHI-Minimized Duplicate And Webhook Payload - 2026-06-30 10:03 JST
+
+- Scope:
+  - Hardened `POST /api/patients` and the patient-created webhook side effect used by patient creation.
+  - Preserved the 409 duplicate-conflict contract consumed by `PatientForm`: `details.duplicate_type` and `details.duplicates` remain available before write.
+  - Preserved the success response as top-level created patient fields plus warnings/metadata, but minimized post-confirmation duplicate metadata.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Split patient creation into `authenticatedPOST` plus exported `POST` that applies `withSensitiveNoStore`, `unstable_rethrow`, and fixed `internalError()` fallback.
+  - Added `unstable_rethrow` to the existing GET outer catch so framework control-flow errors are not swallowed by the fixed-error boundary.
+  - Added no-store coverage for patient create success, validation, duplicate conflict, auth rejection, unexpected create failure, and auth-plumbing failure paths.
+  - Reduced acknowledged-duplicate `201` metadata from full duplicate candidate rows to `duplicate_acknowledged` and `duplicate_candidate_count`.
+  - Removed patient `name` from the `patient.created` webhook payload; it now emits patient id and optional timestamp only.
+  - Mocked the patient-created webhook in route tests, asserting payload minimization and no webhook call on validation, duplicate, auth, or unexpected failure branches.
+- Safety:
+  - Reduces cache leakage risk for PHI/PII-bearing create responses, duplicate candidates, validation errors, and unexpected failures.
+  - Reduces PHI retention/exposure after duplicate confirmation by not echoing existing patient id/name/kana/birth date/gender in the successful create response.
+  - Reduces external webhook PHI egress by dropping patient name from `patient.created`.
+  - Preserves auth/permission behavior, org-reference validation, duplicate decision flow, create/intake write ordering, and failure-side-effect boundaries.
+- Performance:
+  - No DB query shape, dependency, retry loop, external request, synchronous blocking, or unbounded work was added.
+  - The patch only wraps existing route responses, narrows serialized payloads, and adds focused assertions.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/patients/route.ts src/app/api/patients/route.test.ts src/server/services/patient-service.ts`: passed.
+  - `pnpm exec vitest run src/app/api/patients/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `44` tests.
+  - `pnpm exec vitest run src/components/features/patients/patient-form.test.tsx src/server/services/patient-service.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `21` tests.
+  - `pnpm exec vitest run src/server/services/outbound-webhook.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `20` tests.
+  - Scoped ESLint on the three owned files: passed.
+  - Scoped Prettier check on the three owned files: passed.
+  - Scoped and full `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - API contract/test subagents confirmed the original no-store/fixed-error gaps and response-shape contracts.
+  - Privacy subagent initially returned `NOT APPROVED` for missing no-store, 201 duplicate PHI, and patient-name webhook egress; those findings were fixed in this slice.
+  - codex2 returned `PATCH_REVIEW_RESULT: APPROVED` after independently checking PHI minimization, 201 duplicate metadata compatibility, webhook payload minimization, no-store/fixed-error wrapper, and side-effect assertions. codex2 also reran focused patient route Vitest `44`/`44`, outbound-webhook service Vitest `20`/`20`, scoped ESLint, scoped Prettier, and scoped diff-check.
+- Remaining:
+  - Exact-path stage only `src/app/api/patients/route.ts`, `src/app/api/patients/route.test.ts`, `src/server/services/patient-service.ts`, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`; commit; send agmsg FYI. Preserve unrelated drug-master helper WIP and codex2's new patient-share case PATCH lock.
+
 ### Patient Share Correction Requests POST No-Store / Sanitized Envelope - 2026-06-30 09:56 JST
 
 - Scope:
