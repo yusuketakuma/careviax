@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { zipSync } from 'fflate';
-import { parseSskDrugMasterZip, resolveLatestSskDrugMasterZipUrl } from './ssk';
+import {
+  importSskDrugMaster,
+  parseSskDrugMasterZip,
+  previewSskDrugMasterImport,
+  resolveLatestSskDrugMasterZipUrl,
+} from './ssk';
 
 function toZipBlob(bytes: Uint8Array) {
   const copy = Uint8Array.from(bytes);
@@ -24,6 +29,20 @@ function buildRow(overrides: Record<number, string>) {
   }
 
   return row.map((value) => `"${value}"`).join(',');
+}
+
+function buildSskZip(csv: string) {
+  return zipSync({
+    'y_ALL_test.csv': Buffer.from(csv, 'utf8'),
+  });
+}
+
+function buildZipFetch(zipped: Uint8Array): typeof fetch {
+  return async () =>
+    new Response(toZipBlob(zipped), {
+      status: 200,
+      headers: { 'content-type': 'application/zip' },
+    });
 }
 
 describe('resolveLatestSskDrugMasterZipUrl', () => {
@@ -98,15 +117,7 @@ describe('parseSskDrugMasterZip', () => {
       }),
     ].join('\r\n');
 
-    const zipped = zipSync({
-      'y_ALL_test.csv': Buffer.from(csv, 'utf8'),
-    });
-
-    const fetchImpl: typeof fetch = async () =>
-      new Response(toZipBlob(zipped), {
-        status: 200,
-        headers: { 'content-type': 'application/zip' },
-      });
+    const fetchImpl = buildZipFetch(buildSskZip(csv));
 
     const parsed = await parseSskDrugMasterZip({
       zipUrl: 'https://www.ssk.or.jp/y_ALL_test.zip',
@@ -114,6 +125,7 @@ describe('parseSskDrugMasterZip', () => {
     });
 
     expect(parsed.entryName).toBe('y_ALL_test.csv');
+    expect(parsed.sourceFileHash).toMatch(/^[a-f0-9]{64}$/);
     expect(parsed.records).toHaveLength(2);
     expect(parsed.records[0]).toMatchObject({
       yj_code: '123456789012',
@@ -152,15 +164,7 @@ describe('parseSskDrugMasterZip', () => {
       34: 'ソセゴン錠２５ｍｇ',
     });
 
-    const zipped = zipSync({
-      'y_ALL_test.csv': Buffer.from(csv, 'utf8'),
-    });
-
-    const fetchImpl: typeof fetch = async () =>
-      new Response(toZipBlob(zipped), {
-        status: 200,
-        headers: { 'content-type': 'application/zip' },
-      });
+    const fetchImpl = buildZipFetch(buildSskZip(csv));
 
     const parsed = await parseSskDrugMasterZip({
       zipUrl: 'https://www.ssk.or.jp/y_ALL_test.zip',
@@ -201,15 +205,7 @@ describe('parseSskDrugMasterZip', () => {
       }),
     ].join('\r\n');
 
-    const zipped = zipSync({
-      'y_ALL_test.csv': Buffer.from(csv, 'utf8'),
-    });
-
-    const fetchImpl: typeof fetch = async () =>
-      new Response(toZipBlob(zipped), {
-        status: 200,
-        headers: { 'content-type': 'application/zip' },
-      });
+    const fetchImpl = buildZipFetch(buildSskZip(csv));
 
     const parsed = await parseSskDrugMasterZip({
       zipUrl: 'https://www.ssk.or.jp/y_ALL_test.zip',
@@ -228,9 +224,7 @@ describe('parseSskDrugMasterZip', () => {
       31: '123456789012',
       34: 'DRUG-A',
     });
-    const zipped = zipSync({
-      'y_ALL_test.csv': Buffer.from(csv, 'utf8'),
-    });
+    const zipped = buildSskZip(csv);
 
     await expect(
       parseSskDrugMasterZip({
@@ -247,5 +241,167 @@ describe('parseSskDrugMasterZip', () => {
           }),
       }),
     ).rejects.toThrow(/ZIP展開サイズが上限/);
+  });
+
+  it('records the source ZIP url and hash in the import log', async () => {
+    const csv = buildRow({
+      2: '123456789',
+      4: 'DRUG-A',
+      31: '123456789012',
+      34: 'DRUG-A',
+    });
+    const zipped = buildSskZip(csv);
+    const db = {
+      drugMasterImportLog: {
+        create: vi.fn().mockResolvedValue({ id: 'log_1', status: 'running' }),
+        update: vi.fn().mockResolvedValue({ id: 'log_1', status: 'completed' }),
+      },
+      drugMaster: {
+        upsert: vi.fn().mockResolvedValue({ id: 'drug_1' }),
+      },
+    };
+
+    const result = await importSskDrugMaster(
+      db as unknown as Parameters<typeof importSskDrugMaster>[0],
+      {
+        zipUrl: 'https://www.ssk.or.jp/y_ALL20260611.zip',
+        fetchImpl: async () =>
+          new Response(toZipBlob(zipped), {
+            status: 200,
+            headers: { 'content-type': 'application/zip' },
+          }),
+      },
+    );
+
+    expect(result.importedCount).toBe(1);
+    expect(db.drugMasterImportLog.update).toHaveBeenCalledWith({
+      where: { id: 'log_1' },
+      data: expect.objectContaining({
+        status: 'completed',
+        record_count: 1,
+        source_url: 'https://www.ssk.or.jp/y_ALL20260611.zip',
+        source_file_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        source_published_at: new Date(Date.UTC(2026, 5, 11)),
+        import_mode: 'full',
+        change_summary: {
+          mode: 'full',
+          parsed_records: 1,
+          imported_records: 1,
+          entry_name: 'y_ALL_test.csv',
+        },
+      }),
+    });
+  });
+
+  it('previews create/update/unchanged SSK rows without writing import logs or upserts', async () => {
+    const csv = [
+      buildRow({
+        2: '111111111',
+        31: '111111111111',
+        34: 'UPDATED-DRUG',
+      }),
+      buildRow({
+        2: '222222222',
+        31: '222222222222',
+        34: 'UNCHANGED-DRUG',
+      }),
+      buildRow({
+        2: '333333333',
+        31: '333333333333',
+        34: 'NEW-DRUG',
+      }),
+    ].join('\r\n');
+    const db = {
+      drugMasterImportLog: {
+        create: vi.fn(),
+        update: vi.fn(),
+      },
+      drugMaster: {
+        upsert: vi.fn(),
+        findMany: vi.fn().mockResolvedValue([
+          {
+            yj_code: '111111111111',
+            receipt_code: '111111111',
+            drug_name: 'OLD-DRUG',
+            drug_name_kana: null,
+            generic_name: null,
+            drug_price: null,
+            unit: null,
+            dosage_form: null,
+            therapeutic_category: '1111',
+            manufacturer: null,
+            is_generic: false,
+            is_narcotic: false,
+            is_psychotropic: false,
+            max_administration_days: null,
+            transitional_expiry_date: null,
+          },
+          {
+            yj_code: '222222222222',
+            receipt_code: '222222222',
+            drug_name: 'UNCHANGED-DRUG',
+            drug_name_kana: null,
+            generic_name: null,
+            drug_price: null,
+            unit: null,
+            dosage_form: null,
+            therapeutic_category: '2222',
+            manufacturer: null,
+            is_generic: false,
+            is_narcotic: false,
+            is_psychotropic: false,
+            max_administration_days: null,
+            transitional_expiry_date: null,
+          },
+        ]),
+      },
+    };
+
+    const result = await previewSskDrugMasterImport(
+      db as unknown as Parameters<typeof previewSskDrugMasterImport>[0],
+      {
+        zipUrl: 'https://www.ssk.or.jp/y_ALL20260611.zip',
+        previewLimit: 10,
+        fetchImpl: buildZipFetch(buildSskZip(csv)),
+      },
+    );
+
+    expect(result).toMatchObject({
+      dryRun: true,
+      entryName: 'y_ALL_test.csv',
+      zipUrl: 'https://www.ssk.or.jp/y_ALL20260611.zip',
+      sourcePublishedAt: '2026-06-11T00:00:00.000Z',
+      preview: {
+        summary: {
+          parsed_records: 3,
+          create_count: 1,
+          update_count: 1,
+          unchanged_count: 1,
+          sampled_rows: 2,
+        },
+        rows: [
+          {
+            yj_code: '111111111111',
+            drug_name: 'UPDATED-DRUG',
+            action: 'update',
+            changed_fields: ['drug_name'],
+          },
+          {
+            yj_code: '333333333333',
+            drug_name: 'NEW-DRUG',
+            action: 'create',
+          },
+        ],
+      },
+    });
+    expect(result.sourceFileHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(db.drugMaster.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { yj_code: { in: ['111111111111', '222222222222', '333333333333'] } },
+      }),
+    );
+    expect(db.drugMasterImportLog.create).not.toHaveBeenCalled();
+    expect(db.drugMasterImportLog.update).not.toHaveBeenCalled();
+    expect(db.drugMaster.upsert).not.toHaveBeenCalled();
   });
 });

@@ -12,6 +12,7 @@ import {
   importManualClinicalRules,
   manualClinicalRuleBundleSchema,
 } from '@/server/services/drug-master-import/manual';
+import { projectDrugMasterImportLogMetadata } from '../import-log-response';
 
 const ROUTE = '/api/drug-master-imports/manual-clinical';
 const SAFE_ERROR_NAMES = new Set([
@@ -62,6 +63,7 @@ async function authenticatedPOST(req: NextRequest) {
         highRiskCount: result.highRiskCount,
         renalCount: result.renalCount,
         safetyOverrideCount: result.safetyOverrideCount,
+        ...projectDrugMasterImportLogMetadata(result.log),
       },
     },
     201,

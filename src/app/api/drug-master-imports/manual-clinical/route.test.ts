@@ -97,7 +97,20 @@ describe('/api/drug-master-imports/manual-clinical', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin', site_id: null });
     importManualClinicalRulesMock.mockResolvedValue({
-      log: { id: 'log_1', status: 'success' },
+      log: {
+        id: 'log_1',
+        status: 'success',
+        source_file_hash: null,
+        source_published_at: null,
+        import_mode: 'manual',
+        change_summary: {
+          mode: 'manual',
+          pim_rules: 1,
+          high_risk_rules: 1,
+          renal_rules: 1,
+          drug_safety_overrides: 1,
+        },
+      },
       importedCount: 4,
       pimCount: 1,
       highRiskCount: 1,
@@ -184,8 +197,19 @@ describe('/api/drug-master-imports/manual-clinical', () => {
     );
     await expect(response.json()).resolves.toMatchObject({
       data: {
+        logId: 'log_1',
         importedCount: 4,
         safetyOverrideCount: 1,
+        sourceFileHash: null,
+        sourcePublishedAt: null,
+        importMode: 'manual',
+        changeSummary: {
+          mode: 'manual',
+          pim_rules: 1,
+          high_risk_rules: 1,
+          renal_rules: 1,
+          drug_safety_overrides: 1,
+        },
       },
     });
   });

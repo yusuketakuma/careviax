@@ -12,6 +12,10 @@ export type DrugMasterImportStatusResponse = {
       imported_at: string;
       record_count: number;
       days_ago: number | null;
+      source_file_hash: string | null;
+      source_published_at: string | null;
+      import_mode: string | null;
+      change_summary: unknown | null;
     } | null;
     last_failure: {
       imported_at: string;
@@ -28,6 +32,8 @@ export type DrugMasterImportStatusResponse = {
   }>;
   totals: {
     drug_master_count: number;
+    drug_package_count: number;
+    drug_package_coverage: number;
     hot_code_coverage: number;
     package_insert_count: number;
     interaction_count: number;

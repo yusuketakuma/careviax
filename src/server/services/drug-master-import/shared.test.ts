@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { zipSync } from 'fflate';
 import {
   MHLW_IMPORT_URL_POLICY,
+  extractImportSourceDateFromUrl,
   fetchBytes,
+  parseImportSourceDateToken,
   unzipWithLimits,
   validateImportSourceUrl,
 } from './shared';
@@ -59,6 +61,28 @@ describe('validateImportSourceUrl', () => {
         process.env.DRUG_MASTER_IMPORT_ALLOWED_HOSTS = previous;
       }
     }
+  });
+});
+
+describe('import source date helpers', () => {
+  it('parses official source date tokens without timezone drift', () => {
+    expect(parseImportSourceDateToken('20260611')?.toISOString()).toBe('2026-06-11T00:00:00.000Z');
+    expect(parseImportSourceDateToken('260401')?.toISOString()).toBe('2026-04-01T00:00:00.000Z');
+    expect(parseImportSourceDateToken('not-a-date')).toBeNull();
+  });
+
+  it('extracts publication dates from source URLs only through caller-supplied patterns', () => {
+    expect(
+      extractImportSourceDateFromUrl(
+        'https://www.mhlw.go.jp/topics/2026/04/xls/tp20260520-01_01.xlsx',
+        [/tp(\d{8})-/i],
+      )?.toISOString(),
+    ).toBe('2026-05-20T00:00:00.000Z');
+    expect(
+      extractImportSourceDateFromUrl('https://www.mhlw.go.jp/topics/2026/04/xls/file.xlsx', [
+        /tp(\d{8})-/i,
+      ]),
+    ).toBeNull();
   });
 });
 

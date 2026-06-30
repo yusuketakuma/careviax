@@ -78,12 +78,14 @@ model DrugMaster {
   created_at                    DateTime  @default(now())
   updated_at                    DateTime  @updatedAt
 
-  package_inserts   DrugPackageInsert[]
-  interactions_as_a DrugInteraction[]   @relation("DrugA")
-  interactions_as_b DrugInteraction[]   @relation("DrugB")
-  drug_stocks       PharmacyDrugStock[]
-  preferred_stocks  PharmacyDrugStock[] @relation("PreferredGeneric")
-  prescription_lines PrescriptionLine[]  @relation("PrescriptionLineDrugMaster")
+  package_inserts      DrugPackageInsert[]
+  drug_packages        DrugPackage[]
+  interactions_as_a    DrugInteraction[]    @relation("DrugA")
+  interactions_as_b    DrugInteraction[]    @relation("DrugB")
+  drug_stocks          PharmacyDrugStock[]
+  preferred_stocks     PharmacyDrugStock[]  @relation("PreferredGeneric")
+  prescription_lines   PrescriptionLine[]   @relation("PrescriptionLineDrugMaster")
+  residual_medications ResidualMedication[]
 
   @@index([yj_code])
   @@index([receipt_code])
@@ -99,6 +101,33 @@ model DrugMaster {
   @@index([is_psychotropic])
   @@index([transitional_expiry_date])
   @@index([lasa_group_key])
+}
+
+// グローバルマスタ（org_id なし）
+model DrugPackage {
+  id                    String        @id @default(cuid())
+  drug_master_id        String
+  drug_master           DrugMaster    @relation(fields: [drug_master_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  gtin                  String        @unique
+  jan_code              String?
+  package_level         String?
+  package_quantity      Decimal?      @db.Decimal(12, 4)
+  package_quantity_unit String?
+  manufacturer          String?
+  source                ImportSource?
+  source_file_hash      String?
+  source_record_id      String?
+  effective_from        DateTime?     @db.Date
+  effective_to          DateTime?     @db.Date
+  is_active             Boolean       @default(true)
+  created_at            DateTime      @default(now())
+  updated_at            DateTime      @updatedAt
+
+  @@index([drug_master_id])
+  @@index([jan_code])
+  @@index([package_level])
+  @@index([is_active])
+  @@index([source, source_file_hash])
 }
 
 // グローバルマスタ（org_id なし）
@@ -244,16 +273,24 @@ model GenericDrugMapping {
 
 // グローバル（org_id なし）
 model DrugMasterImportLog {
-  id           String       @id @default(cuid())
-  source       ImportSource
-  imported_at  DateTime     @default(now())
-  record_count Int
-  status       ImportStatus
-  error_log    String?
-  created_at   DateTime     @default(now())
-  updated_at   DateTime     @updatedAt
+  id                  String       @id @default(cuid())
+  source              ImportSource
+  imported_at         DateTime     @default(now())
+  record_count        Int
+  status              ImportStatus
+  error_log           String?
+  source_url          String?
+  source_file_hash    String?
+  source_published_at DateTime?    @db.Date
+  import_mode         String?
+  change_summary      Json?
+  created_at          DateTime     @default(now())
+  updated_at          DateTime     @updatedAt
 
   @@index([source, imported_at])
+  @@index([source, source_file_hash])
+  @@index([source, source_published_at])
+  @@index([source, import_mode])
   @@index([status, imported_at])
 }
 

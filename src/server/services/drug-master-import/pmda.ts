@@ -8,10 +8,12 @@ import {
   type DrugMasterImportLogDbClient,
   ZipExpansionLimits,
   fetchBytes,
+  extractImportSourceDateFromUrl,
   isZipBuffer,
   normalizeCell,
   normalizeImportSourceUrl,
   parseDate,
+  sha256ImportPayload,
   unzipWithLimits,
   withImportLog,
 } from './shared';
@@ -28,6 +30,10 @@ export type ImportPmdaPackageInsertOptions = {
   mode?: 'full' | 'delta';
   fetchImpl?: FetchLike;
   zipLimits?: Partial<ZipExpansionLimits>;
+};
+
+export type PreviewPmdaPackageInsertOptions = ImportPmdaPackageInsertOptions & {
+  previewLimit?: number;
 };
 
 type ParsedPmdaInteractionCandidate = {
@@ -60,9 +66,48 @@ type PmdaPackageInsertImportDbClient = DrugMasterImportLogDbClient & {
     'create' | 'findFirst' | 'update'
   >;
 };
+type PmdaPackageInsertPreviewDbClient = {
+  drugMaster: Pick<Prisma.TransactionClient['drugMaster'], 'findMany'>;
+  drugPackageInsert: Pick<Prisma.TransactionClient['drugPackageInsert'], 'findMany'>;
+};
+
+type PmdaPackageInsertPreviewAction = 'create' | 'update' | 'unchanged' | 'skip_unmatched_primary';
+
+export type PmdaPackageInsertPreviewRow = {
+  yj_code: string | null;
+  drug_name: string | null;
+  drug_master_id: string | null;
+  action: PmdaPackageInsertPreviewAction;
+  changed_fields: string[];
+  interaction_candidate_count: number;
+  matched_interaction_pair_count: number;
+};
+
+export type PmdaPackageInsertImportPreview = {
+  dryRun: true;
+  zipUrl: string;
+  mode: 'full' | 'delta';
+  sourceFileHash: string;
+  sourcePublishedAt: string | null;
+  preview: {
+    summary: {
+      parsed_records: number;
+      matched_primary_records: number;
+      skipped_unmatched_primary_records: number;
+      create_count: number;
+      update_count: number;
+      unchanged_count: number;
+      matched_interaction_pair_count: number;
+      sampled_rows: number;
+    };
+    rows: PmdaPackageInsertPreviewRow[];
+  };
+};
 
 const PMDA_FULL_URL_ENV = 'PMDA_PACKAGE_INSERT_FULL_URL';
 const PMDA_DELTA_URL_ENV = 'PMDA_PACKAGE_INSERT_DELTA_URL';
+const DEFAULT_PREVIEW_ROW_LIMIT = 20;
+const MAX_PREVIEW_ROW_LIMIT = 100;
 const PMDA_ZIP_EXPANSION_LIMITS: ZipExpansionLimits = {
   maxEntries: 80_000,
   maxEntryBytes: 8 * 1024 * 1024,
@@ -89,6 +134,14 @@ function resolvePmdaZipLimits(overrides?: Partial<ZipExpansionLimits>) {
     ...PMDA_ZIP_EXPANSION_LIMITS,
     ...overrides,
   };
+}
+
+function normalizePreviewLimit(value: number | undefined) {
+  if (value == null) return DEFAULT_PREVIEW_ROW_LIMIT;
+  if (!Number.isFinite(value)) return DEFAULT_PREVIEW_ROW_LIMIT;
+  const normalized = Math.trunc(value);
+  if (!Number.isSafeInteger(normalized) || normalized < 0) return DEFAULT_PREVIEW_ROW_LIMIT;
+  return Math.min(normalized, MAX_PREVIEW_ROW_LIMIT);
 }
 
 function unzipPmdaPackageInsertArchive(
@@ -308,6 +361,7 @@ export async function parsePmdaPackageInsertArchive(options: ImportPmdaPackageIn
 
   return {
     zipUrl,
+    sourceFileHash: sha256ImportPayload(buffer),
     mode: options.mode ?? 'full',
     records,
   };
@@ -333,6 +387,263 @@ function matchCounterpartIds(
   return [...matched.keys()];
 }
 
+function comparablePreviewValue(value: unknown) {
+  if (value == null) return null;
+  if (value instanceof Date) return value.toISOString();
+  return value;
+}
+
+function stableStringify(value: unknown): string {
+  return JSON.stringify(sortKeysDeep(value));
+}
+
+function sortKeysDeep(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortKeysDeep);
+  if (value && typeof value === 'object' && !(value instanceof Date)) {
+    return Object.keys(value as Record<string, unknown>)
+      .sort()
+      .reduce<Record<string, unknown>>((acc, key) => {
+        acc[key] = sortKeysDeep((value as Record<string, unknown>)[key]);
+        return acc;
+      }, {});
+  }
+  return comparablePreviewValue(value);
+}
+
+function isPreviewValueEqual(left: unknown, right: unknown) {
+  return stableStringify(left) === stableStringify(right);
+}
+
+function changedPmdaPackageInsertFields(
+  record: ParsedPmdaPackageInsertRecord,
+  existing: {
+    contraindications: Prisma.JsonValue | null;
+    interactions: Prisma.JsonValue | null;
+    adverse_effects: Prisma.JsonValue | null;
+    document_version: string | null;
+    revised_at: Date | null;
+    source_format: string | null;
+  },
+) {
+  const comparisons: Array<{ field: string; next: unknown; current: unknown }> = [
+    {
+      field: 'contraindications',
+      next: record.contraindications,
+      current: existing.contraindications,
+    },
+    {
+      field: 'interactions',
+      next: record.interaction_summaries,
+      current: existing.interactions,
+    },
+    {
+      field: 'adverse_effects',
+      next: record.adverse_effects,
+      current: existing.adverse_effects,
+    },
+    {
+      field: 'document_version',
+      next: record.document_version,
+      current: existing.document_version,
+    },
+    {
+      field: 'revised_at',
+      next: record.revised_at,
+      current: existing.revised_at,
+    },
+    {
+      field: 'source_format',
+      next: 'xml',
+      current: existing.source_format,
+    },
+  ];
+
+  return comparisons
+    .filter((comparison) => !isPreviewValueEqual(comparison.next, comparison.current))
+    .map((comparison) => comparison.field);
+}
+
+function matchedInteractionPairCount(args: {
+  primaryId: string;
+  interactionCandidates: ParsedPmdaInteractionCandidate[];
+  masterIdByYjCode: Map<string, string>;
+}) {
+  const pairs = new Set<string>();
+  for (const candidate of args.interactionCandidates) {
+    const counterpartIds = matchCounterpartIds(candidate, args.masterIdByYjCode).filter(
+      (id) => id !== args.primaryId,
+    );
+    for (const counterpartId of counterpartIds) {
+      const [drugAId, drugBId] = canonicalizePair(args.primaryId, counterpartId);
+      pairs.add(`${drugAId}:${drugBId}`);
+    }
+  }
+  return pairs.size;
+}
+
+async function fetchLatestPackageInsertByMasterId(
+  db: PmdaPackageInsertPreviewDbClient,
+  drugMasterIds: string[],
+) {
+  if (drugMasterIds.length === 0) {
+    return new Map<string, Awaited<ReturnType<typeof db.drugPackageInsert.findMany>>[number]>();
+  }
+
+  const rows = await db.drugPackageInsert.findMany({
+    where: { drug_master_id: { in: drugMasterIds } },
+    orderBy: [{ drug_master_id: 'asc' }, { revised_at: 'desc' }, { created_at: 'desc' }],
+    select: {
+      id: true,
+      drug_master_id: true,
+      contraindications: true,
+      interactions: true,
+      adverse_effects: true,
+      document_version: true,
+      revised_at: true,
+      source_format: true,
+      created_at: true,
+    },
+  });
+
+  const latestByMasterId = new Map<string, (typeof rows)[number]>();
+  for (const row of rows) {
+    if (!latestByMasterId.has(row.drug_master_id)) {
+      latestByMasterId.set(row.drug_master_id, row);
+    }
+  }
+  return latestByMasterId;
+}
+
+export async function previewPmdaPackageInserts(
+  db: PmdaPackageInsertPreviewDbClient,
+  options: PreviewPmdaPackageInsertOptions = {},
+): Promise<PmdaPackageInsertImportPreview> {
+  const parsed = await parsePmdaPackageInsertArchive(options);
+  const previewLimit = normalizePreviewLimit(options.previewLimit);
+  const masters = await db.drugMaster.findMany({
+    select: {
+      id: true,
+      yj_code: true,
+      drug_name: true,
+      generic_name: true,
+    },
+  });
+  const mastersByYjCode = new Map(masters.map((item) => [item.yj_code, item]));
+  const masterIdByYjCode = new Map(masters.map((item) => [item.yj_code, item.id]));
+  const matchedMasterIds = [
+    ...new Set(
+      parsed.records
+        .map((record) => (record.yj_code ? mastersByYjCode.get(record.yj_code)?.id : null))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
+  const latestPackageInsertByMasterId = await fetchLatestPackageInsertByMasterId(
+    db,
+    matchedMasterIds,
+  );
+
+  let matchedPrimaryCount = 0;
+  let skippedUnmatchedPrimaryCount = 0;
+  let createCount = 0;
+  let updateCount = 0;
+  let unchangedCount = 0;
+  let matchedPairCount = 0;
+  const rows: PmdaPackageInsertPreviewRow[] = [];
+
+  for (const record of parsed.records) {
+    const primary = record.yj_code ? mastersByYjCode.get(record.yj_code) : null;
+    if (!primary) {
+      skippedUnmatchedPrimaryCount += 1;
+      if (rows.length < previewLimit) {
+        rows.push({
+          yj_code: record.yj_code,
+          drug_name: record.drug_name,
+          drug_master_id: null,
+          action: 'skip_unmatched_primary',
+          changed_fields: [],
+          interaction_candidate_count: record.interaction_candidates.length,
+          matched_interaction_pair_count: 0,
+        });
+      }
+      continue;
+    }
+
+    matchedPrimaryCount += 1;
+    const recordMatchedPairCount = matchedInteractionPairCount({
+      primaryId: primary.id,
+      interactionCandidates: record.interaction_candidates,
+      masterIdByYjCode,
+    });
+    matchedPairCount += recordMatchedPairCount;
+    const existing = latestPackageInsertByMasterId.get(primary.id);
+    if (!existing) {
+      createCount += 1;
+      if (rows.length < previewLimit) {
+        rows.push({
+          yj_code: record.yj_code,
+          drug_name: record.drug_name ?? primary.drug_name,
+          drug_master_id: primary.id,
+          action: 'create',
+          changed_fields: [
+            'contraindications',
+            'interactions',
+            'adverse_effects',
+            'document_version',
+            'revised_at',
+            'source_format',
+          ],
+          interaction_candidate_count: record.interaction_candidates.length,
+          matched_interaction_pair_count: recordMatchedPairCount,
+        });
+      }
+      continue;
+    }
+
+    const changedFields = changedPmdaPackageInsertFields(record, existing);
+    if (changedFields.length === 0) {
+      unchangedCount += 1;
+      continue;
+    }
+
+    updateCount += 1;
+    if (rows.length < previewLimit) {
+      rows.push({
+        yj_code: record.yj_code,
+        drug_name: record.drug_name ?? primary.drug_name,
+        drug_master_id: primary.id,
+        action: 'update',
+        changed_fields: changedFields,
+        interaction_candidate_count: record.interaction_candidates.length,
+        matched_interaction_pair_count: recordMatchedPairCount,
+      });
+    }
+  }
+
+  return {
+    dryRun: true,
+    zipUrl: parsed.zipUrl,
+    mode: parsed.mode,
+    sourceFileHash: parsed.sourceFileHash,
+    sourcePublishedAt:
+      extractImportSourceDateFromUrl(parsed.zipUrl, [
+        /(?:^|[^\d])(\d{8})(?:[^\d]|$)/,
+      ])?.toISOString() ?? null,
+    preview: {
+      summary: {
+        parsed_records: parsed.records.length,
+        matched_primary_records: matchedPrimaryCount,
+        skipped_unmatched_primary_records: skippedUnmatchedPrimaryCount,
+        create_count: createCount,
+        update_count: updateCount,
+        unchanged_count: unchangedCount,
+        matched_interaction_pair_count: matchedPairCount,
+        sampled_rows: rows.length,
+      },
+      rows,
+    },
+  };
+}
+
 export async function importPmdaPackageInserts(
   db: PmdaPackageInsertImportDbClient,
   options: ImportPmdaPackageInsertOptions = {},
@@ -349,33 +660,53 @@ export async function importPmdaPackageInserts(
     });
 
     let importedCount = 0;
+    let skippedUnmatchedPrimaryCount = 0;
+    let createCount = 0;
+    let updateCount = 0;
+    let unchangedCount = 0;
+    let matchedPairCount = 0;
     const mastersByYjCode = new Map(masters.map((item) => [item.yj_code, item]));
     const masterIdByYjCode = new Map(masters.map((item) => [item.yj_code, item.id]));
 
     for (const record of parsed.records) {
       const primary = record.yj_code ? mastersByYjCode.get(record.yj_code) : null;
       if (!primary) {
+        skippedUnmatchedPrimaryCount += 1;
         continue;
       }
 
       const latest = await db.drugPackageInsert.findFirst({
         where: { drug_master_id: primary.id },
         orderBy: [{ revised_at: 'desc' }, { created_at: 'desc' }],
-        select: { id: true },
+        select: {
+          id: true,
+          contraindications: true,
+          interactions: true,
+          adverse_effects: true,
+          document_version: true,
+          revised_at: true,
+          source_format: true,
+        },
       });
 
       if (latest) {
-        await db.drugPackageInsert.update({
-          where: { id: latest.id },
-          data: {
-            contraindications: record.contraindications,
-            interactions: record.interaction_summaries,
-            adverse_effects: record.adverse_effects,
-            document_version: record.document_version,
-            revised_at: record.revised_at,
-            source_format: 'xml',
-          },
-        });
+        const changedFields = changedPmdaPackageInsertFields(record, latest);
+        if (changedFields.length > 0) {
+          await db.drugPackageInsert.update({
+            where: { id: latest.id },
+            data: {
+              contraindications: record.contraindications,
+              interactions: record.interaction_summaries,
+              adverse_effects: record.adverse_effects,
+              document_version: record.document_version,
+              revised_at: record.revised_at,
+              source_format: 'xml',
+            },
+          });
+          updateCount += 1;
+        } else {
+          unchangedCount += 1;
+        }
       } else {
         await db.drugPackageInsert.create({
           data: {
@@ -388,7 +719,15 @@ export async function importPmdaPackageInserts(
             source_format: 'xml',
           },
         });
+        createCount += 1;
       }
+
+      const recordMatchedPairCount = matchedInteractionPairCount({
+        primaryId: primary.id,
+        interactionCandidates: record.interaction_candidates,
+        masterIdByYjCode,
+      });
+      matchedPairCount += recordMatchedPairCount;
 
       for (const candidate of record.interaction_candidates) {
         const counterpartIds = matchCounterpartIds(candidate, masterIdByYjCode).filter(
@@ -427,6 +766,22 @@ export async function importPmdaPackageInserts(
 
     return {
       recordCount: importedCount,
+      sourceUrl: parsed.zipUrl,
+      sourceFileHash: parsed.sourceFileHash,
+      sourcePublishedAt: extractImportSourceDateFromUrl(parsed.zipUrl, [
+        /(?:^|[^\d])(\d{8})(?:[^\d]|$)/,
+      ]),
+      importMode: parsed.mode,
+      changeSummary: {
+        mode: parsed.mode,
+        parsed_records: parsed.records.length,
+        imported_records: importedCount,
+        skipped_unmatched_primary_records: skippedUnmatchedPrimaryCount,
+        create_count: createCount,
+        update_count: updateCount,
+        unchanged_count: unchangedCount,
+        matched_interaction_pair_count: matchedPairCount,
+      },
       payload: {
         zipUrl: parsed.zipUrl,
         mode: parsed.mode,

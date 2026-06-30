@@ -1,21 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { authMock, membershipFindFirstMock, prismaMock, importSskDrugMasterMock, loggerErrorMock } =
-  vi.hoisted(() => {
-    const membershipFindFirstMock = vi.fn();
-    return {
-      authMock: vi.fn(),
-      membershipFindFirstMock,
-      prismaMock: {
-        membership: {
-          findFirst: membershipFindFirstMock,
-        },
+const {
+  authMock,
+  membershipFindFirstMock,
+  prismaMock,
+  importSskDrugMasterMock,
+  previewSskDrugMasterImportMock,
+  loggerErrorMock,
+} = vi.hoisted(() => {
+  const membershipFindFirstMock = vi.fn();
+  return {
+    authMock: vi.fn(),
+    membershipFindFirstMock,
+    prismaMock: {
+      membership: {
+        findFirst: membershipFindFirstMock,
       },
-      importSskDrugMasterMock: vi.fn(),
-      loggerErrorMock: vi.fn(),
-    };
-  });
+    },
+    importSskDrugMasterMock: vi.fn(),
+    previewSskDrugMasterImportMock: vi.fn(),
+    loggerErrorMock: vi.fn(),
+  };
+});
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -31,6 +38,7 @@ vi.mock('@/lib/utils/logger', () => ({
 
 vi.mock('@/server/services/drug-master-import/ssk', () => ({
   importSskDrugMaster: importSskDrugMasterMock,
+  previewSskDrugMasterImport: previewSskDrugMasterImportMock,
 }));
 
 import { POST } from './route';
@@ -69,10 +77,47 @@ describe('/api/drug-master-imports/ssk', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin', site_id: null });
     importSskDrugMasterMock.mockResolvedValue({
-      log: { id: 'log_1', status: 'success' },
+      log: {
+        id: 'log_1',
+        status: 'success',
+        source_file_hash: 'ssk_source_hash',
+        source_published_at: new Date('2026-06-11T00:00:00.000Z'),
+        import_mode: 'full',
+        change_summary: { mode: 'full', parsed_records: 120, imported_records: 120 },
+      },
       importedCount: 120,
       entryName: 'master.csv',
       zipUrl: 'https://www.ssk.or.jp/ssk.zip',
+    });
+    previewSskDrugMasterImportMock.mockResolvedValue({
+      dryRun: true,
+      entryName: 'master.csv',
+      zipUrl: 'https://www.ssk.or.jp/ssk.zip',
+      sourceFileHash: 'ssk_source_hash',
+      sourcePublishedAt: '2026-06-11T00:00:00.000Z',
+      preview: {
+        summary: {
+          parsed_records: 120,
+          create_count: 10,
+          update_count: 5,
+          unchanged_count: 105,
+          sampled_rows: 2,
+        },
+        rows: [
+          {
+            yj_code: '123456789012',
+            drug_name: 'DRUG-A',
+            action: 'update',
+            changed_fields: ['drug_name'],
+          },
+          {
+            yj_code: '998877665544',
+            drug_name: 'DRUG-B',
+            action: 'create',
+            changed_fields: ['drug_name'],
+          },
+        ],
+      },
     });
   });
 
@@ -121,6 +166,61 @@ describe('/api/drug-master-imports/ssk', () => {
     expect(importSskDrugMasterMock).toHaveBeenCalledWith(prismaMock, {
       zipUrl: 'https://www.ssk.or.jp/ssk.zip',
       limit: 100,
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        logId: 'log_1',
+        sourceFileHash: 'ssk_source_hash',
+        sourcePublishedAt: '2026-06-11T00:00:00.000Z',
+        importMode: 'full',
+        changeSummary: { mode: 'full', parsed_records: 120, imported_records: 120 },
+      },
+    });
+  });
+
+  it('returns an SSK dry-run preview without executing the import', async () => {
+    const response = await POST(
+      createJsonRequest({
+        zipUrl: 'https://www.ssk.or.jp/ssk.zip',
+        limit: 100,
+        dryRun: true,
+        previewLimit: 2,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(importSskDrugMasterMock).not.toHaveBeenCalled();
+    expect(previewSskDrugMasterImportMock).toHaveBeenCalledWith(prismaMock, {
+      zipUrl: 'https://www.ssk.or.jp/ssk.zip',
+      limit: 100,
+      previewLimit: 2,
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        dryRun: true,
+        sourceFileHash: 'ssk_source_hash',
+        preview: {
+          summary: {
+            parsed_records: 120,
+            create_count: 10,
+            update_count: 5,
+            unchanged_count: 105,
+            sampled_rows: 2,
+          },
+          rows: [
+            {
+              yj_code: '123456789012',
+              action: 'update',
+              changed_fields: ['drug_name'],
+            },
+            {
+              yj_code: '998877665544',
+              action: 'create',
+            },
+          ],
+        },
+      },
     });
   });
 

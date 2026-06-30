@@ -37,6 +37,7 @@ const {
   detailDataMock,
   stockConfigDataMock,
   candidatesDataMock,
+  importLogsDataMock,
   queryErrorKeys,
   refetchSpies,
 } = vi.hoisted(() => ({
@@ -60,6 +61,7 @@ const {
   detailDataMock: { current: null as unknown },
   stockConfigDataMock: { current: null as unknown },
   candidatesDataMock: { current: [] as unknown[] },
+  importLogsDataMock: { current: [] as unknown[] },
   // Tests can mark query keys as failed to exercise the fetch-error affordances
   // (import logs / master status / site picker) without affecting success-path tests.
   queryErrorKeys: new Set<string>(),
@@ -313,6 +315,15 @@ vi.mock('@tanstack/react-query', () => ({
                 imported_at: '2026-04-20T00:00:00.000Z',
                 record_count: 100,
                 days_ago: 2,
+                source_file_hash:
+                  'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789',
+                source_published_at: '2026-04-19T00:00:00.000Z',
+                import_mode: 'full',
+                change_summary: {
+                  mode: 'full',
+                  parsed_records: 100,
+                  imported_records: 100,
+                },
               },
               last_failure: null,
               recent_runs_30d: {
@@ -346,6 +357,8 @@ vi.mock('@tanstack/react-query', () => ({
           ],
           totals: {
             drug_master_count: 0,
+            drug_package_count: 42,
+            drug_package_coverage: 7,
             hot_code_coverage: 0,
             package_insert_count: 0,
             interaction_count: 0,
@@ -357,7 +370,7 @@ vi.mock('@tanstack/react-query', () => ({
       };
     }
     if (key === 'drug-master-import-logs') {
-      return { data: { data: [] }, isLoading: false };
+      return { data: { data: importLogsDataMock.current }, isLoading: false };
     }
     // slice4c: drug-detail panel queries that back the 採用後発薬 (preferred generic) Select.
     // Controllable via the hoisted refs; default values keep the prior null/empty behavior.
@@ -610,6 +623,27 @@ vi.mock('next/link', () => ({
   ),
 }));
 
+function confirmMasterImportAction(label = 'SSK全件取込') {
+  fireEvent.click(screen.getByRole('button', { name: label }));
+  expect(screen.getByRole('heading', { name: `${label}を実行しますか` })).toBeTruthy();
+  expect(mutationMutateMock).not.toHaveBeenCalledWith('ssk');
+  fireEvent.change(screen.getByPlaceholderText('取込実行'), {
+    target: { value: '取込実行' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: '取込実行' }));
+}
+
+function confirmAutoRefreshAction() {
+  fireEvent.click(screen.getByRole('button', { name: /フリーマスター一括更新/ }));
+  expect(
+    screen.getByRole('heading', { name: 'フリーマスター一括更新を実行しますか' }),
+  ).toBeTruthy();
+  fireEvent.change(screen.getByPlaceholderText('一括更新'), {
+    target: { value: '一括更新' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: '一括更新' }));
+}
+
 describe('DrugMasterContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -622,6 +656,7 @@ describe('DrugMasterContent', () => {
     detailDataMock.current = null;
     stockConfigDataMock.current = null;
     candidatesDataMock.current = [];
+    importLogsDataMock.current = [];
   });
 
   it('shows PMDA and other externally configured sources in master status', () => {
@@ -629,15 +664,188 @@ describe('DrugMasterContent', () => {
 
     expect(screen.getByText('SSK基本マスター')).toBeTruthy();
     expect(screen.getByText('PMDA 添付文書')).toBeTruthy();
+    expect(screen.getByText(/包装GTIN: 42件 \/ 7%/)).toBeTruthy();
     expect(screen.getByText(/添付文書: 0件/)).toBeTruthy();
     expect(screen.getByText(/相互作用: 0件/)).toBeTruthy();
     expect(screen.getByText('外部設定')).toBeTruthy();
     expect(screen.getByText(/直近失敗: URL未設定/)).toBeTruthy();
+    expect(screen.getByText('sha256: abcdef012345')).toBeTruthy();
+    expect(screen.getByText('published: 2026/4/19')).toBeTruthy();
+    expect(screen.getByText('mode: 全件')).toBeTruthy();
+    expect(screen.getByText('summary: 解析 100件 / 反映 100件')).toBeTruthy();
     expect(screen.getByText('直近30日: 2回 / 失敗 2回')).toBeTruthy();
     expect(screen.getByText('連続失敗 2回')).toBeTruthy();
     expect(screen.getByRole('button', { name: '鮮度チェック' })).toBeTruthy();
     expect(screen.getByLabelText('取込履歴ソース')).toBeTruthy();
     expect(screen.getByLabelText('取込履歴状態')).toBeTruthy();
+  });
+
+  it('requires typed confirmation before running an official master import', () => {
+    render(<DrugMasterContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'SSK全件取込' }));
+
+    expect(screen.getByRole('heading', { name: 'SSK全件取込を実行しますか' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '取込実行' })).toHaveProperty('disabled', true);
+    expect(mutationMutateMock).not.toHaveBeenCalledWith('ssk');
+
+    fireEvent.change(screen.getByPlaceholderText('取込実行'), {
+      target: { value: '取込実行' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '取込実行' }));
+
+    expect(mutationMutateMock).toHaveBeenCalledWith('ssk');
+  });
+
+  it('previews an official master import in the confirmation dialog before execution', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      void input;
+      void init;
+      return {
+        ok: true,
+        json: async () => ({
+          data: {
+            dryRun: true,
+            mode: 'all',
+            flags: {
+              dryRun: true,
+              operation: 'generic_flags',
+              sourceFileHash: 'mhlw_flags_source_hash',
+              preview: {
+                summary: {
+                  parsed_records: 10,
+                  drug_master_upsert_count: 10,
+                  changed_flag_count: 2,
+                  skipped_invalid_yj: 1,
+                  sampled_rows: 1,
+                },
+                rows: [
+                  {
+                    yj_code: '1124001F1030',
+                    drug_name: 'エスタゾラム錠１ｍｇ「アメル」',
+                    action: 'upsert_generic_flag',
+                  },
+                ],
+              },
+            },
+            mappings: {
+              dryRun: true,
+              operation: 'generic_mapping',
+              preview: {
+                summary: {
+                  parsed_records: 4,
+                  generic_mapping_replace_count: 3,
+                  brand_candidate_count: 8,
+                  skipped_invalid_yj: 2,
+                  sampled_rows: 1,
+                },
+                rows: [
+                  {
+                    generic_name: 'エスタゾラム',
+                    standard_name: '【般】エスタゾラム錠１ｍｇ',
+                    action: 'replace_mapping',
+                    brand_candidate_count: 8,
+                  },
+                ],
+              },
+            },
+          },
+        }),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+
+    try {
+      render(<DrugMasterContent />);
+
+      fireEvent.click(screen.getByRole('button', { name: '一般名/後発更新' }));
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: '差分確認' }));
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/drug-master-imports/mhlw-generic',
+        expect.objectContaining({
+          method: 'POST',
+        }),
+      );
+      const requestBody = JSON.parse(
+        String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body),
+      );
+      expect(requestBody).toEqual({
+        mode: 'all',
+        dryRun: true,
+        previewLimit: 5,
+      });
+      expect(buildOrgJsonHeaders).toHaveBeenCalledWith('org_1');
+      expect(screen.getByTestId('official-import-preview')).toBeTruthy();
+      expect(screen.getByText('後発フラグ')).toBeTruthy();
+      expect(screen.getByText(/DrugMaster 10件/)).toBeTruthy();
+      expect(screen.getByText(/フラグ変更 2件/)).toBeTruthy();
+      expect(screen.getByText(/YJ 1124001F1030/)).toBeTruthy();
+      expect(screen.getByText(/薬品 エスタゾラム錠１ｍｇ「アメル」/)).toBeTruthy();
+      expect(screen.getByText('一般名mapping')).toBeTruthy();
+      expect(screen.getByText(/mapping 3件/)).toBeTruthy();
+      expect(screen.getByText(/invalid YJ 2件/)).toBeTruthy();
+      expect(screen.getByText(/標準名 【般】エスタゾラム錠１ｍｇ/)).toBeTruthy();
+      expect(mutationMutateMock).not.toHaveBeenCalledWith('mhlw-generic');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('requires typed confirmation before running free master auto-refresh', () => {
+    render(<DrugMasterContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: /フリーマスター一括更新/ }));
+
+    expect(
+      screen.getByRole('heading', { name: 'フリーマスター一括更新を実行しますか' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: '一括更新' })).toHaveProperty('disabled', true);
+    expect(mutationMutateMock).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByPlaceholderText('一括更新'), {
+      target: { value: '一括更新' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '一括更新' }));
+
+    expect(mutationMutateMock).toHaveBeenCalledWith();
+  });
+
+  it('shows official source fingerprints in the import history', () => {
+    importLogsDataMock.current = [
+      {
+        id: 'log_1',
+        source: 'ssk',
+        imported_at: '2026-06-30T03:00:00.000Z',
+        record_count: 125000,
+        status: 'completed',
+        error_log: null,
+        source_url:
+          'https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_04.files/y_ALL20260611.zip',
+        source_file_hash: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        source_published_at: '2026-06-11T00:00:00.000Z',
+        import_mode: 'full',
+        change_summary: {
+          mode: 'full',
+          parsed_records: 125000,
+          imported_records: 125000,
+        },
+      },
+    ];
+
+    render(<DrugMasterContent />);
+
+    expect(
+      screen.getByText(
+        'source: www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_04.files/y_ALL20260611.zip',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('sha256: 0123456789ab')).toBeTruthy();
+    expect(screen.getByText('published: 2026/6/11')).toBeTruthy();
+    expect(screen.getAllByText('mode: 全件').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('summary: 解析 125,000件 / 反映 125,000件')).toBeTruthy();
   });
 
   it('renders the p0_39 three-column master editor', () => {
@@ -1010,6 +1218,7 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
     detailDataMock.current = null;
     stockConfigDataMock.current = null;
     candidatesDataMock.current = [];
+    importLogsDataMock.current = [];
   });
 
   // These builders produce the RAW server JSON for a dry-run (no request-context fields). The
@@ -1539,7 +1748,7 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
     expect(screen.getByRole('button', { name: /一括登録/ })).toHaveProperty('disabled', false);
 
     // Drive a master import: clicking records importMutation options; invoke its onSuccess.
-    fireEvent.click(screen.getByRole('button', { name: 'SSK全件取込' }));
+    confirmMasterImportAction();
     await act(async () => {
       await lastMutationOptions.current?.onSuccess?.({
         action: 'ssk',
@@ -1564,7 +1773,7 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
     });
     expect(screen.getByText('CSV反映前プレビュー')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: /フリーマスター一括更新/ }));
+    confirmAutoRefreshAction();
     await act(async () => {
       await lastMutationOptions.current?.onSuccess?.({ data: { processedCount: 3 } });
     });
@@ -1599,7 +1808,7 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
     expect(screen.getByText('テンプレ薬')).toBeTruthy();
 
     // Master import clears both previews.
-    fireEvent.click(screen.getByRole('button', { name: 'SSK全件取込' }));
+    confirmMasterImportAction();
     await act(async () => {
       await lastMutationOptions.current?.onSuccess?.({
         action: 'ssk',
@@ -1635,7 +1844,7 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
     });
     expect(screen.getByText('テンプレ薬')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: /フリーマスター一括更新/ }));
+    confirmAutoRefreshAction();
     await act(async () => {
       await lastMutationOptions.current?.onSuccess?.({ data: { processedCount: 3 } });
     });
@@ -1669,7 +1878,7 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
         }),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'SSK全件取込' }));
+    confirmMasterImportAction();
     act(() => {
       // onSuccess runs the synchronous preview clears, then awaits the (pending) invalidation.
       void lastMutationOptions.current?.onSuccess?.({
@@ -1706,7 +1915,7 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
         }),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /フリーマスター一括更新/ }));
+    confirmAutoRefreshAction();
     act(() => {
       void lastMutationOptions.current?.onSuccess?.({ data: { processedCount: 3 } });
     });
@@ -1871,6 +2080,7 @@ describe('DrugMasterContent filter select migration (slice4b)', () => {
     detailDataMock.current = null;
     stockConfigDataMock.current = null;
     candidatesDataMock.current = [];
+    importLogsDataMock.current = [];
   });
 
   // The import-logs queryKey is ['drug-master-import-logs', <source>, <status>]. We assert the
@@ -2144,6 +2354,7 @@ describe('DrugMasterContent preferred-generic select migration (slice4c)', () =>
     candidatesDataMock.current = [
       { id: 'gen_1', drug_name: 'ジェネリックA', yj_code: '1234567890' },
     ];
+    importLogsDataMock.current = [];
   });
 
   const display = () => screen.getByTestId('採用後発薬-display').textContent;
@@ -2247,6 +2458,7 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     detailDataMock.current = null;
     stockConfigDataMock.current = null;
     candidatesDataMock.current = [];
+    importLogsDataMock.current = [];
     capturedQueryOptions.length = 0;
     queryErrorKeys.clear();
     refetchSpies.clear();

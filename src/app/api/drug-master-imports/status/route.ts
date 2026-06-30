@@ -102,6 +102,8 @@ async function authenticatedGET(req: NextRequest) {
       latestFailed,
       recentRuns,
       totalDrugCount,
+      drugPackageCount,
+      packageLinkedDrugCount,
       hotCodeCount,
       packageInsertCount,
       interactionCount,
@@ -112,7 +114,15 @@ async function authenticatedGET(req: NextRequest) {
         where: { status: 'completed' },
         orderBy: { imported_at: 'desc' },
         distinct: ['source'],
-        select: { source: true, imported_at: true, record_count: true },
+        select: {
+          source: true,
+          imported_at: true,
+          record_count: true,
+          source_file_hash: true,
+          source_published_at: true,
+          import_mode: true,
+          change_summary: true,
+        },
       }),
       prisma.drugMasterImportLog.findMany({
         where: { status: 'failed' },
@@ -127,6 +137,8 @@ async function authenticatedGET(req: NextRequest) {
         select: { source: true, imported_at: true, status: true },
       }),
       prisma.drugMaster.count(),
+      prisma.drugPackage.count(),
+      prisma.drugMaster.count({ where: { drug_packages: { some: { is_active: true } } } }),
       prisma.drugMaster.count({ where: { hot_code: { not: null } } }),
       prisma.drugPackageInsert.count(),
       prisma.drugInteraction.count(),
@@ -163,6 +175,10 @@ async function authenticatedGET(req: NextRequest) {
               imported_at: lastSuccess.imported_at.toISOString(),
               record_count: lastSuccess.record_count,
               days_ago: daysSinceImport,
+              source_file_hash: lastSuccess.source_file_hash,
+              source_published_at: lastSuccess.source_published_at?.toISOString() ?? null,
+              import_mode: lastSuccess.import_mode,
+              change_summary: lastSuccess.change_summary,
             }
           : null,
         last_failure: lastFailure
@@ -186,6 +202,9 @@ async function authenticatedGET(req: NextRequest) {
       sources: sourceStatuses,
       totals: {
         drug_master_count: totalDrugCount,
+        drug_package_count: drugPackageCount,
+        drug_package_coverage:
+          totalDrugCount > 0 ? Math.round((packageLinkedDrugCount / totalDrugCount) * 100) : 0,
         hot_code_coverage:
           totalDrugCount > 0 ? Math.round((hotCodeCount / totalDrugCount) * 100) : 0,
         package_insert_count: packageInsertCount,

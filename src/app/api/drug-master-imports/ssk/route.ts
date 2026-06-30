@@ -9,12 +9,16 @@ import { readOptionalJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
-import { importSskDrugMaster } from '@/server/services/drug-master-import/ssk';
+import {
+  importSskDrugMaster,
+  previewSskDrugMasterImport,
+} from '@/server/services/drug-master-import/ssk';
 import {
   SSK_IMPORT_URL_POLICY,
   importSourceUrlValidationMessage,
   isAllowedImportSourceUrl,
 } from '@/server/services/drug-master-import/shared';
+import { projectDrugMasterImportLogMetadata } from '../import-log-response';
 
 const requestSchema = z.object({
   zipUrl: z
@@ -25,6 +29,8 @@ const requestSchema = z.object({
     })
     .optional(),
   limit: z.number().int().positive().max(5000).optional(),
+  dryRun: z.boolean().optional(),
+  previewLimit: z.number().int().min(0).max(100).optional(),
 });
 
 const ROUTE = '/api/drug-master-imports/ssk';
@@ -59,8 +65,17 @@ async function authenticatedPOST(req: NextRequest) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
+  const { dryRun, previewLimit, ...importOptions } = parsed.data;
+
+  if (dryRun) {
+    const preview = await runWithRequestAuthContext(ctx, () =>
+      previewSskDrugMasterImport(prisma, { ...importOptions, previewLimit }),
+    );
+    return success({ data: preview });
+  }
+
   const result = await runWithRequestAuthContext(ctx, () =>
-    importSskDrugMaster(prisma, parsed.data),
+    importSskDrugMaster(prisma, importOptions),
   );
 
   return success(
@@ -71,6 +86,7 @@ async function authenticatedPOST(req: NextRequest) {
         importedCount: result.importedCount,
         entryName: result.entryName,
         zipUrl: result.zipUrl,
+        ...projectDrugMasterImportLogMetadata(result.log),
       },
     },
     201,

@@ -5,6 +5,7 @@ const {
   requireAuthContextMock,
   drugMasterImportLogFindManyMock,
   drugMasterCountMock,
+  drugPackageCountMock,
   drugPackageInsertCountMock,
   drugInteractionCountMock,
   drugAlertRuleCountMock,
@@ -14,6 +15,7 @@ const {
   requireAuthContextMock: vi.fn(),
   drugMasterImportLogFindManyMock: vi.fn(),
   drugMasterCountMock: vi.fn(),
+  drugPackageCountMock: vi.fn(),
   drugPackageInsertCountMock: vi.fn(),
   drugInteractionCountMock: vi.fn(),
   drugAlertRuleCountMock: vi.fn(),
@@ -32,6 +34,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     drugMaster: {
       count: drugMasterCountMock,
+    },
+    drugPackage: {
+      count: drugPackageCountMock,
     },
     drugPackageInsert: {
       count: drugPackageInsertCountMock,
@@ -80,6 +85,8 @@ async function readStatusPayload(response: Response): Promise<DrugMasterImportSt
     sources: expect.any(Array),
     totals: {
       drug_master_count: expect.any(Number),
+      drug_package_count: expect.any(Number),
+      drug_package_coverage: expect.any(Number),
       hot_code_coverage: expect.any(Number),
       package_insert_count: expect.any(Number),
       interaction_count: expect.any(Number),
@@ -114,6 +121,7 @@ describe('GET /api/drug-master-imports/status', () => {
     });
     drugMasterImportLogFindManyMock.mockResolvedValue([]);
     drugMasterCountMock.mockResolvedValue(1000);
+    drugPackageCountMock.mockResolvedValue(1200);
     drugPackageInsertCountMock.mockResolvedValue(500);
     drugInteractionCountMock.mockResolvedValue(200);
     drugAlertRuleCountMock.mockResolvedValue(50);
@@ -131,6 +139,7 @@ describe('GET /api/drug-master-imports/status', () => {
     expectNoStore(response);
     expect(drugMasterImportLogFindManyMock).not.toHaveBeenCalled();
     expect(drugMasterCountMock).not.toHaveBeenCalled();
+    expect(drugPackageCountMock).not.toHaveBeenCalled();
   });
 
   it('returns 403 before querying import status when admin permission is denied', async () => {
@@ -144,6 +153,7 @@ describe('GET /api/drug-master-imports/status', () => {
     expectNoStore(response);
     expect(drugMasterImportLogFindManyMock).not.toHaveBeenCalled();
     expect(drugMasterCountMock).not.toHaveBeenCalled();
+    expect(drugPackageCountMock).not.toHaveBeenCalled();
     expect(drugPackageInsertCountMock).not.toHaveBeenCalled();
     expect(drugInteractionCountMock).not.toHaveBeenCalled();
     expect(drugAlertRuleCountMock).not.toHaveBeenCalled();
@@ -160,6 +170,17 @@ describe('GET /api/drug-master-imports/status', () => {
           source,
           imported_at: recentDate,
           record_count: 100,
+          source_file_hash: source === 'ssk' ? 'ssk_source_hash' : null,
+          source_published_at: source === 'ssk' ? new Date('2026-06-11T00:00:00.000Z') : null,
+          import_mode: source === 'ssk' ? 'full' : null,
+          change_summary:
+            source === 'ssk'
+              ? {
+                  mode: 'full',
+                  parsed_records: 100,
+                  imported_records: 100,
+                }
+              : null,
         })),
       )
       .mockResolvedValueOnce([]); // no failures
@@ -175,6 +196,28 @@ describe('GET /api/drug-master-imports/status', () => {
 
     expect(body.sources).toHaveLength(6);
     expect(body.sources.map((source) => source.source)).toEqual(SOURCES);
+    const ssk = findStatusSource(body, 'ssk');
+    expect(ssk.last_success).toMatchObject({
+      source_file_hash: 'ssk_source_hash',
+      source_published_at: '2026-06-11T00:00:00.000Z',
+      import_mode: 'full',
+      change_summary: {
+        mode: 'full',
+        parsed_records: 100,
+        imported_records: 100,
+      },
+    });
+    expect(drugMasterImportLogFindManyMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        select: expect.objectContaining({
+          source_file_hash: true,
+          source_published_at: true,
+          import_mode: true,
+          change_summary: true,
+        }),
+      }),
+    );
   });
 
   it('returns correct response structure with totals', async () => {
@@ -191,6 +234,8 @@ describe('GET /api/drug-master-imports/status', () => {
       sources: expect.any(Array),
       totals: {
         drug_master_count: 1000,
+        drug_package_count: 1200,
+        drug_package_coverage: 100,
         hot_code_coverage: expect.any(Number),
         package_insert_count: 500,
         interaction_count: 200,
@@ -201,6 +246,9 @@ describe('GET /api/drug-master-imports/status', () => {
     });
     expect(drugAlertRuleCountMock).toHaveBeenCalledWith({
       where: { is_active: true, org_id: null },
+    });
+    expect(drugMasterCountMock).toHaveBeenCalledWith({
+      where: { drug_packages: { some: { is_active: true } } },
     });
   });
 
@@ -324,17 +372,19 @@ describe('GET /api/drug-master-imports/status', () => {
     });
   });
 
-  it('calculates hot_code_coverage as percentage of drugs with hot_code', async () => {
+  it('calculates drug package and hot code coverage as percentages of DrugMaster rows', async () => {
     drugMasterImportLogFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
-    // total = 1000, hot_code coverage count = 800
+    // total = 1000, active DrugPackage-linked DrugMaster count = 250, hot_code count = 800
     drugMasterCountMock
       .mockResolvedValueOnce(1000) // total
+      .mockResolvedValueOnce(250) // active package-linked DrugMaster rows
       .mockResolvedValueOnce(800); // hot_code not null
 
     const response = await GET(createRequest());
     const body = await readStatusPayload(response);
 
+    expect(body.totals.drug_package_coverage).toBe(25);
     expect(body.totals.hot_code_coverage).toBe(80);
   });
 
@@ -347,6 +397,7 @@ describe('GET /api/drug-master-imports/status', () => {
     const body = await readStatusPayload(response);
 
     expect(body.totals.hot_code_coverage).toBe(0);
+    expect(body.totals.drug_package_coverage).toBe(0);
   });
 
   it('returns a sanitized no-store 500 on database error', async () => {

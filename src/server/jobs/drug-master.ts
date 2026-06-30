@@ -6,11 +6,10 @@ import {
 } from '@/server/services/drug-master-import/mhlw';
 import { importPmdaPackageInserts } from '@/server/services/drug-master-import/pmda';
 import {
+  buildSskDrugMasterDedupeKey,
+  fetchLatestSskDrugMasterZip,
   importSskDrugMaster,
-  resolveLatestSskDrugMasterZipUrl,
-  SSK_DRUG_MASTER_PAGE_URL,
 } from '@/server/services/drug-master-import/ssk';
-import { SSK_IMPORT_URL_POLICY, fetchText } from '@/server/services/drug-master-import/shared';
 import type { ImportSource } from '@prisma/client';
 import { runJob } from './runner';
 
@@ -27,17 +26,58 @@ const FRESHNESS_THRESHOLDS: Record<ImportSource, number> = {
 
 /** Sources that are free and require no registration */
 const FREE_SOURCES: ImportSource[] = ['ssk', 'mhlw_price', 'mhlw_generic'];
+const DEFAULT_PACKAGE_COVERAGE_ALERT_THRESHOLD_PERCENT = 1;
+const MAX_PACKAGE_COVERAGE_ALERT_THRESHOLD_PERCENT = 100;
 
-async function resolveLatestZipUrl(fetchImpl: typeof fetch = fetch) {
-  const html = await fetchText(SSK_DRUG_MASTER_PAGE_URL, {
-    fetchImpl,
-    policy: SSK_IMPORT_URL_POLICY,
+type AdminNotificationInput = {
+  title: string;
+  message: string;
+  link: string;
+  dedupeKey: string;
+};
+
+function resolvePackageCoverageAlertThresholdPercent(
+  value: string | undefined = process.env.DRUG_PACKAGE_COVERAGE_ALERT_THRESHOLD_PERCENT,
+) {
+  const parsed = Number(value ?? DEFAULT_PACKAGE_COVERAGE_ALERT_THRESHOLD_PERCENT);
+  if (!Number.isFinite(parsed)) return DEFAULT_PACKAGE_COVERAGE_ALERT_THRESHOLD_PERCENT;
+  const normalized = Math.trunc(parsed);
+  if (!Number.isSafeInteger(normalized) || normalized < 0) {
+    return DEFAULT_PACKAGE_COVERAGE_ALERT_THRESHOLD_PERCENT;
+  }
+  return Math.min(normalized, MAX_PACKAGE_COVERAGE_ALERT_THRESHOLD_PERCENT);
+}
+
+function formatCoveragePercent(numerator: number, denominator: number) {
+  if (denominator <= 0) return 100;
+  return Math.round((numerator / denominator) * 1000) / 10;
+}
+
+async function notifyAdmins(input: AdminNotificationInput) {
+  const adminMemberships = await prisma.membership.findMany({
+    where: { role: { in: ['admin', 'owner'] }, is_active: true },
+    select: { user_id: true, org_id: true },
   });
-  return resolveLatestSskDrugMasterZipUrl(html, SSK_DRUG_MASTER_PAGE_URL);
+
+  if (adminMemberships.length === 0) return;
+
+  await prisma.notification.createMany({
+    data: adminMemberships.map((admin) => ({
+      org_id: admin.org_id,
+      user_id: admin.user_id,
+      type: 'system' as const,
+      title: input.title,
+      message: input.message,
+      link: input.link,
+      dedupe_key: input.dedupeKey,
+    })),
+    skipDuplicates: true,
+  });
 }
 
 export async function refreshSskDrugMaster() {
-  const latestZipUrl = await resolveLatestZipUrl();
+  const latestZipPayload = await fetchLatestSskDrugMasterZip();
+  const dedupeKey = buildSskDrugMasterDedupeKey(latestZipPayload.sourceFileHash);
 
   const latestCompletedJob = await prisma.integrationJob.findFirst({
     where: {
@@ -54,20 +94,20 @@ export async function refreshSskDrugMaster() {
   return runJob(
     'drug_master_refresh',
     async () => {
-      if (latestCompletedJob?.dedupe_key === latestZipUrl) {
+      if (latestCompletedJob?.dedupe_key === dedupeKey) {
         return {
           processedCount: 0,
           errors: [],
         };
       }
 
-      const result = await importSskDrugMaster(prisma, { zipUrl: latestZipUrl });
+      const result = await importSskDrugMaster(prisma, { zipPayload: latestZipPayload });
       return {
         processedCount: result.importedCount,
       };
     },
     undefined,
-    latestZipUrl,
+    dedupeKey,
   );
 }
 
@@ -152,27 +192,38 @@ export async function checkDrugMasterFreshness() {
           ? `${label}の最終取込から${daysSinceLastImport}日が経過しています（閾値: ${threshold}日）。自動更新の実行状況を確認してください`
           : `${label}の取込実績がありません。初回取込を実行してください`;
 
-        // Create notifications for all admin users across all orgs
-        const adminMemberships = await prisma.membership.findMany({
-          where: { role: { in: ['admin', 'owner'] }, is_active: true },
-          select: { user_id: true, org_id: true },
-        });
-
         const dedupeDate = now.toISOString().slice(0, 10);
-        await prisma.notification.createMany({
-          data: adminMemberships.map((admin) => ({
-            org_id: admin.org_id,
-            user_id: admin.user_id,
-            type: 'system' as const,
-            title: '医薬品マスター更新遅延',
-            message,
-            link: '/admin/drug-masters',
-            dedupe_key: `drug-master-stale:${source}:${dedupeDate}`,
-          })),
-          skipDuplicates: true,
+        await notifyAdmins({
+          title: '医薬品マスター更新遅延',
+          message,
+          link: '/admin/drug-masters',
+          dedupeKey: `drug-master-stale:${source}:${dedupeDate}`,
         });
         alertCount++;
       }
+    }
+
+    const [drugMasterCount, packageLinkedDrugMasterCount] = await Promise.all([
+      prisma.drugMaster.count(),
+      prisma.drugMaster.count({
+        where: { drug_packages: { some: { is_active: true } } },
+      }),
+    ]);
+    const packageCoveragePercent = formatCoveragePercent(
+      packageLinkedDrugMasterCount,
+      drugMasterCount,
+    );
+    const packageCoverageThreshold = resolvePackageCoverageAlertThresholdPercent();
+
+    if (drugMasterCount > 0 && packageCoveragePercent < packageCoverageThreshold) {
+      const dedupeDate = now.toISOString().slice(0, 10);
+      await notifyAdmins({
+        title: '医薬品包装マスター不足',
+        message: `包装GTIN/JANマスターの紐づき率が${packageCoveragePercent}%です（${packageLinkedDrugMasterCount}/${drugMasterCount}件、閾値: ${packageCoverageThreshold}%）。HOTまたはDrugPackage取込の実行状況を確認してください`,
+        link: '/admin/drug-masters',
+        dedupeKey: `drug-package-coverage:${dedupeDate}`,
+      });
+      alertCount++;
     }
 
     return { processedCount: alertCount };

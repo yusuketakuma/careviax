@@ -91,7 +91,13 @@ describe('/api/drug-master-import-logs', () => {
       where: {},
       orderBy: [{ imported_at: 'desc' }, { created_at: 'desc' }],
       take: 50,
-      select: expect.any(Object),
+      select: expect.objectContaining({
+        source_url: true,
+        source_file_hash: true,
+        source_published_at: true,
+        import_mode: true,
+        change_summary: true,
+      }),
     });
   });
 

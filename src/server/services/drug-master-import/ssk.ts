@@ -7,6 +7,8 @@ import {
   fetchText,
   normalizeImportSourceUrl,
   resolveImportSourceUrl,
+  extractImportSourceDateFromUrl,
+  sha256ImportPayload,
   unzipWithLimits,
 } from './shared';
 
@@ -15,6 +17,9 @@ export const SSK_DRUG_MASTER_PAGE_URL =
 
 const SSK_TOTAL_COLUMNS = 42;
 const UPSERT_CHUNK_SIZE = 200;
+const PREVIEW_READ_CHUNK_SIZE = 500;
+const DEFAULT_PREVIEW_ROW_LIMIT = 20;
+const MAX_PREVIEW_ROW_LIMIT = 100;
 const SSK_ZIP_EXPANSION_LIMITS: ZipExpansionLimits = {
   maxEntries: 20,
   maxEntryBytes: 128 * 1024 * 1024,
@@ -32,6 +37,7 @@ const NEW_DRUG_MAX_ADMINISTRATION_DAYS = 14;
 const ONE_YEAR_IN_DAYS = 365;
 
 type ImportDbClient = Pick<PrismaClient, 'drugMaster' | 'drugMasterImportLog'>;
+type PreviewDbClient = Pick<PrismaClient, 'drugMaster'>;
 
 export type ParsedSskDrugMasterRecord = {
   receipt_code: string | null;
@@ -56,15 +62,72 @@ export type ParsedSskDrugMasterRecord = {
 export type ParsedSskDrugMasterFile = {
   entryName: string;
   zipUrl: string;
+  sourceFileHash: string;
   records: ParsedSskDrugMasterRecord[];
+};
+
+export type SskDrugMasterZipPayload = {
+  zipUrl: string;
+  sourceFileHash: string;
+  entries: Record<string, Uint8Array>;
 };
 
 export type ImportSskDrugMasterOptions = {
   zipUrl?: string;
+  zipPayload?: SskDrugMasterZipPayload;
   limit?: number;
   fetchImpl?: FetchLike;
   zipLimits?: Partial<ZipExpansionLimits>;
 };
+
+export type PreviewSskDrugMasterImportOptions = Pick<
+  ImportSskDrugMasterOptions,
+  'zipUrl' | 'zipPayload' | 'limit' | 'fetchImpl' | 'zipLimits'
+> & {
+  previewLimit?: number;
+};
+
+export type SskDrugMasterImportPreviewRow = {
+  yj_code: string;
+  drug_name: string;
+  action: 'create' | 'update';
+  changed_fields: string[];
+};
+
+export type SskDrugMasterImportPreview = {
+  dryRun: true;
+  entryName: string;
+  zipUrl: string;
+  sourceFileHash: string;
+  sourcePublishedAt: string | null;
+  preview: {
+    summary: {
+      parsed_records: number;
+      create_count: number;
+      update_count: number;
+      unchanged_count: number;
+      sampled_rows: number;
+    };
+    rows: SskDrugMasterImportPreviewRow[];
+  };
+};
+
+const SSK_PREVIEW_COMPARE_FIELDS = [
+  'receipt_code',
+  'drug_name',
+  'drug_name_kana',
+  'generic_name',
+  'drug_price',
+  'unit',
+  'dosage_form',
+  'therapeutic_category',
+  'manufacturer',
+  'is_generic',
+  'is_narcotic',
+  'is_psychotropic',
+  'max_administration_days',
+  'transitional_expiry_date',
+] as const;
 
 function normalizeCell(value: string | undefined) {
   const trimmed = value?.trim() ?? '';
@@ -227,6 +290,25 @@ function unzipSskDrugMasterArchive(buffer: Uint8Array, overrides?: Partial<ZipEx
   });
 }
 
+async function fetchSskDrugMasterZipPayload(
+  zipUrl: string,
+  fetchImpl: FetchLike,
+  zipLimits?: Partial<ZipExpansionLimits>,
+): Promise<SskDrugMasterZipPayload> {
+  const zipBytes = new Uint8Array(
+    await fetchBytes(zipUrl, {
+      fetchImpl,
+      policy: SSK_IMPORT_URL_POLICY,
+    }),
+  );
+
+  return {
+    zipUrl,
+    sourceFileHash: sha256ImportPayload(zipBytes),
+    entries: unzipSskDrugMasterArchive(zipBytes, zipLimits),
+  };
+}
+
 export async function fetchLatestSskDrugMasterZip(
   fetchImpl: FetchLike = fetch,
   pageUrl = SSK_DRUG_MASTER_PAGE_URL,
@@ -238,40 +320,37 @@ export async function fetchLatestSskDrugMasterZip(
   });
   const zipUrl = resolveLatestSskDrugMasterZipUrl(html, pageUrl);
 
-  const zipBytes = new Uint8Array(
-    await fetchBytes(zipUrl, {
-      fetchImpl,
-      policy: SSK_IMPORT_URL_POLICY,
-    }),
-  );
-  return {
-    zipUrl,
-    entries: unzipSskDrugMasterArchive(zipBytes, zipLimits),
-  };
+  return fetchSskDrugMasterZipPayload(zipUrl, fetchImpl, zipLimits);
+}
+
+export function buildSskDrugMasterDedupeKey(sourceFileHash: string) {
+  return `ssk:${sourceFileHash}`;
+}
+
+function normalizePreviewLimit(value: number | undefined) {
+  if (value == null) return DEFAULT_PREVIEW_ROW_LIMIT;
+  if (!Number.isFinite(value)) return DEFAULT_PREVIEW_ROW_LIMIT;
+  const normalized = Math.trunc(value);
+  if (!Number.isSafeInteger(normalized) || normalized < 0) return DEFAULT_PREVIEW_ROW_LIMIT;
+  return Math.min(normalized, MAX_PREVIEW_ROW_LIMIT);
 }
 
 export async function parseSskDrugMasterZip(
-  options: Pick<ImportSskDrugMasterOptions, 'zipUrl' | 'limit' | 'fetchImpl' | 'zipLimits'> = {},
+  options: Pick<
+    ImportSskDrugMasterOptions,
+    'zipUrl' | 'zipPayload' | 'limit' | 'fetchImpl' | 'zipLimits'
+  > = {},
 ): Promise<ParsedSskDrugMasterFile> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const explicitZipUrl = options.zipUrl
     ? normalizeImportSourceUrl(options.zipUrl, SSK_IMPORT_URL_POLICY)
     : null;
 
-  const zipPayload = explicitZipUrl
-    ? {
-        zipUrl: explicitZipUrl,
-        entries: unzipSskDrugMasterArchive(
-          new Uint8Array(
-            await fetchBytes(explicitZipUrl, {
-              fetchImpl,
-              policy: SSK_IMPORT_URL_POLICY,
-            }),
-          ),
-          options.zipLimits,
-        ),
-      }
-    : await fetchLatestSskDrugMasterZip(fetchImpl, SSK_DRUG_MASTER_PAGE_URL, options.zipLimits);
+  const zipPayload = options.zipPayload
+    ? options.zipPayload
+    : explicitZipUrl
+      ? await fetchSskDrugMasterZipPayload(explicitZipUrl, fetchImpl, options.zipLimits)
+      : await fetchLatestSskDrugMasterZip(fetchImpl, SSK_DRUG_MASTER_PAGE_URL, options.zipLimits);
 
   const entry = Object.entries(zipPayload.entries).find(([name]) =>
     name.toLowerCase().endsWith('.csv'),
@@ -303,6 +382,7 @@ export async function parseSskDrugMasterZip(
   return {
     entryName,
     zipUrl: zipPayload.zipUrl,
+    sourceFileHash: zipPayload.sourceFileHash,
     records: [...deduped.values()],
   };
 }
@@ -350,6 +430,126 @@ async function upsertDrugMasterChunk(db: ImportDbClient, records: ParsedSskDrugM
   );
 }
 
+function comparableValue(value: unknown) {
+  if (value == null) return null;
+  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Prisma.Decimal) return value.toString();
+  return value;
+}
+
+function changedSskDrugMasterFields(
+  record: ParsedSskDrugMasterRecord,
+  existing: Record<string, unknown>,
+) {
+  return SSK_PREVIEW_COMPARE_FIELDS.filter(
+    (field) =>
+      comparableValue(record[field as keyof ParsedSskDrugMasterRecord]) !==
+      comparableValue(existing[field]),
+  );
+}
+
+async function fetchExistingSskDrugMastersByYjCode(db: PreviewDbClient, yjCodes: string[]) {
+  const existingByYjCode = new Map<string, Record<string, unknown>>();
+
+  for (let index = 0; index < yjCodes.length; index += PREVIEW_READ_CHUNK_SIZE) {
+    const batch = yjCodes.slice(index, index + PREVIEW_READ_CHUNK_SIZE);
+    const rows = await db.drugMaster.findMany({
+      where: { yj_code: { in: batch } },
+      select: {
+        yj_code: true,
+        receipt_code: true,
+        drug_name: true,
+        drug_name_kana: true,
+        generic_name: true,
+        drug_price: true,
+        unit: true,
+        dosage_form: true,
+        therapeutic_category: true,
+        manufacturer: true,
+        is_generic: true,
+        is_narcotic: true,
+        is_psychotropic: true,
+        max_administration_days: true,
+        transitional_expiry_date: true,
+      },
+    });
+
+    for (const row of rows) {
+      existingByYjCode.set(row.yj_code, row as Record<string, unknown>);
+    }
+  }
+
+  return existingByYjCode;
+}
+
+export async function previewSskDrugMasterImport(
+  db: PreviewDbClient,
+  options: PreviewSskDrugMasterImportOptions = {},
+): Promise<SskDrugMasterImportPreview> {
+  const parsed = await parseSskDrugMasterZip(options);
+  const previewLimit = normalizePreviewLimit(options.previewLimit);
+  const existingByYjCode = await fetchExistingSskDrugMastersByYjCode(
+    db,
+    parsed.records.map((record) => record.yj_code),
+  );
+
+  let createCount = 0;
+  let updateCount = 0;
+  let unchangedCount = 0;
+  const rows: SskDrugMasterImportPreviewRow[] = [];
+
+  for (const record of parsed.records) {
+    const existing = existingByYjCode.get(record.yj_code);
+    if (!existing) {
+      createCount += 1;
+      if (rows.length < previewLimit) {
+        rows.push({
+          yj_code: record.yj_code,
+          drug_name: record.drug_name,
+          action: 'create',
+          changed_fields: SSK_PREVIEW_COMPARE_FIELDS.slice(),
+        });
+      }
+      continue;
+    }
+
+    const changedFields = changedSskDrugMasterFields(record, existing);
+    if (changedFields.length === 0) {
+      unchangedCount += 1;
+      continue;
+    }
+
+    updateCount += 1;
+    if (rows.length < previewLimit) {
+      rows.push({
+        yj_code: record.yj_code,
+        drug_name: record.drug_name,
+        action: 'update',
+        changed_fields: changedFields,
+      });
+    }
+  }
+
+  return {
+    dryRun: true,
+    entryName: parsed.entryName,
+    zipUrl: parsed.zipUrl,
+    sourceFileHash: parsed.sourceFileHash,
+    sourcePublishedAt:
+      extractImportSourceDateFromUrl(parsed.zipUrl, [/y_ALL(\d{8})\.zip/i])?.toISOString() ?? null,
+    preview: {
+      summary: {
+        parsed_records: parsed.records.length,
+        create_count: createCount,
+        update_count: updateCount,
+        unchanged_count: unchangedCount,
+        sampled_rows: rows.length,
+      },
+      rows,
+    },
+  };
+}
+
 export async function importSskDrugMaster(
   db: ImportDbClient,
   options: ImportSskDrugMasterOptions = {},
@@ -374,6 +574,16 @@ export async function importSskDrugMaster(
       data: {
         status: 'completed',
         record_count: parsed.records.length,
+        source_url: parsed.zipUrl,
+        source_file_hash: parsed.sourceFileHash,
+        source_published_at: extractImportSourceDateFromUrl(parsed.zipUrl, [/y_ALL(\d{8})\.zip/i]),
+        import_mode: 'full',
+        change_summary: {
+          mode: 'full',
+          parsed_records: parsed.records.length,
+          imported_records: parsed.records.length,
+          entry_name: parsed.entryName,
+        },
       },
     });
 

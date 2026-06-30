@@ -128,6 +128,11 @@ type DrugMasterImportLog = {
   record_count: number;
   status: 'pending' | 'running' | 'completed' | 'failed';
   error_log: string | null;
+  source_url: string | null;
+  source_file_hash: string | null;
+  source_published_at: string | null;
+  import_mode: string | null;
+  change_summary: unknown | null;
 };
 
 type ImportAction = 'ssk' | 'mhlw-price' | 'mhlw-generic' | 'hot' | 'pmda';
@@ -501,6 +506,26 @@ type FormularyTemplatePreviewResponse = {
   };
 };
 
+type OfficialImportPreviewData = {
+  dryRun?: boolean;
+  mode?: string;
+  workbookUrl?: string | null;
+  workbookUrls?: string[];
+  sourceFileHash?: string | null;
+  sourcePublishedAt?: string | null;
+  preview?: {
+    summary?: Record<string, unknown>;
+    rows?: unknown[];
+  };
+  flags?: OfficialImportPreviewData | null;
+  mappings?: OfficialImportPreviewData | null;
+};
+
+type OfficialImportPreviewState = {
+  action: ImportAction;
+  data: OfficialImportPreviewData;
+};
+
 type FormularyTemplateItem = {
   id: string;
   name: string;
@@ -803,6 +828,154 @@ const IMPORT_LOG_STATUS_OPTIONS: Array<{
   { value: 'pending', label: '待機' },
 ];
 
+function formatImportSourceUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return `${url.hostname}${url.pathname}`;
+  } catch {
+    return value;
+  }
+}
+
+function formatImportSourceHash(value: string) {
+  return value.length > 12 ? value.slice(0, 12) : value;
+}
+
+function formatImportPublishedAt(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('ja-JP');
+}
+
+function formatImportMode(value: string) {
+  if (value === 'full') return '全件';
+  if (value === 'delta') return '差分';
+  if (value === 'manual') return '手動';
+  return value;
+}
+
+function readImportSummaryNumber(summary: unknown, key: string) {
+  if (!summary || typeof summary !== 'object' || Array.isArray(summary)) return null;
+  const value = (summary as Record<string, unknown>)[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function formatImportChangeSummary(summary: unknown) {
+  const parsed = readImportSummaryNumber(summary, 'parsed_records');
+  const imported = readImportSummaryNumber(summary, 'imported_records');
+  const changes = readImportSummaryNumber(summary, 'change_event_count');
+  const skippedMissingYj = readImportSummaryNumber(summary, 'skipped_missing_yj');
+  const skippedUnmatchedPrimary = readImportSummaryNumber(
+    summary,
+    'skipped_unmatched_primary_records',
+  );
+  const workbookCount = readImportSummaryNumber(summary, 'workbook_count');
+  const parts: string[] = [];
+
+  if (workbookCount != null) parts.push(`file ${workbookCount.toLocaleString()}件`);
+  if (parsed != null) parts.push(`解析 ${parsed.toLocaleString()}件`);
+  if (imported != null) parts.push(`反映 ${imported.toLocaleString()}件`);
+  if (changes != null) parts.push(`差分 ${changes.toLocaleString()}件`);
+  const skipped = (skippedMissingYj ?? 0) + (skippedUnmatchedPrimary ?? 0);
+  if (skipped > 0) parts.push(`skip ${skipped.toLocaleString()}件`);
+
+  return parts.length > 0 ? parts.join(' / ') : null;
+}
+
+function pushOfficialPreviewCountPart(
+  parts: string[],
+  summary: unknown,
+  key: string,
+  label: string,
+) {
+  const value = readImportSummaryNumber(summary, key);
+  if (value != null && value > 0) parts.push(`${label} ${value.toLocaleString()}件`);
+}
+
+function formatOfficialImportPreviewSummary(summary: unknown) {
+  const parts: string[] = [];
+
+  pushOfficialPreviewCountPart(parts, summary, 'workbook_count', 'file');
+  pushOfficialPreviewCountPart(parts, summary, 'parsed_records', '解析');
+  pushOfficialPreviewCountPart(parts, summary, 'drug_master_upsert_count', 'DrugMaster');
+  pushOfficialPreviewCountPart(parts, summary, 'package_upsert_count', '包装');
+  pushOfficialPreviewCountPart(parts, summary, 'create_count', '作成');
+  pushOfficialPreviewCountPart(parts, summary, 'update_count', '更新');
+  pushOfficialPreviewCountPart(parts, summary, 'unchanged_count', '変更なし');
+  pushOfficialPreviewCountPart(parts, summary, 'generic_mapping_replace_count', 'mapping');
+  pushOfficialPreviewCountPart(parts, summary, 'brand_candidate_count', '候補');
+  pushOfficialPreviewCountPart(parts, summary, 'changed_flag_count', 'フラグ変更');
+  pushOfficialPreviewCountPart(parts, summary, 'change_event_count', '差分');
+  pushOfficialPreviewCountPart(parts, summary, 'matched_interaction_pair_count', '相互作用');
+  pushOfficialPreviewCountPart(parts, summary, 'skipped_invalid_yj', 'invalid YJ');
+  pushOfficialPreviewCountPart(parts, summary, 'skipped_missing_yj', 'YJ欠損');
+  pushOfficialPreviewCountPart(parts, summary, 'skipped_package_conflict_count', '包装競合');
+  pushOfficialPreviewCountPart(parts, summary, 'skipped_unmatched_primary_records', '未照合');
+  pushOfficialPreviewCountPart(parts, summary, 'sampled_rows', 'sample');
+
+  return parts.length > 0 ? parts.join(' / ') : '差分なし';
+}
+
+function readPreviewRowField(row: Record<string, unknown>, key: string) {
+  const value = row[key];
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return null;
+}
+
+function formatOfficialImportPreviewRow(row: unknown) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return String(row);
+  const record = row as Record<string, unknown>;
+  const parts = [
+    ['action', 'action'],
+    ['yj_code', 'YJ'],
+    ['drug_name', '薬品'],
+    ['generic_name', '一般名'],
+    ['standard_name', '標準名'],
+    ['brand_candidate_count', '候補'],
+  ]
+    .map(([key, label]) => {
+      const value = readPreviewRowField(record, key);
+      return value ? `${label} ${value}` : null;
+    })
+    .filter((value): value is string => Boolean(value));
+
+  return parts.length > 0 ? parts.join(' / ') : JSON.stringify(row);
+}
+
+function collectOfficialImportPreviewGroups(preview: OfficialImportPreviewData | null) {
+  if (!preview) return [];
+
+  const groups: Array<{ key: string; label: string; summary: unknown; rows: unknown[] }> = [];
+  if (preview.preview?.summary) {
+    groups.push({
+      key: 'main',
+      label: '取込プレビュー',
+      summary: preview.preview.summary,
+      rows: preview.preview.rows ?? [],
+    });
+  }
+  if (preview.flags?.preview?.summary) {
+    groups.push({
+      key: 'flags',
+      label: '後発フラグ',
+      summary: preview.flags.preview.summary,
+      rows: preview.flags.preview.rows ?? [],
+    });
+  }
+  if (preview.mappings?.preview?.summary) {
+    groups.push({
+      key: 'mappings',
+      label: '一般名mapping',
+      summary: preview.mappings.preview.summary,
+      rows: preview.mappings.preview.rows ?? [],
+    });
+  }
+
+  return groups;
+}
+
 function DrugNameCell({ drug }: { drug: DrugMasterRow }) {
   const displayName = drug.tall_man_name?.trim() || drug.drug_name;
   const hasTallMan = displayName !== drug.drug_name;
@@ -903,6 +1076,13 @@ function DrugMasterOperationalContent({
   const [formularyRequestDecisionTarget, setFormularyRequestDecisionTarget] =
     useState<FormularyRequestDecisionTarget | null>(null);
   const [deleteTemplateConfirmOpen, setDeleteTemplateConfirmOpen] = useState(false);
+  const [pendingImportAction, setPendingImportAction] = useState<ImportAction | null>(null);
+  const [officialImportPreview, setOfficialImportPreview] =
+    useState<OfficialImportPreviewState | null>(null);
+  const [officialImportPreviewError, setOfficialImportPreviewError] = useState<string | null>(null);
+  const [officialImportPreviewLoadingAction, setOfficialImportPreviewLoadingAction] =
+    useState<ImportAction | null>(null);
+  const [autoRefreshConfirmOpen, setAutoRefreshConfirmOpen] = useState(false);
   const [reorderPointError, setReorderPointError] = useState<string | null>(null);
   const [expiryReferenceTime] = useState(() => Date.now());
   const reorderPointInputRef = useRef<HTMLInputElement | null>(null);
@@ -1279,6 +1459,52 @@ function DrugMasterOperationalContent({
     staleTime: 300_000,
   });
 
+  const openImportConfirmation = (action: ImportAction) => {
+    setPendingImportAction(action);
+    setOfficialImportPreview(null);
+    setOfficialImportPreviewError(null);
+  };
+
+  const runOfficialImportPreview = async (action: ImportAction) => {
+    const definition = IMPORT_ACTIONS.find((item) => item.key === action);
+    if (!definition) {
+      setOfficialImportPreviewError('未対応の取込アクションです');
+      return;
+    }
+
+    setOfficialImportPreview(null);
+    setOfficialImportPreviewError(null);
+    setOfficialImportPreviewLoadingAction(action);
+    try {
+      const res = await fetch(definition.endpoint, {
+        method: 'POST',
+        headers: buildOrgJsonHeaders(orgId),
+        body: JSON.stringify({
+          ...(definition.body ?? {}),
+          dryRun: true,
+          previewLimit: 5,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(json?.message ?? `${definition.label}の差分確認に失敗しました`);
+      }
+
+      setOfficialImportPreview({
+        action,
+        data: (json?.data ?? {}) as OfficialImportPreviewData,
+      });
+      toast.success(`${definition.label}の差分確認が完了しました`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : `${definition.label}の差分確認に失敗しました`;
+      setOfficialImportPreviewError(message);
+      toast.error(message);
+    } finally {
+      setOfficialImportPreviewLoadingAction(null);
+    }
+  };
+
   const importMutation = useMutation({
     mutationFn: async (action: ImportAction) => {
       const definition = IMPORT_ACTIONS.find((item) => item.key === action);
@@ -1318,6 +1544,8 @@ function DrugMasterOperationalContent({
       setTemplatePreview(null);
       setBulkPreview(null);
       setBulkPreviewExpanded(false);
+      setOfficialImportPreview(null);
+      setOfficialImportPreviewError(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['drug-masters'] }),
         queryClient.invalidateQueries({ queryKey: ['drug-master-import-logs'] }),
@@ -1354,6 +1582,8 @@ function DrugMasterOperationalContent({
       setTemplatePreview(null);
       setBulkPreview(null);
       setBulkPreviewExpanded(false);
+      setOfficialImportPreview(null);
+      setOfficialImportPreviewError(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['drug-masters'] }),
         queryClient.invalidateQueries({ queryKey: ['drug-master-import-logs'] }),
@@ -1948,6 +2178,12 @@ function DrugMasterOperationalContent({
   );
 
   const activeImport = IMPORT_ACTIONS.find((item) => item.key === importMutation.variables);
+  const pendingImportDefinition = IMPORT_ACTIONS.find((item) => item.key === pendingImportAction);
+  const pendingOfficialImportPreview =
+    officialImportPreview?.action === pendingImportAction ? officialImportPreview.data : null;
+  const pendingOfficialImportPreviewGroups = collectOfficialImportPreviewGroups(
+    pendingOfficialImportPreview,
+  );
 
   const drugs = data?.data ?? [];
   const sites = sitesData?.data ?? [];
@@ -3346,7 +3582,7 @@ function DrugMasterOperationalContent({
                 size="sm"
                 loading={importMutation.isPending && importMutation.variables === action.key}
                 loadingLabel={action.loadingLabel}
-                onClick={() => importMutation.mutate(action.key)}
+                onClick={() => openImportConfirmation(action.key)}
                 className="min-h-[44px] gap-1 sm:min-h-[44px]"
               >
                 <Download className="size-3.5" aria-hidden="true" />
@@ -3510,6 +3746,10 @@ function DrugMasterOperationalContent({
                   value: `${masterStatusData.totals.drug_master_count.toLocaleString()}件`,
                 },
                 {
+                  label: '包装GTIN:',
+                  value: `${masterStatusData.totals.drug_package_count.toLocaleString()}件 / ${masterStatusData.totals.drug_package_coverage}%`,
+                },
+                {
                   label: '添付文書:',
                   value: `${masterStatusData.totals.package_insert_count.toLocaleString()}件`,
                 },
@@ -3533,72 +3773,104 @@ function DrugMasterOperationalContent({
                 </Badge>
               </div>
             </div>
-            {masterStatusData.sources.map((source) => (
-              <div
-                key={source.source}
-                className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2"
-              >
-                <div className="space-y-0.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium">{source.label}</span>
-                    <Badge variant="outline" className="text-xs">
-                      {source.is_free ? '標準取込' : '外部設定'}
-                    </Badge>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {source.last_success
-                      ? `最終取込: ${new Date(source.last_success.imported_at).toLocaleDateString('ja-JP')} (${source.last_success.days_ago}日前) ・ ${source.last_success.record_count.toLocaleString()}件`
-                      : '未取込'}
-                    {source.last_failure
-                      ? ` / 直近失敗: ${source.last_failure.error ?? '詳細なし'}`
-                      : ''}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <span>
-                      {source.recent_runs_30d.total > 0
-                        ? `直近30日: ${source.recent_runs_30d.total}回 / 失敗 ${source.recent_runs_30d.failed}回`
-                        : '直近30日の実行なし'}
-                    </span>
-                    {source.recent_runs_30d.latest_status && (
-                      <Badge variant="outline" className="text-xs">
-                        最新実行 {formatImportStatusLabel(source.recent_runs_30d.latest_status)}
-                      </Badge>
-                    )}
-                    {source.recent_runs_30d.failure_streak > 0 && (
-                      <Badge variant="destructive" className="text-xs">
-                        連続失敗 {source.recent_runs_30d.failure_streak}回
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-                <Badge
-                  variant={
-                    source.freshness === 'fresh'
-                      ? 'outline'
-                      : source.freshness === 'aging'
-                        ? 'secondary'
-                        : source.freshness === 'stale'
-                          ? 'destructive'
-                          : 'destructive'
-                  }
-                  className="text-xs"
+            {masterStatusData.sources.map((source) => {
+              const lastSuccessSummary = source.last_success
+                ? formatImportChangeSummary(source.last_success.change_summary)
+                : null;
+              const hasLastSuccessProvenance = Boolean(
+                source.last_success &&
+                (source.last_success.source_file_hash ||
+                  source.last_success.source_published_at ||
+                  source.last_success.import_mode ||
+                  lastSuccessSummary),
+              );
+
+              return (
+                <div
+                  key={source.source}
+                  className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2"
                 >
-                  {source.freshness === 'fresh'
-                    ? '最新'
-                    : source.freshness === 'aging'
-                      ? '更新推奨'
-                      : source.freshness === 'stale'
-                        ? '要更新'
+                  <div className="space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium">{source.label}</span>
+                      <Badge variant="outline" className="text-xs">
+                        {source.is_free ? '標準取込' : '外部設定'}
+                      </Badge>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {source.last_success
+                        ? `最終取込: ${new Date(source.last_success.imported_at).toLocaleDateString('ja-JP')} (${source.last_success.days_ago}日前) ・ ${source.last_success.record_count.toLocaleString()}件`
                         : '未取込'}
-                </Badge>
-              </div>
-            ))}
+                      {source.last_failure
+                        ? ` / 直近失敗: ${source.last_failure.error ?? '詳細なし'}`
+                        : ''}
+                    </div>
+                    {source.last_success && hasLastSuccessProvenance && (
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        {source.last_success.source_file_hash && (
+                          <span>
+                            sha256: {formatImportSourceHash(source.last_success.source_file_hash)}
+                          </span>
+                        )}
+                        {source.last_success.source_published_at && (
+                          <span>
+                            published:{' '}
+                            {formatImportPublishedAt(source.last_success.source_published_at)}
+                          </span>
+                        )}
+                        {source.last_success.import_mode && (
+                          <span>mode: {formatImportMode(source.last_success.import_mode)}</span>
+                        )}
+                        {lastSuccessSummary && <span>summary: {lastSuccessSummary}</span>}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span>
+                        {source.recent_runs_30d.total > 0
+                          ? `直近30日: ${source.recent_runs_30d.total}回 / 失敗 ${source.recent_runs_30d.failed}回`
+                          : '直近30日の実行なし'}
+                      </span>
+                      {source.recent_runs_30d.latest_status && (
+                        <Badge variant="outline" className="text-xs">
+                          最新実行 {formatImportStatusLabel(source.recent_runs_30d.latest_status)}
+                        </Badge>
+                      )}
+                      {source.recent_runs_30d.failure_streak > 0 && (
+                        <Badge variant="destructive" className="text-xs">
+                          連続失敗 {source.recent_runs_30d.failure_streak}回
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <Badge
+                    variant={
+                      source.freshness === 'fresh'
+                        ? 'outline'
+                        : source.freshness === 'aging'
+                          ? 'secondary'
+                          : source.freshness === 'stale'
+                            ? 'destructive'
+                            : 'destructive'
+                    }
+                    className="text-xs"
+                  >
+                    {source.freshness === 'fresh'
+                      ? '最新'
+                      : source.freshness === 'aging'
+                        ? '更新推奨'
+                        : source.freshness === 'stale'
+                          ? '要更新'
+                          : '未取込'}
+                  </Badge>
+                </div>
+              );
+            })}
             <Button
               variant="outline"
               size="sm"
               className="mt-2 min-h-[44px] w-full sm:min-h-[44px]"
               disabled={importMutation.isPending || autoRefreshMutation.isPending}
-              onClick={() => autoRefreshMutation.mutate()}
+              onClick={() => setAutoRefreshConfirmOpen(true)}
             >
               {autoRefreshMutation.isPending
                 ? 'フリーマスター一括更新中…'
@@ -3715,6 +3987,35 @@ function DrugMasterOperationalContent({
                     {new Date(log.imported_at).toLocaleString('ja-JP')} ・{' '}
                     {log.record_count.toLocaleString()}件
                   </div>
+                  {Boolean(
+                    log.source_published_at ||
+                    log.import_mode ||
+                    formatImportChangeSummary(log.change_summary),
+                  ) && (
+                    <div className="flex max-w-full flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      {log.source_published_at && (
+                        <span>published: {formatImportPublishedAt(log.source_published_at)}</span>
+                      )}
+                      {log.import_mode && <span>mode: {formatImportMode(log.import_mode)}</span>}
+                      {formatImportChangeSummary(log.change_summary) && (
+                        <span>summary: {formatImportChangeSummary(log.change_summary)}</span>
+                      )}
+                    </div>
+                  )}
+                  {(log.source_url || log.source_file_hash) && (
+                    <div className="flex max-w-full flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      {log.source_url && (
+                        <span className="max-w-full truncate" title={log.source_url}>
+                          source: {formatImportSourceUrl(log.source_url)}
+                        </span>
+                      )}
+                      {log.source_file_hash && (
+                        <span className="font-mono" title={log.source_file_hash}>
+                          sha256: {formatImportSourceHash(log.source_file_hash)}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {log.error_log && (
                     <div className="text-xs text-state-blocked">{log.error_log}</div>
                   )}
@@ -3724,6 +4025,106 @@ function DrugMasterOperationalContent({
           )}
         </div>
       </PageSection>
+
+      <ConfirmDialog
+        open={pendingImportAction !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingImportAction(null);
+            setOfficialImportPreview(null);
+            setOfficialImportPreviewError(null);
+          }
+        }}
+        title={`${pendingImportDefinition?.label ?? 'マスター取込'}を実行しますか`}
+        description="公式マスター取込は薬剤コード、安全情報、採用品プレビューの前提を更新します。取込ソースと実行内容を確認してから実行してください。"
+        confirmLabel={importMutation.isPending ? '取込中...' : '取込実行'}
+        cancelLabel="戻る"
+        requiredConfirmText="取込実行"
+        confirmDisabled={!pendingImportAction || importMutation.isPending}
+        closeOnConfirm={false}
+        onConfirm={() => {
+          if (!pendingImportAction) return;
+          importMutation.mutate(pendingImportAction);
+          setPendingImportAction(null);
+          setOfficialImportPreview(null);
+          setOfficialImportPreviewError(null);
+        }}
+      >
+        {pendingImportDefinition ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <LoadingButton
+                type="button"
+                size="sm"
+                variant="outline"
+                loading={officialImportPreviewLoadingAction === pendingImportDefinition.key}
+                loadingLabel="確認中"
+                onClick={() => void runOfficialImportPreview(pendingImportDefinition.key)}
+                className="min-h-[44px] gap-1 sm:min-h-[44px]"
+              >
+                <ListChecks className="size-3.5" aria-hidden="true" />
+                差分確認
+              </LoadingButton>
+              {pendingOfficialImportPreview?.sourceFileHash ? (
+                <span className="font-mono text-xs text-muted-foreground">
+                  sha256: {formatImportSourceHash(pendingOfficialImportPreview.sourceFileHash)}
+                </span>
+              ) : null}
+            </div>
+            {officialImportPreviewError ? (
+              <p role="alert" className="text-sm text-state-blocked">
+                {officialImportPreviewError}
+              </p>
+            ) : null}
+            {pendingOfficialImportPreviewGroups.length > 0 ? (
+              <div
+                className="space-y-2 rounded-md border border-border/70 bg-muted/20 px-3 py-3"
+                data-testid="official-import-preview"
+              >
+                {pendingOfficialImportPreviewGroups.map((group) => (
+                  <div
+                    key={group.key}
+                    className="grid gap-1 border-b border-border/50 pb-2 last:border-b-0 last:pb-0 sm:grid-cols-[120px_minmax(0,1fr)]"
+                  >
+                    <span className="text-xs font-medium text-muted-foreground">{group.label}</span>
+                    <span className="text-sm text-foreground">
+                      {formatOfficialImportPreviewSummary(group.summary)}
+                    </span>
+                    {group.rows.length > 0 ? (
+                      <ul className="space-y-1 sm:col-start-2">
+                        {group.rows.slice(0, 3).map((row, index) => (
+                          <li
+                            key={`${group.key}-${index}`}
+                            className="rounded-md bg-background/80 px-2 py-1 text-xs text-muted-foreground"
+                          >
+                            {formatOfficialImportPreviewRow(row)}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={autoRefreshConfirmOpen}
+        onOpenChange={setAutoRefreshConfirmOpen}
+        title="フリーマスター一括更新を実行しますか"
+        description="SSKと厚労省系の標準マスターをまとめて更新します。取込後は採用品コピー、テンプレート、CSV反映の既存プレビューを破棄します。"
+        confirmLabel={autoRefreshMutation.isPending ? '一括更新中...' : '一括更新'}
+        cancelLabel="戻る"
+        requiredConfirmText="一括更新"
+        confirmDisabled={autoRefreshMutation.isPending}
+        closeOnConfirm={false}
+        onConfirm={() => {
+          autoRefreshMutation.mutate();
+          setAutoRefreshConfirmOpen(false);
+        }}
+      />
 
       <ConfirmDialog
         open={formularyRequestDecisionTarget !== null}

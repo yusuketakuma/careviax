@@ -289,6 +289,14 @@ export async function importManualClinicalRules(
 
     return {
       recordCount: pimCount + highRiskCount + renalCount + safetyOverrideCount,
+      importMode: 'manual',
+      changeSummary: {
+        mode: 'manual',
+        pim_rule_count: pimCount,
+        high_risk_rule_count: highRiskCount,
+        renal_adjustment_count: renalCount,
+        safety_override_count: safetyOverrideCount,
+      },
       payload: {
         pimCount,
         highRiskCount,

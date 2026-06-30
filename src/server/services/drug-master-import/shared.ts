@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { Prisma, PrismaClient } from '@prisma/client';
@@ -28,6 +29,11 @@ export type DrugMasterImportSource =
   | 'manual_clinical';
 
 export type FetchLike = typeof fetch;
+export type ImportSourceFingerprint = {
+  sourceUrl: string;
+  sourceFileHash: string;
+};
+export type ImportProvenanceSummary = Prisma.InputJsonObject;
 
 const BYTES_PER_MIB = 1024 * 1024;
 const DEFAULT_IMPORT_FETCH_TIMEOUT_MS = 15_000;
@@ -462,6 +468,53 @@ export async function fetchBytes(url: string, options: FetchImportOptions) {
   }
 }
 
+export function sha256ImportPayload(bytes: Uint8Array) {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+export function combineImportSourceFingerprints(fingerprints: readonly ImportSourceFingerprint[]) {
+  if (fingerprints.length === 0) return null;
+  if (fingerprints.length === 1) return fingerprints[0]?.sourceFileHash ?? null;
+
+  const hash = createHash('sha256');
+  for (const fingerprint of fingerprints) {
+    hash.update(fingerprint.sourceUrl);
+    hash.update('\0');
+    hash.update(fingerprint.sourceFileHash);
+    hash.update('\n');
+  }
+  return hash.digest('hex');
+}
+
+export function parseImportSourceDateToken(value: string) {
+  if (/^\d{8}$/.test(value)) {
+    const year = Number(value.slice(0, 4));
+    const month = Number(value.slice(4, 6));
+    const day = Number(value.slice(6, 8));
+    return new Date(Date.UTC(year, month - 1, day));
+  }
+
+  if (/^\d{6}$/.test(value)) {
+    const year = 2000 + Number(value.slice(0, 2));
+    const month = Number(value.slice(2, 4));
+    const day = Number(value.slice(4, 6));
+    return new Date(Date.UTC(year, month - 1, day));
+  }
+
+  return null;
+}
+
+export function extractImportSourceDateFromUrl(url: string, patterns: readonly RegExp[]) {
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    const token = match?.[1];
+    if (!token) continue;
+    const parsed = parseImportSourceDateToken(token);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
 export async function fetchText(url: string, options: FetchImportOptions) {
   const textPolicyMaxBytes = Math.min(
     normalizeImportPolicyMaxBytes(options.policy.maxBytes),
@@ -637,6 +690,11 @@ export function decodeTextBuffer(buffer: Buffer) {
 type LoggedImportResult<T> = {
   recordCount: number;
   payload: T;
+  sourceUrl?: string | null;
+  sourceFileHash?: string | null;
+  sourcePublishedAt?: Date | null;
+  importMode?: string | null;
+  changeSummary?: Prisma.InputJsonValue | null;
 };
 
 export async function withImportLog<T>(
@@ -659,6 +717,11 @@ export async function withImportLog<T>(
       data: {
         status: 'completed',
         record_count: result.recordCount,
+        source_url: result.sourceUrl ?? null,
+        source_file_hash: result.sourceFileHash ?? null,
+        source_published_at: result.sourcePublishedAt ?? null,
+        import_mode: result.importMode ?? null,
+        change_summary: result.changeSummary ?? Prisma.JsonNull,
       },
     });
 

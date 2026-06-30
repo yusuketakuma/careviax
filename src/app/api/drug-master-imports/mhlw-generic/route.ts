@@ -12,12 +12,15 @@ import { withRoutePerformance } from '@/lib/utils/performance';
 import {
   importGenericNameMappings,
   importMhlwGenericFlags,
+  previewGenericNameMappings,
+  previewMhlwGenericFlags,
 } from '@/server/services/drug-master-import/mhlw';
 import {
   MHLW_IMPORT_URL_POLICY,
   importSourceUrlValidationMessage,
   isAllowedImportSourceUrl,
 } from '@/server/services/drug-master-import/shared';
+import { projectDrugMasterImportLogMetadata } from '../import-log-response';
 
 const requestSchema = z.object({
   mode: z.enum(['flags', 'mappings', 'all']).default('all'),
@@ -28,6 +31,8 @@ const requestSchema = z.object({
       message: importSourceUrlValidationMessage(),
     })
     .optional(),
+  dryRun: z.boolean().optional(),
+  previewLimit: z.number().int().min(0).max(100).optional(),
 });
 
 const ROUTE = '/api/drug-master-imports/mhlw-generic';
@@ -62,21 +67,57 @@ async function authenticatedPOST(req: NextRequest) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
+  const { dryRun, previewLimit, ...importOptions } = parsed.data;
+
+  if (dryRun) {
+    const previewResult = await runWithRequestAuthContext(ctx, async () => {
+      const result = {
+        flags: null as Awaited<ReturnType<typeof previewMhlwGenericFlags>> | null,
+        mappings: null as Awaited<ReturnType<typeof previewGenericNameMappings>> | null,
+      };
+
+      if (importOptions.mode === 'flags' || importOptions.mode === 'all') {
+        result.flags = await previewMhlwGenericFlags(prisma, {
+          workbookUrl: importOptions.workbookUrl,
+          previewLimit,
+        });
+      }
+
+      if (importOptions.mode === 'mappings' || importOptions.mode === 'all') {
+        result.mappings = await previewGenericNameMappings(prisma, {
+          workbookUrl: importOptions.workbookUrl,
+          previewLimit,
+        });
+      }
+
+      return result;
+    });
+
+    return success({
+      data: {
+        dryRun: true,
+        mode: importOptions.mode,
+        flags: previewResult.flags,
+        mappings: previewResult.mappings,
+      },
+    });
+  }
+
   const result = await runWithRequestAuthContext(ctx, async () => {
     const importResult = {
       flags: null as Awaited<ReturnType<typeof importMhlwGenericFlags>> | null,
       mappings: null as Awaited<ReturnType<typeof importGenericNameMappings>> | null,
     };
 
-    if (parsed.data.mode === 'flags' || parsed.data.mode === 'all') {
+    if (importOptions.mode === 'flags' || importOptions.mode === 'all') {
       importResult.flags = await importMhlwGenericFlags(prisma, {
-        workbookUrl: parsed.data.workbookUrl,
+        workbookUrl: importOptions.workbookUrl,
       });
     }
 
-    if (parsed.data.mode === 'mappings' || parsed.data.mode === 'all') {
+    if (importOptions.mode === 'mappings' || importOptions.mode === 'all') {
       importResult.mappings = await importGenericNameMappings(prisma, {
-        workbookUrl: parsed.data.workbookUrl,
+        workbookUrl: importOptions.workbookUrl,
       });
     }
 
@@ -86,13 +127,15 @@ async function authenticatedPOST(req: NextRequest) {
   return success(
     {
       data: {
-        mode: parsed.data.mode,
+        mode: importOptions.mode,
+        importedCount: (result.flags?.importedCount ?? 0) + (result.mappings?.importedCount ?? 0),
         flags: result.flags
           ? {
               logId: result.flags.log.id,
               status: result.flags.log.status,
               importedCount: result.flags.importedCount,
               workbookUrl: result.flags.workbookUrl,
+              ...projectDrugMasterImportLogMetadata(result.flags.log),
             }
           : null,
         mappings: result.mappings
@@ -101,6 +144,7 @@ async function authenticatedPOST(req: NextRequest) {
               status: result.mappings.log.status,
               importedCount: result.mappings.importedCount,
               workbookUrl: result.mappings.workbookUrl,
+              ...projectDrugMasterImportLogMetadata(result.mappings.log),
             }
           : null,
       },

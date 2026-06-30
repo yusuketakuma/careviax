@@ -9,12 +9,16 @@ import { readOptionalJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
-import { importMhlwPriceList } from '@/server/services/drug-master-import/mhlw';
+import {
+  importMhlwPriceList,
+  previewMhlwPriceList,
+} from '@/server/services/drug-master-import/mhlw';
 import {
   MHLW_IMPORT_URL_POLICY,
   importSourceUrlValidationMessage,
   isAllowedImportSourceUrl,
 } from '@/server/services/drug-master-import/shared';
+import { projectDrugMasterImportLogMetadata } from '../import-log-response';
 
 const requestSchema = z.object({
   workbookUrl: z
@@ -24,6 +28,8 @@ const requestSchema = z.object({
       message: importSourceUrlValidationMessage(),
     })
     .optional(),
+  dryRun: z.boolean().optional(),
+  previewLimit: z.number().int().min(0).max(100).optional(),
 });
 
 const ROUTE = '/api/drug-master-imports/mhlw-price';
@@ -58,8 +64,17 @@ async function authenticatedPOST(req: NextRequest) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
+  const { dryRun, previewLimit, ...importOptions } = parsed.data;
+
+  if (dryRun) {
+    const preview = await runWithRequestAuthContext(ctx, () =>
+      previewMhlwPriceList(prisma, { ...importOptions, previewLimit }),
+    );
+    return success({ data: preview });
+  }
+
   const result = await runWithRequestAuthContext(ctx, () =>
-    importMhlwPriceList(prisma, parsed.data),
+    importMhlwPriceList(prisma, importOptions),
   );
   return success(
     {
@@ -69,6 +84,7 @@ async function authenticatedPOST(req: NextRequest) {
         importedCount: result.importedCount,
         workbookUrl: result.workbookUrl,
         workbookUrls: result.workbookUrls,
+        ...projectDrugMasterImportLogMetadata(result.log),
       },
     },
     201,
