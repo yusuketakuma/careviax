@@ -26,6 +26,7 @@ import {
   buildExternalAccessPayload,
   buildVisibleExternalAccessGrantWhere,
   externalAccessGrantVisibleForCaseIds,
+  attachExternalAccessReportDocumentBoundary,
   hashExternalAccessOtp,
   hashExternalAccessToken,
   issueExternalAccessToken,
@@ -193,6 +194,7 @@ describe('external access scope validation', () => {
       care_reports: true,
       self_report_history: true,
       allowed_case_ids: ['case_1', 'case_1', 'case_2'],
+      allowed_report_ids: ['report_1', 'report_1', 'report_2'],
     });
 
     expect(result).toMatchObject({
@@ -201,6 +203,7 @@ describe('external access scope validation', () => {
         care_reports: true,
         self_report_history: true,
         allowed_case_ids: ['case_1', 'case_2'],
+        allowed_report_ids: ['report_1', 'report_2'],
       },
     });
     expect(toPublicExternalAccessScope(result.ok ? result.scope : null)).toEqual({
@@ -226,6 +229,45 @@ describe('external access scope validation', () => {
       message: '共有範囲が不正です',
       details: { allowed_case_ids: ['許可ケースIDの形式が不正です'] },
     });
+  });
+
+  it('rejects malformed stored report document boundaries', () => {
+    expect(
+      normalizeStoredExternalAccessScope({
+        care_reports: true,
+        allowed_report_ids: ['report_1', '  '],
+      }),
+    ).toMatchObject({
+      ok: false,
+      kind: 'validation',
+      message: '共有範囲が不正です',
+      details: { allowed_report_ids: ['許可報告書IDの形式が不正です'] },
+    });
+    expect(
+      normalizeStoredExternalAccessScope({
+        medication_list: true,
+        allowed_report_ids: ['report_1'],
+      }),
+    ).toMatchObject({
+      ok: false,
+      kind: 'validation',
+      message: '共有範囲が不正です',
+      details: { allowed_report_ids: ['報告書共有が有効な場合のみ指定できます'] },
+    });
+  });
+
+  it('attaches report document boundaries without exposing them as public scope', () => {
+    const scoped = attachExternalAccessReportDocumentBoundary(
+      { care_reports: true, allowed_case_ids: ['case_1'] },
+      ['report_1', 'report_1', 'report_2'],
+    );
+
+    expect(scoped).toEqual({
+      care_reports: true,
+      allowed_case_ids: ['case_1'],
+      allowed_report_ids: ['report_1', 'report_2'],
+    });
+    expect(toPublicExternalAccessScope(scoped)).toEqual({ care_reports: true });
   });
 
   it('builds DB visibility predicates for assignment-scoped grants', () => {
@@ -566,6 +608,52 @@ describe('buildExternalAccessPayload', () => {
       visit_schedule: true,
       care_reports: true,
     });
+  });
+
+  it('limits care report payload reads to the stored report document boundary', async () => {
+    prismaMock.careReport.findMany.mockResolvedValue([
+      {
+        id: 'report_allowed',
+        report_type: '訪問薬剤管理指導報告書',
+        status: 'sent',
+        created_at: new Date('2026-03-20T00:00:00.000Z'),
+      },
+    ]);
+
+    const payload = await buildExternalAccessPayload({
+      id: 'grant_report_document',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      otp_hash: 'otp_hash',
+      expires_at: new Date('2026-04-01T00:00:00.000Z'),
+      revoked_at: null,
+      scope: {
+        care_reports: true,
+        allowed_case_ids: ['case_allowed'],
+        allowed_report_ids: ['report_allowed'],
+      },
+    });
+
+    expect(payload).not.toBeNull();
+    expect(prismaMock.careReport.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { in: ['report_allowed'] },
+          patient_id: 'patient_1',
+          org_id: 'org_1',
+          case_id: { in: ['case_allowed'] },
+          status: { in: ['sent', 'confirmed'] },
+        }),
+      }),
+    );
+    expect(payload?.care_reports).toEqual([
+      expect.objectContaining({
+        id: 'report_allowed',
+        report_type: '訪問薬剤管理指導報告書',
+      }),
+    ]);
+    expect(payload?.scope).toEqual({ care_reports: true });
+    expect(JSON.stringify(payload)).not.toContain('allowed_report_ids');
   });
 });
 

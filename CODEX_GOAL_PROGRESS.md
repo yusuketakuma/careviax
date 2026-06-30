@@ -30,6 +30,37 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### External Access Report Document Boundary - 2026-07-01 05:52 JST
+
+- Scope:
+  - Continued report/external-share hardening under `docs/high-roi-functional-proposals-2026-06-18.md` items 30 and 81.
+  - Focused on `ExternalAccessGrant.scope` as the existing JSON boundary for public `/api/external-access/[token]` report payloads.
+- Fixed:
+  - Stored external-access scope now explicitly accepts `allowed_report_ids` as a server-only report document boundary alongside the existing `allowed_case_ids`.
+  - Public scope output strips `allowed_report_ids`, so report IDs do not leak through management/list/public viewer scope badges.
+  - `buildExternalAccessPayload` restricts `care_reports` reads by both the stored case boundary and the stored report document boundary when present.
+  - Added `attachExternalAccessReportDocumentBoundary` as the reusable service helper for the upcoming short-lived report PDF grant/token flow.
+- Safety:
+  - Reduces over-broad external report sharing risk by making document-limited grants fail closed to the selected report IDs while preserving patient/org/case/status predicates.
+  - Rejects malformed report document boundaries and rejects `allowed_report_ids` unless `care_reports` sharing is enabled.
+  - Preserves token/OTP validation, public no-store responses, case-boundary fail-closed behavior, unsupported self-report stripping, view-audit transaction behavior, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds only an optional `id IN (...)` predicate to an existing bounded `careReport.findMany({ take: 3 })` public payload read.
+  - No new DB query, dependency, external call, background job, render path, broad scan, or unbounded loop was added.
+- Validation:
+  - Focused external-access service Vitest passed `1` file / `34` tests.
+  - External-access service + API route suite passed `3` files / `78` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on external-access service files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit-time, report, and multi-professional cooperation objective remains open.
+  - The next report/share step is wiring report send to issue short-lived external report/PDF grants instead of relying on preexisting `pdf_url`.
+  - Concurrent dirty admin-facility files remain outside this slice.
+
 ### VisitSchedule PATCH Audit Shape - 2026-07-01 05:45 JST
 
 - Scope:
@@ -145,6 +176,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Broad master-management and patient-information objective remains open.
   - Facility unit/floor management remains backend-supported but not yet surfaced in this UI slice.
   - Concurrent dirty CareReport list and VisitSchedule audit files remain outside this facility commit.
+
+### Facility Unit Floor Editor Surface - 2026-07-01 05:52 JST
+
+- Scope:
+  - Continued `/admin/facilities` real-data implementation after the facility editor replacement.
+  - Focused on surfacing the existing facility unit/floor APIs because patient residences and visit grouping already reference `facility_unit_id`.
+- Fixed:
+  - Facility edit sheet now loads `GET /api/admin/facilities/[id]/units` and displays unit/floor rows with type, floor, capacity, display order, and linked patient count.
+  - Added create/edit/delete UI for facility units using existing `POST /units`, `PATCH /units/[unitId]`, and `DELETE /units/[unitId]` APIs.
+  - Unit deletion is confirmation-gated and disabled while visible linked patient count is non-zero.
+  - Added admin facility unit API path helpers that encode facility and unit ids independently and reject exact dot-segment ids.
+  - Regression coverage proves unit loading, unit create/update payloads, encoded paths, and path-helper fail-closed behavior.
+- Safety:
+  - Reduces incomplete facility master risk where patient residences can reference units but admins could not maintain those units from the facility master screen.
+  - Preserves existing unit API canVisit/canAdmin permissions, org scoping, duplicate-name conflicts, linked-residence delete conflict, live DB safety, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Unit list fetch is gated to an open edit sheet and selected facility; no background polling, broad facility fan-out, new dependency, backend query shape change, or unbounded loop was added.
+- Validation:
+  - Facility UI/path focused Vitest passed `2` files / `22` tests.
+  - Facility UI/path + unit API suite passed `4` files / `30` tests.
+  - Scoped ESLint and scoped Prettier check on facility UI/path files: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad master-management and patient-information objective remains open.
+  - Concurrent dirty VisitSchedule audit and ExternalAccess files remain outside this facility-unit commit.
 
 ### Visit Planner Route Insertion Matrix - 2026-07-01 05:24 JST
 

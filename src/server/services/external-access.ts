@@ -34,6 +34,7 @@ export type ExternalAccessScopeKey = (typeof EXTERNAL_ACCESS_SCOPE_KEYS)[number]
 export type ExternalAccessScope = Partial<Record<ExternalAccessScopeKey, boolean>>;
 export type StoredExternalAccessScope = ExternalAccessScope & {
   allowed_case_ids?: string[];
+  allowed_report_ids?: string[];
 };
 
 type ExternalAccessScopeCheckResult =
@@ -50,6 +51,11 @@ type ExternalAccessScopeCheckResult =
 
 const EXTERNAL_ACCESS_SCOPE_KEY_SET = new Set<string>(EXTERNAL_ACCESS_SCOPE_KEYS);
 const EXTERNAL_ACCESS_ALLOWED_CASE_IDS_KEY = 'allowed_case_ids';
+const EXTERNAL_ACCESS_ALLOWED_REPORT_IDS_KEY = 'allowed_report_ids';
+const EXTERNAL_ACCESS_STORED_ONLY_SCOPE_KEYS = new Set([
+  EXTERNAL_ACCESS_ALLOWED_CASE_IDS_KEY,
+  EXTERNAL_ACCESS_ALLOWED_REPORT_IDS_KEY,
+]);
 const CASE_BACKED_EXTERNAL_ACCESS_SCOPE_KEYS = [
   'visit_schedule',
   'care_reports',
@@ -150,16 +156,17 @@ export function normalizeStoredExternalAccessScope(
   }
 
   const publicScope = Object.fromEntries(
-    Object.entries(scopeObject).filter(([key]) => key !== EXTERNAL_ACCESS_ALLOWED_CASE_IDS_KEY),
+    Object.entries(scopeObject).filter(([key]) => !EXTERNAL_ACCESS_STORED_ONLY_SCOPE_KEYS.has(key)),
   );
   const normalized = normalizeExternalAccessScope(publicScope);
   if (!normalized.ok) return normalized;
 
   const rawAllowedCaseIds = scopeObject[EXTERNAL_ACCESS_ALLOWED_CASE_IDS_KEY];
-  if (rawAllowedCaseIds === undefined) return normalized;
+  const rawAllowedReportIds = scopeObject[EXTERNAL_ACCESS_ALLOWED_REPORT_IDS_KEY];
+  if (rawAllowedCaseIds === undefined && rawAllowedReportIds === undefined) return normalized;
 
   const allowedCaseIds = normalizeAllowedCaseIds(rawAllowedCaseIds);
-  if (!allowedCaseIds) {
+  if (rawAllowedCaseIds !== undefined && !allowedCaseIds) {
     return {
       ok: false,
       kind: 'validation',
@@ -168,11 +175,31 @@ export function normalizeStoredExternalAccessScope(
     };
   }
 
+  const allowedReportIds = normalizeAllowedCaseIds(rawAllowedReportIds);
+  if (rawAllowedReportIds !== undefined && !allowedReportIds) {
+    return {
+      ok: false,
+      kind: 'validation',
+      message: '共有範囲が不正です',
+      details: { allowed_report_ids: ['許可報告書IDの形式が不正です'] },
+    };
+  }
+
+  if (allowedReportIds && normalized.scope.care_reports !== true) {
+    return {
+      ok: false,
+      kind: 'validation',
+      message: '共有範囲が不正です',
+      details: { allowed_report_ids: ['報告書共有が有効な場合のみ指定できます'] },
+    };
+  }
+
   return {
     ok: true,
     scope: {
       ...normalized.scope,
-      allowed_case_ids: allowedCaseIds,
+      ...(allowedCaseIds ? { allowed_case_ids: allowedCaseIds } : {}),
+      ...(allowedReportIds ? { allowed_report_ids: allowedReportIds } : {}),
     },
   };
 }
@@ -265,11 +292,22 @@ export function attachExternalAccessCaseBoundary(
   };
 }
 
+export function attachExternalAccessReportDocumentBoundary(
+  scope: StoredExternalAccessScope,
+  allowedReportIds: string[],
+): StoredExternalAccessScope {
+  return {
+    ...scope,
+    allowed_report_ids: Array.from(new Set(allowedReportIds)),
+  };
+}
+
 export function toPublicExternalAccessScope(scope: unknown): ExternalAccessScope {
   const normalized = normalizeStoredExternalAccessScope(scope);
   if (!normalized.ok) return {};
   const publicScope = { ...normalized.scope };
   delete publicScope.allowed_case_ids;
+  delete publicScope.allowed_report_ids;
   for (const scopeKey of UNSUPPORTED_EXTERNAL_ACCESS_SCOPE_KEYS) {
     delete publicScope[scopeKey];
   }
@@ -687,6 +725,7 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
     return null;
   }
   const allowedCaseIds = scope.allowed_case_ids ?? null;
+  const allowedReportIds = scope.allowed_report_ids ?? null;
 
   const patient = await prisma.patient.findFirst({
     where: { id: grant.patient_id, org_id: grant.org_id },
@@ -787,10 +826,11 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
   let careReports = null;
   if (scope.care_reports === true) {
     careReports =
-      allowedCaseIds?.length === 0
+      allowedCaseIds?.length === 0 || allowedReportIds?.length === 0
         ? []
         : await prisma.careReport.findMany({
             where: {
+              ...(allowedReportIds ? { id: { in: allowedReportIds } } : {}),
               patient_id: grant.patient_id,
               org_id: grant.org_id,
               ...(allowedCaseIds ? { case_id: { in: allowedCaseIds } } : {}),
