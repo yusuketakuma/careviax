@@ -220,6 +220,25 @@ describe('deriveCompareCardView', () => {
     );
   });
 
+  it('focuses cycle next actions on the current prescription intake when available', () => {
+    const intakeId = '../intake with space?x=1#frag';
+
+    const view = deriveCompareCardView({
+      boardCard: buildBoardCard(),
+      workspace: buildWorkspace({
+        overall_status: 'structuring',
+        current_intake: {
+          id: intakeId,
+          prescribed_date: '2026-06-10T00:00:00.000Z',
+          prescription_category: 'regular',
+        },
+      }),
+    });
+
+    expect(view.nextAction?.actionHref).toBe(`/prescriptions/${encodeURIComponent(intakeId)}`);
+    expect(JSON.stringify(view.nextAction)).not.toContain(intakeId);
+  });
+
   it('handles a card without board entry or workspace', () => {
     const view = deriveCompareCardView({ boardCard: null, workspace: null });
     expect(view.typeLabel).toBe('処方カード');

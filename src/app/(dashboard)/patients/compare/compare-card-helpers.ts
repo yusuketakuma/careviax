@@ -19,6 +19,13 @@ import type { PatientAttentionKey, PatientBoardCard } from '@/types/patient-boar
 export type CompareWorkspaceInput = {
   overall_status: string;
   exception_status: string | null;
+  action_context?: {
+    patient_id: string | null;
+    prescription_intake_id: string | null;
+    visit_schedule_id: string | null;
+    visit_record_id: string | null;
+    report_id: string | null;
+  };
   current_intake: {
     id: string;
     prescribed_date: string;
@@ -139,7 +146,16 @@ export function deriveCompareCardView(args: {
   workspace: CompareWorkspaceInput | null;
 }): CompareCardView {
   const { boardCard, workspace } = args;
-  const cycleAction = workspace ? getCycleWorkspaceAction(workspace.overall_status) : null;
+  const cycleAction = workspace
+    ? getCycleWorkspaceAction(workspace.overall_status, {
+        patientId: workspace.action_context?.patient_id ?? boardCard?.patient_id,
+        prescriptionIntakeId:
+          workspace.action_context?.prescription_intake_id ?? workspace.current_intake?.id,
+        visitScheduleId: workspace.action_context?.visit_schedule_id,
+        visitRecordId: workspace.action_context?.visit_record_id,
+        reportId: workspace.action_context?.report_id,
+      })
+    : null;
   const workspaceStepLabel = workspace
     ? getStepLabel(getProcessStepKeyForStatus(workspace.overall_status))
     : null;

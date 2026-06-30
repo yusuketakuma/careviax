@@ -257,6 +257,13 @@ export type PatientWorkspace = {
   cycle_id: string;
   overall_status: string;
   exception_status: string | null;
+  action_context: {
+    patient_id: string;
+    prescription_intake_id: string | null;
+    visit_schedule_id: string | null;
+    visit_record_id: string | null;
+    report_id: string | null;
+  };
   /** 現行 intake(RX 番号の生成元)。formatPrescriptionCardNumber(id, prescribed_date, 'rx_year') */
   current_intake: {
     id: string;

@@ -10,6 +10,13 @@ function buildWorkspace(overrides: Partial<PatientWorkspace> = {}): PatientWorks
     cycle_id: 'cycle_1',
     overall_status: 'audit_pending',
     exception_status: null,
+    action_context: {
+      patient_id: 'patient_1',
+      prescription_intake_id: null,
+      visit_schedule_id: null,
+      visit_record_id: null,
+      report_id: null,
+    },
     current_intake: null,
     safety: {
       renal: null,
@@ -59,5 +66,26 @@ describe('ProcessTab', () => {
     expect(screen.queryByTestId('process-chips')).toBeNull();
     expect(screen.getByText('保留中')).toBeTruthy();
     expect(screen.getByText(/線形工程の外/)).toBeTruthy();
+  });
+
+  it('focuses prescription workflow actions on the current intake when available', () => {
+    const intakeId = '../intake with space?x=1#frag';
+
+    render(
+      <ProcessTab
+        workspace={buildWorkspace({
+          overall_status: 'structuring',
+          current_intake: {
+            id: intakeId,
+            prescribed_date: '2026-06-10T00:00:00.000Z',
+            prescription_category: 'regular',
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: '構造化を続ける' }).getAttribute('href')).toBe(
+      `/prescriptions/${encodeURIComponent(intakeId)}`,
+    );
   });
 });

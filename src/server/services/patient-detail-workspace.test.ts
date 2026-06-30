@@ -37,6 +37,10 @@ function buildDb(cycle: unknown) {
           time_window_start: new Date(Date.UTC(1970, 0, 1, 13, 30)),
         },
       ]),
+      findFirst: vi.fn().mockResolvedValue({
+        id: 'visit_recorded_schedule',
+        visit_record: { id: 'visit_record_1' },
+      }),
     },
     prescriptionIntake: {
       findFirst: vi.fn().mockResolvedValue(null),
@@ -234,6 +238,13 @@ describe('buildPatientWorkspace', () => {
     expect(result).toMatchObject({
       cycle_id: 'cycle_1',
       overall_status: 'dispensed',
+      action_context: {
+        patient_id: 'patient_1',
+        prescription_intake_id: 'intake_current',
+        visit_schedule_id: 'visit_1',
+        visit_record_id: 'visit_record_1',
+        report_id: null,
+      },
       current_intake: {
         id: 'intake_current',
         prescribed_date: new Date(2026, 5, 12).toISOString(),
@@ -284,6 +295,10 @@ describe('buildPatientWorkspace', () => {
           label: '調剤 完了',
           actor: '監査 花子',
         }),
+        expect.objectContaining({
+          id: 'intake-intake_current',
+          href: '/prescriptions/intake_current',
+        }),
       ]),
     );
     expect(db.visitSchedule.findMany).toHaveBeenCalledWith(
@@ -293,6 +308,15 @@ describe('buildPatientWorkspace', () => {
             gte: new Date('2026-06-12T00:00:00.000Z'),
             lt: new Date('2026-06-13T00:00:00.000Z'),
           },
+        }),
+      }),
+    );
+    expect(db.visitSchedule.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          cycle_id: 'cycle_1',
+          visit_record: { isNot: null },
         }),
       }),
     );

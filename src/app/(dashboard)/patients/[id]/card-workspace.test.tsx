@@ -80,6 +80,13 @@ function buildWorkspace(overrides: Partial<PatientWorkspace> = {}): PatientWorks
     cycle_id: 'cycle_1',
     overall_status: 'dispensed',
     exception_status: null,
+    action_context: {
+      patient_id: 'patient_1',
+      prescription_intake_id: 'intake_0500',
+      visit_schedule_id: 'visit_1',
+      visit_record_id: 'visit_record_1',
+      report_id: null,
+    },
     current_intake: {
       id: 'intake_0500',
       prescribed_date: '2026-06-09T00:00:00.000Z',

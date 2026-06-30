@@ -5,6 +5,11 @@
  */
 
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
+import { buildReportHref } from '@/lib/reports/navigation';
+import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
+import { buildVisitHref, buildVisitRecordHref } from '@/lib/visits/navigation';
 
 export type CycleWorkspaceAction = {
   /** 左カード「現在」/ 工程タブの状態表示 */
@@ -15,6 +20,14 @@ export type CycleWorkspaceAction = {
   actionLabel: string;
   /** 主操作の遷移先(クエリは画面側で付与) */
   actionHref: string;
+};
+
+export type CycleWorkspaceActionContext = {
+  patientId?: string | null;
+  prescriptionIntakeId?: string | null;
+  visitScheduleId?: string | null;
+  visitRecordId?: string | null;
+  reportId?: string | null;
 };
 
 export const CYCLE_WORKSPACE_ACTIONS: Record<string, CycleWorkspaceAction> = {
@@ -116,8 +129,49 @@ export const CYCLE_WORKSPACE_ACTIONS: Record<string, CycleWorkspaceAction> = {
   },
 };
 
-export function getCycleWorkspaceAction(status: string): CycleWorkspaceAction | null {
-  return CYCLE_WORKSPACE_ACTIONS[status] ?? null;
+function resolveCycleWorkspaceActionHref(
+  status: string,
+  fallbackHref: string,
+  context: CycleWorkspaceActionContext,
+) {
+  switch (status) {
+    case 'intake_received':
+    case 'structuring':
+      return context.prescriptionIntakeId
+        ? buildPrescriptionHref(context.prescriptionIntakeId)
+        : fallbackHref;
+    case 'inquiry_pending':
+      return context.patientId
+        ? buildCommunicationRequestsHref({ status: 'sent', patientId: context.patientId })
+        : fallbackHref;
+    case 'set_audited':
+      return context.visitScheduleId
+        ? buildScheduleFocusHref(context.visitScheduleId)
+        : fallbackHref;
+    case 'visit_ready':
+      return context.visitScheduleId ? buildVisitRecordHref(context.visitScheduleId) : fallbackHref;
+    case 'visit_completed':
+      if (context.reportId) return buildReportHref(context.reportId);
+      return context.visitRecordId ? buildVisitHref(context.visitRecordId) : fallbackHref;
+    case 'reported':
+      return context.reportId ? buildReportHref(context.reportId) : fallbackHref;
+    case 'on_hold':
+    case 'cancelled':
+      return context.patientId ? buildPatientHref(context.patientId) : fallbackHref;
+    default:
+      return fallbackHref;
+  }
+}
+
+export function getCycleWorkspaceAction(
+  status: string,
+  context: CycleWorkspaceActionContext = {},
+): CycleWorkspaceAction | null {
+  const action = CYCLE_WORKSPACE_ACTIONS[status] ?? null;
+  if (!action) return null;
+
+  const actionHref = resolveCycleWorkspaceActionHref(status, action.actionHref, context);
+  return actionHref === action.actionHref ? action : { ...action, actionHref };
 }
 
 // ---------------------------------------------------------------------------

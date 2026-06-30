@@ -4352,7 +4352,14 @@ export function CardWorkspace({
   const currentStep = getProcessStepKeyForStatus(workspace.overall_status);
   const currentStepLabel =
     currentStep != null ? (PROCESS_STEPS_9[getProcessStepIndex(currentStep)]?.label ?? null) : null;
-  const cycleAction = getCycleWorkspaceAction(workspace.overall_status);
+  const cycleAction = getCycleWorkspaceAction(workspace.overall_status, {
+    patientId: workspace.action_context.patient_id ?? patientId,
+    prescriptionIntakeId:
+      workspace.action_context.prescription_intake_id ?? workspace.current_intake?.id,
+    visitScheduleId: workspace.action_context.visit_schedule_id,
+    visitRecordId: workspace.action_context.visit_record_id,
+    reportId: workspace.action_context.report_id,
+  });
   const processLabel = currentStepLabel
     ? `工程: ${currentStepLabel}(いまここ)`
     : cycleAction

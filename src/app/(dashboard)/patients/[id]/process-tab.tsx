@@ -26,7 +26,14 @@ export function ProcessTab({ workspace }: { workspace: PatientWorkspace | null }
     );
   }
 
-  const action = getCycleWorkspaceAction(workspace.overall_status);
+  const action = getCycleWorkspaceAction(workspace.overall_status, {
+    patientId: workspace.action_context.patient_id,
+    prescriptionIntakeId:
+      workspace.action_context.prescription_intake_id ?? workspace.current_intake?.id,
+    visitScheduleId: workspace.action_context.visit_schedule_id,
+    visitRecordId: workspace.action_context.visit_record_id,
+    reportId: workspace.action_context.report_id,
+  });
   const currentStep = getProcessStepKeyForStatus(workspace.overall_status);
 
   return (

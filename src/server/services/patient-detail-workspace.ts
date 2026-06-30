@@ -15,6 +15,7 @@ import {
 import { findPreviousPrescriptionIntakeForMedicationDiff } from '@/server/services/prescription-intake-pair';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
@@ -157,7 +158,7 @@ export async function buildPatientWorkspace(db: DbClient, args: BuildPatientWork
 
   const now = new Date();
   const todayRange = todayUtcRange(now);
-  const [egfrObservation, todayVisits, actorNameMap] = await Promise.all([
+  const [egfrObservation, todayVisits, latestRecordedVisit, actorNameMap] = await Promise.all([
     db.patientLabObservation.findFirst({
       where: {
         org_id: args.orgId,
@@ -186,6 +187,20 @@ export async function buildPatientWorkspace(db: DbClient, args: BuildPatientWork
         time_window_start: true,
       },
     }),
+    db.visitSchedule.findFirst({
+      where: {
+        org_id: args.orgId,
+        cycle_id: cycle.id,
+        visit_record: { isNot: null },
+      },
+      orderBy: [{ scheduled_date: 'desc' }, { time_window_start: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        visit_record: {
+          select: { id: true },
+        },
+      },
+    }),
     batchResolveNames(db as typeof prisma, args.orgId, [
       ...new Set(cycle.transition_logs.map((log) => log.actor_id)),
     ]).catch((error) => {
@@ -197,6 +212,13 @@ export async function buildPatientWorkspace(db: DbClient, args: BuildPatientWork
   ]);
 
   const [currentIntake] = cycle.prescription_intakes;
+  const actionContext = {
+    patientId: args.patientId,
+    prescriptionIntakeId: currentIntake?.id ?? null,
+    visitScheduleId: todayVisits[0]?.id ?? null,
+    visitRecordId: latestRecordedVisit?.visit_record?.id ?? null,
+    reportId: null,
+  };
   const previousIntake = currentIntake
     ? await findPreviousPrescriptionIntakeForMedicationDiff(db, {
         orgId: args.orgId,
@@ -257,7 +279,7 @@ export async function buildPatientWorkspace(db: DbClient, args: BuildPatientWork
         CYCLE_TRANSITION_EVENT_LABELS[log.to_status] ?? `${log.from_status} → ${log.to_status}`,
       actor: actorNameMap.get(log.actor_id) ?? null,
       at: log.created_at,
-      href: getCycleWorkspaceAction(log.to_status)?.actionHref ?? '/workflow',
+      href: getCycleWorkspaceAction(log.to_status, actionContext)?.actionHref ?? '/workflow',
     })),
     ...cycle.inquiries.map((inquiry) => ({
       id: `inquiry-${inquiry.id}`,
@@ -280,7 +302,7 @@ export async function buildPatientWorkspace(db: DbClient, args: BuildPatientWork
       }`,
       actor: null,
       at: intake.created_at,
-      href: '/prescriptions',
+      href: buildPrescriptionHref(intake.id),
     })),
   ]
     .sort((left, right) => right.at.getTime() - left.at.getTime())
@@ -341,6 +363,13 @@ export async function buildPatientWorkspace(db: DbClient, args: BuildPatientWork
     cycle_id: cycle.id,
     overall_status: cycle.overall_status,
     exception_status: cycle.exception_status,
+    action_context: {
+      patient_id: actionContext.patientId,
+      prescription_intake_id: actionContext.prescriptionIntakeId,
+      visit_schedule_id: actionContext.visitScheduleId,
+      visit_record_id: actionContext.visitRecordId,
+      report_id: actionContext.reportId,
+    },
     current_intake: currentIntake
       ? {
           id: currentIntake.id,
