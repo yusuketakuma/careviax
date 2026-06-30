@@ -14054,3 +14054,16 @@ Backup directory:
 - validation results: communication request focused suite passed `1` file / `39` tests; communication/reschedule API suite passed `2` files / `53` tests. Scoped ESLint, scoped Prettier, `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm format:check`, `pnpm lint`, and `git diff --check` passed.
 - remaining work: broad master/patient/schedule/collaboration objective remains open. Continue scanning direct mutation endpoints for UI-only preconditions.
 - next action: commit ledger slice and notify `phos`.
+
+### 20260630-2317 JST
+
+- current task: guard visit schedule status PATCH calls with the status the UI actually reviewed.
+- files inspected: `git status --short --branch --untracked-files=all`, `git diff --stat`, `src/app/api/visit-schedules/[id]/route.ts`, `src/app/api/visit-schedules/[id]/route.test.ts`, `src/lib/validations/visit-schedule.ts`, `src/app/(dashboard)/schedules/schedule-team-board.tsx`, `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`, and validation output.
+- files changed: `src/app/api/visit-schedules/[id]/route.ts`, `src/app/api/visit-schedules/[id]/route.test.ts`, `src/lib/validations/visit-schedule.ts`, `src/app/(dashboard)/schedules/schedule-team-board.tsx`, and `src/app/(dashboard)/schedules/schedule-team-board.test.tsx` in commit `3b6cda39`.
+- bugs found: schedule-board status changes could PATCH a new `schedule_status` after the row's current status had changed elsewhere, because the UI did not send and the API did not enforce an expected current status.
+- security risks found: reduced stale-state / wrong-status mutation risk by accepting `expected_schedule_status`, returning 409 before reference checks, transaction writes, audit, and workflow notification when it differs, and carrying the reviewed status from `ScheduleTeamBoard`. Existing auth, org/RLS assignment scope, ready-transition gate, terminal-status protections, no-store errors, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: no extra DB query, dependency, broad scan, or render-heavy path; the guard uses the already loaded schedule status and existing guarded update predicate.
+- validation commands: focused `pnpm vitest run src/app/api/visit-schedules/'[id]'/route.test.ts 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=60000`; scoped `pnpm exec eslint`; scoped `pnpm exec prettier --check`; `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`.
+- validation results: focused suite passed `2` files / `105` tests. Scoped ESLint, scoped Prettier check, `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm format:check`, and `pnpm lint` passed.
+- remaining work: broad master/patient/schedule/collaboration objective remains open. Continue scanning schedule mutation callers for missing expected-state payloads.
+- next action: commit the progress-ledger slice, then leave the worktree clean for the next grouped implementation pass.

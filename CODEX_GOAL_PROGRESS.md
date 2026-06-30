@@ -27315,3 +27315,31 @@ Next loop:
 - Remaining:
   - Broad master/patient/schedule/collaboration objective remains open.
   - Continue scanning direct mutation endpoints and dashboard/task links for stale-state or wrong-target drift.
+
+### Visit Status Patch Expected-State Guard - 2026-06-30 23:17 JST
+
+- Scope:
+  - Continued schedule mutation hardening for the main schedule-board status change flow.
+  - Focused on preventing a stale UI status selector from overwriting a schedule whose status changed after the board loaded.
+- Fixed:
+  - `3b6cda39 fix(schedules): guard visit status patches`
+    - `PATCH /api/visit-schedules/[id]` accepts `expected_schedule_status` and returns 409 before reference checks, transaction writes, audit, or workflow notification when the persisted status no longer matches.
+    - `ScheduleTeamBoard` now sends the row's current status as `expected_schedule_status` when changing visit status.
+    - The update schema accepts the expected status without persisting it into the schedule row.
+- Safety:
+  - Reduces stale-state and wrong-status mutation risk for board-driven visit status changes.
+  - Existing auth, org/RLS assignment scope, ready-transition gate, terminal-status protections, no-store errors, audit creation, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- Performance:
+  - No new query or broad scan; the guard uses the already loaded schedule status and existing guarded update predicate.
+- Validation:
+  - Focused Vitest passed `2` files / `105` tests.
+  - Scoped ESLint: passed.
+  - Scoped Prettier check: passed.
+  - `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - Broad master/patient/schedule/collaboration objective remains open.
+  - Continue scanning schedule mutation callers for missing expected-state payloads.
