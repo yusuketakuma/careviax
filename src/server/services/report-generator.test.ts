@@ -10,6 +10,7 @@ const {
   userFindFirstMock,
   billingEvidenceFindFirstMock,
   careCaseFindFirstMock,
+  patientLabObservationFindManyMock,
   prescriptionLineFindManyMock,
   careReportFindManyMock,
   careReportCreateManyMock,
@@ -29,6 +30,7 @@ const {
   userFindFirstMock: vi.fn(),
   billingEvidenceFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
+  patientLabObservationFindManyMock: vi.fn(),
   prescriptionLineFindManyMock: vi.fn(),
   careReportFindManyMock: vi.fn(),
   careReportCreateManyMock: vi.fn(),
@@ -51,6 +53,7 @@ vi.mock('@/lib/db/client', () => ({
     user: { findFirst: userFindFirstMock },
     billingEvidence: { findFirst: billingEvidenceFindFirstMock },
     careCase: { findFirst: careCaseFindFirstMock },
+    patientLabObservation: { findMany: patientLabObservationFindManyMock },
     prescriptionLine: { findMany: prescriptionLineFindManyMock },
     careReport: { findMany: careReportFindManyMock },
   },
@@ -91,6 +94,7 @@ describe('generateReportsFromVisit', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getHomeVisitIntakeMock.mockReturnValue(null);
+    patientLabObservationFindManyMock.mockResolvedValue([]);
   });
 
   it('throws when visit record not found', async () => {
@@ -337,6 +341,133 @@ describe('generateReportsFromVisit', () => {
       status: 'draft',
       updated_at: reportDraftUpdatedAt,
     });
+  });
+
+  it('supplements generated report SOAP with latest patient labs without overwriting visit labs', async () => {
+    const structuredSoapWithVisitLab = {
+      ...baseSoap,
+      objective: {
+        ...baseSoap.objective,
+        lab_values: { hba1c: 7.1 },
+      },
+    };
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'vr-1',
+      org_id: 'org-1',
+      patient_id: 'p-1',
+      pharmacist_id: 'pharm-1',
+      visit_date: new Date('2026-03-10T01:00:00.000Z'),
+      structured_soap: structuredSoapWithVisitLab,
+      schedule_id: 'vs-1',
+      version: 3,
+      updated_at: new Date('2026-03-10T03:00:00.000Z'),
+    });
+    visitScheduleFindUniqueMock.mockResolvedValue({
+      case_id: 'case-1',
+      cycle_id: 'cycle-1',
+      org_id: 'org-1',
+    });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'p-1',
+      name: '田中太郎',
+      birth_date: new Date('1950-01-01'),
+      gender: 'male',
+    });
+    medicationCycleFindFirstMock.mockResolvedValue({ id: 'cycle-1' });
+    residualMedicationFindManyMock.mockResolvedValue([]);
+    careTeamLinkFindManyMock.mockResolvedValue([]);
+    userFindFirstMock.mockResolvedValue({ name: '薬剤師A' });
+    billingEvidenceFindFirstMock.mockResolvedValue(null);
+    careCaseFindFirstMock.mockResolvedValue({ required_visit_support: null });
+    patientLabObservationFindManyMock.mockResolvedValue([
+      {
+        id: 'lab-egfr',
+        analyte_code: 'egfr',
+        measured_at: new Date('2026-03-08T00:00:00.000Z'),
+        value_numeric: 38,
+        value_text: null,
+        unit: 'mL/min/1.73m2',
+        abnormal_flag: 'L',
+      },
+      {
+        id: 'lab-k',
+        analyte_code: 'k',
+        measured_at: new Date('2026-03-07T00:00:00.000Z'),
+        value_numeric: 5.4,
+        value_text: null,
+        unit: 'mEq/L',
+        abnormal_flag: 'H',
+      },
+      {
+        id: 'lab-hba1c',
+        analyte_code: 'hba1c',
+        measured_at: new Date('2026-03-06T00:00:00.000Z'),
+        value_numeric: 8.2,
+        value_text: null,
+        unit: '%',
+        abnormal_flag: 'H',
+      },
+    ]);
+    prescriptionLineFindManyMock.mockResolvedValue([]);
+    buildPhysicianReportMock.mockReturnValue({ title: 'physician report' });
+    careReportFindManyMock.mockResolvedValue([]);
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          careReport: {
+            createMany: careReportCreateManyMock.mockResolvedValue({ count: 1 }),
+            findMany: vi.fn().mockResolvedValue([
+              {
+                id: 'report-new',
+                report_type: 'physician_report',
+                status: 'draft',
+                updated_at: reportDraftUpdatedAt,
+              },
+            ]),
+          },
+        }),
+    );
+
+    await generateReportsFromVisit('org-1', 'user-1', 'vr-1');
+
+    expect(patientLabObservationFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ org_id: 'org-1', patient_id: 'p-1' }),
+        orderBy: [{ measured_at: 'desc' }, { created_at: 'desc' }],
+      }),
+    );
+    const physicianArgs = buildPhysicianReportMock.mock.calls[0]?.[0];
+    expect(physicianArgs.structuredSoap.objective.lab_values).toEqual({
+      hba1c: 7.1,
+      egfr: 38,
+      k: 5.4,
+    });
+    expect(careReportCreateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [
+          expect.objectContaining({
+            content: expect.objectContaining({
+              source_provenance: expect.objectContaining({
+                latest_lab_observations: expect.arrayContaining([
+                  expect.objectContaining({
+                    id: 'lab-egfr',
+                    analyte_code: 'egfr',
+                    measured_at: '2026-03-08T00:00:00.000Z',
+                    abnormal_flag: 'L',
+                  }),
+                  expect.objectContaining({
+                    id: 'lab-k',
+                    analyte_code: 'k',
+                    abnormal_flag: 'H',
+                  }),
+                ]),
+              }),
+            }),
+          }),
+        ],
+      }),
+    );
   });
 
   it('returns existing sent reports without creating or refreshing them', async () => {

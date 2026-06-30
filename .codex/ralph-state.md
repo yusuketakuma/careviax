@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-1932 JST
+
+- current task: connect generated care reports to the patient latest-lab projection without overwriting visit-record lab snapshots.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox for `phos/codex2`, `Plans.md`, `docs/plans-archive.md` lab-observation gaps, `prisma/schema/patient.prisma`, `src/lib/patient/lab-analytes.ts`, `src/server/services/patient-detail-labs.ts`, `src/app/api/patients/[id]/labs/route.ts`, `src/server/services/report-generator.ts`, `src/server/services/report-generator.test.ts`, `src/server/services/report-templates.ts`, `src/server/services/report-templates.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/server/services/report-generator.ts`, `src/server/services/report-generator.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: generated care reports still depended only on `VisitRecord.structured_soap.objective.lab_values`; when the visit snapshot omitted labs, the report generator ignored existing `PatientLabObservation` latest values even though patient labs and CDS already used that projection.
+- security risks found: reduced clinical-context omission risk by supplementing report template input from org/patient-scoped `PatientLabObservation` rows and recording source lab observation ids/dates in `source_provenance`; visit-record lab values remain authoritative and are not overwritten. No auth/RLS weakening, permission change, PHI export, external send, migration, live DB operation, push/deploy, secret handling, or destructive operation was added.
+- performance issues found: added one bounded patient-scoped latest-lab read (`KEY_LAB_ANALYTE_CODES`, `take: 50`) during report generation. No dependency, background job, unbounded scan, external network call, render loop, or payload expansion outside report content provenance was added.
+- validation commands: focused report-generator/report-template Vitest; scoped ESLint; scoped Prettier write/check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused Vitest passed `2` files / `26` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- remaining work: commit the report-generator files and ledger files, send agmsg FYI, then continue broader lab projection work for visit brief / visit preparation UI and any remaining report text builders.
+- next action: commit `Supplement care reports with latest labs`, send agmsg FYI, and continue the next clean slice.
+
 ### 20260630-1924 JST
 
 - current task: focus patient-scoped billing evidence blocker actions on the exact patient when the blocker list is already patient-filtered.

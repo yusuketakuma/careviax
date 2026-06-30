@@ -4,6 +4,7 @@
 
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
+import type { LabAnalyteCode } from '@prisma/client';
 import {
   readJsonObject,
   readJsonObjectNumber,
@@ -11,6 +12,7 @@ import {
   toPrismaJsonInput,
 } from '@/lib/db/json';
 import type { StructuredSoap } from '@/types/structured-soap';
+import { KEY_LAB_ANALYTE_CODES } from '@/lib/patient/lab-analytes';
 import {
   buildPhysicianReport,
   buildCareManagerReport,
@@ -37,6 +39,15 @@ type ExistingCareReport = {
 type GenerateReportsFromVisitOptions = {
   expectedVisitRecordUpdatedAt?: Date | null;
   expectedReportUpdatedAt?: Date | null;
+};
+type LatestReportLabObservation = {
+  id: string;
+  analyte_code: LabAnalyteCode;
+  measured_at: Date;
+  value_numeric: number | null;
+  value_text: string | null;
+  unit: string | null;
+  abnormal_flag: string | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -123,6 +134,38 @@ function readReportableStructuredSoap(value: unknown): StructuredSoap | null {
 
 function toIsoStringOrNull(value: unknown): string | null {
   return value instanceof Date ? value.toISOString() : null;
+}
+
+function mergeLatestLabObservationsIntoStructuredSoap(
+  structuredSoap: StructuredSoap,
+  latestLabs: LatestReportLabObservation[],
+): StructuredSoap {
+  if (latestLabs.length === 0) return structuredSoap;
+
+  const existingLabValues = structuredSoap.objective.lab_values ?? {};
+  const mergedLabValues = { ...existingLabValues };
+  let changed = structuredSoap.objective.lab_values == null;
+
+  for (const lab of latestLabs) {
+    const analyteCode = lab.analyte_code as keyof NonNullable<
+      StructuredSoap['objective']['lab_values']
+    >;
+    if (analyteCode === 'free_text') continue;
+    if (mergedLabValues[analyteCode] != null || lab.value_numeric == null) continue;
+
+    mergedLabValues[analyteCode] = lab.value_numeric;
+    changed = true;
+  }
+
+  if (!changed) return structuredSoap;
+
+  return {
+    ...structuredSoap,
+    objective: {
+      ...structuredSoap.objective,
+      lab_values: mergedLabValues,
+    },
+  };
 }
 
 export async function generateReportsFromVisit(
@@ -228,6 +271,7 @@ export async function generateReportsFromVisit(
     billingEvidence,
     careCase,
     recentConferenceNotes,
+    latestLabObservations,
   ] = await Promise.all([
     prisma.patient.findFirst({
       where: { id: visitRecord.patient_id, org_id: orgId },
@@ -298,6 +342,24 @@ export async function generateReportsFromVisit(
           },
         })
       : Promise.resolve([]),
+    prisma.patientLabObservation.findMany({
+      where: {
+        org_id: orgId,
+        patient_id: visitRecord.patient_id,
+        analyte_code: { in: [...KEY_LAB_ANALYTE_CODES] },
+      },
+      orderBy: [{ measured_at: 'desc' }, { created_at: 'desc' }],
+      take: 50,
+      select: {
+        id: true,
+        analyte_code: true,
+        measured_at: true,
+        value_numeric: true,
+        value_text: true,
+        unit: true,
+        abnormal_flag: true,
+      },
+    }),
   ]);
 
   if (!patient) {
@@ -382,6 +444,17 @@ export async function generateReportsFromVisit(
   const careManager = careTeamCareManager ??
     careManagerFromIntake ?? { name: 'ケアマネジャー', organization_name: null };
   const pharmacistName = pharmacistUser?.name ?? '担当薬剤師';
+  const latestLabByAnalyte = new Map<LabAnalyteCode, LatestReportLabObservation>();
+  for (const lab of latestLabObservations as LatestReportLabObservation[]) {
+    if (!latestLabByAnalyte.has(lab.analyte_code)) {
+      latestLabByAnalyte.set(lab.analyte_code, lab);
+    }
+  }
+  const latestReportLabs = Array.from(latestLabByAnalyte.values());
+  const reportStructuredSoap = mergeLatestLabObservationsIntoStructuredSoap(
+    structuredSoap,
+    latestReportLabs,
+  );
   const conferenceContext: VisitWorkflowConferenceContext[] = recentConferenceNotes.map((note) => ({
     id: note.id,
     note_type: note.note_type as VisitWorkflowConferenceContext['note_type'],
@@ -479,6 +552,12 @@ export async function generateReportsFromVisit(
     })),
     billing_evidence_id: billingEvidence?.id ?? null,
     billing_evidence_updated_at: toIsoStringOrNull(billingEvidence?.updated_at),
+    latest_lab_observations: latestReportLabs.map((lab) => ({
+      id: lab.id,
+      analyte_code: lab.analyte_code,
+      measured_at: lab.measured_at.toISOString(),
+      abnormal_flag: lab.abnormal_flag,
+    })),
     patient_insurance_basis: billingEvidence
       ? {
           payer_basis: billingEvidence.payer_basis,
@@ -508,7 +587,7 @@ export async function generateReportsFromVisit(
           buildPhysicianReport({
             patient: patientInput,
             visitRecord: visitRecordInput,
-            structuredSoap,
+            structuredSoap: reportStructuredSoap,
             prescriptionLines: prescriptionLinesNormalized,
             residualMedications: residualMedicationsNormalized,
             prescriber: { name: prescriber.name, organization_name: prescriber.organization_name },
@@ -526,7 +605,7 @@ export async function generateReportsFromVisit(
           buildCareManagerReport({
             patient: { name: patient.name, birth_date: patient.birth_date },
             visitRecord: visitRecordInput,
-            structuredSoap,
+            structuredSoap: reportStructuredSoap,
             prescriptionLines: prescriptionLinesNormalized,
             residualMedications: residualMedicationsNormalized,
             careManager: {
@@ -546,7 +625,7 @@ export async function generateReportsFromVisit(
       const audienceContext = {
         patient: { name: patient.name, birth_date: patient.birth_date },
         visitRecord: visitRecordInput,
-        structuredSoap,
+        structuredSoap: reportStructuredSoap,
         prescriptionLines: prescriptionLinesNormalized,
         residualMedications: residualMedicationsNormalized,
         pharmacistName,

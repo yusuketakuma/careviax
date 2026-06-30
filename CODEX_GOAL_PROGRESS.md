@@ -30,6 +30,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Care Report Latest Lab Projection - 2026-06-30 19:32 JST
+
+- Scope:
+  - Continued report-generation and visit-record/lab integration work for the documented lab-observation gap.
+  - No UI layout, schema migration, live DB operation, auth/RLS change, external send, push/deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `generateReportsFromVisit` now reads patient-scoped latest key labs from `PatientLabObservation` and supplements the `structuredSoap` passed to report templates.
+  - Visit-record `structured_soap.objective.lab_values` remains authoritative; latest patient labs only fill missing analytes and never overwrite visit snapshot values.
+  - Generated report `source_provenance` now records the latest lab observation ids, analyte codes, measured timestamps, and abnormal flags used during generation.
+  - Regression coverage asserts hostile clinical overwrite prevention: visit-record HbA1c is preserved while latest eGFR/K values are added.
+- Safety:
+  - Reduces clinical-context omission risk in physician/care-manager/nurse/facility report drafts when the visit SOAP omitted lab values but the patient latest-lab projection exists.
+  - Query is org + patient scoped and uses existing `KEY_LAB_ANALYTE_CODES`; no new PHI export surface or authorization bypass was added.
+- Performance:
+  - Adds one bounded latest-lab read during report generation (`take: 50`) and deduplicates latest rows in memory by analyte.
+  - No dependency, background job, unbounded scan, external network call, render loop, or broad payload expansion was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/report-generator.test.ts src/server/services/report-templates.test.ts src/server/services/patient-detail-labs.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `26` tests; the patient-detail-labs test path is absent, so Vitest executed the existing matching report suites.
+  - Scoped ESLint on report-generator/report-template/lab-summary files: passed.
+  - Scoped Prettier write/check on report-generator/report-template/lab-summary files: passed.
+  - Scoped `git diff --check` on report-generator files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Continue broader lab projection work for visit brief, visit preparation UI, and any remaining report/text builders that still read only visit-record SOAP.
+
 ### Billing Evidence Blocker Patient Focus Links - 2026-06-30 19:24 JST
 
 - Scope:
