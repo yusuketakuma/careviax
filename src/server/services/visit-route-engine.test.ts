@@ -209,6 +209,32 @@ describe('computeOptimizedVisitRoute (heuristic path)', () => {
     expect(estimateOne).not.toHaveBeenCalled();
   });
 
+  it('includes the return-to-origin leg in heuristic total duration and distance', async () => {
+    const estimateOne = vi.fn(async () => null);
+    const estimateMatrix = vi.fn(async () => [
+      [null, { durationMinutes: 10, distanceKm: 1 }, { durationMinutes: 40, distanceKm: 4 }],
+      [{ durationMinutes: 10, distanceKm: 1 }, null, { durationMinutes: 20, distanceKm: 2 }],
+      [{ durationMinutes: 30, distanceKm: 3 }, { durationMinutes: 20, distanceKm: 2 }, null],
+    ]);
+    createRoadTravelEstimatorMock.mockReturnValue(Object.assign(estimateOne, { estimateMatrix }));
+
+    const result = await computeOptimizedVisitRoute({
+      origin,
+      travelMode,
+      waypoints: [
+        { scheduleId: 'sched_a', patientName: '患者A', address: '住所A', lat: 35.1, lng: 139.0 },
+        { scheduleId: 'sched_b', patientName: '患者B', address: '住所B', lat: 35.2, lng: 139.0 },
+      ],
+    });
+
+    expect(result.status).toBe('ok');
+    expect(result.orderedScheduleIds).toEqual(['sched_a', 'sched_b']);
+    expect(result.totalDurationSeconds).toBe(60 * 60);
+    expect(result.totalDistanceMeters).toBe(6000);
+    expect(result.stopSummaries.map((stop) => stop.arrivalOffsetSeconds)).toEqual([600, 1800]);
+    expect(estimateOne).not.toHaveBeenCalled();
+  });
+
   it('limits per-pair estimator concurrency when matrix estimates are unavailable', async () => {
     const releases: Array<() => void> = [];
     let active = 0;
@@ -315,6 +341,15 @@ describe('computeOptimizedVisitRoute (Google Routes path)', () => {
     expect(result.status).toBe('ok');
     expect(result.encodedPath).toBe('encoded-path');
     expect(result.orderedScheduleIds).toEqual(['sched_google']);
+    expect(result.totalDurationSeconds).toBe(600);
+    expect(result.totalDistanceMeters).toBe(1200);
+    expect(result.stopSummaries).toEqual([
+      expect.objectContaining({
+        scheduleId: 'sched_google',
+        arrivalOffsetSeconds: 600,
+        durationFromPreviousSeconds: 600,
+      }),
+    ]);
     expect(fetchSpy).toHaveBeenCalledWith(
       'https://routes.googleapis.com/directions/v2:computeRoutes',
       expect.objectContaining({
@@ -325,5 +360,55 @@ describe('computeOptimizedVisitRoute (Google Routes path)', () => {
     expect(unref).toHaveBeenCalledTimes(1);
     expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutHandle);
     expect(abortSignalTimeoutSpy).not.toHaveBeenCalled();
+  });
+
+  it('keeps Google totals round-trip while stop arrivals exclude the return leg', async () => {
+    vi.stubEnv('ROUTING_API_PROVIDER', 'google');
+    vi.stubEnv('GOOGLE_MAPS_SERVER_API_KEY', 'server-api-key');
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          routes: [
+            {
+              duration: '3600s',
+              distanceMeters: 6000,
+              optimizedIntermediateWaypointIndex: [0, 1],
+              legs: [
+                { duration: '600s', distanceMeters: 1000 },
+                { duration: '1200s', distanceMeters: 2000 },
+                { duration: '1800s', distanceMeters: 3000 },
+              ],
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    );
+
+    const result = await computeOptimizedVisitRoute({
+      origin,
+      travelMode,
+      waypoints: [
+        { scheduleId: 'sched_a', patientName: '患者A', address: '住所A', lat: 35.1, lng: 139.1 },
+        { scheduleId: 'sched_b', patientName: '患者B', address: '住所B', lat: 35.2, lng: 139.2 },
+      ],
+    });
+
+    expect(result.status).toBe('ok');
+    expect(result.orderedScheduleIds).toEqual(['sched_a', 'sched_b']);
+    expect(result.totalDurationSeconds).toBe(3600);
+    expect(result.totalDistanceMeters).toBe(6000);
+    expect(result.stopSummaries.map((stop) => stop.arrivalOffsetSeconds)).toEqual([600, 1800]);
+    expect(result.stopSummaries.map((stop) => stop.durationFromPreviousSeconds)).toEqual([
+      600, 1200,
+    ]);
+    const requestBody = JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body));
+    expect(requestBody.destination).toEqual({
+      location: { latLng: { latitude: origin.lat, longitude: origin.lng } },
+    });
   });
 });

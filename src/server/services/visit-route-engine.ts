@@ -632,6 +632,12 @@ async function computeHeuristicRoute(args: {
     currentNodeIndex = nextWaypointIdx + 1;
   }
 
+  const returnToOrigin = matrix[currentNodeIndex]?.[0] ?? null;
+  if (returnToOrigin) {
+    totalDistanceMeters += Math.round(returnToOrigin.meters);
+    totalDurationSeconds += returnToOrigin.seconds;
+  }
+
   const baseNote = usesPriorityConstraint
     ? '優先度補正を含むヒューリスティック順序を表示しています'
     : 'ヒューリスティック順序を表示しています';
