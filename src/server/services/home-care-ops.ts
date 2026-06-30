@@ -3,6 +3,8 @@ import { formatDateKey } from '@/lib/date-key';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+import { buildReportHref } from '@/lib/reports/navigation';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
 import type {
   HomeCareFeatureDefinition,
@@ -283,6 +285,8 @@ function buildFeatureState(args: {
   evidence?: Array<string | null | undefined>;
   status?: HomeCareFeatureStatus;
   severity?: HomeCareFeatureState['severity'];
+  actionHref?: string;
+  actionLabel?: string;
 }): HomeCareFeatureState {
   const definition = findDefinition(args.key);
   const count = Math.max(args.count, 0);
@@ -299,12 +303,36 @@ function buildFeatureState(args: {
 
   return {
     ...definition,
+    action_href: args.actionHref ?? definition.action_href,
+    action_label: args.actionLabel ?? definition.action_label,
     count,
     status,
     severity,
     summary: args.summary,
     evidence: (args.evidence ?? []).filter((value): value is string => Boolean(value)).slice(0, 3),
   };
+}
+
+function buildMultidisciplinaryShareAction(args: {
+  requestCount: number;
+  stalledReportIds: string[];
+  patientId?: string;
+}) {
+  if (args.requestCount > 0) {
+    return {
+      actionHref: buildCommunicationRequestsHref({ patientId: args.patientId }),
+      actionLabel: '連携依頼を確認',
+    };
+  }
+
+  if (args.stalledReportIds.length === 1) {
+    return {
+      actionHref: buildReportHref(args.stalledReportIds[0]),
+      actionLabel: '報告書を確認',
+    };
+  }
+
+  return {};
 }
 
 function summarizeTotals(features: HomeCareFeatureState[]): HomeCareFeatureSummary['totals'] {
@@ -870,6 +898,10 @@ export async function getHomeCareFeatureSummary(
           ? '報告送達または連携依頼に滞留があります。'
           : '多職種共有の滞留は少ない状態です。',
       evidence: [`報告滞留 ${stalledReports.length}件`, `連携依頼 ${openRequests.length}件`],
+      ...buildMultidisciplinaryShareAction({
+        requestCount: openRequests.length,
+        stalledReportIds: stalledReports.map((report) => report.id),
+      }),
     }),
     buildFeatureState({
       key: 'inquiry_workbench',
@@ -1348,6 +1380,11 @@ export async function getPatientHomeCareFeatureSummary(
           ? '多職種共有に滞留があります。'
           : '多職種共有は回っています。',
       evidence: [`報告滞留 ${stalledReports.length}件`, `連携依頼 ${requests.length}件`],
+      ...buildMultidisciplinaryShareAction({
+        requestCount: requests.length,
+        stalledReportIds: stalledReports.map((report) => report.id),
+        patientId: args.patientId,
+      }),
     }),
     buildFeatureState({
       key: 'inquiry_workbench',

@@ -40,6 +40,36 @@ function makeFeature(
   };
 }
 
+function makePatientSummaryDb(patientId: string) {
+  return {
+    careCase: {
+      findMany: vi.fn().mockResolvedValue([
+        {
+          id: 'case_1',
+          patient_id: patientId,
+          management_plans: [{ id: 'plan_1', next_review_date: null }],
+          patient: {
+            contacts: [{ relation: 'facility_staff', is_emergency_contact: false }],
+            medication_profiles: [],
+          },
+        },
+      ]),
+    },
+    task: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    patientSelfReport: { findMany: vi.fn().mockResolvedValue([]) },
+    medicationIssue: { findMany: vi.fn().mockResolvedValue([]) },
+    inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
+    visitSchedule: { findMany: vi.fn().mockResolvedValue([]) },
+    careReport: { findMany: vi.fn().mockResolvedValue([]) },
+    communicationRequest: { findMany: vi.fn().mockResolvedValue([]) },
+    externalAccessGrant: { findMany: vi.fn().mockResolvedValue([{ id: 'grant_1' }]) },
+    consentRecord: { findMany: vi.fn().mockResolvedValue([{ id: 'consent_1' }]) },
+    firstVisitDocument: { findMany: vi.fn().mockResolvedValue([{ id: 'first_visit_doc_1' }]) },
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   listBillingEvidenceBlockersMock.mockResolvedValue([]);
@@ -230,6 +260,43 @@ describe('home-care-ops', () => {
       orgId: 'org_1',
       patientId: 'patient_1',
       limit: 4,
+    });
+  });
+
+  it('focuses patient multidisciplinary share actions on patient communication requests', async () => {
+    const patientId = 'patient 1/../x?y=#frag';
+    const db = makePatientSummaryDb(patientId);
+    db.communicationRequest.findMany.mockResolvedValue([{ id: 'request_1' }]);
+
+    const summary = await getPatientHomeCareFeatureSummary(
+      db as unknown as Parameters<typeof getPatientHomeCareFeatureSummary>[0],
+      { orgId: 'org_1', patientId },
+    );
+
+    const feature = summary.features.find((item) => item.key === 'multidisciplinary_share_summary');
+    expect(feature).toMatchObject({
+      count: 1,
+      action_href: '/communications/requests?patient_id=patient+1%2F..%2Fx%3Fy%3D%23frag',
+      action_label: '連携依頼を確認',
+    });
+  });
+
+  it('focuses patient multidisciplinary share actions on a single stalled report', async () => {
+    const patientId = 'patient_1';
+    const reportId = 'report/1?x=y#frag';
+    const db = makePatientSummaryDb(patientId);
+    db.careReport.findMany.mockResolvedValue([{ id: reportId }]);
+
+    const summary = await getPatientHomeCareFeatureSummary(
+      db as unknown as Parameters<typeof getPatientHomeCareFeatureSummary>[0],
+      { orgId: 'org_1', patientId },
+    );
+
+    const feature = summary.features.find((item) => item.key === 'multidisciplinary_share_summary');
+    expect(feature).toMatchObject({
+      count: 1,
+      action_href: `/reports/${encodeURIComponent(reportId)}`,
+      action_label: '報告書を確認',
     });
   });
 });
