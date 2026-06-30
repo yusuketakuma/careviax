@@ -1,7 +1,9 @@
 import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
+import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { readOptionalJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -20,6 +22,10 @@ class RescheduleApprovalStateChangedError extends Error {
 
 const RESCHEDULE_APPROVABLE_SOURCE_STATUSES = ['planned', 'in_preparation'] as const;
 
+const approveRescheduleSchema = z.object({
+  expected_override_id: z.string().trim().min(1, '承認対象IDを指定してください').optional(),
+});
+
 async function authenticatedPOST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -34,6 +40,14 @@ async function authenticatedPOST(
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('訪問予定IDが不正です');
+
+  const payload = await readOptionalJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+  const parsed = approveRescheduleSchema.safeParse(payload);
+  if (!parsed.success) {
+    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
+  const expectedOverrideId = parsed.data.expected_override_id;
 
   const override = await prisma.visitScheduleOverride.findFirst({
     where: {
@@ -59,6 +73,9 @@ async function authenticatedPOST(
     },
   });
   if (!override) return notFound('承認待ちのリスケ要求が見つかりません');
+  if (expectedOverrideId && override.id !== expectedOverrideId) {
+    return conflict('リスケ承認が同時に更新されました。再読み込みしてください');
+  }
   if (override.requested_by === ctx.userId) {
     return validationError('リスケ要求の申請者自身は承認できません');
   }
@@ -140,6 +157,7 @@ async function authenticatedPOST(
               to: 'rescheduled',
             },
             override_id: override.id,
+            ...(expectedOverrideId ? { expected_override_id: expectedOverrideId } : {}),
             approved_by: ctx.userId,
           },
         });

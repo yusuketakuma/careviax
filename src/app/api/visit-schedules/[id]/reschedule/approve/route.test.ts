@@ -57,9 +57,15 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 
 import { POST } from './route';
 
-function createRequest() {
+function createRequest(body?: unknown) {
   return new NextRequest('http://localhost/api/visit-schedules/schedule_1/reschedule/approve', {
     method: 'POST',
+    ...(body !== undefined
+      ? {
+          body: typeof body === 'string' ? body : JSON.stringify(body),
+          headers: { 'content-type': 'application/json' },
+        }
+      : {}),
   });
 }
 
@@ -155,6 +161,51 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['non-object', ['override_1']],
+    ['malformed json', '{'],
+  ])('rejects %s approval payloads before loading override requests', async (_label, body) => {
+    const response = (await POST(createRequest(body), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(visitScheduleOverrideFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(contactPartyFindManyMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank expected override ids before loading override requests', async () => {
+    const response = (await POST(createRequest({ expected_override_id: '   ' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { expected_override_id: ['承認対象IDを指定してください'] },
+    });
+    expect(visitScheduleOverrideFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(contactPartyFindManyMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('does not approve completed or cancelled override requests', async () => {
     visitScheduleOverrideFindFirstMock.mockResolvedValueOnce(null);
 
@@ -175,6 +226,36 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitScheduleOverrideUpdateManyMock).not.toHaveBeenCalled();
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(contactPartyFindManyMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict without side effects when the pending override is not the expected one', async () => {
+    const response = (await POST(createRequest({ expected_override_id: 'override_stale' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'リスケ承認が同時に更新されました。再読み込みしてください',
+    });
+    expect(visitScheduleOverrideFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          source_schedule_id: 'schedule_1',
+          status: 'pending',
+        },
+      }),
+    );
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(contactPartyFindManyMock).not.toHaveBeenCalled();
@@ -227,7 +308,7 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
   });
 
   it('approves the override, resolves tasks, and dispatches a notification', async () => {
-    const response = (await POST(createRequest(), {
+    const response = (await POST(createRequest({ expected_override_id: 'override_1' }), {
       params: Promise.resolve({ id: 'schedule_1' }),
     }))!;
 
@@ -276,6 +357,7 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
         changes: {
           schedule_status: { from: 'planned', to: 'rescheduled' },
           override_id: 'override_1',
+          expected_override_id: 'override_1',
           approved_by: 'admin_1',
         },
       }),
