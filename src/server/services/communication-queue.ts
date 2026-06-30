@@ -6,6 +6,7 @@ import { buildCommunicationRequestsHref } from '@/lib/communications/navigation'
 import { formatCommunicationRequestTypeLabel } from '@/lib/communications/request-labels';
 import { buildExternalHref } from '@/lib/dashboard/home-link-builders';
 import { buildReportHref } from '@/lib/reports/navigation';
+import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { buildExternalAccessGrantVisibilityWhere } from './external-access';
 
 export type CommunicationQueueDbClient = typeof prisma | Prisma.TransactionClient;
@@ -30,6 +31,7 @@ export type CommunicationQueueReader = {
       Array<{
         id: string;
         patient_id: string;
+        schedule_id: string | null;
         outcome: string;
         contact_name: string | null;
         contact_phone: string | null;
@@ -613,6 +615,7 @@ export async function listCommunicationQueue(
           select: {
             id: true,
             patient_id: true,
+            schedule_id: true,
             outcome: true,
             contact_name: true,
             contact_phone: true,
@@ -802,7 +805,7 @@ export async function listCommunicationQueue(
       patient_id: log.patient_id,
       patient_name: patientNameById.get(log.patient_id) ?? null,
       due_at: isoOrNull(log.callback_due_at ?? log.called_at),
-      action_href: '/schedules',
+      action_href: log.schedule_id ? buildScheduleFocusHref(log.schedule_id) : '/schedules',
       action_label: '架電履歴を確認',
     })),
     ...actionableRequests.map((request) => ({

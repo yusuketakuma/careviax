@@ -111,6 +111,43 @@ describe('listCommunicationQueue', () => {
     expect(result.items[0].action_href).toBe('/external?focus=self_reports');
   });
 
+  it('focuses callback queue items on the linked visit schedule', async () => {
+    emptyDbMocks();
+    const scheduleId = 'schedule/1?x=y#frag';
+    contactLogFindManyMock.mockResolvedValue([
+      {
+        id: 'callback-1',
+        patient_id: 'p-1',
+        schedule_id: scheduleId,
+        outcome: 'unreachable',
+        contact_name: '家族A',
+        contact_phone: '090-0000-0000',
+        note: null,
+        callback_due_at: new Date('2026-04-01T09:00:00Z'),
+        called_at: new Date('2026-04-01T08:00:00Z'),
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'p-1', name: '田中太郎' }]);
+
+    const result = await listCommunicationQueue(makeDb(), {
+      orgId: 'org-1',
+    });
+
+    expect(contactLogFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({ schedule_id: true }),
+      }),
+    );
+    expect(result.summary.callback_followups).toBe(1);
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        queue_type: 'callback',
+        patient_name: '田中太郎',
+        action_href: `/schedules?focus=schedule&schedule_id=${encodeURIComponent(scheduleId)}`,
+      }),
+    ]);
+  });
+
   it('includes communication requests as queue items', async () => {
     emptyDbMocks();
     communicationRequestFindManyMock.mockResolvedValue([
