@@ -47,12 +47,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Adds scalar schedule/proposal fields and in-memory duration arithmetic over existing route inputs only.
   - No new query fan-out, dependency, background job, external call, broad scan, or unbounded loop was added.
 - Validation:
-  - Targeted route/preparation/proposal/reopen Vitest suite passed `7` files / `162` tests after updating route-engine mocks and exact waypoint expectations.
-  - `pnpm format:check`: passed.
-  - `pnpm typecheck`: passed.
+  - Focused route/proposal/preparation suite passed `7` files / `159` tests with the expected sanitized no-store 500 route log.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
 - Remaining:
   - Broad master/patient/schedule objective remains open.
-  - Browser/E2E proof remains separately blocked by the local e2e DB migration gap already tracked in `Plans.md`.
+  - P6 still needs full time-window feasibility, 2-opt, and shared planner/engine insertion scoring.
 
 ### Visit Schedule Reopen Override Claim - 2026-07-01 03:25 JST
 
