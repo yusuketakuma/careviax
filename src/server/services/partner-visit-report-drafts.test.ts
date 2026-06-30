@@ -267,6 +267,51 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
     );
   });
 
+  it('copies structured latest lab excerpts into physician report functional assessment', async () => {
+    partnerVisitRecordFindFirstMock.mockResolvedValueOnce(
+      confirmedPartnerVisitRecord({
+        record_content: {
+          latest_labs: [
+            {
+              analyte_code: 'egfr',
+              value_numeric: 38,
+              unit: 'mL/min/1.73m2',
+              measured_at_label: '2026-06-01',
+              abnormal_flag: 'L',
+            },
+            {
+              analyte_label: 'K',
+              value_label: '5.4 mEq/L',
+              measured_at: '2026-06-02T00:00:00.000Z',
+              abnormal_flag: 'H',
+            },
+          ],
+          pharmacist_assessment: '腎機能を踏まえて処方医へ報告',
+        },
+      }),
+    );
+
+    await createPartnerVisitPhysicianReportDraft(tx(), ctx, {
+      partnerVisitRecordId: 'partner_visit_record_1',
+    });
+
+    expect(careReportCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          content: expect.objectContaining({
+            functional_assessment: expect.objectContaining({
+              lab_values:
+                'eGFR 38 mL/min/1.73m2 / 測定日 2026-06-01 / 異常 L、K 5.4 mEq/L / 測定日 2026-06-02 / 異常 H',
+            }),
+            source_provenance: expect.objectContaining({
+              source: 'partner_visit_record',
+            }),
+          }),
+        }),
+      }),
+    );
+  });
+
   it('returns an existing physician report draft idempotently without source or audit side effects', async () => {
     careReportFindFirstMock.mockResolvedValue(reportRow({ id: 'report_existing' }));
 

@@ -4,6 +4,7 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
 import { getHomeVisitIntake, type HomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import { formatLabAnalyteLabel } from '@/lib/patient/lab-analytes';
 import type { BaselineContext, PhysicianReportContent } from '@/types/care-report-content';
 import { resolvePharmacyVisitRequestTransition } from '@/server/services/pharmacy-partnerships';
 import { japanDateKey } from '@/lib/utils/date-boundary';
@@ -152,6 +153,74 @@ function readStringArray(value: unknown) {
   return value
     .map((item) => (typeof item === 'string' ? item.trim() : ''))
     .filter((item) => item.length > 0);
+}
+
+function formatLabValueParts(value: unknown, unit: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return `${value}${typeof unit === 'string' && unit.trim() ? ` ${unit.trim()}` : ''}`;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
+  }
+  return null;
+}
+
+function formatLabEntry(value: unknown) {
+  const row = readJsonObject(value);
+  if (!row) return null;
+  const analyteCode = trimString(row.analyte_code);
+  const analyteLabel =
+    trimString(row.analyte_label) ?? (analyteCode ? formatLabAnalyteLabel(analyteCode) : null);
+  const valueLabel =
+    trimString(row.value_label) ??
+    formatLabValueParts(row.value_numeric, row.unit) ??
+    formatLabValueParts(row.value, row.unit);
+  if (!analyteLabel || !valueLabel) return null;
+
+  const measuredAtLabel =
+    trimString(row.measured_at_label) ??
+    (typeof row.measured_at === 'string' && row.measured_at.trim()
+      ? toDateKey(new Date(row.measured_at))
+      : null);
+  const abnormalFlag = trimString(row.abnormal_flag);
+  return [
+    `${analyteLabel} ${valueLabel}`,
+    measuredAtLabel ? `測定日 ${measuredAtLabel}` : null,
+    abnormalFlag ? `異常 ${abnormalFlag}` : null,
+  ]
+    .filter((item): item is string => Boolean(item))
+    .join(' / ');
+}
+
+function formatLabObject(value: unknown) {
+  const object = readJsonObject(value);
+  if (!object) return null;
+  const parts = Object.entries(object).flatMap(([key, raw]) => {
+    const valueLabel = formatLabValueParts(raw, null);
+    if (!valueLabel) return [];
+    return `${formatLabAnalyteLabel(key)} ${valueLabel}`;
+  });
+  return parts.length > 0 ? parts.slice(0, 8).join('、') : null;
+}
+
+function readLabValuesText(source: Record<string, unknown> | null) {
+  const explicit = readFirstString(source, [
+    'lab_values',
+    'lab_values_summary',
+    'laboratory_values',
+    'latest_lab_values',
+    'renal_function',
+    'renal_summary',
+  ]);
+  if (explicit) return explicit;
+
+  const latestLabs = source?.latest_labs;
+  if (Array.isArray(latestLabs)) {
+    const lines = latestLabs.map(formatLabEntry).filter((item): item is string => Boolean(item));
+    if (lines.length > 0) return lines.slice(0, 6).join('、');
+  }
+
+  return formatLabObject(source?.lab_values);
 }
 
 function readResidualMedicationRows(source: Record<string, unknown> | null) {
@@ -328,6 +397,7 @@ function buildPhysicianReportContent(args: {
       details: adverseEventText ?? '',
     },
     functional_assessment: {
+      lab_values: readLabValuesText(recordContent) ?? undefined,
       sleep: readFirstString(recordContent, ['sleep']) ?? '',
       cognition: readFirstString(recordContent, ['cognition']) ?? '',
       diet_oral: readFirstString(recordContent, ['diet_oral']) ?? '',

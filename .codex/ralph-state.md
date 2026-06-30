@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-1959 JST
+
+- current task: carry partner-pharmacy visit-record lab excerpts into generated physician report drafts.
+- files inspected: `git status --short --branch --untracked-files=all`, agmsg inbox for `phos/codex2`, `src/server/services/partner-visit-report-drafts.ts`, `src/server/services/partner-visit-report-drafts.test.ts`, `src/server/services/report-templates.ts`, `src/types/care-report-content.ts`, `src/components/features/reports/physician-report-view.tsx`, `src/server/services/pdf-documents.tsx`, `src/server/services/visit-record-derived-data.ts`, and visit-record lab sync tests. Dirty schedule/proposal/vehicle files were preserved and not staged.
+- files changed: `src/server/services/partner-visit-report-drafts.ts`, `src/server/services/partner-visit-report-drafts.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: `createPartnerVisitPhysicianReportDraft` copied partner visit adherence, adverse effects, residual medication, assessment, and proposal fields into the physician report, but dropped partner-provided `latest_labs` / lab-value fields before `functional_assessment.lab_values`, so doctor-facing drafts from multidisciplinary/partner visits could omit renal/electrolyte evidence.
+- security risks found: reduced clinical-context omission risk by mapping only explicit partner visit record lab fields into the already-created report content; response and audit remain content-minimized, and no new auth/RLS path, live DB operation, external send, schema migration, push/deploy, secret handling, or destructive operation was added.
+- performance issues found: added in-memory formatting over at most six structured lab entries or eight object lab fields. No new query, dependency, network call, background job, unbounded loop, or render-heavy path was added.
+- validation commands: focused partner-report / physician-view / PDF Vitest; scoped ESLint; scoped Prettier write/check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused Vitest passed `3` files / `22` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed. First `pnpm typecheck` caught `lab_values` null vs optional-string mismatch, fixed by normalizing absent labs to `undefined`.
+- remaining work: continue report/collaboration gap scan for other non-generator report draft paths and action links; preserve unrelated schedule/proposal/vehicle WIP.
+- next action: commit only the partner report draft files and ledger files, send agmsg FYI, then continue a non-overlapping slice.
+
 ### 20260630-1952 JST
 
 - current task: preserve and display latest-lab excerpts in the schedule-day offline visit brief cache.

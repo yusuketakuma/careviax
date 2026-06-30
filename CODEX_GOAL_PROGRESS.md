@@ -30,6 +30,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Partner Visit Physician Report Labs - 2026-06-30 19:59 JST
+
+- Scope:
+  - Continued report-generation and multidisciplinary collaboration work in the partner-pharmacy visit-record path.
+  - Focused on doctor-facing report drafts created from confirmed partner visit records, separate from the ordinary `VisitRecord` report generator.
+  - Dirty schedule/proposal/vehicle WIP files were preserved and not staged.
+- Fixed:
+  - `createPartnerVisitPhysicianReportDraft` now maps explicit partner visit lab fields into `functional_assessment.lab_values`.
+  - Supports explicit lab text keys (`lab_values`, `lab_values_summary`, `laboratory_values`, `latest_lab_values`, `renal_function`, `renal_summary`), structured `latest_labs` arrays, and simple `lab_values` objects.
+  - Structured lab entries are formatted with analyte label, value/unit, measured date, and abnormal flag.
+- Safety:
+  - Reduces clinical-context omission risk when partner/multidisciplinary visit records include renal/electrolyte evidence but the physician report draft previously dropped it.
+  - Does not add response/audit content leakage; the existing response and audit remain content-minimized.
+  - No auth/RLS change, schema migration, live DB operation, external send, push/deploy, secret handling, or destructive operation was performed.
+- Performance:
+  - Adds in-memory formatting over bounded lab excerpts only: at most six structured entries or eight object fields.
+  - No new query, dependency, network call, background job, unbounded loop, or heavy render path was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/partner-visit-report-drafts.test.ts src/components/features/reports/physician-report-view.test.tsx src/server/services/pdf-documents.test.tsx --reporter=dot --testTimeout=60000`: passed, `3` files / `22` tests.
+  - Scoped ESLint on partner report draft files: passed.
+  - Scoped Prettier write/check on partner report draft files: passed.
+  - Scoped `git diff --check` on partner report draft files: passed.
+  - `pnpm typecheck`: passed after normalizing absent `lab_values` to `undefined` instead of `null`.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Continue scanning other non-generator report draft paths and collaboration action surfaces for dropped clinical evidence or generic follow-up links.
+
 ### Schedule Offline Brief Latest Labs - 2026-06-30 19:52 JST
 
 - Scope:
