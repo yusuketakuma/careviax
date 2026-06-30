@@ -66,6 +66,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       visit_record_id: null,
       visit_record_updated_at: null,
       note: null,
+      generation_targets: [],
       action: { label: '→ 訪問へ', href: '/visits' },
     },
     {
@@ -77,6 +78,10 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       visit_record_id: 'vr_2',
       visit_record_updated_at: '2026-06-11T04:45:00.000Z',
       note: '麻薬使用状況を含む',
+      generation_targets: [
+        { report_type: 'physician_report', label: '医師向け' },
+        { report_type: 'care_manager_report', label: 'ケアマネ向け' },
+      ],
       action: null,
     },
     {
@@ -88,6 +93,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       visit_record_id: null,
       visit_record_updated_at: null,
       note: '12名分を1通に集約',
+      generation_targets: [{ report_type: 'facility_handoff', label: '施設向け' }],
       action: null,
     },
   ],
@@ -345,9 +351,10 @@ describe('ReportShareWorkspace', () => {
     // メモがある行でも下書き/訪問導線を隠さない
     expect(screen.getAllByRole('link', { name: '→ 訪問へ' })).toHaveLength(1);
     expect(
-      screen.getByRole('button', {
-        name: '田中 一郎 様 医師(山本先生)+ケアマネ の下書きを自動作成',
-      }),
+      screen.getByRole('button', { name: '田中 一郎 様 医師向けの下書きを自動作成' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: '田中 一郎 様 ケアマネ向けの下書きを自動作成' }),
     ).toBeTruthy();
 
     // 残課題 / 作成済み報告書: 他職種報告済みかどうかと送信日時を表示する
@@ -542,7 +549,7 @@ describe('ReportShareWorkspace', () => {
     renderWorkspace();
 
     const generateButton = await screen.findByRole('button', {
-      name: '田中 一郎 様 医師(山本先生)+ケアマネ の下書きを自動作成',
+      name: '田中 一郎 様 ケアマネ向けの下書きを自動作成',
     });
     fireEvent.click(generateButton);
 
@@ -553,6 +560,7 @@ describe('ReportShareWorkspace', () => {
         body: JSON.stringify({
           visit_record_id: 'vr_2',
           expected_visit_record_updated_at: '2026-06-11T04:45:00.000Z',
+          report_type: 'care_manager_report',
         }),
       });
     });
@@ -571,7 +579,7 @@ describe('ReportShareWorkspace', () => {
 
       fireEvent.click(
         await screen.findByRole('button', {
-          name: '田中 一郎 様 医師(山本先生)+ケアマネ の下書きを自動作成',
+          name: '田中 一郎 様 医師向けの下書きを自動作成',
         }),
       );
 
@@ -592,7 +600,7 @@ describe('ReportShareWorkspace', () => {
 
     fireEvent.click(
       await screen.findByRole('button', {
-        name: '田中 一郎 様 医師(山本先生)+ケアマネ の下書きを自動作成',
+        name: '田中 一郎 様 医師向けの下書きを自動作成',
       }),
     );
 

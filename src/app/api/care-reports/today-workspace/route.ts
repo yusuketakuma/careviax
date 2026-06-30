@@ -26,6 +26,7 @@ import {
 } from '@/lib/billing/validation-layers';
 import { z } from 'zod';
 import type {
+  ReportDraftGenerationTarget,
   ReportDraftRow,
   ReportOpenIssue,
   ReportCreatedRow,
@@ -93,23 +94,76 @@ const DELIVERY_CHANNEL_LABELS: Record<string, string> = {
   ph_os_share: 'PH-OS共有',
 };
 
+const DRAFT_GENERATION_TARGET_LABELS: Record<ReportDraftGenerationTarget['report_type'], string> = {
+  physician_report: '医師向け',
+  care_manager_report: 'ケアマネ向け',
+  nurse_share: '訪問看護向け',
+  facility_handoff: '施設向け',
+};
+
 type CareTeamLinkRow = {
   role: string;
   name: string;
   is_primary: boolean;
 };
 
+type ExistingScheduleReport = {
+  id: string;
+  visit_record_id: string | null;
+  status: string;
+  report_type: string;
+};
+
+function pickPrimaryCareTeamLink(links: CareTeamLinkRow[], role: string): CareTeamLinkRow | null {
+  const candidates = links.filter((link) => link.role === role);
+  return candidates.find((link) => link.is_primary) ?? candidates[0] ?? null;
+}
+
+function buildDraftGenerationTargets(
+  links: CareTeamLinkRow[],
+  existingReports: ExistingScheduleReport[],
+): ReportDraftGenerationTarget[] {
+  const targets: ReportDraftGenerationTarget[] = [];
+  const existingTypes = new Set(existingReports.map((report) => report.report_type));
+  const addTarget = (reportType: ReportDraftGenerationTarget['report_type']) => {
+    if (existingTypes.has(reportType)) return;
+    if (targets.some((target) => target.report_type === reportType)) return;
+    targets.push({ report_type: reportType, label: DRAFT_GENERATION_TARGET_LABELS[reportType] });
+  };
+
+  if (pickPrimaryCareTeamLink(links, 'physician')) addTarget('physician_report');
+  if (pickPrimaryCareTeamLink(links, 'care_manager')) addTarget('care_manager_report');
+  if (pickPrimaryCareTeamLink(links, 'nurse')) addTarget('nurse_share');
+  if (
+    pickPrimaryCareTeamLink(links, 'facility_staff') ||
+    pickPrimaryCareTeamLink(links, 'facility')
+  ) {
+    addTarget('facility_handoff');
+  }
+
+  // 既存互換: 宛先が未登録でも従来どおり主治医向け下書きの生成導線は残す。
+  if (targets.length === 0 && existingTypes.size === 0) addTarget('physician_report');
+  return targets;
+}
+
+function selectExistingScheduleReport(
+  reports: ExistingScheduleReport[],
+): ExistingScheduleReport | null {
+  return (
+    reports.find((report) => report.status === 'draft') ??
+    reports.find((report) => report.status === 'confirmed') ??
+    reports[0] ??
+    null
+  );
+}
+
 /**
  * ケアチームから宛先ラベルを組み立てる。
  * 医師 + ケアマネ → 「医師(山本先生)+ケアマネ」 / ケアマネのみ → 「ケアマネ(中島様)」。
  */
 function buildRecipientLabel(links: CareTeamLinkRow[]): string {
-  const pickPrimary = (role: string) => {
-    const candidates = links.filter((link) => link.role === role);
-    return candidates.find((link) => link.is_primary) ?? candidates[0] ?? null;
-  };
-  const physician = pickPrimary('physician');
-  const careManager = pickPrimary('care_manager');
+  const physician = pickPrimaryCareTeamLink(links, 'physician');
+  const careManager = pickPrimaryCareTeamLink(links, 'care_manager');
 
   if (physician && careManager) {
     return `医師(${familyNameOf(physician.name)}先生)+ケアマネ`;
@@ -120,7 +174,7 @@ function buildRecipientLabel(links: CareTeamLinkRow[]): string {
   if (careManager) {
     return `ケアマネ(${familyNameOf(careManager.name)}様)`;
   }
-  const nurse = pickPrimary('nurse');
+  const nurse = pickPrimaryCareTeamLink(links, 'nurse');
   if (nurse) {
     return `看護師(${familyNameOf(nurse.name)}様)`;
   }
@@ -553,7 +607,7 @@ const authenticatedGET = withAuthContext(
                     org_id: ctx.orgId,
                     visit_record_id: { in: visitRecordIds },
                   },
-                  select: { id: true, visit_record_id: true, status: true },
+                  select: { id: true, visit_record_id: true, status: true, report_type: true },
                 });
 
           const facilityIds = [
@@ -596,11 +650,13 @@ const authenticatedGET = withAuthContext(
           monthlyDeliveryCountPromise,
         ]);
 
-        const reportByRecordId = new Map(
-          existingReports
-            .filter((report) => report.visit_record_id)
-            .map((report) => [report.visit_record_id as string, report]),
-        );
+        const reportsByRecordId = new Map<string, ExistingScheduleReport[]>();
+        for (const report of existingReports) {
+          if (!report.visit_record_id) continue;
+          const reports = reportsByRecordId.get(report.visit_record_id) ?? [];
+          reports.push(report);
+          reportsByRecordId.set(report.visit_record_id, reports);
+        }
         const facilityNameById = new Map(
           facilities.map((facility) => [facility.id, facility.name]),
         );
@@ -624,6 +680,12 @@ const authenticatedGET = withAuthContext(
               visit_record_id: null,
               visit_record_updated_at: null,
               note: patientCount > 0 ? `${patientCount}名分を1通に集約` : null,
+              generation_targets: [
+                {
+                  report_type: 'facility_handoff',
+                  label: DRAFT_GENERATION_TARGET_LABELS.facility_handoff,
+                },
+              ],
               action: null,
             });
             continue;
@@ -633,11 +695,16 @@ const authenticatedGET = withAuthContext(
           const hasNarcotic = intakeLines.some((line) =>
             line.packaging_instruction_tags.includes('narcotic'),
           );
-          const existingReport = schedule.visit_record?.id
-            ? (reportByRecordId.get(schedule.visit_record.id) ?? null)
-            : null;
           const visitRecordId = schedule.visit_record?.id ?? null;
           const visitRecordUpdatedAt = schedule.visit_record?.updated_at?.toISOString() ?? null;
+          const existingReportsForRecord = visitRecordId
+            ? (reportsByRecordId.get(visitRecordId) ?? [])
+            : [];
+          const generationTargets = buildDraftGenerationTargets(
+            schedule.case_.care_team_links,
+            existingReportsForRecord,
+          );
+          const existingReport = selectExistingScheduleReport(existingReportsForRecord);
           const canGenerateDraft =
             schedule.schedule_status === 'completed' && Boolean(visitRecordId);
           draftRows.push({
@@ -645,16 +712,18 @@ const authenticatedGET = withAuthContext(
             time_start: schedule.time_window_start?.toISOString() ?? null,
             patient_label: `${schedule.case_.patient.name} 様`,
             recipient_label: buildRecipientLabel(schedule.case_.care_team_links),
-            status: existingReport
-              ? existingReport.status === 'draft'
-                ? 'draft_ready'
-                : 'report_existing'
-              : canGenerateDraft
+            status:
+              canGenerateDraft && generationTargets.length > 0
                 ? 'ready_to_generate'
-                : 'before_visit',
+                : existingReport
+                  ? existingReport.status === 'draft'
+                    ? 'draft_ready'
+                    : 'report_existing'
+                  : 'before_visit',
             visit_record_id: visitRecordId,
             visit_record_updated_at: visitRecordUpdatedAt,
             note: hasNarcotic ? '麻薬使用状況を含む' : null,
+            generation_targets: canGenerateDraft ? generationTargets : [],
             action: existingReport
               ? {
                   label: existingReport.status === 'draft' ? '→ 下書きへ' : '→ 詳細へ',

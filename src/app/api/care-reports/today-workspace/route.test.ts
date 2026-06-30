@@ -289,15 +289,20 @@ describe('/api/care-reports/today-workspace', () => {
     expect(first.status).toBe('before_visit');
     expect(first.visit_record_id).toBeNull();
     expect(first.note).toBeNull();
+    expect(first.generation_targets).toEqual([]);
     expect(first.action).toEqual({ label: '→ 訪問へ', href: '/visits' });
 
     expect(second.recipient_label).toBe('医師(山本先生)+ケアマネ');
     // 危険区分メモは隠さない
     expect(second.note).toBe('麻薬使用状況を含む');
+    expect(second.generation_targets).toEqual([]);
 
     expect(third.patient_label).toBe('施設グリーンヒル');
     expect(third.recipient_label).toBe('施設(看護師長)');
     expect(third.note).toBe('12名分を1通に集約');
+    expect(third.generation_targets).toEqual([
+      { report_type: 'facility_handoff', label: '施設向け' },
+    ]);
 
     expect(json.data.counts.to_write).toBe(3);
   });
@@ -335,6 +340,7 @@ describe('/api/care-reports/today-workspace', () => {
       status: 'ready_to_generate',
       visit_record_id: 'visit_record_1',
       visit_record_updated_at: '2026-06-11T04:45:00.000Z',
+      generation_targets: [{ report_type: 'care_manager_report', label: 'ケアマネ向け' }],
       action: null,
     });
   });
@@ -366,6 +372,7 @@ describe('/api/care-reports/today-workspace', () => {
     expect(json.data.draft_rows[0]).toMatchObject({
       status: 'before_visit',
       visit_record_id: 'visit_record_1',
+      generation_targets: [],
       action: { label: '→ 訪問へ', href: '/visits' },
     });
   });
@@ -388,7 +395,12 @@ describe('/api/care-reports/today-workspace', () => {
         },
       ],
       draftReports: [
-        { id: HOSTILE_EXISTING_REPORT_ID, visit_record_id: 'visit_record_1', status: 'sent' },
+        {
+          id: HOSTILE_EXISTING_REPORT_ID,
+          visit_record_id: 'visit_record_1',
+          report_type: 'care_manager_report',
+          status: 'sent',
+        },
       ],
     });
 
@@ -399,12 +411,61 @@ describe('/api/care-reports/today-workspace', () => {
     expect(json.data.draft_rows[0]).toMatchObject({
       status: 'report_existing',
       visit_record_id: 'visit_record_1',
+      generation_targets: [],
       action: {
         label: '→ 詳細へ',
         href: `/reports/${encodeURIComponent(HOSTILE_EXISTING_REPORT_ID)}`,
       },
     });
     expect(json.data.draft_rows[0].action.href).not.toBe(`/reports/${HOSTILE_EXISTING_REPORT_ID}`);
+  });
+
+  it('keeps missing professional report types as generation targets when one report already exists', async () => {
+    mockTx({
+      schedules: [
+        {
+          id: 'sched_partial',
+          schedule_status: 'completed',
+          time_window_start: new Date('2026-06-11T05:00:00.000Z'),
+          facility_batch_id: null,
+          facility_batch: null,
+          case_: {
+            patient: { id: 'p2', name: '田中 一郎' },
+            care_team_links: [
+              { role: 'physician', name: '山本 健', is_primary: true },
+              { role: 'care_manager', name: '中島 桜', is_primary: false },
+            ],
+          },
+          cycle: { prescription_intakes: [{ lines: [] }] },
+          visit_record: {
+            id: 'visit_record_1',
+            updated_at: new Date('2026-06-11T04:45:00.000Z'),
+          },
+        },
+      ],
+      draftReports: [
+        {
+          id: HOSTILE_EXISTING_REPORT_ID,
+          visit_record_id: 'visit_record_1',
+          report_type: 'physician_report',
+          status: 'sent',
+        },
+      ],
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+    expect(json.data.draft_rows[0]).toMatchObject({
+      status: 'ready_to_generate',
+      visit_record_id: 'visit_record_1',
+      generation_targets: [{ report_type: 'care_manager_report', label: 'ケアマネ向け' }],
+      action: {
+        label: '→ 詳細へ',
+        href: `/reports/${encodeURIComponent(HOSTILE_EXISTING_REPORT_ID)}`,
+      },
+    });
   });
 
   it('aggregates waiting replies (delivery + inquiry) and resolved-today entries', async () => {

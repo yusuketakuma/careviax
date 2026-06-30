@@ -10,6 +10,11 @@ export type ReportDraftRowStatus =
   | 'draft_ready'
   | 'report_existing';
 
+export type ReportDraftGenerationTarget = {
+  report_type: 'physician_report' | 'care_manager_report' | 'nurse_share' | 'facility_handoff';
+  label: string;
+};
+
 export type ReportDraftRow = {
   id: string;
   /** 訪問予定時刻(ISO)。時刻未確定は null。 */
@@ -26,6 +31,8 @@ export type ReportDraftRow = {
   visit_record_updated_at: string | null;
   /** 「麻薬使用状況を含む」「12名分を1通に集約」等の常時表示メモ。無ければ null。 */
   note: string | null;
+  /** 未作成時にこの行から生成できる宛先別下書き。既存報告書の種別は除外する。 */
+  generation_targets: ReportDraftGenerationTarget[];
   /** 行アクション。note がある行でも導線を隠さず併記する。 */
   action: { label: string; href: string } | null;
 };

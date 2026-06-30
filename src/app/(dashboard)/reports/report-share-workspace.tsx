@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { timeIsoToString } from '@/lib/visits/time-of-day';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type {
+  ReportDraftGenerationTarget,
   ReportsTodayWorkspaceResponse,
   ReportCreatedRow,
   ReportOpenIssue,
@@ -78,6 +79,11 @@ const reportOutlineActionClassName = cn(
 );
 
 type GeneratedCareReport = GeneratedCareReportSummary;
+type DraftGenerationInput = {
+  visitRecordId: string;
+  visitRecordUpdatedAt: string;
+  reportType: ReportDraftGenerationTarget['report_type'];
+};
 
 function formatDateTime(iso: string): string {
   const date = new Date(iso);
@@ -119,12 +125,12 @@ async function fetchOperationCockpit(orgId: string): Promise<DashboardCockpitRes
 function TodayDraftsCard({
   data,
   onGenerateDraft,
-  generatingVisitRecordId,
+  generatingDraftKey,
   isGeneratingDraft,
 }: {
   data: ReportsTodayWorkspaceResponse;
-  onGenerateDraft: (visitRecordId: string, visitRecordUpdatedAt: string) => void;
-  generatingVisitRecordId: string | null;
+  onGenerateDraft: (input: DraftGenerationInput) => void;
+  generatingDraftKey: string | null;
   isGeneratingDraft: boolean;
 }) {
   return (
@@ -204,20 +210,35 @@ function TodayDraftsCard({
                     {row.status === 'ready_to_generate' &&
                     row.visit_record_id &&
                     row.visit_record_updated_at ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() =>
-                          onGenerateDraft(row.visit_record_id!, row.visit_record_updated_at!)
-                        }
-                        disabled={isGeneratingDraft}
-                        aria-label={`${row.patient_label} ${row.recipient_label} の下書きを自動作成`}
-                        className="h-auto min-h-[44px] px-3 sm:min-h-[44px]"
-                      >
-                        {generatingVisitRecordId === row.visit_record_id
-                          ? '作成中...'
-                          : '下書きを自動作成'}
-                      </Button>
+                      <span className="flex flex-wrap justify-start gap-2 md:justify-end">
+                        {row.generation_targets.map((target) => {
+                          const draftKey = `${row.visit_record_id}:${target.report_type}`;
+                          const isButtonGenerating = generatingDraftKey === draftKey;
+                          return (
+                            <Button
+                              key={target.report_type}
+                              type="button"
+                              size="sm"
+                              onClick={() =>
+                                onGenerateDraft({
+                                  visitRecordId: row.visit_record_id!,
+                                  visitRecordUpdatedAt: row.visit_record_updated_at!,
+                                  reportType: target.report_type,
+                                })
+                              }
+                              disabled={isGeneratingDraft}
+                              aria-label={`${row.patient_label} ${target.label}の下書きを自動作成`}
+                              className="h-auto min-h-[44px] px-3 sm:min-h-[44px]"
+                            >
+                              {isButtonGenerating
+                                ? '作成中...'
+                                : row.generation_targets.length === 1
+                                  ? '下書きを自動作成'
+                                  : `${target.label}を作成`}
+                            </Button>
+                          );
+                        })}
+                      </span>
                     ) : null}
                   </div>
                 </TableCell>
@@ -560,12 +581,13 @@ export function ReportShareWorkspace() {
     enabled: !isBootstrappingOrg && workspaceQuery.isSuccess,
   });
   const generateDraftMutation = useMutation({
-    mutationFn: (input: { visitRecordId: string; visitRecordUpdatedAt: string }) =>
+    mutationFn: (input: DraftGenerationInput) =>
       generateCareReportFromVisit<GeneratedCareReport>(
         {
           orgId,
           visitRecordId: input.visitRecordId,
           expectedVisitRecordUpdatedAt: input.visitRecordUpdatedAt,
+          reportType: input.reportType,
         },
         '下書きの作成に失敗しました',
       ),
@@ -670,12 +692,12 @@ export function ReportShareWorkspace() {
             <div className="min-w-0 space-y-4 lg:col-start-1 lg:row-start-1">
               <TodayDraftsCard
                 data={data}
-                onGenerateDraft={(visitRecordId, visitRecordUpdatedAt) =>
-                  generateDraftMutation.mutate({ visitRecordId, visitRecordUpdatedAt })
-                }
-                generatingVisitRecordId={
+                onGenerateDraft={(input) => generateDraftMutation.mutate(input)}
+                generatingDraftKey={
                   generateDraftMutation.isPending
-                    ? (generateDraftMutation.variables?.visitRecordId ?? null)
+                    ? generateDraftMutation.variables
+                      ? `${generateDraftMutation.variables.visitRecordId}:${generateDraftMutation.variables.reportType}`
+                      : null
                     : null
                 }
                 isGeneratingDraft={generateDraftMutation.isPending}
