@@ -26922,3 +26922,167 @@ Next loop:
 - Remaining:
   - Broad schedule/prescription/route objective remains open.
   - Confirmed-schedule route comparison and route API final write boundaries still need review for preparation/carry-item evidence and precondition/audit coverage.
+
+### Route Compare Preparation Confirmation - 2026-06-30 21:58 JST
+
+- Scope:
+  - Continued visit-route decision hardening for confirmed schedule route comparison.
+  - Focused on the "この案を使う" route-compare adoption confirmation.
+- Fixed:
+  - Route-compare adoption confirmation now lists route-order update targets with current/next order, time, short schedule id, and preparation evidence.
+  - Unresolved `薬歴・前回変更の確認` and `持参薬・物品確認` blockers are visible before route adoption is written.
+  - Confirmation still omits address, phone, drug names, and raw prescription details.
+- Safety:
+  - Reduces unsafe route adoption by keeping visit preparation blockers beside final route-order evidence.
+  - No API response expansion, permission changes, live DB operations, external sends, migrations, push/deploy, or destructive operations were added.
+- Performance:
+  - Pure client-side formatting over already loaded schedules and planned route updates.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx'`: passed, `1` file / `4` tests.
+  - Combined focused route-compare/home-care suite: passed, `2` files / `16` tests.
+  - Scoped ESLint and Prettier checks on route-compare and home-care files: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - Broad schedule/prescription/route objective remains open.
+  - Route reorder API write-boundary audit/precondition coverage still needs review.
+
+### Home Care Share Request Focus - 2026-06-30 21:58 JST
+
+- Scope:
+  - Continued patient-information action-link hardening for home-care operations summaries.
+  - Focused on the `multidisciplinary_share_summary` action when exactly one communication request is open.
+- Fixed:
+  - Patient and organization home-care summaries now link a single open request with `status`, `patient_id`, `request_id`, `related_entity_type`, and `related_entity_id`.
+  - Multiple open requests still fall back to the patient-scoped aggregate communication queue.
+- Safety:
+  - Reduces wrong-request / wrong-patient navigation risk in multidisciplinary share follow-up.
+  - Uses the shared communication request href helper and does not expose extra PHI, change permissions, run migrations, perform live DB writes, send externally, push/deploy, or perform destructive operations.
+- Performance:
+  - Reuses the existing bounded communication-request fetch and selects only routing metadata needed for the action link.
+- Validation:
+  - `pnpm vitest run src/server/services/home-care-ops.test.ts`: passed, `1` file / `12` tests.
+  - Combined focused route-compare/home-care suite: passed, `2` files / `16` tests.
+  - Scoped ESLint and Prettier checks on route-compare and home-care files: passed.
+  - `pnpm format:check`, `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint`: passed.
+- Remaining:
+  - Broad master-management and patient-information goal remains open.
+  - Continue scanning remaining home-care/patient summary action links and capped master APIs.
+
+### Patient Awaiting Reply Exception Focus - 2026-06-30 22:06 JST
+
+- Scope:
+  - Continued patient-card action-link hardening for stopped/blocked reasons.
+  - Focused on `awaiting_reply` exceptions in the patient card workspace right rail.
+- Fixed:
+  - `awaiting_reply` now uses the same patient-scoped communication request queue link as `family_consent_pending`.
+  - The blocked-reasons panel regression test verifies the `status=sent&patient_id=...` link target.
+- Safety:
+  - Reduces wrong-patient / aggregate-queue navigation when staff follow up a patient-specific reply wait.
+  - Uses the shared communication request href helper and does not expose additional PHI, change permissions, run migrations, perform live DB writes, send externally, push/deploy, or perform destructive operations.
+- Performance:
+  - Pure link-resolution change; no query, network call, dependency, broad scan, or render-heavy path was added.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=60000`: passed, `1` file / `58` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+- Remaining:
+  - Broad patient-information goal remains open.
+  - Continue scanning remaining patient-card and patient-summary exception actions for aggregate fallback links.
+
+### Report Detail Shortcut Permission Filter - 2026-06-30 22:16 JST
+
+- Scope:
+  - Continued report/collaboration permission hardening on the report detail page.
+  - Focused on shortcut filtering for patient detail and related request links.
+- Fixed:
+  - Patient-detail shortcut filtering now uses the stable `患者詳細` shortcut label and route permission metadata, not raw `/patients/${patient_id}` string reconstruction.
+  - Regression coverage uses an encoded hostile patient href so `can_view_patient=false` would fail under the old raw-href comparison.
+  - Related request shortcut permission filtering remains unchanged.
+- Safety:
+  - Reduces patient-navigation leakage from report detail when route permission metadata denies patient viewing.
+  - Uses existing shortcut helper output and does not expose report content, change permissions, run migrations, perform live DB writes, send externally, push/deploy, or perform destructive operations.
+- Performance:
+  - Pure in-memory shortcut filtering; no new query, dependency, or render-heavy path.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/reports/[id]/page.test.tsx' --reporter=dot --testTimeout=60000`: passed, `1` file / `29` tests.
+  - Combined report/route blocker suite: passed, `4` files / `84` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, and full `git diff --check`: passed.
+  - `pnpm typecheck`: initially failed on unrelated dirty route WIP; after minimal type-unblock in that WIP, passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - Broad visit/report/collaboration objective remains open.
+  - Route reorder / route-compare WIP and ledgers remain dirty and owner-separated.
+
+### Route Order Expected-State Guard - 2026-06-30 22:12 JST
+
+- Scope:
+  - Continued visit-route write-boundary hardening for schedule, proposal, and mixed schedule/proposal `route_order` writes.
+  - Focused on stale UI state where a route confirmation is applied after another route-order update has already changed the target row.
+- Fixed:
+  - Route-order payloads can now carry `expected_route_order` from the UI.
+  - `visit-schedules/reorder`, `visit-schedule-proposals/reorder`, and mixed `visit-routes/reorder` reject stale expected route order with the existing conflict response before writes.
+  - Route compare, weekly optimizer, proposal detail route reorder, conflict resolution, and emergency-route payloads pass the current route order as the expected value.
+  - Audit changes record previous and expected route order metadata where explicit guarded route updates are used.
+- Safety:
+  - Reduces stale-state route writes from old screens and keeps concurrent route-order changes from being overwritten silently.
+  - Existing auth, org/RLS context, duplicate route-order checks, locked/confirmed status checks, audit writes, and no-store error boundaries remain in place.
+  - No live DB operation, migration, external send, push/deploy, or destructive operation was performed.
+- Performance:
+  - Uses already loaded route-order scalar fields and update `where` guards; no new query, dependency, background job, or broad scan was added.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/reports/[id]/page.test.tsx' 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' 'src/app/(dashboard)/schedules/conflicts/conflict-resolution-content.test.tsx' 'src/app/(dashboard)/schedules/emergency-route/emergency-route-content.test.tsx' 'src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx' 'src/app/(dashboard)/schedules/route-compare/route-scenarios.test.ts' 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx' src/app/api/visit-routes/reorder/route.test.ts src/app/api/visit-schedule-proposals/reorder/route.test.ts src/app/api/visit-schedules/reorder/route.test.ts --reporter=dot --testTimeout=60000`: passed, `10` files / `175` tests.
+  - Scoped Prettier check and `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - Broad schedule/prescription/route objective remains open.
+  - Remaining route-order entrypoints should be scanned for places that can still omit expected current-state metadata.
+
+### Report Detail Shortcut Permission Filter - 2026-06-30 22:16 JST
+
+- Scope:
+  - Continued patient/report navigation hardening for report detail shortcut links.
+  - Focused on encoded patient-detail shortcuts generated from patient ids that are not raw path-safe.
+- Fixed:
+  - Patient-detail shortcut filtering now uses the shortcut label instead of comparing against an unencoded `/patients/${patient_id}` string.
+  - Regression coverage uses a hostile patient id containing path/query/fragment characters and confirms permission metadata still filters patient shortcuts.
+- Safety:
+  - Reduces permission-filter bypass or false-allow risk caused by encoded patient hrefs not matching a raw patient path string.
+  - Keeps related-request filtering on explicit shortcut metadata and does not expose report content, change permissions, run migrations, perform live DB writes, send externally, push/deploy, or perform destructive operations.
+- Performance:
+  - Pure in-memory shortcut filter change; no query, network call, dependency, or broad scan was added.
+- Validation:
+  - Covered by the `10` file / `175` test focused report/schedule/route suite above.
+  - Report shortcut code landed as `fd37a9b1`.
+- Remaining:
+  - Broad patient/report navigation objective remains open.
+  - Continue scanning remaining shortcut filters for raw id/path comparisons.
+
+### Route Order Expected-State Guard Final Gates - 2026-06-30 22:20 JST
+
+- Scope:
+  - Finalized validation for the schedule/proposal/mixed route-order expected-state guard.
+  - Confirmed route compare, weekly optimizer, proposal detail route reorder, conflict resolution, and emergency-route callers now send current `route_order` as `expected_route_order` where they have that state.
+- Fixed:
+  - Stale route-order submissions now fail with the existing workflow conflict response before write/audit side effects when the current DB `route_order` no longer matches the UI's expected value.
+  - API audit metadata keeps previous and expected route order values for guarded explicit route updates.
+- Safety:
+  - Reduces silent overwrite risk for route decisions made from old screens while preserving auth, org/RLS scope, duplicate order checks, locked/confirmed status checks, and no-store error boundaries.
+  - No live DB operation, migration, external send, push/deploy, secret handling, or destructive operation was performed.
+- Performance:
+  - Reuses already loaded scalar route-order values and update predicates; no new query or broad scan.
+- Validation:
+  - Route API Vitest passed `3` files / `68` tests.
+  - Route UI Vitest passed `4` files / `70` tests.
+  - Conflict/emergency route Vitest passed `2` files / `8` tests.
+  - Scoped ESLint/Prettier/diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and full `git diff --check` passed.
+- Remaining:
+  - Broad schedule/prescription/route objective remains open.
+  - Continue scanning remaining route-order entrypoints and schedule displays for missing current-state or preparation evidence.
