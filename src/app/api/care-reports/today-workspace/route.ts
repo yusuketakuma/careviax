@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { internalError, success, validationError } from '@/lib/api/response';
@@ -880,7 +881,8 @@ export async function GET(
 ) {
   try {
     return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch {
+  } catch (err) {
+    unstable_rethrow(err);
     return withSensitiveNoStore(internalError());
   }
 }

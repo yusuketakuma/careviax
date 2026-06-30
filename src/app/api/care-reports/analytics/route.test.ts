@@ -161,6 +161,29 @@ describe('/api/care-reports/analytics GET', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
+  it('returns a sanitized no-store 500 when auth context fails before analytics load', async () => {
+    requireAuthContextMock.mockRejectedValueOnce(
+      new Error('raw analytics auth patient 山田 花子 token secret'),
+    );
+
+    const response = await GET(createRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const payload = await response.json();
+    expect(payload).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const payloadText = JSON.stringify(payload);
+    expect(payloadText).not.toContain('raw analytics auth');
+    expect(payloadText).not.toContain('山田 花子');
+    expect(payloadText).not.toContain('token secret');
+    expect(getCareReportDeliveryAnalyticsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
   it('returns a fixed no-store 500 envelope when analytics loading throws', async () => {
     getCareReportDeliveryAnalyticsMock.mockRejectedValueOnce(
       new Error('raw physician analytics failure'),

@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { internalError, success, validationError } from '@/lib/api/response';
@@ -72,7 +73,8 @@ async function authenticatedGET(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     return withSensitiveNoStore(await authenticatedGET(req));
-  } catch {
+  } catch (err) {
+    unstable_rethrow(err);
     return withSensitiveNoStore(internalError());
   }
 }

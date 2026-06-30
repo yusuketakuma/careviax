@@ -1386,18 +1386,47 @@ describe('/api/care-reports/today-workspace', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
-  it('returns a fixed no-store internal error when workspace reads fail', async () => {
-    withOrgContextMock.mockRejectedValue(new Error('database unavailable'));
+  it('returns a sanitized no-store internal error when auth plumbing fails', async () => {
+    authMock.mockRejectedValueOnce(
+      new Error('raw today workspace auth patient 山田 花子 token secret'),
+    );
     const req = createRequest('http://localhost/api/care-reports/today-workspace?date=2026-06-11');
 
     const res = await GET(req, { params: Promise.resolve({}) });
 
     expect(res!.status).toBe(500);
     expectSensitiveNoStore(res!);
-    await expect(res!.json()).resolves.toEqual({
+    const payload = await res!.json();
+    expect(payload).toEqual({
       code: 'INTERNAL_ERROR',
       message: 'サーバー内部でエラーが発生しました',
     });
+    const payloadText = JSON.stringify(payload);
+    expect(payloadText).not.toContain('raw today workspace auth');
+    expect(payloadText).not.toContain('山田 花子');
+    expect(payloadText).not.toContain('token secret');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a fixed no-store internal error when workspace reads fail', async () => {
+    withOrgContextMock.mockRejectedValue(
+      new Error('raw workspace read patient 山田 花子 token secret'),
+    );
+    const req = createRequest('http://localhost/api/care-reports/today-workspace?date=2026-06-11');
+
+    const res = await GET(req, { params: Promise.resolve({}) });
+
+    expect(res!.status).toBe(500);
+    expectSensitiveNoStore(res!);
+    const payload = await res!.json();
+    expect(payload).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const payloadText = JSON.stringify(payload);
+    expect(payloadText).not.toContain('raw workspace read');
+    expect(payloadText).not.toContain('山田 花子');
+    expect(payloadText).not.toContain('token secret');
     expect(withOrgContextMock).toHaveBeenCalledWith(
       'org_1',
       expect.any(Function),
