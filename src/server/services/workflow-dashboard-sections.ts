@@ -1,6 +1,7 @@
 import { isoOrNull } from '@/lib/utils/date';
 import { formatDateKey } from '@/lib/date-key';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
+import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { WORKBENCH_MAX_ITEMS } from '@/lib/constants/workflow';
 import { readJsonObject } from '@/lib/db/json';
 import {
@@ -567,7 +568,7 @@ export function buildUnifiedWorkbench(
             summary: `${communicationQueue.summary.reply_waiting_count}件が返信待ちまたは未反映です。`,
             priority: 'high' as const,
             due_at: communicationQueue.items[0]?.due_at ?? null,
-            action_href: '/communications/requests',
+            action_href: buildCommunicationRequestsHref({ status: 'sent' }),
             action_label: '返信待ちを確認',
             owner_name: null,
             patient_name: null,

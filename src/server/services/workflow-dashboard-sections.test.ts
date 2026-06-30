@@ -370,4 +370,31 @@ describe('workflow-dashboard-sections', () => {
       ]),
     );
   });
+
+  it('focuses reply-waiting communication aggregates on the request follow-up queue', () => {
+    const communicationQueue = emptyCommunicationQueue();
+    communicationQueue.summary.reply_waiting_count = 2;
+
+    const result = buildUnifiedWorkbench(
+      [],
+      [],
+      [],
+      [],
+      0,
+      [],
+      communicationQueue,
+      new Map(),
+      new Map(),
+    );
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'aggregate:communication_reply_waiting',
+          action_href: '/communications/requests?status=sent',
+          action_label: '返信待ちを確認',
+        }),
+      ]),
+    );
+  });
 });
