@@ -490,6 +490,13 @@ function buildPreparationSummary(schedule: {
   };
 }
 
+function visitNeedsPreparationAttention(visit: DayBoardVisit): boolean {
+  return (
+    visit.preparation_summary.status !== 'ready' ||
+    Boolean(visit.preparation_summary.ready_blocker_summary?.blocked)
+  );
+}
+
 const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
@@ -773,15 +780,15 @@ const authenticatedGET = withAuthContext(
             audit_task_count: auditCountByUser.get(membership.user.id) ?? 0,
           });
         }
-        const staff = [...staffAll]
-          .sort((left, right) => {
-            if (left.role_kind !== right.role_kind) return left.role_kind === 'pharmacist' ? -1 : 1;
-            if (left.visits.length !== right.visits.length) {
-              return right.visits.length - left.visits.length;
-            }
-            return left.name.localeCompare(right.name, 'ja');
-          })
-          .slice(0, STAFF_ROW_LIMIT);
+        const sortedStaffAll = [...staffAll].sort((left, right) => {
+          if (left.role_kind !== right.role_kind) return left.role_kind === 'pharmacist' ? -1 : 1;
+          if (left.visits.length !== right.visits.length) {
+            return right.visits.length - left.visits.length;
+          }
+          return left.name.localeCompare(right.name, 'ja');
+        });
+        const staff = sortedStaffAll.slice(0, STAFF_ROW_LIMIT);
+        const hiddenStaff = sortedStaffAll.slice(STAFF_ROW_LIMIT);
 
         // 担当未割当の監査待ちは先頭の薬剤師行に仮配分(デスク作業ブロックの仮置き)
         const firstPharmacist = staff.find((member) => member.role_kind === 'pharmacist');
@@ -902,6 +909,9 @@ const authenticatedGET = withAuthContext(
           } satisfies DayBoardPendingProposal;
         });
         const visibleVisitIds = staff.flatMap((member) => member.visits).map((visit) => visit.id);
+        const hiddenVisitIds = hiddenStaff
+          .flatMap((member) => member.visits)
+          .map((visit) => visit.id);
         const operationalTaskEntityFilters = [
           ...(visibleVisitIds.length > 0
             ? [
@@ -927,8 +937,17 @@ const authenticatedGET = withAuthContext(
                 related_entity_type: 'visit_schedule_proposal',
                 related_entity_id: { in: hiddenProposalIds },
               };
+        const hiddenVisitTaskFilter =
+          hiddenVisitIds.length === 0
+            ? null
+            : {
+                related_entity_type: 'visit_schedule',
+                related_entity_id: { in: hiddenVisitIds },
+              };
         const assignmentScope =
-          operationalTaskEntityFilters.length === 0 && !hiddenProposalTaskFilter
+          operationalTaskEntityFilters.length === 0 &&
+          !hiddenProposalTaskFilter &&
+          !hiddenVisitTaskFilter
             ? null
             : await resolveDashboardAssignmentScope({
                 db,
@@ -982,6 +1001,17 @@ const authenticatedGET = withAuthContext(
                     buildDashboardTaskAssignmentWhere(assignmentScope),
                     hiddenProposalTaskFilter,
                   ],
+                },
+              });
+        const hiddenStaffOperationalTaskCount =
+          !hiddenVisitTaskFilter || !assignmentScope
+            ? 0
+            : await db.task.count({
+                where: {
+                  org_id: ctx.orgId,
+                  task_type: { in: [...SCHEDULE_BOARD_TASK_TYPES] },
+                  status: { in: [...OPEN_OPERATIONAL_TASK_STATUSES] },
+                  AND: [buildDashboardTaskAssignmentWhere(assignmentScope), hiddenVisitTaskFilter],
                 },
               });
 
@@ -1047,10 +1077,34 @@ const authenticatedGET = withAuthContext(
               : `予備枠 ${recommendedVehicle.remaining_stops}件`;
         }
 
+        const visibleVisits = staff.flatMap((member) => member.visits);
+        const hiddenVisits = hiddenStaff.flatMap((member) => member.visits);
+        const totalVisitCount = visibleVisits.length + hiddenVisits.length;
+        const visiblePreparationAttentionCount = visibleVisits.filter(
+          visitNeedsPreparationAttention,
+        ).length;
+        const hiddenPreparationAttentionCount = hiddenVisits.filter(
+          visitNeedsPreparationAttention,
+        ).length;
+
         return {
           generated_at: now.toISOString(),
           date: dateKey,
           staff,
+          staff_counts: {
+            total_count: sortedStaffAll.length,
+            visible_count: staff.length,
+            hidden_count: hiddenStaff.length,
+            total_visit_count: totalVisitCount,
+            visible_visit_count: visibleVisits.length,
+            hidden_visit_count: hiddenVisits.length,
+            total_preparation_attention_count:
+              visiblePreparationAttentionCount + hiddenPreparationAttentionCount,
+            visible_preparation_attention_count: visiblePreparationAttentionCount,
+            hidden_preparation_attention_count: hiddenPreparationAttentionCount,
+            hidden_operational_task_count: hiddenStaffOperationalTaskCount,
+            limit: STAFF_ROW_LIMIT,
+          },
           audit_pending_count: auditPendingCount,
           report_pending_count: reportPendingCount,
           vehicle_resources: vehicleSummaries,

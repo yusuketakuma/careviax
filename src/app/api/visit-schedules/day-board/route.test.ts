@@ -664,6 +664,131 @@ describe('/api/visit-schedules/day-board', () => {
     expect(JSON.stringify(json.data)).not.toContain('自由記載は出さない');
   });
 
+  it('reports hidden staff visit and task counts without exposing hidden task details', async () => {
+    const memberships = Array.from({ length: 7 }, (_, index) => {
+      const ordinal = index + 1;
+      return {
+        role: 'pharmacist',
+        user: { id: `user_${ordinal}`, name: `薬師 ${String(ordinal).padStart(2, '0')}` },
+      };
+    });
+    membershipFindManyMock.mockResolvedValue(memberships);
+    visitScheduleFindManyMock.mockResolvedValue(
+      memberships.map((membership, index) => {
+        const ordinal = index + 1;
+        return {
+          id: `visit_${ordinal}`,
+          case_id: `case_${ordinal}`,
+          cycle_id: null,
+          pharmacist_id: membership.user.id,
+          visit_type: 'regular',
+          schedule_status: 'planned',
+          scheduled_date: new Date('2026-06-12T00:00:00.000Z'),
+          carry_items_status: 'ready',
+          priority: 'normal',
+          site_id: 'site_1',
+          route_order: ordinal,
+          vehicle_resource_id: null,
+          vehicle_resource: null,
+          time_window_start: new Date(2026, 5, 12, 9 + ordinal, 0),
+          time_window_end: new Date(2026, 5, 12, 9 + ordinal, 30),
+          confirmed_at: null,
+          cycle: { overall_status: 'visit_planned' },
+          preparation:
+            ordinal === 7
+              ? null
+              : {
+                  org_id: 'org_1',
+                  prepared_at: new Date('2026-06-12T00:00:00.000Z'),
+                  medication_changes_reviewed: true,
+                  carry_items_confirmed: true,
+                  previous_issues_reviewed: true,
+                  route_confirmed: true,
+                  offline_synced: true,
+                },
+          facility_batch_id: null,
+          facility_batch: null,
+          visit_record: null,
+          case_: {
+            patient: {
+              id: `patient_${ordinal}`,
+              name: `患者 ${ordinal}`,
+              contacts: [{ id: `contact_${ordinal}` }],
+            },
+            care_team_links: [{ role: 'physician' }],
+          },
+        };
+      }),
+    );
+    consentRecordFindManyMock.mockResolvedValue(
+      memberships.map((_, index) => ({ patient_id: `patient_${index + 1}` })),
+    );
+    firstVisitDocumentFindManyMock.mockResolvedValue(
+      memberships.map((_, index) => ({
+        case_id: `case_${index + 1}`,
+        delivered_at: new Date('2026-06-01T00:00:00.000Z'),
+        created_at: new Date('2026-06-01T00:00:00.000Z'),
+      })),
+    );
+    managementPlanFindManyMock.mockResolvedValue(
+      memberships.map((_, index) => ({
+        case_id: `case_${index + 1}`,
+        next_review_date: new Date('2026-12-31T00:00:00.000Z'),
+        effective_from: new Date('2026-06-01T00:00:00.000Z'),
+        version: 1,
+        approved_at: new Date('2026-06-01T00:00:00.000Z'),
+      })),
+    );
+    taskCountMock.mockResolvedValue(2);
+
+    const response = (await GET(createRequest('2026-06-12'), {
+      params: Promise.resolve({}),
+    }))!;
+    expect(response.status).toBe(200);
+    const json = await response.json();
+
+    expect(json.data.staff).toHaveLength(6);
+    expect(json.data.staff.map((member: { id: string }) => member.id)).not.toContain('user_7');
+    expect(json.data.staff_counts).toEqual({
+      total_count: 7,
+      visible_count: 6,
+      hidden_count: 1,
+      total_visit_count: 7,
+      visible_visit_count: 6,
+      hidden_visit_count: 1,
+      total_preparation_attention_count: 1,
+      visible_preparation_attention_count: 0,
+      hidden_preparation_attention_count: 1,
+      hidden_operational_task_count: 2,
+      limit: 6,
+    });
+    expect(taskCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        task_type: {
+          in: [
+            'visit_preparation',
+            'visit_contact_followup',
+            'visit_schedule_reproposal_needed',
+            'visit_schedule_override_approval',
+            'visit_carry_item_review',
+            'facility_batch_tracker',
+            'mobile_visit_mode',
+          ],
+        },
+        status: { in: ['pending', 'in_progress'] },
+        AND: [
+          {},
+          {
+            related_entity_type: 'visit_schedule',
+            related_entity_id: { in: ['visit_7'] },
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(json.data)).not.toContain('患者 7');
+  });
+
   it('drops members who are shift-unavailable for the day', async () => {
     membershipFindManyMock.mockResolvedValue([
       { role: 'pharmacist', user: { id: 'user_1', name: '山田 太郎' } },

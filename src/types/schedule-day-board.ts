@@ -121,12 +121,38 @@ export type DayBoardPendingProposalCounts = {
   hidden_operational_task_count: number;
 };
 
+export type DayBoardStaffCounts = {
+  /** Staff rows after availability filtering, before visible-row capping. */
+  total_count: number;
+  /** Staff rows included in `staff`. */
+  visible_count: number;
+  /** Staff rows intentionally not expanded on this board. */
+  hidden_count: number;
+  /** Visit rows across all available staff for the board date. */
+  total_visit_count: number;
+  /** Visit rows included in visible staff lanes. */
+  visible_visit_count: number;
+  /** Visit rows attached to hidden staff lanes. */
+  hidden_visit_count: number;
+  /** All visits that need preparation or ready-blocker attention. */
+  total_preparation_attention_count: number;
+  /** Visible visits that need preparation or ready-blocker attention. */
+  visible_preparation_attention_count: number;
+  /** Hidden visits that need preparation or ready-blocker attention. */
+  hidden_preparation_attention_count: number;
+  /** Open operational tasks attached to hidden staff visits; task details remain off-board. */
+  hidden_operational_task_count: number;
+  /** Server-side visible row cap. */
+  limit: number;
+};
+
 export type ScheduleDayBoardResponse = {
   /** サーバー集計時刻(ISO)。「ルート計算 HH:MM」表示に使用 */
   generated_at: string;
   /** YYYY-MM-DD */
   date: string;
   staff: DayBoardStaff[];
+  staff_counts: DayBoardStaffCounts;
   /** 組織全体の監査待ち件数(担当未割当タスクのフォールバック配分用) */
   audit_pending_count: number;
   /** 報告書待ち(visit_completed サイクル)件数。「報告」ブロックの元データ */
