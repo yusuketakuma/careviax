@@ -417,6 +417,56 @@ describe('ExternalShareContent', () => {
     expect(createReplyMutate).not.toHaveBeenCalled();
   });
 
+  it('shows a retryable warning when supporting share data partially fails', () => {
+    const refetchCareTeam = vi.fn();
+    const refetchContacts = vi.fn();
+    const refetchRequests = vi.fn();
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockImplementation((config: QueryConfig) => {
+      const scope = config.queryKey?.[0];
+      if (scope === 'patient-care-team') {
+        return {
+          data: undefined,
+          isLoading: false,
+          isError: true,
+          refetch: refetchCareTeam,
+        };
+      }
+      if (scope === 'patient-contacts') {
+        return { data: { data: [] }, isLoading: false, isError: false, refetch: refetchContacts };
+      }
+      if (scope === 'communication-requests') {
+        return { data: { data: [] }, isLoading: false, isError: false, refetch: refetchRequests };
+      }
+      return {
+        data: {
+          name: '佐藤 花子',
+          external_shares: [],
+          self_reports: [],
+          current_medications: [],
+          visit_schedules: [],
+          care_reports: [],
+        },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      };
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+
+    expect(screen.getByTestId('share-supporting-data-warning')).toBeTruthy();
+    expect(screen.getByText('一部の共有情報を取得できませんでした')).toBeTruthy();
+    expect(screen.getByText(/ケアチームを取得できないため/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '再取得' }));
+
+    expect(refetchCareTeam).toHaveBeenCalledTimes(1);
+    expect(refetchContacts).toHaveBeenCalledTimes(1);
+    expect(refetchRequests).toHaveBeenCalledTimes(1);
+  });
+
   it('shows a retryable error instead of a false-empty overview when the fetch fails', () => {
     const refetch = vi.fn();
     useOrgIdMock.mockReturnValue('org_1');

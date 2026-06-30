@@ -336,6 +336,12 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
   const taskCreated = Boolean(latestReply && createdResponseIds.includes(latestReply.id));
   const requestCreated = createdRequestAudiences.includes(audience);
   const hasActiveAudienceRequest = Boolean(audienceRequest && audienceRequest.status !== 'closed');
+  const supportingDataErrors = [
+    careTeamQuery.isError ? 'ケアチーム' : null,
+    contactsQuery.isError ? '患者連絡先' : null,
+    requestsQuery.isError ? '返信状況' : null,
+    replyDetailQuery.isError ? '返信内容' : null,
+  ].filter((label): label is string => Boolean(label));
 
   const createTaskMutation = useMutation({
     mutationFn: async () => {
@@ -508,6 +514,42 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
           </p>
         </div>
       </div>
+
+      {supportingDataErrors.length > 0 ? (
+        <div
+          className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card p-4 text-state-confirm"
+          data-testid="share-supporting-data-warning"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="flex items-center gap-2 text-sm font-semibold">
+                <AlertTriangle className="size-4 text-state-confirm" aria-hidden="true" />
+                一部の共有情報を取得できませんでした
+              </h2>
+              <p className="mt-1 text-sm text-state-confirm">
+                {supportingDataErrors.join('、')}
+                を取得できないため、登録済み相手や返信の表示が一部欠けています。
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="bg-background"
+              onClick={() => {
+                void careTeamQuery.refetch();
+                void contactsQuery.refetch();
+                void requestsQuery.refetch();
+                if (replyRequest?.id) {
+                  void replyDetailQuery.refetch();
+                }
+              }}
+            >
+              再取得
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.25fr)_minmax(0,1fr)]">
         {/* 左: 共有する相手 */}
