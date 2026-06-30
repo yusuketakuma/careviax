@@ -1299,8 +1299,8 @@ export function ScheduleWeeklyOptimizer({
                   {vehicleResources.map((vehicle) => (
                     <SelectItem key={vehicle.id} value={vehicle.id}>
                       {vehicle.site?.name
-                        ? `${vehicle.label} / ${vehicle.site.name}`
-                        : vehicle.label}
+                        ? `${formatVehicleResourceLabel(vehicle)} / ${vehicle.site.name}`
+                        : formatVehicleResourceLabel(vehicle)}
                     </SelectItem>
                   ))}
                 </SelectContent>

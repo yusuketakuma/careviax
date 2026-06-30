@@ -205,12 +205,43 @@ describe('ScheduleWeeklyOptimizer', () => {
     );
   });
 
-  it('shows the vehicle resource selector in planner settings', () => {
+  it('shows the vehicle resource selector in planner settings', async () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'cases' && queryKey[1] === 'weekly-optimizer') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      if (queryKey[0] === 'cases' && queryKey[1] === 'weekly-optimizer-search') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      if (queryKey[0] === 'visit-vehicle-resources') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'vehicle_1',
+                label: '軽バン1号',
+                travel_mode: 'DRIVE',
+                max_stops: 8,
+                max_route_duration_minutes: 180,
+                available: true,
+                site: { id: 'site_1', name: '本店' },
+              },
+            ],
+          },
+          isLoading: false,
+        };
+      }
+      return { data: undefined, isLoading: false };
+    });
+
     render(<ScheduleWeeklyOptimizer />);
 
-    expect(screen.getByLabelText('社用車')).toBeTruthy();
+    const vehicleSelect = screen.getByLabelText('社用車');
+    expect(vehicleSelect).toBeTruthy();
     expect(screen.getByLabelText('希望枠')).toBeTruthy();
     expect(screen.getByLabelText('希望枠 終了')).toBeTruthy();
+    fireEvent.mouseDown(vehicleSelect);
+    expect(await screen.findByText('軽バン1号 (最大8件 / 180分以内) / 本店')).toBeTruthy();
     expect(screen.getByText('未指定なら自動割当')).toBeTruthy();
   });
 
