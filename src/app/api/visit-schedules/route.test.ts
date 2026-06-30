@@ -393,6 +393,20 @@ describe('/api/visit-schedules', () => {
     expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('queries scheduled_date with an exclusive UTC-midnight upper bound for date filters', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/visit-schedules?date_from=2026-06-12&date_to=2026-06-12'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    const where = visitScheduleFindManyMock.mock.calls[0]?.[0]?.where;
+    expect(where?.scheduled_date).toEqual({
+      gte: new Date('2026-06-12T00:00:00.000Z'),
+      lt: new Date('2026-06-13T00:00:00.000Z'),
+    });
+    expect(where?.scheduled_date).not.toHaveProperty('lte');
+  });
+
   it('returns a sanitized no-store 500 when schedule listing fails unexpectedly', async () => {
     visitScheduleFindManyMock.mockRejectedValueOnce(
       new Error('患者 山田太郎 raw visit schedule list facility address'),

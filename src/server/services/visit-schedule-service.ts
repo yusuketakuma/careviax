@@ -12,6 +12,7 @@ import { validateOrgReferences } from '@/lib/api/org-reference';
 import { conflict, forbiddenResponse, validationError } from '@/lib/api/response';
 import { hhmmToTimeDate } from '@/lib/datetime/time-of-day';
 import { applyTimeDateToDate, timeDateToString } from '@/lib/visits/time-of-day';
+import { addUtcDays, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import {
   OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES,
   allocateProposalRouteOrders,
@@ -140,13 +141,17 @@ export async function listSchedules(
   );
 
   const assignmentWhere = accessContext ? buildVisitScheduleAssignmentWhere(accessContext) : null;
+  const scheduledDateFrom = filters.date_from ? utcDateFromLocalKey(filters.date_from) : null;
+  const scheduledDateToExclusive = filters.date_to
+    ? addUtcDays(utcDateFromLocalKey(filters.date_to), 1)
+    : null;
   const where = {
     org_id: orgId,
-    ...(filters.date_from || filters.date_to
+    ...(scheduledDateFrom || scheduledDateToExclusive
       ? {
           scheduled_date: {
-            ...(filters.date_from ? { gte: new Date(filters.date_from) } : {}),
-            ...(filters.date_to ? { lte: new Date(filters.date_to) } : {}),
+            ...(scheduledDateFrom ? { gte: scheduledDateFrom } : {}),
+            ...(scheduledDateToExclusive ? { lt: scheduledDateToExclusive } : {}),
           },
         }
       : {}),

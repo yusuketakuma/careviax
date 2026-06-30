@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0307 JST
+
+- current task: align visit-schedule list date filters with UTC-midnight @db.Date boundary helpers.
+- files inspected: `git status --short --branch --untracked-files=all`, local Next route-handler docs in `node_modules/next/dist/docs/`, mapper date-boundary output, `src/server/services/visit-schedule-service.ts`, `src/app/api/visit-schedules/route.ts`, `src/app/api/visit-schedules/route.test.ts`, `src/lib/utils/date-boundary.ts`, related cockpit/day-board/date-boundary tests, focused validation output, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/server/services/visit-schedule-service.ts`, `src/app/api/visit-schedules/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: `listSchedules` built `scheduled_date` filters with raw `new Date(date_key)` and an inclusive `lte` upper bound instead of the repository's UTC-midnight half-open @db.Date convention, leaving schedule list filtering divergent from cockpit/day-board date handling.
+- security risks found: reduced wrong-day schedule visibility and omission risk in visit schedule list queries by using the shared date-boundary helper and exclusive next-day upper bound. Existing auth, role assignment filter, RLS org context, query validation, no-store error handling, patient-summary projection, migrations, live data, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: replaces ad hoc Date construction with two local helper calls before the existing Prisma query. No new DB query, dependency, external call, background job, broad scan, or unbounded loop was added.
+- validation commands: `pnpm exec vitest run src/app/api/visit-schedules/route.test.ts --reporter=dot --testTimeout=60000`; `pnpm exec vitest run src/app/api/visit-schedules/route.test.ts src/app/api/dashboard/cockpit/route.test.ts src/app/api/visit-schedules/day-board/route.test.ts src/lib/utils/date-boundary.test.ts --reporter=dot --testTimeout=60000`; `pnpm exec eslint --max-warnings=0 src/server/services/visit-schedule-service.ts`; `pnpm exec prettier --check src/server/services/visit-schedule-service.ts`; `git diff --check -- src/server/services/visit-schedule-service.ts`; `pnpm typecheck --pretty false`; `pnpm typecheck:no-unused --pretty false`; `pnpm lint`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: focused visit-schedules route Vitest passed `1` file / `38` tests; related date-boundary route suite passed `4` files / `95` tests with expected sanitized-500 test logs; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed; typecheck passed; no-unused passed; full lint passed; full format check passed; full diff-check passed.
+- remaining work: broad schedule-management / prescription-to-schedule / route-decision objective remains open.
+- next action: stage the owned code/test and ledgers, commit, send agmsg FYI, then re-check status.
+
 ### 20260701-0254 JST
 
 - current task: harden conference-note report generation with an RLS-scoped row lock.

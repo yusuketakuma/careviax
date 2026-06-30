@@ -30,6 +30,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Visit Schedule List Date Boundary - 2026-07-01 03:07 JST
+
+- Scope:
+  - Continued schedule display correctness hardening for `GET /api/visit-schedules`.
+  - Focused on date-only list filters used by patient/schedule management surfaces.
+- Fixed:
+  - `listSchedules` now converts `date_from` and `date_to` with the shared UTC date-boundary helper.
+  - `date_to` now becomes an exclusive next-day upper bound (`lt`) instead of same-midnight inclusive `lte`.
+  - Added regression coverage proving `date_from=2026-06-12&date_to=2026-06-12` queries `gte 2026-06-12T00:00:00.000Z` and `lt 2026-06-13T00:00:00.000Z`.
+- Safety:
+  - Reduces missing same-day visit risk in schedule lists and downstream patient workflow screens.
+  - Preserves existing query validation, assignment scoping, status filters, patient summary projection, no-store wrappers, POST behavior, migrations, live DB state, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Keeps the same indexed `scheduled_date` range predicate shape.
+  - No new query, dependency, background job, external call, broad scan, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-schedules/route.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `38` tests.
+  - Related date-boundary route suite passed `4` files / `95` tests with expected sanitized-500 log lines.
+  - Scoped ESLint on service/test: passed.
+  - Scoped Prettier write/check on service/test: passed after the first check flagged only test wrapping.
+  - Scoped and full `git diff --check`: passed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- Remaining:
+  - Broad schedule-management / prescription-to-schedule / route-decision objective remains open.
+
 ### Conference Note Report Generation RLS Lock - 2026-07-01 02:54 JST
 
 - Scope:
