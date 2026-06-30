@@ -79,6 +79,8 @@ describe('POST /api/referrals', () => {
     const response = await POST(createRequest(sensitivePayload));
 
     expect(response.status).toBe(201);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toEqual({
       patient: { id: 'patient_new' },
       case: { id: 'case_new' },
@@ -210,6 +212,8 @@ describe('POST /api/referrals', () => {
     const response = await POST(createRequest(sensitivePayload));
 
     expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     const bodyText = JSON.stringify(await response.json());
     expect(bodyText).toContain('紹介受付の登録に失敗しました');
     for (const sensitiveValue of [
@@ -220,6 +224,37 @@ describe('POST /api/referrals', () => {
       sensitivePayload.care_insurance_number,
       sensitivePayload.referral_source,
       sensitivePayload.referral_notes,
+    ]) {
+      expect(bodyText).not.toContain(sensitiveValue);
+    }
+    expect(createReferralIntakeMock).toHaveBeenCalledOnce();
+  });
+
+  it('returns a sanitized no-store 500 when referral creation fails unexpectedly', async () => {
+    createReferralIntakeMock.mockRejectedValueOnce(
+      new Error('Sensitive Patient 090-0000-0000 raw referral create detail'),
+    );
+
+    const response = await POST(createRequest(sensitivePayload));
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    for (const sensitiveValue of [
+      sensitivePayload.name,
+      sensitivePayload.phone,
+      sensitivePayload.address,
+      sensitivePayload.medical_insurance_number,
+      sensitivePayload.care_insurance_number,
+      sensitivePayload.referral_source,
+      sensitivePayload.referral_notes,
+      'raw referral create detail',
     ]) {
       expect(bodyText).not.toContain(sensitiveValue);
     }
