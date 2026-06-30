@@ -138,6 +138,7 @@ type DragSchedule = {
   id: string;
   patientName: string;
   confirmedAt: string | null;
+  routeOrder: number | null;
   sourceDateKey: string;
   sourcePharmacistId: string;
   timeWindowStart: string | null;
@@ -282,6 +283,7 @@ function buildRouteReorderPayloads(args: {
     scheduled_date: string;
     pharmacist_id: string;
     route_order: number;
+    expected_route_order: number | null;
   }> = [];
 
   const sourceRemaining = args.sourceSchedules.filter(
@@ -293,6 +295,7 @@ function buildRouteReorderPayloads(args: {
       scheduled_date: toDateKey(schedule.scheduled_date),
       pharmacist_id: schedule.pharmacist_id,
       route_order: index + 1,
+      expected_route_order: schedule.route_order,
     });
   });
 
@@ -303,12 +306,14 @@ function buildRouteReorderPayloads(args: {
       scheduled_date: toDateKey(schedule.scheduled_date),
       pharmacist_id: schedule.pharmacist_id,
       route_order: 0,
+      expected_route_order: schedule.route_order,
     }));
   destinationPayloads.push({
     scheduleId: args.draggedSchedule.id,
     scheduled_date: args.targetDate,
     pharmacist_id: args.targetPharmacistId,
     route_order: 0,
+    expected_route_order: args.draggedSchedule.routeOrder,
   });
 
   destinationPayloads.forEach((schedule, index) => {
@@ -317,6 +322,7 @@ function buildRouteReorderPayloads(args: {
       scheduled_date: schedule.scheduled_date,
       pharmacist_id: schedule.pharmacist_id,
       route_order: index + 1,
+      expected_route_order: schedule.expected_route_order,
     });
   });
 
@@ -839,6 +845,7 @@ export function ScheduleWeeklyOptimizer({
         scheduled_date: string;
         pharmacist_id: string;
         route_order: number;
+        expected_route_order: number | null;
       }>,
     ) => applyVisitScheduleRouteUpdates({ orgId, updates: payloads }),
     onSuccess: async () => {
@@ -1024,19 +1031,23 @@ export function ScheduleWeeklyOptimizer({
       }
       if (!effectiveSelectedRouteCell) throw new Error('対象セルが選択されていません');
 
-      const updates = selectedCellRouteDraft.draftIds.map((routeId, index) =>
-        routeId.startsWith('proposal:')
+      const updates = selectedCellRouteDraft.draftIds.map((routeId, index) => {
+        const item = selectedCellRouteItemById.get(routeId);
+        if (!item) throw new Error('反映対象の現在順を確認できません。再読み込みしてください');
+        return item.itemType === 'proposal'
           ? {
               item_type: 'proposal' as const,
-              id: routeId.replace('proposal:', ''),
+              id: item.itemId,
               route_order: index + 1,
+              expected_route_order: item.routeOrder,
             }
           : {
               item_type: 'schedule' as const,
-              id: routeId,
+              id: item.itemId,
               route_order: index + 1,
-            },
-      );
+              expected_route_order: item.routeOrder,
+            };
+      });
 
       await applyMixedVisitRouteUpdates({
         orgId,
@@ -1577,6 +1588,7 @@ export function ScheduleWeeklyOptimizer({
                                     id: schedule.id,
                                     patientName: schedule.case_.patient.name,
                                     confirmedAt: schedule.confirmed_at,
+                                    routeOrder: schedule.route_order,
                                     sourceDateKey: dayKey,
                                     sourcePharmacistId: pharmacist.id,
                                     timeWindowStart: schedule.time_window_start,

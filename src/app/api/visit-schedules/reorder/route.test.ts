@@ -792,6 +792,22 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     expectNoWriteAuditOrNotify();
   });
 
+  it('rejects stale expected route_order before schedule route writes', async () => {
+    const response = (await PATCH(
+      createRequest({
+        updates: [{ schedule_id: 'schedule_1', route_order: 1, expected_route_order: 2 }],
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'route_order の反映対象が同時に更新されました。再読み込みしてください',
+    });
+    expectNoWriteAuditOrNotify();
+  });
+
   it('retries serializable schedule route conflicts and succeeds on retry', async () => {
     withOrgContextMock.mockImplementationOnce(async () => {
       throw buildSerializableConflictError();
@@ -834,6 +850,22 @@ describe('/api/visit-schedules/reorder PATCH', () => {
       message: 'route_order の反映対象が同時に更新されました。再読み込みしてください',
     });
     expect(withOrgContextMock).toHaveBeenCalledTimes(3);
+    expectNoWriteAuditOrNotify();
+  });
+
+  it('rejects stale expected route_order before schedule writes', async () => {
+    const response = (await PATCH(
+      createRequest({
+        updates: [{ schedule_id: 'schedule_1', route_order: 3, expected_route_order: 2 }],
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'route_order の反映対象が同時に更新されました。再読み込みしてください',
+    });
     expectNoWriteAuditOrNotify();
   });
 

@@ -68,6 +68,7 @@ const visitScheduleReorderSchema = z.object({
       z.object({
         schedule_id: z.string().trim().min(1),
         route_order: z.number().int().min(1).optional(),
+        expected_route_order: z.number().int().min(1).nullable().optional(),
         scheduled_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
         pharmacist_id: z.string().trim().min(1).optional(),
         vehicle_resource_id: z.string().trim().min(1).nullable().optional(),
@@ -90,6 +91,7 @@ type VisitScheduleReorderError =
   | 'invalid_pharmacist'
   | 'confirmed_move'
   | 'confirmed_route_change'
+  | 'stale_route_order'
   | 'route_status_locked'
   | 'shift_conflict'
   | 'confirmation_context_mismatch'
@@ -300,6 +302,14 @@ const authenticatedPATCH = withAuthContext(
                 }
               : updateByScheduleId.get(scheduleId)!,
           );
+          const staleRouteOrder = effectiveUpdates.find((item) => {
+            if (item.expected_route_order === undefined) return false;
+            return scheduleById.get(item.schedule_id)?.route_order !== item.expected_route_order;
+          });
+          if (staleRouteOrder) {
+            return { error: 'stale_route_order' as const };
+          }
+
           if (!canBypassVisitScheduleAssignmentAccess(ctx)) {
             const pharmacistChange = effectiveUpdates.find((item) => {
               const schedule = scheduleById.get(item.schedule_id);
@@ -847,6 +857,9 @@ const authenticatedPATCH = withAuthContext(
                   scheduled_date: schedule.scheduled_date,
                   confirmed_at: schedule.confirmed_at,
                   version: schedule.version,
+                  ...(item.expected_route_order !== undefined
+                    ? { route_order: item.expected_route_order }
+                    : {}),
                   ...(shouldGuardVehicleResource
                     ? { vehicle_resource_id: schedule.vehicle_resource_id }
                     : {}),
@@ -876,6 +889,9 @@ const authenticatedPATCH = withAuthContext(
                 schedule_id: item.schedule_id,
                 previous_route_order: scheduleById.get(item.schedule_id)?.route_order ?? null,
                 route_order: item.route_order,
+                ...(item.expected_route_order !== undefined
+                  ? { expected_route_order: item.expected_route_order }
+                  : {}),
                 scheduled_date: item.scheduled_date ?? null,
                 pharmacist_id: item.pharmacist_id ?? null,
                 previous_vehicle_resource_id:
@@ -928,6 +944,9 @@ const authenticatedPATCH = withAuthContext(
       }
       if (result.error === 'confirmed_route_change') {
         return validationError('電話確定済みの訪問予定は順路を変更できません');
+      }
+      if (result.error === 'stale_route_order') {
+        return conflict('route_order の反映対象が同時に更新されました。再読み込みしてください');
       }
       if (result.error === 'route_status_locked') {
         return validationError('完了済みまたは中止済みの訪問予定は順路を変更できません');

@@ -1,6 +1,7 @@
 export type VisitScheduleRouteUpdate = {
   scheduleId: string;
   route_order: number;
+  expected_route_order?: number | null;
   scheduled_date?: string;
   pharmacist_id?: string;
 };
@@ -14,12 +15,14 @@ export type VisitScheduleVehicleAssignment = {
 export type VisitScheduleProposalRouteUpdate = {
   proposal_id: string;
   route_order: number;
+  expected_route_order?: number | null;
 };
 
 export type VisitMixedRouteUpdate = {
   item_type: 'schedule' | 'proposal';
   id: string;
   route_order: number;
+  expected_route_order?: number | null;
 };
 
 export type VisitRouteConfirmationSource =
@@ -58,6 +61,9 @@ export async function applyVisitScheduleRouteUpdates(args: {
       updates: args.updates.map((update) => ({
         schedule_id: update.scheduleId,
         route_order: update.route_order,
+        ...(update.expected_route_order !== undefined
+          ? { expected_route_order: update.expected_route_order }
+          : {}),
         ...(update.scheduled_date ? { scheduled_date: update.scheduled_date } : {}),
         ...(update.pharmacist_id ? { pharmacist_id: update.pharmacist_id } : {}),
       })),

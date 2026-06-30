@@ -311,6 +311,7 @@ export function ConflictResolutionContent({ initialDate }: { initialDate?: strin
             scheduled_date: targetDate,
             pharmacist_id: draft.targetPharmacist.id,
             route_order: draft.routeOrder,
+            expected_route_order: draft.targetSchedule.route_order,
           },
         ],
         confirmationContext: {

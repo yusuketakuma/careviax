@@ -301,6 +301,28 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
     );
   });
 
+  it('rejects stale expected route_order before proposal route writes', async () => {
+    proposalFindManyMock.mockResolvedValueOnce([buildProposalFixture({ route_order: 2 })]);
+
+    const response = (await PATCH(
+      createRequest({
+        route_order_updates: [
+          { proposal_id: 'proposal_1', route_order: 1, expected_route_order: 1 },
+        ],
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'route_order の反映対象が同時に更新されました。再読み込みしてください',
+    });
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('rejects arbitrary audit source text before transaction side effects', async () => {
     const response = (await PATCH(
       createRequest({

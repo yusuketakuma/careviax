@@ -168,6 +168,7 @@ describe('ConflictResolutionContent', () => {
           scheduled_date: '2026-04-09',
           pharmacist_id: 'ph_2',
           route_order: 1,
+          expected_route_order: 1,
         },
       ],
       confirmation_context: {

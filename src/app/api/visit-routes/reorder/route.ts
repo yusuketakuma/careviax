@@ -43,6 +43,7 @@ const mixedRouteOrderUpdateSchema = z.object({
   item_type: z.enum(['schedule', 'proposal']),
   id: z.string().trim().min(1),
   route_order: z.number().int().min(1),
+  expected_route_order: z.number().int().min(1).nullable().optional(),
 });
 
 const mixedRouteReorderSchema = z.object({
@@ -54,6 +55,7 @@ type MixedRouteReorderError =
   | 'not_found'
   | 'locked'
   | 'mismatch'
+  | 'stale_route_order'
   | 'duplicate_route_order'
   | 'vehicle_route_duration_exceeded';
 type MixedRouteReorderResult =
@@ -223,6 +225,7 @@ const authenticatedPATCH = withAuthContext(
                     proposed_pharmacist_id: true,
                     finalized_schedule_id: true,
                     proposal_status: true,
+                    route_order: true,
                   },
                 })
               : Promise.resolve([]),
@@ -241,6 +244,16 @@ const authenticatedPATCH = withAuthContext(
 
           const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
           const proposalById = new Map(proposals.map((proposal) => [proposal.id, proposal]));
+          const staleSchedule = scheduleUpdates.find((item) => {
+            if (item.expected_route_order === undefined) return false;
+            return scheduleById.get(item.id)?.route_order !== item.expected_route_order;
+          });
+          const staleProposal = proposalUpdates.find((item) => {
+            if (item.expected_route_order === undefined) return false;
+            return proposalById.get(item.id)?.route_order !== item.expected_route_order;
+          });
+          if (staleSchedule || staleProposal) return { error: 'stale_route_order' as const };
+
           const routeCells = updates.map((item) => {
             if (item.item_type === 'schedule') {
               const schedule = scheduleById.get(item.id);
@@ -468,6 +481,9 @@ const authenticatedPATCH = withAuthContext(
                   id: item.id,
                   pharmacist_id: firstCell.pharmacistId,
                   scheduled_date: new Date(firstCell.dateKey),
+                  ...(item.expected_route_order !== undefined
+                    ? { route_order: item.expected_route_order }
+                    : {}),
                   ...(schedule?.vehicle_resource_id
                     ? { vehicle_resource_id: schedule.vehicle_resource_id }
                     : {}),
@@ -490,6 +506,9 @@ const authenticatedPATCH = withAuthContext(
                   id: item.id,
                   proposed_pharmacist_id: firstCell.pharmacistId,
                   proposed_date: new Date(firstCell.dateKey),
+                  ...(item.expected_route_order !== undefined
+                    ? { route_order: item.expected_route_order }
+                    : {}),
                   finalized_schedule_id: null,
                   proposal_status: { in: OPEN_PROPOSAL_STATUSES },
                   ...(proposalAssignmentWhere ? { AND: [proposalAssignmentWhere] } : {}),
@@ -509,11 +528,19 @@ const authenticatedPATCH = withAuthContext(
               pharmacist_id: firstCell.pharmacistId,
               schedule_updates: scheduleUpdates.map((item) => ({
                 schedule_id: item.id,
+                previous_route_order: scheduleById.get(item.id)?.route_order ?? null,
                 route_order: item.route_order,
+                ...(item.expected_route_order !== undefined
+                  ? { expected_route_order: item.expected_route_order }
+                  : {}),
               })),
               proposal_updates: proposalUpdates.map((item) => ({
                 proposal_id: item.id,
+                previous_route_order: proposalById.get(item.id)?.route_order ?? null,
                 route_order: item.route_order,
+                ...(item.expected_route_order !== undefined
+                  ? { expected_route_order: item.expected_route_order }
+                  : {}),
               })),
               confirmation_context: parsed.data.confirmation_context ?? null,
             },
@@ -545,6 +572,9 @@ const authenticatedPATCH = withAuthContext(
       }
       if (result.error === 'mismatch') {
         return validationError('同一薬剤師・同一日の訪問予定と候補のみ route_order を更新できます');
+      }
+      if (result.error === 'stale_route_order') {
+        return conflict('route_order の反映対象が同時に更新されました。再読み込みしてください');
       }
       if (result.error === 'duplicate_route_order') {
         return validationError('同一セル内で route_order は重複できません');

@@ -1449,17 +1449,24 @@ export function ScheduleProposalsContent({
     currentIds: currentDetailRouteIds,
   });
   const detailProposalRouteUpdates = useMemo<VisitScheduleProposalRouteUpdate[]>(() => {
+    if (!detail) return [];
+    const proposalById = new Map(
+      [detail, ...detail.related_proposals].map((proposal) => [proposal.id, proposal]),
+    );
     return detailRouteDraft.draftIds
-      .map((item, index) =>
-        item.startsWith('proposal:')
-          ? {
-              proposal_id: item.replace('proposal:', ''),
-              route_order: index + 1,
-            }
-          : null,
-      )
-      .filter((item): item is VisitScheduleProposalRouteUpdate => item != null);
-  }, [detailRouteDraft.draftIds]);
+      .map((item, index) => {
+        if (!item.startsWith('proposal:')) return null;
+        const proposalId = item.replace('proposal:', '');
+        const proposal = proposalById.get(proposalId);
+        if (!proposal) return null;
+        return {
+          proposal_id: proposalId,
+          route_order: index + 1,
+          expected_route_order: proposal.route_order,
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item != null);
+  }, [detail, detailRouteDraft.draftIds]);
   const proposalRouteConfirmItems = useMemo(() => {
     if (!detail) return [];
     const proposalById = new Map(

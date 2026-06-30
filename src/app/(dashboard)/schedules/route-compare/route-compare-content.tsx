@@ -17,7 +17,12 @@ import { timeIsoToMinutes } from '@/lib/visits/time-of-day';
 import { cn } from '@/lib/utils';
 import type { ScheduleDayBoardResponse } from '@/types/schedule-day-board';
 import type { VisitRoutePlan, VisitRouteTravelMode } from '@/types/visit-route';
-import type { VisitSchedule } from '../day-view.shared';
+import {
+  formatNullableTimeRange,
+  formatShortEntityIdentifier,
+  PREPARATION_ITEMS,
+  type VisitSchedule,
+} from '../day-view.shared';
 import { fetchVisitSchedulesWindow } from '../visit-schedule-fetch.helpers';
 import { applyVisitScheduleRouteUpdates } from '../visit-route-client';
 import { ScheduleDateNavigator } from '../schedule-date-navigator';
@@ -191,6 +196,20 @@ function toRouteOrderTarget(schedule: VisitSchedule): RouteOrderTarget {
     startMinutes: isoTimeToMinutes(schedule.time_window_start),
     confirmedAt: schedule.confirmed_at,
   };
+}
+
+function schedulePreparationEvidenceLabel(schedule: VisitSchedule) {
+  const incompleteLabels = PREPARATION_ITEMS.filter(
+    ([field]) => !schedule.preparation?.[field],
+  ).map(([, label]) => label);
+
+  if (incompleteLabels.length === 0) return '訪問準備: 完了';
+
+  const visibleLabels = incompleteLabels.slice(0, 2).join(' / ');
+  const hiddenCount = incompleteLabels.length - 2;
+  return hiddenCount > 0
+    ? `未完準備: ${visibleLabels} / 他${hiddenCount}件`
+    : `未完準備: ${visibleLabels}`;
 }
 
 /** 折れ線+番号ノードの模式チャート(地図ではなく訪問順 1→n の進行を示す) */
@@ -559,6 +578,29 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
         : null,
     [routeDetail, scenarios],
   );
+  const confirmRouteRows = useMemo(() => {
+    if (!confirmScenario) return [];
+
+    const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
+    return buildScenarioRouteOrderUpdates({ scenario: confirmScenario, allVisits })
+      .map((update) => {
+        const schedule = scheduleById.get(update.scheduleId);
+        if (!schedule) return null;
+
+        return {
+          currentOrder: schedule.route_order,
+          idLabel: formatShortEntityIdentifier(schedule.id),
+          nextOrder: update.route_order,
+          patientName: schedule.case_.patient.name,
+          preparationEvidence: schedulePreparationEvidenceLabel(schedule),
+          timeWindowLabel: formatNullableTimeRange(
+            schedule.time_window_start,
+            schedule.time_window_end,
+          ),
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null);
+  }, [allVisits, confirmScenario, schedules]);
 
   const applyMutation = useMutation({
     mutationFn: async (scenario: RouteScenario) => {
@@ -894,7 +936,35 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
         onConfirm={() => {
           if (confirmScenario) applyMutation.mutate(confirmScenario);
         }}
-      />
+      >
+        {confirmRouteRows.length > 0 ? (
+          <div className="space-y-2 text-sm">
+            <p className="text-xs font-medium text-muted-foreground">反映対象の訪問準備</p>
+            <ul className="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-border/70 p-2">
+              {confirmRouteRows.map((row) => (
+                <li
+                  key={`${row.idLabel}-${row.nextOrder}`}
+                  className="rounded-md bg-muted/30 px-3 py-2"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-medium text-foreground">{row.patientName}</p>
+                    <p className="text-xs font-semibold text-foreground">
+                      #{row.currentOrder ?? '-'} → #{row.nextOrder}
+                    </p>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {row.timeWindowLabel} / ID {row.idLabel}
+                  </p>
+                  <p className="mt-1 text-xs text-state-confirm">{row.preparationEvidence}</p>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs leading-5 text-muted-foreground">
+              住所、電話番号、薬剤名、処方の細部はこの確認画面には表示しません。訪問順と未完準備を確認してから反映してください。
+            </p>
+          </div>
+        ) : null}
+      </ConfirmDialog>
     </div>
   );
 }

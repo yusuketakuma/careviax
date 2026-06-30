@@ -35,17 +35,20 @@ vi.mock('@/components/ui/confirm-dialog', () => ({
     title,
     description,
     confirmLabel,
+    children,
     onConfirm,
   }: {
     open: boolean;
     title: string;
     description: string;
     confirmLabel?: string;
+    children?: ReactNode;
     onConfirm: () => void;
   }) =>
     open ? (
       <div role="alertdialog" aria-label={title}>
         <p>{description}</p>
+        {children}
         <button type="button" onClick={onConfirm}>
           {confirmLabel}
         </button>
@@ -361,18 +364,26 @@ describe('RouteCompareContent', () => {
 
     const scenarioB = screen.getByLabelText('案B 希望時間優先');
     fireEvent.click(within(scenarioB).getByRole('button', { name: 'この案を使う' }));
-    fireEvent.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'この案を使う' }),
-    );
+    const confirmDialog = screen.getByRole('alertdialog');
+    expect(within(confirmDialog).getByText('反映対象の訪問準備')).toBeTruthy();
+    expect(within(confirmDialog).getByText('伊藤 キヨ')).toBeTruthy();
+    expect(within(confirmDialog).getByText('#1 → #2')).toBeTruthy();
+    expect(
+      within(confirmDialog).getAllByText(
+        '未完準備: 薬歴・前回変更の確認 / 持参薬・物品確認 / 他3件',
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(confirmDialog.textContent ?? '').not.toContain('東京都千代田区3-3-3');
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: 'この案を使う' }));
 
     await waitFor(() => expect(toastSuccessMock).toHaveBeenCalled());
     const reorderRequest = fetchCalls.find((call) => call.url === '/api/visit-schedules/reorder');
     expect(reorderRequest?.body).toMatchObject({
       updates: [
-        { schedule_id: 'visit-b', route_order: 2 },
-        { schedule_id: 'visit-a', route_order: 3 },
-        { schedule_id: 'visit-c', route_order: 4 },
-        { schedule_id: 'facility-1', route_order: 5 },
+        { schedule_id: 'visit-b', route_order: 2, expected_route_order: 1 },
+        { schedule_id: 'visit-a', route_order: 3, expected_route_order: 2 },
+        { schedule_id: 'visit-c', route_order: 4, expected_route_order: 3 },
+        { schedule_id: 'facility-1', route_order: 5, expected_route_order: 4 },
       ],
       confirmation_context: {
         source: 'route_compare_adoption',
@@ -401,10 +412,10 @@ describe('RouteCompareContent', () => {
     const reorderRequest = fetchCalls.find((call) => call.url === '/api/visit-schedules/reorder');
     expect(reorderRequest?.body).toMatchObject({
       updates: [
-        { schedule_id: 'visit-c', route_order: 2 },
-        { schedule_id: 'visit-a', route_order: 3 },
-        { schedule_id: 'visit-b', route_order: 4 },
-        { schedule_id: 'facility-1', route_order: 5 },
+        { schedule_id: 'visit-c', route_order: 2, expected_route_order: 3 },
+        { schedule_id: 'visit-a', route_order: 3, expected_route_order: 2 },
+        { schedule_id: 'visit-b', route_order: 4, expected_route_order: 1 },
+        { schedule_id: 'facility-1', route_order: 5, expected_route_order: 4 },
       ],
       confirmation_context: {
         source: 'route_compare_adoption',

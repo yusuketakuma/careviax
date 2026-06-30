@@ -32,7 +32,9 @@ const routeOrderConfirmationContextSchema = z.object({
 const proposalRouteOrderUpdateSchema = z.object({
   proposal_id: z.string().trim().min(1),
   route_order: z.number().int().min(1),
+  expected_route_order: z.number().int().min(1).nullable().optional(),
 });
+type ProposalRouteOrderUpdate = z.infer<typeof proposalRouteOrderUpdateSchema>;
 
 const reorderVisitScheduleProposalSchema = z.union([
   z.object({
@@ -49,6 +51,7 @@ type ProposalRouteReorderError =
   | 'not_found'
   | 'locked'
   | 'mismatch'
+  | 'stale_route_order'
   | 'confirmation_context_mismatch'
   | 'duplicate_route_order';
 type ProposalRouteReorderResult =
@@ -123,10 +126,13 @@ const authenticatedPATCH = withAuthContext(
     const orderedIds = orderedInput
       ? orderedInput
       : (explicitInput ?? []).map((item) => item.proposal_id);
-    const explicitUpdates = explicitInput
+    const explicitUpdates: ProposalRouteOrderUpdate[] | null = explicitInput
       ? explicitInput.map((item) => ({
           proposal_id: item.proposal_id,
           route_order: item.route_order,
+          ...(item.expected_route_order !== undefined
+            ? { expected_route_order: item.expected_route_order }
+            : {}),
         }))
       : null;
 
@@ -149,6 +155,7 @@ const authenticatedPATCH = withAuthContext(
               proposed_pharmacist_id: true,
               finalized_schedule_id: true,
               proposal_status: true,
+              route_order: true,
             },
           });
 
@@ -166,6 +173,14 @@ const authenticatedPATCH = withAuthContext(
           });
           if (mismatch) {
             return { error: 'mismatch' as const };
+          }
+          const proposalById = new Map(proposals.map((proposal) => [proposal.id, proposal]));
+          const staleRouteOrder = explicitUpdates?.find((item) => {
+            if (item.expected_route_order === undefined) return false;
+            return proposalById.get(item.proposal_id)?.route_order !== item.expected_route_order;
+          });
+          if (staleRouteOrder) {
+            return { error: 'stale_route_order' as const };
           }
 
           const confirmationContext = parsed.data.confirmation_context;
@@ -189,7 +204,7 @@ const authenticatedPATCH = withAuthContext(
             return { error: 'locked' as const };
           }
 
-          const updates =
+          const updates: ProposalRouteOrderUpdate[] =
             mode === 'ordered'
               ? orderedIds.map((proposalId, index) => ({
                   proposal_id: proposalId,
@@ -223,6 +238,9 @@ const authenticatedPATCH = withAuthContext(
                   id: item.proposal_id,
                   proposed_pharmacist_id: first.proposed_pharmacist_id,
                   proposed_date: new Date(firstDateKey),
+                  ...(item.expected_route_order !== undefined
+                    ? { route_order: item.expected_route_order }
+                    : {}),
                   finalized_schedule_id: null,
                   proposal_status: { in: OPEN_PROPOSAL_STATUSES },
                   ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
@@ -247,7 +265,11 @@ const authenticatedPATCH = withAuthContext(
                 mode === 'explicit'
                   ? updates.map((item) => ({
                       proposal_id: item.proposal_id,
+                      previous_route_order: proposalById.get(item.proposal_id)?.route_order ?? null,
                       route_order: item.route_order,
+                      ...(item.expected_route_order !== undefined
+                        ? { expected_route_order: item.expected_route_order }
+                        : {}),
                     }))
                   : undefined,
               proposed_date: first.proposed_date.toISOString(),
@@ -285,6 +307,9 @@ const authenticatedPATCH = withAuthContext(
       }
       if (result.error === 'locked') {
         return validationError('確定済みまたは却下済みの候補は並べ替えできません');
+      }
+      if (result.error === 'stale_route_order') {
+        return conflict('route_order の反映対象が同時に更新されました。再読み込みしてください');
       }
       if (result.error === 'confirmation_context_mismatch') {
         return validationError('確認コンテキストが訪問候補の対象セルと一致しません');

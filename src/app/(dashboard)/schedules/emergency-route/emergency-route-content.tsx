@@ -295,9 +295,13 @@ export function buildEmergencyRouteApplyPlan(args: {
     .map((schedule) => {
       const routeOrder = assignedRouteOrders.get(schedule.id);
       if (routeOrder == null || routeOrder === schedule.route_order) return null;
-      return { scheduleId: schedule.id, route_order: routeOrder };
+      return {
+        scheduleId: schedule.id,
+        route_order: routeOrder,
+        expected_route_order: schedule.route_order,
+      };
     })
-    .filter((update): update is VisitScheduleRouteUpdate => Boolean(update));
+    .filter((update): update is NonNullable<typeof update> => Boolean(update));
 
   if (updates.length === 0) {
     return {

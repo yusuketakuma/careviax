@@ -286,8 +286,20 @@ describe('/api/visit-routes/reorder PATCH', () => {
           changes: expect.objectContaining({
             date: '2026-04-09',
             pharmacist_id: 'user_1',
-            schedule_updates: [{ schedule_id: 'schedule_1', route_order: 2 }],
-            proposal_updates: [{ proposal_id: 'proposal_1', route_order: 1 }],
+            schedule_updates: [
+              expect.objectContaining({
+                schedule_id: 'schedule_1',
+                previous_route_order: null,
+                route_order: 2,
+              }),
+            ],
+            proposal_updates: [
+              expect.objectContaining({
+                proposal_id: 'proposal_1',
+                previous_route_order: null,
+                route_order: 1,
+              }),
+            ],
             confirmation_context: {
               source: 'weekly_optimizer_mixed_route_preview',
               date: '2026-04-09',
@@ -301,6 +313,39 @@ describe('/api/visit-routes/reorder PATCH', () => {
       }),
     );
     expect(notifyWorkflowMutationMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects stale expected route_order before mixed route writes', async () => {
+    scheduleFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'schedule_1',
+        case_id: 'case_schedule',
+        pharmacist_id: 'user_1',
+        scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+        route_order: 2,
+      },
+    ]);
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [
+          {
+            item_type: 'schedule',
+            id: 'schedule_1',
+            route_order: 1,
+            expected_route_order: 1,
+          },
+        ],
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'route_order の反映対象が同時に更新されました。再読み込みしてください',
+    });
+    expectNoWriteAuditOrNotify();
   });
 
   it('rejects arbitrary audit source text before writes', async () => {

@@ -461,8 +461,18 @@ describe('ScheduleWeeklyOptimizer', () => {
     const requestBody = JSON.parse(fetchCalls[0][1].body as string);
     expect(requestBody).toEqual({
       updates: [
-        { item_type: 'proposal', id: 'proposal_1', route_order: 1 },
-        { item_type: 'schedule', id: 'schedule_1', route_order: 2 },
+        {
+          item_type: 'proposal',
+          id: 'proposal_1',
+          route_order: 1,
+          expected_route_order: 2,
+        },
+        {
+          item_type: 'schedule',
+          id: 'schedule_1',
+          route_order: 2,
+          expected_route_order: 1,
+        },
       ],
       confirmation_context: {
         source: 'weekly_optimizer_mixed_route_preview',

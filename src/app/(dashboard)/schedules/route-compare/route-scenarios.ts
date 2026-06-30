@@ -547,6 +547,7 @@ export type RouteOrderTarget = {
 export type RouteOrderUpdate = {
   scheduleId: string;
   route_order: number;
+  expected_route_order: number | null;
 };
 
 /**
@@ -597,7 +598,11 @@ export function buildScenarioRouteOrderUpdates(args: {
       while (fixedRouteOrders.has(nextRouteOrder)) {
         nextRouteOrder += 1;
       }
-      updates.push({ scheduleId: visit.scheduleId, route_order: nextRouteOrder });
+      updates.push({
+        scheduleId: visit.scheduleId,
+        route_order: nextRouteOrder,
+        expected_route_order: visit.routeOrder,
+      });
       nextRouteOrder += 1;
     }
   }

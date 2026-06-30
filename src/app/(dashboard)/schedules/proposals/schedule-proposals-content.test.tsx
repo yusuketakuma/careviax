@@ -1232,8 +1232,8 @@ describe('ScheduleProposalsContent', () => {
     );
     expect(JSON.parse(reorderRequest?.[1]?.body as string)).toEqual({
       route_order_updates: [
-        { proposal_id: 'proposal_2', route_order: 1 },
-        { proposal_id: 'proposal_1', route_order: 2 },
+        { proposal_id: 'proposal_2', route_order: 1, expected_route_order: 2 },
+        { proposal_id: 'proposal_1', route_order: 2, expected_route_order: 1 },
       ],
       confirmation_context: {
         source: 'proposal_detail_route_preview',
