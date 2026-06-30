@@ -162,6 +162,9 @@ async function authenticatedPOST(req: NextRequest) {
             max_stops: parsed.data.max_stops,
             max_route_duration_minutes: parsed.data.max_route_duration_minutes ?? null,
             available: parsed.data.available,
+            next_inspection_date: parsed.data.next_inspection_date
+              ? new Date(parsed.data.next_inspection_date)
+              : null,
             notes: parsed.data.notes ?? null,
           },
           include: {

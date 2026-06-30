@@ -306,6 +306,7 @@ describe('/api/visit-vehicle-resources', () => {
         max_stops: 6,
         max_route_duration_minutes: 180,
         available: true,
+        next_inspection_date: '2026-07-31',
         notes: ' 軽自動車 ',
       }),
     );
@@ -333,6 +334,7 @@ describe('/api/visit-vehicle-resources', () => {
         max_stops: 6,
         max_route_duration_minutes: 180,
         available: true,
+        next_inspection_date: new Date('2026-07-31'),
         notes: '軽自動車',
       },
       include: {
@@ -359,11 +361,29 @@ describe('/api/visit-vehicle-resources', () => {
           max_stops: 6,
           max_route_duration_minutes: 180,
           available: true,
-          next_inspection_date: null,
+          next_inspection_date: '2026-07-31',
           notes_present: true,
         },
       },
     );
+  });
+
+  it('rejects invalid vehicle inspection dates before reference checks', async () => {
+    const response = await POST(
+      createPostRequest({
+        site_id: 'site_1',
+        label: '社用車A',
+        next_inspection_date: '2026-13-99',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitVehicleResourceCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('rejects invalid vehicle resource payloads before reference checks', async () => {

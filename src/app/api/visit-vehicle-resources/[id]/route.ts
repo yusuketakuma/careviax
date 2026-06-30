@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
-import { z } from 'zod';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
@@ -30,17 +29,6 @@ function safeErrorName(err: unknown): string {
   return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
 }
 
-/**
- * 次回点検期限(next_inspection_date / @db.Date)用の任意フィールド。
- * 空文字は null(クリア)に正規化する。日付のみ(UTC 深夜保存)。
- */
-const nextInspectionDateSchema = z
-  .preprocess(
-    (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
-    z.string().date().nullable(),
-  )
-  .optional();
-
 async function authenticatedPATCH(req: NextRequest, params: Promise<{ id: string }>) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
@@ -62,14 +50,6 @@ async function authenticatedPATCH(req: NextRequest, params: Promise<{ id: string
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    // next_inspection_date は共有スキーマ外の専用カラムなので個別に検証する。
-    const parsedInspectionDate = nextInspectionDateSchema.safeParse(payload.next_inspection_date);
-    if (!parsedInspectionDate.success) {
-      return validationError('入力値が不正です', {
-        next_inspection_date: parsedInspectionDate.error.flatten().formErrors,
-      });
-    }
-
     // 指定されたフィールドのみ更新対象にする(undefined は据え置き、null はクリア)。
     const data = {
       ...(parsed.data.label !== undefined ? { label: parsed.data.label } : {}),
@@ -82,10 +62,10 @@ async function authenticatedPATCH(req: NextRequest, params: Promise<{ id: string
       ...(parsed.data.available !== undefined ? { available: parsed.data.available } : {}),
       ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes } : {}),
       // 日付のみ文字列は UTC 深夜の Date として保存(@db.Date 規約)。null はクリア。
-      ...(parsedInspectionDate.data !== undefined
+      ...(parsed.data.next_inspection_date !== undefined
         ? {
-            next_inspection_date: parsedInspectionDate.data
-              ? new Date(parsedInspectionDate.data)
+            next_inspection_date: parsed.data.next_inspection_date
+              ? new Date(parsed.data.next_inspection_date)
               : null,
           }
         : {}),

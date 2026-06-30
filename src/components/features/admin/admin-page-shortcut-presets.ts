@@ -16,6 +16,14 @@ export function getAdminStaffShortcutLinks(): PageShortcutLink[] {
   ];
 }
 
+export function getAdminVehiclesShortcutLinks(): PageShortcutLink[] {
+  return [
+    { href: '/schedules', label: 'スケジュール' },
+    { href: '/schedules/proposals', label: 'スケジュール提案' },
+    { href: '/admin/pharmacy-sites', label: '薬局情報' },
+  ];
+}
+
 export function getAdminFacilitiesShortcutLinks(): PageShortcutLink[] {
   return [
     { href: '/admin/pharmacy-sites', label: '薬局情報' },

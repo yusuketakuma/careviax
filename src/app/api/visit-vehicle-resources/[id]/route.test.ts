@@ -199,6 +199,17 @@ describe('/api/visit-vehicle-resources/[id]', () => {
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
+  it('updates only the inspection date without treating the payload as empty', async () => {
+    const response = await createPatchRequest('vehicle_1', { next_inspection_date: '' });
+
+    expect(response.status).toBe(200);
+    expect(visitVehicleResourceUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { next_inspection_date: null },
+      }),
+    );
+  });
+
   it('rejects an empty update payload', async () => {
     const response = await createPatchRequest('vehicle_1', {});
 

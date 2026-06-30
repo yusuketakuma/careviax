@@ -8,6 +8,17 @@ const optionalTrimmedStringSchema = z
   .transform((value) => (value === '' ? null : value))
   .optional();
 
+/**
+ * Optional date-only field for VisitVehicleResource.next_inspection_date (@db.Date).
+ * Empty strings intentionally clear the value.
+ */
+export const visitVehicleResourceInspectionDateSchema = z
+  .preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
+    z.string().date().nullable(),
+  )
+  .optional();
+
 export const createVisitVehicleResourceSchema = z.object({
   site_id: z.string().trim().min(1, '店舗IDは必須です'),
   label: z.string().trim().min(1, '車両名は必須です'),
@@ -22,6 +33,7 @@ export const createVisitVehicleResourceSchema = z.object({
     .nullable()
     .optional(),
   available: z.boolean().default(true),
+  next_inspection_date: visitVehicleResourceInspectionDateSchema,
   notes: optionalTrimmedStringSchema,
 });
 
@@ -40,6 +52,7 @@ export const updateVisitVehicleResourceSchema = z
       .nullable()
       .optional(),
     available: z.boolean().optional(),
+    next_inspection_date: visitVehicleResourceInspectionDateSchema,
     notes: optionalTrimmedStringSchema,
   })
   .refine((value) => Object.values(value).some((field) => field !== undefined), {
