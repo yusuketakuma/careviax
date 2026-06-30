@@ -1,6 +1,8 @@
 import { format, startOfMonth } from 'date-fns';
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
-import { success } from '@/lib/api/response';
+import { internalError, success } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { buildTodayOpsRail } from '@/server/services/today-ops-rail';
 import type { MasterHubCard, MasterHubResponse } from '@/types/master-hub';
@@ -83,7 +85,7 @@ function daysUntil(target: Date, now: Date): number {
   return Math.round((targetStart.getTime() - todayStart.getTime()) / 86_400_000);
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (_req, ctx) => {
     const now = new Date();
     const monthStart = startOfMonth(now);
@@ -307,8 +309,8 @@ export const GET = withAuthContext(
         next_action_hint: facilityLatest
           ? '最新施設の訪問条件を確認する'
           : '施設・訪問先を登録する',
-        action_label: '→ 訪問へ',
-        action_href: '/visits',
+        action_label: '→ 施設へ',
+        action_href: '/admin/facilities',
       };
 
       // ── スタッフ・権限 ──────────────────────────────────────────────
@@ -323,8 +325,8 @@ export const GET = withAuthContext(
         note: '本日の休みはスケジュールに反映済み。権限はロール×モードのマトリクス管理',
         issue_count: 0,
         next_action_hint: '本日のシフトと権限を確認する',
-        action_label: '→ スケジュールへ',
-        action_href: '/schedules',
+        action_label: '→ スタッフへ',
+        action_href: '/admin/staff',
       };
 
       // ── 備品マスター ────────────────────────────────────────────────
@@ -378,7 +380,7 @@ export const GET = withAuthContext(
         issue_count: 0,
         next_action_hint: '点検期限と稼働可否を確認する',
         action_label: '点検を予約',
-        action_href: '/schedules',
+        action_href: '/admin/vehicles',
       };
       if (
         nearestInspection &&
@@ -544,3 +546,15 @@ export const GET = withAuthContext(
     message: 'マスター整備状況の閲覧権限がありません',
   },
 );
+
+export async function GET(
+  req: Parameters<typeof authenticatedGET>[0],
+  routeContext: Parameters<typeof authenticatedGET>[1],
+) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+}

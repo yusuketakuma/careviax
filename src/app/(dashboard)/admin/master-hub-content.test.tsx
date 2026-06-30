@@ -83,8 +83,8 @@ function buildFixture(): MasterHubResponse {
         note: 'グリーンヒルの鍵・駐車情報は6/9更新 — 訪問パケットに反映済み',
         issue_count: 0,
         next_action_hint: '最新施設の訪問条件を確認する',
-        action_label: '→ 訪問へ',
-        action_href: '/visits',
+        action_label: '→ 施設へ',
+        action_href: '/admin/facilities',
       },
       {
         key: 'staff',
@@ -97,8 +97,8 @@ function buildFixture(): MasterHubResponse {
         note: '本日の休みはスケジュールに反映済み。権限はロール×モードのマトリクス管理',
         issue_count: 0,
         next_action_hint: '本日のシフトと権限を確認する',
-        action_label: '→ スケジュールへ',
-        action_href: '/schedules',
+        action_label: '→ スタッフへ',
+        action_href: '/admin/staff',
       },
       {
         key: 'equipment',
@@ -126,7 +126,7 @@ function buildFixture(): MasterHubResponse {
         issue_count: 1,
         next_action_hint: '軽バン2号の点検を予約する',
         action_label: '点検を予約',
-        action_href: '/schedules',
+        action_href: '/admin/vehicles',
       },
       {
         key: 'pharmacy_sites',
@@ -304,6 +304,12 @@ describe('MasterHubContent', () => {
 
     // 他職種・備品・薬局拠点・稼働日設定・配薬帳票・請求ルールをハブに含める
     expect(within(cards[2]).getByText('他職種マスター')).toBeTruthy();
+    expect(within(cards[3]).getByRole('link', { name: '→ 施設へ' }).getAttribute('href')).toBe(
+      '/admin/facilities',
+    );
+    expect(within(cards[4]).getByRole('link', { name: '→ スタッフへ' }).getAttribute('href')).toBe(
+      '/admin/staff',
+    );
     expect(within(cards[5]).getByText('備品マスター')).toBeTruthy();
     expect(within(cards[7]).getByText('薬局拠点マスター')).toBeTruthy();
     expect(within(cards[8]).getByText('稼働日設定')).toBeTruthy();
@@ -324,7 +330,9 @@ describe('MasterHubContent', () => {
       ),
     ).toBeTruthy();
     expect(within(cards[6]).getByText('軽バン2号の点検を予約する')).toBeTruthy();
-    expect(within(cards[6]).getByRole('link', { name: '点検を予約' })).toBeTruthy();
+    expect(within(cards[6]).getByRole('link', { name: '点検を予約' }).getAttribute('href')).toBe(
+      '/admin/vehicles',
+    );
 
     expect(screen.getByTestId('master-hub-freshness-note').textContent).toContain(
       'マスターは鮮度の画面',
