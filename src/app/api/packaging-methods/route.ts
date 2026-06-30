@@ -4,11 +4,11 @@ import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
-import { prisma } from '@/lib/db/client';
 import { createPackagingMethodSchema } from '@/lib/validations/packaging-method';
 
 const DEFAULT_PACKAGING_METHOD_LIMIT = 100;
 const MAX_PACKAGING_METHOD_LIMIT = 200;
+const PACKAGING_METHOD_COUNT_BASIS = 'packaging_methods';
 
 export const GET = withAuthContext(
   async (req, ctx) => {
@@ -20,25 +20,42 @@ export const GET = withAuthContext(
       MAX_PACKAGING_METHOD_LIMIT,
     );
 
-    const methods = await prisma.packagingMethodMaster.findMany({
-      where: {
-        org_id: ctx.orgId,
-      },
-      orderBy: [{ sort_order: 'asc' }, { created_at: 'asc' }],
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        icon_key: true,
-        sort_order: true,
-        is_active: true,
-        created_at: true,
-        updated_at: true,
-      },
-      take: limit,
-    });
+    const where = { org_id: ctx.orgId };
 
-    return success({ data: methods });
+    const [totalCount, methods] = await withOrgContext(ctx.orgId, (tx) =>
+      Promise.all([
+        tx.packagingMethodMaster.count({ where }),
+        tx.packagingMethodMaster.findMany({
+          where,
+          orderBy: [{ sort_order: 'asc' }, { created_at: 'asc' }],
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            icon_key: true,
+            sort_order: true,
+            is_active: true,
+            created_at: true,
+            updated_at: true,
+          },
+          take: limit,
+        }),
+      ]),
+    );
+
+    const visibleCount = methods.length;
+    const hiddenCount = Math.max(totalCount - visibleCount, 0);
+
+    return success({
+      data: methods,
+      total_count: totalCount,
+      visible_count: visibleCount,
+      hidden_count: hiddenCount,
+      truncated: hiddenCount > 0,
+      count_basis: PACKAGING_METHOD_COUNT_BASIS,
+      filters_applied: {},
+      limit,
+    });
   },
   {
     permission: 'canVisit',

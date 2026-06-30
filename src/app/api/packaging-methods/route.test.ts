@@ -3,11 +3,13 @@ import { NextRequest } from 'next/server';
 
 const {
   packagingMethodFindManyMock,
+  packagingMethodCountMock,
   packagingMethodCreateMock,
   auditLogCreateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   packagingMethodFindManyMock: vi.fn(),
+  packagingMethodCountMock: vi.fn(),
   packagingMethodCreateMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -27,6 +29,7 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     packagingMethodMaster: {
       findMany: packagingMethodFindManyMock,
+      count: packagingMethodCountMock,
     },
   },
 }));
@@ -73,6 +76,7 @@ describe('/api/packaging-methods', () => {
         is_active: true,
       },
     ]);
+    packagingMethodCountMock.mockResolvedValue(1);
     packagingMethodCreateMock.mockResolvedValue({
       id: 'method_2',
       name: 'カレンダー',
@@ -85,6 +89,8 @@ describe('/api/packaging-methods', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         packagingMethodMaster: {
+          count: packagingMethodCountMock,
+          findMany: packagingMethodFindManyMock,
           create: packagingMethodCreateMock,
         },
         auditLog: {
@@ -115,8 +121,20 @@ describe('/api/packaging-methods', () => {
       },
       take: 5,
     });
+    expect(packagingMethodCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+      },
+    });
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'method_1', name: '一包化' }],
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'packaging_methods',
+      filters_applied: {},
+      limit: 5,
     });
   });
 
@@ -142,6 +160,42 @@ describe('/api/packaging-methods', () => {
     );
     await expect(response.json()).resolves.toMatchObject({
       data: [],
+    });
+  });
+
+  it('returns counted metadata when the bounded list hides packaging methods', async () => {
+    packagingMethodFindManyMock.mockResolvedValue([
+      {
+        id: 'method_1',
+        name: '一包化',
+        description: '1回ごとの分包',
+        icon_key: 'package',
+        sort_order: 1,
+        is_active: true,
+      },
+      {
+        id: 'method_2',
+        name: '服薬カレンダー',
+        description: '曜日別ケース',
+        icon_key: 'calendar',
+        sort_order: 2,
+        is_active: true,
+      },
+    ]);
+    packagingMethodCountMock.mockResolvedValue(5);
+
+    const response = (await GET(createGetRequest('?limit=2')))!;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: 'method_1' }, { id: 'method_2' }],
+      total_count: 5,
+      visible_count: 2,
+      hidden_count: 3,
+      truncated: true,
+      count_basis: 'packaging_methods',
+      filters_applied: {},
+      limit: 2,
     });
   });
 

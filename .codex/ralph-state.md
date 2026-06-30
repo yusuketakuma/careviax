@@ -20,6 +20,32 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-2017 JST
+
+- current task: focus today-ops rail fallback exception actions on the workflow exception dashboard.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox for `phos/codex2`, remaining generic action-link search results, `src/server/services/today-ops-rail.ts`, `src/server/services/today-ops-rail.test.ts`, `src/types/today-ops-rail.ts`, `src/lib/dashboard/home-link-builders.ts`, and today-ops rail consumers. Concurrent dirty packaging-methods and visit-schedule files were preserved.
+- files changed: `src/server/services/today-ops-rail.ts`, `src/server/services/today-ops-rail.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: unknown workflow exceptions in the shared today-ops rail fell back to generic `/workflow`, so billing, master, dashboard, patient, schedule, visit, and report rail consumers could open the wrong workflow section for visit/workflow blockers.
+- security risks found: reduced wrong-workspace navigation drift without exposing additional PHI or changing auth, RLS, API response shape, live DB operations, external sends, migrations, push/deploy, secret handling, or destructive operations.
+- performance issues found: URL construction only via the existing dashboard link builder; no query, dependency, network call, background job, unbounded loop, or render-heavy path was added.
+- validation commands: focused today-ops rail / home-link-builder Vitest; scoped ESLint; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused Vitest passed `2` files / `8` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- remaining work: broad visit/report/collaboration objective remains open; continue scanning remaining aggregate links after preserving unrelated packaging-methods and visit-schedule WIP.
+- next action: commit only the today-ops rail fallback slice, send agmsg FYI, then continue non-overlapping visit/report/collaboration gaps.
+
+### 20260630-2016 JST
+
+- current task: add counted-list metadata to the packaging-method master and surface hidden-row state in the admin page.
+- files inspected: `git status --short --branch --untracked-files=all`, `git log --oneline -n 6`, `.codex/ralph-state.md`, `CODEX_GOAL_PROGRESS.md`, local Next.js Route Handler docs, `docs/ui-ux-design-guidelines.md`, capped master API search results, `src/app/api/packaging-methods/route.ts`, `src/app/api/packaging-methods/route.test.ts`, `src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.tsx`, `src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx`, and packaging method API consumers. Concurrent dirty visit-schedule/today-ops files were inspected via status and preserved.
+- files changed: `src/app/api/packaging-methods/route.ts`, `src/app/api/packaging-methods/route.test.ts`, `src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.tsx`, `src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: `GET /api/packaging-methods` used a bounded `take` limit but returned only `data`, so the admin page could treat the visible rows as the whole packaging-method master.
+- security risks found: reduced false-complete master-management risk while exposing only aggregate count metadata and visible rows. Hidden packaging method details beyond the bounded rows, PHI, secrets, auth/RLS weakening, migrations, live DB operations, external sends, push/deploy, and destructive operations were not added.
+- performance issues found: added one scoped `packagingMethodMaster.count` query using the same org predicate as the bounded list query. No dependency, network call, background job, broad scan outside the org predicate, unbounded loop, or render-heavy path was added.
+- validation commands: focused packaging API/admin UI Vitest; scoped ESLint; scoped Prettier write/check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused Vitest passed `2` files / `19` tests. Scoped ESLint, scoped Prettier check, scoped diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- remaining work: broad master-management/patient-information goal remains open. Continue scanning capped master APIs, patient selectors, and generic patient/workflow action links. Preserve unrelated dirty visit-schedule/today-ops WIP unless explicitly claiming it.
+- next action: stage only the packaging-methods files and this ledger slice, commit, then re-check dirty ownership before selecting the next slice.
+
 ### 20260630-2013 JST
 
 - current task: focus workflow dashboard role-inbox and exception actions on existing workflow focus targets.

@@ -30,6 +30,50 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Today Ops Rail Exception Focus - 2026-06-30 20:17 JST
+
+- Scope:
+  - Continued visit/report/collaboration navigation hardening in the shared today-ops rail used by billing, master, dashboard, patient, schedule, visit, and report surfaces.
+- Fixed:
+  - Unknown workflow exception fallback actions now open `/workflow?focus=exceptions` instead of the generic workflow top.
+  - Existing exception-specific actions such as family consent communication requests and delivery-target contact profiles remain unchanged.
+- Safety:
+  - Reduces wrong-workspace drift when staff follow a visit/workflow blocker from shared right-rail surfaces.
+  - Does not expose additional PHI or change auth/RLS/API response boundaries.
+- Performance:
+  - URL construction only through the existing dashboard link builder.
+- Validation:
+  - `pnpm exec vitest run src/server/services/today-ops-rail.test.ts src/lib/dashboard/home-link-builders.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `8` tests.
+  - Scoped ESLint on today-ops rail files: passed.
+  - Scoped Prettier check and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Continue scanning remaining aggregate workflow/report/collaboration destinations.
+
+### Packaging Method Master Counted Metadata - 2026-06-30 20:16 JST
+
+- Scope:
+  - Continued master-management hardening for the packaging-method master used by set planning and patient default packaging workflows.
+- Fixed:
+  - `GET /api/packaging-methods` now returns `total_count`, `visible_count`, `hidden_count`, `truncated`, `count_basis`, `filters_applied`, and `limit` while preserving the existing `data` array.
+  - The packaging-method admin page now displays exact list counts and warns when additional packaging methods are hidden by the bounded response.
+  - The GET path now reads through `withOrgContext` so the count and row query share the same org/RLS context as packaging-method writes.
+- Safety:
+  - Reduces false-complete packaging-method master risk while exposing only aggregate counts and visible rows.
+  - No hidden packaging method details, PHI, auth weakening, schema migration, live DB operation, external send, push/deploy, secret handling, or destructive operation was added.
+- Performance:
+  - Adds one scoped `packagingMethodMaster.count` query using the same org predicate as the bounded list query.
+- Validation:
+  - `pnpm exec vitest run src/app/api/packaging-methods/route.test.ts 'src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `2` files / `19` tests.
+  - Scoped ESLint on packaging-method API/admin UI files: passed.
+  - Scoped Prettier write/check and scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Continue scanning other bounded master APIs and patient-linked selectors for false-empty/hidden-row behavior.
+  - Preserve unrelated dirty visit-schedule/today-ops WIP unless explicitly claimed.
+
 ### Partner Visit Physician Report Labs - 2026-06-30 19:59 JST
 
 - Scope:

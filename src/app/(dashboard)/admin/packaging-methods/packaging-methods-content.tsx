@@ -27,6 +27,17 @@ type PackagingMethodRow = {
   is_active: boolean;
 };
 
+type PackagingMethodsResponse = {
+  data: PackagingMethodRow[];
+  total_count?: number;
+  visible_count?: number;
+  hidden_count?: number;
+  truncated?: boolean;
+  count_basis?: 'packaging_methods';
+  filters_applied?: Record<string, unknown>;
+  limit?: number;
+};
+
 const emptyForm = {
   id: '',
   name: '',
@@ -48,7 +59,7 @@ export function PackagingMethodsContent() {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('配薬方法マスターの取得に失敗しました');
-      return res.json() as Promise<{ data: PackagingMethodRow[] }>;
+      return res.json() as Promise<PackagingMethodsResponse>;
     },
     enabled: !!orgId,
   });
@@ -84,6 +95,11 @@ export function PackagingMethodsContent() {
   });
 
   const methods = methodsQuery.data?.data ?? [];
+  const totalMethodCount = methodsQuery.data?.total_count ?? methods.length;
+  const visibleMethodCount = methodsQuery.data?.visible_count ?? methods.length;
+  const hiddenMethodCount =
+    methodsQuery.data?.hidden_count ?? Math.max(totalMethodCount - methods.length, 0);
+  const isMethodListTruncated = Boolean(methodsQuery.data?.truncated || hiddenMethodCount > 0);
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(22rem,0.42fr)_minmax(0,1fr)]">
@@ -174,6 +190,13 @@ export function PackagingMethodsContent() {
           <CardDescription>
             セット管理と患者の既定配薬方法で選択できるマスターです。
           </CardDescription>
+          {methodsQuery.data ? (
+            <p className="text-xs text-muted-foreground">
+              {isMethodListTruncated
+                ? `先頭${visibleMethodCount.toLocaleString()}件を表示 / 他${hiddenMethodCount.toLocaleString()}件`
+                : `登録${totalMethodCount.toLocaleString()}件`}
+            </p>
+          ) : null}
         </CardHeader>
         <CardContent>
           {methodsQuery.isError ? (
@@ -201,37 +224,44 @@ export function PackagingMethodsContent() {
               配薬方法が未登録です。セット作成前に最低1件登録してください。
             </p>
           ) : (
-            <div className="grid gap-3 md:grid-cols-2">
-              {methods.map((method) => (
-                <button
-                  key={method.id}
-                  type="button"
-                  className="rounded-lg border border-border/70 bg-background p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/30"
-                  onClick={() =>
-                    setForm({
-                      id: method.id,
-                      name: method.name,
-                      description: method.description ?? '',
-                      icon_key: method.icon_key ?? '',
-                      sort_order: String(method.sort_order),
-                      is_active: method.is_active,
-                    })
-                  }
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-medium text-foreground">{method.name}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {method.description ?? '説明未登録'}
-                      </p>
+            <div className="space-y-3">
+              {isMethodListTruncated ? (
+                <p className="rounded-md border border-state-confirm/40 bg-state-confirm/5 px-3 py-2 text-xs text-state-confirm">
+                  {`配薬方法マスターは先頭${visibleMethodCount.toLocaleString()}件のみ表示中です。他${hiddenMethodCount.toLocaleString()}件は表示順を見直すか、limit を上げて確認してください。`}
+                </p>
+              ) : null}
+              <div className="grid gap-3 md:grid-cols-2">
+                {methods.map((method) => (
+                  <button
+                    key={method.id}
+                    type="button"
+                    className="rounded-lg border border-border/70 bg-background p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/30"
+                    onClick={() =>
+                      setForm({
+                        id: method.id,
+                        name: method.name,
+                        description: method.description ?? '',
+                        icon_key: method.icon_key ?? '',
+                        sort_order: String(method.sort_order),
+                        is_active: method.is_active,
+                      })
+                    }
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-foreground">{method.name}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {method.description ?? '説明未登録'}
+                        </p>
+                      </div>
+                      <Badge variant={method.is_active ? 'default' : 'secondary'}>
+                        {method.is_active ? '有効' : '無効'}
+                      </Badge>
                     </div>
-                    <Badge variant={method.is_active ? 'default' : 'secondary'}>
-                      {method.is_active ? '有効' : '無効'}
-                    </Badge>
-                  </div>
-                  <p className="mt-2 text-xs text-muted-foreground">表示順 {method.sort_order}</p>
-                </button>
-              ))}
+                    <p className="mt-2 text-xs text-muted-foreground">表示順 {method.sort_order}</p>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </CardContent>

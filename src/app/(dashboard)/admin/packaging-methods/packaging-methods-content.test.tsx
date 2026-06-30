@@ -86,7 +86,16 @@ function stubFetchOk() {
 beforeEach(() => {
   vi.clearAllMocks();
   useOrgIdMock.mockReturnValue('org_1');
-  useQueryMock.mockReturnValue({ data: { data: [METHOD] } });
+  useQueryMock.mockReturnValue({
+    data: {
+      data: [METHOD],
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'packaging_methods',
+    },
+  });
   useMutationMock.mockReturnValue({ mutate: mutateMock, isPending: false });
 });
 
@@ -103,6 +112,7 @@ describe('PackagingMethodsContent', () => {
     expect(screen.getByRole('switch', { name: '有効' })).toBeTruthy();
     expect(screen.getByText('一包化')).toBeTruthy();
     expect(screen.getByText('1回ごとの分包')).toBeTruthy();
+    expect(screen.getByText('登録1件')).toBeTruthy();
   });
 
   it('loads an existing method into the form for editing', () => {
@@ -189,6 +199,28 @@ describe('PackagingMethodsContent', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(refetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows hidden packaging method counts when the API result is truncated', () => {
+    useQueryMock.mockReturnValue({
+      data: {
+        data: [METHOD],
+        total_count: 4,
+        visible_count: 1,
+        hidden_count: 3,
+        truncated: true,
+        count_basis: 'packaging_methods',
+      },
+    });
+
+    render(<PackagingMethodsContent />);
+
+    expect(screen.getByText('先頭1件を表示 / 他3件')).toBeTruthy();
+    expect(
+      screen.getByText(
+        '配薬方法マスターは先頭1件のみ表示中です。他3件は表示順を見直すか、limit を上げて確認してください。',
+      ),
+    ).toBeTruthy();
   });
 
   it('shows loading (not the empty-state) while the query is pending, including an unresolved orgId', () => {
