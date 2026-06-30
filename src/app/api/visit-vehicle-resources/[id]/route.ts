@@ -12,6 +12,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
 import { updateVisitVehicleResourceSchema } from '@/lib/validations/visit-vehicle-resource';
+import { buildVisitVehicleResourceUpdatedAuditChanges } from '@/server/services/visit-vehicle-resource-audit';
 
 const ROUTE = '/api/visit-vehicle-resources/[id]';
 const SAFE_ERROR_NAMES = new Set([
@@ -95,7 +96,18 @@ async function authenticatedPATCH(req: NextRequest, params: Promise<{ id: string
       async (tx) => {
         const existing = await tx.visitVehicleResource.findFirst({
           where: { id, org_id: ctx.orgId },
-          select: { id: true },
+          select: {
+            id: true,
+            site_id: true,
+            label: true,
+            vehicle_code: true,
+            travel_mode: true,
+            max_stops: true,
+            max_route_duration_minutes: true,
+            available: true,
+            next_inspection_date: true,
+            notes: true,
+          },
         });
         if (!existing) return null;
 
@@ -112,12 +124,15 @@ async function authenticatedPATCH(req: NextRequest, params: Promise<{ id: string
           },
         });
 
-        await createAuditLogEntry(tx, ctx, {
-          action: 'visit_vehicle_resource_updated',
-          targetType: 'VisitVehicleResource',
-          targetId: id,
-          changes: data,
-        });
+        const auditChanges = buildVisitVehicleResourceUpdatedAuditChanges(existing, resource);
+        if (Object.keys(auditChanges).length > 0) {
+          await createAuditLogEntry(tx, ctx, {
+            action: 'visit_vehicle_resource_updated',
+            targetType: 'VisitVehicleResource',
+            targetId: id,
+            changes: auditChanges,
+          });
+        }
 
         return resource;
       },

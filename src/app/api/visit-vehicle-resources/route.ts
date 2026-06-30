@@ -2,6 +2,7 @@ import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -14,6 +15,7 @@ import {
   createVisitVehicleResourceSchema,
   visitVehicleResourceQuerySchema,
 } from '@/lib/validations/visit-vehicle-resource';
+import { buildVisitVehicleResourceCreatedAuditChanges } from '@/server/services/visit-vehicle-resource-audit';
 
 const ROUTE = '/api/visit-vehicle-resources';
 const DEFAULT_VISIT_VEHICLE_RESOURCE_LIMIT = 100;
@@ -130,8 +132,8 @@ async function authenticatedPOST(req: NextRequest) {
 
     const resource = await withOrgContext(
       ctx.orgId,
-      (tx) =>
-        tx.visitVehicleResource.create({
+      async (tx) => {
+        const created = await tx.visitVehicleResource.create({
           data: {
             org_id: ctx.orgId,
             site_id: parsed.data.site_id,
@@ -151,7 +153,17 @@ async function authenticatedPOST(req: NextRequest) {
               },
             },
           },
-        }),
+        });
+
+        await createAuditLogEntry(tx, ctx, {
+          action: 'visit_vehicle_resource_created',
+          targetType: 'VisitVehicleResource',
+          targetId: created.id,
+          changes: buildVisitVehicleResourceCreatedAuditChanges(created),
+        });
+
+        return created;
+      },
       { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
 

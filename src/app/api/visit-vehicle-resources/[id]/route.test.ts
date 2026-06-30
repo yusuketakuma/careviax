@@ -74,15 +74,30 @@ function expectNoStore(response: Response) {
   expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
+const existingVehicleResource = {
+  id: 'vehicle_1',
+  site_id: 'site_1',
+  label: '旧軽バン',
+  vehicle_code: 'old-car-1',
+  travel_mode: 'DRIVE',
+  max_stops: 8,
+  max_route_duration_minutes: 240,
+  available: true,
+  next_inspection_date: null,
+  notes: '旧メモ',
+};
+
 describe('/api/visit-vehicle-resources/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin', site_id: null });
-    visitVehicleResourceFindFirstMock.mockResolvedValue({ id: 'vehicle_1' });
+    visitVehicleResourceFindFirstMock.mockResolvedValue(existingVehicleResource);
     visitVehicleResourceUpdateMock.mockImplementation(async ({ where, data }) => ({
+      ...existingVehicleResource,
       id: where.id,
       ...data,
+      site: { id: 'site_1', name: '本店' },
     }));
     createAuditLogEntryMock.mockResolvedValue(undefined);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -102,6 +117,7 @@ describe('/api/visit-vehicle-resources/[id]', () => {
       travel_mode: 'BICYCLE',
       max_stops: 4,
       available: false,
+      next_inspection_date: '2026-06-21',
       notes: ' 点検期限 6/21 ',
     });
 
@@ -118,7 +134,18 @@ describe('/api/visit-vehicle-resources/[id]', () => {
     });
     expect(visitVehicleResourceFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'vehicle_1', org_id: 'org_1' },
-      select: { id: true },
+      select: {
+        id: true,
+        site_id: true,
+        label: true,
+        vehicle_code: true,
+        travel_mode: true,
+        max_stops: true,
+        max_route_duration_minutes: true,
+        available: true,
+        next_inspection_date: true,
+        notes: true,
+      },
     });
     expect(visitVehicleResourceUpdateMock).toHaveBeenCalledWith({
       where: { id: 'vehicle_1' },
@@ -128,6 +155,7 @@ describe('/api/visit-vehicle-resources/[id]', () => {
         travel_mode: 'BICYCLE',
         max_stops: 4,
         available: false,
+        next_inspection_date: new Date('2026-06-21'),
         notes: '点検期限 6/21',
       },
       include: {
@@ -146,6 +174,15 @@ describe('/api/visit-vehicle-resources/[id]', () => {
         action: 'visit_vehicle_resource_updated',
         targetType: 'VisitVehicleResource',
         targetId: 'vehicle_1',
+        changes: {
+          label: { from: '旧軽バン', to: '軽バン1号' },
+          vehicle_code: { from: 'old-car-1', to: null },
+          travel_mode: { from: 'DRIVE', to: 'BICYCLE' },
+          max_stops: { from: 8, to: 4 },
+          available: { from: true, to: false },
+          next_inspection_date: { from: null, to: '2026-06-21' },
+          notes: { changed: true, from_present: true, to_present: true },
+        },
       }),
     );
   });
@@ -159,6 +196,7 @@ describe('/api/visit-vehicle-resources/[id]', () => {
         data: { available: true },
       }),
     );
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('rejects an empty update payload', async () => {

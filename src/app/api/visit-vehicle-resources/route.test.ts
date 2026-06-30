@@ -8,6 +8,7 @@ const {
   withOrgContextMock,
   visitVehicleResourceFindManyMock,
   visitVehicleResourceCreateMock,
+  createAuditLogEntryMock,
   loggerErrorMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
@@ -16,6 +17,7 @@ const {
   withOrgContextMock: vi.fn(),
   visitVehicleResourceFindManyMock: vi.fn(),
   visitVehicleResourceCreateMock: vi.fn(),
+  createAuditLogEntryMock: vi.fn(),
   loggerErrorMock: vi.fn(),
 }));
 
@@ -37,6 +39,10 @@ vi.mock('@/lib/api/org-reference', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
 }));
 
 vi.mock('@/lib/utils/logger', () => ({
@@ -86,6 +92,7 @@ describe('/api/visit-vehicle-resources', () => {
       id: 'vehicle_1',
       ...data,
     }));
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitVehicleResource: {
@@ -273,6 +280,26 @@ describe('/api/visit-vehicle-resources', () => {
         },
       },
     });
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      {
+        action: 'visit_vehicle_resource_created',
+        targetType: 'VisitVehicleResource',
+        targetId: 'vehicle_1',
+        changes: {
+          site_id: 'site_1',
+          label: '社用車A',
+          vehicle_code: 'car-1',
+          travel_mode: 'DRIVE',
+          max_stops: 6,
+          max_route_duration_minutes: 180,
+          available: true,
+          next_inspection_date: null,
+          notes_present: true,
+        },
+      },
+    );
   });
 
   it('rejects invalid vehicle resource payloads before reference checks', async () => {
@@ -290,6 +317,7 @@ describe('/api/visit-vehicle-resources', () => {
     expect(validateOrgReferencesMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitVehicleResourceCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('returns no-store auth failure before parsing POST body or writing vehicle resources', async () => {
