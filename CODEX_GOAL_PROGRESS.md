@@ -82,6 +82,10 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Focused report-delivery dashboard Vitest passed `1` file / `9` tests.
   - Scoped ESLint, scoped Prettier check, and scoped diff-check on report-delivery dashboard files: passed.
   - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
 - Remaining:
   - Broad visit-time, report, and multi-professional cooperation objective remains open.
   - Analytics still represents overdue deliveries as overdue even after snooze, because snooze controls follow-up task timing rather than external recipient response state.
