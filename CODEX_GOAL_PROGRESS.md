@@ -25028,6 +25028,63 @@ Next loop:
   - The broad visit/report/interprofessional collaboration goal remains open.
   - Mapper identified additional high-value focused-link gaps in `workflow-dashboard-sections`, `operational-task-presentation`, `visits-today`, and conferences. Prefer currently clean, server/helper-only slices first.
 
+### Operating Hours Stale Save Guard - 2026-06-30 17:47 JST
+
+- Scope:
+  - Continued master-management hardening for the pharmacy operating-hours master.
+  - Focused on preventing stale admin screens from overwriting operating-day settings after another user/process has changed them.
+- Fixed:
+  - `GET /api/pharmacy-operating-hours` now returns `weekly_updated_at`, the latest stored weekly-row `updated_at` timestamp, or `null` when no weekly rows exist yet.
+  - `PUT /api/pharmacy-operating-hours` now requires `expected_weekly_updated_at` and rejects stale versions with `409 WORKFLOW_CONFLICT` before any upsert or audit write.
+  - The operating-hours admin UI now preserves the fetched weekly version and sends it with saves.
+  - PUT success responses include the new weekly version so subsequent saves use the current precondition.
+- Safety:
+  - Reduces lost-update risk for a root scheduling master that affects visit planning and operating-day calculations.
+  - Conflict details include only version timestamps and a conflict type; no PHI, patient names, notes, or raw internal errors are exposed.
+  - Existing admin permission checks, org-reference validation, RLS `withOrgContext`, no-store wrappers, sanitized 500 handling, and audit-on-success behavior remain intact.
+  - No migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Reuses the existing pre-write `findMany` inside the transaction and computes the latest timestamp in memory across at most 7 weekly rows.
+  - No new query family, dependency, background job, broad scan, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/pharmacy-operating-hours/route.test.ts 'src/app/(dashboard)/admin/operating-hours/operating-hours-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `2` files / `17` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint`: passed.
+- Remaining:
+  - The broad master-management/patient-information goal remains open.
+  - Do not broad-stage because unrelated report/share and schedule/routing files are dirty in the same worktree.
+
+### Schedule Planner Travel Limit Unit Hardening - 2026-06-30 17:50 JST
+
+- Scope:
+  - Continued schedule-management hardening for visit proposal generation.
+  - Focused on `max_travel_minutes` correctness when road routing is unavailable or geocodes are missing.
+- Fixed:
+  - Added shared fallback travel-speed conversion in `road-routing.ts` and reused it from the route engine and planner.
+  - Planner fallback route cost now converts haversine distance to minutes by travel mode instead of comparing km to `max_travel_minutes`.
+  - `max_travel_minutes` checks now use actual adjacent candidate travel minutes, not the route insertion delta after subtracting a bypass leg.
+  - Candidates with a configured travel cap and unverifiable geocode/route minutes now fail closed with `travel_limit_unverified`.
+  - Route-engine tests now mock only `createRoadTravelEstimator` while using the real fallback conversion helper.
+- Safety:
+  - Reduces false-accepted visit proposals that could exceed pharmacist travel limits and cause downstream schedule/medication-continuity risk.
+  - Keeps missing-geocode cases structured in diagnostics instead of burying "unverified" in accepted proposal free text.
+  - No auth/RLS policy, permission, PHI export, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - No new DB query, dependency, background job, broad scan, or unbounded loop was added.
+  - The planner reuses the existing pairwise route-estimate calls and small in-memory score calculations.
+- Validation:
+  - `pnpm exec vitest run src/server/services/road-routing.test.ts src/server/services/visit-schedule-planner.test.ts src/server/services/visit-route-engine.test.ts src/server/services/visit-route-engine.locked.test.ts --reporter=dot --testTimeout=60000`: passed, `4` files / `51` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm test:schedule-time:tz`: passed, `30` files / `522` tests.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` on the owned schedule/routing files passed.
+  - Medical-safety follow-up review reported no remaining blockers in the owned seven-file diff.
+- Remaining:
+  - The broad schedule-management goal remains open.
+  - Next schedule gaps: proposal planner vehicle `max_route_duration_minutes` and heuristic route round-trip consistency.
+  - Do not broad-stage ledgers because they already contain unrelated dirty operating-hours/report/patient progress from other slices.
+
 ### Workflow Dashboard Focused Collaboration Links - 2026-06-30 17:58 JST
 
 - Scope:
@@ -25056,6 +25113,65 @@ Next loop:
 - Remaining:
   - The broad visit/report/interprofessional collaboration goal remains open.
   - Remaining clean candidates include operational-task-presentation schedule/proposal routing and conferences single-draft CTA; avoid dirty operating-hours/patient/visit-route files.
+
+### Operating Hours Stale Conflict UX - 2026-06-30 17:56 JST
+
+- Scope:
+  - Closed the UI recovery gap after adding the operating-hours API stale-save guard.
+  - Focused on making a `409 WORKFLOW_CONFLICT` visible and preventing repeated stale submits from the same admin screen.
+- Fixed:
+  - The operating-hours save mutation now preserves failed PUT status in a typed client error.
+  - `409` conflicts now render an inline alert near the weekly editor instead of only the generic toast path.
+  - The conflict alert offers a reload action so the admin can fetch the current root master state before editing again.
+  - The save button is disabled while a stale-save conflict is active, preventing retry loops with the same `expected_weekly_updated_at`.
+  - Added regression coverage for conflict display, reload affordance, disabled resubmit, and one-shot stale PUT behavior.
+- Safety:
+  - Reduces lost-update and false-confidence risk for operating-hours master edits that feed visit planning and operating-day resolution.
+  - Conflict messaging exposes only the need to reload current master data; no PHI, patient data, raw internals, or secrets are shown.
+  - Existing admin authorization, org headers, no-store behavior, audit-on-success behavior, and API conflict contract remain intact.
+  - No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Adds only local UI state and conditional rendering.
+  - No new query, dependency, background job, broad scan, unbounded loop, or render-heavy path was added.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/admin/operating-hours/operating-hours-content.tsx' 'src/app/(dashboard)/admin/operating-hours/operating-hours-content.test.tsx'`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/operating-hours/operating-hours-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `1` file / `8` tests.
+  - `pnpm exec vitest run src/app/api/pharmacy-operating-hours/route.test.ts 'src/app/(dashboard)/admin/operating-hours/operating-hours-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `2` files / `18` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm lint`: passed.
+- Remaining:
+  - The broad master-management/patient-information goal remains open.
+  - Avoid broad staging because unrelated schedule/workflow dashboard dirty files are present in the same worktree.
+
+### Route Engine Round-Trip Duration Consistency - 2026-06-30 17:59 JST
+
+- Scope:
+  - Continued schedule-management hardening for visit route calculation.
+  - Focused on making heuristic route totals use the same round-trip meaning as the Google Routes provider.
+- Fixed:
+  - Heuristic route calculation now adds the final stop-to-origin leg to `totalDurationSeconds` and `totalDistanceMeters`.
+  - Stop arrival offsets remain visit-arrival-only and do not include the return-to-origin leg.
+  - Added heuristic regression coverage for `origin -> stop A -> stop B -> origin` totals.
+  - Added Google provider parity coverage proving route-level totals are round-trip while stop summaries only include arrival-to-stop legs.
+- Safety:
+  - Reduces false-ok vehicle duration constraint risk when `/api/visit-routes` evaluates heuristic route totals.
+  - Keeps displayed stop ETAs stable for visit arrivals while making total route workload comparable across providers.
+  - No auth/RLS policy, permission, PHI export, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - No new DB query, external request, dependency, background job, broad scan, or unbounded loop was added.
+  - The fix reuses the existing route matrix and reads the current final node to origin cell once.
+- Validation:
+  - `pnpm exec vitest run src/server/services/visit-route-engine.test.ts src/server/services/visit-route-engine.locked.test.ts src/app/api/visit-routes/route.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `34` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm test:schedule-time:tz`: passed, `30` files / `522` tests.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` on the owned route-engine files passed.
+  - Data-integrity review reported no blocker after Google parity coverage was added.
+- Remaining:
+  - The broad schedule-management goal remains open.
+  - Next clean backend gap: proposal planner enforcement of vehicle `max_route_duration_minutes`.
+  - Do not broad-stage ledgers because they already contain unrelated dirty operating-hours/patient/workflow progress from other slices.
 
 ### Operational Visit Task Focused Links - 2026-06-30 18:02 JST
 
@@ -25195,3 +25311,94 @@ Next loop:
 - Remaining:
   - The broad visit/report/interprofessional collaboration goal remains open.
   - Current unrelated dirty paths include operating-hours, service-areas, facilities, pharmacist credentials, patient form, schedule planner/proposal route, ledgers, and `.codex`; keep staging exact.
+
+### Service Area Counted List Metadata - 2026-06-30 18:02 JST
+
+- Scope:
+  - Continued master-management hardening for the visit service-area master.
+  - Focused on the bounded `/api/service-areas` list and the admin page's registered-area summary.
+- Fixed:
+  - `GET /api/service-areas` now returns `total_count`, `visible_count`, `hidden_count`, `truncated`, `count_basis`, `filters_applied`, and `limit` alongside the bounded rows.
+  - The service-area admin page now shows a visible list summary and uses `先頭N件を表示 / 他N件` when the API response is truncated.
+  - Added API coverage for counted metadata, site-filter count basis, and clamped/truncated lists.
+  - Added UI coverage proving the admin page does not present a bounded first page as the whole registered-area list.
+- Safety:
+  - Reduces false-complete master-data risk where hidden visit-area rules could be missed while registering or reviewing patient service-area coverage.
+  - Count metadata contains only counts, filter basis, and limit; it does not expose hidden row names, patient data, notes, addresses, PHI, or raw internals.
+  - Existing admin permissions, org-reference validation, RLS request context, shared path helper behavior, and retryable error handling remain intact.
+  - No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Adds one scoped `serviceArea.count` query using the same org/site predicate as the bounded row query.
+  - No new dependency, background job, broad scan, unbounded loop, network call, or render-heavy path was added.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/service-areas/route.test.ts' 'src/app/(dashboard)/admin/service-areas/page.test.tsx' --reporter=dot --testTimeout=60000`: passed, `2` files / `24` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` on service-area API/UI files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - The broad master-management/patient-information goal remains open.
+  - Next bounded master slice should inspect other capped master APIs and high-risk save/delete actions for missing count metadata, preconditions, or audit-near-action gaps.
+  - Do not broad-stage because operating-hours and patient-form dirty files are still present in the same worktree.
+
+### Facility Search Counted Metadata - 2026-06-30 18:13 JST
+
+- Scope:
+  - Continued master-management and patient-information hardening for the facility master search API used by admin facility references and patient facility selection.
+  - Focused on preventing bounded facility search results from looking complete when additional matching facilities are hidden by the search limit.
+- Fixed:
+  - `GET /api/admin/facilities` search mode now returns `total_count`, `visible_count`, `hidden_count`, `truncated`, `count_basis`, `filters_applied`, and `limit`.
+  - Full-list mode now returns the same count metadata shape with `hidden_count: 0`, preserving older consumers while making count semantics explicit.
+  - Search mode now computes `hasMore` from both fetched overflow and hidden-count metadata.
+  - Added regression coverage for count metadata, shared org/search predicate usage, and the existing detail-sanitized search response.
+  - Fixed the pre-existing dirty `chooseVehicleResourceByRouteDuration` async return type annotation in `visit-schedule-planner.ts` so global type validation can run; no behavior change was intended in that line.
+- Safety:
+  - Reduces false-complete facility master risk when patient/admin workflows search a capped facility list.
+  - Count metadata exposes only counts, count basis, filters, and limit; it does not expose hidden facility names, contacts, addresses beyond the visible rows, patient data, PHI, raw internals, or secrets.
+  - Existing `canVisit`/`canAdmin` authorization, org scoping, no-store responses, residence patient-count aggregation, and sanitized internal error handling remain intact.
+  - No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Adds one scoped `facility.count` query in search mode only, using the same org/search predicate as the bounded row query.
+  - No new dependency, background job, broad scan outside the same predicate, unbounded loop, network call, or render-heavy path was added.
+- Validation:
+  - Read Next route-handler docs and `docs/ui-ux-design-guidelines.md` before the API/UI-facing metadata change.
+  - `pnpm exec prettier --check 'src/app/api/admin/facilities/route.ts' 'src/app/api/admin/facilities/route.test.ts' src/server/services/visit-schedule-planner.ts`: passed.
+  - `pnpm exec vitest run 'src/app/api/admin/facilities/route.test.ts' src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `37` tests.
+  - Scoped `git diff --check` and scoped ESLint on the facility API/test plus planner file: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - The broad master-management/patient-information goal remains open.
+  - Continue inspecting other capped admin master APIs and high-risk patient/master save paths for missing count metadata, stale preconditions, audit-near-action gaps, and false-empty states.
+  - Do not broad-stage because the worktree remains mixed dirty with operating-hours, service-areas, patient-form, visits, and schedule-planner work.
+
+### Pharmacist Credential Counted Metadata - 2026-06-30 18:19 JST
+
+- Scope:
+  - Continued master-management hardening for the pharmacist credential master used to manage certification, tenure, weekly working hours, and patient-facing assignment readiness.
+  - Focused on preventing the capped credential list from looking complete when more credential rows exist beyond the returned page.
+- Fixed:
+  - `GET /api/admin/pharmacist-credentials` now returns `total_count`, `visible_count`, `hidden_count`, `truncated`, `count_basis`, `filters_applied`, and `limit`.
+  - The pharmacist credential admin page now shows a visible count summary and uses `先頭N件を表示 / 他N件` when the API reports hidden rows.
+  - Added API coverage for counted metadata and bounded-list truncation.
+  - Added UI coverage proving the credential list surfaces hidden-row counts instead of presenting the visible rows as the full master.
+- Safety:
+  - Reduces false-complete credential-master risk for pharmacist certification and assignment-readiness operations.
+  - Hidden rows' pharmacist names, certification numbers, consented patient names, PHI, raw internals, and secrets are not exposed; the metadata contains counts, count basis, filters, and limit only.
+  - Existing admin authorization, org scoping, consented-patient filtering for visible rows, path-helper behavior, form validation, retryable error handling, and audit-on-write behavior remain intact.
+  - No auth/RLS policy, permission, migration, live DB operation, external send, secret handling, push/deploy, or destructive operation was added.
+- Performance:
+  - Adds one scoped `pharmacistCredential.count` query with the same org predicate as the bounded row query.
+  - No new dependency, background job, broad scan outside that predicate, unbounded loop, network call, or render-heavy path was added.
+- Validation:
+  - Read `docs/ui-ux-design-guidelines.md` and Next route-handler docs before the API/UI-facing metadata change.
+  - `pnpm exec vitest run src/app/api/admin/pharmacist-credentials/route.test.ts 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `2` files / `27` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` on pharmacist credential API/UI files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - The broad master-management/patient-information goal remains open.
+  - Continue scanning capped admin master APIs such as pharmacist/staff lists, facility standards, external professionals, and patient-linked master selectors for count metadata, stale preconditions, audit-near-action gaps, and false-empty states.
+  - Do not broad-stage because the worktree remains mixed dirty with operating-hours, service-areas, facilities, patient-form, and schedule-planner work.
