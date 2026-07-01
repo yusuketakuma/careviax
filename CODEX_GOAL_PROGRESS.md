@@ -30323,3 +30323,32 @@ Next loop:
 - Remaining:
   - Broad master/report/document-delivery objective remains open.
   - Broader audit parity for document-template and delivery-rule admin mutations remains a follow-up if later review finds additional gaps.
+
+### Admin Master Editor Stub Removal - 2026-07-01 10:54 JST
+
+- Scope:
+  - Continued master-management cleanup after verifying live `/admin/staff`, drug-master, and vehicle pages no longer depend on the fabricated master editor.
+  - Focused on removing the unused sample-only `MasterEditorView` module from `src`.
+- Fixed:
+  - Deleted the obsolete `src/app/(dashboard)/admin/master-editor-view.tsx` component that rendered fixed sample rows and disabled no-op save controls.
+  - Deleted its obsolete component test, which only locked in fabricated sample UI behavior.
+  - Removed dead `master-editor-view` mocks and comments from drug-master and vehicle page tests while keeping assertions that those pages render live-data content components.
+  - Removed the old `MasterEditorView` fixture case from `drug-master-content.test.tsx`.
+- Safety:
+  - Reduces regression risk that an admin master page could accidentally route back to fixed sample rows instead of live API-backed management.
+  - No PHI fields, auth, org/RLS scope, API routes, mutations, external sends, migrations, push/deploy, secret handling, or destructive-operation boundaries were changed.
+- Performance:
+  - Removes unused client UI code and dead test dependency.
+  - Adds no new query, dependency, polling, background job, broad scan, or unbounded loop.
+- Validation:
+  - `rg -n "MasterEditorView|master-editor-view|master-editor-stub" src`: no matches.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/drug-masters/page.test.tsx' 'src/app/(dashboard)/admin/vehicles/page.test.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `3` files / `71` tests.
+  - `pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - Verifier reran the same focused checks and reported PASS.
+- Remaining:
+  - Broad master/report/document-delivery objective remains open.
+  - Continue checking other admin master surfaces for stale fabricated/sample-only UI and continue higher-value patient/document/report hardening slices.
