@@ -6,6 +6,5 @@ export const metadata: Metadata = {
 };
 
 export default function DrugMastersPage() {
-  // Was a fabricated MasterEditorView stub (fixed 薬剤マスター1〜8 / no-op save).
   return <DrugMasterContent variant="master" />;
 }

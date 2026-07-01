@@ -15,7 +15,6 @@ import {
   buildPharmacyDrugStockTemplateApiPath,
   buildPharmacyDrugStockTemplateApplyApiPath,
 } from '@/lib/pharmacy-drug-stocks/api-paths';
-import { MasterEditorView } from '../master-editor-view';
 import { DrugMasterContent, parseReorderPointInput } from './drug-master-content';
 
 setupDomTestEnv();
@@ -846,26 +845,6 @@ describe('DrugMasterContent', () => {
     expect(screen.getByText('published: 2026/6/11')).toBeTruthy();
     expect(screen.getAllByText('mode: 全件').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('summary: 解析 125,000件 / 反映 125,000件')).toBeTruthy();
-  });
-
-  it('renders the p0_39 three-column master editor', () => {
-    render(
-      <MasterEditorView
-        activeCategory="薬剤"
-        listTitle="薬剤マスター一覧"
-        itemPrefix="薬剤マスター"
-        testId="drug-master-editor"
-      />,
-    );
-
-    expect(screen.getByTestId('drug-master-editor')).toBeTruthy();
-    expect(screen.getByText('カテゴリ')).toBeTruthy();
-    // '薬剤マスター一覧' now appears as both the page h1 (AdminPageHeader) and the editor
-    // column h2; scope to the level-2 heading so the assertion stays unambiguous.
-    expect(screen.getByRole('heading', { name: '薬剤マスター一覧', level: 2 })).toBeTruthy();
-    expect(screen.getByText('詳細を編集')).toBeTruthy();
-    expect(screen.getByText('薬剤マスター 8')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '保存する' })).toBeTruthy();
   });
 
   it('shows medication-safety filters for high-risk and LASA review', () => {

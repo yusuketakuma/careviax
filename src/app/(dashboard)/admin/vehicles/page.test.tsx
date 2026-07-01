@@ -28,10 +28,6 @@ vi.mock('./vehicles-content', () => ({
   VehiclesContent: () => <section data-testid="vehicles-content" />,
 }));
 
-vi.mock('../master-editor-view', () => ({
-  MasterEditorView: () => <div data-testid="master-editor-stub">STUB</div>,
-}));
-
 import VehiclesPage from './page';
 
 setupDomTestEnv();
@@ -42,7 +38,6 @@ describe('VehiclesPage', () => {
 
     expect(screen.getByRole('heading', { name: '車両マスター' })).toBeTruthy();
     expect(screen.getByTestId('vehicles-content')).toBeTruthy();
-    expect(screen.queryByTestId('master-editor-stub')).toBeNull();
     expect(adminPageHeaderMock).toHaveBeenCalledWith(
       expect.objectContaining({ supportingContent: null }),
     );
