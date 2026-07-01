@@ -174,18 +174,24 @@ describe('/api/dispense-queue', () => {
     expect(JSON.stringify(body)).not.toContain('山田花子');
     expect(JSON.stringify(body)).not.toContain('東京都千代田区1-1-1');
     expect(JSON.stringify(body)).not.toContain('raw dispense queue drug inquiry');
-    expect(loggerErrorMock).toHaveBeenCalledWith('dispense_queue_get_unhandled_error', undefined, {
-      event: 'dispense_queue_get_unhandled_error',
-      route: '/api/dispense-queue',
-      method: 'GET',
-      status: 500,
-      error_name: 'Error',
-    });
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
-    expect(logged).not.toContain('山田花子');
-    expect(logged).not.toContain('東京都千代田区1-1-1');
-    expect(logged).not.toContain('DispenseQueuePatientSecretError');
+    expect(loggerErrorMock).toHaveBeenCalledOnce();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'dispense_queue_get_unhandled_error',
+        route: '/api/dispense-queue',
+        method: 'GET',
+        status: 500,
+      },
+      unsafeError,
+    );
+    expect(loggerErrorMock.mock.calls[0]?.[0]).not.toHaveProperty('error_name');
+    const loggedContext = JSON.stringify(loggerErrorMock.mock.calls[0]?.[0]);
+    expect(loggedContext).not.toContain('山田花子');
+    expect(loggedContext).not.toContain('東京都千代田区1-1-1');
+    expect(loggedContext).not.toContain('DispenseQueuePatientSecretError');
+    expect(loggedContext).not.toContain('raw dispense queue drug inquiry');
+    expect(loggedContext).not.toContain('patient');
+    expect(loggedContext).not.toContain('drug');
+    expect(loggedContext).not.toContain('inquiry');
   });
 });
