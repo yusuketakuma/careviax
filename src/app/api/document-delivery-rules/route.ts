@@ -57,15 +57,18 @@ export async function GET(req: NextRequest) {
       ...(parsedDocumentType?.success ? { document_type: parsedDocumentType.data } : {}),
     };
 
-    const [rules, totalCount] = await withOrgContext(ctx.orgId, (tx) =>
-      Promise.all([
-        tx.documentDeliveryRule.findMany({
-          where,
-          orderBy: [{ document_type: 'asc' }, { target_role: 'asc' }, { updated_at: 'desc' }],
-          take: limit,
-        }),
-        tx.documentDeliveryRule.count({ where }),
-      ]),
+    const [rules, totalCount] = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        Promise.all([
+          tx.documentDeliveryRule.findMany({
+            where,
+            orderBy: [{ document_type: 'asc' }, { target_role: 'asc' }, { updated_at: 'desc' }],
+            take: limit,
+          }),
+          tx.documentDeliveryRule.count({ where }),
+        ]),
+      { requestContext: ctx },
     );
     const visibleCount = rules.length;
     const hiddenCount = Math.max(totalCount - visibleCount, 0);
@@ -115,17 +118,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const rule = await withOrgContext(ctx.orgId, (tx) =>
-      tx.documentDeliveryRule.create({
-        data: {
-          org_id: ctx.orgId,
-          document_type: parsed.data.document_type,
-          target_role: parsed.data.target_role,
-          channel: parsed.data.channel,
-          fallback_channels: toPrismaJsonInput(parsed.data.fallback_channels),
-          is_active: parsed.data.is_active,
-        },
-      }),
+    const rule = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        tx.documentDeliveryRule.create({
+          data: {
+            org_id: ctx.orgId,
+            document_type: parsed.data.document_type,
+            target_role: parsed.data.target_role,
+            channel: parsed.data.channel,
+            fallback_channels: toPrismaJsonInput(parsed.data.fallback_channels),
+            is_active: parsed.data.is_active,
+          },
+        }),
+      { requestContext: ctx },
     );
 
     return withSensitiveNoStore(success({ data: rule }, 201));

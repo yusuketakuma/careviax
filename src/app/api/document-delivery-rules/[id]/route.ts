@@ -41,27 +41,33 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const ruleId = normalizeRequiredRouteParam(id);
     if (!ruleId) return withSensitiveNoStore(validationError('文書送達ルールIDが不正です'));
 
-    const existing = await withOrgContext(ctx.orgId, (tx) =>
-      tx.documentDeliveryRule.findFirst({
-        where: { id: ruleId, org_id: ctx.orgId },
-        select: { id: true },
-      }),
+    const existing = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        tx.documentDeliveryRule.findFirst({
+          where: { id: ruleId, org_id: ctx.orgId },
+          select: { id: true },
+        }),
+      { requestContext: ctx },
     );
     if (!existing) return withSensitiveNoStore(notFound('文書送達ルールが見つかりません'));
 
-    const updated = await withOrgContext(ctx.orgId, (tx) =>
-      tx.documentDeliveryRule.update({
-        where: { id: ruleId },
-        data: {
-          ...(parsed.data.document_type ? { document_type: parsed.data.document_type } : {}),
-          ...(parsed.data.target_role ? { target_role: parsed.data.target_role } : {}),
-          ...(parsed.data.channel ? { channel: parsed.data.channel } : {}),
-          ...(parsed.data.fallback_channels !== undefined
-            ? { fallback_channels: toPrismaJsonInput(parsed.data.fallback_channels) }
-            : {}),
-          ...(parsed.data.is_active !== undefined ? { is_active: parsed.data.is_active } : {}),
-        },
-      }),
+    const updated = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        tx.documentDeliveryRule.update({
+          where: { id: ruleId },
+          data: {
+            ...(parsed.data.document_type ? { document_type: parsed.data.document_type } : {}),
+            ...(parsed.data.target_role ? { target_role: parsed.data.target_role } : {}),
+            ...(parsed.data.channel ? { channel: parsed.data.channel } : {}),
+            ...(parsed.data.fallback_channels !== undefined
+              ? { fallback_channels: toPrismaJsonInput(parsed.data.fallback_channels) }
+              : {}),
+            ...(parsed.data.is_active !== undefined ? { is_active: parsed.data.is_active } : {}),
+          },
+        }),
+      { requestContext: ctx },
     );
 
     return withSensitiveNoStore(success({ data: updated }));
@@ -90,16 +96,21 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const ruleId = normalizeRequiredRouteParam(id);
     if (!ruleId) return withSensitiveNoStore(validationError('文書送達ルールIDが不正です'));
 
-    const existing = await withOrgContext(ctx.orgId, (tx) =>
-      tx.documentDeliveryRule.findFirst({
-        where: { id: ruleId, org_id: ctx.orgId },
-        select: { id: true },
-      }),
+    const existing = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        tx.documentDeliveryRule.findFirst({
+          where: { id: ruleId, org_id: ctx.orgId },
+          select: { id: true },
+        }),
+      { requestContext: ctx },
     );
     if (!existing) return withSensitiveNoStore(notFound('文書送達ルールが見つかりません'));
 
-    await withOrgContext(ctx.orgId, (tx) =>
-      tx.documentDeliveryRule.delete({ where: { id: ruleId } }),
+    await withOrgContext(
+      ctx.orgId,
+      (tx) => tx.documentDeliveryRule.delete({ where: { id: ruleId } }),
+      { requestContext: ctx },
     );
 
     return withSensitiveNoStore(success({ message: '文書送達ルールを削除しました' }));

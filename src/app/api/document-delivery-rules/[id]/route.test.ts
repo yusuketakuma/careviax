@@ -72,6 +72,19 @@ function expectNoStore(response: Response) {
   expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
+function expectOrgContextBoundToRequestContext() {
+  expect(withOrgContextMock).toHaveBeenCalled();
+  for (const call of withOrgContextMock.mock.calls) {
+    expect(call[2]).toEqual({
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'admin',
+      }),
+    });
+  }
+}
+
 async function expectInternalError(response: Response, rawMessage: string) {
   expect(response.status).toBe(500);
   expectNoStore(response);
@@ -127,6 +140,7 @@ describe('/api/document-delivery-rules/[id]', () => {
           is_active: true,
         },
       });
+      expectOrgContextBoundToRequestContext();
     });
 
     it('rejects malformed JSON update payloads before loading the delivery rule', async () => {
@@ -246,6 +260,7 @@ describe('/api/document-delivery-rules/[id]', () => {
 
       expect(response.status).toBe(200);
       expectNoStore(response);
+      expectOrgContextBoundToRequestContext();
     });
 
     it('rejects blank route ids before loading the delivery rule', async () => {

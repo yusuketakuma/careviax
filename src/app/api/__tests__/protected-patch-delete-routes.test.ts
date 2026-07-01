@@ -136,6 +136,10 @@ import { PATCH as caseTransitionPatch } from '../cases/[id]/transition/route';
 import { PATCH as careReportPatch } from '../care-reports/[id]/route';
 import { PATCH as patientSelfReportPatch } from '../patient-self-reports/[id]/route';
 import { PATCH as communicationRequestPatch } from '../communication-requests/[id]/route';
+import {
+  DELETE as documentDeliveryRuleDelete,
+  PATCH as documentDeliveryRulePatch,
+} from '../document-delivery-rules/[id]/route';
 import { PATCH as inquiryRecordPatch } from '../inquiry-records/[id]/route';
 import { PATCH as firstVisitDocumentPatch } from '../first-visit-documents/[id]/route';
 import { PATCH as medicationCycleTransitionPatch } from '../medication-cycles/[id]/transition/route';
@@ -188,6 +192,8 @@ function routeShouldBeNoStore(routeName: string) {
     routeName === 'set-batches/[id] PATCH' ||
     routeName === 'set-batches/[id] DELETE' ||
     routeName === 'set-plans/[id] PATCH' ||
+    routeName === 'document-delivery-rules/[id] PATCH' ||
+    routeName === 'document-delivery-rules/[id] DELETE' ||
     routeName === 'pca-pumps/[id] PATCH' ||
     routeName === 'pca-pumps/[id] DELETE'
   );
@@ -260,6 +266,28 @@ const permissionRoutes: RouteEntry[] = [
           { expected_updated_at: '2026-06-18T00:00:00.000Z' },
         ),
         { params: Promise.resolve({ id: 'request_1' }) },
+      ),
+  },
+  {
+    name: 'document-delivery-rules/[id] PATCH',
+    handler: () =>
+      documentDeliveryRulePatch(
+        createRequest(
+          'http://localhost/api/document-delivery-rules/rule_1',
+          { 'x-org-id': 'org_1' },
+          { channel: 'fax' },
+        ),
+        { params: Promise.resolve({ id: 'rule_1' }) },
+      ),
+  },
+  {
+    name: 'document-delivery-rules/[id] DELETE',
+    handler: () =>
+      documentDeliveryRuleDelete(
+        createDeleteRequest('http://localhost/api/document-delivery-rules/rule_1', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'rule_1' }) },
       ),
   },
   {

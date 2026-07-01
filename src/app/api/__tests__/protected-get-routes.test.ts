@@ -230,6 +230,7 @@ import { GET as conferenceNoteParticipantSuggestionsGet } from '../conference-no
 import { GET as consentRecordsGet } from '../consent-records/route';
 import { GET as consentRecordGet } from '../consent-records/[id]/route';
 import { GET as contactProfilesGet } from '../contact-profiles/route';
+import { GET as documentDeliveryRulesGet } from '../document-delivery-rules/route';
 import { GET as dashboardClerkSupportGet } from '../dashboard/clerk-support/route';
 import { GET as dashboardCockpitGet } from '../dashboard/cockpit/route';
 import { GET as dashboardDispensingStatsGet } from '../dashboard/dispensing-stats/route';
@@ -804,6 +805,13 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
           'x-org-id': 'org_1',
         }),
         emptyRouteContext,
+      ),
+  },
+  {
+    name: 'document-delivery-rules GET',
+    handler: () =>
+      documentDeliveryRulesGet(
+        createRequest('http://localhost/api/document-delivery-rules', { 'x-org-id': 'org_1' }),
       ),
   },
   {
@@ -1674,6 +1682,33 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
   },
   {
     name: 'visit-records/[id]/handoff GET',
+    setupSuccess: () => {
+      prismaMock.visitRecord.findFirst.mockResolvedValueOnce({
+        id: 'record_1',
+        version: 1,
+        updated_at: new Date('2026-06-18T00:00:00.000Z'),
+        structured_soap: {
+          handoff: {
+            next_check_items: ['次回訪問で残薬を確認'],
+            ongoing_monitoring: [],
+            decision_rationale: null,
+            ai_extracted: true,
+            ai_confidence: 0.82,
+            confirmed_by: null,
+            confirmed_at: null,
+            extracted_at: '2026-06-18T00:00:00.000Z',
+          },
+        },
+        schedule: {
+          pharmacist_id: 'user_1',
+          case_: {
+            primary_pharmacist_id: 'user_1',
+            backup_pharmacist_id: null,
+          },
+        },
+      });
+      prismaMock.visitHandoffExtraction.findUnique.mockResolvedValueOnce(null);
+    },
     handler: () =>
       visitRecordHandoffGet(
         createRequest('http://localhost/api/visit-records/record_1/handoff', {
@@ -2060,6 +2095,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'consent-records GET' ||
         route.name === 'consent-records/[id] GET' ||
         route.name === 'contact-profiles GET' ||
+        route.name === 'document-delivery-rules GET' ||
         route.name === 'notifications GET' ||
         route.name === 'handoff-board GET' ||
         route.name === 'patients/[id]/overview GET' ||
@@ -2196,6 +2232,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'consent-records GET' ||
         route.name === 'consent-records/[id] GET' ||
         route.name === 'contact-profiles GET' ||
+        route.name === 'document-delivery-rules GET' ||
         route.name === 'notifications GET' ||
         route.name === 'handoff-board GET' ||
         route.name === 'patients/[id]/overview GET' ||
@@ -2314,6 +2351,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'consent-records GET' ||
         route.name === 'consent-records/[id] GET' ||
         route.name === 'contact-profiles GET' ||
+        route.name === 'document-delivery-rules GET' ||
         route.name === 'notifications GET' ||
         route.name === 'handoff-board GET' ||
         route.name === 'inquiry-records GET' ||

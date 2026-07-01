@@ -61,6 +61,19 @@ function expectNoStore(response: Response) {
   expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
+function expectOrgContextBoundToRequestContext() {
+  expect(withOrgContextMock).toHaveBeenCalled();
+  for (const call of withOrgContextMock.mock.calls) {
+    expect(call[2]).toEqual({
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'admin',
+      }),
+    });
+  }
+}
+
 async function expectInternalError(response: Response, rawMessage: string) {
   expect(response.status).toBe(500);
   expectNoStore(response);
@@ -113,6 +126,7 @@ describe('/api/document-delivery-rules', () => {
         org_id: 'org_1',
       },
     });
+    expectOrgContextBoundToRequestContext();
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'rule_1' }],
       total_count: 1,
@@ -227,6 +241,7 @@ describe('/api/document-delivery-rules', () => {
         fallback_channels: ['email'],
       }),
     });
+    expectOrgContextBoundToRequestContext();
   });
 
   it('rejects non-object create payloads before opening an org transaction', async () => {

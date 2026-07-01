@@ -46,6 +46,7 @@ import { POST as conferenceNotesPost } from '../conference-notes/route';
 import { POST as conferenceNoteGenerateReportPost } from '../conference-notes/[id]/generate-report/route';
 import { POST as conferenceNoteTasksPost } from '../conference-notes/[id]/tasks/route';
 import { POST as careReportsPost } from '../care-reports/route';
+import { POST as documentDeliveryRulesPost } from '../document-delivery-rules/route';
 import { POST as tasksPost } from '../tasks/route';
 import { POST as consentRecordsPost } from '../consent-records/route';
 import { POST as commentsPost } from '../comments/route';
@@ -145,6 +146,11 @@ const routes: RouteEntry[] = [
     invalidBody: [],
   },
   { name: 'care-reports POST', handler: (req) => careReportsPost(req) },
+  {
+    name: 'document-delivery-rules POST',
+    handler: (req) => documentDeliveryRulesPost(req),
+    invalidBody: [],
+  },
   { name: 'tasks POST', handler: (req) => tasksPost(req), invalidBody: [] },
   { name: 'consent-records POST', handler: (req) => consentRecordsPost(req) },
   { name: 'comments POST', handler: (req) => commentsPost(req) },
@@ -286,6 +292,7 @@ describe('protected POST routes auth/body matrix', () => {
         route.name === 'medication-issues POST' ||
         route.name === 'conference-notes/[id]/generate-report POST' ||
         route.name === 'conference-notes/[id]/tasks POST' ||
+        route.name === 'document-delivery-rules POST' ||
         route.name === 'tasks POST' ||
         route.name === 'pharmacists POST' ||
         route.name === 'pharmacist-shifts POST' ||
@@ -329,6 +336,7 @@ describe('protected POST routes auth/body matrix', () => {
         route.name === 'medication-issues POST' ||
         route.name === 'conference-notes/[id]/generate-report POST' ||
         route.name === 'conference-notes/[id]/tasks POST' ||
+        route.name === 'document-delivery-rules POST' ||
         route.name === 'tasks POST' ||
         route.name === 'pharmacists POST' ||
         route.name === 'pharmacist-shifts POST' ||
@@ -374,6 +382,7 @@ describe('protected POST routes auth/body matrix', () => {
         route.name === 'medication-issues POST' ||
         route.name === 'conference-notes/[id]/generate-report POST' ||
         route.name === 'conference-notes/[id]/tasks POST' ||
+        route.name === 'document-delivery-rules POST' ||
         route.name === 'tasks POST' ||
         route.name === 'pharmacists POST' ||
         route.name === 'pharmacist-shifts POST' ||
