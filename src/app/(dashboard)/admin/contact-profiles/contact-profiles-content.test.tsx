@@ -8,8 +8,30 @@ import { ContactProfilesContent } from './contact-profiles-content';
 
 setupDomTestEnv();
 
+const { buildContactProfilesApiPathMock, buildOrgHeadersMock, buildOrgJsonHeadersMock } =
+  vi.hoisted(() => ({
+    buildContactProfilesApiPathMock: vi.fn((params?: URLSearchParams) => {
+      if (!params) return '/mock/contact-profiles';
+      return `/mock/contact-profiles?${params.toString()}`;
+    }),
+    buildOrgHeadersMock: vi.fn((orgId: string) => ({ 'x-org-id': `org-header:${orgId}` })),
+    buildOrgJsonHeadersMock: vi.fn((orgId: string) => ({
+      'Content-Type': 'application/json',
+      'x-org-id': `org-json:${orgId}`,
+    })),
+  }));
+
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
+}));
+
+vi.mock('@/lib/contact-profile-api-paths', () => ({
+  buildContactProfilesApiPath: buildContactProfilesApiPathMock,
+}));
+
+vi.mock('@/lib/api/org-headers', () => ({
+  buildOrgHeaders: buildOrgHeadersMock,
+  buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
 
 vi.mock('sonner', () => ({
@@ -80,6 +102,9 @@ function renderContent() {
 
 describe('ContactProfilesContent', () => {
   beforeEach(() => {
+    buildContactProfilesApiPathMock.mockClear();
+    buildOrgHeadersMock.mockClear();
+    buildOrgJsonHeadersMock.mockClear();
     vi.spyOn(global, 'fetch').mockResolvedValue({
       ok: true,
       json: async () => ({ data: profiles }),
@@ -110,6 +135,47 @@ describe('ContactProfilesContent', () => {
     expect((screen.getByLabelText('電話') as HTMLInputElement).value).toBe('03-1111-2222');
     expect(screen.getByText('未完了連携 1件')).toBeTruthy();
     expect(screen.getByText('要整備: FAX')).toBeTruthy();
+  });
+
+  it('delegates contact profile paths and tenant headers to shared helpers', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch');
+
+    renderContent();
+    await screen.findByTestId('contact-delivery-target-edit');
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith('/mock/contact-profiles?', {
+        headers: { 'x-org-id': 'org-header:org_1' },
+      });
+    });
+    expect(buildContactProfilesApiPathMock).toHaveBeenCalledWith(expect.any(URLSearchParams));
+    expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
+
+    fireEvent.change(screen.getByLabelText('宛先'), {
+      target: { value: '山本ケアプランセンター 更新' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '送付先を保存する' }));
+
+    await waitFor(() => {
+      expect(buildContactProfilesApiPathMock).toHaveBeenCalledWith();
+      expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
+    });
+
+    const patchCall = fetchSpy.mock.calls.find(
+      ([, init]) => (init as RequestInit | undefined)?.method === 'PATCH',
+    );
+    expect(patchCall?.[0]).toBe('/mock/contact-profiles');
+    expect((patchCall?.[1] as RequestInit).headers).toEqual({
+      'Content-Type': 'application/json',
+      'x-org-id': 'org-json:org_1',
+    });
+    expect(JSON.parse(String((patchCall?.[1] as RequestInit).body))).toEqual(
+      expect.objectContaining({
+        id: 'contact_1',
+        kind: 'external_professional',
+        name: '山本ケアプランセンター 更新',
+      }),
+    );
   });
 
   it('shows delivery target review details in the current workspace', async () => {

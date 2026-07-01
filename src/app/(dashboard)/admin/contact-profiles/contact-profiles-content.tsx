@@ -20,7 +20,9 @@ import {
   CONTACT_METHOD_OPTIONS,
   contactMethodLabel,
   type ContactProfileKind,
-} from '@/lib/contact-profiles';
+} from '@/lib/contact-profile-options';
+import { buildContactProfilesApiPath } from '@/lib/contact-profile-api-paths';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
@@ -100,8 +102,8 @@ export function ContactProfilesContent() {
       const params = new URLSearchParams();
       if (kind !== 'all') params.set('kind', kind);
       if (debouncedQuery.trim()) params.set('q', debouncedQuery.trim());
-      const response = await fetch(`/api/contact-profiles?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
+      const response = await fetch(buildContactProfilesApiPath(params), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('連携先プロファイルの取得に失敗しました');
       return response.json() as Promise<{ data: ContactProfile[] }>;
@@ -129,12 +131,9 @@ export function ContactProfilesContent() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!selected || !form) throw new Error('編集対象が選択されていません');
-      const response = await fetch('/api/contact-profiles', {
+      const response = await fetch(buildContactProfilesApiPath(), {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           kind: selected.kind,
           id: selected.id,
