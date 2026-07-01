@@ -30,6 +30,38 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Contact Profile Admin Helper Boundary - 2026-07-01 09:18 JST
+
+- Scope:
+  - Continued master-management and delivery-target maintainability work for `/admin/contact-profiles`.
+  - Focused on behavior-preserving path/header helper convergence and client-safe contact method option ownership.
+- Fixed:
+  - Added `CONTACT_PROFILES_API_PATH` and `buildContactProfilesApiPath()`.
+  - Preserved the existing explicit empty-search trailing `?` for query-object calls.
+  - Contact profile GET now uses `buildContactProfilesApiPath(params)` and `buildOrgHeaders(orgId)`.
+  - Contact profile PATCH now uses `buildContactProfilesApiPath()` and `buildOrgJsonHeaders(orgId)`.
+  - Moved `CONTACT_METHOD_OPTIONS`, `CONTACT_METHOD_LABELS`, `contactMethodLabel`, and `ContactProfileKind` into `src/lib/contact-profile-options.ts`.
+  - Re-exported those option symbols from `src/lib/contact-profiles.ts` so API/server imports stay compatible while the client UI no longer imports the server aggregation module for option constants.
+  - UI and helper tests lock helper delegation, sentinel org headers, query encoding, omitted params, and explicit empty-search URL shape.
+- Safety:
+  - Reduces tenant-header drift and raw path construction in a delivery-target master surface used by report sharing and operational follow-up.
+  - Preserves existing API contracts, permissions, no-store/sanitized route boundaries, payloads, query keys, debounce behavior, loading/error/empty states, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds no request, backend query, dependency, polling, background job, render fan-out, broad scan, or unbounded loop.
+  - Moves UI option constants away from the Prisma/db-backed aggregation module import boundary.
+- Validation:
+  - `pnpm exec vitest run src/lib/contact-profile-api-paths.test.ts src/app/'(dashboard)'/admin/contact-profiles/contact-profiles-content.test.tsx src/app/api/contact-profiles/route.test.ts src/lib/contact-profiles.test.ts --reporter=dot --testTimeout=60000`: passed, `4` files / `22` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on contact-profile files: passed.
+  - Frontend reviewer: no blocking findings in the reviewed contact-profiles helper/options split.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains open.
+  - Browser smoke was not run because no visible DOM layout/copy/interaction state changed; focused DOM tests cover helper use, loading/error/empty, and save behavior.
+
 ### Visit Handoff Confirmation Typed Error - 2026-07-01 08:40 JST
 
 - Scope:
