@@ -111,12 +111,13 @@ describe('/api/incident-reports', () => {
     expect(response.status).toBe(400);
     expectNoStore(response);
     expect(listIncidentReportsMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when incident report listing fails unexpectedly', async () => {
-    listIncidentReportsMock.mockRejectedValueOnce(
-      new Error('raw incident report medication safety narrative secret'),
-    );
+    const unsafeError = new Error('raw incident report medication safety narrative secret');
+    unsafeError.name = 'crafted.incident.medication.safety.narrative.secret';
+    listIncidentReportsMock.mockRejectedValueOnce(unsafeError);
 
     const response = await GET(new NextRequest('http://localhost/api/incident-reports'), routeCtx);
 
@@ -128,17 +129,18 @@ describe('/api/incident-reports', () => {
     });
     expect(JSON.stringify(body)).not.toContain('safety narrative secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'incident_reports_get_unhandled_error',
-      undefined,
-      expect.objectContaining({
+      {
         event: 'incident_reports_get_unhandled_error',
         route: '/api/incident-reports',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
-      }),
+      },
+      unsafeError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('safety narrative secret');
+    expect(loggerErrorMock.mock.calls[0]?.[0]).not.toHaveProperty('error_name');
+    const loggedContext = JSON.stringify(loggerErrorMock.mock.calls[0]?.[0]);
+    expect(loggedContext).not.toContain('safety narrative secret');
+    expect(loggedContext).not.toContain('crafted.incident');
   });
 
   it('creates a report after request validation', async () => {
@@ -181,12 +183,13 @@ describe('/api/incident-reports', () => {
     expect(response.status).toBe(400);
     expectNoStore(response);
     expect(createIncidentReportMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 without raw logging when incident report creation fails', async () => {
-    createIncidentReportMock.mockRejectedValueOnce(
-      new Error('raw incident report patient safety create secret'),
-    );
+    const unsafeError = new Error('raw incident report patient safety create secret');
+    unsafeError.name = 'crafted.incident.patient.safety.create.secret';
+    createIncidentReportMock.mockRejectedValueOnce(unsafeError);
 
     const response = await POST(
       makePostRequest({
@@ -205,18 +208,17 @@ describe('/api/incident-reports', () => {
     });
     expect(JSON.stringify(body)).not.toContain('patient safety create secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'incident_reports_post_unhandled_error',
-      undefined,
-      expect.objectContaining({
+      {
         event: 'incident_reports_post_unhandled_error',
         route: '/api/incident-reports',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
-      }),
+      },
+      unsafeError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(
-      'patient safety create secret',
-    );
+    expect(loggerErrorMock.mock.calls[0]?.[0]).not.toHaveProperty('error_name');
+    const loggedContext = JSON.stringify(loggerErrorMock.mock.calls[0]?.[0]);
+    expect(loggedContext).not.toContain('patient safety create secret');
+    expect(loggedContext).not.toContain('crafted.incident');
   });
 });

@@ -202,6 +202,66 @@ describe('logger structured errors', () => {
     expect(captureExceptionMock).not.toHaveBeenCalled();
   });
 
+  it('omits incident report narrative details from PHI-safe structured error logs', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const unsafeNarrative =
+      'patient name: Yamada Taro medication=SecretDrug incident narrative secret';
+    const err = new Error(`incident report failed: ${unsafeNarrative}`);
+    err.name = 'crafted.incident.patient.medication.secret';
+    err.stack = `Error: ${unsafeNarrative}\n    at POST (/api/incident-reports/route.ts:1:1)`;
+
+    logger.error(
+      {
+        event: 'incident_reports_post_unhandled_error',
+        route: '/api/incident-reports',
+        method: 'POST',
+        status: 500,
+      },
+      err,
+    );
+
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    const entry = JSON.parse(String(consoleError.mock.calls[0]?.[0])) as Record<string, unknown>;
+    expect(entry).toMatchObject({
+      level: 'error',
+      message: 'incident_reports_post_unhandled_error',
+      event: 'incident_reports_post_unhandled_error',
+      route: '/api/incident-reports',
+      method: 'POST',
+      status: 500,
+      error_name: 'Error',
+    });
+
+    const consolePayload = JSON.stringify(entry);
+    expect(consolePayload).not.toContain('Yamada');
+    expect(consolePayload).not.toContain('SecretDrug');
+    expect(consolePayload).not.toContain('incident narrative secret');
+    expect(consolePayload).not.toContain('crafted.incident');
+    expect(entry).not.toHaveProperty('stack');
+    expect(entry).not.toHaveProperty('error_message');
+
+    expect(captureExceptionMock).not.toHaveBeenCalled();
+    expect(captureMessageMock).toHaveBeenCalledWith(
+      'incident_reports_post_unhandled_error',
+      expect.objectContaining({
+        level: 'error',
+        extra: expect.objectContaining({
+          event: 'incident_reports_post_unhandled_error',
+          route: '/api/incident-reports',
+          method: 'POST',
+          status: 500,
+          error_name: 'Error',
+        }),
+      }),
+    );
+    const sentryPayload = JSON.stringify(captureMessageMock.mock.calls);
+    expect(sentryPayload).not.toContain('Yamada');
+    expect(sentryPayload).not.toContain('SecretDrug');
+    expect(sentryPayload).not.toContain('incident narrative secret');
+    expect(sentryPayload).not.toContain('crafted.incident');
+  });
+
   it('omits raw error message, stack, and request body sentinels from safe object overload output', () => {
     vi.stubEnv('NODE_ENV', 'production');
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
