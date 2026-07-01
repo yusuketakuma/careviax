@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-1305 JST
+
+- current task: converge visit-vehicle-resource unexpected-error logs on the shared PHI-safe structured logger overload without changing route/API/DB behavior.
+- files inspected: `git status --short --untracked-files=all`, `src/lib/utils/logger.ts`, `src/lib/utils/logger.test.ts`, `src/app/api/visit-vehicle-resources/route.ts`, `src/app/api/visit-vehicle-resources/[id]/route.ts`, `src/app/api/visit-vehicle-resources/route.test.ts`, `src/app/api/visit-vehicle-resources/[id]/route.test.ts`, privacy reviewer output, focused diffs, and validation output.
+- files changed: `src/app/api/visit-vehicle-resources/route.ts`, `src/app/api/visit-vehicle-resources/[id]/route.ts`, `src/app/api/visit-vehicle-resources/route.test.ts`, `src/app/api/visit-vehicle-resources/[id]/route.test.ts`, `REFACTOR_REPORT.md`, `REFACTOR_EXECUTION_PLAN.md`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: visit-vehicle-resource collection/detail routes duplicated local `SAFE_ERROR_NAMES` / `safeErrorName()` logic and used the string logger overload with sanitized context. That kept error-name normalization split across route files after the shared logger gained runtime allowlisted context and safe `Error.name` normalization.
+- security risks found: reduced raw exception message/stack leakage risk and sanitizer drift by moving GET/POST/PATCH unexpected-error logs to `logger.error({ event, route, method, status }, err)`. Tests now assert route-supplied context stays limited to safe operational fields while the shared logger contract test owns raw Error redaction. Privacy review found no blocking PHI/PII regression.
+- performance issues found: no meaningful performance issue was introduced. The change removes small duplicated helpers and changes logging call shape only; no DB query, dependency, network call, polling, background job, external request, render work, broad scan, or unbounded loop changed.
+- validation commands: `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/visit-vehicle-resources/route.test.ts 'src/app/api/visit-vehicle-resources/[id]/route.test.ts' --reporter=dot --testTimeout=60000`; scoped `pnpm exec prettier --check`; scoped `pnpm exec eslint --max-warnings=0`; scoped `git diff --check`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: focused logger + visit-vehicle-resource route suite passed `3` files / `29` tests; scoped Prettier passed; scoped ESLint passed; scoped diff-check passed; full typecheck passed; no-unused passed; full lint passed; full format check passed; full diff-check passed.
+- remaining work: broad repo-wide maintainability/type-safety/testability objective remains active. Continue only with small, tested route-local logger convergence candidates; avoid broad route logging rewrites without response/no-store/RLS tests. Browser smoke was not run because this slice changes server logging behavior and tests only, with no visible DOM layout, copy, or interaction-state change.
+- next action: stage only visit-vehicle-resource route/test files as one implementation commit, stage report/progress ledger files as a separate commit, send agmsg FYI, then choose the next behavior-preserving candidate.
+
 ### 20260701-1256 JST
 
 - current task: harden safe structured logger runtime redaction and contract tests without changing API/DB/auth/UI behavior.

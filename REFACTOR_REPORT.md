@@ -15,6 +15,74 @@ validation output.
   - `REFACTOR_RISK_MAP.md`
   - `REFACTOR_EXECUTION_PLAN.md`
 
+## Slice: Visit Vehicle Resource Structured Logger Convergence
+
+- Timestamp: 2026-07-01 13:05 JST
+- Purpose:
+  - Route visit-vehicle-resource unexpected-error logs through the shared
+    PHI-safe structured logger overload.
+  - Remove route-local `safeErrorName()` duplication now that the shared logger
+    owns safe error-name normalization.
+  - Preserve existing route response, no-store, auth, RLS request-context, DB,
+    and audit behavior.
+- Changed files:
+  - `src/app/api/visit-vehicle-resources/route.ts`
+  - `src/app/api/visit-vehicle-resources/route.test.ts`
+  - `src/app/api/visit-vehicle-resources/[id]/route.ts`
+  - `src/app/api/visit-vehicle-resources/[id]/route.test.ts`
+- Change reason:
+  - The collection/detail routes used the string logger overload with local
+    `safeErrorName()` and duplicated safe-name allowlists.
+  - The previous logger slice made `logger.error({ ... }, err)` enforce runtime
+    allowlisted context fields and safe error metadata centrally.
+- Deleted code:
+  - Removed two route-local `SAFE_ERROR_NAMES` sets and `safeErrorName()`
+    helpers.
+- Commonized processing:
+  - GET, POST, and PATCH unexpected-error paths now call
+    `logger.error({ event, route, method, status }, err)`.
+  - Route tests assert only safe operational context is supplied by the route;
+    raw `Error` handling is delegated to the shared logger contract tests.
+- Safety:
+  - Existing API response bodies/statuses, no-store wrapping, auth gates,
+    validation, RLS request-context options, DB reads/writes, and audit entries
+    were unchanged.
+  - Privacy review found no blocker and confirmed the change lowers raw
+    message/stack leakage risk.
+  - Tests preserve sanitized 500 bodies and avoid serializing the logger mock's
+    full call array, because the raw `Error` is intentionally passed as the
+    second argument for the shared logger to sanitize.
+- Performance:
+  - Removes small duplicated error-name helpers and changes logging call shape
+    only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/visit-vehicle-resources/route.test.ts 'src/app/api/visit-vehicle-resources/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `3` files / `29` tests.
+  - Scoped Prettier check for changed route/test files: passed.
+  - Scoped ESLint for changed route/test files: passed.
+  - Scoped diff whitespace check for changed route/test files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Known risks:
+  - Route tests now intentionally assert the route passes the raw `Error` to
+    the shared logger. Do not reintroduce full `loggerErrorMock.mock.calls`
+    snapshots for these sentinel errors.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS policies, auth/authz semantics, route response DTO
+    contracts, vehicle-resource business rules, audit semantics, external
+    sends, production config, secrets, deployment, and dependency versions.
+- Next improvements:
+  - Continue migrating small, well-tested route-local safe logger patterns to
+    the shared structured overload where existing tests can prove responses and
+    mutations remain unchanged.
+- PR split:
+  - Commit this route logger/test slice independently.
+  - Commit report/progress updates separately.
+
 ## Slice: Safe Structured Logger Runtime Redaction
 
 - Timestamp: 2026-07-01 12:56 JST

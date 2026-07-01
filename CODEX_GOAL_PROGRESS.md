@@ -30,6 +30,50 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Visit Vehicle Resource Structured Logger Convergence - 2026-07-01 13:05 JST
+
+- Scope:
+  - Continued the logger redaction hardening by applying the shared safe
+    structured logger overload to a small, tested route family.
+  - Focused only on `/api/visit-vehicle-resources` GET/POST and
+    `/api/visit-vehicle-resources/[id]` PATCH unexpected-error logs.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` sets and `safeErrorName()`
+    helpers.
+  - Replaced string overload calls with
+    `logger.error({ event, route, method, status }, err)` for the three
+    unexpected-error catch blocks.
+  - Updated route tests to assert the route passes only safe operational
+    context and delegates raw `Error` sanitization to the shared logger contract.
+  - Added call-count assertions so the route tests do not mask extra logging.
+- Safety:
+  - Preserved route response bodies/statuses, no-store wrapping, auth gates,
+    validation, RLS request-context options, DB read/write behavior, and audit
+    entry behavior.
+  - Privacy review found no blocker and confirmed the change reduces raw
+    message/stack leakage risk.
+  - Route tests intentionally do not serialize full logger mock calls because
+    the raw `Error` is now the second argument; logger unit tests cover actual
+    console/Sentry redaction.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/visit-vehicle-resources/route.test.ts 'src/app/api/visit-vehicle-resources/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `3` files / `29` tests.
+  - Scoped Prettier check, scoped ESLint, and scoped diff-check on changed
+    route/test files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Continue only with small, tested logger convergence candidates; avoid
+    route-wide logging rewrites without response/no-store/RLS tests.
+
 ### Safe Structured Logger Runtime Redaction - 2026-07-01 12:56 JST
 
 - Scope:
