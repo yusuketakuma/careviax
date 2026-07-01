@@ -48,6 +48,7 @@ If any of those are needed, create a proposal first. Do not implement silently.
   - unused admin `MasterEditorView` stub removal
   - `/admin/metrics` placeholder zero removal
   - nav badge API path/header helper convergence
+  - `/api/nav-badges` no-store response boundary hardening
 
 ## Completed Slices
 
@@ -69,6 +70,23 @@ If any of those are needed, create a proposal first. Do not implement silently.
 - Remaining follow-up:
   - `/api/nav-badges` no-store route assertion/hardening is a separate API
     privacy candidate, not part of the helper-only slice.
+
+### 2026-07-01 11:43 JST: Nav Badge Route No-Store Boundary
+
+- Completed safe follow-up: `/api/nav-badges` response privacy hardening.
+- Files changed:
+  - `src/app/api/nav-badges/route.ts`
+  - `src/app/api/nav-badges/route.test.ts`
+- Validation:
+  - focused nav badge/sidebar/API/service suite passed `6` files / `44` tests
+  - full typecheck passed
+  - no-unused typecheck passed
+  - full lint passed
+  - full format check passed
+  - diff whitespace check passed
+- Remaining follow-up:
+  - Nav badge service parity/date-boundary/RLS request-context questions remain
+    separate behavior candidates.
 
 ## Execution Order
 

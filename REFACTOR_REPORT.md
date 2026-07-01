@@ -75,3 +75,61 @@ validation output.
 - PR split:
   - Commit this helper/test slice independently.
   - Commit report/progress updates separately.
+
+## Slice: Nav Badge Route No-Store Boundary
+
+- Timestamp: 2026-07-01 11:43 JST
+- Purpose:
+  - Add explicit sensitive no-store headers to `/api/nav-badges` responses.
+  - Preserve the existing `{ data: { audit?: number; handoff?: number } }`
+    contract while reducing stale cross-user/cross-org badge count inference.
+- Changed files:
+  - `src/app/api/nav-badges/route.ts`
+  - `src/app/api/nav-badges/route.test.ts`
+- Change reason:
+  - Nav badge counts are minimized numeric metadata, but they still reveal
+    user/org-scoped audit and handoff workload.
+  - The route previously returned `success({ data })` without the shared
+    sensitive no-store wrapper.
+- Deleted code:
+  - None.
+- Commonized processing:
+  - Reused `withSensitiveNoStore`.
+  - Used the established exported-route wrapper pattern with `unstable_rethrow`
+    and fixed `internalError()` fallback for unexpected wrapper failures.
+- Safety:
+  - Status codes, success body shape, auth context, service payload, count
+    semantics, route params, request validation, query behavior, RLS, audit,
+    migrations, external sends, production config, and client behavior were
+    unchanged.
+  - Tests cover success, auth-returned response, auth plumbing throw, and badge
+    aggregation throw paths.
+- Performance:
+  - Header mutation and fallback error handling only.
+  - No new query, dependency, polling, background job, external request, or
+    broad scan was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/nav-badges/route.test.ts src/server/services/nav-badges.test.ts src/components/layout/use-nav-badges.test.ts src/lib/nav-badges/api-paths.test.ts src/lib/api/org-headers.test.ts src/components/layout/sidebar.test.tsx --reporter=dot --testTimeout=60000`: passed, `6` files / `44` tests.
+  - Scoped Prettier check for route files: passed.
+  - Scoped ESLint for route files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Known risks:
+  - RLS request-context explicitness in `countHandoffBadge`, audit badge query
+    parity with `/api/dispense-audits?badge=1`, and JST date-boundary parity for
+    handoff counts remain separate behavior candidates and were not mixed into
+    this response-header slice.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS, auth/authz logic, tenant selection behavior, audit
+    semantics, PHI payload fields, external sends, billing, medication identity,
+    production config, secrets, deployment, and dependency versions.
+- Next improvements:
+  - Continue safe low-risk helper convergence from `REFACTOR_EXECUTION_PLAN.md`.
+  - Consider a separate proposal or tested API slice for nav badge service
+    parity/date-boundary questions if evidence shows current counts drift.
+- PR split:
+  - Commit this API hardening slice independently.
+  - Commit report/progress updates separately.

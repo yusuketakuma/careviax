@@ -30434,3 +30434,31 @@ Next loop:
 - Remaining:
   - The broad repository refactor objective remains open.
   - `/api/nav-badges` no-store route assertion/hardening is a separate API privacy candidate and was intentionally not mixed into this helper-only slice.
+
+### Nav Badge Route No-Store Boundary - 2026-07-01 11:43 JST
+
+- Scope:
+  - Follow-up to the nav badge helper slice.
+  - Focused on `/api/nav-badges` response cache boundaries without changing badge count semantics or payload shape.
+- Fixed:
+  - Wrapped exported `/api/nav-badges` responses with `withSensitiveNoStore`.
+  - Added the established `unstable_rethrow` + fixed `internalError()` fallback for unexpected wrapper failures.
+  - Added route tests for success no-store, auth-returned response no-store, auth plumbing throw sanitized no-store 500, and badge aggregation throw sanitized no-store 500.
+- Safety:
+  - Reduces stale cross-user/cross-org inference risk for operational audit/handoff badge counts.
+  - Preserves status/body contract for success, existing auth context behavior, service count logic, route params, request validation, query behavior, RLS behavior, audit behavior, migrations, external sends, production config, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Header setting and fallback error handling only.
+  - No new DB query, dependency, polling, background job, external request, broad scan, or render fan-out.
+- Validation:
+  - `pnpm exec vitest run src/app/api/nav-badges/route.test.ts src/server/services/nav-badges.test.ts src/components/layout/use-nav-badges.test.ts src/lib/nav-badges/api-paths.test.ts src/lib/api/org-headers.test.ts src/components/layout/sidebar.test.tsx --reporter=dot --testTimeout=60000`: passed, `6` files / `44` tests.
+  - Scoped Prettier check: passed.
+  - Scoped ESLint: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- Remaining:
+  - The broad repository refactor objective remains open.
+  - Nav badge service parity/date-boundary/RLS request-context questions remain separate behavior candidates and were not mixed into this response-header slice.
