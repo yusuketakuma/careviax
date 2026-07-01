@@ -140,6 +140,7 @@ describe('GET /api/drug-master-imports/status', () => {
     expect(drugMasterImportLogFindManyMock).not.toHaveBeenCalled();
     expect(drugMasterCountMock).not.toHaveBeenCalled();
     expect(drugPackageCountMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('returns 403 before querying import status when admin permission is denied', async () => {
@@ -158,6 +159,7 @@ describe('GET /api/drug-master-imports/status', () => {
     expect(drugInteractionCountMock).not.toHaveBeenCalled();
     expect(drugAlertRuleCountMock).not.toHaveBeenCalled();
     expect(genericDrugMappingCountMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('returns freshness data for all import sources', async () => {
@@ -401,7 +403,9 @@ describe('GET /api/drug-master-imports/status', () => {
   });
 
   it('returns a sanitized no-store 500 on database error', async () => {
-    const unsafeError = new Error('DB connection lost with raw import status secret');
+    const unsafeError = new Error(
+      'DB connection lost with raw import status secret source_url=https://example.invalid/import.csv?token=secret error_log=raw status stack',
+    );
     unsafeError.name = 'DrugImportStatusSecretError';
     drugMasterImportLogFindManyMock.mockRejectedValue(unsafeError);
 
@@ -412,21 +416,23 @@ describe('GET /api/drug-master-imports/status', () => {
     const body = await response.json();
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('import status secret');
+    expect(loggerErrorMock).toHaveBeenCalledOnce();
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'drug_master_imports_status_get_unhandled_error',
-      undefined,
       {
         event: 'drug_master_imports_status_get_unhandled_error',
         route: '/api/drug-master-imports/status',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
-    expect(logged).not.toContain('import status secret');
-    expect(logged).not.toContain('DrugImportStatusSecretError');
+    expect(loggerErrorMock.mock.calls[0]?.[0]).not.toHaveProperty('error_name');
+    const loggedContext = JSON.stringify(loggerErrorMock.mock.calls[0]?.[0]);
+    expect(loggedContext).not.toContain('import status secret');
+    expect(loggedContext).not.toContain('DrugImportStatusSecretError');
+    expect(loggedContext).not.toContain('source_url');
+    expect(loggedContext).not.toContain('error_log');
+    expect(loggedContext).not.toContain('https://example.invalid');
+    expect(loggedContext).not.toContain('raw status stack');
   });
 });
