@@ -30,6 +30,64 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Incident Reports Structured Logger Convergence - 2026-07-01 15:20 JST
+
+- Scope:
+  - Continued safe structured logger convergence on the incident-reports route.
+  - Focused only on `/api/incident-reports` GET/POST unexpected-error logs and
+    shared logger emitted-payload coverage for the incident event.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced the GET string overload call with
+    `logger.error({ event, route, method, status }, err)`.
+  - Replaced the POST string overload call with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated sanitized 500 route tests to assert minimal route-supplied context,
+    explicit absence of route-local `error_name`, controlled validation
+    short-circuit non-logging, and delegation of raw `Error` redaction to the
+    shared logger contract tests.
+  - Added an incident-event shared logger test proving final console/Sentry
+    payloads omit patient-name, medication, narrative, stack, raw-message, and
+    crafted unsafe error-name sentinels.
+- Safety:
+  - Preserved response bodies/statuses, no-store wrapping, `canViewDashboard`
+    auth, Japanese denial messages, status filter validation, POST body
+    validation, `runWithRequestAuthContext`, incident report list/create
+    service call shapes, and fixed internal-error behavior.
+  - The sanitized GET/POST 500 route tests prove route-supplied logger context
+    excludes raw incident narrative sentinels, unsafe error names, and
+    route-local `error_name`.
+  - Privacy review found no Medium/High finding; its low test-boundary concern
+    was handled by the incident-event shared logger emitted-payload test.
+  - Medical safety review found no actionable patient-safety, privacy, or
+    behavior-regression issue.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, sort change, or unbounded loop.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check src/app/api/incident-reports/route.ts src/app/api/incident-reports/route.test.ts src/lib/utils/logger.test.ts`: passed.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/incident-reports/route.ts src/app/api/incident-reports/route.test.ts src/lib/utils/logger.test.ts`: passed.
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/incident-reports/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `14` tests.
+  - `git diff --check -- src/app/api/incident-reports/route.ts src/app/api/incident-reports/route.test.ts src/lib/utils/logger.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Continue only with small, tested logger convergence candidates; do not add
+    incident titles, `what_happened`, causes, immediate actions, prevention
+    plans, request bodies, org/user identifiers, Prisma rows, or raw error
+    metadata to route log context without separate privacy and medical-safety
+    review.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or
+    interaction-state change.
+
 ### Dashboard Clerk Support Structured Logger Convergence - 2026-07-01 15:08 JST
 
 - Scope:

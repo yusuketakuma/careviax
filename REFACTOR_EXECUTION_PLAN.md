@@ -88,8 +88,39 @@ If any of those are needed, create a proposal first. Do not implement silently.
   - dashboard clerk-support route-local logger sanitizer converged on the
     shared safe structured logger overload, with sanitized patient/task BFF
     failure coverage
+  - incident-reports route-local logger sanitizer converged on the shared safe
+    structured logger overload, with sanitized GET/POST failure coverage and
+    incident-event emitted-payload redaction coverage in the shared logger
+    tests
 
 ## Completed Slices
+
+### 2026-07-01 15:20 JST: Incident Reports Structured Logger Convergence
+
+- Completed observability/privacy refactor follow-up:
+  `Incident Reports Structured Logger Convergence`.
+- Files changed:
+  - `src/app/api/incident-reports/route.ts`
+  - `src/app/api/incident-reports/route.test.ts`
+  - `src/lib/utils/logger.test.ts`
+- Validation:
+  - focused logger + incident-reports route suite passed `2` files / `14`
+    tests
+  - scoped Prettier check passed
+  - scoped ESLint passed
+  - scoped diff whitespace check passed
+  - full typecheck passed
+  - no-unused typecheck passed
+  - full lint passed
+  - full format check passed
+  - full diff whitespace check passed
+  - production build passed
+- Remaining follow-up:
+  - External observability backend behavior remains outside this code-diff
+    scope; final emitted redaction is now also covered by an incident-specific
+    shared logger test.
+  - Continue with small, tested route-local logger convergence or backend/API
+    safety candidates.
 
 ### 2026-07-01 15:08 JST: Dashboard Clerk Support Structured Logger Convergence
 

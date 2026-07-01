@@ -15,6 +15,94 @@ validation output.
   - `REFACTOR_RISK_MAP.md`
   - `REFACTOR_EXECUTION_PLAN.md`
 
+## Slice: Incident Reports Structured Logger Convergence
+
+- Timestamp: 2026-07-01 15:20 JST
+- Purpose:
+  - Route incident-report GET/POST unexpected-error logs through the shared
+    PHI/secret-safe structured logger overload.
+  - Remove route-local `safeErrorName()` duplication now that shared logger owns
+    safe error-name normalization and emitted payload redaction.
+  - Preserve response status/body, no-store behavior, auth, status/body
+    validation, organization-scoped service calls, create/list payload
+    propagation, and fixed internal-error behavior.
+- Changed files:
+  - `src/app/api/incident-reports/route.ts`
+  - `src/app/api/incident-reports/route.test.ts`
+  - `src/lib/utils/logger.test.ts`
+- Change reason:
+  - The incident-reports route accepts and returns patient-safety narrative
+    fields but still used the string logger overload with duplicated route-local
+    `SAFE_ERROR_NAMES` and `safeErrorName()` despite existing shared logger
+    runtime allowlisting and raw `Error` redaction.
+- Deleted code:
+  - Removed the route-local `SAFE_ERROR_NAMES` set and `safeErrorName()` helper.
+- Commonized processing:
+  - GET unexpected-error path now calls
+    `logger.error({ event, route, method, status }, err)`.
+  - POST unexpected-error path now calls
+    `logger.error({ event, route, method, status }, err)`.
+  - Route tests assert only minimal operational context is supplied by the route
+    while the raw `Error` is delegated to the shared logger contract tests.
+  - Shared logger tests now include an incident-specific emitted-payload
+    regression proving the final console/Sentry payload omits narrative
+    sentinels, stack, raw message, and crafted unsafe error names.
+  - Controlled validation failures now assert the unexpected-error logger is not
+    called.
+- Safety:
+  - API response body/status, no-store wrapping, `canViewDashboard` auth gate,
+    Japanese denial messages, status filter validation, POST body validation,
+    `runWithRequestAuthContext`, `listIncidentReports(ctx, status?.data)`,
+    `createIncidentReport(ctx, parsed.data)`, and fixed internal-error behavior
+    were unchanged.
+  - The sanitized GET/POST 500 route tests prove route-supplied logger context
+    excludes raw incident narrative sentinels, unsafe error names, and
+    route-local `error_name`.
+  - The shared logger incident-event test proves emitted console/Sentry payloads
+    omit patient-name, medication, narrative, stack, raw-message, and crafted
+    error-name sentinels.
+  - Privacy review found no Medium/High finding; its low test-boundary concern
+    was addressed by adding the incident-event shared logger emitted-payload
+    test.
+  - Medical safety review found no actionable patient-safety, privacy, or
+    behavior-regression issue because auth, validation, service calls, response
+    shape, no-store wrapping, and sanitized 500 bodies were preserved.
+- Performance:
+  - Removes a small duplicated helper and changes logging call shape/tests only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, sorting change, or unbounded
+    loop.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check src/app/api/incident-reports/route.ts src/app/api/incident-reports/route.test.ts src/lib/utils/logger.test.ts`: passed.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/incident-reports/route.ts src/app/api/incident-reports/route.test.ts src/lib/utils/logger.test.ts`: passed.
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/incident-reports/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `14` tests.
+  - `git diff --check -- src/app/api/incident-reports/route.ts src/app/api/incident-reports/route.test.ts src/lib/utils/logger.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+- Known risks:
+  - Route tests mock the logger and therefore prove route delegation/context
+    only; final emitted redaction is covered by the shared logger tests,
+    including the new incident-event regression.
+  - Browser/E2E smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or
+    interaction-state change.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS policies, auth/authz semantics, incident report
+    service query/mutation semantics, incident report request/response DTO
+    contracts, patient-safety narrative fields, audit semantics, external
+    sends, production config, secrets, deployment, and dependency versions.
+- Next improvements:
+  - Continue small, tested route-local logger convergence only where existing
+    tests can prove responses, no-store headers, query/mutation shape, and
+    medical-safety behavior remain unchanged.
+- PR split:
+  - Commit this route logger/test slice independently.
+  - Commit report/progress updates separately.
+
 ## Slice: Dashboard Clerk Support Structured Logger Convergence
 
 - Timestamp: 2026-07-01 15:08 JST
