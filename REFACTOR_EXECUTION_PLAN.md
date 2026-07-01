@@ -52,6 +52,8 @@ If any of those are needed, create a proposal first. Do not implement silently.
   - report generation API path helper convergence
   - admin notification settings path/header helper convergence
   - `/api/notification-rules` no-store response boundary hardening
+  - patient/report share communication-request and task path helper convergence
+  - report-share dot-segment patient-id fail-closed rendering
 
 ## Completed Slices
 
@@ -163,6 +165,36 @@ If any of those are needed, create a proposal first. Do not implement silently.
 - Remaining follow-up:
   - Notification-rule mutation audit evidence remains a separate API/audit
     candidate.
+
+### 2026-07-01 12:26 JST: Patient And Report Share API Path Helpers
+
+- Completed helper/fail-closed candidate:
+  `Patient/report share communication request and task API helpers`.
+- Files changed:
+  - `src/lib/communications/api-paths.ts`
+  - `src/lib/communications/api-paths.test.ts`
+  - `src/lib/tasks/api-paths.ts`
+  - `src/lib/tasks/api-paths.test.ts`
+  - `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx`
+  - `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx`
+  - `src/app/(dashboard)/patients/[id]/share/external-share-content.tsx`
+  - `src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx`
+- Validation:
+  - focused communication/task/share/header suite passed `5` files / `57`
+    tests
+  - scoped ESLint passed
+  - scoped Prettier check passed
+  - scoped diff whitespace check passed
+  - full typecheck passed
+  - no-unused typecheck passed
+  - full lint passed
+  - full format check passed
+  - full diff whitespace check passed
+- Remaining follow-up:
+  - `POST /api/tasks` no-store/sanitized-error backend hardening is the next
+    PHI-bearing API response-boundary candidate.
+  - Patient-share QueryClientProvider-backed integration coverage remains a
+    future test-quality candidate.
 
 ## Execution Order
 
@@ -325,6 +357,12 @@ Each slice should normally satisfy:
   - Consumers should tolerate missing metadata; revert additive commit.
 
 ### 6. Patient/Report Share Helper Cleanup
+
+- Status: partially completed on 2026-07-01 12:26 JST for communication-request
+  collection paths, task collection paths, patient-share org headers, and
+  report-share dot-segment patient-id fail-closed rendering. External-access
+  grant path/header semantics and deeper QueryClient lifecycle coverage remain
+  separate candidates.
 
 - Files:
   - `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx`

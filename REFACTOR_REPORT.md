@@ -15,6 +15,93 @@ validation output.
   - `REFACTOR_RISK_MAP.md`
   - `REFACTOR_EXECUTION_PLAN.md`
 
+## Slice: Patient And Report Share API Path Helpers
+
+- Timestamp: 2026-07-01 12:26 JST
+- Purpose:
+  - Centralize communication-request collection/list/create paths used by the
+    report interprofessional share page and patient external share page.
+  - Route internal task-create paths through a shared client-safe task API path
+    helper.
+  - Replace patient-share inline tenant headers with the shared org-header
+    helpers.
+  - Fail closed without crashing when report-share receives an exact dot-segment
+    `patient_id`.
+- Changed files:
+  - `src/lib/communications/api-paths.ts`
+  - `src/lib/communications/api-paths.test.ts`
+  - `src/lib/tasks/api-paths.ts`
+  - `src/lib/tasks/api-paths.test.ts`
+  - `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx`
+  - `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx`
+  - `src/app/(dashboard)/patients/[id]/share/external-share-content.tsx`
+  - `src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx`
+- Change reason:
+  - Both share pages still built `/api/communication-requests?...`,
+    `/api/communication-requests`, and `/api/tasks` inline.
+  - Patient share also had repeated inline `x-org-id` and JSON headers on
+    PHI-bearing reads and internal creates.
+  - Frontend review found the report-share dot-segment patient-id test masked a
+    real `buildPatientHref()` render crash.
+- Deleted code:
+  - None.
+- Commonized processing:
+  - Added `COMMUNICATION_REQUESTS_API_PATH` and
+    `buildCommunicationRequestsApiPath()`.
+  - Added `TASKS_API_PATH`, `buildTasksApiPath()`, and `buildTaskApiPath()`.
+  - Reused `buildOrgHeaders()` and `buildOrgJsonHeaders()` in patient share.
+  - Added report-share safe patient href derivation that treats only
+    `RangeError` from path helpers as a controlled fail-closed condition.
+- Safety:
+  - Communication request query scoping remains explicit:
+    `request_type`, `related_entity_type`, and `related_entity_id` are passed
+    through typed helper args in the same query order.
+  - Payload bodies, query keys, invalidation keys, permissions, response
+    parsing, toast fallback behavior, external-access grant generation, public
+    share-token URL construction, route auth/RLS behavior, DB schema, external
+    sends, and production config were unchanged.
+  - Tests now prove hostile IDs remain raw in query/body identities while path
+    segments are encoded, task/communication create calls consume helper return
+    values, and exact dot-segment patient IDs no longer crash or fetch patient
+    support APIs.
+- Performance:
+  - Local path/header construction only.
+  - No new request, polling, dependency, backend query, background job, render
+    fan-out, broad scan, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/lib/communications/api-paths.test.ts src/lib/tasks/api-paths.test.ts src/lib/api/org-headers.test.ts 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `5` files / `57` tests.
+  - Scoped ESLint for changed files: passed.
+  - Scoped Prettier check for changed files: passed after formatting three
+    touched files.
+  - Scoped diff whitespace check for changed files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Known risks:
+  - Privacy review identified `POST /api/tasks` as a separate PHI-bearing
+    backend response-boundary residual: success/error paths are not yet fully
+    wrapped with `withSensitiveNoStore` and fixed unexpected-error fallback.
+    This client helper slice preserves current task-create behavior and records
+    the backend route as the next API hardening candidate.
+  - Patient external-share tests still rely heavily on mocked React Query;
+    broader QueryClientProvider-backed coverage remains a future test-quality
+    improvement.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS policy definitions, auth/authz logic, tenant
+    selection behavior, mutation payload semantics, external-access grant
+    semantics, public token URL behavior, audit semantics, external sends,
+    production config, secrets, deployment, and dependency versions.
+- Next improvements:
+  - Harden `POST /api/tasks` response no-store and unexpected-error fallback as
+    a separate route/test slice.
+  - Consider patient-share QueryClientProvider-backed integration coverage for
+    enabled/loading/error behavior.
+- PR split:
+  - Commit this helper/test/fail-closed slice independently.
+  - Commit report/progress updates separately.
+
 ## Slice: Nav Badge API Path And Header Helper
 
 - Timestamp: 2026-07-01 11:33 JST

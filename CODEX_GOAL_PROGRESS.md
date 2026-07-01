@@ -30,6 +30,58 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Patient/Report Share API Path Helpers - 2026-07-01 12:26 JST
+
+- Scope:
+  - Continued patient/report share helper convergence with PHI/privacy review.
+  - Focused on internal communication-request and task API paths plus
+    patient-share tenant headers.
+  - Included the frontend reviewer blocker for exact dot-segment report
+    `patient_id` rendering.
+- Fixed:
+  - Added typed communication-request collection path helper coverage for
+    scoped `request_type`, `related_entity_type`, and `related_entity_id`
+    queries.
+  - Added client-safe task collection/detail path helpers.
+  - Moved report-share communication-request list/create and task-create fetches
+    onto shared helpers.
+  - Moved patient-share communication-request list/create, task-create, and
+    patient/communication GET headers onto shared helpers.
+  - Added report-share fail-closed handling so exact dot-segment `patient_id`
+    no longer crashes render or triggers patient-support fetches.
+- Safety:
+  - Preserved visible UI layout/copy, query keys, enabled gates except for
+    invalid patient-id suppression, request payloads, response parsing, toast
+    fallbacks, invalidation keys, permissions, external-access grant behavior,
+    public share URL construction, DB schema, auth/RLS behavior, migrations,
+    external sends, production config, and secrets.
+  - Tests prove raw patient/report/request identity is preserved in query/body
+    data while URL path segments are encoded or rejected.
+  - Privacy review identified `POST /api/tasks` response no-store/sanitized-error
+    hardening as a separate backend residual; it was not mixed into this
+    client helper slice.
+- Performance:
+  - Path/header helper convergence and a constant-time patient path safety check
+    only.
+  - Adds no request, DB query, dependency, polling, background job, external
+    call, broad scan, render fan-out, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/communications/api-paths.test.ts src/lib/tasks/api-paths.test.ts src/lib/api/org-headers.test.ts 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `5` files / `57` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on changed share
+    helper/UI/test files: passed after formatting three touched files.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - `POST /api/tasks` no-store/sanitized unexpected-error boundary is the next
+    PHI-bearing API hardening candidate.
+  - Patient-share QueryClientProvider-backed integration coverage remains a
+    future test-quality candidate.
+
 ### Notification Rules No-Store Boundary - 2026-07-01 12:13 JST
 
 - Scope:
