@@ -278,20 +278,19 @@ describe('/api/visit-vehicle-resources', () => {
     const body = await response.json();
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('route notes secret');
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'visit_vehicle_resources_get_unhandled_error',
-      undefined,
       {
         event: 'visit_vehicle_resources_get_unhandled_error',
         route: '/api/visit-vehicle-resources',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    const loggedContext = loggerErrorMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(loggedContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(loggedContext);
     expect(logged).not.toContain('route notes secret');
     expect(logged).not.toContain('VisitVehicleResourceSecretError');
   });
@@ -459,20 +458,19 @@ describe('/api/visit-vehicle-resources', () => {
     const body = await response.json();
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('creation notes secret');
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'visit_vehicle_resources_post_unhandled_error',
-      undefined,
       {
         event: 'visit_vehicle_resources_post_unhandled_error',
         route: '/api/visit-vehicle-resources',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    const loggedContext = loggerErrorMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(loggedContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(loggedContext);
     expect(logged).not.toContain('creation notes secret');
     expect(logged).not.toContain('VehicleResourceCreationSecretError');
   });

@@ -14,20 +14,6 @@ import { updateVisitVehicleResourceSchema } from '@/lib/validations/visit-vehicl
 import { buildVisitVehicleResourceUpdatedAuditChanges } from '@/server/services/visit-vehicle-resource-audit';
 
 const ROUTE = '/api/visit-vehicle-resources/[id]';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 async function authenticatedPATCH(req: NextRequest, params: Promise<{ id: string }>) {
   const authResult = await requireAuthContext(req, {
@@ -131,13 +117,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return withSensitiveNoStore(await authenticatedPATCH(req, params));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('visit_vehicle_resources_id_patch_unhandled_error', undefined, {
-        event: 'visit_vehicle_resources_id_patch_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'visit_vehicle_resources_id_patch_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

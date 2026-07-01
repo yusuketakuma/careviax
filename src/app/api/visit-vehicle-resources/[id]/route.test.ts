@@ -271,20 +271,19 @@ describe('/api/visit-vehicle-resources/[id]', () => {
     const body = await response.json();
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('patch notes secret');
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'visit_vehicle_resources_id_patch_unhandled_error',
-      undefined,
       {
         event: 'visit_vehicle_resources_id_patch_unhandled_error',
         route: '/api/visit-vehicle-resources/[id]',
         method: 'PATCH',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    const loggedContext = loggerErrorMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(loggedContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(loggedContext);
     expect(logged).not.toContain('patch notes secret');
     expect(logged).not.toContain('VisitVehiclePatchSecretError');
   });
