@@ -520,7 +520,9 @@ describe('/api/pharmacists GET', () => {
   });
 
   it('returns a sanitized no-store 500 when pharmacist listing fails unexpectedly', async () => {
-    membershipFindManyMock.mockRejectedValueOnce(new Error('raw pharmacist staff secret'));
+    const unsafeError = new Error('raw pharmacist staff secret');
+    unsafeError.name = 'PharmacistListSecretError';
+    membershipFindManyMock.mockRejectedValueOnce(unsafeError);
 
     const response = await GET(createGetRequest());
 
@@ -530,14 +532,21 @@ describe('/api/pharmacists GET', () => {
     const bodyText = await response.text();
     expect(bodyText).toContain('INTERNAL_ERROR');
     expect(bodyText).not.toContain('raw pharmacist staff secret');
-    expect(loggerErrorMock).toHaveBeenCalledWith('pharmacists_get_unhandled_error', undefined, {
-      event: 'pharmacists_get_unhandled_error',
-      route: '/api/pharmacists',
-      method: 'GET',
-      status: 500,
-      error_name: 'Error',
-    });
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw pharmacist staff secret');
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'pharmacists_get_unhandled_error',
+        route: '/api/pharmacists',
+        method: 'GET',
+        status: 500,
+      },
+      unsafeError,
+    );
+    const loggedContext = loggerErrorMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(loggedContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(loggedContext);
+    expect(logged).not.toContain('raw pharmacist staff secret');
+    expect(logged).not.toContain('PharmacistListSecretError');
   });
 });
 
@@ -645,6 +654,49 @@ describe('/api/pharmacists POST', () => {
     expect(inviteCognitoUserMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(userCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when duplicate pharmacist lookup fails unexpectedly', async () => {
+    const unsafeError = new Error('raw pharmacist create email secret');
+    unsafeError.name = 'PharmacistCreateSecretError';
+    userFindFirstMock.mockRejectedValueOnce(unsafeError);
+
+    const response = await POST(
+      createRequest({
+        name: '作成 薬剤師',
+        name_kana: 'サクセイ ヤクザイシ',
+        email: 'create@example.com',
+        role: 'external_viewer',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw pharmacist create email secret');
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
+      site_id: undefined,
+    });
+    expect(inviteCognitoUserMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(userCreateMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'pharmacists_post_unhandled_error',
+        route: '/api/pharmacists',
+        method: 'POST',
+        status: 500,
+      },
+      unsafeError,
+    );
+    const loggedContext = loggerErrorMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(loggedContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(loggedContext);
+    expect(logged).not.toContain('raw pharmacist create email secret');
+    expect(logged).not.toContain('PharmacistCreateSecretError');
   });
 
   it('creates an external viewer without a site assignment', async () => {

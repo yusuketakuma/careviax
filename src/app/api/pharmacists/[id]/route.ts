@@ -23,20 +23,6 @@ import {
 } from '@/server/services/cognito-admin';
 
 const ROUTE = '/api/pharmacists/[id]';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 async function authenticatedPATCH(
   req: NextRequest,
@@ -290,13 +276,15 @@ export async function PATCH(req: NextRequest, routeContext: { params: Promise<{ 
       return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('pharmacists_id_patch_unhandled_error', undefined, {
-        event: 'pharmacists_id_patch_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'pharmacists_id_patch_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

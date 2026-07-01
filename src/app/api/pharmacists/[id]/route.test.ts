@@ -388,7 +388,9 @@ describe('/api/pharmacists/[id] PATCH', () => {
   });
 
   it('returns a sanitized no-store 500 when staff updates fail unexpectedly', async () => {
-    userFindFirstMock.mockRejectedValueOnce(new Error('raw staff route secret'));
+    const unsafeError = new Error('raw staff route secret');
+    unsafeError.name = 'PharmacistPatchSecretError';
+    userFindFirstMock.mockRejectedValueOnce(unsafeError);
 
     const response = await PATCH(
       createRequest(
@@ -407,18 +409,21 @@ describe('/api/pharmacists/[id] PATCH', () => {
     const bodyText = await response.text();
     expect(bodyText).toContain('INTERNAL_ERROR');
     expect(bodyText).not.toContain('raw staff route secret');
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'pharmacists_id_patch_unhandled_error',
-      undefined,
       {
         event: 'pharmacists_id_patch_unhandled_error',
         route: '/api/pharmacists/[id]',
         method: 'PATCH',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw staff route secret');
+    const loggedContext = loggerErrorMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(loggedContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(loggedContext);
+    expect(logged).not.toContain('raw staff route secret');
+    expect(logged).not.toContain('PharmacistPatchSecretError');
     expect(disableCognitoUserMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
