@@ -30,6 +30,39 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Comments Helper Boundary - 2026-07-01 09:51 JST
+
+- Scope:
+  - Continued low-risk collaboration UI helper convergence for comment threads and mention candidate lookup.
+  - Focused on preserving PHI/PII behavior while moving raw comment/pharmacist paths and org headers into shared helpers.
+- Fixed:
+  - Added `COMMENTS_API_PATH` and `buildCommentsApiPath(params)` to `src/lib/comments/api-paths.ts`.
+  - Preserved existing comment detail hostile-id encoding and dot-segment fail-closed behavior through `buildCommentApiPath(id)`.
+  - Replaced comment list/create/delete inline paths and org headers with `buildCommentsApiPath`, `COMMENTS_API_PATH`, `buildCommentApiPath`, `buildOrgHeaders`, and `buildOrgJsonHeaders`.
+  - Replaced mention candidate `/api/pharmacists` and inline org header with `buildPharmacistsApiPath()` and `buildOrgHeaders`.
+  - Added regression coverage for comment list GET query shape, comment POST body/header shape, comment DELETE path/header shape, mention candidate GET path/header shape, collection query encoding, and existing hostile-id/dot-segment behavior.
+- Safety:
+  - Reduces tenant-header drift and raw path construction in comment and mention lookup UI without changing comment content handling or mention id handling.
+  - Privacy reviewer found no blocking privacy regression and confirmed comment body handling, mention id handling, query keys, realtime invalidation, false-empty handling, hostile id encoding, dot-segment fail-closed delete behavior, and absence of new logging/export/cache leakage are preserved.
+  - Privacy reviewer noted an existing non-blocking minimization residual: `MentionInput` still receives the broader `/api/pharmacists` staff payload while only using `id` and `name`. This was not introduced or expanded by this helper slice and remains a future API-minimization candidate.
+  - No auth/RLS policy, permission, payload semantics, DB data, migration, external send, push/deploy, secret handling, or destructive-operation boundary changed.
+- Performance:
+  - Header/path helper convergence only changes local string and header-object construction.
+  - Adds no request, backend query, dependency, polling, background job, broad scan, render fan-out, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/components/features/comments/comment-thread.test.tsx src/components/features/comments/mention-input.test.tsx src/lib/comments/api-paths.test.ts src/lib/pharmacists/api-paths.test.ts src/lib/api/org-headers.test.ts --reporter=dot --testTimeout=60000`: passed, `5` files / `28` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on comment/mention/path/header files: passed after formatting `comment-thread.tsx` and `mention-input.tsx`.
+  - Privacy reviewer: no blocking findings in the reviewed comments helper convergence.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains open.
+  - Staff mention-candidate payload minimization is a future candidate, not part of this behavior-preserving helper convergence.
+  - Browser smoke was not run because no visible DOM layout/copy/interaction-state change was made; focused DOM tests and privacy review cover the read/mutation contracts and false-empty branches touched by this slice.
+
 ### Saved Views Helper Boundary - 2026-07-01 09:41 JST
 
 - Scope:
