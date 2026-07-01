@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DOCUMENT_DELIVERY_RULES_API_PATH,
   DOCUMENT_TEMPLATES_API_PATH,
+  buildDocumentDeliveryRulesApiPath,
   buildDocumentDeliveryRuleApiPath,
   buildDocumentTemplateApiPath,
   buildDocumentTemplatesApiPath,
@@ -13,16 +14,27 @@ describe('document template API path helpers', () => {
     expect(DOCUMENT_DELIVERY_RULES_API_PATH).toBe('/api/document-delivery-rules');
     expect(buildDocumentTemplatesApiPath()).toBe('/api/templates');
     expect(buildDocumentTemplatesApiPath(new URLSearchParams())).toBe('/api/templates');
+    expect(buildDocumentDeliveryRulesApiPath()).toBe('/api/document-delivery-rules');
+    expect(buildDocumentDeliveryRulesApiPath(new URLSearchParams())).toBe(
+      '/api/document-delivery-rules',
+    );
   });
 
   it('builds encoded collection query paths', () => {
-    const params = new URLSearchParams({
+    const templateParams = new URLSearchParams({
       template_type: 'care_report',
       cursor: 'template/1?x=y#frag',
     });
+    const ruleParams = new URLSearchParams({
+      document_type: 'care_report',
+      cursor: 'rule/1?x=y#frag',
+    });
 
-    expect(buildDocumentTemplatesApiPath(params)).toBe(
+    expect(buildDocumentTemplatesApiPath(templateParams)).toBe(
       '/api/templates?template_type=care_report&cursor=template%2F1%3Fx%3Dy%23frag',
+    );
+    expect(buildDocumentDeliveryRulesApiPath(ruleParams)).toBe(
+      '/api/document-delivery-rules?document_type=care_report&cursor=rule%2F1%3Fx%3Dy%23frag',
     );
   });
 

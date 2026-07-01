@@ -8,6 +8,11 @@ export function buildDocumentTemplatesApiPath(params?: URLSearchParams) {
   return query ? `${DOCUMENT_TEMPLATES_API_PATH}?${query}` : DOCUMENT_TEMPLATES_API_PATH;
 }
 
+export function buildDocumentDeliveryRulesApiPath(params?: URLSearchParams) {
+  const query = params?.toString() ?? '';
+  return query ? `${DOCUMENT_DELIVERY_RULES_API_PATH}?${query}` : DOCUMENT_DELIVERY_RULES_API_PATH;
+}
+
 export function buildDocumentTemplateApiPath(templateId: string) {
   return `${DOCUMENT_TEMPLATES_API_PATH}/${encodePathSegment(templateId)}`;
 }

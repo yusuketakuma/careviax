@@ -10,8 +10,19 @@ import { DocumentDeliveryRuleManager } from './document-delivery-rule-manager';
 setupDomTestEnv();
 
 const orgIdMock = vi.hoisted(() => ({ value: 'org_1' }));
+const buildOrgHeadersMock = vi.hoisted(() =>
+  vi.fn((orgId: string) => ({ 'x-test-org-id': orgId })),
+);
+const buildOrgJsonHeadersMock = vi.hoisted(() =>
+  vi.fn((orgId: string) => ({ 'Content-Type': 'application/json', 'x-test-json-org-id': orgId })),
+);
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => orgIdMock.value,
+}));
+
+vi.mock('@/lib/api/org-headers', () => ({
+  buildOrgHeaders: buildOrgHeadersMock,
+  buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
 
 vi.mock('sonner', () => ({
@@ -117,9 +128,10 @@ describe('DocumentDeliveryRuleManager', () => {
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
         '/api/document-delivery-rules/rule_1',
-        expect.objectContaining({ method: 'DELETE', headers: { 'x-org-id': 'org_1' } }),
+        expect.objectContaining({ method: 'DELETE', headers: { 'x-test-org-id': 'org_1' } }),
       );
     });
+    expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
   });
 
   it('single-encodes delivery-rule update/delete paths and preserves payloads', async () => {
@@ -189,8 +201,9 @@ describe('DocumentDeliveryRuleManager', () => {
     expect(mutationCalls.map(([, init]) => init.method)).toEqual(['PATCH', 'DELETE']);
     expect(mutationCalls[0][1].headers).toEqual({
       'Content-Type': 'application/json',
-      'x-org-id': 'org_1',
+      'x-test-json-org-id': 'org_1',
     });
+    expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
     expect(JSON.parse(String(mutationCalls[0][1].body))).toEqual({
       document_type: 'care_report',
       target_role: 'physician',
@@ -198,11 +211,39 @@ describe('DocumentDeliveryRuleManager', () => {
       fallback_channels: ['mcs'],
       is_active: true,
     });
-    expect(mutationCalls[1][1].headers).toEqual({ 'x-org-id': 'org_1' });
+    expect(mutationCalls[1][1].headers).toEqual({ 'x-test-org-id': 'org_1' });
     for (const [url, init] of mutationCalls) {
       expect(url).not.toContain('%25');
       expect(String(init.body ?? '')).not.toContain(hostileId);
     }
+  });
+
+  it('uses shared collection paths and org headers for rule reads', async () => {
+    renderManager();
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith('/api/document-delivery-rules', {
+        headers: { 'x-test-org-id': 'org_1' },
+      });
+    });
+    expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
+  });
+
+  it('creates delivery rules through the shared collection path and JSON org headers', async () => {
+    renderManager();
+
+    fireEvent.click(await screen.findByRole('button', { name: '登録する' }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/document-delivery-rules',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-test-json-org-id': 'org_1' },
+        }),
+      );
+    });
+    expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
   });
 
   it('names the edit action and loads the selected delivery rule into the form', async () => {

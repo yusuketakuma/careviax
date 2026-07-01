@@ -18,7 +18,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { buildDocumentDeliveryRuleApiPath } from '@/lib/document-templates/api-paths';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import {
+  DOCUMENT_DELIVERY_RULES_API_PATH,
+  buildDocumentDeliveryRulesApiPath,
+  buildDocumentDeliveryRuleApiPath,
+} from '@/lib/document-templates/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type DeliveryChannel = 'email' | 'fax' | 'mcs';
@@ -118,8 +123,8 @@ export function DocumentDeliveryRuleManager() {
   const rulesQuery = useQuery({
     queryKey: ['document-delivery-rules', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/document-delivery-rules', {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildDocumentDeliveryRulesApiPath(), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
         throw new Error('文書送達ルールの取得に失敗しました');
@@ -133,13 +138,10 @@ export function DocumentDeliveryRuleManager() {
     mutationFn: async () => {
       const fallbackChannels = normalizeFallbackChannels(form.fallbackChannelsText, form.channel);
       const res = await fetch(
-        form.id ? buildDocumentDeliveryRuleApiPath(form.id) : '/api/document-delivery-rules',
+        form.id ? buildDocumentDeliveryRuleApiPath(form.id) : DOCUMENT_DELIVERY_RULES_API_PATH,
         {
           method: form.id ? 'PATCH' : 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-org-id': orgId,
-          },
+          headers: buildOrgJsonHeaders(orgId),
           body: JSON.stringify({
             document_type: form.documentType,
             target_role: form.targetRole,
@@ -168,7 +170,7 @@ export function DocumentDeliveryRuleManager() {
     mutationFn: async (ruleId: string) => {
       const res = await fetch(buildDocumentDeliveryRuleApiPath(ruleId), {
         method: 'DELETE',
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
         throw new Error('文書送達ルールの削除に失敗しました');
