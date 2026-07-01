@@ -30,6 +30,54 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Pharmacists Structured Logger Convergence - 2026-07-01 13:13 JST
+
+- Scope:
+  - Continued safe structured logger convergence on pharmacist/staff management
+    routes.
+  - Focused only on `/api/pharmacists` GET/POST and `/api/pharmacists/[id]`
+    PATCH unexpected-error logs plus missing POST duplicate-lookup failure
+    coverage.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` sets and `safeErrorName()`
+    helpers.
+  - Replaced string overload calls with
+    `logger.error({ event, route, method, status }, err)` for the three
+    unexpected-error catch blocks.
+  - Updated GET/PATCH tests to assert route-supplied context stays limited to
+    safe operational fields.
+  - Added POST duplicate-pharmacist lookup failure coverage proving a sanitized
+    no-store 500 response and no Cognito invite, DB write, or audit mutation.
+- Safety:
+  - Preserved response bodies/statuses, no-store wrapping, auth gates,
+    validation, run-with-request-auth-context, RLS request-context options,
+    Cognito expected-error validation paths, DB writes, rollback behavior, and
+    audit semantics.
+  - Privacy review found no blocker and confirmed the diff lowers raw
+    message/stack leakage risk for staff PII/Cognito-adjacent failures.
+  - Route tests intentionally do not serialize full logger mock calls because
+    the raw `Error` is now the second argument; shared logger tests cover actual
+    console/Sentry redaction.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/pharmacists/route.test.ts 'src/app/api/pharmacists/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `3` files / `42` tests.
+  - Scoped Prettier check, scoped ESLint, and scoped diff-check on changed
+    route/test files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Continue only with small, tested logger convergence candidates; do not add
+    staff email/name/phone/Cognito username/request body to route log context
+    without separate privacy review.
+
 ### Visit Vehicle Resource Structured Logger Convergence - 2026-07-01 13:05 JST
 
 - Scope:

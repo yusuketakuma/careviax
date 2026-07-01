@@ -61,8 +61,34 @@ If any of those are needed, create a proposal first. Do not implement silently.
     tests
   - visit-vehicle-resource route-local logger sanitizers converged on the
     shared safe structured logger overload
+  - pharmacist route-local logger sanitizers converged on the shared safe
+    structured logger overload, with POST duplicate-lookup failure coverage
 
 ## Completed Slices
+
+### 2026-07-01 13:13 JST: Pharmacists Structured Logger Convergence
+
+- Completed observability/privacy refactor follow-up:
+  `Pharmacists Structured Logger Convergence`.
+- Files changed:
+  - `src/app/api/pharmacists/route.ts`
+  - `src/app/api/pharmacists/route.test.ts`
+  - `src/app/api/pharmacists/[id]/route.ts`
+  - `src/app/api/pharmacists/[id]/route.test.ts`
+- Validation:
+  - focused logger + pharmacists route suite passed `3` files / `42` tests
+  - scoped Prettier check passed
+  - scoped ESLint passed
+  - scoped diff whitespace check passed
+  - full typecheck passed
+  - no-unused typecheck passed
+  - full lint passed
+  - full format check passed
+  - full diff whitespace check passed
+- Remaining follow-up:
+  - Continue with small, tested route-local logger convergence candidates.
+  - Do not add staff PII/Cognito identifiers to safe log context without a
+    separate privacy review.
 
 ### 2026-07-01 13:05 JST: Visit Vehicle Resource Structured Logger Convergence
 

@@ -15,6 +15,76 @@ validation output.
   - `REFACTOR_RISK_MAP.md`
   - `REFACTOR_EXECUTION_PLAN.md`
 
+## Slice: Pharmacists Structured Logger Convergence
+
+- Timestamp: 2026-07-01 13:13 JST
+- Purpose:
+  - Route pharmacist/staff unexpected-error logs through the shared PHI-safe
+    structured logger overload.
+  - Remove route-local `safeErrorName()` duplication now that shared logger
+    owns safe error-name normalization.
+  - Add missing POST duplicate-lookup unexpected-failure coverage before any
+    Cognito invite or DB write can happen.
+- Changed files:
+  - `src/app/api/pharmacists/route.ts`
+  - `src/app/api/pharmacists/route.test.ts`
+  - `src/app/api/pharmacists/[id]/route.ts`
+  - `src/app/api/pharmacists/[id]/route.test.ts`
+- Change reason:
+  - Pharmacist routes handle staff PII and Cognito-facing identity fields, but
+    still used the string logger overload with duplicated route-local
+    `safeErrorName()` helpers.
+  - The shared logger now provides runtime safe context allowlisting and raw
+    `Error` redaction for the object overload.
+- Deleted code:
+  - Removed two route-local `SAFE_ERROR_NAMES` sets and `safeErrorName()`
+    helpers.
+- Commonized processing:
+  - GET, POST, and PATCH unexpected-error paths now call
+    `logger.error({ event, route, method, status }, err)`.
+  - Route tests assert only route-safe context is supplied and avoid
+    serializing full mock calls that intentionally include a raw `Error` as the
+    second argument.
+  - Added POST duplicate-email lookup failure coverage proving no Cognito invite,
+    DB write, or audit mutation happens after the lookup fails.
+- Safety:
+  - API response bodies/statuses, no-store wrapping, auth gates, validation,
+    run-with-request-auth-context, RLS request-context options, Cognito expected
+    validation paths, DB writes, and audit semantics were unchanged.
+  - Privacy review found no blocker and confirmed the diff lowers raw
+    message/stack leakage risk for staff PII/Cognito-adjacent errors.
+- Performance:
+  - Removes small duplicated error-name helpers and changes logging call shape
+    only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/pharmacists/route.test.ts 'src/app/api/pharmacists/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `3` files / `42` tests.
+  - Scoped Prettier check for changed route/test files: passed.
+  - Scoped ESLint for changed route/test files: passed.
+  - Scoped diff whitespace check for changed route/test files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Known risks:
+  - Route tests prove call shape and response/side-effect behavior; actual
+    console/Sentry redaction remains the shared logger test's responsibility.
+  - Do not add staff email/name/phone/Cognito username/request body to route log
+    context without a separate privacy review.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS policies, auth/authz semantics, route response DTO
+    contracts, staff management business rules, Cognito expected-error
+    semantics, audit semantics, external sends, production config, secrets,
+    deployment, and dependency versions.
+- Next improvements:
+  - Continue small, tested route-local logger convergence only where existing
+    tests can prove no response/no-store/RLS/Cognito/DB/audit behavior changed.
+- PR split:
+  - Commit this route logger/test slice independently.
+  - Commit report/progress updates separately.
+
 ## Slice: Visit Vehicle Resource Structured Logger Convergence
 
 - Timestamp: 2026-07-01 13:05 JST
