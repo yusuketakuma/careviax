@@ -30,6 +30,53 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Report Generation Path Helper - 2026-07-01 11:53 JST
+
+- Scope:
+  - Continued low-risk report-generation helper convergence.
+  - Focused on preserving visit-based care report generation behavior while
+    moving the raw `/api/care-reports/generate-from-visit` client path into the
+    shared report path helper module.
+- Fixed:
+  - Added `GENERATE_CARE_REPORT_FROM_VISIT_API_PATH` and
+    `buildGenerateCareReportFromVisitApiPath()` to
+    `src/lib/reports/api-paths.ts`.
+  - Replaced the raw fetch path in `generateCareReportFromVisit()` with the
+    shared helper.
+  - Added path-helper tests pinning the exact generation endpoint and updated
+    the client test to keep proving the exact fetch URL, JSON org headers, and
+    snake_case request body.
+- Safety:
+  - Reduces report-generation endpoint drift without changing method, headers,
+    payload, optional regeneration fields, response parsing, malformed success
+    fallback, non-JSON failure fallback, or API error propagation.
+  - Privacy reviewer found no path-helper privacy blocker and confirmed the
+    change does not add query parameters, logs, export paths, storage/cache
+    surfaces, route/auth/no-store changes, RLS changes, migrations, package
+    changes, or external sends.
+  - Route catalog and rate-limit raw literals for the same endpoint remain
+    separate server-side concerns and were not mixed into this client helper
+    slice.
+- Performance:
+  - Constant-backed path helper only.
+  - Adds no request, backend query, dependency, polling, background job, broad
+    scan, render fan-out, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/reports/api-paths.test.ts src/lib/reports/generate-from-visit-client.test.ts src/lib/reports/generate-from-visit-contract.test.ts 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' src/app/api/care-reports/generate-from-visit/route.test.ts --reporter=dot --testTimeout=60000`: passed, `5` files / `52` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on changed report
+    helper/client files: passed after formatting
+    `src/lib/reports/api-paths.test.ts`.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes a shared client helper
+    path only, with no visible DOM layout, copy, or interaction-state change.
+
 ### Document Delivery Rule Helper Boundary - 2026-07-01 10:24 JST
 
 - Scope:

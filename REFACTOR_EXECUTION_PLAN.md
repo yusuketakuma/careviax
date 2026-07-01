@@ -49,6 +49,7 @@ If any of those are needed, create a proposal first. Do not implement silently.
   - `/admin/metrics` placeholder zero removal
   - nav badge API path/header helper convergence
   - `/api/nav-badges` no-store response boundary hardening
+  - report generation API path helper convergence
 
 ## Completed Slices
 
@@ -87,6 +88,29 @@ If any of those are needed, create a proposal first. Do not implement silently.
 - Remaining follow-up:
   - Nav badge service parity/date-boundary/RLS request-context questions remain
     separate behavior candidates.
+
+### 2026-07-01 11:53 JST: Report Generation Path Helper
+
+- Completed safe candidate: `Report Generation Path Helper`.
+- Files changed:
+  - `src/lib/reports/api-paths.ts`
+  - `src/lib/reports/api-paths.test.ts`
+  - `src/lib/reports/generate-from-visit-client.ts`
+  - `src/lib/reports/generate-from-visit-client.test.ts`
+- Validation:
+  - focused report helper/client/contract/workspace/route suite passed `5`
+    files / `52` tests
+  - scoped ESLint passed
+  - scoped Prettier check passed
+  - scoped diff whitespace check passed
+  - full typecheck passed
+  - no-unused typecheck passed
+  - full lint passed
+  - full format check passed
+  - full diff whitespace check passed
+- Remaining follow-up:
+  - Server route catalog and rate-limit literals for this endpoint remain
+    separate API-boundary candidates.
 
 ## Execution Order
 
@@ -148,6 +172,9 @@ Each slice should normally satisfy:
 ## Candidate Work Packages
 
 ### 1. Report Generation Path Helper
+
+- Status: completed as a behavior-preserving client path helper slice on
+  2026-07-01 11:53 JST.
 
 - Files:
   - `src/lib/reports/generate-from-visit-client.ts`

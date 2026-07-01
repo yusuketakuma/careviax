@@ -133,3 +133,66 @@ validation output.
 - PR split:
   - Commit this API hardening slice independently.
   - Commit report/progress updates separately.
+
+## Slice: Report Generation Path Helper
+
+- Timestamp: 2026-07-01 11:53 JST
+- Purpose:
+  - Centralize the visit-based care report generation API path.
+  - Preserve the existing report generation client request, response, and error
+    behavior.
+  - Lock the constant path so future report-generation callers do not drift.
+- Changed files:
+  - `src/lib/reports/api-paths.ts`
+  - `src/lib/reports/api-paths.test.ts`
+  - `src/lib/reports/generate-from-visit-client.ts`
+  - `src/lib/reports/generate-from-visit-client.test.ts`
+- Change reason:
+  - `/api/care-reports/generate-from-visit` was still a raw client literal even
+    though report detail and print-audit path helpers already existed.
+  - Care report generation is PHI-adjacent, so endpoint drift should be caught
+    by helper and client contract tests.
+- Deleted code:
+  - None.
+- Commonized processing:
+  - Added `GENERATE_CARE_REPORT_FROM_VISIT_API_PATH`.
+  - Added `buildGenerateCareReportFromVisitApiPath()`.
+  - Replaced the raw client fetch path with the helper.
+- Safety:
+  - Method, `buildOrgJsonHeaders(input.orgId)`, request body keys, optional
+    regeneration fields, response schema parsing, and API error fallback
+    behavior were unchanged.
+  - Route auth, no-store wrapping, service behavior, RLS, audit behavior,
+    migrations, external sends, and production config were unchanged.
+  - Privacy review found no blocker in the path-only extraction and confirmed no
+    new query-parameter, log, export, storage, or cache leakage path.
+- Performance:
+  - Constant-backed path helper only.
+  - No new request, route call, backend query, dependency, background job,
+    polling, broad scan, or render fan-out was added.
+- Validation:
+  - `pnpm exec vitest run src/lib/reports/api-paths.test.ts src/lib/reports/generate-from-visit-client.test.ts src/lib/reports/generate-from-visit-contract.test.ts 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' src/app/api/care-reports/generate-from-visit/route.test.ts --reporter=dot --testTimeout=60000`: passed, `5` files / `52` tests.
+  - Scoped ESLint for changed files: passed.
+  - Scoped Prettier check for changed files: passed after formatting
+    `src/lib/reports/api-paths.test.ts`.
+  - Scoped diff whitespace check for changed files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Known risks:
+  - Route catalog and rate-limit literals for the same endpoint remain separate
+    server-side concerns and were intentionally not folded into this client path
+    helper slice.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS, auth/authz logic, tenant selection behavior, audit
+    semantics, PHI payload fields, external sends, billing, medication identity,
+    production config, secrets, deployment, and dependency versions.
+- Next improvements:
+  - Continue safe low-risk helper convergence from `REFACTOR_EXECUTION_PLAN.md`.
+  - Treat any server route catalog/rate-limit cleanup as a separately reviewed
+    API boundary slice.
+- PR split:
+  - Commit this helper/test slice independently.
+  - Commit report/progress updates separately.
