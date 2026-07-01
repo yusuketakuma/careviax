@@ -30,6 +30,70 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Drug Master Import Status Structured Logger Convergence - 2026-07-01 14:21 JST
+
+- Scope:
+  - Continued safe structured logger convergence on the drug master import
+    status route.
+  - Focused only on `/api/drug-master-imports/status` GET unexpected-error
+    logs.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced the string overload call with
+    `logger.error({ event, route, method, status }, err)` for the GET
+    unexpected-error catch block.
+  - Updated the sanitized 500 route test to assert minimal route-supplied
+    context, explicit absence of route-local `error_name`, and delegation of
+    raw `Error` redaction to the shared logger contract tests.
+  - Strengthened auth failure tests so 401/403 short-circuit responses do not
+    call the unexpected-error logger.
+- Safety:
+  - Preserved response bodies/statuses, no-store wrapping, `canAdmin` auth,
+    source list, `Promise.all` query ordering, Prisma `where` / `orderBy` /
+    `distinct` / `take` / `select` shapes, freshness thresholds and
+    calculations, recent-run failure-streak math, coverage totals, `checked_at`,
+    and last-failure response shaping.
+  - The sanitized 500 test includes token-bearing `source_url` and raw
+    `error_log` sentinels and proves route-supplied logger context excludes
+    those fields, raw error text, unsafe error name, and route-local
+    `error_name`.
+  - Privacy review found no blocking issue and confirmed route tests should
+    inspect only the first structured context argument while shared logger tests
+    cover final emitted redaction.
+  - Medical safety review found no blocker because the DB query, freshness and
+    totals calculations, response shaping, and no-store/error behavior were
+    unchanged.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, sort change, or unbounded loop.
+- Validation:
+  - `pnpm exec prettier --check src/app/api/drug-master-imports/status/route.ts src/app/api/drug-master-imports/status/route.test.ts`: passed.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/drug-master-imports/status/route.ts src/app/api/drug-master-imports/status/route.test.ts`: passed.
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/drug-master-imports/status/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `20` tests.
+  - `git diff --check -- src/app/api/drug-master-imports/status/route.ts src/app/api/drug-master-imports/status/route.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser-visible `last_failure.error` minimization and persisted
+    `error_log` / `source_url` minimization at import writer/storage boundaries
+    remain separate follow-up or proposal candidates; this slice preserved the
+    current import-status response DTO contract.
+  - Continue only with small, tested logger convergence candidates; do not add
+    source URLs, import error logs, request bodies, import file hashes, source
+    status records, counts, patient or medication payloads, or raw error
+    metadata to route log context without separate privacy and medical-safety
+    review.
+  - Browser smoke was not run because this slice changes server logging behavior
+    and tests only, with no visible DOM layout, copy, or interaction-state
+    change.
+
 ### Drug Master Import Log Structured Logger Convergence - 2026-07-01 14:09 JST
 
 - Scope:

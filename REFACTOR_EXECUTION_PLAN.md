@@ -74,8 +74,37 @@ If any of those are needed, create a proposal first. Do not implement silently.
   - drug-master-import-log route-local logger sanitizer converged on the
     shared safe structured logger overload, with sanitized lookup failure and
     controlled-validation coverage
+  - drug-master-import-status route-local logger sanitizer converged on the
+    shared safe structured logger overload, with sanitized status lookup
+    failure coverage
 
 ## Completed Slices
+
+### 2026-07-01 14:21 JST: Drug Master Import Status Structured Logger Convergence
+
+- Completed observability/privacy refactor follow-up:
+  `Drug Master Import Status Structured Logger Convergence`.
+- Files changed:
+  - `src/app/api/drug-master-imports/status/route.ts`
+  - `src/app/api/drug-master-imports/status/route.test.ts`
+- Validation:
+  - focused logger + drug-master-import-status route suite passed `2` files /
+    `20` tests
+  - scoped Prettier check passed
+  - scoped ESLint passed
+  - scoped diff whitespace check passed
+  - full typecheck passed
+  - no-unused typecheck passed
+  - full lint passed
+  - full format check passed
+  - full diff whitespace check passed
+  - production build passed
+- Remaining follow-up:
+  - Browser-visible `last_failure.error` minimization and import writer/storage
+    minimization for persisted `error_log` / `source_url` remain separate
+    proposal/follow-up candidates, not part of this behavior-preserving logger
+    slice.
+  - Continue with small, tested route-local logger convergence candidates.
 
 ### 2026-07-01 14:09 JST: Drug Master Import Log Structured Logger Convergence
 

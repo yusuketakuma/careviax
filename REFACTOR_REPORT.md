@@ -15,6 +15,82 @@ validation output.
   - `REFACTOR_RISK_MAP.md`
   - `REFACTOR_EXECUTION_PLAN.md`
 
+## Slice: Drug Master Import Status Structured Logger Convergence
+
+- Timestamp: 2026-07-01 14:21 JST
+- Purpose:
+  - Route drug master import status unexpected-error logs through the shared
+    PHI/secret-safe structured logger overload.
+  - Remove route-local `safeErrorName()` duplication now that shared logger owns
+    safe error-name normalization.
+  - Preserve import-status response, no-store, auth, freshness calculations,
+    query shape, selected fields, totals, and last-failure response shaping.
+- Changed files:
+  - `src/app/api/drug-master-imports/status/route.ts`
+  - `src/app/api/drug-master-imports/status/route.test.ts`
+- Change reason:
+  - The import-status route still used the string logger overload with
+    duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()` despite
+    existing shared logger runtime allowlisting and raw `Error` redaction.
+- Deleted code:
+  - Removed the route-local `SAFE_ERROR_NAMES` set and `safeErrorName()` helper.
+- Commonized processing:
+  - GET unexpected-error path now calls
+    `logger.error({ event, route, method, status }, err)`.
+  - Route tests assert only minimal operational context is supplied by the route
+    while the raw `Error` is delegated to the shared logger contract tests.
+  - Auth-denied paths now assert the unexpected-error logger is not called.
+- Safety:
+  - API response bodies/statuses, no-store wrapping, `canAdmin` auth gate,
+    `Promise.all` query ordering, Prisma `where` / `orderBy` / `distinct` /
+    `take` / `select` shapes, freshness thresholds, failure streak math, totals
+    coverage math, `checked_at`, and last-failure response shaping were
+    unchanged.
+  - The sanitized 500 test includes sentinels for token-bearing `source_url` and
+    raw `error_log` text and proves route-supplied logger context omits those
+    fields, raw error text, unsafe error name, and route-local `error_name`.
+  - Privacy review found no blocking issue and confirmed the route-supplied log
+    context stays limited to `event`, `route`, `method`, and `status`.
+  - Medical safety review found no actionable safety finding because query
+    shape, freshness/totals calculations, last-failure response shaping, and
+    no-store/error behavior were unchanged.
+- Performance:
+  - Removes a small duplicated helper and changes logging call shape only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, sorting change, or unbounded
+    loop.
+- Validation:
+  - `pnpm exec prettier --check src/app/api/drug-master-imports/status/route.ts src/app/api/drug-master-imports/status/route.test.ts`: passed.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/drug-master-imports/status/route.ts src/app/api/drug-master-imports/status/route.test.ts`: passed.
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/drug-master-imports/status/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `20` tests.
+  - `git diff --check -- src/app/api/drug-master-imports/status/route.ts src/app/api/drug-master-imports/status/route.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+- Known risks:
+  - Route tests mock the logger and therefore prove route delegation/context
+    only; emitted console/Sentry redaction remains the shared logger test's
+    responsibility.
+  - Browser-visible `last_failure.error` and persisted `error_log` /
+    `source_url` minimization remain separate follow-up or proposal candidates.
+    This slice deliberately preserves the current response DTO contract and
+    import writer/storage behavior.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS policies, auth/authz semantics, import writer
+    behavior, import-status response DTO contracts, master-data import business
+    rules, audit semantics, external sends, production config, secrets,
+    deployment, and dependency versions.
+- Next improvements:
+  - Continue small, tested route-local logger convergence only where existing
+    tests can prove responses, no-store headers, query shape, and mutations
+    remain unchanged.
+- PR split:
+  - Commit this route logger/test slice independently.
+  - Commit report/progress updates separately.
+
 ## Slice: Drug Master Import Log Structured Logger Convergence
 
 - Timestamp: 2026-07-01 14:09 JST
