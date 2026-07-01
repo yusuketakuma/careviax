@@ -15,6 +15,80 @@ validation output.
   - `REFACTOR_RISK_MAP.md`
   - `REFACTOR_EXECUTION_PLAN.md`
 
+## Slice: Safe Structured Logger Runtime Redaction
+
+- Timestamp: 2026-07-01 12:56 JST
+- Purpose:
+  - Make the safe structured logger overload enforce its allowlist at runtime,
+    not only through TypeScript.
+  - Prevent raw request-body, PHI/PII-like, secret-like, stack, and raw error
+    fields from entering console JSON or Sentry extras through object overloads.
+  - Preserve the intended safe operational metadata fields such as event, route,
+    method, status, request id, code, org id, and error class category.
+- Changed files:
+  - `src/lib/utils/logger.ts`
+  - `src/lib/utils/logger.test.ts`
+- Change reason:
+  - `SafeLogContext` was typed as an allowlist, but `buildSafeLogContext()`
+    iterated every runtime key in the object. A caller using `as any`, object
+    spread, or JS could pass unknown keys such as `body`, `token`, `password`,
+    `patientEmail`, or `insuranceNumber`, and safe-looking ASCII values could
+    reach console logs.
+  - Safe structured error logging deliberately omits `Error.message` and stack,
+    but `Error.name` was also a raw property and could be overwritten with
+    secret-like text.
+- Deleted code:
+  - None.
+- Commonized processing:
+  - Added a runtime `SAFE_LOG_CONTEXT_KEYS` allowlist and made
+    `buildSafeLogContext()` copy only known safe fields.
+  - Added `normalizeSafeEvent()` and made non-string events fail closed to
+    `invalid_event_name`.
+  - Made unsupported runtime value types redact to `redacted` instead of
+    throwing.
+  - Added `normalizeErrorName()` so safe object overloads keep only real Error
+    constructor names that match the Error instance and fall back to `Error` for
+    tampered names.
+- Safety:
+  - Existing string-overload behavior is unchanged.
+  - Existing typed safe-object callers use allowlisted keys, so their intended
+    operational metadata remains available.
+  - New tests cover unknown runtime keys, ASCII PII/secret-like values,
+    object-valued safe fields, raw `Error.message`, raw stack, unsafe
+    `Error.name`, and Sentry `captureMessage` behavior.
+  - No API response contract, DB/RLS policy, auth/authz behavior, audit
+    semantics, external send, production config, secret, dependency, or route
+    behavior was changed.
+- Performance:
+  - Replaces object-entry copying with a fixed small allowlist loop.
+  - Adds no DB query, network call, dependency, polling, background job, broad
+    scan, render work, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests.
+  - Scoped Prettier check for changed logger files: passed.
+  - Scoped ESLint for changed logger files: passed.
+  - Scoped diff whitespace check for changed logger files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Known risks:
+  - Safe object overloads now intentionally drop unknown runtime keys. This is a
+    security hardening change for logs; callers that require new operational
+    metadata must add it to the explicit safe allowlist with tests.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS policies, auth/authz semantics, route response DTO
+    contracts, medical workflow behavior, audit semantics, external sends,
+    production config, secrets, deployment, and dependency versions.
+- Next improvements:
+  - Continue behavior-preserving API response-boundary or helper convergence.
+  - Treat adding new safe logger metadata keys as separate, reviewed
+    observability changes.
+- PR split:
+  - Commit this logger implementation/test slice independently.
+  - Commit report/progress updates separately.
+
 ## Slice: Document Delivery Rule RLS Request Context
 
 - Timestamp: 2026-07-01 12:48 JST

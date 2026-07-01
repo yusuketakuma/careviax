@@ -30,6 +30,53 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Safe Structured Logger Runtime Redaction - 2026-07-01 12:56 JST
+
+- Scope:
+  - Addressed the real logger redaction contract residual recorded after the
+    document-delivery-rule RLS context slice.
+  - Focused on `logger.error(ctx, error)` / `logger.warn(ctx)` safe object
+    overloads only.
+- Fixed:
+  - Added a runtime `SAFE_LOG_CONTEXT_KEYS` allowlist so safe structured logger
+    calls copy only known operational metadata keys.
+  - Made non-string events fail closed to `invalid_event_name`.
+  - Made unsupported runtime value types redact to `redacted` instead of
+    throwing if a caller bypasses the TypeScript `SafeLogValue` type.
+  - Added `normalizeErrorName()` so tampered raw `Error.name` values fall back
+    to `Error`; real matching Error constructor names remain available.
+  - Added logger contract tests for unknown runtime keys, request-body/PHI-like
+    sentinels, ASCII PII/secret-like values, raw message/stack omission,
+    unsafe error-name normalization, console output, and production Sentry
+    `captureMessage` extras.
+- Safety:
+  - Existing string-overload behavior remains unchanged.
+  - Existing typed safe-object callers use allowlisted keys and keep their
+    intended operational metadata.
+  - No API response contract, DB/RLS policy, auth/authz behavior, audit
+    semantics, route behavior, external send, production config, secret, or
+    dependency changed.
+  - Observability and security subagents agreed the runtime allowlist and raw
+    error-name contract were the important gaps to close.
+- Performance:
+  - Fixed small allowlist loop only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests.
+  - Scoped Prettier check, scoped ESLint, and scoped diff-check on changed
+    logger files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Any new safe logger metadata key should be added deliberately to the
+    allowlist with regression tests.
+
 ### Document Delivery Rule RLS Request Context - 2026-07-01 12:48 JST
 
 - Scope:

@@ -57,8 +57,33 @@ If any of those are needed, create a proposal first. Do not implement silently.
   - `POST /api/tasks` no-store response boundary hardening
   - document-delivery-rule RLS request-context binding and protected matrix
     coverage
+  - safe structured logger runtime allowlist and PHI/secret redaction contract
+    tests
 
 ## Completed Slices
+
+### 2026-07-01 12:56 JST: Safe Structured Logger Runtime Redaction
+
+- Completed observability/security hardening follow-up:
+  `Safe Structured Logger Runtime Redaction`.
+- Files changed:
+  - `src/lib/utils/logger.ts`
+  - `src/lib/utils/logger.test.ts`
+- Validation:
+  - focused logger suite passed `1` file / `7` tests
+  - scoped Prettier check passed
+  - scoped ESLint passed
+  - scoped diff whitespace check passed
+  - full typecheck passed
+  - no-unused typecheck passed
+  - full lint passed
+  - full format check passed
+  - full diff whitespace check passed
+- Remaining follow-up:
+  - Adding any new safe structured logger metadata key should be a deliberate
+    allowlist/test update.
+  - Continue with the next behavior-preserving API response-boundary or helper
+    convergence candidate.
 
 ### 2026-07-01 12:48 JST: Document Delivery Rule RLS Request Context
 

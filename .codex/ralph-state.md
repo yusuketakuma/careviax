@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-1256 JST
+
+- current task: harden safe structured logger runtime redaction and contract tests without changing API/DB/auth/UI behavior.
+- files inspected: `git status --short --untracked-files=all`, active objective file, memory quick pass, `src/lib/utils/logger.ts`, `src/lib/utils/logger.test.ts`, `src/lib/observability/sentry-redaction.ts`, representative `logger.error({ ... }, error)` / `logger.warn({ ... })` call sites, `package.json`, `vitest.config.ts`, observability subagent output, security subagent output, focused diffs, and validation output.
+- files changed: `src/lib/utils/logger.ts`, `src/lib/utils/logger.test.ts`, `REFACTOR_REPORT.md`, `REFACTOR_EXECUTION_PLAN.md`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: `SafeLogContext` was a TypeScript allowlist, but `buildSafeLogContext()` copied every runtime key from the passed object. A caller bypassing types with object spread, `as any`, or JS could include keys such as `body`, `token`, `password`, `patientEmail`, `insuranceNumber`, `stack`, `error_message`, `error_raw`, or `cause`; safe-looking ASCII PII/secret values could reach console JSON before Sentry redaction. Safe structured error logs also trusted raw `Error.name`, so a tampered name could leak secret-like text even though message and stack were omitted.
+- security risks found: reduced log PHI/PII/secret leakage by adding a runtime safe-context key allowlist, fail-closed event normalization, unsupported-value redaction, and raw `Error.name` normalization. Tests now prove console JSON and production Sentry `captureMessage` extras omit raw request-body sentinels, ASCII email/insurance/token/password values, raw error message, raw stack, unsafe unknown keys, and tampered error names. Existing string overload behavior and typed safe-object operational metadata remain unchanged.
+- performance issues found: no meaningful performance issue was introduced. The change replaces runtime object-entry copying with a fixed small allowlist loop and adds tests only; no DB query, dependency, network call, polling, background job, external request, render work, broad scan, or unbounded loop changed.
+- validation commands: `pnpm exec vitest run src/lib/utils/logger.test.ts --reporter=dot --testTimeout=30000`; scoped `pnpm exec prettier --check`; scoped `pnpm exec eslint --max-warnings=0`; scoped `git diff --check`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: focused logger suite passed `1` file / `7` tests; scoped Prettier passed; scoped ESLint passed; scoped diff-check passed; full typecheck passed; no-unused passed; full lint passed; full format check passed; full diff-check passed.
+- remaining work: broad repo-wide maintainability/type-safety/testability objective remains active. Any new safe structured logger metadata key should be added deliberately to the allowlist with tests. Browser smoke was not run because this slice changes shared server logging behavior and tests only, with no visible DOM layout, copy, or interaction-state change.
+- next action: stage only logger implementation/test files as one implementation commit, stage report/progress ledger files as a separate commit, send agmsg FYI, then choose the next behavior-preserving helper convergence or API response-boundary candidate.
+
 ### 20260701-1248 JST
 
 - current task: bind document-delivery-rule route DB work to authenticated request context and add protected matrix coverage without changing delivery-rule API contracts.
