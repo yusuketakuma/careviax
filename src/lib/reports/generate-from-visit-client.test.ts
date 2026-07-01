@@ -11,6 +11,7 @@ vi.mock('@/lib/api/org-headers', () => ({
   buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
 
+import { buildGenerateCareReportFromVisitApiPath } from './api-paths';
 import { generateCareReportFromVisit } from './generate-from-visit-client';
 
 describe('generateCareReportFromVisit', () => {
@@ -55,7 +56,7 @@ describe('generateCareReportFromVisit', () => {
       },
     ]);
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/care-reports/generate-from-visit', {
+    expect(fetchMock).toHaveBeenCalledWith(buildGenerateCareReportFromVisitApiPath(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

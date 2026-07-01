@@ -6,6 +6,7 @@ import {
   type GeneratedCareReportFromVisitResponse,
   type GeneratedCareReportSummary,
 } from './generate-from-visit-contract';
+import { buildGenerateCareReportFromVisitApiPath } from './api-paths';
 
 export type GenerateCareReportFromVisitInput = {
   orgId: string;
@@ -27,7 +28,7 @@ export async function generateCareReportFromVisit<TReport extends GeneratedCareR
   if (input.expectedReportUpdatedAt)
     body.expected_report_updated_at = input.expectedReportUpdatedAt;
 
-  const res = await fetch('/api/care-reports/generate-from-visit', {
+  const res = await fetch(buildGenerateCareReportFromVisitApiPath(), {
     method: 'POST',
     headers: buildOrgJsonHeaders(input.orgId),
     body: JSON.stringify(body),

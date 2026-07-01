@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { buildCareReportApiPath, buildCareReportPrintAuditApiPath } from './api-paths';
+import {
+  GENERATE_CARE_REPORT_FROM_VISIT_API_PATH,
+  buildCareReportApiPath,
+  buildCareReportPrintAuditApiPath,
+  buildGenerateCareReportFromVisitApiPath,
+} from './api-paths';
 
 describe('care report API path helpers', () => {
+  it('builds the visit-based care report generation path', () => {
+    expect(GENERATE_CARE_REPORT_FROM_VISIT_API_PATH).toBe('/api/care-reports/generate-from-visit');
+    expect(buildGenerateCareReportFromVisitApiPath()).toBe('/api/care-reports/generate-from-visit');
+  });
+
   it('builds care report detail paths for normal ids', () => {
     expect(buildCareReportApiPath('report_1')).toBe('/api/care-reports/report_1');
   });
