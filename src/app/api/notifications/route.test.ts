@@ -178,18 +178,21 @@ describe('/api/notifications GET', () => {
     const bodyText = await response.text();
     expect(bodyText).toContain('INTERNAL_ERROR');
     expect(bodyText).not.toContain('raw patient notification secret');
-    expect(loggerErrorMock).toHaveBeenCalledWith('notifications_get_unhandled_error', undefined, {
-      event: 'notifications_get_unhandled_error',
-      route: '/api/notifications',
-      method: 'GET',
-      status: 500,
-      error_name: 'Error',
-    });
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
-    expect(logged).not.toContain('raw patient notification secret');
-    expect(logged).not.toContain('NotificationPatientSecretError');
+    expect(loggerErrorMock).toHaveBeenCalledOnce();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'notifications_get_unhandled_error',
+        route: '/api/notifications',
+        method: 'GET',
+        status: 500,
+      },
+      unsafeError,
+    );
+    const loggedContext = JSON.stringify(loggerErrorMock.mock.calls[0]?.[0]);
+    expect(loggedContext).not.toContain('raw patient notification secret');
+    expect(loggedContext).not.toContain('NotificationPatientSecretError');
+    expect(loggedContext).not.toContain('user_id');
+    expect(loggedContext).not.toContain('body');
   });
 
   it('marks only valid unique notification ids as read', async () => {
@@ -278,17 +281,20 @@ describe('/api/notifications GET', () => {
     const bodyText = await response.text();
     expect(bodyText).toContain('INTERNAL_ERROR');
     expect(bodyText).not.toContain('raw notification patient secret');
-    expect(loggerErrorMock).toHaveBeenCalledWith('notifications_patch_unhandled_error', undefined, {
-      event: 'notifications_patch_unhandled_error',
-      route: '/api/notifications',
-      method: 'PATCH',
-      status: 500,
-      error_name: 'Error',
-    });
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
-    expect(logged).not.toContain('raw notification patient secret');
-    expect(logged).not.toContain('NotificationPatientSecretError');
+    expect(loggerErrorMock).toHaveBeenCalledOnce();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'notifications_patch_unhandled_error',
+        route: '/api/notifications',
+        method: 'PATCH',
+        status: 500,
+      },
+      unsafeError,
+    );
+    const loggedContext = JSON.stringify(loggerErrorMock.mock.calls[0]?.[0]);
+    expect(loggedContext).not.toContain('raw notification patient secret');
+    expect(loggedContext).not.toContain('NotificationPatientSecretError');
+    expect(loggedContext).not.toContain('ids');
+    expect(loggedContext).not.toContain('notice_1');
   });
 });

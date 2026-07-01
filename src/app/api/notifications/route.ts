@@ -12,20 +12,6 @@ import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
 
 const ROUTE = '/api/notifications';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 async function authenticatedGET(req: NextRequest) {
   const authResult = await requireAuthContext(req);
@@ -90,13 +76,15 @@ export async function GET(req: NextRequest, routeContext?: unknown) {
       return withSensitiveNoStore(await authenticatedGET(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('notifications_get_unhandled_error', undefined, {
-        event: 'notifications_get_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'notifications_get_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });
@@ -168,13 +156,15 @@ export async function PATCH(req: NextRequest, routeContext?: unknown) {
     return withSensitiveNoStore(await authenticatedPATCH(req));
   } catch (err) {
     unstable_rethrow(err);
-    logger.error('notifications_patch_unhandled_error', undefined, {
-      event: 'notifications_patch_unhandled_error',
-      route: ROUTE,
-      method: req.method,
-      status: 500,
-      error_name: safeErrorName(err),
-    });
+    logger.error(
+      {
+        event: 'notifications_patch_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+      },
+      err,
+    );
     return withSensitiveNoStore(internalError());
   }
 }
