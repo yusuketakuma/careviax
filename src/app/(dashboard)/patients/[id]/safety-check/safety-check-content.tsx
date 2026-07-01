@@ -461,7 +461,17 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
       </div>
 
       {/* p1: 患者識別 + アレルギー/ハイリスクを Pinned 再掲。安全チェック中も常時可視化する。 */}
-      {patientName ? (
+      {patientQuery.isError ? (
+        <div className="mt-4 rounded-lg border border-border/70 bg-card p-4">
+          <ErrorState
+            variant="server"
+            size="inline"
+            title="患者安全情報を表示できません"
+            description="患者安全情報を読み込めませんでした。アレルギー・ハイリスク情報が表示されていない可能性があります。再試行してください。"
+            action={{ label: '再試行', onClick: () => void patientQuery.refetch() }}
+          />
+        </div>
+      ) : patientName ? (
         <PatientHeader
           name={patientName}
           kana={patient?.name_kana ?? null}

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -155,6 +155,43 @@ describe('SafetyCheckContent', () => {
     expect(
       within(screen.getByTestId('patient-header-safety')).getByText('ペニシリン'),
     ).toBeTruthy();
+  });
+
+  it('surfaces patient summary failure in the pinned safety banner region', () => {
+    const refetchPatient = vi.fn();
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockImplementation((cfg: { queryKey: unknown[] }) => {
+      const key = String((cfg.queryKey as unknown[])[0]);
+      if (key === 'medication-issues') {
+        return {
+          data: { data: [buildIssue({ id: 'issue_1' })] },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      if (key === 'safety-check-cds') return { data: [], isLoading: false };
+      if (key === 'patient-safety-check-summary') {
+        return {
+          data: undefined,
+          isLoading: false,
+          isError: true,
+          refetch: refetchPatient,
+        };
+      }
+      return { data: undefined, isLoading: false };
+    });
+
+    render(<SafetyCheckContent patientId="patient_1" />);
+
+    expect(screen.getByText(/患者安全情報を読み込めませんでした/)).toBeTruthy();
+    expect(screen.queryByTestId('patient-header')).toBeNull();
+    expect(screen.getByTestId('safety-primary-action')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetchPatient).toHaveBeenCalled();
   });
 });
 
