@@ -15,6 +15,73 @@ validation output.
   - `REFACTOR_RISK_MAP.md`
   - `REFACTOR_EXECUTION_PLAN.md`
 
+## Slice: Dispense Queue Structured Logger Convergence
+
+- Timestamp: 2026-07-01 13:55 JST
+- Purpose:
+  - Route dispense queue unexpected-error logs through the shared PHI-safe
+    structured logger overload.
+  - Remove route-local `safeErrorName()` duplication now that shared logger owns
+    safe error-name normalization.
+  - Preserve dispense queue response, no-store, auth/RLS, query shape, sorting,
+    and annotation behavior.
+- Changed files:
+  - `src/app/api/dispense-queue/route.ts`
+  - `src/app/api/dispense-queue/route.test.ts`
+- Change reason:
+  - The dispense queue route handles patient, medication, inquiry, and dispense
+    task data but still used the string logger overload with duplicated
+    route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+- Deleted code:
+  - Removed the route-local `SAFE_ERROR_NAMES` set and `safeErrorName()` helper.
+- Commonized processing:
+  - GET unexpected-error path now calls
+    `logger.error({ event, route, method, status }, err)`.
+  - Route tests assert only minimal operational context is supplied by the route
+    while the raw `Error` is delegated to the shared logger contract tests.
+- Safety:
+  - API response bodies/statuses, no-store wrapping, `canDispense` auth gate,
+    request auth context, RLS request-context options, org/status/cycle
+    filtering, selected patient/medication/inquiry fields, sorting, and
+    annotation behavior were unchanged.
+  - Privacy review found no blocking issue and recommended keeping route tests
+    focused on safe structured context while relying on shared logger tests for
+    emitted raw `Error` redaction.
+  - Medical safety review found no actionable safety finding because query
+    shape, response shaping, and no-store/error behavior were unchanged.
+- Performance:
+  - Removes a small duplicated helper and changes logging call shape only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, sorting change, or unbounded
+    loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/dispense-queue/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `9` tests.
+  - `pnpm exec prettier --check src/app/api/dispense-queue/route.ts src/app/api/dispense-queue/route.test.ts`: passed.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/dispense-queue/route.ts src/app/api/dispense-queue/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/dispense-queue/route.ts src/app/api/dispense-queue/route.test.ts`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Known risks:
+  - Route tests mock the logger and therefore prove route delegation/context
+    only; emitted console/Sentry redaction remains the shared logger test's
+    responsibility.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS policies, auth/authz semantics, dispense queue
+    response DTO contracts, medication/dispense task business rules, audit
+    semantics, external sends, production config, secrets, deployment, and
+    dependency versions.
+- Next improvements:
+  - Continue small, tested route-local logger convergence only where existing
+    tests can prove responses, no-store headers, query shape, and mutations
+    remain unchanged.
+- PR split:
+  - Commit this route logger/test slice independently.
+  - Commit report/progress updates separately.
+
 ## Slice: Notifications Structured Logger Convergence
 
 - Timestamp: 2026-07-01 13:47 JST
