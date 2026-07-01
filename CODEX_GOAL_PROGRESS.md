@@ -30,6 +30,39 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Notifications Helper Boundary - 2026-07-01 10:07 JST
+
+- Scope:
+  - Continued low-risk notification UI helper convergence for the header bell and notifications inbox.
+  - Focused on preserving notification behavior while moving raw `/api/notifications` paths and org headers into shared helpers.
+- Fixed:
+  - Added `NOTIFICATIONS_API_PATH` and `buildNotificationsApiPath(params)` to `src/lib/notifications/api-paths.ts`.
+  - Replaced header bell summary/list/PATCH raw paths and inline org headers with `buildNotificationsApiPath`, `NOTIFICATIONS_API_PATH`, `buildOrgHeaders`, and `buildOrgJsonHeaders`.
+  - Replaced notifications inbox list/PATCH raw paths and inline org headers with the same shared helpers.
+  - Added regression coverage for collection path/query encoding, header bell summary/list/PATCH fetch contracts, inbox list/PATCH fetch contracts, and shared org-header helper coverage.
+- Safety:
+  - Reduces tenant-header drift and raw notification path construction without changing realtime subscription, browser notification display, React Query keys, unread-count logic, drawer behavior, inbox error/empty handling, or PATCH body semantics.
+  - Privacy reviewer found no blocking privacy regression and confirmed tenant scoping, helper fail-closed posture, no-store API contract, sanitized route logging, false-empty handling on the full notifications page, and absence of new logging/export/cache leakage are preserved.
+  - Verifier independently confirmed the URL shapes remain `/api/notifications?summary=1`, `/api/notifications?limit=20`, `/api/notifications?limit=50`, and `PATCH /api/notifications`; no API route, DB, auth, RLS, migration, package, stream, browser notification, or payload behavior changed.
+  - Existing non-blocking residuals remain: the header drawer still treats failed summary/list fetches as silent no-op and may show an empty drawer if nothing is cached; realtime stream path/header convergence remains a separate future candidate. Neither residual was introduced by this helper slice.
+- Performance:
+  - Header/path helper convergence only changes local string and header-object construction.
+  - Adds no request, backend query, dependency, polling, background job, broad scan, render fan-out, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/api/org-headers.test.ts src/lib/notifications/api-paths.test.ts src/components/features/notifications/notification-bell.test.ts src/components/features/notifications/notification-bell.fetch.test.tsx src/app/api/notifications/route.test.ts --reporter=dot --testTimeout=60000`: passed, `6` files / `32` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on notification helper/UI/test files: passed.
+  - Privacy reviewer: no blocking findings in the reviewed notification helper convergence.
+  - Verifier: pass; no DB/auth/RLS/migration/payload semantic regression found in inspected diff.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains open.
+  - Header drawer false-empty handling and realtime stream helper convergence are future candidates, not part of this behavior-preserving notification collection helper slice.
+  - Browser smoke was not run because no visible DOM layout/copy/interaction-state change was made; focused DOM tests, route tests, privacy review, and verifier review cover the read/mutation contracts and state branches touched by this helper-only slice.
+
 ### Comments Helper Boundary - 2026-07-01 09:51 JST
 
 - Scope:
