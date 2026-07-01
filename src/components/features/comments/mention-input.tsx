@@ -3,7 +3,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Textarea } from '@/components/ui/textarea';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPharmacistsApiPath } from '@/lib/pharmacists/api-paths';
 
 type StaffMember = {
   id: string;
@@ -35,8 +37,8 @@ export function MentionInput({
   const { data: staffData } = useQuery<{ data: StaffMember[] }>({
     queryKey: ['staff-for-mentions', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/pharmacists', {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildPharmacistsApiPath(), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('スタッフの取得に失敗しました');
       return res.json();
@@ -48,9 +50,7 @@ export function MentionInput({
   const staffList: StaffMember[] = staffData?.data ?? [];
 
   const filteredStaff = searchQuery
-    ? staffList.filter((s) =>
-        s.name.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+    ? staffList.filter((s) => s.name.toLowerCase().includes(searchQuery.toLowerCase()))
     : staffList;
 
   const insertMention = useCallback(
@@ -81,7 +81,7 @@ export function MentionInput({
         textarea.focus();
       });
     },
-    [value, mentions, onChange, onMentionsChange]
+    [value, mentions, onChange, onMentionsChange],
   );
 
   const handleKeyDown = useCallback(
@@ -90,14 +90,10 @@ export function MentionInput({
 
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setSelectedIndex((prev) =>
-          prev < filteredStaff.length - 1 ? prev + 1 : 0
-        );
+        setSelectedIndex((prev) => (prev < filteredStaff.length - 1 ? prev + 1 : 0));
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        setSelectedIndex((prev) =>
-          prev > 0 ? prev - 1 : filteredStaff.length - 1
-        );
+        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : filteredStaff.length - 1));
       } else if (e.key === 'Enter' && filteredStaff[selectedIndex]) {
         e.preventDefault();
         insertMention(filteredStaff[selectedIndex]);
@@ -105,7 +101,7 @@ export function MentionInput({
         setShowDropdown(false);
       }
     },
-    [showDropdown, filteredStaff, selectedIndex, insertMention]
+    [showDropdown, filteredStaff, selectedIndex, insertMention],
   );
 
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -116,7 +112,10 @@ export function MentionInput({
     const textBefore = newValue.slice(0, cursorPos);
     const atIndex = textBefore.lastIndexOf('@');
 
-    if (atIndex !== -1 && (atIndex === 0 || textBefore[atIndex - 1] === ' ' || textBefore[atIndex - 1] === '\n')) {
+    if (
+      atIndex !== -1 &&
+      (atIndex === 0 || textBefore[atIndex - 1] === ' ' || textBefore[atIndex - 1] === '\n')
+    ) {
       const query = textBefore.slice(atIndex + 1);
       if (!query.includes(' ') && !query.includes('\n')) {
         setSearchQuery(query);
@@ -130,10 +129,7 @@ export function MentionInput({
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(e.target as Node)
-      ) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setShowDropdown(false);
       }
     }

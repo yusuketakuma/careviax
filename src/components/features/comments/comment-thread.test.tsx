@@ -9,6 +9,22 @@ const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useRealtimeQueryMock = vi.hoisted(() => vi.fn());
 const fetchMock = vi.hoisted(() => vi.fn());
 const refetchMock = vi.hoisted(() => vi.fn());
+const { buildOrgHeadersMock, buildOrgJsonHeadersMock } = vi.hoisted(() => ({
+  buildOrgHeadersMock: vi.fn((orgId: string) => ({
+    'x-org-id': `org-header:${orgId}`,
+    'x-test-helper': 'buildOrgHeaders',
+  })),
+  buildOrgJsonHeadersMock: vi.fn((orgId: string) => ({
+    'Content-Type': 'application/json',
+    'x-org-id': `org-json:${orgId}`,
+    'x-test-helper': 'buildOrgJsonHeaders',
+  })),
+}));
+
+vi.mock('@/lib/api/org-headers', () => ({
+  buildOrgHeaders: buildOrgHeadersMock,
+  buildOrgJsonHeaders: buildOrgJsonHeadersMock,
+}));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -19,7 +35,24 @@ vi.mock('@/lib/hooks/use-realtime-query', () => ({
 }));
 
 vi.mock('./mention-input', () => ({
-  MentionInput: () => <textarea aria-label="コメント入力" readOnly />,
+  MentionInput: ({
+    value,
+    onChange,
+    onMentionsChange,
+  }: {
+    value: string;
+    onChange: (value: string) => void;
+    onMentionsChange: (mentions: string[]) => void;
+  }) => (
+    <textarea
+      aria-label="コメント入力"
+      value={value}
+      onChange={(event) => {
+        onChange(event.target.value);
+        onMentionsChange(['user_2']);
+      }}
+    />
+  ),
 }));
 
 import { CommentThread } from './comment-thread';
@@ -49,7 +82,7 @@ describe('CommentThread', () => {
     });
   });
 
-  it('uses an org-scoped realtime query key and fallback polling only when SSE is unavailable', () => {
+  it('uses an org-scoped realtime query key and shared fetch helpers for the comment list', async () => {
     renderWithQueryClient(<CommentThread entityType="patient" entityId="patient_1" />);
 
     expect(screen.getByText('コメントはまだありません。')).toBeTruthy();
@@ -61,6 +94,14 @@ describe('CommentThread', () => {
         fallbackRefetchInterval: 30_000,
       }),
     );
+
+    const options = useRealtimeQueryMock.mock.calls[0][0] as { queryFn: () => Promise<unknown> };
+    await options.queryFn();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/comments?entity_type=patient&entity_id=patient_1',
+      { headers: { 'x-org-id': 'org-header:org_1', 'x-test-helper': 'buildOrgHeaders' } },
+    );
+    expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
   });
 
   it('single-encodes comment delete paths and preserves delete headers', async () => {
@@ -88,11 +129,39 @@ describe('CommentThread', () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(`/api/comments/${encodedCommentId}`, {
         method: 'DELETE',
-        headers: { 'x-org-id': 'org_1' },
+        headers: { 'x-org-id': 'org-header:org_1', 'x-test-helper': 'buildOrgHeaders' },
       });
     });
+    expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0][0])).not.toContain('%25');
+  });
+
+  it('posts comments through shared collection path and JSON org headers', async () => {
+    renderWithQueryClient(<CommentThread entityType="patient" entityId="patient_1" />);
+
+    fireEvent.change(screen.getByLabelText('コメント入力'), {
+      target: { value: '確認お願いします' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/comments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': 'org-json:org_1',
+          'x-test-helper': 'buildOrgJsonHeaders',
+        },
+        body: JSON.stringify({
+          entity_type: 'patient',
+          entity_id: 'patient_1',
+          content: '確認お願いします',
+          mentions: ['user_2'],
+        }),
+      });
+    });
+    expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
   });
 
   it('fails closed with a retryable error instead of a false-empty "no comments" on fetch failure', () => {

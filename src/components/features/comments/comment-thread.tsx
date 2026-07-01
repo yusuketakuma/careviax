@@ -6,7 +6,12 @@ import { MessageSquare, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { buildCommentApiPath } from '@/lib/comments/api-paths';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import {
+  COMMENTS_API_PATH,
+  buildCommentApiPath,
+  buildCommentsApiPath,
+} from '@/lib/comments/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { MentionInput } from './mention-input';
@@ -43,8 +48,8 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
     queryKey,
     queryFn: async () => {
       const params = new URLSearchParams({ entity_type: entityType, entity_id: entityId });
-      const res = await fetch(`/api/comments?${params}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildCommentsApiPath(params), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('コメントの取得に失敗しました');
       return res.json();
@@ -56,12 +61,9 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch('/api/comments', {
+      const res = await fetch(COMMENTS_API_PATH, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           entity_type: entityType,
           entity_id: entityId,
@@ -89,7 +91,7 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
     mutationFn: async (commentId: string) => {
       const res = await fetch(buildCommentApiPath(commentId), {
         method: 'DELETE',
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
