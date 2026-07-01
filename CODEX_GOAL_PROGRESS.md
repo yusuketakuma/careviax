@@ -30,6 +30,36 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Report Generation Client Header Boundary - 2026-07-01 09:24 JST
+
+- Scope:
+  - Continued report-generation maintainability work for the visit-record-to-care-report client helper.
+  - Focused on behavior-preserving tenant JSON header convergence for `generateCareReportFromVisit()`.
+- Fixed:
+  - Replaced inline `{ 'Content-Type': 'application/json', 'x-org-id': input.orgId }` construction with `buildOrgJsonHeaders(input.orgId)`.
+  - Added a sentinel test mock proving the report generation client delegates org JSON header construction to the shared helper and passes the returned header object through to `fetch`.
+  - Preserved the exact endpoint, method, body keys, optional report regeneration contract, response schema parsing, stale conflict message propagation, empty-data fallback, malformed success fallback, and non-JSON failure fallback.
+- Safety:
+  - Reduces tenant-header drift on a report-generation client path without loosening API contracts.
+  - API contract reviewer found no request/response compatibility blocker after inspecting the client, shared org-header helper, response contract, route, route tests, and report workspace caller expectations.
+  - The reviewer found only a Prettier issue in the test diff; that formatting issue was fixed before final validation.
+  - No auth/RLS policy, permission, payload shape, DB data, migration, external send, push/deploy, secret handling, or destructive-operation boundary changed.
+- Performance:
+  - Header helper convergence only changes local object construction.
+  - Adds no request, backend query, dependency, polling, background job, broad scan, render fan-out, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/reports/generate-from-visit-client.test.ts src/lib/api/org-headers.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `14` tests.
+  - `pnpm exec vitest run src/lib/reports/generate-from-visit-client.test.ts src/lib/api/org-headers.test.ts src/lib/reports/generate-from-visit-contract.test.ts src/app/api/care-reports/generate-from-visit/route.test.ts --reporter=dot --testTimeout=60000`: passed, `4` files / `34` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on report generation/header helper files: passed after the reviewer-noted test formatting issue was fixed.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains open.
+  - This slice did not run browser smoke because it changes a shared client helper's header construction only, with no visible DOM layout, copy, or interaction-state change.
+
 ### Contact Profile Admin Helper Boundary - 2026-07-01 09:18 JST
 
 - Scope:
