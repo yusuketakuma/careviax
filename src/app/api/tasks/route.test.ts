@@ -560,6 +560,7 @@ describe('/api/tasks', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(membershipFindFirstMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -606,6 +607,7 @@ describe('/api/tasks', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(taskFindFirstMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -618,6 +620,34 @@ describe('/api/tasks', () => {
         dedupe_key: 'share-reply-task:response_1',
       },
     });
+  });
+
+  it('returns a sanitized no-store internal error when duplicate lookup fails', async () => {
+    const rawMessage = 'duplicate lookup leaked patient sentinel';
+    taskCreateMock.mockRejectedValueOnce({ code: 'P2002' });
+    taskFindFirstMock.mockRejectedValueOnce(new Error(rawMessage));
+
+    const response = await POST(
+      createRequest('http://localhost/api/tasks', {
+        task_type: 'care_report_followup',
+        title: '返信内容を次回確認',
+        priority: 'normal',
+        assigned_to: 'user_1',
+        dedupe_key: 'share-reply-task:response_1',
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_1',
+      }),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain(rawMessage);
   });
 
   it('rejects archived related patients before creating operational tasks', async () => {
@@ -638,6 +668,7 @@ describe('/api/tasks', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(membershipFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(taskCreateMock).not.toHaveBeenCalled();
@@ -661,6 +692,7 @@ describe('/api/tasks', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(careCaseFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'case_1',
@@ -689,6 +721,7 @@ describe('/api/tasks', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '依頼先スタッフが見つかりません',
     });
@@ -700,6 +733,7 @@ describe('/api/tasks', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(taskCreateMock).not.toHaveBeenCalled();
@@ -710,6 +744,7 @@ describe('/api/tasks', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -731,6 +766,54 @@ describe('/api/tasks', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(taskCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('adds sensitive no-store headers to POST auth failures', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({ message: '運用タスクの作成権限がありません' }), {
+        status: 403,
+      }),
+    });
+
+    const response = await POST(
+      createRequest('http://localhost/api/tasks', {
+        task_type: 'patient_self_report_followup',
+        title: '患者A: 服薬の困りごと',
+        priority: 'high',
+      }),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store internal error when task creation throws', async () => {
+    const rawMessage = 'database exploded with patient sentinel';
+    taskCreateMock.mockRejectedValueOnce(new Error(rawMessage));
+
+    const response = await POST(
+      createRequest('http://localhost/api/tasks', {
+        task_type: 'patient_self_report_followup',
+        title: '患者A: 服薬の困りごと',
+        priority: 'high',
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_1',
+      }),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain(rawMessage);
   });
 });

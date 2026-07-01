@@ -413,7 +413,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
+async function authenticatedPOST(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '運用タスクの作成権限がありません',
@@ -513,5 +513,14 @@ export async function POST(req: NextRequest) {
       }
     }
     throw cause;
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
   }
 }
