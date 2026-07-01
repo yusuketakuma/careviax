@@ -50,6 +50,7 @@ If any of those are needed, create a proposal first. Do not implement silently.
   - nav badge API path/header helper convergence
   - `/api/nav-badges` no-store response boundary hardening
   - report generation API path helper convergence
+  - admin notification settings path/header helper convergence
 
 ## Completed Slices
 
@@ -111,6 +112,32 @@ If any of those are needed, create a proposal first. Do not implement silently.
 - Remaining follow-up:
   - Server route catalog and rate-limit literals for this endpoint remain
     separate API-boundary candidates.
+
+### 2026-07-01 12:03 JST: Admin Notification Settings Path Helpers
+
+- Completed safe candidate: `Admin Notification Settings Path Helpers`.
+- Files changed:
+  - `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`
+  - `src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx`
+  - `src/lib/notification-rules/api-paths.ts`
+  - `src/lib/notification-rules/api-paths.test.ts`
+  - `src/lib/escalation-rules/api-paths.ts`
+  - `src/lib/escalation-rules/api-paths.test.ts`
+- Validation:
+  - focused notification-settings/helper/header/path-segment suite passed `5`
+    files / `36` tests
+  - scoped ESLint passed
+  - scoped Prettier check passed
+  - scoped diff whitespace check passed
+  - full typecheck passed
+  - no-unused typecheck passed
+  - full lint passed
+  - full format check passed
+  - full diff whitespace check passed
+- Remaining follow-up:
+  - `/api/notification-rules` no-store/unexpected-error wrapping and
+    notification-rule mutation audit evidence remain separate API hardening
+    candidates.
 
 ## Execution Order
 
@@ -214,6 +241,9 @@ Each slice should normally satisfy:
   - Revert helper commit.
 
 ### 3. Admin Notification Settings Path Helpers
+
+- Status: completed as a behavior-preserving helper/header convergence slice on
+  2026-07-01 12:03 JST.
 
 - Files:
   - `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`

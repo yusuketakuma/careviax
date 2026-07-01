@@ -30,6 +30,60 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Admin Notification Settings Path Helpers - 2026-07-01 12:03 JST
+
+- Scope:
+  - Continued low-risk admin helper convergence for `/admin/notification-settings`.
+  - Focused on preserving notification/escalation settings behavior while moving
+    raw `/api/notification-rules` and `/api/admin/escalation-rules` paths and
+    org headers into shared helpers.
+- Fixed:
+  - Added notification-rule collection/detail path helpers with hostile-id
+    encoding and dot-segment rejection.
+  - Added escalation-rule collection/detail path helpers with hostile-id
+    encoding and dot-segment rejection.
+  - Replaced notification settings UI read/delete headers with
+    `buildOrgHeaders(orgId)`.
+  - Replaced notification settings UI JSON mutation headers with
+    `buildOrgJsonHeaders(orgId)`.
+  - Added component tests with sentinel helper mocks for list reads,
+    notification create/update, escalation create/update/delete, and tenant
+    header delegation.
+- Safety:
+  - Reduces tenant-header drift and raw admin notification/escalation path
+    construction without changing visible UI layout/copy, browser notification
+    preference behavior, escalation threshold validation, request methods,
+    payloads, response handling, route auth/RLS behavior, migrations, packages,
+    external sends, or production config.
+  - PH-OS UI/UX SSOT and local Next Client Component/fetch docs were checked
+    before editing the client component.
+  - Privacy review found the helper direction acceptable after the test blocker
+    was fixed and delegation coverage was expanded. It also identified an
+    existing `/api/notification-rules` no-store/unexpected-error residual and a
+    separate notification-rule audit residual, both outside this helper-only
+    slice.
+- Performance:
+  - Header/path helper convergence only changes local string and header-object
+    construction.
+  - Adds no request, backend query, dependency, polling, background job, broad
+    scan, render fan-out, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx' src/lib/notification-rules/api-paths.test.ts src/lib/escalation-rules/api-paths.test.ts src/lib/api/org-headers.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=60000`: passed, `5` files / `36` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on changed
+    notification settings/helper files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - `/api/notification-rules` no-store/error-boundary hardening is the next
+    adjacent API privacy candidate.
+  - Browser smoke was not run because this slice changes helper wiring only,
+    with no visible DOM layout, copy, or interaction-state change.
+
 ### Report Generation Path Helper - 2026-07-01 11:53 JST
 
 - Scope:

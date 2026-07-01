@@ -196,3 +196,77 @@ validation output.
 - PR split:
   - Commit this helper/test slice independently.
   - Commit report/progress updates separately.
+
+## Slice: Admin Notification Settings Path Helpers
+
+- Timestamp: 2026-07-01 12:03 JST
+- Purpose:
+  - Centralize admin notification rule and escalation rule API paths.
+  - Route admin notification settings fetch/mutation headers through the shared
+    org-header helpers.
+  - Preserve existing notification/escalation settings behavior and UI layout.
+- Changed files:
+  - `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`
+  - `src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx`
+  - `src/lib/notification-rules/api-paths.ts`
+  - `src/lib/notification-rules/api-paths.test.ts`
+  - `src/lib/escalation-rules/api-paths.ts`
+  - `src/lib/escalation-rules/api-paths.test.ts`
+- Change reason:
+  - `/api/notification-rules` and `/api/admin/escalation-rules` were still
+    built inline in the admin notification settings UI.
+  - Notification and escalation settings are operational routing controls, so
+    path and tenant-header drift should be locked behind shared helpers and
+    tests.
+- Deleted code:
+  - None.
+- Commonized processing:
+  - Added `NOTIFICATION_RULES_API_PATH`, `buildNotificationRulesApiPath()`, and
+    `buildNotificationRuleApiPath()`.
+  - Added `ESCALATION_RULES_API_PATH`, `buildEscalationRulesApiPath()`, and
+    `buildEscalationRuleApiPath()`.
+  - Reused `buildOrgHeaders()` for read/delete requests and
+    `buildOrgJsonHeaders()` for JSON mutation requests.
+- Safety:
+  - UI structure, copy, browser notification preference behavior, escalation
+    threshold validation, request methods, request bodies, response handling,
+    route permissions, RLS behavior, audit behavior, migrations, external sends,
+    and production config were unchanged.
+  - Helper tests cover collection paths, encoded query strings, hostile detail
+    IDs, and exact dot-segment rejection.
+  - Component tests mock helper sentinels and prove list reads, notification
+    create/update, escalation create/update/delete, and tenant headers delegate
+    to shared helpers.
+- Performance:
+  - Local path/header construction only.
+  - No new request, backend query, dependency, polling, background job, broad
+    scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx' src/lib/notification-rules/api-paths.test.ts src/lib/escalation-rules/api-paths.test.ts src/lib/api/org-headers.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=60000`: passed, `5` files / `36` tests.
+  - Scoped ESLint for changed files: passed.
+  - Scoped Prettier check for changed files: passed.
+  - Scoped diff whitespace check for changed files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Known risks:
+  - Privacy review found an existing `/api/notification-rules` response boundary
+    residual: the route does not yet apply `withSensitiveNoStore` or a fixed
+    unexpected-error wrapper, unlike the escalation-rule route.
+  - Notification-rule mutation audit evidence remains weaker than escalation
+    rule audit evidence. Treat this as a separate API hardening candidate, not
+    part of this helper-only slice.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS, auth/authz logic, tenant selection behavior, audit
+    semantics, PHI payload fields, external sends, billing, medication identity,
+    production config, secrets, deployment, and dependency versions.
+- Next improvements:
+  - Handle `/api/notification-rules` no-store/error-boundary hardening as a
+    separate route/test slice.
+  - Consider a separate minimized audit-evidence slice for notification-rule
+    mutations.
+- PR split:
+  - Commit this helper/test slice independently.
+  - Commit report/progress updates separately.
