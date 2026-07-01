@@ -54,8 +54,34 @@ If any of those are needed, create a proposal first. Do not implement silently.
   - `/api/notification-rules` no-store response boundary hardening
   - patient/report share communication-request and task path helper convergence
   - report-share dot-segment patient-id fail-closed rendering
+  - `POST /api/tasks` no-store response boundary hardening
 
 ## Completed Slices
+
+### 2026-07-01 12:36 JST: Task Create No-Store Boundary
+
+- Completed API hardening follow-up: `POST /api/tasks` response privacy
+  boundary.
+- Files changed:
+  - `src/app/api/tasks/route.ts`
+  - `src/app/api/tasks/route.test.ts`
+  - `src/app/api/__tests__/protected-post-routes.test.ts`
+- Validation:
+  - focused tasks route + protected POST matrix passed `2` files / `171` tests
+  - scoped Prettier check passed
+  - scoped ESLint passed
+  - scoped diff whitespace check passed
+  - full typecheck passed
+  - no-unused typecheck passed
+  - full lint passed
+  - full format check passed
+  - full diff whitespace check passed
+- Remaining follow-up:
+  - Minimized `POST /api/tasks` success/duplicate response DTOs require a
+    separate API-contract proposal because the current route returns raw task
+    rows and this refactor loop is behavior-preserving.
+  - PHI-safe route-level structured logging for unexpected create failures is a
+    separate observability candidate.
 
 ### 2026-07-01 11:33 JST: Nav Badge API Path And Header Helper
 

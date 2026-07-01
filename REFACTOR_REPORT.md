@@ -15,6 +15,81 @@ validation output.
   - `REFACTOR_RISK_MAP.md`
   - `REFACTOR_EXECUTION_PLAN.md`
 
+## Slice: Task Create No-Store Boundary
+
+- Timestamp: 2026-07-01 12:36 JST
+- Purpose:
+  - Add explicit sensitive no-store headers to every expected
+    `POST /api/tasks` response.
+  - Add a fixed sanitized unexpected-error fallback for task creation failures.
+  - Lock `/api/tasks POST` into the protected POST auth/body matrix.
+- Changed files:
+  - `src/app/api/tasks/route.ts`
+  - `src/app/api/tasks/route.test.ts`
+  - `src/app/api/__tests__/protected-post-routes.test.ts`
+- Change reason:
+  - `GET /api/tasks` already used the shared `withSensitiveNoStore` wrapper and
+    fixed `internalError()` fallback, but `POST` returned auth, validation,
+    conflict, success, duplicate, and unexpected-failure responses directly.
+  - Task create payloads and responses can carry patient-linked operational
+    data such as task title, description, related entity ids, assignees,
+    dedupe keys, and metadata.
+- Deleted code:
+  - None.
+- Commonized processing:
+  - Split `POST` into `authenticatedPOST()` plus an exported route wrapper that
+    applies `withSensitiveNoStore`.
+  - Reused the established route pattern:
+    `try -> withSensitiveNoStore(await authenticatedPOST(req))` and
+    `catch -> unstable_rethrow(err) -> withSensitiveNoStore(internalError())`.
+  - Added `/api/tasks POST` to the protected POST matrix.
+- Safety:
+  - Preserved `canVisit` auth, validation messages, assignment-scope checks,
+    patient/case write guards, active-assignee validation, create data shape,
+    `withOrgContext(..., { requestContext: ctx })`, dedupe race semantics,
+    success status codes, and existing raw task response bodies.
+  - Tests cover no-store on create success, duplicate success, auth failure,
+    validation errors, archived-patient conflicts, assignment rejection, and
+    malformed JSON.
+  - Tests cover fixed no-store `INTERNAL_ERROR` responses without raw thrown
+    text for create failures and duplicate-lookup failures.
+- Performance:
+  - Response header mutation and fixed fallback handling only.
+  - No new DB query, dependency, polling, background job, external request,
+    broad scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/tasks/route.test.ts src/app/api/__tests__/protected-post-routes.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `171` tests. Existing billing close matrix test still emits its known mocked `webhook.org_dispatch_failed` stderr while passing.
+  - Scoped Prettier check for changed route/matrix files: passed.
+  - Scoped ESLint for changed route/matrix files: passed.
+  - Scoped diff whitespace check for changed route/matrix files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Known risks:
+  - Privacy review recommended minimizing task-create success and duplicate
+    response bodies instead of returning raw `Task` rows. That would change the
+    current API response contract, so it was not silently implemented in this
+    behavior-preserving slice; it should be handled as an explicit API proposal
+    after confirming frontend and integration consumers only require `data.id`.
+  - The route intentionally still has no new route-level raw error logging.
+    Adding PHI-safe structured logs can be considered separately with logger
+    tests.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS policies, auth/authz semantics, assignment logic,
+    task payload semantics, dedupe semantics, raw response DTO contract, audit
+    semantics, external sends, production config, secrets, deployment, and
+    dependency versions.
+- Next improvements:
+  - Prepare a separate API-contract proposal for minimized `POST /api/tasks`
+    response DTOs if callers only require created/existing task ids.
+  - Continue safe helper convergence or response-boundary hardening from the
+    execution plan.
+- PR split:
+  - Implementation/test commit: `9bdc3154`.
+  - Commit report/progress updates separately.
+
 ## Slice: Patient And Report Share API Path Helpers
 
 - Timestamp: 2026-07-01 12:26 JST

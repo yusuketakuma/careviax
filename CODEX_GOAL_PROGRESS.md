@@ -30,6 +30,54 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Task Create No-Store Boundary - 2026-07-01 12:36 JST
+
+- Scope:
+  - Addressed the backend residual surfaced during the patient/report share
+    helper slice.
+  - Focused on `POST /api/tasks` response headers and unexpected-error
+    fallback only.
+- Fixed:
+  - Split the exported `POST` handler into `authenticatedPOST()` plus a route
+    wrapper that applies `withSensitiveNoStore` to all expected responses.
+  - Added fixed sanitized `internalError()` fallback for unexpected create and
+    duplicate-lookup failures, with `unstable_rethrow(err)` preserved first in
+    the catch block.
+  - Added route-local tests for no-store on success, duplicate, auth failure,
+    validation, archived-patient conflicts, assignment rejection, malformed
+    JSON, and sanitized 500 paths.
+  - Added `/api/tasks POST` to the protected POST auth/body matrix so 401, 403,
+    and invalid-body behavior remain covered cross-route.
+- Safety:
+  - Preserved `canVisit` auth, validation messages, assignment scope,
+    patient/case write guards, active-assignee validation, create payload shape,
+    RLS request context, dedupe race behavior, status codes, and the existing
+    raw task response contract.
+  - API contract review found no compatibility blocker for the no-store wrapper
+    and recommended the protected matrix addition.
+  - Privacy review confirmed no-store/fixed 500 coverage but flagged response
+    DTO minimization as a separate API-contract proposal because raw `Task`
+    rows remain the current success/duplicate response body.
+- Performance:
+  - Header mutation and fixed fallback handling only.
+  - Adds no DB query, dependency, polling, background job, external call, broad
+    scan, render fan-out, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/tasks/route.test.ts src/app/api/__tests__/protected-post-routes.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `171` tests. The protected matrix still emits its existing mocked `webhook.org_dispatch_failed` stderr in the billing close success case while passing.
+  - Scoped Prettier check, scoped ESLint, and scoped diff-check on changed
+    route/matrix files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - `POST /api/tasks` response DTO minimization and optional PHI-safe
+    structured route logging remain separate candidates requiring explicit
+    contract/observability decisions.
+
 ### Patient/Report Share API Path Helpers - 2026-07-01 12:26 JST
 
 - Scope:
