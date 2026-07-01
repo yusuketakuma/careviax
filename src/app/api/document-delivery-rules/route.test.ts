@@ -7,12 +7,14 @@ const {
   documentDeliveryRuleCountMock,
   documentDeliveryRuleCreateMock,
   withOrgContextMock,
+  loggerErrorMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   documentDeliveryRuleFindManyMock: vi.fn(),
   documentDeliveryRuleCountMock: vi.fn(),
   documentDeliveryRuleCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -21,6 +23,12 @@ vi.mock('@/lib/auth/context', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
 }));
 
 import { GET, POST } from './route';
@@ -46,6 +54,22 @@ function createMalformedJsonPostRequest() {
     headers: { 'content-type': 'application/json' },
     body: '{bad json',
   } satisfies NextRequestInit);
+}
+
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
+async function expectInternalError(response: Response, rawMessage: string) {
+  expect(response.status).toBe(500);
+  expectNoStore(response);
+  const body = await response.json();
+  expect(body).toMatchObject({
+    code: 'INTERNAL_ERROR',
+    message: 'サーバー内部でエラーが発生しました',
+  });
+  expect(JSON.stringify(body)).not.toContain(rawMessage);
 }
 
 describe('/api/document-delivery-rules', () => {
@@ -76,6 +100,7 @@ describe('/api/document-delivery-rules', () => {
     const response = (await GET(createRequest()))!;
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(documentDeliveryRuleFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -111,6 +136,7 @@ describe('/api/document-delivery-rules', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(documentDeliveryRuleFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -139,6 +165,7 @@ describe('/api/document-delivery-rules', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(documentDeliveryRuleFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         take: 200,
@@ -156,6 +183,7 @@ describe('/api/document-delivery-rules', () => {
     const response = (await GET(createRequest()))!;
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'rule_1' }, { id: 'rule_2' }],
       total_count: 5,
@@ -172,6 +200,7 @@ describe('/api/document-delivery-rules', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(documentDeliveryRuleFindManyMock).not.toHaveBeenCalled();
     expect(documentDeliveryRuleCountMock).not.toHaveBeenCalled();
@@ -188,6 +217,7 @@ describe('/api/document-delivery-rules', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectNoStore(response);
     expect(documentDeliveryRuleCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -203,6 +233,7 @@ describe('/api/document-delivery-rules', () => {
     const response = (await POST(createRequest([])))!;
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(documentDeliveryRuleCreateMock).not.toHaveBeenCalled();
   });
@@ -211,10 +242,85 @@ describe('/api/document-delivery-rules', () => {
     const response = (await POST(createMalformedJsonPostRequest()))!;
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(documentDeliveryRuleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('adds no-store headers to auth failures before opening an org context', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      response: new Response(JSON.stringify({ message: '権限がありません' }), { status: 403 }),
+    });
+
+    const response = (await GET(createRequest()))!;
+
+    expect(response.status).toBe(403);
+    expectNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('adds no-store headers to POST auth failures before opening an org context', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      response: new Response(JSON.stringify({ message: '権限がありません' }), { status: 403 }),
+    });
+
+    const response = (await POST(
+      createRequest({
+        document_type: 'care_report',
+        target_role: 'physician',
+        channel: 'fax',
+      }),
+    ))!;
+
+    expect(response.status).toBe(403);
+    expectNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a no-store internal error envelope when listing rules throws', async () => {
+    const rawMessage = 'database exploded while listing rules';
+    const error = new Error(rawMessage);
+    documentDeliveryRuleFindManyMock.mockRejectedValueOnce(error);
+
+    const response = (await GET(createRequest()))!;
+
+    await expectInternalError(response, rawMessage);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'document_delivery_rules_get_unhandled_error',
+        route: '/api/document-delivery-rules',
+        method: 'GET',
+        status: 500,
+      }),
+      error,
+    );
+  });
+
+  it('returns a no-store internal error envelope when creating a rule throws', async () => {
+    const rawMessage = 'database exploded while creating rules';
+    const error = new Error(rawMessage);
+    documentDeliveryRuleCreateMock.mockRejectedValueOnce(error);
+
+    const response = (await POST(
+      createRequest({
+        document_type: 'care_report',
+        target_role: 'physician',
+        channel: 'fax',
+      }),
+    ))!;
+
+    await expectInternalError(response, rawMessage);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'document_delivery_rules_post_unhandled_error',
+        route: '/api/document-delivery-rules',
+        method: 'POST',
+        status: 500,
+      }),
+      error,
+    );
   });
 });

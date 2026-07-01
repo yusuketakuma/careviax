@@ -8,6 +8,7 @@ const {
   documentDeliveryRuleUpdateMock,
   documentDeliveryRuleDeleteMock,
   withOrgContextMock,
+  loggerErrorMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -15,6 +16,7 @@ const {
   documentDeliveryRuleUpdateMock: vi.fn(),
   documentDeliveryRuleDeleteMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -31,6 +33,12 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
 }));
 
 import { PATCH, DELETE } from './route';
@@ -57,6 +65,22 @@ function createInvalidJsonRequest(url: string) {
     headers: { 'x-org-id': 'org_1', 'content-type': 'application/json' },
     body: 'not-json',
   } satisfies NextRequestInit);
+}
+
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
+async function expectInternalError(response: Response, rawMessage: string) {
+  expect(response.status).toBe(500);
+  expectNoStore(response);
+  const body = await response.json();
+  expect(body).toMatchObject({
+    code: 'INTERNAL_ERROR',
+    message: 'サーバー内部でエラーが発生しました',
+  });
+  expect(JSON.stringify(body)).not.toContain(rawMessage);
 }
 
 describe('/api/document-delivery-rules/[id]', () => {
@@ -94,6 +118,7 @@ describe('/api/document-delivery-rules/[id]', () => {
       ))!;
 
       expect(response.status).toBe(200);
+      expectNoStore(response);
       expect(documentDeliveryRuleUpdateMock).toHaveBeenCalledWith({
         where: { id: 'rule_1' },
         data: {
@@ -111,6 +136,7 @@ describe('/api/document-delivery-rules/[id]', () => {
       ))!;
 
       expect(response.status).toBe(400);
+      expectNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         message: 'リクエストボディが不正です',
       });
@@ -126,6 +152,7 @@ describe('/api/document-delivery-rules/[id]', () => {
       ))!;
 
       expect(response.status).toBe(400);
+      expectNoStore(response);
       expect(withOrgContextMock).not.toHaveBeenCalled();
       expect(documentDeliveryRuleFindFirstMock).not.toHaveBeenCalled();
       expect(documentDeliveryRuleUpdateMock).not.toHaveBeenCalled();
@@ -140,6 +167,7 @@ describe('/api/document-delivery-rules/[id]', () => {
       ))!;
 
       expect(response.status).toBe(400);
+      expectNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         message: '文書送達ルールIDが不正です',
       });
@@ -166,6 +194,46 @@ describe('/api/document-delivery-rules/[id]', () => {
       ))!;
 
       expect(response.status).toBe(404);
+      expectNoStore(response);
+    });
+
+    it('adds no-store headers to auth failures before loading the delivery rule', async () => {
+      authMock.mockResolvedValue(null);
+
+      const response = (await PATCH(
+        createRequest('http://localhost/api/document-delivery-rules/rule_1', {
+          channel: 'fax',
+        }),
+        { params: Promise.resolve({ id: 'rule_1' }) },
+      ))!;
+
+      expect(response.status).toBe(401);
+      expectNoStore(response);
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+    });
+
+    it('returns a no-store internal error envelope when updating a rule throws', async () => {
+      const rawMessage = 'database exploded while updating rules';
+      const error = new Error(rawMessage);
+      documentDeliveryRuleUpdateMock.mockRejectedValueOnce(error);
+
+      const response = (await PATCH(
+        createRequest('http://localhost/api/document-delivery-rules/rule_1', {
+          channel: 'fax',
+        }),
+        { params: Promise.resolve({ id: 'rule_1' }) },
+      ))!;
+
+      await expectInternalError(response, rawMessage);
+      expect(loggerErrorMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'document_delivery_rules_id_patch_unhandled_error',
+          route: '/api/document-delivery-rules/:id',
+          method: 'PATCH',
+          status: 500,
+        }),
+        error,
+      );
     });
   });
 
@@ -177,6 +245,7 @@ describe('/api/document-delivery-rules/[id]', () => {
       ))!;
 
       expect(response.status).toBe(200);
+      expectNoStore(response);
     });
 
     it('rejects blank route ids before loading the delivery rule', async () => {
@@ -186,6 +255,7 @@ describe('/api/document-delivery-rules/[id]', () => {
       ))!;
 
       expect(response.status).toBe(400);
+      expectNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         message: '文書送達ルールIDが不正です',
       });
@@ -210,6 +280,42 @@ describe('/api/document-delivery-rules/[id]', () => {
       ))!;
 
       expect(response.status).toBe(404);
+      expectNoStore(response);
+    });
+
+    it('adds no-store headers to auth failures before loading the delivery rule', async () => {
+      authMock.mockResolvedValue(null);
+
+      const response = (await DELETE(
+        createRequest('http://localhost/api/document-delivery-rules/rule_1'),
+        { params: Promise.resolve({ id: 'rule_1' }) },
+      ))!;
+
+      expect(response.status).toBe(401);
+      expectNoStore(response);
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+    });
+
+    it('returns a no-store internal error envelope when deleting a rule throws', async () => {
+      const rawMessage = 'database exploded while deleting rules';
+      const error = new Error(rawMessage);
+      documentDeliveryRuleDeleteMock.mockRejectedValueOnce(error);
+
+      const response = (await DELETE(
+        createRequest('http://localhost/api/document-delivery-rules/rule_1'),
+        { params: Promise.resolve({ id: 'rule_1' }) },
+      ))!;
+
+      await expectInternalError(response, rawMessage);
+      expect(loggerErrorMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'document_delivery_rules_id_delete_unhandled_error',
+          route: '/api/document-delivery-rules/:id',
+          method: 'DELETE',
+          status: 500,
+        }),
+        error,
+      );
     });
   });
 });
