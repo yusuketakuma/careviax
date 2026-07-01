@@ -30,6 +30,37 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Document Delivery Rule Helper Boundary - 2026-07-01 10:24 JST
+
+- Scope:
+  - Continued admin document delivery-rule helper convergence.
+  - Focused on preserving delivery-routing semantics while moving raw `/api/document-delivery-rules` paths and org headers into shared helpers.
+- Fixed:
+  - Added `buildDocumentDeliveryRulesApiPath(params)` to `src/lib/document-templates/api-paths.ts`.
+  - Replaced delivery rule list/create/update/delete inline paths and org headers with `buildDocumentDeliveryRulesApiPath`, `DOCUMENT_DELIVERY_RULES_API_PATH`, `buildDocumentDeliveryRuleApiPath`, `buildOrgHeaders`, and `buildOrgJsonHeaders`.
+  - Added regression coverage for collection URL shape without empty trailing `?`, query encoding, read header helper delegation, create/update JSON header helper delegation, delete header helper delegation, and existing hostile-id/dot-segment behavior.
+- Safety:
+  - Reduces tenant-header drift and raw delivery-rule path construction without changing visible UI layout/copy, loading/error/empty behavior, query keys, delete confirmation, create/update/delete methods, or payload fields.
+  - Preserved delivery-routing payload semantics for `document_type`, `target_role`, `channel`, `fallback_channels`, and `is_active`.
+  - Privacy reviewer found no blocking privacy regression and confirmed no new PHI/PII exposure, logging/export/cache leakage in changed files, DB/auth/RLS/migration/package changes, or delivery routing behavior change.
+  - Existing residual identified by privacy review: `src/app/api/document-delivery-rules` route responses are not explicitly wrapped with `withSensitiveNoStore`; this is a future API hardening candidate and was not introduced or changed by this helper-only slice.
+- Performance:
+  - Header/path helper convergence only changes local string and header-object construction.
+  - Adds no request, backend query, dependency, polling, background job, broad scan, render fan-out, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/api/org-headers.test.ts src/lib/document-templates/api-paths.test.ts src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx src/app/api/document-delivery-rules/route.test.ts src/app/api/document-delivery-rules/[id]/route.test.ts --reporter=dot --testTimeout=60000`: passed, `5` files / `41` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on delivery-rule helper/UI/test files: passed.
+  - Privacy reviewer: no blocking findings in the reviewed delivery-rule helper convergence; one existing medium no-store residual recorded as future work.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains open.
+  - Document delivery-rule API no-store hardening is a future candidate and should be handled as a separate API route/test slice.
+  - Browser smoke was not run because no visible DOM layout/copy/interaction-state change was made; focused DOM tests, API route tests, and privacy review cover the read/mutation contracts and UI state branches touched by this helper-only slice.
+
 ### Document Template Helper Boundary - 2026-07-01 10:15 JST
 
 - Scope:
