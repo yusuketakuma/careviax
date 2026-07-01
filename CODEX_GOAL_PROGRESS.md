@@ -30,6 +30,57 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Pharmacist Shift Structured Logger Convergence - 2026-07-01 13:27 JST
+
+- Scope:
+  - Continued safe structured logger convergence on pharmacist shift management
+    routes.
+  - Focused only on `/api/pharmacist-shifts` GET/POST,
+    `/api/pharmacist-shifts/available` GET, and
+    `/api/pharmacist-shifts/bulk` POST unexpected-error logs.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` sets and `safeErrorName()`
+    helpers from the three route files.
+  - Replaced string overload calls with
+    `logger.error({ event, route, method, status }, err)` for the four
+    unexpected-error catch blocks.
+  - Updated GET/available/bulk tests to assert route-supplied context stays
+    limited to safe operational fields.
+  - Added collection POST upsert failure coverage proving sanitized no-store 500
+    response, preserved `validateOrgReferences` and RLS request context, and no
+    raw shift note/error/user/site fields in route logger context.
+- Safety:
+  - Preserved response bodies/statuses, no-store wrapping, auth gates,
+    validation order, date/time normalization, query shapes, pagination,
+    `validateOrgReferences`, RLS request-context options, and bulk transaction
+    timeout settings.
+  - Privacy review's blocking POST coverage finding was closed in this slice.
+  - Route tests intentionally do not serialize full logger mock calls because
+    the raw `Error` is now the second argument; shared logger tests cover actual
+    console/Sentry redaction.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/pharmacist-shifts/route.test.ts src/app/api/pharmacist-shifts/available/route.test.ts src/app/api/pharmacist-shifts/bulk/route.test.ts --reporter=dot --testTimeout=60000`: passed, `4` files / `45` tests.
+  - Scoped Prettier check, scoped ESLint, and scoped diff-check on changed
+    route/test files: passed after formatting route files.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - `/api/pharmacist-shifts/bulk` protected POST matrix coverage remains an
+    optional follow-up separate from this logger-only slice.
+  - Continue only with small, tested logger convergence candidates; do not add
+    shift notes, staff identifiers, request bodies, emails, or Cognito/session
+    identifiers to route log context without separate privacy review.
+
 ### Pharmacists Structured Logger Convergence - 2026-07-01 13:13 JST
 
 - Scope:

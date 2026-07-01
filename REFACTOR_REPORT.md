@@ -15,6 +15,79 @@ validation output.
   - `REFACTOR_RISK_MAP.md`
   - `REFACTOR_EXECUTION_PLAN.md`
 
+## Slice: Pharmacist Shift Structured Logger Convergence
+
+- Timestamp: 2026-07-01 13:27 JST
+- Purpose:
+  - Route pharmacist shift unexpected-error logs through the shared PHI-safe
+    structured logger overload.
+  - Remove route-local `safeErrorName()` duplication now that shared logger owns
+    safe error-name normalization.
+  - Add missing collection POST upsert-failure coverage for shift notes and
+    staff scheduling identifiers.
+- Changed files:
+  - `src/app/api/pharmacist-shifts/route.ts`
+  - `src/app/api/pharmacist-shifts/route.test.ts`
+  - `src/app/api/pharmacist-shifts/available/route.ts`
+  - `src/app/api/pharmacist-shifts/available/route.test.ts`
+  - `src/app/api/pharmacist-shifts/bulk/route.ts`
+  - `src/app/api/pharmacist-shifts/bulk/route.test.ts`
+- Change reason:
+  - Shift collection, availability, and bulk routes still used the string
+    logger overload with duplicated route-local `safeErrorName()` helpers.
+  - The shared logger already owns runtime allowlisted context and raw `Error`
+    redaction for the object overload.
+- Deleted code:
+  - Removed three route-local `SAFE_ERROR_NAMES` sets and `safeErrorName()`
+    helpers.
+- Commonized processing:
+  - Collection GET/POST, availability GET, and bulk POST unexpected-error paths
+    now call `logger.error({ event, route, method, status }, err)`.
+  - Existing GET/available/bulk tests now assert only safe operational context
+    is supplied by the route and avoid serializing full logger mock calls.
+  - Added collection POST upsert failure coverage proving no-store fixed 500,
+    reference validation, preserved RLS request context, and no raw note/error
+    fields in route logger context.
+- Safety:
+  - API response bodies/statuses, no-store wrapping, auth gates, validation
+    order, date/time normalization, query shapes, `limit + 1` pagination,
+    `validateOrgReferences`, RLS request-context options, and bulk transaction
+    timeouts were unchanged.
+  - Privacy review's blocker was closed by the new POST upsert failure test.
+  - Route logger context remains limited to `event`, `route`, `method`, and
+    `status`; raw `Error` handling stays delegated to the shared logger
+    contract tests.
+- Performance:
+  - Removes small duplicated error-name helpers and changes logging call shape
+    only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/pharmacist-shifts/route.test.ts src/app/api/pharmacist-shifts/available/route.test.ts src/app/api/pharmacist-shifts/bulk/route.test.ts --reporter=dot --testTimeout=60000`: passed, `4` files / `45` tests.
+  - Scoped Prettier check for changed route/test files: passed after formatting
+    the three route files.
+  - Scoped ESLint for changed route/test files: passed.
+  - Scoped diff whitespace check for changed route/test files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Known risks:
+  - `/api/pharmacist-shifts/bulk` protected POST route-matrix coverage remains
+    an optional follow-up; route-local auth/no-store coverage exists.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS policies, auth/authz semantics, route response DTO
+    contracts, shift scheduling business rules, audit semantics, external
+    sends, production config, secrets, deployment, and dependency versions.
+- Next improvements:
+  - Continue small, tested route-local logger convergence only where tests can
+    prove no response/no-store/RLS/DB behavior changed.
+- PR split:
+  - Commit this route logger/test slice independently.
+  - Commit report/progress updates separately.
+
 ## Slice: Pharmacists Structured Logger Convergence
 
 - Timestamp: 2026-07-01 13:13 JST

@@ -63,8 +63,38 @@ If any of those are needed, create a proposal first. Do not implement silently.
     shared safe structured logger overload
   - pharmacist route-local logger sanitizers converged on the shared safe
     structured logger overload, with POST duplicate-lookup failure coverage
+  - pharmacist-shift route-local logger sanitizers converged on the shared safe
+    structured logger overload, with POST upsert failure coverage
 
 ## Completed Slices
+
+### 2026-07-01 13:27 JST: Pharmacist Shift Structured Logger Convergence
+
+- Completed observability/privacy refactor follow-up:
+  `Pharmacist Shift Structured Logger Convergence`.
+- Files changed:
+  - `src/app/api/pharmacist-shifts/route.ts`
+  - `src/app/api/pharmacist-shifts/route.test.ts`
+  - `src/app/api/pharmacist-shifts/available/route.ts`
+  - `src/app/api/pharmacist-shifts/available/route.test.ts`
+  - `src/app/api/pharmacist-shifts/bulk/route.ts`
+  - `src/app/api/pharmacist-shifts/bulk/route.test.ts`
+- Validation:
+  - focused logger + pharmacist-shifts route suite passed `4` files / `45`
+    tests
+  - scoped Prettier check passed after formatting the three route files
+  - scoped ESLint passed
+  - scoped diff whitespace check passed
+  - full typecheck passed
+  - no-unused typecheck passed
+  - full lint passed
+  - full format check passed
+  - full diff whitespace check passed
+  - production build passed
+- Remaining follow-up:
+  - `/api/pharmacist-shifts/bulk` protected POST matrix coverage remains an
+    optional separate route-matrix hardening candidate.
+  - Continue with small, tested route-local logger convergence candidates.
 
 ### 2026-07-01 13:13 JST: Pharmacists Structured Logger Convergence
 
