@@ -99,6 +99,7 @@ describe('/api/dashboard/dispensing-stats', () => {
     expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
     expect(dispenseTaskCountMock).not.toHaveBeenCalled();
     expect(medicationCycleCountMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('returns dispensing dashboard metrics', async () => {
@@ -206,24 +207,21 @@ describe('/api/dashboard/dispensing-stats', () => {
     expect(body).not.toContain('raw-error');
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'dashboard_dispensing_stats_unhandled_error',
-      undefined,
       {
         event: 'dashboard_dispensing_stats_unhandled_error',
         route: '/api/dashboard/dispensing-stats',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
-    expect(logged).not.toContain('raw-dispensing');
-    expect(logged).not.toContain('raw-dashboard');
-    expect(logged).not.toContain('raw-SQL');
-    expect(logged).not.toContain('raw-stack');
-    expect(logged).not.toContain('crafted-name');
-    expect(logged).not.toContain('raw-error');
+    expect(loggerErrorMock.mock.calls[0]?.[0]).not.toHaveProperty('error_name');
+    const loggedContext = JSON.stringify(loggerErrorMock.mock.calls[0]?.[0]);
+    expect(loggedContext).not.toContain('raw-dispensing');
+    expect(loggedContext).not.toContain('raw-dashboard');
+    expect(loggedContext).not.toContain('raw-SQL');
+    expect(loggedContext).not.toContain('raw-stack');
+    expect(loggedContext).not.toContain('crafted-name');
+    expect(loggedContext).not.toContain('raw-error');
   });
 });
