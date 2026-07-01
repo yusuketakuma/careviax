@@ -3,6 +3,12 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import {
+  buildCommunicationRequestApiPath,
+  buildCommunicationRequestsApiPath,
+} from '@/lib/communications/api-paths';
+import { buildTasksApiPath } from '@/lib/tasks/api-paths';
 
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
@@ -25,6 +31,29 @@ vi.mock('sonner', () => ({
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
 }));
+
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return {
+    ...actual,
+    buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
+    buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
+  };
+});
+
+vi.mock('@/lib/communications/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/communications/api-paths')>();
+  return {
+    ...actual,
+    buildCommunicationRequestApiPath: vi.fn(actual.buildCommunicationRequestApiPath),
+    buildCommunicationRequestsApiPath: vi.fn(actual.buildCommunicationRequestsApiPath),
+  };
+});
+
+vi.mock('@/lib/tasks/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/tasks/api-paths')>();
+  return { ...actual, buildTasksApiPath: vi.fn(actual.buildTasksApiPath) };
+});
 
 import { ExternalShareContent } from './external-share-content';
 
@@ -251,6 +280,13 @@ describe('ExternalShareContent', () => {
     expect(params.get('related_entity_id')).toBe(patientId);
     expect(requestListUrl).toContain('request_type=patient_share_reply_request');
     expect(requestListUrl).toContain(`related_entity_id=${encodeURIComponent(patientId)}`);
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
+    expect(vi.mocked(buildCommunicationRequestsApiPath)).toHaveBeenCalledWith({
+      requestType: 'patient_share_reply_request',
+      relatedEntityType: 'patient',
+      relatedEntityId: patientId,
+    });
+    expect(vi.mocked(buildCommunicationRequestApiPath)).toHaveBeenCalledWith(requestId);
   });
 
   it('creates a patient-scoped reply request for the selected audience', async () => {
@@ -337,6 +373,8 @@ describe('ExternalShareContent', () => {
       'Content-Type': 'application/json',
       'x-org-id': 'org_1',
     });
+    expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+    expect(vi.mocked(buildCommunicationRequestsApiPath)).toHaveBeenCalledWith();
     const body = JSON.parse(String(requestCall?.[1]?.body)) as {
       patient_id: string;
       request_type: string;
@@ -374,6 +412,105 @@ describe('ExternalShareContent', () => {
     });
     expect(invalidateQueriesMock).toHaveBeenCalledWith({
       queryKey: ['communication-requests', 'patient', 'patient_1', 'org_1'],
+    });
+  });
+
+  it('creates a patient-scoped follow-up task through shared task path and header helpers', async () => {
+    const mutationConfigs: MutationConfig[] = [];
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input) === '/api/tasks' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ data: { id: 'task_1' } }), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`unexpected fetch: ${String(input)}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return { mutate: vi.fn(), isPending: false };
+    });
+    useQueryMock.mockImplementation((config: QueryConfig) => {
+      const scope = config.queryKey?.[0];
+      if (scope === 'communication-requests') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'request_1',
+                recipient_role: 'care_manager',
+                recipient_name: '田中ケアマネ',
+                status: 'responded',
+                subject: '共有確認',
+                requested_at: '2026-06-01T00:00:00.000Z',
+                responses: [{ id: 'response_1', responded_at: '2026-06-02T00:00:00.000Z' }],
+              },
+            ],
+          },
+          isLoading: false,
+          isError: false,
+        };
+      }
+      if (scope === 'communication-request') {
+        return {
+          data: {
+            data: {
+              id: 'request_1',
+              responses: [
+                {
+                  id: 'response_1',
+                  responder_name: '田中ケアマネ',
+                  content: '次回確認をお願いします',
+                  responded_at: '2026-06-02T00:00:00.000Z',
+                },
+              ],
+            },
+          },
+          isLoading: false,
+          isError: false,
+        };
+      }
+      return {
+        data: {
+          name: '佐藤 花子',
+          external_shares: [],
+          self_reports: [],
+          current_medications: [],
+          visit_schedules: [],
+          care_reports: [],
+        },
+        isLoading: false,
+        isError: false,
+      };
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+
+    await mutationConfigs[1]?.mutationFn?.();
+    const taskCall = fetchMock.mock.calls.find(
+      ([input, init]) => String(input) === '/api/tasks' && init?.method === 'POST',
+    );
+    expect(taskCall?.[1]?.headers).toEqual({
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+    });
+    expect(vi.mocked(buildTasksApiPath)).toHaveBeenCalledWith();
+    expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+    const body = JSON.parse(String(taskCall?.[1]?.body)) as {
+      related_entity_type: string;
+      related_entity_id: string;
+      metadata: {
+        report_id: string;
+        communication_request_id: string;
+      };
+    };
+    expect(body.related_entity_type).toBe('patient');
+    expect(body.related_entity_id).toBe('patient_1');
+    expect(body.metadata).toMatchObject({
+      report_id: 'patient_1',
+      communication_request_id: 'request_1',
     });
   });
 

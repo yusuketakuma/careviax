@@ -5,9 +5,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import {
+  buildCommunicationRequestApiPath,
+  buildCommunicationRequestsApiPath,
+} from '@/lib/communications/api-paths';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
+import { buildTasksApiPath } from '@/lib/tasks/api-paths';
 import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
 import { InterprofessionalShareContent } from './interprofessional-share-content';
 
@@ -58,6 +63,15 @@ vi.mock('@/lib/api/org-headers', async (importActual) => {
   };
 });
 
+vi.mock('@/lib/communications/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/communications/api-paths')>();
+  return {
+    ...actual,
+    buildCommunicationRequestApiPath: vi.fn(actual.buildCommunicationRequestApiPath),
+    buildCommunicationRequestsApiPath: vi.fn(actual.buildCommunicationRequestsApiPath),
+  };
+});
+
 vi.mock('@/lib/patient/api-paths', async (importActual) => {
   const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
   return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
@@ -73,6 +87,11 @@ vi.mock('@/lib/patient/navigation', async (importActual) => {
 vi.mock('@/lib/reports/navigation', async (importActual) => {
   const actual = await importActual<typeof import('@/lib/reports/navigation')>();
   return { ...actual, buildReportHref: vi.fn(actual.buildReportHref) };
+});
+
+vi.mock('@/lib/tasks/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/tasks/api-paths')>();
+  return { ...actual, buildTasksApiPath: vi.fn(actual.buildTasksApiPath) };
 });
 
 const REPORT: ReportFixture = {
@@ -199,13 +218,19 @@ function stubFetch(
     if (url.includes('/contacts')) {
       return new Response(JSON.stringify({ data: CONTACTS }), { status: 200 });
     }
-    if (url.includes('/api/communication-requests?')) {
+    if (
+      url.includes('/api/communication-requests?') ||
+      url.includes('/api/communication-requests__sentinel?')
+    ) {
       if (options.failRequests) {
         return new Response('server error', { status: 500 });
       }
       return new Response(JSON.stringify({ data: options.requests ?? REQUESTS }), { status: 200 });
     }
-    if (url === '/api/communication-requests' && init?.method === 'POST') {
+    if (
+      (url === '/api/communication-requests' || url === '/api/communication-requests__sentinel') &&
+      init?.method === 'POST'
+    ) {
       return new Response(JSON.stringify({ data: { id: 'req_new', status: 'sent' } }), {
         status: 201,
       });
@@ -215,7 +240,7 @@ function stubFetch(
         status: 200,
       });
     }
-    if (url.includes('/api/tasks') && init?.method === 'POST') {
+    if ((url === '/api/tasks' || url === '/api/tasks__sentinel') && init?.method === 'POST') {
       return new Response(JSON.stringify({ data: { id: 'task_1' } }), { status: 201 });
     }
     throw new Error(`unexpected fetch: ${url}`);
@@ -387,6 +412,12 @@ describe('InterprofessionalShareContent', () => {
       (url) => url.startsWith('/api/communication-requests/'),
       orgHeader,
     );
+    expect(vi.mocked(buildCommunicationRequestsApiPath)).toHaveBeenCalledWith({
+      requestType: 'care_report_reply_request',
+      relatedEntityType: 'care_report',
+      relatedEntityId: 'rep_1',
+    });
+    expect(vi.mocked(buildCommunicationRequestApiPath)).toHaveBeenCalledWith('req_1');
   });
 
   it('相手を切り替えると返信パネルが空状態になる(主治医宛て返信なし)', async () => {
@@ -460,6 +491,7 @@ describe('InterprofessionalShareContent', () => {
       'x-org-id': 'org_1',
     });
     expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+    expect(vi.mocked(buildTasksApiPath)).toHaveBeenCalledWith();
     const body = readTaskPostBody(fetchMock);
     expect(body.task_type).toBe('report_response_followup');
     expect(body.dedupe_key).toBe('share-reply-task:res_1');
@@ -503,6 +535,7 @@ describe('InterprofessionalShareContent', () => {
       'x-org-id': 'org_1',
     });
     expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+    expect(vi.mocked(buildCommunicationRequestsApiPath)).toHaveBeenCalledWith();
     const body = readCommunicationRequestPostBody(fetchMock);
     expect(body).toMatchObject({
       patient_id: 'pt_1',
@@ -534,6 +567,76 @@ describe('InterprofessionalShareContent', () => {
     expect(body.content).toContain('主治医向けに共有する報告内容です');
     expect(body.content).toContain('【薬剤師からのお願い】');
     expect(body.content).toContain('昼分はヘルパー訪問時の声かけ');
+  });
+
+  it('communication request and task mutations consume shared API helper return values', async () => {
+    const realCommunicationRequestsImpl = vi
+      .mocked(buildCommunicationRequestsApiPath)
+      .getMockImplementation();
+    const realTasksImpl = vi.mocked(buildTasksApiPath).getMockImplementation();
+    vi.mocked(buildCommunicationRequestsApiPath).mockImplementation((params) => {
+      if (!params) return '/api/communication-requests__sentinel';
+      const query =
+        params instanceof URLSearchParams
+          ? params.toString()
+          : new URLSearchParams({
+              request_type: params?.requestType ?? '',
+              related_entity_type: params?.relatedEntityType ?? '',
+              related_entity_id: params?.relatedEntityId ?? '',
+            }).toString();
+      return query
+        ? `/api/communication-requests__sentinel?${query}`
+        : '/api/communication-requests__sentinel';
+    });
+    vi.mocked(buildTasksApiPath).mockReturnValue('/api/tasks__sentinel');
+    try {
+      const fetchMock = stubFetch();
+      renderShare();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('share-reply-card')).toBeTruthy();
+      });
+      expect(
+        fetchMock.mock.calls.some(([input]) =>
+          String(input).startsWith('/api/communication-requests__sentinel?'),
+        ),
+      ).toBe(true);
+
+      fireEvent.click(screen.getByTestId('share-next-task-button'));
+      await waitFor(() => {
+        expect(screen.getByText('次回タスク作成済み')).toBeTruthy();
+      });
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) => String(input) === '/api/tasks__sentinel' && init?.method === 'POST',
+        ),
+      ).toBe(true);
+
+      fireEvent.click(
+        screen
+          .getAllByTestId('share-audience-card')
+          .find((card) => card.getAttribute('data-audience') === 'physician')!,
+      );
+      fireEvent.click(await screen.findByTestId('share-create-request-button'));
+      await waitFor(() => {
+        expect(screen.getByText('返信依頼起票済み')).toBeTruthy();
+      });
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input) === '/api/communication-requests__sentinel' && init?.method === 'POST',
+        ),
+      ).toBe(true);
+    } finally {
+      if (realCommunicationRequestsImpl) {
+        vi.mocked(buildCommunicationRequestsApiPath).mockImplementation(
+          realCommunicationRequestsImpl,
+        );
+      }
+      if (realTasksImpl) {
+        vi.mocked(buildTasksApiPath).mockImplementation(realTasksImpl);
+      }
+    }
   });
 
   it('共有相手が未登録の宛先では返信依頼を起票しない', async () => {
@@ -949,31 +1052,24 @@ describe('InterprofessionalShareContent', () => {
   it.each(['.', '..'])(
     'fails closed before patient support fetches when patient id is an exact dot segment: %s',
     async (dotPatientId) => {
-      const realImpl = vi.mocked(buildPatientHref).getMockImplementation();
-      vi.mocked(buildPatientHref).mockImplementation(
-        (id: string, suffix = '') => `/patients/__sentinel_${id}__${suffix}`,
-      );
-      try {
-        const fetchMock = stubFetch({
-          report: {
-            ...REPORT,
-            patient_id: dotPatientId,
-            patient_summary: { ...REPORT.patient_summary, id: dotPatientId },
-          },
-        });
-        renderShare();
+      const fetchMock = stubFetch({
+        report: {
+          ...REPORT,
+          patient_id: dotPatientId,
+          patient_summary: { ...REPORT.patient_summary, id: dotPatientId },
+        },
+      });
+      renderShare();
 
-        await waitFor(() => {
-          expect(screen.getByTestId('share-supporting-data-warning')).toBeTruthy();
-        });
-        expect(
-          fetchMock.mock.calls.some(([input]) => String(input).startsWith('/api/patients/')),
-        ).toBe(false);
-      } finally {
-        if (realImpl) {
-          vi.mocked(buildPatientHref).mockImplementation(realImpl);
-        }
-      }
+      await waitFor(() => {
+        expect(screen.getByTestId('share-supporting-data-warning')).toBeTruthy();
+      });
+      expect(screen.getByText(/患者リンクを取得できないため/)).toBeTruthy();
+      expect(screen.queryByRole('link', { name: '患者詳細' })).toBeNull();
+      expect(screen.queryByRole('link', { name: /外部共有リンクの発行/ })).toBeNull();
+      expect(
+        fetchMock.mock.calls.some(([input]) => String(input).startsWith('/api/patients/')),
+      ).toBe(false);
     },
   );
 });

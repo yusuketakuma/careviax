@@ -15,12 +15,16 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
-import { buildCommunicationRequestApiPath } from '@/lib/communications/api-paths';
+import {
+  buildCommunicationRequestApiPath,
+  buildCommunicationRequestsApiPath,
+} from '@/lib/communications/api-paths';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildCareReportApiPath } from '@/lib/reports/api-paths';
 import { buildReportHref } from '@/lib/reports/navigation';
+import { buildTasksApiPath } from '@/lib/tasks/api-paths';
 import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
 import type { CareReportActionPermissions } from '@/types/care-report-permissions';
 import {
@@ -78,6 +82,25 @@ type CreateCommunicationRequestResponse = {
     status?: string;
   };
 };
+
+function tryBuildPatientHref(patientId: string, suffix = ''): string | null {
+  try {
+    return suffix ? buildPatientHref(patientId, suffix) : buildPatientHref(patientId);
+  } catch (err) {
+    if (err instanceof RangeError) return null;
+    throw err;
+  }
+}
+
+function canBuildPatientApiPath(patientId: string): boolean {
+  try {
+    buildPatientApiPath(patientId);
+    return true;
+  } catch (err) {
+    if (err instanceof RangeError) return false;
+    throw err;
+  }
+}
 
 function ArchivedPatientShareNotice({
   archive,
@@ -139,7 +162,10 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   const canUseShareOutput = canSendReport && canCreateExternalShare && isShareableReportStatus;
   const canCreateFollowupTask = report?.permissions?.can_create_followup_task === true;
   const canViewPatient = report?.permissions?.can_view_patient === true;
-  const canLoadPatientSupport = Boolean(patientId && canViewPatient && canUseShareOutput);
+  const canUsePatientApiPath = patientId ? canBuildPatientApiPath(patientId) : false;
+  const canLoadPatientSupport = Boolean(
+    patientId && canUsePatientApiPath && canViewPatient && canUseShareOutput,
+  );
 
   const careTeamQuery = useQuery({
     queryKey: ['patient-care-team', patientId, report?.case_id, orgId],
@@ -175,14 +201,16 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   const requestsQuery = useQuery({
     queryKey: ['communication-requests', 'care_report', reportId, orgId],
     queryFn: async () => {
-      const params = new URLSearchParams({
-        request_type: 'care_report_reply_request',
-        related_entity_type: 'care_report',
-        related_entity_id: reportId,
-      });
-      const res = await fetch(`/api/communication-requests?${params.toString()}`, {
-        headers: buildOrgHeaders(orgId),
-      });
+      const res = await fetch(
+        buildCommunicationRequestsApiPath({
+          requestType: 'care_report_reply_request',
+          relatedEntityType: 'care_report',
+          relatedEntityId: reportId,
+        }),
+        {
+          headers: buildOrgHeaders(orgId),
+        },
+      );
       if (!res.ok) throw new Error('返信状況の取得に失敗しました');
       return res.json() as Promise<{ data: ShareCommunicationRequest[] }>;
     },
@@ -235,6 +263,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
       })
     : null;
   const supportingDataErrors = [
+    patientId && canViewPatient && !canUsePatientApiPath ? '患者リンク' : null,
     careTeamQuery.isError ? 'ケアチーム' : null,
     contactsQuery.isError ? '患者連絡先' : null,
     canUseShareOutput && requestsQuery.isError ? '返信状況' : null,
@@ -257,7 +286,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
         requestId: replyRequest.id,
         response: latestReply,
       });
-      const res = await fetch('/api/tasks', {
+      const res = await fetch(buildTasksApiPath(), {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(input),
@@ -305,7 +334,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
         recipientOrganizationName: selectedAudienceCard.recipientOrganizationName,
         sections,
       });
-      const res = await fetch('/api/communication-requests', {
+      const res = await fetch(buildCommunicationRequestsApiPath(), {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(input),
@@ -378,26 +407,25 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
 
   const patientName = report.patient_summary?.name ?? null;
   const patientArchive = report.patient_summary?.archive ?? null;
+  const patientDetailHref = patientId && canViewPatient ? tryBuildPatientHref(patientId) : null;
+  const patientShareHref =
+    patientId && canViewPatient && canUseShareOutput
+      ? tryBuildPatientHref(patientId, '/share')
+      : null;
   const introShortcuts = [
     { href: '/reports', label: '報告書一覧' },
-    ...(patientId && canViewPatient
-      ? [{ href: buildPatientHref(patientId), label: '患者詳細' }]
-      : []),
+    ...(patientDetailHref ? [{ href: patientDetailHref, label: '患者詳細' }] : []),
     { href: '/external', label: '外部連携' },
   ];
-  const externalShareAction =
-    patientId && canViewPatient && canUseShareOutput ? (
-      <Link
-        href={buildPatientHref(patientId, '/share')}
-        className={cn(
-          buttonVariants({ variant: 'outline', size: 'sm' }),
-          'min-h-[44px] sm:min-h-0',
-        )}
-      >
-        <Share2 className="mr-1.5 size-3.5" aria-hidden="true" />
-        外部共有リンクの発行
-      </Link>
-    ) : null;
+  const externalShareAction = patientShareHref ? (
+    <Link
+      href={patientShareHref}
+      className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'min-h-[44px] sm:min-h-0')}
+    >
+      <Share2 className="mr-1.5 size-3.5" aria-hidden="true" />
+      外部共有リンクの発行
+    </Link>
+  ) : null;
 
   if (!canUseShareOutput) {
     const shareBlockedMessage = !isShareableReportStatus

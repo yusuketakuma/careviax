@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   buildNextCheckTaskInput,
   buildShareAudienceCards,
@@ -48,9 +49,13 @@ import {
   shareAudienceLabel,
   type ShareAudienceKey,
 } from '@/lib/communications/share-audience';
-import { buildCommunicationRequestApiPath } from '@/lib/communications/api-paths';
+import {
+  buildCommunicationRequestApiPath,
+  buildCommunicationRequestsApiPath,
+} from '@/lib/communications/api-paths';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { buildTasksApiPath } from '@/lib/tasks/api-paths';
 import {
   buildPatientShareCommunicationRequestInput,
   buildPatientShareSections,
@@ -179,7 +184,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
     enabled: Boolean(patientId && orgId),
     queryFn: async () => {
       const response = await fetch(buildPatientApiPath(patientId), {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
         cache: 'no-store',
       });
       if (!response.ok) {
@@ -205,7 +210,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
     enabled: Boolean(patientId && orgId),
     queryFn: async () => {
       const res = await fetch(buildPatientApiPath(patientId, '/care-team'), {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('ケアチームの取得に失敗しました');
       return res.json() as Promise<{ data: CareTeamMemberSummary[] }>;
@@ -217,7 +222,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
     enabled: Boolean(patientId && orgId),
     queryFn: async () => {
       const res = await fetch(buildPatientApiPath(patientId, '/contacts'), {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('連絡先の取得に失敗しました');
       return res.json() as Promise<{ data: ContactPartySummary[] }>;
@@ -229,14 +234,16 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
     queryKey: ['communication-requests', 'patient', patientId, orgId],
     enabled: Boolean(patientId && orgId),
     queryFn: async () => {
-      const params = new URLSearchParams({
-        request_type: 'patient_share_reply_request',
-        related_entity_type: 'patient',
-        related_entity_id: patientId,
-      });
-      const res = await fetch(`/api/communication-requests?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
-      });
+      const res = await fetch(
+        buildCommunicationRequestsApiPath({
+          requestType: 'patient_share_reply_request',
+          relatedEntityType: 'patient',
+          relatedEntityId: patientId,
+        }),
+        {
+          headers: buildOrgHeaders(orgId),
+        },
+      );
       if (!res.ok) throw new Error('返信状況の取得に失敗しました');
       return res.json() as Promise<{ data: ShareCommunicationRequest[] }>;
     },
@@ -339,7 +346,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
       const requestId = replyRequest?.id;
       if (!requestId) throw new Error('返信依頼IDがありません');
       const res = await fetch(buildCommunicationRequestApiPath(requestId), {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('返信内容の取得に失敗しました');
       return res.json() as Promise<{ data: ShareReplyDetail }>;
@@ -384,9 +391,9 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
         requestId: replyRequest.id,
         response: latestReply,
       });
-      const res = await fetch('/api/tasks', {
+      const res = await fetch(buildTasksApiPath(), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(input),
       });
       if (!res.ok) {
@@ -425,9 +432,9 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
         recipientOrganizationName: selectedAudienceCard.recipientOrganizationName,
         sections,
       });
-      const res = await fetch('/api/communication-requests', {
+      const res = await fetch(buildCommunicationRequestsApiPath(), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(input),
       });
       if (!res.ok) {
