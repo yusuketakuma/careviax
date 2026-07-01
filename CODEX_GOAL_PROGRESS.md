@@ -30,6 +30,37 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Saved Views Helper Boundary - 2026-07-01 09:41 JST
+
+- Scope:
+  - Continued low-risk UI helper convergence for `/views` saved filter views.
+  - Focused on preserving behavior while moving raw preferences/saved-view paths and org headers into shared client-safe helpers.
+- Fixed:
+  - Added `ME_PREFERENCES_API_PATH`, `SAVED_VIEWS_API_PATH`, and `buildSavedViewsApiPath(scope)` to `src/lib/views/api-paths.ts`.
+  - Preserved existing saved-view detail path encoding through `buildSavedViewApiPath(id)` and the `/api/saved-views?scope=schedules` collection URL shape.
+  - Replaced preferences and saved-view GET/POST/PATCH/DELETE inline org headers with `buildOrgHeaders` and `buildOrgJsonHeaders`.
+  - Added tests for client-safe path constants, scope query encoding, read header helper delegation, JSON mutation header helper delegation, delete header helper delegation, hostile-id single encoding, and dot-segment fail-closed mutation behavior.
+- Safety:
+  - Reduces tenant-header drift and raw saved-view path construction while preserving the saved-view UI workflow.
+  - Frontend reviewer found no blocker and confirmed scope query shape, mutation methods/bodies, hostile id encoding, dot-segment fail-closed behavior, loading/error/empty states, owner-only actions, and visible UI text/layout are preserved.
+  - Reviewed PH-OS UI/UX SSOT and local Next App Router Client Component/data-fetching/caching docs before touching the client component. Only client-safe helpers were imported into the `'use client'` graph.
+  - No auth/RLS policy, permission, payload semantics, DB data, migration, external send, push/deploy, secret handling, or destructive-operation boundary changed.
+- Performance:
+  - Header/path helper convergence only changes local string and header-object construction.
+  - Adds no request, backend query, dependency, polling, background job, broad scan, render fan-out, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/'(dashboard)'/views/saved-views-content.test.tsx src/lib/views/api-paths.test.ts src/lib/api/org-headers.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `28` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on saved-views/path/header files: passed after formatting `src/lib/views/api-paths.test.ts`.
+  - Frontend reviewer: no blocking findings in the reviewed saved views helper convergence.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains open.
+  - Browser smoke was not run because no visible DOM layout/copy/interaction-state change was made; focused DOM tests and frontend review cover the read/mutation contracts and state branches touched by this helper-only slice.
+
 ### Report Edit Form Header Boundary - 2026-07-01 09:30 JST
 
 - Scope:

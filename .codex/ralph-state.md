@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0941 JST
+
+- current task: converge saved views preferences and named-view paths/tenant headers on shared client-safe helpers.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox, `docs/ui-ux-design-guidelines.md`, local Next App Router docs for Server/Client Components, data fetching, and caching, `src/app/(dashboard)/views/saved-views-content.tsx`, `src/app/(dashboard)/views/saved-views-content.test.tsx`, `src/lib/views/api-paths.ts`, `src/lib/views/api-paths.test.ts`, `src/lib/api/org-headers.ts`, `src/lib/api/org-headers.test.ts`, `src/lib/http/path-segment.ts`, frontend reviewer output, focused diffs, and validation output.
+- files changed: `src/app/(dashboard)/views/saved-views-content.tsx`, `src/app/(dashboard)/views/saved-views-content.test.tsx`, `src/lib/views/api-paths.ts`, `src/lib/views/api-paths.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: `/views` saved filter UI still built `/api/me/preferences`, `/api/saved-views?scope=schedules`, `/api/saved-views`, and tenant JSON/plain org headers inline even though saved-view detail ids and org-header helpers already existed, leaving this preference/filter UI outside the shared path/header helper contract.
+- security risks found: reduced tenant-header drift and raw path construction by routing preferences and saved-view reads/mutations through `ME_PREFERENCES_API_PATH`, `SAVED_VIEWS_API_PATH`, `buildSavedViewsApiPath`, `buildSavedViewApiPath`, `buildOrgHeaders`, and `buildOrgJsonHeaders`. Frontend reviewer found no blocker and confirmed scope query shape, mutation methods/bodies, hostile id encoding, dot-segment fail-closed behavior, loading/error/empty states, owner-only actions, and visible UI text/layout remain unchanged. Existing auth/RLS policy, permissions, payload semantics, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: no meaningful performance issue was introduced. The change only centralizes local path/header construction and adds no request, backend query, dependency, polling, background job, broad scan, render fan-out, or unbounded loop.
+- validation commands: `pnpm exec vitest run src/app/'(dashboard)'/views/saved-views-content.test.tsx src/lib/views/api-paths.test.ts src/lib/api/org-headers.test.ts --reporter=dot --testTimeout=60000`; scoped `pnpm exec eslint --max-warnings=0`; scoped `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check`; `pnpm exec prettier --write src/lib/views/api-paths.test.ts`; scoped `git diff --check`; `pnpm typecheck --pretty false`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`; `pnpm lint`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: focused saved-views/path/header suite passed `3` files / `28` tests; scoped ESLint passed; scoped Prettier check initially found `src/lib/views/api-paths.test.ts`, then passed after formatting; scoped diff-check passed; frontend reviewer found no blocking findings; full typecheck passed; no-unused passed; full lint passed; full format check passed; full diff-check passed.
+- remaining work: broad repo-wide maintainability/type-safety/testability objective remains active. Browser smoke was not run because this slice changes saved-view path/header helper wiring only, with no visible DOM layout, copy, or interaction-state change.
+- next action: stage only saved-views implementation/test/helper files as one implementation commit, then stage this ledger hunk as a separate progress commit; send agmsg FYI and continue with the next safe helper-convergence candidate.
+
 ### 20260701-0930 JST
 
 - current task: converge report edit form `PATCH` tenant JSON headers on the shared org-header helper.
