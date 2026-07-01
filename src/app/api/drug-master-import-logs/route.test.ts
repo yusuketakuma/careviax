@@ -114,6 +114,7 @@ describe('/api/drug-master-import-logs', () => {
         message: '入力値が不正です',
       });
       expect(findManyMock).not.toHaveBeenCalled();
+      expect(loggerErrorMock).not.toHaveBeenCalled();
     },
   );
 
@@ -144,6 +145,7 @@ describe('/api/drug-master-import-logs', () => {
       },
     });
     expect(findManyMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('returns no-store 400 before querying when the status filter is invalid', async () => {
@@ -159,10 +161,13 @@ describe('/api/drug-master-import-logs', () => {
       },
     });
     expect(findManyMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when import log lookup fails unexpectedly', async () => {
-    const unsafeError = new Error('raw import log token secret');
+    const unsafeError = new Error(
+      'raw import log token secret source_url=https://example.invalid/import.csv?token=secret error_log=raw stack token',
+    );
     unsafeError.name = 'DrugMasterImportLogSecretError';
     findManyMock.mockRejectedValueOnce(unsafeError);
 
@@ -174,21 +179,23 @@ describe('/api/drug-master-import-logs', () => {
     const body = await response.json();
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('token secret');
+    expect(loggerErrorMock).toHaveBeenCalledOnce();
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'drug_master_import_logs_get_unhandled_error',
-      undefined,
       {
         event: 'drug_master_import_logs_get_unhandled_error',
         route: '/api/drug-master-import-logs',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
-    expect(logged).not.toContain('token secret');
-    expect(logged).not.toContain('DrugMasterImportLogSecretError');
+    expect(loggerErrorMock.mock.calls[0]?.[0]).not.toHaveProperty('error_name');
+    const loggedContext = JSON.stringify(loggerErrorMock.mock.calls[0]?.[0]);
+    expect(loggedContext).not.toContain('token secret');
+    expect(loggedContext).not.toContain('DrugMasterImportLogSecretError');
+    expect(loggedContext).not.toContain('source_url');
+    expect(loggedContext).not.toContain('error_log');
+    expect(loggedContext).not.toContain('https://example.invalid');
+    expect(loggedContext).not.toContain('raw stack token');
   });
 });
