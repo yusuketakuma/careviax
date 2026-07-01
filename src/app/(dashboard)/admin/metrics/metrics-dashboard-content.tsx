@@ -9,7 +9,6 @@ import {
   Activity,
   AlertTriangle,
   AlertCircle,
-  Info,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorState } from '@/components/ui/error-state';
@@ -36,16 +35,6 @@ type MetricsData = {
 const GENERIC_TARGET = 70; // 後発品調剤割合目標 (%)
 const PRESCRIPTIONS_LIMIT = 40; // 薬剤師1人あたり上限（1日）
 const HOME_VISIT_TARGET_YTD = 48; // 年間訪問目標回数
-
-// --- Placeholder data (API not yet available) ---
-
-const PLACEHOLDER: MetricsData = {
-  prescription_concentration_rate: 0,
-  generic_dispensing_rate: 0,
-  prescriptions_per_pharmacist: 0,
-  home_visit_count_ytd: 0,
-  monthly_prescription_count: 0,
-};
 
 // --- Components ---
 
@@ -155,18 +144,16 @@ export function MetricsDashboardContent() {
       const res = await fetch('/api/admin/metrics', {
         headers: { 'x-org-id': orgId },
       });
-      if (res.status === 404) return { data: PLACEHOLDER, placeholder: true };
       if (!res.ok) throw new Error('経営指標の取得に失敗しました');
-      return res.json() as Promise<{ data: MetricsData; placeholder?: boolean }>;
+      return res.json() as Promise<{ data: MetricsData }>;
     },
     enabled: !!orgId,
   });
 
   const hasData = data !== undefined;
 
-  // First-load failure with no usable data → blocking error. A 404 resolves as a
-  // placeholder success, so it never reaches this branch. A refetch failure that still
-  // has prior data is handled below (keep the data, show a non-blocking warning).
+  // First-load failure with no usable data -> blocking error. A refetch failure that
+  // still has prior data is handled below (keep the data, show a non-blocking warning).
   if (isError && !hasData) {
     return (
       <ErrorState
@@ -197,14 +184,22 @@ export function MetricsDashboardContent() {
     );
   }
 
-  const metrics = data?.data ?? PLACEHOLDER;
-  const isPlaceholder = !hasData || data?.placeholder === true;
+  if (!hasData) {
+    return (
+      <ErrorState
+        variant="server"
+        size="page"
+        description="経営指標を表示するための組織情報を取得できませんでした。組織を選択して再読み込みしてください。"
+        live="assertive"
+      />
+    );
+  }
 
-  // Suppress threshold alerts on placeholder/no-data (404 or pre-data): firing them on
-  // zeros would tell operators a metric is "below threshold" when the API has no data.
+  const metrics = data.data;
+
   // 目標未達は confirm(橙)、基準超過は blocked(赤)で重大度を分離する。
   const genericAlert: MetricAlert | undefined =
-    !isPlaceholder && metrics.generic_dispensing_rate < GENERIC_TARGET
+    metrics.monthly_prescription_count > 0 && metrics.generic_dispensing_rate < GENERIC_TARGET
       ? {
           text: `目標（${GENERIC_TARGET}%）未達。後発品の積極的な提案を検討してください。`,
           role: 'confirm',
@@ -212,7 +207,7 @@ export function MetricsDashboardContent() {
       : undefined;
 
   const prescriptionsAlert: MetricAlert | undefined =
-    !isPlaceholder && metrics.prescriptions_per_pharmacist > PRESCRIPTIONS_LIMIT
+    metrics.prescriptions_per_pharmacist > PRESCRIPTIONS_LIMIT
       ? {
           text: `基準（${PRESCRIPTIONS_LIMIT}枚/日）超過。人員配置を見直してください。`,
           role: 'blocked',
@@ -235,22 +230,6 @@ export function MetricsDashboardContent() {
           live="polite"
         />
       )}
-      {isPlaceholder && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="flex items-start gap-2 rounded-lg border border-border/70 bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
-          data-testid="metrics-placeholder-notice"
-        >
-          <Info aria-hidden className="mt-0.5 size-4 shrink-0" />
-          <div>
-            <p className="font-medium text-foreground">サンプル表示（実データ未接続）</p>
-            <p className="mt-0.5">
-              値はすべて0のプレースホルダです。API接続後に実測値が表示されます。
-            </p>
-          </div>
-        </div>
-      )}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <MetricCard
           title="処方箋集中率"
@@ -272,7 +251,7 @@ export function MetricsDashboardContent() {
           target={`目標: ${GENERIC_TARGET}%以上`}
           icon={Activity}
           colorClass={
-            isPlaceholder
+            metrics.monthly_prescription_count === 0
               ? 'bg-chart-1'
               : metrics.generic_dispensing_rate >= GENERIC_TARGET
                 ? 'bg-state-done'
@@ -290,11 +269,9 @@ export function MetricsDashboardContent() {
           target={`基準: ${PRESCRIPTIONS_LIMIT}枚/日`}
           icon={Users}
           colorClass={
-            isPlaceholder
-              ? 'bg-chart-1'
-              : metrics.prescriptions_per_pharmacist > PRESCRIPTIONS_LIMIT
-                ? 'bg-state-blocked'
-                : 'bg-chart-1'
+            metrics.prescriptions_per_pharmacist > PRESCRIPTIONS_LIMIT
+              ? 'bg-state-blocked'
+              : 'bg-chart-1'
           }
           alert={prescriptionsAlert}
         />

@@ -61,8 +61,7 @@ describe('MetricsDashboardContent', () => {
     expect(screen.getByText('後発医薬品調剤割合')).toBeTruthy();
     expect(screen.queryByText(/未達/)).toBeNull();
     expect(screen.queryByText(/超過/)).toBeNull();
-    // 実データ時はサンプル/未接続バナーを出さない。
-    expect(screen.queryByTestId('metrics-placeholder-notice')).toBeNull();
+    expect(screen.queryByText('サンプル表示（実データ未接続）')).toBeNull();
   });
 
   it('shows a confirm-severity alert when the generic dispensing rate is below target', async () => {
@@ -118,22 +117,45 @@ describe('MetricsDashboardContent', () => {
     expect(screen.queryByText(/超過/)).toBeNull();
   });
 
-  it('preserves the placeholder WITHOUT firing threshold alerts on a 404', async () => {
+  it('renders a blocking error instead of all-zero sample cards on a 404', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response('not found', { status: 404 })),
     );
 
+    renderWith(makeClient());
+
+    expect(await screen.findByText(ERROR_DESCRIPTION)).toBeTruthy();
+    expect(screen.queryByText('処方箋集中率')).toBeNull();
+    expect(screen.queryByText('サンプル表示（実データ未接続）')).toBeNull();
+    expect(screen.queryByText(/未達/)).toBeNull();
+    expect(screen.queryByText(/超過/)).toBeNull();
+  });
+
+  it('renders real zero metrics without sample text or threshold alerts when there is no monthly volume', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: {
+                prescription_concentration_rate: 0,
+                generic_dispensing_rate: 0,
+                prescriptions_per_pharmacist: 0,
+                home_visit_count_ytd: 0,
+                monthly_prescription_count: 0,
+              },
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+
     const { container } = renderWith(makeClient());
 
-    // 404 = legitimate "no data yet": placeholder cards render, not an error.
     expect(await screen.findByText('処方箋集中率')).toBeTruthy();
-    expect(screen.queryByText(ERROR_DESCRIPTION)).toBeNull();
-    // 「サンプル/未接続」を明示するバナーを出し、0 値を実測と誤読させない。
-    expect(screen.getByTestId('metrics-placeholder-notice')).toBeTruthy();
-    expect(screen.getByText('サンプル表示（実データ未接続）')).toBeTruthy();
-    // placeholder zeros must NOT be reported as below-threshold (false alert) —
-    // neither via alert text nor via a warning-colored progress segment.
+    expect(screen.queryByText('サンプル表示（実データ未接続）')).toBeNull();
     expect(screen.queryByText(/未達/)).toBeNull();
     expect(screen.queryByText(/超過/)).toBeNull();
     expect(container.querySelector('.bg-state-confirm')).toBeNull();
@@ -166,7 +188,6 @@ describe('MetricsDashboardContent', () => {
     // ... and a non-blocking refetch warning + retry is shown instead.
     expect(await screen.findByText(STALE_WARNING)).toBeTruthy();
     expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
-    // 前回値は実データなので、サンプル/未接続バナーは出さない。
-    expect(screen.queryByTestId('metrics-placeholder-notice')).toBeNull();
+    expect(screen.queryByText('サンプル表示（実データ未接続）')).toBeNull();
   });
 });
