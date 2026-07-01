@@ -20,6 +20,8 @@ import {
 import { useOfflineStore } from '@/lib/stores/offline-store';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { NOTIFICATIONS_API_PATH, buildNotificationsApiPath } from '@/lib/notifications/api-paths';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
 import type { NotificationCategoryFilter } from './notifications-query-state';
 
@@ -90,8 +92,8 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
   const { data, isLoading, isError, refetch } = useRealtimeQuery<{ data: NotificationItem[] }>({
     queryKey: ['notifications', 'inbox', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/notifications?limit=50', {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildNotificationsApiPath(new URLSearchParams({ limit: '50' })), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('お知らせの取得に失敗しました');
       return res.json();
@@ -104,9 +106,9 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
 
   const markReadMutation = useMutation({
     mutationFn: async (ids: string[]) => {
-      const res = await fetch('/api/notifications', {
+      const res = await fetch(NOTIFICATIONS_API_PATH, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ ids }),
       });
       if (!res.ok) throw new Error('既読化に失敗しました');

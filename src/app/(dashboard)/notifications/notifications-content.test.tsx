@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
@@ -12,9 +12,20 @@ const useRouterMock = vi.hoisted(() => vi.fn());
 const usePathnameMock = vi.hoisted(() => vi.fn());
 const useOfflineStoreMock = vi.hoisted(() => vi.fn());
 const useRealtimeEventsMock = vi.hoisted(() => vi.fn());
+const buildOrgHeadersMock = vi.hoisted(() =>
+  vi.fn((orgId: string) => ({ 'x-test-org-id': orgId })),
+);
+const buildOrgJsonHeadersMock = vi.hoisted(() =>
+  vi.fn((orgId: string) => ({ 'Content-Type': 'application/json', 'x-test-json-org-id': orgId })),
+);
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
+}));
+
+vi.mock('@/lib/api/org-headers', () => ({
+  buildOrgHeaders: buildOrgHeadersMock,
+  buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -39,6 +50,10 @@ vi.mock('@/lib/hooks/use-realtime-events', () => ({
 import { NotificationsContent } from './notifications-content';
 
 setupDomTestEnv();
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 const NOTIFICATIONS = [
   {
@@ -157,6 +172,45 @@ describe('NotificationsContent', () => {
 
     expect(useRealtimeEventsMock).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
     expect(useQueryMock).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
+  });
+
+  it('loads notifications through the shared path and org header helpers', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ data: [] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<NotificationsContent />);
+
+    const queryOptions = useQueryMock.mock.calls.at(-1)?.[0] as
+      | { queryFn: () => Promise<unknown> }
+      | undefined;
+    await queryOptions?.queryFn();
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/notifications?limit=50', {
+      headers: { 'x-test-org-id': 'org_1' },
+    });
+    expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
+  });
+
+  it('marks notifications read through the shared collection path and JSON org headers', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<NotificationsContent />);
+
+    const mutationOptions = useMutationMock.mock.calls.at(-1)?.[0] as
+      | { mutationFn: (ids: string[]) => Promise<void> }
+      | undefined;
+    await mutationOptions?.mutationFn(['notification/1?x=y#frag']);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/notifications', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-test-json-org-id': 'org_1' },
+      body: JSON.stringify({ ids: ['notification/1?x=y#frag'] }),
+    });
+    expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
   });
 
   it('shows an error state instead of an empty inbox when notifications fail to load', () => {

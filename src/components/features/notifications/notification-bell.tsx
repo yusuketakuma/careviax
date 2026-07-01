@@ -14,11 +14,13 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   getBrowserNotificationPreference,
   isBrowserNotificationSupported,
   showBrowserNotification,
 } from '@/lib/browser-notifications';
+import { NOTIFICATIONS_API_PATH, buildNotificationsApiPath } from '@/lib/notifications/api-paths';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
 import { subscribeSharedRealtimeStream } from '@/lib/realtime/shared-event-stream';
 
@@ -131,8 +133,8 @@ export function NotificationBell() {
 
   const refreshNotificationSummary = useCallback(async () => {
     if (!orgId) return;
-    const res = await fetch('/api/notifications?summary=1', {
-      headers: { 'x-org-id': orgId },
+    const res = await fetch(buildNotificationsApiPath(new URLSearchParams({ summary: '1' })), {
+      headers: buildOrgHeaders(orgId),
     });
     if (!res.ok) return;
     const payload = (await res.json()) as { data?: { unreadCount?: number } };
@@ -142,8 +144,8 @@ export function NotificationBell() {
 
   const refreshNotifications = useCallback(async () => {
     if (!orgId) return;
-    const res = await fetch('/api/notifications?limit=20', {
-      headers: { 'x-org-id': orgId },
+    const res = await fetch(buildNotificationsApiPath(new URLSearchParams({ limit: '20' })), {
+      headers: buildOrgHeaders(orgId),
     });
     if (!res.ok) return;
     const payload = (await res.json()) as { data?: Notification[] };
@@ -183,9 +185,9 @@ export function NotificationBell() {
   const markRead = useCallback(
     async (ids: string[]) => {
       if (!orgId || ids.length === 0) return;
-      await fetch('/api/notifications', {
+      await fetch(NOTIFICATIONS_API_PATH, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ ids }),
       });
       if (!mountedRef.current) return;
