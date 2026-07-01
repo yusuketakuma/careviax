@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Skeleton } from '@/components/ui/loading';
 import { EmptyState } from '@/components/ui/empty-state';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import {
@@ -24,7 +25,12 @@ import {
   type SavedViewCondition,
   type SavedViewRecord,
 } from '@/lib/views/saved-filter-views';
-import { buildSavedViewApiPath } from '@/lib/views/api-paths';
+import {
+  ME_PREFERENCES_API_PATH,
+  SAVED_VIEWS_API_PATH,
+  buildSavedViewApiPath,
+  buildSavedViewsApiPath,
+} from '@/lib/views/api-paths';
 
 /** /views の名前付き保存ビューが対象とする一覧画面(スケジュール絞り込み)。 */
 const VIEWS_PAGE_SCOPE = 'schedules' as const;
@@ -39,8 +45,8 @@ const VIEWS_PAGE_SCOPE = 'schedules' as const;
 type PreferencesValue = Record<string, unknown>;
 
 async function fetchPreferences(orgId: string): Promise<PreferencesValue> {
-  const res = await fetch('/api/me/preferences', {
-    headers: { 'x-org-id': orgId },
+  const res = await fetch(ME_PREFERENCES_API_PATH, {
+    headers: buildOrgHeaders(orgId),
   });
   if (!res.ok) throw new Error('保存済み条件の取得に失敗しました');
   const json = await res.json();
@@ -99,9 +105,9 @@ function CurrentFilterCard({ orgId }: { orgId: string }) {
 
   const saveMutation = useMutation({
     mutationFn: async (next: SavedViewCondition[]) => {
-      const res = await fetch('/api/me/preferences', {
+      const res = await fetch(ME_PREFERENCES_API_PATH, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           saved_view: { conditions: next, saved_at: new Date().toISOString() },
         }),
@@ -195,8 +201,8 @@ function CurrentFilterCard({ orgId }: { orgId: string }) {
 type SavedViewsApiResponse = { data: SavedViewRecord[] };
 
 async function fetchSavedViews(orgId: string): Promise<SavedViewRecord[]> {
-  const res = await fetch(`/api/saved-views?scope=${VIEWS_PAGE_SCOPE}`, {
-    headers: { 'x-org-id': orgId },
+  const res = await fetch(buildSavedViewsApiPath(VIEWS_PAGE_SCOPE), {
+    headers: buildOrgHeaders(orgId),
   });
   if (!res.ok) throw new Error('保存ビューの取得に失敗しました');
   const json = (await res.json()) as Partial<SavedViewsApiResponse>;
@@ -242,9 +248,9 @@ function NamedSavedViewsCard({
 
   const createMutation = useMutation({
     mutationFn: async (name: string) => {
-      const res = await fetch('/api/saved-views', {
+      const res = await fetch(SAVED_VIEWS_API_PATH, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           name,
           scope: VIEWS_PAGE_SCOPE,
@@ -267,7 +273,7 @@ function NamedSavedViewsCard({
     mutationFn: async ({ id, name }: { id: string; name: string }) => {
       const res = await fetch(buildSavedViewApiPath(id), {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ name }),
       });
       if (!res.ok) throw new Error(await readErrorMessage(res, '名前の変更に失敗しました'));
@@ -287,7 +293,7 @@ function NamedSavedViewsCard({
     mutationFn: async ({ id, isShared }: { id: string; isShared: boolean }) => {
       const res = await fetch(buildSavedViewApiPath(id), {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ is_shared: isShared }),
       });
       if (!res.ok) throw new Error(await readErrorMessage(res, '共有設定の変更に失敗しました'));
@@ -304,7 +310,7 @@ function NamedSavedViewsCard({
     mutationFn: async (id: string) => {
       const res = await fetch(buildSavedViewApiPath(id), {
         method: 'DELETE',
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error(await readErrorMessage(res, '削除に失敗しました'));
     },

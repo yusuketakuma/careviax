@@ -6,9 +6,25 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 
 setupDomTestEnv();
 
-const { fetchMock, routerPushMock } = vi.hoisted(() => ({
-  fetchMock: vi.fn(),
-  routerPushMock: vi.fn(),
+const { buildOrgHeadersMock, buildOrgJsonHeadersMock, fetchMock, routerPushMock } = vi.hoisted(
+  () => ({
+    buildOrgHeadersMock: vi.fn((orgId: string) => ({
+      'x-org-id': `org-header:${orgId}`,
+      'x-test-helper': 'buildOrgHeaders',
+    })),
+    buildOrgJsonHeadersMock: vi.fn((orgId: string) => ({
+      'Content-Type': 'application/json',
+      'x-org-id': `org-json:${orgId}`,
+      'x-test-helper': 'buildOrgJsonHeaders',
+    })),
+    fetchMock: vi.fn(),
+    routerPushMock: vi.fn(),
+  }),
+);
+
+vi.mock('@/lib/api/org-headers', () => ({
+  buildOrgHeaders: buildOrgHeadersMock,
+  buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -103,6 +119,34 @@ describe('SavedViewsContent', () => {
     expect(screen.queryByTestId('current-filter-saved-badge')).toBeNull();
   });
 
+  it('delegates preference and named-view reads to shared org headers and paths', async () => {
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('current-filter-chip')).toHaveLength(5);
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/me/preferences',
+      expect.objectContaining({
+        headers: {
+          'x-org-id': 'org-header:org_1',
+          'x-test-helper': 'buildOrgHeaders',
+        },
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/saved-views?scope=schedules',
+      expect.objectContaining({
+        headers: {
+          'x-org-id': 'org-header:org_1',
+          'x-test-helper': 'buildOrgHeaders',
+        },
+      }),
+    );
+    expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
+  });
+
   it('shows stored conditions and the saved badge when a saved view exists', async () => {
     mockPreferences({
       saved_view: {
@@ -136,6 +180,12 @@ describe('SavedViewsContent', () => {
     const patchCall = fetchMock.mock.calls.find(
       ([, init]) => (init as RequestInit | undefined)?.method === 'PATCH',
     );
+    expect((patchCall?.[1] as RequestInit).headers).toEqual({
+      'Content-Type': 'application/json',
+      'x-org-id': 'org-json:org_1',
+      'x-test-helper': 'buildOrgJsonHeaders',
+    });
+    expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
     const body = JSON.parse(String((patchCall?.[1] as RequestInit).body)) as {
       saved_view: { conditions: unknown[]; saved_at?: string };
     };
@@ -277,15 +327,22 @@ describe('SavedViewsContent', () => {
     expect(mutationCalls.map(([, init]) => init.method)).toEqual(['PATCH', 'PATCH', 'DELETE']);
     expect(mutationCalls[0][1].headers).toEqual({
       'Content-Type': 'application/json',
-      'x-org-id': 'org_1',
+      'x-org-id': 'org-json:org_1',
+      'x-test-helper': 'buildOrgJsonHeaders',
     });
     expect(JSON.parse(String(mutationCalls[0][1].body))).toEqual({ name: '新しい名前' });
     expect(mutationCalls[1][1].headers).toEqual({
       'Content-Type': 'application/json',
-      'x-org-id': 'org_1',
+      'x-org-id': 'org-json:org_1',
+      'x-test-helper': 'buildOrgJsonHeaders',
     });
     expect(JSON.parse(String(mutationCalls[1][1].body))).toEqual({ is_shared: true });
-    expect(mutationCalls[2][1].headers).toEqual({ 'x-org-id': 'org_1' });
+    expect(mutationCalls[2][1].headers).toEqual({
+      'x-org-id': 'org-header:org_1',
+      'x-test-helper': 'buildOrgHeaders',
+    });
+    expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
+    expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
 
     for (const [url, init] of mutationCalls) {
       expect(url).not.toContain('%25');
