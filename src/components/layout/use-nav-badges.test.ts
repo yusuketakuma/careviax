@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { buildNavBadgesApiPath } from '@/lib/nav-badges/api-paths';
 
 const { useOrgIdMock } = vi.hoisted(() => ({
   useOrgIdMock: vi.fn(),
@@ -54,6 +56,16 @@ describe('toBadgeCount', () => {
 });
 
 describe('useNavBadges', () => {
+  function createQueryWrapper() {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    function NavBadgeQueryWrapper({ children }: { children: ReactNode }) {
+      return createElement(QueryClientProvider, { client: queryClient }, children);
+    }
+    return NavBadgeQueryWrapper;
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
     useOrgIdMock.mockReturnValue('org_1');
@@ -67,21 +79,64 @@ describe('useNavBadges', () => {
   });
 
   it('loads sidebar badges through the aggregated endpoint', async () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-    });
-    const wrapper = ({ children }: { children: ReactNode }) =>
-      createElement(QueryClientProvider, { client: queryClient }, children);
-
-    const { result } = renderHook(() => useNavBadges(), { wrapper });
+    const { result } = renderHook(() => useNavBadges(), { wrapper: createQueryWrapper() });
 
     await waitFor(() => {
       expect(result.current).toEqual({ '/audit': 6, '/handoff': 3 });
     });
 
     expect(fetch).toHaveBeenCalledOnce();
-    expect(fetch).toHaveBeenCalledWith('/api/nav-badges', {
-      headers: { 'x-org-id': 'org_1' },
+    expect(fetch).toHaveBeenCalledWith(buildNavBadgesApiPath(), {
+      headers: buildOrgHeaders('org_1'),
     });
+  });
+
+  it('does not fetch badges until an org id is available', () => {
+    useOrgIdMock.mockReturnValue('');
+
+    const { result } = renderHook(() => useNavBadges(), { wrapper: createQueryWrapper() });
+
+    expect(result.current).toEqual({ '/audit': undefined, '/handoff': undefined });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('hides badges without reading response bodies or logging when the endpoint fails', async () => {
+    const jsonMock = vi.fn(async () => ({
+      error: 'patient:山田太郎 medication:ワルファリン',
+    }));
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: jsonMock,
+    } as unknown as Response);
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const { result } = renderHook(() => useNavBadges(), { wrapper: createQueryWrapper() });
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledOnce();
+    });
+    expect(result.current).toEqual({ '/audit': undefined, '/handoff': undefined });
+    expect(jsonMock).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
+    expect(consoleLogSpy).not.toHaveBeenCalled();
+
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+    consoleLogSpy.mockRestore();
+  });
+
+  it('does not retry rejected badge fetches', async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new Error('patient:山田太郎 medication:ワルファリン'));
+
+    const { result } = renderHook(() => useNavBadges(), { wrapper: createQueryWrapper() });
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledOnce();
+    });
+    expect(result.current).toEqual({ '/audit': undefined, '/handoff': undefined });
   });
 });

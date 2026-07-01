@@ -1,7 +1,9 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildNavBadgesApiPath } from '@/lib/nav-badges/api-paths';
 
 const NAV_BADGE_REFETCH_INTERVAL_MS = 60_000;
 
@@ -48,8 +50,8 @@ export function useNavBadges(): NavBadgeCounts {
   const badgeQuery = useQuery({
     queryKey: ['nav-badges', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/nav-badges', {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildNavBadgesApiPath(), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('ナビゲーションバッジ件数の取得に失敗しました');
       const payload = (await res.json()) as NavBadgeApiPayload;
