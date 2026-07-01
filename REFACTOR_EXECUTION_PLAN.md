@@ -51,6 +51,7 @@ If any of those are needed, create a proposal first. Do not implement silently.
   - `/api/nav-badges` no-store response boundary hardening
   - report generation API path helper convergence
   - admin notification settings path/header helper convergence
+  - `/api/notification-rules` no-store response boundary hardening
 
 ## Completed Slices
 
@@ -138,6 +139,30 @@ If any of those are needed, create a proposal first. Do not implement silently.
   - `/api/notification-rules` no-store/unexpected-error wrapping and
     notification-rule mutation audit evidence remain separate API hardening
     candidates.
+
+### 2026-07-01 12:13 JST: Notification Rules No-Store Boundary
+
+- Completed API hardening follow-up: `/api/notification-rules` response privacy
+  boundary.
+- Files changed:
+  - `src/app/api/notification-rules/route.ts`
+  - `src/app/api/notification-rules/route.test.ts`
+  - `src/app/api/notification-rules/[id]/route.ts`
+  - `src/app/api/notification-rules/[id]/route.test.ts`
+- Validation:
+  - focused notification-rule/escalation-rule route suite passed `4` files /
+    `46` tests
+  - scoped ESLint passed
+  - scoped Prettier check passed
+  - scoped diff whitespace check passed
+  - full typecheck passed
+  - no-unused typecheck passed
+  - full lint passed
+  - full format check passed
+  - full diff whitespace check passed
+- Remaining follow-up:
+  - Notification-rule mutation audit evidence remains a separate API/audit
+    candidate.
 
 ## Execution Order
 

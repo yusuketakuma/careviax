@@ -30,6 +30,50 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Notification Rules No-Store Boundary - 2026-07-01 12:13 JST
+
+- Scope:
+  - Addressed the adjacent privacy residual surfaced during the admin
+    notification settings helper slice.
+  - Focused on `/api/notification-rules` collection/detail response boundaries
+    only.
+- Fixed:
+  - Wrapped notification-rule collection and detail expected responses with
+    `withSensitiveNoStore`.
+  - Added fixed sanitized `internalError()` fallback for unexpected route
+    failures, with `unstable_rethrow(err)` preserved first in each catch.
+  - Split route bodies into inner authenticated handlers so exported handlers
+    apply no-store once around all expected success/error branches.
+  - Added route tests asserting no-store on success, validation/malformed JSON,
+    auth rejection, not found, and sanitized unexpected-error paths.
+- Safety:
+  - Preserved `canAdmin`, route id normalization, list count metadata, existing
+    status codes, raw rule success bodies, delete message body, validation
+    messages, RLS transaction use, not-found behavior, and mutation semantics.
+  - API contract reviewer confirmed the direction is compatible and called out
+    behavior changes to avoid; the implementation keeps those surfaces unchanged.
+  - No DB schema/RLS policy, auth/authz, payload semantics, audit behavior,
+    migration, package, external send, production config, or secret handling was
+    changed.
+- Performance:
+  - Header mutation and fixed fallback only.
+  - Adds no DB query, dependency, polling, background job, external call, broad
+    scan, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/notification-rules/route.test.ts 'src/app/api/notification-rules/[id]/route.test.ts' src/app/api/admin/escalation-rules/route.test.ts 'src/app/api/admin/escalation-rules/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `4` files / `46` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on changed
+    notification-rule route files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Minimized notification-rule mutation audit evidence remains a separate
+    API/audit candidate.
+
 ### Admin Notification Settings Path Helpers - 2026-07-01 12:03 JST
 
 - Scope:

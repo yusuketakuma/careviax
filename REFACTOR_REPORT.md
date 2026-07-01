@@ -270,3 +270,69 @@ validation output.
 - PR split:
   - Commit this helper/test slice independently.
   - Commit report/progress updates separately.
+
+## Slice: Notification Rules No-Store Boundary
+
+- Timestamp: 2026-07-01 12:13 JST
+- Purpose:
+  - Add explicit sensitive no-store headers to `/api/notification-rules`
+    collection and detail responses.
+  - Preserve existing notification-rule success/error body shapes, status codes,
+    auth permission, RLS behavior, and mutation semantics.
+  - Convert unexpected route failures into the fixed sanitized `INTERNAL_ERROR`
+    envelope.
+- Changed files:
+  - `src/app/api/notification-rules/route.ts`
+  - `src/app/api/notification-rules/route.test.ts`
+  - `src/app/api/notification-rules/[id]/route.ts`
+  - `src/app/api/notification-rules/[id]/route.test.ts`
+- Change reason:
+  - Notification rule settings expose operational routing controls, recipient
+    roles/user ids, event types, channels, and counted metadata.
+  - The adjacent escalation-rule API already used the sensitive no-store
+    boundary; notification-rule responses did not.
+- Deleted code:
+  - None.
+- Commonized processing:
+  - Reused `withSensitiveNoStore`.
+  - Reused `internalError()` for fixed unexpected-error fallback.
+  - Split route logic into inner authenticated handlers and exported wrappers
+    so no-store is applied once around every expected response branch.
+- Safety:
+  - Existing `canAdmin` permission, route IDs, validation messages, list count
+    metadata, `POST` 201 raw-rule response, `PATCH` raw-rule response, `DELETE`
+    message body, RLS transaction use, and not-found behavior were unchanged.
+  - Tests cover no-store on success, validation, malformed JSON, auth rejection,
+    not-found, and sanitized unexpected-error paths.
+  - API contract review confirmed the direction is compatible and highlighted
+    behavior changes to avoid.
+- Performance:
+  - Header mutation and fallback error handling only.
+  - No new DB query, dependency, polling, background job, external request, broad
+    scan, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/notification-rules/route.test.ts 'src/app/api/notification-rules/[id]/route.test.ts' src/app/api/admin/escalation-rules/route.test.ts 'src/app/api/admin/escalation-rules/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `4` files / `46` tests.
+  - Scoped ESLint for changed files: passed.
+  - Scoped Prettier check for changed files: passed.
+  - Scoped diff whitespace check for changed files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Known risks:
+  - Notification-rule mutation audit evidence remains weaker than escalation-rule
+    audit evidence. Treat minimized notification-rule audit logging as a
+    separate route/audit slice.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS policy definitions, auth/authz logic, tenant
+    selection behavior, mutation payload semantics, external sends, billing,
+    medication identity, production config, secrets, deployment, and dependency
+    versions.
+- Next improvements:
+  - Consider minimized notification-rule mutation audit entries that store action,
+    target id, event type, channel, enabled flag, and recipient counts without
+    raw recipient arrays unless explicitly required.
+- PR split:
+  - Commit this API hardening slice independently.
+  - Commit report/progress updates separately.
