@@ -57,6 +57,8 @@ import { MedicationsContent } from './medications-content';
 
 setupDomTestEnv();
 
+type MedicationsContentPropsForTest = Parameters<typeof MedicationsContent>[0];
+
 describe('MedicationsContent', () => {
   it('renders medication workflow groups with semantic headings', () => {
     useOrgIdMock.mockReturnValue('org_1');
@@ -511,8 +513,9 @@ describe('MedicationsContent fetch-error surfaces (no false-empty)', () => {
     vi.clearAllMocks();
   });
 
-  function renderWithErrorKey(errorKey: string) {
+  function renderWithErrorKey(errorKey: string, options: { providePatientContext?: boolean } = {}) {
     const refetch = vi.fn();
+    const providePatientContext = options.providePatientContext ?? true;
     useOrgIdMock.mockReturnValue('org_1');
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
     useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
@@ -523,16 +526,16 @@ describe('MedicationsContent fetch-error surfaces (no false-empty)', () => {
       }
       return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
     });
-    render(
-      <MedicationsContent
-        patientId="patient_1"
-        patientName="山田花子"
-        patientNameKana="ヤマダハナコ"
-        birthDate="1950-04-01"
-        gender="female"
-        allergyInfo={[]}
-      />,
-    );
+    const patientContext: Partial<MedicationsContentPropsForTest> = providePatientContext
+      ? {
+          patientName: '山田花子',
+          patientNameKana: 'ヤマダハナコ',
+          birthDate: '1950-04-01',
+          gender: 'female',
+          allergyInfo: [],
+        }
+      : {};
+    render(<MedicationsContent patientId="patient_1" {...patientContext} />);
     return { refetch };
   }
 
@@ -583,6 +586,48 @@ describe('MedicationsContent fetch-error surfaces (no false-empty)', () => {
     expect(retryButtons.length).toBeGreaterThanOrEqual(2);
     fireEvent.click(retryButtons[retryButtons.length - 1]);
     expect(refetch).toHaveBeenCalled();
+  });
+
+  it('does not leak patient summary failure as a false-empty allergy section', () => {
+    const { refetch } = renderWithErrorKey('patient-medication-summary', {
+      providePatientContext: false,
+    });
+
+    expect(screen.getByText(/アレルギー情報を読み込めませんでした/)).toBeTruthy();
+    expect(screen.queryByText('登録なし')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it('keeps fetched patient summary allergy success rendering unchanged', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      const key = String(queryKey[0]);
+      if (key === 'patient-medication-summary') {
+        return {
+          data: {
+            name: '山田花子',
+            name_kana: 'ヤマダハナコ',
+            birth_date: '1950-04-01',
+            gender: 'female',
+            allergy_info: ['ペニシリン'],
+          },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+    });
+
+    render(<MedicationsContent patientId="patient_1" />);
+
+    expect(screen.getByText('ペニシリン')).toBeTruthy();
+    expect(screen.queryByText(/アレルギー情報を読み込めませんでした/)).toBeNull();
+    expect(screen.queryByText('登録なし')).toBeNull();
   });
 
   it('does not leak inquiry-records failure as a false-zero 回答待ち照会 badge', () => {

@@ -836,6 +836,7 @@ export function MedicationsContent({
   const resolvedBirthDate = birthDate ?? patientSummaryQuery.data?.birth_date ?? '';
   const resolvedGender = gender ?? patientSummaryQuery.data?.gender ?? 'unknown';
   const resolvedAllergyInfo = allergyInfo ?? patientSummaryQuery.data?.allergy_info ?? null;
+  const isAllergyInfoError = allergyInfo === undefined && patientSummaryQuery.isError;
 
   const openIssues = useMemo(
     () => issues.filter((issue) => issue.status === 'open' || issue.status === 'in_progress'),
@@ -1294,7 +1295,17 @@ export function MedicationsContent({
               <div>
                 <p className="text-xs font-medium text-muted-foreground">登録済みアレルギー</p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {resolvedAllergyInfo && resolvedAllergyInfo.length > 0 ? (
+                  {isAllergyInfoError ? (
+                    <ErrorState
+                      variant="server"
+                      size="inline"
+                      description="アレルギー情報を読み込めませんでした。登録済みのアレルギーが表示されていない可能性があります。再読み込みしてください。"
+                      action={{
+                        label: '再読み込み',
+                        onClick: () => void patientSummaryQuery.refetch(),
+                      }}
+                    />
+                  ) : resolvedAllergyInfo && resolvedAllergyInfo.length > 0 ? (
                     resolvedAllergyInfo.map((item, index) => {
                       const label = typeof item === 'string' ? item : item.drug_name;
                       return (
