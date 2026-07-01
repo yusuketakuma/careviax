@@ -30,6 +30,63 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Dashboard Clerk Support Structured Logger Convergence - 2026-07-01 15:08 JST
+
+- Scope:
+  - Continued safe structured logger convergence on the dashboard clerk-support
+    route.
+  - Focused only on `/api/dashboard/clerk-support` GET unexpected-error logs.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced the string overload call with
+    `logger.error({ event, route, method, status }, err)` for the GET
+    unexpected-error catch block.
+  - Updated the sanitized 500 route test to assert minimal route-supplied
+    context, explicit absence of route-local `error_name`, and delegation of
+    raw `Error` redaction to the shared logger contract tests.
+  - Strengthened auth failure tests so 403 short-circuit responses do not call
+    the unexpected-error logger.
+- Safety:
+  - Preserved response bodies/statuses, no-store wrapping, `canViewDashboard`
+    auth, `runWithRequestAuthContext`, six KPI count queries, task-list
+    construction, patient-name response fields, hostile proposal-id href
+    encoding, `consult_items`, and fixed internal-error behavior.
+  - The sanitized 500 test proves route-supplied logger context excludes raw
+    patient/clerk/dashboard/SQL/stack/error sentinels, unsafe error name, and
+    route-local `error_name`.
+  - Privacy review found no material PHI/PII issue and confirmed route-supplied
+    log context excludes patient names, task payloads, Prisma results, request
+    body, and org-scoped dashboard data.
+  - Medical safety review found no actionable safety issue because auth, org
+    scoping, counts, task construction, patient names in response, encoded
+    proposal hrefs, consult items, and no-store/internal-error behavior were
+    unchanged.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, sort change, or unbounded loop.
+- Validation:
+  - `pnpm exec prettier --check src/app/api/dashboard/clerk-support/route.ts src/app/api/dashboard/clerk-support/route.test.ts`: passed.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/dashboard/clerk-support/route.ts src/app/api/dashboard/clerk-support/route.test.ts`: passed.
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/dashboard/clerk-support/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `11` tests.
+  - `git diff --check -- src/app/api/dashboard/clerk-support/route.ts src/app/api/dashboard/clerk-support/route.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Continue only with small, tested logger convergence candidates; do not add
+    patient names, task payloads, org/user identifiers, request bodies, query
+    details, or raw error metadata to route log context without separate
+    privacy and medical-safety review.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or
+    interaction-state change.
+
 ### Dashboard Overdue Japan Date Boundary Fix - 2026-07-01 14:58 JST
 
 - Scope:

@@ -15,6 +15,84 @@ validation output.
   - `REFACTOR_RISK_MAP.md`
   - `REFACTOR_EXECUTION_PLAN.md`
 
+## Slice: Dashboard Clerk Support Structured Logger Convergence
+
+- Timestamp: 2026-07-01 15:08 JST
+- Purpose:
+  - Route dashboard clerk-support unexpected-error logs through the shared
+    PHI/secret-safe structured logger overload.
+  - Remove route-local `safeErrorName()` duplication now that shared logger owns
+    safe error-name normalization.
+  - Preserve response status/body, no-store behavior, auth, organization-scoped
+    dashboard reads, patient-name task response contract, encoded proposal
+    links, and consult-item content.
+- Changed files:
+  - `src/app/api/dashboard/clerk-support/route.ts`
+  - `src/app/api/dashboard/clerk-support/route.test.ts`
+- Change reason:
+  - The clerk-support dashboard route returns patient-name task data and still
+    used the string logger overload with duplicated route-local
+    `SAFE_ERROR_NAMES` and `safeErrorName()` despite existing shared logger
+    runtime allowlisting and raw `Error` redaction.
+- Deleted code:
+  - Removed the route-local `SAFE_ERROR_NAMES` set and `safeErrorName()` helper.
+- Commonized processing:
+  - GET unexpected-error path now calls
+    `logger.error({ event, route, method, status }, err)`.
+  - Route tests assert only minimal operational context is supplied by the route
+    while the raw `Error` is delegated to the shared logger contract tests.
+  - Auth-denied paths now assert the unexpected-error logger is not called.
+- Safety:
+  - API response body/status, no-store wrapping, `canViewDashboard` auth gate,
+    `runWithRequestAuthContext`, six KPI count queries, task-list construction,
+    patient-name response fields, hostile proposal-id href encoding,
+    `consult_items`, and fixed internal-error behavior were unchanged.
+  - The sanitized 500 test proves route-supplied logger context excludes raw
+    patient/clerk/dashboard/SQL/stack/error sentinels, unsafe error name, and
+    route-local `error_name`.
+  - Privacy review found no material PHI/PII issue and confirmed route-supplied
+    log context excludes patient names, task payloads, Prisma results, request
+    body, and org-scoped dashboard data.
+  - Medical safety review found no actionable safety issue because auth, org
+    scoping, counts, task construction, patient names in response, encoded
+    proposal hrefs, consult items, and no-store/internal-error behavior were
+    unchanged.
+- Performance:
+  - Removes a small duplicated helper and changes logging call shape only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, sorting change, or unbounded
+    loop.
+- Validation:
+  - `pnpm exec prettier --check src/app/api/dashboard/clerk-support/route.ts src/app/api/dashboard/clerk-support/route.test.ts`: passed.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/dashboard/clerk-support/route.ts src/app/api/dashboard/clerk-support/route.test.ts`: passed.
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/dashboard/clerk-support/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `11` tests.
+  - `git diff --check -- src/app/api/dashboard/clerk-support/route.ts src/app/api/dashboard/clerk-support/route.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+- Known risks:
+  - Route tests mock the logger and therefore prove route delegation/context
+    only; emitted console/Sentry redaction remains the shared logger test's
+    responsibility.
+  - Browser/E2E smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or
+    interaction-state change.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS policies, auth/authz semantics, dashboard
+    clerk-support response DTO contracts, patient-name response payloads,
+    schedule proposal href semantics, audit semantics, external sends,
+    production config, secrets, deployment, and dependency versions.
+- Next improvements:
+  - Continue small, tested route-local logger convergence only where existing
+    tests can prove responses, no-store headers, query shape, and mutations
+    remain unchanged.
+- PR split:
+  - Commit this route logger/test slice independently.
+  - Commit report/progress updates separately.
+
 ## Slice: Dashboard Overdue Japan Date Boundary Fix
 
 - Timestamp: 2026-07-01 14:58 JST
