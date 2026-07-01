@@ -15,6 +15,78 @@ validation output.
   - `REFACTOR_RISK_MAP.md`
   - `REFACTOR_EXECUTION_PLAN.md`
 
+## Slice: Document Delivery Rule RLS Request Context
+
+- Timestamp: 2026-07-01 12:48 JST
+- Purpose:
+  - Bind document-delivery-rule DB work to the authenticated request context.
+  - Add the document-delivery-rule route family to protected route matrices.
+  - Preserve existing response status, body, no-store, validation, and mutation
+    semantics.
+- Changed files:
+  - `src/app/api/document-delivery-rules/route.ts`
+  - `src/app/api/document-delivery-rules/[id]/route.ts`
+  - `src/app/api/document-delivery-rules/route.test.ts`
+  - `src/app/api/document-delivery-rules/[id]/route.test.ts`
+  - `src/app/api/__tests__/protected-get-routes.test.ts`
+  - `src/app/api/__tests__/protected-post-routes.test.ts`
+  - `src/app/api/__tests__/protected-patch-delete-routes.test.ts`
+- Change reason:
+  - The routes used `withOrgContext(ctx.orgId, ...)` without passing
+    `{ requestContext: ctx }`.
+  - Tenant isolation remained protected by explicit `org_id` filters and RLS,
+    but actor/role/site/IP/user-agent session metadata could fall back to
+    missing request context.
+  - The route family was not covered by the global protected GET/POST/PATCH/
+    DELETE auth/no-store matrices.
+- Deleted code:
+  - None.
+- Commonized processing:
+  - Passed `{ requestContext: ctx }` to all six `withOrgContext` calls in the
+    collection/detail routes.
+  - Added route-local assertions that successful GET/POST/PATCH/DELETE DB work
+    is bound to the request context.
+  - Added collection GET/POST and detail PATCH/DELETE to protected route
+    matrices.
+- Safety:
+  - Preserved `canAdmin`, query/body/id validation, default/clamped list limit,
+    count envelope, create/update/delete payloads, app-layer `org_id` filters,
+    response bodies, status codes, no-store wrappers, fixed unexpected-error
+    fallback, DB schema/RLS policy definitions, migrations, and external sends.
+  - Updated the protected GET matrix's `visit-records/[id]/handoff` success
+    fixture to satisfy the current handoff contract instead of returning an
+    unrelated 409 during matrix validation.
+- Performance:
+  - Adds only request metadata to existing RLS helper calls and matrix coverage.
+  - No new runtime DB query, dependency, polling, background job, external
+    request, broad scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/document-delivery-rules/route.test.ts 'src/app/api/document-delivery-rules/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts src/app/api/__tests__/protected-post-routes.test.ts src/app/api/__tests__/protected-patch-delete-routes.test.ts --reporter=dot --testTimeout=60000`: passed, `5` files / `618` tests. Existing billing close matrix test still emits its known mocked `webhook.org_dispatch_failed` stderr while passing.
+  - Scoped Prettier check for changed route/matrix files: passed.
+  - Scoped ESLint for changed route/matrix files: passed.
+  - Scoped diff whitespace check for changed route/matrix files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Known risks:
+  - Document-delivery-rule response DTO minimization remains a separate
+    low-risk privacy follow-up; current raw rule response bodies are preserved.
+  - Real logger redaction contract tests remain a separate cross-cutting
+    observability follow-up.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS policies, auth/authz semantics, route response DTO
+    contracts, delivery-rule business semantics, audit semantics, external
+    sends, production config, secrets, deployment, and dependency versions.
+- Next improvements:
+  - Continue behavior-preserving API response-boundary or helper convergence.
+  - Consider a separate explicit proposal for document-delivery-rule DTO
+    minimization.
+- PR split:
+  - Implementation/test commit: `906cf13e`.
+  - Commit report/progress updates separately.
+
 ## Slice: Task Create No-Store Boundary
 
 - Timestamp: 2026-07-01 12:36 JST

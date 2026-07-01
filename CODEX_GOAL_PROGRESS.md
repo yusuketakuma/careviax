@@ -30,6 +30,50 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Document Delivery Rule RLS Request Context - 2026-07-01 12:48 JST
+
+- Scope:
+  - Addressed the document-delivery-rule RLS request-context residual surfaced
+    during the stale no-store review.
+  - Focused on server-side RLS metadata binding and protected route matrix
+    coverage only.
+- Fixed:
+  - Added `{ requestContext: ctx }` to all six `withOrgContext` calls in
+    document-delivery-rule collection/detail GET/POST/PATCH/DELETE handlers.
+  - Added route-local assertions that successful DB work is bound to the
+    authenticated request context.
+  - Added document-delivery-rule GET/POST/PATCH/DELETE to protected route
+    matrices.
+  - Updated the protected GET matrix `visit-records/[id]/handoff` success
+    fixture so the matrix reflects the current confirmable-handoff contract.
+- Safety:
+  - Preserved `canAdmin`, validation order, list filters/counts/limits,
+    create/update/delete data shape, explicit `org_id` filters, response
+    envelopes, no-store behavior, fixed unexpected-error fallback, RLS policy
+    definitions, migrations, external sends, production config, and secrets.
+  - DB/RLS review found no unresolved data-risk finding and confirmed tenant
+    isolation is not weakened.
+  - API contract review found the route diff contract-compatible; its matrix
+    blocker was the unrelated handoff fixture, which was fixed and revalidated.
+- Performance:
+  - Adds request metadata to existing org-context calls and tests only.
+  - Adds no runtime DB query, dependency, polling, background job, external
+    request, broad scan, render fan-out, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/document-delivery-rules/route.test.ts 'src/app/api/document-delivery-rules/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts src/app/api/__tests__/protected-post-routes.test.ts src/app/api/__tests__/protected-patch-delete-routes.test.ts --reporter=dot --testTimeout=60000`: passed, `5` files / `618` tests. The protected POST matrix still emits its existing mocked `webhook.org_dispatch_failed` stderr in the billing close success case while passing.
+  - Scoped Prettier check, scoped ESLint, and scoped diff-check on changed
+    route/matrix files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Document-delivery-rule DTO minimization and real logger redaction contract
+    tests remain separate candidates.
+
 ### Task Create No-Store Boundary - 2026-07-01 12:36 JST
 
 - Scope:

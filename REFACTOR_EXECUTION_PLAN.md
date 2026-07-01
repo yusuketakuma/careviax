@@ -55,8 +55,37 @@ If any of those are needed, create a proposal first. Do not implement silently.
   - patient/report share communication-request and task path helper convergence
   - report-share dot-segment patient-id fail-closed rendering
   - `POST /api/tasks` no-store response boundary hardening
+  - document-delivery-rule RLS request-context binding and protected matrix
+    coverage
 
 ## Completed Slices
+
+### 2026-07-01 12:48 JST: Document Delivery Rule RLS Request Context
+
+- Completed API/RLS hardening follow-up:
+  `Document Delivery Rule RLS Request Context`.
+- Files changed:
+  - `src/app/api/document-delivery-rules/route.ts`
+  - `src/app/api/document-delivery-rules/[id]/route.ts`
+  - `src/app/api/document-delivery-rules/route.test.ts`
+  - `src/app/api/document-delivery-rules/[id]/route.test.ts`
+  - `src/app/api/__tests__/protected-get-routes.test.ts`
+  - `src/app/api/__tests__/protected-post-routes.test.ts`
+  - `src/app/api/__tests__/protected-patch-delete-routes.test.ts`
+- Validation:
+  - focused document-delivery-rule route + protected GET/POST/PATCH/DELETE
+    matrix suite passed `5` files / `618` tests
+  - scoped Prettier check passed
+  - scoped ESLint passed
+  - scoped diff whitespace check passed
+  - full typecheck passed
+  - no-unused typecheck passed
+  - full lint passed
+  - full format check passed
+  - full diff whitespace check passed
+- Remaining follow-up:
+  - Document-delivery-rule response DTO minimization and real logger redaction
+    contract tests remain separate privacy/observability candidates.
 
 ### 2026-07-01 12:36 JST: Task Create No-Store Boundary
 
