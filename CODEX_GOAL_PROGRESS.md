@@ -30352,3 +30352,32 @@ Next loop:
 - Remaining:
   - Broad master/report/document-delivery objective remains open.
   - Continue checking other admin master surfaces for stale fabricated/sample-only UI and continue higher-value patient/document/report hardening slices.
+
+### Admin Metrics Placeholder Removal - 2026-07-01 11:02 JST
+
+- Scope:
+  - Continued admin master/management cleanup after mapping remaining production sample/stub surfaces.
+  - Focused on `/admin/metrics`, where the real `/api/admin/metrics` route already exists.
+- Fixed:
+  - Removed the stale all-zero `PLACEHOLDER` data path from `MetricsDashboardContent`.
+  - Removed the 404-as-success branch that rendered fabricated zero metric cards and the "サンプル表示（実データ未接続）" banner.
+  - Updated 404/first-load failure behavior to show the existing blocking error state instead of plausible zero operational metrics.
+  - Added regression coverage that real 200 responses with all-zero metrics still render as real metric cards without sample text, false threshold alerts, or confirm-colored progress when `monthly_prescription_count` is `0`.
+- Safety:
+  - Reduces operator misinformation risk: a missing/broken metrics API no longer appears as real zero activity.
+  - Preserves existing canAdmin API permission, auth/RLS scope, DB reads, PHI fields, mutations, external sends, migrations, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Removes placeholder branching and banner rendering.
+  - Adds no new request, DB query, dependency, polling, background job, broad scan, render fan-out, or unbounded loop.
+- Validation:
+  - Production `rg` for metrics placeholder/sample-banner strings: no matches.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/metrics/metrics-dashboard-content.test.tsx' --reporter=dot --testTimeout=60000`: passed, `1` file / `7` tests.
+  - `pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - Verifier reran the focused checks and reported PASS.
+- Remaining:
+  - Broad master/report/document-delivery objective remains open.
+  - `/admin/performance` still uses "サンプル" in the measurement-sample sense; wording could be clarified separately, but it is not fabricated demo data.
