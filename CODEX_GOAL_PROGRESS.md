@@ -30,6 +30,58 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Dashboard Overdue Japan Date Boundary Fix - 2026-07-01 14:58 JST
+
+- Scope:
+  - Fixed the `/api/dashboard/overdue` unrecorded-visit `scheduled_date`
+    cutoff to use the explicit Japan business date.
+  - Focused only on the `@db.Date` cutoff used for unrecorded visits; no schema,
+    migration, auth, RLS, assignment-scope, response DTO, or production config
+    change.
+- Fixed:
+  - Replaced server-local `localDateKey()` with `japanDateKey()` in
+    `utcDateFromLocalKey(japanDateKey())`.
+  - Added a UTC-runtime regression test for `2026-06-30T15:30:00.000Z`
+    (`2026-07-01 00:30 JST`) proving the visit cutoff is
+    `2026-07-01T00:00:00.000Z`.
+  - Strengthened the same regression test with distinct bucket counts,
+    response summary/total assertions, care-report org/patient/status
+    assertions, and task frozen-time overdue predicate assertions.
+- Safety:
+  - Preserved `canViewDashboard` auth, `runWithRequestAuthContext`,
+    `resolveDashboardAssignmentScope`, case/patient assignment scopes, task
+    assignment scope, no-store wrapping, fixed internal-error response, and
+    dashboard summary response keys.
+  - DB steward review found no data-risk regression and confirmed the
+    `@db.Date` UTC-midnight sentinel semantics, org boundary, assignment scope,
+    and request-context propagation remain intact.
+  - Medical safety review found the implementation correct for JST-midnight
+    overdue classification; its low test assurance gap was addressed before
+    final validation.
+- Performance:
+  - Date-key helper call and tests only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, sort change, or unbounded loop.
+- Validation:
+  - `pnpm exec prettier --check src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts`: passed.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts`: passed.
+  - `pnpm exec vitest run src/lib/utils/date-boundary.test.ts src/app/api/dashboard/overdue/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `27` tests.
+  - `git diff --check -- src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Other routes/jobs using server-local `localDateKey()` were not bulk-changed;
+    each needs domain-specific review and tests before modification.
+  - Browser smoke was not run because this slice changes server-side Prisma
+    where-boundary construction and tests only, with no visible DOM layout,
+    copy, or interaction-state change.
+
 ### Dashboard Overdue Structured Logger Convergence - 2026-07-01 14:45 JST
 
 - Scope:

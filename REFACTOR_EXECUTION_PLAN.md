@@ -82,8 +82,37 @@ If any of those are needed, create a proposal first. Do not implement silently.
     coverage
   - dashboard overdue route-local logger sanitizer converged on the shared safe
     structured logger overload, with sanitized overdue-read failure coverage
+  - dashboard overdue unrecorded-visit cutoff switched from server-local date to
+    explicit Japan business-date `@db.Date` sentinel, with UTC-runtime
+    JST-midnight regression coverage
 
 ## Completed Slices
+
+### 2026-07-01 14:58 JST: Dashboard Overdue Japan Date Boundary Fix
+
+- Completed medical-safety correctness follow-up:
+  `Dashboard Overdue Japan Date Boundary Fix`.
+- Files changed:
+  - `src/app/api/dashboard/overdue/route.ts`
+  - `src/app/api/dashboard/overdue/route.test.ts`
+- Validation:
+  - focused date-boundary + dashboard overdue route suite passed `2` files /
+    `27` tests
+  - scoped Prettier check passed
+  - scoped ESLint passed
+  - scoped diff whitespace check passed
+  - full typecheck passed
+  - no-unused typecheck passed
+  - full lint passed
+  - full format check passed
+  - full diff whitespace check passed
+  - production build passed
+- Remaining follow-up:
+  - Other routes and jobs that still use server-local `localDateKey()` for
+    Japan business-day semantics remain separate candidates; do not bulk-change
+    them without route-specific tests.
+  - Continue with small, validated backend/API safety or logger convergence
+    slices.
 
 ### 2026-07-01 14:45 JST: Dashboard Overdue Structured Logger Convergence
 

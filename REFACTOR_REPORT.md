@@ -15,6 +15,78 @@ validation output.
   - `REFACTOR_RISK_MAP.md`
   - `REFACTOR_EXECUTION_PLAN.md`
 
+## Slice: Dashboard Overdue Japan Date Boundary Fix
+
+- Timestamp: 2026-07-01 14:58 JST
+- Purpose:
+  - Fix the overdue dashboard unrecorded-visit cutoff so it uses the Japan
+    business date even when the server runtime timezone is UTC.
+  - Preserve auth, org scoping, dashboard assignment scope, care-report/task
+    count predicates, response shape, no-store behavior, and logger behavior.
+- Changed files:
+  - `src/app/api/dashboard/overdue/route.ts`
+  - `src/app/api/dashboard/overdue/route.test.ts`
+- Change reason:
+  - Medical safety review found a pre-existing P2 residual: the route computed
+    the `scheduled_date < today` cutoff with server-local `localDateKey()`,
+    which could under-report unrecorded visits around JST midnight on UTC
+    runtimes.
+- Commonized processing:
+  - The unrecorded-visit cutoff now uses
+    `utcDateFromLocalKey(japanDateKey())`.
+  - This keeps the `@db.Date` UTC-midnight sentinel convention and avoids using
+    DateTime instant-range helpers for date-only columns.
+- Safety:
+  - `VisitSchedule.scheduled_date` remains compared against a
+    `YYYY-MM-DDT00:00:00.000Z` `@db.Date` sentinel.
+  - The UTC-runtime regression test sets the server timezone to `UTC`, freezes
+    time at `2026-06-30T15:30:00.000Z` (`2026-07-01 00:30 JST`), and asserts
+    the visit cutoff is `2026-07-01T00:00:00.000Z`.
+  - The same regression test uses distinct bucket counts and asserts the
+    `summary` response stays `{ unrecorded_visits, unsent_reports,
+overdue_tasks, total }`, with the expected total.
+  - The same regression test also preserves care-report org/patient/status
+    filters and task org/status/frozen-time overdue predicates.
+  - DB steward review found no data-risk regression and confirmed the
+    `@db.Date` sentinel semantics, org boundary, assignment scope, and
+    request-context propagation remain intact.
+  - Medical safety review found the implementation correct for JST-midnight
+    overdue classification; its low test assurance gap was addressed before
+    final validation by adding summary and non-visit bucket assertions.
+- Performance:
+  - Changes one date-key helper call and test assertions only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, sorting change, or unbounded
+    loop.
+- Validation:
+  - `pnpm exec prettier --check src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts`: passed.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts`: passed.
+  - `pnpm exec vitest run src/lib/utils/date-boundary.test.ts src/app/api/dashboard/overdue/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `27` tests.
+  - `git diff --check -- src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+- Known risks:
+  - The route test proves generated Prisma where clauses and response shaping
+    through mocks; it does not execute a real Postgres/Prisma integration query.
+  - Other server-local `localDateKey()` users may still be correct or incorrect
+    depending on their domain semantics. They remain separate, route-specific
+    candidates and were not bulk-changed.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS policies, auth/authz semantics, assignment-scope
+    semantics, care-report/task predicates except assertions in tests,
+    dashboard response DTO contracts, audit semantics, external sends,
+    production config, secrets, deployment, and dependency versions.
+- Next improvements:
+  - Continue with small, validated backend/API safety or logger convergence
+    slices; avoid broad date-helper rewrites without domain-specific tests.
+- PR split:
+  - Commit this date-boundary route/test slice independently.
+  - Commit report/progress updates separately.
+
 ## Slice: Dashboard Overdue Structured Logger Convergence
 
 - Timestamp: 2026-07-01 14:45 JST
