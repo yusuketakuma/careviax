@@ -1,4 +1,6 @@
 import { readApiJson } from '@/lib/api/client-json';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
+
 import {
   generatedCareReportFromVisitResponseSchema,
   type GeneratedCareReportFromVisitResponse,
@@ -27,7 +29,7 @@ export async function generateCareReportFromVisit<TReport extends GeneratedCareR
 
   const res = await fetch('/api/care-reports/generate-from-visit', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-org-id': input.orgId },
+    headers: buildOrgJsonHeaders(input.orgId),
     body: JSON.stringify(body),
   });
   const json = await readApiJson<GeneratedCareReportFromVisitResponse>(res, {

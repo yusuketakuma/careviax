@@ -1,8 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const { buildOrgJsonHeadersMock } = vi.hoisted(() => ({
+  buildOrgJsonHeadersMock: vi.fn((orgId: string) => ({
+    'Content-Type': 'application/json',
+    'x-org-id': `org-json:${orgId}`,
+  })),
+}));
+
+vi.mock('@/lib/api/org-headers', () => ({
+  buildOrgJsonHeaders: buildOrgJsonHeadersMock,
+}));
+
 import { generateCareReportFromVisit } from './generate-from-visit-client';
 
 describe('generateCareReportFromVisit', () => {
   afterEach(() => {
+    buildOrgJsonHeadersMock.mockClear();
     vi.unstubAllGlobals();
   });
 
@@ -46,13 +59,14 @@ describe('generateCareReportFromVisit', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-org-id': 'org_1',
+        'x-org-id': 'org-json:org_1',
       },
       body: JSON.stringify({
         visit_record_id: 'visit_1',
         expected_visit_record_updated_at: '2026-03-29T00:00:00.000Z',
       }),
     });
+    expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
   });
 
   it('includes explicit report regeneration contract when supplied', async () => {
