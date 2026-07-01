@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Textarea } from '@/components/ui/textarea';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildCareReportApiPath } from '@/lib/reports/api-paths';
 import type { PhysicianReportContent, CareManagerReportContent } from '@/types/care-report-content';
@@ -583,10 +584,7 @@ export function ReportEditForm({ reportId, reportType, updatedAt, content, onSav
       const updatedContent = buildUpdatedContent();
       const res = await fetch(buildCareReportApiPath(reportId), {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           expected_updated_at: updatedAt,
           content: updatedContent,

@@ -10,9 +10,20 @@ setupDomTestEnv();
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const invalidateQueriesMock = vi.hoisted(() => vi.fn());
+const buildOrgJsonHeadersMock = vi.hoisted(() =>
+  vi.fn((orgId: string) => ({
+    'Content-Type': 'application/json',
+    'x-org-id': `org-json:${orgId}`,
+    'x-test-helper': 'buildOrgJsonHeaders',
+  })),
+);
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
+}));
+
+vi.mock('@/lib/api/org-headers', () => ({
+  buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -159,11 +170,13 @@ describe('ReportEditForm', () => {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
-            'x-org-id': 'org_1',
+            'x-org-id': 'org-json:org_1',
+            'x-test-helper': 'buildOrgJsonHeaders',
           },
         }),
       );
     });
+    expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
     expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('/api/care-reports/report/1');
     expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('?mode=');
     expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('#frag');
