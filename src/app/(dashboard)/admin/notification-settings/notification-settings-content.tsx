@@ -48,6 +48,17 @@ import {
   escalationNotifyRoles,
   escalationTriggerTypes,
 } from '@/lib/validations/escalation-rule';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import {
+  NOTIFICATION_RULES_API_PATH,
+  buildNotificationRuleApiPath,
+  buildNotificationRulesApiPath,
+} from '@/lib/notification-rules/api-paths';
+import {
+  ESCALATION_RULES_API_PATH,
+  buildEscalationRuleApiPath,
+  buildEscalationRulesApiPath,
+} from '@/lib/escalation-rules/api-paths';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { parseEscalationThresholdHoursInput } from './escalation-threshold';
 
@@ -357,8 +368,8 @@ export function NotificationSettingsContent() {
     if (!orgId) return;
 
     let active = true;
-    void fetch('/api/notification-rules', {
-      headers: { 'x-org-id': orgId },
+    void fetch(buildNotificationRulesApiPath(), {
+      headers: buildOrgHeaders(orgId),
     })
       .then(async (response) => {
         if (!response.ok) {
@@ -404,8 +415,8 @@ export function NotificationSettingsContent() {
     if (!orgId) return;
 
     let active = true;
-    void fetch('/api/admin/escalation-rules', {
-      headers: { 'x-org-id': orgId },
+    void fetch(buildEscalationRulesApiPath(), {
+      headers: buildOrgHeaders(orgId),
     })
       .then(async (response) => {
         if (!response.ok) {
@@ -497,13 +508,10 @@ export function NotificationSettingsContent() {
       setSavingKey(savingId);
       try {
         const response = await fetch(
-          existing ? `/api/notification-rules/${existing.id}` : '/api/notification-rules',
+          existing ? buildNotificationRuleApiPath(existing.id) : NOTIFICATION_RULES_API_PATH,
           {
             method: existing ? 'PATCH' : 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-org-id': orgId,
-            },
+            headers: buildOrgJsonHeaders(orgId),
             body: JSON.stringify(
               existing
                 ? { enabled }
@@ -578,12 +586,9 @@ export function NotificationSettingsContent() {
       if (!orgId) return;
       setSavingKey(`escalation:${rule.id}`);
       try {
-        const response = await fetch(`/api/admin/escalation-rules/${rule.id}`, {
+        const response = await fetch(buildEscalationRuleApiPath(rule.id), {
           method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-org-id': orgId,
-          },
+          headers: buildOrgJsonHeaders(orgId),
           body: JSON.stringify({ is_active: isActive }),
         });
         if (!response.ok) {
@@ -620,12 +625,9 @@ export function NotificationSettingsContent() {
 
     setSavingKey('escalation:new');
     try {
-      const response = await fetch('/api/admin/escalation-rules', {
+      const response = await fetch(ESCALATION_RULES_API_PATH, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           trigger_type: newEscalationTrigger,
           action: newEscalationAction,
@@ -676,9 +678,9 @@ export function NotificationSettingsContent() {
       if (!orgId) return;
       setSavingKey(`escalation:delete:${ruleId}`);
       try {
-        const response = await fetch(`/api/admin/escalation-rules/${ruleId}`, {
+        const response = await fetch(buildEscalationRuleApiPath(ruleId), {
           method: 'DELETE',
-          headers: { 'x-org-id': orgId },
+          headers: buildOrgHeaders(orgId),
         });
         if (!response.ok) {
           throw new Error('エスカレーションルールの削除に失敗しました');
