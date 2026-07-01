@@ -65,8 +65,33 @@ If any of those are needed, create a proposal first. Do not implement silently.
     structured logger overload, with POST duplicate-lookup failure coverage
   - pharmacist-shift route-local logger sanitizers converged on the shared safe
     structured logger overload, with POST upsert failure coverage
+  - pharmacist-shifts bulk POST added to the shared protected POST
+    auth/body/no-store matrix
 
 ## Completed Slices
+
+### 2026-07-01 13:39 JST: Pharmacist Shift Bulk Protected POST Matrix
+
+- Completed test-only route-matrix hardening follow-up:
+  `Pharmacist Shift Bulk Protected POST Matrix`.
+- Files changed:
+  - `src/app/api/__tests__/protected-post-routes.test.ts`
+- Validation:
+  - focused protected POST + bulk route suite passed `2` files / `152` tests,
+    with existing `webhook.org_dispatch_failed` stderr from the billing close
+    matrix success case
+  - scoped Prettier check passed
+  - scoped ESLint passed
+  - scoped diff whitespace check passed
+  - full typecheck passed
+  - no-unused typecheck passed
+  - full lint passed
+  - full format check passed
+  - full diff whitespace check passed
+  - production build passed
+- Remaining follow-up:
+  - Continue with small, tested route-local logger convergence or route-matrix
+    candidates.
 
 ### 2026-07-01 13:27 JST: Pharmacist Shift Structured Logger Convergence
 
@@ -92,8 +117,8 @@ If any of those are needed, create a proposal first. Do not implement silently.
   - full diff whitespace check passed
   - production build passed
 - Remaining follow-up:
-  - `/api/pharmacist-shifts/bulk` protected POST matrix coverage remains an
-    optional separate route-matrix hardening candidate.
+  - `/api/pharmacist-shifts/bulk` protected POST matrix coverage was closed by
+    the 13:39 JST test-only follow-up slice above.
   - Continue with small, tested route-local logger convergence candidates.
 
 ### 2026-07-01 13:13 JST: Pharmacists Structured Logger Convergence

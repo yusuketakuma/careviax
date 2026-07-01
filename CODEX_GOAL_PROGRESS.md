@@ -30,6 +30,47 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Pharmacist Shift Bulk Protected POST Matrix - 2026-07-01 13:39 JST
+
+- Scope:
+  - Closed the protected POST matrix residual for
+    `/api/pharmacist-shifts/bulk` without changing production route code.
+  - Focused only on shared 401/403/400 auth/body/no-store regression coverage.
+- Fixed:
+  - Imported the bulk POST handler into
+    `src/app/api/__tests__/protected-post-routes.test.ts`.
+  - Added `pharmacist-shifts/bulk POST` to the protected POST route matrix.
+  - Added the route to all three no-store assertion blocks for unauthenticated,
+    insufficient-permission, and invalid-body responses.
+  - Kept the matrix default invalid body `{}` so the test exercises the bulk
+    schema validation branch rather than duplicating route-local non-object
+    payload coverage.
+- Safety:
+  - No production route, auth, validation, RLS, DB write, response DTO, logger,
+    migration, dependency, or config behavior changed.
+  - Test architect found no blocker and recommended avoiding success fixtures
+    because route-local tests already cover bulk success and matrix success
+    would require fragile Prisma/validation fixtures.
+- Performance:
+  - Test-only route-matrix coverage; no runtime performance impact.
+- Validation:
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts src/app/api/pharmacist-shifts/bulk/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `152` tests, with existing `webhook.org_dispatch_failed` stderr from the billing close matrix success case.
+  - Scoped Prettier check, scoped ESLint, and scoped diff-check on the changed
+    test file: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Continue with small, tested route-local logger convergence or route-matrix
+    candidates.
+  - Browser smoke was not run because this slice changes API tests only, with
+    no visible DOM layout, copy, or interaction-state change.
+
 ### Pharmacist Shift Structured Logger Convergence - 2026-07-01 13:27 JST
 
 - Scope:
@@ -75,8 +116,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Remaining:
   - Broad repo-wide maintainability/type-safety/testability objective remains
     open.
-  - `/api/pharmacist-shifts/bulk` protected POST matrix coverage remains an
-    optional follow-up separate from this logger-only slice.
+  - `/api/pharmacist-shifts/bulk` protected POST matrix coverage was closed by
+    the 13:39 JST test-only follow-up slice above.
   - Continue only with small, tested logger convergence candidates; do not add
     shift notes, staff identifiers, request bodies, emails, or Cognito/session
     identifiers to route log context without separate privacy review.

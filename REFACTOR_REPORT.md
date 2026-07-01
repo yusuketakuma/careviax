@@ -15,6 +15,61 @@ validation output.
   - `REFACTOR_RISK_MAP.md`
   - `REFACTOR_EXECUTION_PLAN.md`
 
+## Slice: Pharmacist Shift Bulk Protected POST Matrix
+
+- Timestamp: 2026-07-01 13:39 JST
+- Purpose:
+  - Close the protected POST matrix residual for
+    `/api/pharmacist-shifts/bulk`.
+  - Keep bulk shift auth/no-store regression coverage aligned with route-local
+    tests without changing production behavior.
+- Changed files:
+  - `src/app/api/__tests__/protected-post-routes.test.ts`
+- Change reason:
+  - The bulk route already had route-local auth/no-store coverage but was absent
+    from the shared protected POST matrix.
+  - This left the sensitive bulk scheduling endpoint outside the cross-route
+    401/403/400 no-store gate.
+- Deleted code: None.
+- Commonized processing:
+  - Imported the bulk POST handler into the shared protected route matrix.
+  - Added matrix coverage for unauthenticated, insufficient-permission, and
+    invalid-body paths.
+  - Let the default invalid body `{}` exercise the bulk schema validation branch
+    instead of duplicating the route-local non-object payload test.
+- Safety:
+  - Production code, route response bodies, auth semantics, validation order,
+    RLS context, DB writes, and logger behavior were unchanged.
+  - Test architect found no blocker and recommended avoiding success fixtures
+    for this matrix.
+- Performance:
+  - Test-only; no runtime performance impact.
+- Validation:
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts src/app/api/pharmacist-shifts/bulk/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `152` tests, with existing `webhook.org_dispatch_failed` stderr from the billing close matrix success case.
+  - `pnpm exec prettier --check src/app/api/__tests__/protected-post-routes.test.ts`: passed.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/__tests__/protected-post-routes.test.ts`: passed.
+  - `git diff --check -- src/app/api/__tests__/protected-post-routes.test.ts`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Known risks:
+  - Existing `billing-candidates/close` success matrix case still emits mocked
+    `webhook.org_dispatch_failed` stderr while passing; unrelated to this
+    route.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS policies, auth/authz production code, route
+    handlers, response DTO contracts, scheduling business logic, external
+    sends, production config, secrets, deployment, and dependencies.
+- Next improvements:
+  - Continue with small, tested route-local logger convergence or route-matrix
+    candidates.
+- PR split:
+  - Commit this test-only matrix slice independently.
+  - Commit report/progress updates separately.
+
 ## Slice: Pharmacist Shift Structured Logger Convergence
 
 - Timestamp: 2026-07-01 13:27 JST
@@ -75,8 +130,8 @@ validation output.
   - `git diff --check`: passed.
   - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
 - Known risks:
-  - `/api/pharmacist-shifts/bulk` protected POST route-matrix coverage remains
-    an optional follow-up; route-local auth/no-store coverage exists.
+  - `/api/pharmacist-shifts/bulk` protected POST route-matrix coverage was
+    closed by the test-only matrix slice recorded above.
 - Untouched dangerous areas:
   - DB schema/migrations/RLS policies, auth/authz semantics, route response DTO
     contracts, shift scheduling business rules, audit semantics, external
