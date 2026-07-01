@@ -30,6 +30,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Report Edit Form Header Boundary - 2026-07-01 09:30 JST
+
+- Scope:
+  - Continued report editing maintainability work for the client-side care report edit form.
+  - Focused on behavior-preserving tenant JSON header convergence for edited report `PATCH` saves.
+- Fixed:
+  - Replaced the inline save headers in `ReportEditForm` with `buildOrgJsonHeaders(orgId)`.
+  - Added a sentinel helper mock in the component test so raw inline `{ 'Content-Type', 'x-org-id' }` construction will fail visibly.
+  - Preserved `buildCareReportApiPath(reportId)`, hostile report id path encoding, `PATCH`, `expected_updated_at`, edited `content` payload, JSON error message fallback, success toast, query invalidations, and `onSaved` callback behavior.
+- Safety:
+  - Reduces tenant-header drift on report edit saves without changing the API contract or UI workflow.
+  - Frontend reviewer found no blocker and confirmed save routing, stale payload, path helper use, toast/invalidation code, UI behavior, and test shape are preserved. The reviewer noted toast/invalidation assertions remain an existing coverage limitation, not a regression from this helper swap.
+  - No auth/RLS policy, permission, payload semantics, DB data, migration, external send, push/deploy, secret handling, or destructive-operation boundary changed.
+- Performance:
+  - Header helper convergence only changes local object construction.
+  - Adds no request, backend query, dependency, polling, background job, broad scan, render fan-out, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/components/features/reports/report-edit-form.test.tsx src/lib/reports/api-paths.test.ts src/lib/api/org-headers.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `17` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on report edit/header/path helper files: passed.
+  - Frontend reviewer: no blocking findings in the reviewed report edit form header-helper convergence.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains open.
+  - Browser smoke was not run because no visible DOM layout/copy/interaction-state change was made; the focused DOM test covers the save request contract.
+
 ### Report Generation Client Header Boundary - 2026-07-01 09:24 JST
 
 - Scope:

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260701-0930 JST
+
+- current task: converge report edit form `PATCH` tenant JSON headers on the shared org-header helper.
+- files inspected: `git status --short --untracked-files=all`, `docs/ui-ux-design-guidelines.md`, `src/components/features/reports/report-edit-form.tsx`, `src/components/features/reports/report-edit-form.test.tsx`, `src/lib/api/org-headers.ts`, `src/lib/api/org-headers.test.ts`, `src/lib/reports/api-paths.ts`, `src/lib/reports/api-paths.test.ts`, `src/app/api/care-reports/[id]/route.ts`, `src/app/(dashboard)/reports/[id]/page.tsx`, frontend reviewer output, focused diffs, and validation output.
+- files changed: `src/components/features/reports/report-edit-form.tsx`, `src/components/features/reports/report-edit-form.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: `ReportEditForm` still built edited report save JSON and `x-org-id` headers inline even though report paths and adjacent report UI surfaces already use shared helpers, leaving the report edit save path outside the tenant-header helper contract.
+- security risks found: reduced tenant-header drift by routing the edited report `PATCH` request through `buildOrgJsonHeaders(orgId)`. Frontend reviewer found no blocker and confirmed save routing, `expected_updated_at`, `buildCareReportApiPath(reportId)`, toast/invalidation code, and UI behavior remain unchanged. Existing auth/RLS policy, permissions, payload semantics, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries remain unchanged.
+- performance issues found: no meaningful performance issue was introduced. The change only centralizes local header-object construction and adds no request, backend query, dependency, polling, background job, broad scan, render fan-out, or unbounded loop.
+- validation commands: `pnpm exec vitest run src/components/features/reports/report-edit-form.test.tsx src/lib/reports/api-paths.test.ts src/lib/api/org-headers.test.ts --reporter=dot --testTimeout=60000`; scoped `pnpm exec eslint --max-warnings=0`; scoped `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check`; scoped `git diff --check`; `pnpm typecheck --pretty false`; `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`; `pnpm lint`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`; `git diff --check`.
+- validation results: focused report edit/path/header suite passed `3` files / `17` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed; frontend reviewer found no blocking findings; full typecheck passed; no-unused passed; full lint passed; full format check passed; full diff-check passed.
+- remaining work: broad repo-wide maintainability/type-safety/testability objective remains active. Browser smoke was not run because this slice changes a report edit save header helper only, with no visible DOM layout, copy, or interaction-state change.
+- next action: stage only the report edit form/test files as one implementation commit, then stage this ledger hunk as a separate progress commit; send agmsg FYI and choose the next safe helper-convergence candidate.
+
 ### 20260701-0924 JST
 
 - current task: converge visit report generation client tenant JSON headers on the shared org-header helper.
