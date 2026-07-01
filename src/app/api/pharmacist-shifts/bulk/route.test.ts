@@ -299,20 +299,23 @@ describe('/api/pharmacist-shifts/bulk POST', () => {
     const body = await response.json();
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('bulk note secret');
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'pharmacist_shifts_bulk_post_unhandled_error',
-      undefined,
       {
         event: 'pharmacist_shifts_bulk_post_unhandled_error',
         route: '/api/pharmacist-shifts/bulk',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    const loggedContext = loggerErrorMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(loggedContext).not.toHaveProperty('error_name');
+    expect(loggedContext).not.toHaveProperty('user_id');
+    expect(loggedContext).not.toHaveProperty('site_id');
+    expect(loggedContext).not.toHaveProperty('note');
+    expect(loggedContext).not.toHaveProperty('body');
+    const logged = JSON.stringify(loggedContext);
     expect(logged).not.toContain('bulk note secret');
     expect(logged).not.toContain('PharmacistShiftBulkSecretError');
   });

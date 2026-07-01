@@ -256,9 +256,9 @@ describe('/api/pharmacist-shifts', () => {
   });
 
   it('returns a no-store fixed error without leaking raw shift lookup failures', async () => {
-    pharmacistShiftFindManyMock.mockRejectedValueOnce(
-      new Error('raw pharmacist shift failure for user_2'),
-    );
+    const unsafeError = new Error('raw pharmacist shift failure for user_2');
+    unsafeError.name = 'PharmacistShiftSecretError';
+    pharmacistShiftFindManyMock.mockRejectedValueOnce(unsafeError);
 
     const response = (await GET(
       createRequest('http://localhost/api/pharmacist-shifts?month=2026-04-01'),
@@ -269,20 +269,25 @@ describe('/api/pharmacist-shifts', () => {
     const body = await response.text();
     expect(body).toContain('INTERNAL_ERROR');
     expect(body).not.toContain('raw pharmacist shift failure for user_2');
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'pharmacist_shifts_get_unhandled_error',
-      undefined,
       {
         event: 'pharmacist_shifts_get_unhandled_error',
         route: '/api/pharmacist-shifts',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(
-      'raw pharmacist shift failure for user_2',
-    );
+    const loggedContext = loggerErrorMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(loggedContext).not.toHaveProperty('error_name');
+    expect(loggedContext).not.toHaveProperty('user_id');
+    expect(loggedContext).not.toHaveProperty('site_id');
+    expect(loggedContext).not.toHaveProperty('note');
+    expect(loggedContext).not.toHaveProperty('body');
+    const logged = JSON.stringify(loggedContext);
+    expect(logged).not.toContain('raw pharmacist shift failure for user_2');
+    expect(logged).not.toContain('PharmacistShiftSecretError');
   });
 
   it('returns no-store POST auth failures before parsing body or validating references', async () => {
@@ -410,6 +415,61 @@ describe('/api/pharmacist-shifts', () => {
         }),
       }),
     );
+  });
+
+  it('returns a sanitized no-store 500 when shift upsert fails unexpectedly', async () => {
+    const unsafeError = new Error('raw pharmacist shift create note secret');
+    unsafeError.name = 'PharmacistShiftCreateSecretError';
+    pharmacistShiftUpsertMock.mockRejectedValueOnce(unsafeError);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/pharmacist-shifts', {
+        site_id: 'site_2',
+        user_id: 'user_2',
+        date: '2026-04-15',
+        note: '患者宅ルート調整',
+      }),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain('raw pharmacist shift create note secret');
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
+      site_id: 'site_2',
+      pharmacist_id: 'user_2',
+    });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+    });
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'pharmacist_shifts_post_unhandled_error',
+        route: '/api/pharmacist-shifts',
+        method: 'POST',
+        status: 500,
+      },
+      unsafeError,
+    );
+    const loggedContext = loggerErrorMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(loggedContext).not.toHaveProperty('error_name');
+    expect(loggedContext).not.toHaveProperty('user_id');
+    expect(loggedContext).not.toHaveProperty('site_id');
+    expect(loggedContext).not.toHaveProperty('note');
+    expect(loggedContext).not.toHaveProperty('body');
+    expect(loggedContext).not.toHaveProperty('orgId');
+    expect(loggedContext).not.toHaveProperty('actorId');
+    expect(loggedContext).not.toHaveProperty('cognitoSub');
+    expect(loggedContext).not.toHaveProperty('email');
+    const logged = JSON.stringify(loggedContext);
+    expect(logged).not.toContain('raw pharmacist shift create note secret');
+    expect(logged).not.toContain('PharmacistShiftCreateSecretError');
   });
 
   it('rejects blank ids and malformed shift times before reference checks', async () => {

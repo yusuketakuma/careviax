@@ -392,9 +392,9 @@ describe('/api/pharmacist-shifts/available GET', () => {
   });
 
   it('returns a no-store fixed error without leaking raw availability failures', async () => {
-    businessHolidayFindManyMock.mockRejectedValueOnce(
-      new Error('raw availability lookup failure for site_1'),
-    );
+    const unsafeError = new Error('raw availability lookup failure for site_1');
+    unsafeError.name = 'PharmacistShiftAvailabilitySecretError';
+    businessHolidayFindManyMock.mockRejectedValueOnce(unsafeError);
 
     const response = (await GET(
       createRequest('http://localhost/api/pharmacist-shifts/available?date=2026-04-20'),
@@ -405,19 +405,24 @@ describe('/api/pharmacist-shifts/available GET', () => {
     const body = await response.text();
     expect(body).toContain('INTERNAL_ERROR');
     expect(body).not.toContain('raw availability lookup failure for site_1');
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'pharmacist_shifts_available_get_unhandled_error',
-      undefined,
       {
         event: 'pharmacist_shifts_available_get_unhandled_error',
         route: '/api/pharmacist-shifts/available',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(
-      'raw availability lookup failure for site_1',
-    );
+    const loggedContext = loggerErrorMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(loggedContext).not.toHaveProperty('error_name');
+    expect(loggedContext).not.toHaveProperty('user_id');
+    expect(loggedContext).not.toHaveProperty('site_id');
+    expect(loggedContext).not.toHaveProperty('note');
+    expect(loggedContext).not.toHaveProperty('body');
+    const logged = JSON.stringify(loggedContext);
+    expect(logged).not.toContain('raw availability lookup failure for site_1');
+    expect(logged).not.toContain('PharmacistShiftAvailabilitySecretError');
   });
 });

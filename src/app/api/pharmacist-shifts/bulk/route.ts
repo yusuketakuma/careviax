@@ -13,20 +13,6 @@ import { withRoutePerformance } from '@/lib/utils/performance';
 import { bulkPharmacistShiftSchema, toShiftTimeValue } from '@/lib/validations/pharmacist-shift';
 
 const ROUTE = '/api/pharmacist-shifts/bulk';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 async function authenticatedPOST(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
@@ -101,13 +87,15 @@ export async function POST(req: NextRequest, routeContext?: unknown) {
       return withSensitiveNoStore(await authenticatedPOST(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('pharmacist_shifts_bulk_post_unhandled_error', undefined, {
-        event: 'pharmacist_shifts_bulk_post_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'pharmacist_shifts_bulk_post_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });
