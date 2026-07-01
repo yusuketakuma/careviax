@@ -1,12 +1,14 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { unstable_rethrow } from 'next/navigation';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { Prisma } from '@prisma/client';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { toPrismaJsonInput } from '@/lib/db/json';
-import { success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 
 const DEFAULT_NOTIFICATION_RULE_LIMIT = 100;
 const MAX_NOTIFICATION_RULE_LIMIT = 200;
@@ -22,7 +24,7 @@ const createRuleSchema = z.object({
   conditions: z.record(z.string(), z.unknown()).optional(),
 });
 
-export async function GET(req: NextRequest) {
+async function authenticatedGET(req: NextRequest) {
   const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
@@ -61,7 +63,16 @@ export async function GET(req: NextRequest) {
   });
 }
 
-export async function POST(req: NextRequest) {
+export async function GET(req: NextRequest) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+}
+
+async function authenticatedPOST(req: NextRequest) {
   const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
@@ -90,4 +101,13 @@ export async function POST(req: NextRequest) {
   );
 
   return success(rule, 201);
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }

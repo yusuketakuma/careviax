@@ -47,6 +47,11 @@ function createMalformedJsonPostRequest() {
   } satisfies NextRequestInit);
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/notification-rules', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -75,6 +80,7 @@ describe('/api/notification-rules', () => {
     const response = (await GET(createGetRequest()))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'rule_1' }],
       total_count: 1,
@@ -101,6 +107,7 @@ describe('/api/notification-rules', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(notificationRuleFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         take: 5,
@@ -117,6 +124,7 @@ describe('/api/notification-rules', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'rule_1' }],
       total_count: 3,
@@ -135,6 +143,7 @@ describe('/api/notification-rules', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(notificationRuleFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         take: 200,
@@ -158,6 +167,7 @@ describe('/api/notification-rules', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(notificationRuleCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -177,6 +187,7 @@ describe('/api/notification-rules', () => {
     const response = (await POST(createPostRequest([])))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(notificationRuleCreateMock).not.toHaveBeenCalled();
   });
@@ -185,10 +196,45 @@ describe('/api/notification-rules', () => {
     const response = (await POST(createMalformedJsonPostRequest()))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(notificationRuleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves auth rejection bodies while applying sensitive no-store headers', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(
+        JSON.stringify({ code: 'AUTH_FORBIDDEN', message: '権限がありません' }),
+        { status: 403, headers: { 'Content-Type': 'application/json' } },
+      ),
+    });
+
+    const response = (await GET(createGetRequest()))!;
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'AUTH_FORBIDDEN',
+      message: '権限がありません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when notification rule listing throws unexpectedly', async () => {
+    notificationRuleCountMock.mockRejectedValueOnce(
+      new Error('patient:山田太郎 medication:ワルファリン'),
+    );
+
+    const response = (await GET(createGetRequest()))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
   });
 });

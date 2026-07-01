@@ -1,11 +1,13 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { unstable_rethrow } from 'next/navigation';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { toPrismaJsonInput } from '@/lib/db/json';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { internalError, success, validationError, notFound } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 
 const updateRuleSchema = z.object({
   event_type: z.string().min(1).optional(),
@@ -20,7 +22,9 @@ const updateRuleSchema = z.object({
   conditions: z.record(z.string(), z.unknown()).optional(),
 });
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+type NotificationRuleRouteContext = { params: Promise<{ id: string }> };
+
+async function authenticatedGET(req: NextRequest, { params }: NotificationRuleRouteContext) {
   const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
@@ -40,7 +44,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   return success(rule);
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, routeContext: NotificationRuleRouteContext) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+}
+
+async function authenticatedPATCH(req: NextRequest, { params }: NotificationRuleRouteContext) {
   const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
@@ -77,7 +90,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   return success(updated);
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(req: NextRequest, routeContext: NotificationRuleRouteContext) {
+  try {
+    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+}
+
+async function authenticatedDELETE(req: NextRequest, { params }: NotificationRuleRouteContext) {
   const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
@@ -94,4 +116,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   await withOrgContext(ctx.orgId, (tx) => tx.notificationRule.delete({ where: { id: ruleId } }));
 
   return success({ message: '通知ルールを削除しました' });
+}
+
+export async function DELETE(req: NextRequest, routeContext: NotificationRuleRouteContext) {
+  try {
+    return withSensitiveNoStore(await authenticatedDELETE(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }

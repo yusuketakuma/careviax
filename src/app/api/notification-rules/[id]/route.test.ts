@@ -39,6 +39,11 @@ function createMalformedJsonPatchRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/notification-rules/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -74,6 +79,7 @@ describe('/api/notification-rules/[id]', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
   });
 
   it('rejects blank GET route ids before loading the notification rule', async () => {
@@ -82,6 +88,7 @@ describe('/api/notification-rules/[id]', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '通知ルールIDが不正です',
     });
@@ -110,6 +117,7 @@ describe('/api/notification-rules/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(notificationRuleUpdateMock).toHaveBeenCalledWith({
       where: { id: 'rule_1' },
       data: expect.objectContaining({
@@ -137,6 +145,7 @@ describe('/api/notification-rules/[id]', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(notificationRuleFindFirstMock).not.toHaveBeenCalled();
     expect(notificationRuleUpdateMock).not.toHaveBeenCalled();
@@ -148,6 +157,7 @@ describe('/api/notification-rules/[id]', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -169,6 +179,7 @@ describe('/api/notification-rules/[id]', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '通知ルールIDが不正です',
     });
@@ -183,6 +194,7 @@ describe('/api/notification-rules/[id]', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(notificationRuleDeleteMock).toHaveBeenCalledWith({
       where: { id: 'rule_1' },
     });
@@ -194,11 +206,64 @@ describe('/api/notification-rules/[id]', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '通知ルールIDが不正です',
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(notificationRuleFindFirstMock).not.toHaveBeenCalled();
     expect(notificationRuleDeleteMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves auth rejection bodies while applying sensitive no-store headers', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(
+        JSON.stringify({ code: 'AUTH_FORBIDDEN', message: '権限がありません' }),
+        { status: 403, headers: { 'Content-Type': 'application/json' } },
+      ),
+    });
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    }))!;
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'AUTH_FORBIDDEN',
+      message: '権限がありません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store not found responses without changing the detail error body', async () => {
+    notificationRuleFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    }))!;
+
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '通知ルールが見つかりません',
+    });
+  });
+
+  it('returns a sanitized no-store 500 when detail lookup throws unexpectedly', async () => {
+    notificationRuleFindFirstMock.mockRejectedValueOnce(
+      new Error('patient:山田太郎 medication:ワルファリン'),
+    );
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
   });
 });
