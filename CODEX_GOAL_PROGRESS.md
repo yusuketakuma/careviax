@@ -30,6 +30,65 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Dashboard Dispensing Stats Structured Logger Convergence - 2026-07-01 14:34 JST
+
+- Scope:
+  - Continued safe structured logger convergence on the dashboard dispensing
+    stats route.
+  - Focused only on `/api/dashboard/dispensing-stats` GET unexpected-error
+    logs.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced the string overload call with
+    `logger.error({ event, route, method, status }, err)` for the GET
+    unexpected-error catch block.
+  - Updated the sanitized 500 route test to assert minimal route-supplied
+    context, explicit absence of route-local `error_name`, and delegation of
+    raw `Error` redaction to the shared logger contract tests.
+  - Strengthened auth failure tests so 401/403 short-circuit responses do not
+    call the unexpected-error logger.
+- Safety:
+  - Preserved response bodies/statuses, no-store wrapping, `canViewDashboard`
+    auth, `Promise.all` count ordering, Prisma `where` predicates,
+    medication-cycle count predicate, `japanDayInstantRange()` completed-today
+    range, and response fields `pendingTasks`, `auditPendingTasks`,
+    `completedToday`, and `prescriptionRegisteredWithoutDispenseTasks`.
+  - The sanitized 500 test proves route-supplied logger context excludes raw
+    dispensing/dashboard/SQL/stack/error sentinels, unsafe error name, and
+    route-local `error_name`.
+  - Privacy review found no blocking issue and confirmed route tests should
+    inspect only the first structured context argument while shared logger tests
+    cover final emitted redaction.
+  - Medical safety review found no blocker because the DB query, response
+    shaping, and no-store/error behavior were unchanged.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, sort change, or unbounded loop.
+- Validation:
+  - `pnpm exec prettier --check src/app/api/dashboard/dispensing-stats/route.ts src/app/api/dashboard/dispensing-stats/route.test.ts`: passed.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/dashboard/dispensing-stats/route.ts src/app/api/dashboard/dispensing-stats/route.test.ts`: passed.
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/dashboard/dispensing-stats/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `11` tests.
+  - `git diff --check -- src/app/api/dashboard/dispensing-stats/route.ts src/app/api/dashboard/dispensing-stats/route.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - External observability backend retention/redaction policy remains outside
+    this code-diff scope.
+  - Continue only with small, tested logger convergence candidates; do not add
+    org/user/patient/prescription/medication identifiers, counts, request
+    bodies, query details, or raw error metadata to route log context without
+    separate privacy and medical-safety review.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or
+    interaction-state change.
+
 ### Drug Master Import Status Structured Logger Convergence - 2026-07-01 14:21 JST
 
 - Scope:

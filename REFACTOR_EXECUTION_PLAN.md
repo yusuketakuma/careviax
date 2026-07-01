@@ -77,8 +77,35 @@ If any of those are needed, create a proposal first. Do not implement silently.
   - drug-master-import-status route-local logger sanitizer converged on the
     shared safe structured logger overload, with sanitized status lookup
     failure coverage
+  - dashboard dispensing-stats route-local logger sanitizer converged on the
+    shared safe structured logger overload, with sanitized metric-read failure
+    coverage
 
 ## Completed Slices
+
+### 2026-07-01 14:34 JST: Dashboard Dispensing Stats Structured Logger Convergence
+
+- Completed observability/privacy refactor follow-up:
+  `Dashboard Dispensing Stats Structured Logger Convergence`.
+- Files changed:
+  - `src/app/api/dashboard/dispensing-stats/route.ts`
+  - `src/app/api/dashboard/dispensing-stats/route.test.ts`
+- Validation:
+  - focused logger + dashboard dispensing-stats route suite passed `2` files /
+    `11` tests
+  - scoped Prettier check passed
+  - scoped ESLint passed
+  - scoped diff whitespace check passed
+  - full typecheck passed
+  - no-unused typecheck passed
+  - full lint passed
+  - full format check passed
+  - full diff whitespace check passed
+  - production build passed
+- Remaining follow-up:
+  - External observability backend retention/redaction policy remains outside
+    this code-diff scope.
+  - Continue with small, tested route-local logger convergence candidates.
 
 ### 2026-07-01 14:21 JST: Drug Master Import Status Structured Logger Convergence
 
