@@ -30,6 +30,37 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Document Template Helper Boundary - 2026-07-01 10:15 JST
+
+- Scope:
+  - Continued low-risk admin document-template helper convergence.
+  - Focused on preserving template management behavior while moving raw `/api/templates` paths and org headers into shared helpers.
+- Fixed:
+  - Added `DOCUMENT_TEMPLATES_API_PATH`, `DOCUMENT_DELIVERY_RULES_API_PATH`, and `buildDocumentTemplatesApiPath(params)` to `src/lib/document-templates/api-paths.ts`.
+  - Preserved existing document template and delivery-rule detail hostile-id encoding and dot-segment fail-closed behavior through the existing detail helpers.
+  - Replaced document template list/create/update/delete inline paths and org headers with `buildDocumentTemplatesApiPath`, `DOCUMENT_TEMPLATES_API_PATH`, `buildDocumentTemplateApiPath`, `buildOrgHeaders`, and `buildOrgJsonHeaders`.
+  - Added regression coverage for collection URL shape without empty trailing `?`, query encoding, read header helper delegation, create/update JSON header helper delegation, delete header helper delegation, and existing hostile-id/dot-segment behavior.
+- Safety:
+  - Reduces tenant-header drift and raw document-template path construction without changing visible UI layout/copy/section order, loading/error/empty behavior, count labels, query keys, template filter query semantics, create/update/delete methods, or payload fields.
+  - Frontend reviewer found no blocking UI or behavior regression and confirmed delivery-rule behavior remains unchanged.
+  - No API route, DB, auth/RLS policy, permission, payload semantics, live data, migration, package, external send, push/deploy, secret handling, or destructive-operation boundary changed.
+- Performance:
+  - Header/path helper convergence only changes local string and header-object construction.
+  - Adds no request, backend query, dependency, polling, background job, broad scan, render fan-out, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/document-templates/api-paths.test.ts src/app/(dashboard)/admin/document-templates/template-content.test.tsx src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx src/lib/api/org-headers.test.ts --reporter=dot --testTimeout=60000`: passed, `4` files / `31` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on document-template helper/UI/test files: passed.
+  - Frontend reviewer: no blocking findings in the reviewed document-template helper convergence.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains open.
+  - Document delivery rule manager collection path/header convergence remains a separate candidate; this slice only preserved its existing detail helper path through shared constants.
+  - Browser smoke was not run because no visible DOM layout/copy/interaction-state change was made; focused DOM tests and frontend review cover the read/mutation contracts and UI state branches touched by this helper-only slice.
+
 ### Notifications Helper Boundary - 2026-07-01 10:07 JST
 
 - Scope:
