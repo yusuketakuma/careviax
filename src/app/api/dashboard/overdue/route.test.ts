@@ -115,6 +115,7 @@ describe('/api/dashboard/overdue GET', () => {
     expect(visitScheduleCountMock).not.toHaveBeenCalled();
     expect(careReportCountMock).not.toHaveBeenCalled();
     expect(taskCountMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('returns overdue dashboard buckets', async () => {
@@ -284,22 +285,23 @@ describe('/api/dashboard/overdue GET', () => {
     expect(body).not.toContain('crafted-name');
     expect(body).not.toContain('raw-error');
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
-    expect(loggerErrorMock).toHaveBeenCalledWith('dashboard_overdue_unhandled_error', undefined, {
-      event: 'dashboard_overdue_unhandled_error',
-      route: '/api/dashboard/overdue',
-      method: 'GET',
-      status: 500,
-      error_name: 'Error',
-    });
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
-    expect(logged).not.toContain('raw-overdue');
-    expect(logged).not.toContain('raw-patient');
-    expect(logged).not.toContain('raw-dashboard');
-    expect(logged).not.toContain('raw-SQL');
-    expect(logged).not.toContain('raw-stack');
-    expect(logged).not.toContain('crafted-name');
-    expect(logged).not.toContain('raw-error');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'dashboard_overdue_unhandled_error',
+        route: '/api/dashboard/overdue',
+        method: 'GET',
+        status: 500,
+      },
+      unsafeError,
+    );
+    expect(loggerErrorMock.mock.calls[0]?.[0]).not.toHaveProperty('error_name');
+    const loggedContext = JSON.stringify(loggerErrorMock.mock.calls[0]?.[0]);
+    expect(loggedContext).not.toContain('raw-overdue');
+    expect(loggedContext).not.toContain('raw-patient');
+    expect(loggedContext).not.toContain('raw-dashboard');
+    expect(loggedContext).not.toContain('raw-SQL');
+    expect(loggedContext).not.toContain('raw-stack');
+    expect(loggedContext).not.toContain('crafted-name');
+    expect(loggedContext).not.toContain('raw-error');
   });
 });

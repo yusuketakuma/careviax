@@ -14,20 +14,6 @@ import {
 } from '@/server/services/dashboard-assignment-scope';
 
 const ROUTE = '/api/dashboard/overdue';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 async function authenticatedGET(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
@@ -104,13 +90,15 @@ export async function GET(req: NextRequest, routeContext?: unknown) {
       return withSensitiveNoStore(await authenticatedGET(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('dashboard_overdue_unhandled_error', undefined, {
-        event: 'dashboard_overdue_unhandled_error',
-        route: ROUTE,
-        method: 'GET',
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'dashboard_overdue_unhandled_error',
+          route: ROUTE,
+          method: 'GET',
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });
