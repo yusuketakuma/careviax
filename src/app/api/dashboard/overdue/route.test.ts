@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
 const {
@@ -66,6 +66,7 @@ vi.mock('@/lib/utils/performance', () => ({
 
 import { GET as rawGET } from './route';
 
+const ORIGINAL_TZ = process.env.TZ;
 const emptyRouteContext = { params: Promise.resolve({}) };
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 
@@ -90,6 +91,15 @@ describe('/api/dashboard/overdue GET', () => {
     visitScheduleCountMock.mockResolvedValue(1);
     careReportCountMock.mockResolvedValue(1);
     taskCountMock.mockResolvedValue(1);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    if (ORIGINAL_TZ === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = ORIGINAL_TZ;
+    }
   });
 
   it('returns 403 when the role lacks dashboard permission', async () => {
@@ -200,6 +210,61 @@ describe('/api/dashboard/overdue GET', () => {
     expect(json).not.toHaveProperty('unrecorded_visits');
     expect(json).not.toHaveProperty('unsent_reports');
     expect(json).not.toHaveProperty('overdue_tasks');
+  });
+
+  it('uses the Japan business date for unrecorded visits when the server timezone is UTC', async () => {
+    process.env.TZ = 'UTC';
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-30T15:30:00.000Z'));
+    visitScheduleCountMock.mockResolvedValueOnce(4);
+    careReportCountMock.mockResolvedValueOnce(5);
+    taskCountMock.mockResolvedValueOnce(6);
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(visitScheduleCountMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          scheduled_date: { lt: new Date('2026-07-01T00:00:00.000Z') },
+        }),
+      }),
+    );
+    expect(careReportCountMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: { in: ['patient_1'] },
+          status: { in: ['draft', 'failed', 'response_waiting'] },
+        }),
+      }),
+    );
+    expect(taskCountMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          status: { in: ['pending', 'in_progress'] },
+          AND: expect.arrayContaining([
+            {
+              OR: [
+                { due_date: { lt: new Date('2026-06-30T15:30:00.000Z') } },
+                { sla_due_at: { lt: new Date('2026-06-30T15:30:00.000Z') } },
+              ],
+            },
+          ]),
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      summary: {
+        unrecorded_visits: 4,
+        unsent_reports: 5,
+        overdue_tasks: 6,
+        total: 15,
+      },
+    });
   });
 
   it('remains compatible with direct calls that omit routeContext', async () => {

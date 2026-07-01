@@ -6,7 +6,7 @@ import { internalError, success } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { logger } from '@/lib/utils/logger';
-import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { withRoutePerformance } from '@/lib/utils/performance';
 import {
   buildDashboardTaskAssignmentWhere,
@@ -24,8 +24,8 @@ async function authenticatedGET(req: NextRequest) {
   const { ctx } = authResult;
 
   return runWithRequestAuthContext(ctx, async () => {
-    // scheduled_date(@db.Date)比較用: ローカル日付の UTC 深夜
-    const today = utcDateFromLocalKey(localDateKey());
+    // scheduled_date(@db.Date) comparison uses the Japan business-date UTC sentinel.
+    const today = utcDateFromLocalKey(japanDateKey());
     const now = new Date();
     const assignmentScope = await resolveDashboardAssignmentScope({
       db: prisma,
