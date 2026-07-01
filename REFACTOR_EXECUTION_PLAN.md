@@ -80,8 +80,37 @@ If any of those are needed, create a proposal first. Do not implement silently.
   - dashboard dispensing-stats route-local logger sanitizer converged on the
     shared safe structured logger overload, with sanitized metric-read failure
     coverage
+  - dashboard overdue route-local logger sanitizer converged on the shared safe
+    structured logger overload, with sanitized overdue-read failure coverage
 
 ## Completed Slices
+
+### 2026-07-01 14:45 JST: Dashboard Overdue Structured Logger Convergence
+
+- Completed observability/privacy refactor follow-up:
+  `Dashboard Overdue Structured Logger Convergence`.
+- Files changed:
+  - `src/app/api/dashboard/overdue/route.ts`
+  - `src/app/api/dashboard/overdue/route.test.ts`
+- Validation:
+  - focused logger + dashboard overdue route suite passed `2` files / `12`
+    tests
+  - scoped Prettier check passed
+  - scoped ESLint passed
+  - scoped diff whitespace check passed
+  - full typecheck passed
+  - no-unused typecheck passed
+  - full lint passed
+  - full format check passed
+  - full diff whitespace check passed
+  - production build passed
+- Remaining follow-up:
+  - Medical safety review found a pre-existing P2 residual: overdue visit date
+    boundary still depends on server-local `localDateKey()` rather than an
+    explicit Japan business-day key. This was not introduced by the
+    logging-only slice and should be handled as a separate safety slice or
+    runtime-contract proposal.
+  - Continue with small, tested route-local logger convergence candidates.
 
 ### 2026-07-01 14:34 JST: Dashboard Dispensing Stats Structured Logger Convergence
 

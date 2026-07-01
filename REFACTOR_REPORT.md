@@ -15,6 +15,84 @@ validation output.
   - `REFACTOR_RISK_MAP.md`
   - `REFACTOR_EXECUTION_PLAN.md`
 
+## Slice: Dashboard Overdue Structured Logger Convergence
+
+- Timestamp: 2026-07-01 14:45 JST
+- Purpose:
+  - Route dashboard overdue unexpected-error logs through the shared
+    PHI/secret-safe structured logger overload.
+  - Remove route-local `safeErrorName()` duplication now that shared logger owns
+    safe error-name normalization.
+  - Preserve response status/body, no-store behavior, auth, organization-scoped
+    assignment scope, overdue count predicates, and summary response fields.
+- Changed files:
+  - `src/app/api/dashboard/overdue/route.ts`
+  - `src/app/api/dashboard/overdue/route.test.ts`
+- Change reason:
+  - The overdue dashboard route still used the string logger overload with
+    duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()` despite
+    existing shared logger runtime allowlisting and raw `Error` redaction.
+- Deleted code:
+  - Removed the route-local `SAFE_ERROR_NAMES` set and `safeErrorName()` helper.
+- Commonized processing:
+  - GET unexpected-error path now calls
+    `logger.error({ event, route, method, status }, err)`.
+  - Route tests assert only minimal operational context is supplied by the route
+    while the raw `Error` is delegated to the shared logger contract tests.
+  - Auth-denied paths now assert the unexpected-error logger is not called.
+- Safety:
+  - API response body/status, no-store wrapping, `canViewDashboard` auth gate,
+    `runWithRequestAuthContext`, `resolveDashboardAssignmentScope`,
+    case/patient assignment scopes, task assignment scope, `Promise.all` count
+    ordering, visit/care-report/task count predicates, and summary response
+    fields were unchanged.
+  - The sanitized 500 test proves route-supplied logger context excludes raw
+    overdue/patient/dashboard/SQL/stack/error sentinels, unsafe error name, and
+    route-local `error_name`.
+  - Privacy review found no blocking issue and confirmed the route-supplied log
+    context stays limited to `event`, `route`, `method`, and `status`.
+  - Medical safety review found no diff-introduced safety issue because auth,
+    org scoping, assignment scope, count predicates, response shaping, and
+    no-store/error behavior were unchanged.
+- Performance:
+  - Removes a small duplicated helper and changes logging call shape only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, sorting change, or unbounded
+    loop.
+- Validation:
+  - `pnpm exec prettier --check src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts`: passed.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts`: passed.
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/dashboard/overdue/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `12` tests.
+  - `git diff --check -- src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+- Known risks:
+  - Route tests mock the logger and therefore prove route delegation/context
+    only; emitted console/Sentry redaction remains the shared logger test's
+    responsibility.
+  - Medical safety review found a pre-existing P2 residual: overdue visit date
+    boundary still depends on server-local `localDateKey()` rather than an
+    explicit Japan business-day key. This slice deliberately did not change
+    date semantics and records that as a separate safety candidate.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS policies, auth/authz semantics, dashboard overdue
+    summary response DTO contracts, assignment-scope semantics, date-boundary
+    semantics, audit semantics, external sends, production config, secrets,
+    deployment, and dependency versions.
+- Next improvements:
+  - Treat the overdue dashboard Japan date-boundary residual as the next
+    independent safety slice or runtime-contract proposal.
+  - Continue small, tested route-local logger convergence only where existing
+    tests can prove responses, no-store headers, query shape, and mutations
+    remain unchanged.
+- PR split:
+  - Commit this route logger/test slice independently.
+  - Commit report/progress updates separately.
+
 ## Slice: Dashboard Dispensing Stats Structured Logger Convergence
 
 - Timestamp: 2026-07-01 14:34 JST
