@@ -190,6 +190,7 @@ describe('/api/dashboard/clerk-support', () => {
     expect(workflowExceptionCountMock).not.toHaveBeenCalled();
     expect(medicationCycleFindManyMock).not.toHaveBeenCalled();
     expect(proposalFindManyMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when clerk support reads fail', async () => {
@@ -215,23 +216,20 @@ describe('/api/dashboard/clerk-support', () => {
     expect(body).not.toContain('raw-error text');
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'dashboard_clerk_support_unhandled_error',
-      undefined,
       {
         event: 'dashboard_clerk_support_unhandled_error',
         route: '/api/dashboard/clerk-support',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
-    expect(logged).not.toContain('raw patient');
-    expect(logged).not.toContain('crafted.patient');
-    expect(logged).not.toContain('SQL');
-    expect(logged).not.toContain('stack');
-    expect(logged).not.toContain('raw-error text');
+    expect(loggerErrorMock.mock.calls[0]?.[0]).not.toHaveProperty('error_name');
+    const loggedContext = JSON.stringify(loggerErrorMock.mock.calls[0]?.[0]);
+    expect(loggedContext).not.toContain('raw patient');
+    expect(loggedContext).not.toContain('crafted.patient');
+    expect(loggedContext).not.toContain('SQL');
+    expect(loggedContext).not.toContain('stack');
+    expect(loggedContext).not.toContain('raw-error text');
   });
 });
