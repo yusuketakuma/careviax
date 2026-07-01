@@ -7,12 +7,18 @@ const {
   visitRecordFindFirstMock,
   visitHandoffExtractionFindUniqueMock,
   confirmHandoffMock,
+  readConfirmableHandoffDataMock,
+  VisitHandoffInvalidDataErrorMock,
+  VisitHandoffMissingDataErrorMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   canAccessVisitScheduleAssignmentMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
   visitHandoffExtractionFindUniqueMock: vi.fn(),
   confirmHandoffMock: vi.fn(),
+  readConfirmableHandoffDataMock: vi.fn(),
+  VisitHandoffInvalidDataErrorMock: class VisitHandoffInvalidDataError extends Error {},
+  VisitHandoffMissingDataErrorMock: class VisitHandoffMissingDataError extends Error {},
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -32,13 +38,20 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/server/services/visit-handoff', () => ({
   confirmHandoff: confirmHandoffMock,
+  readConfirmableHandoffData: readConfirmableHandoffDataMock,
+  VisitHandoffInvalidDataError: VisitHandoffInvalidDataErrorMock,
+  VisitHandoffMissingDataError: VisitHandoffMissingDataErrorMock,
   VisitHandoffStaleRecordError: class VisitHandoffStaleRecordError extends Error {},
   VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE:
     '申し送り抽出に失敗しました。時間をおいて再実行してください',
 }));
 
 import { GET, PUT } from './route';
-import { VisitHandoffStaleRecordError } from '@/server/services/visit-handoff';
+import {
+  VisitHandoffInvalidDataError,
+  VisitHandoffMissingDataError,
+  VisitHandoffStaleRecordError,
+} from '@/server/services/visit-handoff';
 
 function createRequest(url: string, body?: unknown) {
   if (body === undefined) {
@@ -80,6 +93,16 @@ const accessibleSchedule = {
 const VISIT_RECORD_VERSION = 2;
 const VISIT_RECORD_UPDATED_AT = new Date('2026-04-01T00:00:00.000Z');
 const VISIT_RECORD_UPDATED_AT_ISO = VISIT_RECORD_UPDATED_AT.toISOString();
+const confirmableHandoff = {
+  next_check_items: ['血圧確認'],
+  ongoing_monitoring: ['残薬管理'],
+  decision_rationale: '継続確認が必要',
+  ai_extracted: true,
+  ai_confidence: 0.86,
+  confirmed_by: null,
+  confirmed_at: null,
+  extracted_at: '2026-04-01T00:00:00.000Z',
+};
 
 function buildVisitRecord(overrides: Record<string, unknown> = {}) {
   return {
@@ -88,7 +111,7 @@ function buildVisitRecord(overrides: Record<string, unknown> = {}) {
     updated_at: VISIT_RECORD_UPDATED_AT,
     schedule: accessibleSchedule,
     structured_soap: {
-      handoff: { next_check_items: ['item1'], ongoing_monitoring: [] },
+      handoff: confirmableHandoff,
     },
     ...overrides,
   };
@@ -105,6 +128,18 @@ describe('/api/visit-records/[id]/handoff', () => {
     requireAuthContextMock.mockResolvedValue(authCtx);
     canAccessVisitScheduleAssignmentMock.mockReturnValue(true);
     visitHandoffExtractionFindUniqueMock.mockResolvedValue(null);
+    readConfirmableHandoffDataMock.mockImplementation((value: unknown) => {
+      if (value === undefined || value === null) return { status: 'missing' };
+      const handoff = value as { decision_rationale?: unknown; next_check_items?: unknown };
+      if (
+        Array.isArray(handoff.next_check_items) &&
+        handoff.next_check_items.includes('血圧確認') &&
+        typeof handoff.decision_rationale === 'string'
+      ) {
+        return { status: 'valid', handoff: value };
+      }
+      return { status: 'invalid' };
+    });
   });
 
   describe('GET', () => {
@@ -144,7 +179,7 @@ describe('/api/visit-records/[id]/handoff', () => {
         accessibleSchedule,
       );
       const json = await res!.json();
-      expect(json.data.next_check_items).toEqual(['item1']);
+      expect(json.data.next_check_items).toEqual(['血圧確認']);
       expect(json.extraction).toMatchObject({
         status: 'succeeded',
         retryable: false,
@@ -218,6 +253,61 @@ describe('/api/visit-records/[id]/handoff', () => {
       expectSensitiveNoStore(res!);
     });
 
+    it('does not return malformed persisted handoff data as a normal response', async () => {
+      visitRecordFindFirstMock.mockResolvedValue(
+        buildVisitRecord({
+          structured_soap: {
+            handoff: {
+              next_check_items: ['patient=田中太郎 token=secret'],
+            },
+          },
+        }),
+      );
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff');
+      const res = await GET(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(409);
+      expectSensitiveNoStore(res!);
+      const payload = await res!.json();
+      expect(payload).toEqual({
+        code: 'WORKFLOW_CONFLICT',
+        message: '引継ぎデータの形式が不正です。AI抽出を再実行してから確定してください',
+      });
+      const payloadText = JSON.stringify(payload);
+      expect(payloadText).not.toContain('田中太郎');
+      expect(payloadText).not.toContain('token=secret');
+    });
+
+    it('does not return clinically empty persisted handoff data as a normal response', async () => {
+      visitRecordFindFirstMock.mockResolvedValue(
+        buildVisitRecord({
+          structured_soap: {
+            handoff: {
+              next_check_items: ['   '],
+              ongoing_monitoring: [],
+              decision_rationale: ' ',
+              ai_extracted: true,
+              ai_confidence: 0.3,
+              confirmed_by: null,
+              confirmed_at: null,
+              extracted_at: '2026-04-01T00:00:00.000Z',
+            },
+          },
+        }),
+      );
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff');
+      const res = await GET(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(409);
+      expectSensitiveNoStore(res!);
+      await expect(res!.json()).resolves.toMatchObject({
+        code: 'WORKFLOW_CONFLICT',
+        message: '引継ぎデータの形式が不正です。AI抽出を再実行してから確定してください',
+      });
+    });
+
     it('returns redacted extraction status even when handoff data is not yet available', async () => {
       visitRecordFindFirstMock.mockResolvedValue(buildVisitRecord({ structured_soap: null }));
       visitHandoffExtractionFindUniqueMock.mockResolvedValue({
@@ -273,7 +363,7 @@ describe('/api/visit-records/[id]/handoff', () => {
 
     it('returns 200 on valid handoff confirmation', async () => {
       visitRecordFindFirstMock.mockResolvedValue(
-        buildVisitRecord({ structured_soap: { handoff: {} } }),
+        buildVisitRecord({ structured_soap: { handoff: confirmableHandoff } }),
       );
       const handoffResult = { confirmed: true, confirmed_by: 'user_1' };
       confirmHandoffMock.mockResolvedValue(handoffResult);
@@ -367,7 +457,7 @@ describe('/api/visit-records/[id]/handoff', () => {
     it('returns 403 before confirming handoff data when assignment access is denied', async () => {
       canAccessVisitScheduleAssignmentMock.mockReturnValue(false);
       visitRecordFindFirstMock.mockResolvedValue(
-        buildVisitRecord({ structured_soap: { handoff: {} } }),
+        buildVisitRecord({ structured_soap: { handoff: confirmableHandoff } }),
       );
 
       const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
@@ -407,7 +497,10 @@ describe('/api/visit-records/[id]/handoff', () => {
 
     it('returns conflict for stale visit record versions before confirming handoff data', async () => {
       visitRecordFindFirstMock.mockResolvedValue(
-        buildVisitRecord({ version: VISIT_RECORD_VERSION + 1, structured_soap: { handoff: {} } }),
+        buildVisitRecord({
+          version: VISIT_RECORD_VERSION + 1,
+          structured_soap: { handoff: confirmableHandoff },
+        }),
       );
 
       const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
@@ -428,7 +521,7 @@ describe('/api/visit-records/[id]/handoff', () => {
 
     it('maps lost service-level confirmation claims to a sanitized conflict', async () => {
       visitRecordFindFirstMock.mockResolvedValue(
-        buildVisitRecord({ structured_soap: { handoff: {} } }),
+        buildVisitRecord({ structured_soap: { handoff: confirmableHandoff } }),
       );
       confirmHandoffMock.mockRejectedValueOnce(new VisitHandoffStaleRecordError('vr_1'));
 
@@ -445,6 +538,112 @@ describe('/api/visit-records/[id]/handoff', () => {
         code: 'WORKFLOW_CONFLICT',
         message: '訪問記録が同時に更新されました。再読み込みしてください',
       });
+    });
+
+    it('maps typed missing handoff data to a sanitized not found response', async () => {
+      visitRecordFindFirstMock.mockResolvedValue(buildVisitRecord({ structured_soap: {} }));
+      confirmHandoffMock.mockRejectedValueOnce(new VisitHandoffMissingDataError('vr_1'));
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: true,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
+      });
+
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(404);
+      expectSensitiveNoStore(res!);
+      await expect(res!.json()).resolves.toMatchObject({
+        code: 'WORKFLOW_NOT_FOUND',
+        message: '引継ぎデータが見つかりません。AI抽出が完了していない可能性があります',
+      });
+    });
+
+    it('maps typed malformed handoff data to a sanitized conflict response', async () => {
+      visitRecordFindFirstMock.mockResolvedValue(
+        buildVisitRecord({ structured_soap: { handoff: {} } }),
+      );
+      confirmHandoffMock.mockRejectedValueOnce(new VisitHandoffInvalidDataError('vr_1'));
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: true,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
+      });
+
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(409);
+      expectSensitiveNoStore(res!);
+      const payload = await res!.json();
+      expect(payload).toEqual({
+        code: 'WORKFLOW_CONFLICT',
+        message: '引継ぎデータの形式が不正です。AI抽出を再実行してから確定してください',
+      });
+      expect(JSON.stringify(payload)).not.toContain('vr_1');
+    });
+
+    it('maps blanking confirmation edits to a sanitized conflict response', async () => {
+      visitRecordFindFirstMock.mockResolvedValue(
+        buildVisitRecord({ structured_soap: { handoff: confirmableHandoff } }),
+      );
+      confirmHandoffMock.mockRejectedValueOnce(new VisitHandoffInvalidDataError('vr_1'));
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: true,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
+        edits: {
+          next_check_items: [],
+          ongoing_monitoring: [],
+          decision_rationale: '   ',
+        },
+      });
+
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(confirmHandoffMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          edits: {
+            next_check_items: [],
+            ongoing_monitoring: [],
+            decision_rationale: '   ',
+          },
+        }),
+      );
+      expect(res!.status).toBe(409);
+      expectSensitiveNoStore(res!);
+      await expect(res!.json()).resolves.toMatchObject({
+        code: 'WORKFLOW_CONFLICT',
+        message: '引継ぎデータの形式が不正です。AI抽出を再実行してから確定してください',
+      });
+    });
+
+    it('does not classify raw error message text as a missing handoff response', async () => {
+      visitRecordFindFirstMock.mockResolvedValue(
+        buildVisitRecord({ structured_soap: { handoff: confirmableHandoff } }),
+      );
+      confirmHandoffMock.mockRejectedValueOnce(
+        new Error('No handoff found for patient=田中太郎 token=secret'),
+      );
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: true,
+        expected_visit_record_version: VISIT_RECORD_VERSION,
+      });
+
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(500);
+      expectSensitiveNoStore(res!);
+      const payload = await res!.json();
+      expect(payload).toEqual({
+        code: 'internal_error',
+        message: '引継ぎの確定処理に失敗しました',
+      });
+      const payloadText = JSON.stringify(payload);
+      expect(payloadText).not.toContain('田中太郎');
+      expect(payloadText).not.toContain('token=secret');
+      expect(payloadText).not.toContain('No handoff found');
     });
   });
 });

@@ -33,6 +33,8 @@ import {
   processHandoffExtraction,
   confirmHandoff,
   normalizeStructuredSoapForVisitRecordSave,
+  VisitHandoffInvalidDataError,
+  VisitHandoffMissingDataError,
   VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE,
 } from './visit-handoff';
 import type { StructuredSoap } from '@/types/structured-soap';
@@ -342,6 +344,67 @@ describe('processHandoffExtraction', () => {
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
+  it('persists a retryable failed state without touching VisitRecord when extraction has no clinical handoff content', async () => {
+    extractHandoffFromSoapMock.mockResolvedValue({
+      next_check_items: [],
+      ongoing_monitoring: [],
+      decision_rationale: null,
+      confidence: 0.3,
+      extracted_at: '2026-04-01T00:00:00Z',
+    });
+
+    const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      structured_soap: baseSoap,
+      schedule_id: 'schedule-1',
+      version: 2,
+      updated_at: new Date('2026-04-01T01:00:00Z'),
+    });
+    const visitRecordUpdateManyMock = vi.fn();
+    const visitHandoffExtractionUpsertMock = vi.fn().mockResolvedValue({});
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          visitRecord: {
+            findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
+            updateMany: visitRecordUpdateManyMock,
+          },
+          visitHandoffExtraction: {
+            upsert: visitHandoffExtractionUpsertMock,
+          },
+        };
+        return fn(tx);
+      },
+    );
+
+    const db = {} as Parameters<typeof processHandoffExtraction>[0];
+    await expect(
+      processHandoffExtraction(db, {
+        orgId: 'org-1',
+        visitRecordId: 'vr-1',
+        patientId: 'p-1',
+        patientName: '田中太郎',
+        structuredSoap: baseSoap,
+        soapAssessment: '状態安定',
+        soapPlan: '',
+        expectedVersion: 2,
+      }),
+    ).rejects.toBeInstanceOf(VisitHandoffInvalidDataError);
+
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(visitHandoffExtractionUpsertMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          status: 'failed',
+          retry_count: { increment: 1 },
+          error_message: VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE,
+          retryable: true,
+        }),
+      }),
+    );
+  });
+
   it('persists a generic retryable failed state when saving extracted handoff fails', async () => {
     extractHandoffFromSoapMock.mockResolvedValue({
       next_check_items: ['血圧確認'],
@@ -583,6 +646,55 @@ describe('confirmHandoff', () => {
     expect(result.ongoing_monitoring).toEqual(['旧モニタリング']); // not edited
   });
 
+  it('rejects edits that remove all clinical handoff content before resolving the confirmation task', async () => {
+    const existingHandoff = {
+      next_check_items: ['旧項目'],
+      ongoing_monitoring: ['旧モニタリング'],
+      decision_rationale: '旧根拠',
+      ai_extracted: true,
+      ai_confidence: 0.9,
+      confirmed_by: null,
+      confirmed_at: null,
+      extracted_at: '2026-04-01T00:00:00Z',
+    };
+
+    const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      version: 2,
+      structured_soap: { ...baseSoap, handoff: existingHandoff },
+    });
+    const visitRecordUpdateManyMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          visitRecord: {
+            findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
+            updateMany: visitRecordUpdateManyMock,
+          },
+        };
+        return fn(tx);
+      },
+    );
+
+    const db = {} as Parameters<typeof confirmHandoff>[0];
+    await expect(
+      confirmHandoff(db, {
+        orgId: 'org-1',
+        visitRecordId: 'vr-1',
+        confirmedBy: 'user-2',
+        expectedVersion: 2,
+        edits: {
+          next_check_items: [],
+          ongoing_monitoring: [],
+          decision_rationale: '   ',
+        },
+      }),
+    ).rejects.toBeInstanceOf(VisitHandoffInvalidDataError);
+
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
   it('throws when no handoff exists on visit record', async () => {
     const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
       version: 2,
@@ -610,12 +722,12 @@ describe('confirmHandoff', () => {
         confirmedBy: 'user-1',
         expectedVersion: 2,
       }),
-    ).rejects.toThrow('No handoff found');
+    ).rejects.toBeInstanceOf(VisitHandoffMissingDataError);
     expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
   });
 
-  it('throws when persisted handoff is malformed', async () => {
+  it('throws when persisted handoff is not an object', async () => {
     const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
       version: 2,
       structured_soap: {
@@ -645,7 +757,174 @@ describe('confirmHandoff', () => {
         confirmedBy: 'user-1',
         expectedVersion: 2,
       }),
-    ).rejects.toThrow('No handoff found');
+    ).rejects.toBeInstanceOf(VisitHandoffInvalidDataError);
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('throws when persisted handoff is structurally incomplete', async () => {
+    const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      version: 2,
+      structured_soap: {
+        ...baseSoap,
+        handoff: {},
+      },
+    });
+    const visitRecordUpdateManyMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          visitRecord: {
+            findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
+            updateMany: visitRecordUpdateManyMock,
+          },
+        };
+        return fn(tx);
+      },
+    );
+
+    const db = {} as Parameters<typeof confirmHandoff>[0];
+    await expect(
+      confirmHandoff(db, {
+        orgId: 'org-1',
+        visitRecordId: 'vr-1',
+        confirmedBy: 'user-1',
+        expectedVersion: 2,
+      }),
+    ).rejects.toBeInstanceOf(VisitHandoffInvalidDataError);
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('throws when persisted handoff metadata has the wrong type', async () => {
+    const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      version: 2,
+      structured_soap: {
+        ...baseSoap,
+        handoff: {
+          next_check_items: ['血圧確認'],
+          ongoing_monitoring: ['残薬管理'],
+          decision_rationale: '急変リスクあり',
+          ai_extracted: 'yes',
+          ai_confidence: 0.85,
+          confirmed_by: null,
+          confirmed_at: null,
+          extracted_at: '2026-04-01T00:00:00Z',
+        },
+      },
+    });
+    const visitRecordUpdateManyMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          visitRecord: {
+            findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
+            updateMany: visitRecordUpdateManyMock,
+          },
+        };
+        return fn(tx);
+      },
+    );
+
+    const db = {} as Parameters<typeof confirmHandoff>[0];
+    await expect(
+      confirmHandoff(db, {
+        orgId: 'org-1',
+        visitRecordId: 'vr-1',
+        confirmedBy: 'user-1',
+        expectedVersion: 2,
+      }),
+    ).rejects.toBeInstanceOf(VisitHandoffInvalidDataError);
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('throws when persisted handoff has no clinical content', async () => {
+    const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      version: 2,
+      structured_soap: {
+        ...baseSoap,
+        handoff: {
+          next_check_items: [],
+          ongoing_monitoring: [],
+          decision_rationale: null,
+          ai_extracted: true,
+          ai_confidence: 0.3,
+          confirmed_by: null,
+          confirmed_at: null,
+          extracted_at: '2026-04-01T00:00:00Z',
+        },
+      },
+    });
+    const visitRecordUpdateManyMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          visitRecord: {
+            findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
+            updateMany: visitRecordUpdateManyMock,
+          },
+        };
+        return fn(tx);
+      },
+    );
+
+    const db = {} as Parameters<typeof confirmHandoff>[0];
+    await expect(
+      confirmHandoff(db, {
+        orgId: 'org-1',
+        visitRecordId: 'vr-1',
+        confirmedBy: 'user-1',
+        expectedVersion: 2,
+      }),
+    ).rejects.toBeInstanceOf(VisitHandoffInvalidDataError);
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('throws when persisted handoff content is blank-only', async () => {
+    const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      version: 2,
+      structured_soap: {
+        ...baseSoap,
+        handoff: {
+          next_check_items: ['   '],
+          ongoing_monitoring: [''],
+          decision_rationale: '  ',
+          ai_extracted: true,
+          ai_confidence: 0.3,
+          confirmed_by: null,
+          confirmed_at: null,
+          extracted_at: '2026-04-01T00:00:00Z',
+        },
+      },
+    });
+    const visitRecordUpdateManyMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          visitRecord: {
+            findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
+            updateMany: visitRecordUpdateManyMock,
+          },
+        };
+        return fn(tx);
+      },
+    );
+
+    const db = {} as Parameters<typeof confirmHandoff>[0];
+    await expect(
+      confirmHandoff(db, {
+        orgId: 'org-1',
+        visitRecordId: 'vr-1',
+        confirmedBy: 'user-1',
+        expectedVersion: 2,
+      }),
+    ).rejects.toBeInstanceOf(VisitHandoffInvalidDataError);
     expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
   });

@@ -19,6 +19,18 @@ export class VisitHandoffStaleRecordError extends Error {
   }
 }
 
+export class VisitHandoffMissingDataError extends Error {
+  constructor(visitRecordId: string) {
+    super(`Visit record ${visitRecordId} has no confirmable handoff data`);
+  }
+}
+
+export class VisitHandoffInvalidDataError extends Error {
+  constructor(visitRecordId: string) {
+    super(`Visit record ${visitRecordId} has malformed handoff data`);
+  }
+}
+
 function readStructuredSoap(value: unknown): Partial<StructuredSoap> {
   return readJsonObject(value) ?? {};
 }
@@ -26,6 +38,61 @@ function readStructuredSoap(value: unknown): Partial<StructuredSoap> {
 function readHandoffData(value: unknown): HandoffData | null {
   const handoff = readJsonObject(value);
   return handoff as HandoffData | null;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string';
+}
+
+function isNullableFiniteNumber(value: unknown): value is number | null {
+  return value === null || (typeof value === 'number' && Number.isFinite(value));
+}
+
+function hasNonBlankString(values: string[]) {
+  return values.some((value) => value.trim().length > 0);
+}
+
+function hasConfirmableHandoffContent(
+  handoff: Pick<HandoffData, 'next_check_items' | 'ongoing_monitoring' | 'decision_rationale'>,
+) {
+  return (
+    hasNonBlankString(handoff.next_check_items) ||
+    hasNonBlankString(handoff.ongoing_monitoring) ||
+    (handoff.decision_rationale?.trim().length ?? 0) > 0
+  );
+}
+
+export function readConfirmableHandoffData(
+  value: unknown,
+): { status: 'missing' } | { status: 'invalid' } | { status: 'valid'; handoff: HandoffData } {
+  if (value === undefined || value === null) return { status: 'missing' };
+
+  const handoff = readJsonObject(value);
+  if (!handoff) return { status: 'invalid' };
+
+  if (
+    !isStringArray(handoff.next_check_items) ||
+    !isStringArray(handoff.ongoing_monitoring) ||
+    !isNullableString(handoff.decision_rationale) ||
+    typeof handoff.ai_extracted !== 'boolean' ||
+    !isNullableFiniteNumber(handoff.ai_confidence) ||
+    !isNullableString(handoff.confirmed_by) ||
+    !isNullableString(handoff.confirmed_at) ||
+    !isNullableString(handoff.extracted_at)
+  ) {
+    return { status: 'invalid' };
+  }
+
+  const typedHandoff = handoff as HandoffData;
+  if (!hasConfirmableHandoffContent(typedHandoff)) {
+    return { status: 'invalid' };
+  }
+
+  return { status: 'valid', handoff: typedHandoff };
 }
 
 export function normalizeStructuredSoapForVisitRecordSave(
@@ -202,6 +269,16 @@ export async function processHandoffExtraction(
     extracted_at: result.extracted_at,
   };
 
+  if (!hasConfirmableHandoffContent(handoff)) {
+    await markHandoffExtractionFailed(_db, {
+      orgId,
+      visitRecordId,
+      expectedVersion: args.expectedVersion,
+      requestContext,
+    });
+    throw new VisitHandoffInvalidDataError(visitRecordId);
+  }
+
   try {
     await withOrgContext(
       orgId,
@@ -294,11 +371,16 @@ export async function confirmHandoff(
       }
 
       const currentSoap = readStructuredSoap(record.structured_soap);
-      const currentHandoff = readHandoffData(currentSoap.handoff);
+      const currentHandoffResult = readConfirmableHandoffData(currentSoap.handoff);
 
-      if (!currentHandoff) {
-        throw new Error(`No handoff found for visit record ${visitRecordId}`);
+      if (currentHandoffResult.status === 'missing') {
+        throw new VisitHandoffMissingDataError(visitRecordId);
       }
+      if (currentHandoffResult.status === 'invalid') {
+        throw new VisitHandoffInvalidDataError(visitRecordId);
+      }
+
+      const currentHandoff = currentHandoffResult.handoff;
 
       confirmed = {
         ...currentHandoff,
@@ -314,6 +396,10 @@ export async function confirmHandoff(
         confirmed_by: confirmedBy,
         confirmed_at: new Date().toISOString(),
       };
+
+      if (!hasConfirmableHandoffContent(confirmed)) {
+        throw new VisitHandoffInvalidDataError(visitRecordId);
+      }
 
       const updated = {
         ...currentSoap,

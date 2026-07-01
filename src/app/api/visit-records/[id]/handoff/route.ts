@@ -18,6 +18,9 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import {
   confirmHandoff,
+  readConfirmableHandoffData,
+  VisitHandoffInvalidDataError,
+  VisitHandoffMissingDataError,
   VisitHandoffStaleRecordError,
   VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE,
 } from '@/server/services/visit-handoff';
@@ -103,9 +106,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     });
     return withSensitiveNoStore(success(handoff));
   } catch (cause) {
-    if (cause instanceof Error && cause.message.includes('No handoff found')) {
+    if (cause instanceof VisitHandoffMissingDataError) {
       return withSensitiveNoStore(
         notFound('引継ぎデータが見つかりません。AI抽出が完了していない可能性があります'),
+      );
+    }
+    if (cause instanceof VisitHandoffInvalidDataError) {
+      return withSensitiveNoStore(
+        conflict('引継ぎデータの形式が不正です。AI抽出を再実行してから確定してください'),
       );
     }
     if (cause instanceof VisitHandoffStaleRecordError) {
@@ -158,7 +166,13 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     !Array.isArray(record.structured_soap)
       ? (record.structured_soap as StructuredSoap)
       : null;
-  const handoff = structuredSoap?.handoff ?? null;
+  const handoffResult = readConfirmableHandoffData(structuredSoap?.handoff);
+  if (handoffResult.status === 'invalid') {
+    return withSensitiveNoStore(
+      conflict('引継ぎデータの形式が不正です。AI抽出を再実行してから確定してください'),
+    );
+  }
+  const handoff = handoffResult.status === 'valid' ? handoffResult.handoff : null;
   const extraction = handoffExtraction
     ? {
         status: handoffExtraction.status,
