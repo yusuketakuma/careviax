@@ -28,9 +28,33 @@ type SafeLogContext = {
   requestId?: SafeLogValue;
   externalProvider?: SafeLogValue;
 };
+type SafeLogContextKey = Exclude<keyof SafeLogContext, 'event'>;
 
 const SAFE_EVENT_PATTERN = /^[a-z][a-z0-9_.-]{1,127}$/;
 const SAFE_STRING_PATTERN = /^[A-Za-z0-9_.:/@-]{1,160}$/;
+const SAFE_ERROR_NAME_PATTERN = /^(?:Error|[A-Z][A-Za-z0-9]{0,80}(?:Error|Exception))$/;
+const SAFE_LOG_CONTEXT_KEYS: readonly SafeLogContextKey[] = [
+  'orgId',
+  'actorId',
+  'userId',
+  'entityType',
+  'entityId',
+  'targetId',
+  'code',
+  'route',
+  'method',
+  'status',
+  'operation',
+  'jobType',
+  'filePurpose',
+  'runtime',
+  'phase',
+  'attempt',
+  'count',
+  'durationMs',
+  'requestId',
+  'externalProvider',
+];
 
 function normalizeSafeString(value: string): string {
   const trimmed = value.trim();
@@ -40,24 +64,34 @@ function normalizeSafeString(value: string): string {
   return 'redacted';
 }
 
-function normalizeSafeValue(value: SafeLogValue): string | number | boolean | null | undefined {
+function normalizeSafeEvent(value: unknown): string {
+  if (typeof value !== 'string') {
+    return 'invalid_event_name';
+  }
+  return SAFE_EVENT_PATTERN.test(value) ? value : 'invalid_event_name';
+}
+
+function normalizeSafeValue(value: unknown): string | number | boolean | null | undefined {
   if (value === undefined || value === null || typeof value === 'boolean') {
     return value;
   }
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : undefined;
   }
-  return normalizeSafeString(value);
+  if (typeof value === 'string') {
+    return normalizeSafeString(value);
+  }
+  return 'redacted';
 }
 
 export function buildSafeLogContext(ctx: SafeLogContext): LogContext {
+  const rawContext = ctx as Record<string, unknown>;
   const normalized: LogContext = {
-    event: SAFE_EVENT_PATTERN.test(ctx.event) ? ctx.event : 'invalid_event_name',
+    event: normalizeSafeEvent(rawContext.event),
   };
 
-  for (const [key, value] of Object.entries(ctx)) {
-    if (key === 'event') continue;
-    const safeValue = normalizeSafeValue(value as SafeLogValue);
+  for (const key of SAFE_LOG_CONTEXT_KEYS) {
+    const safeValue = normalizeSafeValue(rawContext[key]);
     if (safeValue !== undefined) {
       normalized[key] = safeValue;
     }
@@ -66,9 +100,21 @@ export function buildSafeLogContext(ctx: SafeLogContext): LogContext {
   return normalized;
 }
 
+function normalizeErrorName(error: Error): string {
+  const name = error.name || 'Error';
+  const constructorName = error.constructor?.name;
+  if (name !== constructorName) {
+    return 'Error';
+  }
+  if (!SAFE_ERROR_NAME_PATTERN.test(name)) {
+    return 'Error';
+  }
+  return name;
+}
+
 function buildSafeErrorMeta(error: unknown): LogContext {
   if (error instanceof Error) {
-    return { error_name: normalizeSafeString(error.name || 'Error') };
+    return { error_name: normalizeErrorName(error) };
   }
   if (error === undefined) {
     return {};
