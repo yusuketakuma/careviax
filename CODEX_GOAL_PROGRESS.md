@@ -30405,3 +30405,32 @@ Next loop:
 - Remaining:
   - The broad repository refactor objective remains open.
   - Next implementation work should start from `REFACTOR_EXECUTION_PLAN.md` safe candidates, with P0 areas staying proposal-only unless explicitly approved.
+
+### Nav Badge API Path And Header Helper - 2026-07-01 11:33 JST
+
+- Scope:
+  - First implementation slice after Phase 0.
+  - Focused on `useNavBadges` client path/header helper convergence without changing route/service semantics.
+- Fixed:
+  - Added `src/lib/nav-badges/api-paths.ts` and a regression test for the canonical `/api/nav-badges` path.
+  - Updated `useNavBadges` to call `buildNavBadgesApiPath()` and `buildOrgHeaders(orgId)` instead of raw path/header literals.
+  - Added tests for empty-org disabled fetch behavior, non-OK response-body non-reading/no console logging, and rejected-fetch no retry.
+  - Created `REFACTOR_REPORT.md` as the running report required by the refactor objective.
+- Safety:
+  - Reduces path/header drift and tenant-header regression risk in the sidebar operational badge fetch.
+  - Keeps query key, 60s refetch cadence, `retry: false`, payload shape, sidebar badge keys, route/service logic, auth/RLS behavior, audit behavior, migrations, external sends, production config, push/deploy, secret handling, and destructive-operation boundaries unchanged.
+- Performance:
+  - No new request, polling, DB query, dependency, background job, or render fan-out.
+  - Existing server-side badge aggregation and DB count behavior are preserved.
+- Validation:
+  - `pnpm exec vitest run src/components/layout/use-nav-badges.test.ts src/lib/nav-badges/api-paths.test.ts src/lib/api/org-headers.test.ts src/components/layout/sidebar.test.tsx src/app/api/nav-badges/route.test.ts src/server/services/nav-badges.test.ts --reporter=dot --testTimeout=60000`: passed, `6` files / `41` tests.
+  - Scoped Prettier check: passed.
+  - Scoped ESLint: passed after naming the test wrapper.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed after correcting the test `Response` mock cast.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- Remaining:
+  - The broad repository refactor objective remains open.
+  - `/api/nav-badges` no-store route assertion/hardening is a separate API privacy candidate and was intentionally not mixed into this helper-only slice.

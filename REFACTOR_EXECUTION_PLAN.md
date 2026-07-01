@@ -47,6 +47,28 @@ If any of those are needed, create a proposal first. Do not implement silently.
   - document-delivery-rule helper/no-store hardening
   - unused admin `MasterEditorView` stub removal
   - `/admin/metrics` placeholder zero removal
+  - nav badge API path/header helper convergence
+
+## Completed Slices
+
+### 2026-07-01 11:33 JST: Nav Badge API Path And Header Helper
+
+- Completed safe candidate: `Nav badge path helper only`.
+- Files changed:
+  - `src/components/layout/use-nav-badges.ts`
+  - `src/components/layout/use-nav-badges.test.ts`
+  - `src/lib/nav-badges/api-paths.ts`
+  - `src/lib/nav-badges/api-paths.test.ts`
+- Validation:
+  - focused nav badge/sidebar/API/service suite passed `6` files / `41` tests
+  - full typecheck passed
+  - no-unused typecheck passed
+  - full lint passed
+  - full format check passed
+  - diff whitespace check passed
+- Remaining follow-up:
+  - `/api/nav-badges` no-store route assertion/hardening is a separate API
+    privacy candidate, not part of the helper-only slice.
 
 ## Execution Order
 
