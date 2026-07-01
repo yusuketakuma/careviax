@@ -9,8 +9,20 @@ import { DocumentTemplateContent } from './template-content';
 
 setupDomTestEnv();
 
+const buildOrgHeadersMock = vi.hoisted(() =>
+  vi.fn((orgId: string) => ({ 'x-test-org-id': orgId })),
+);
+const buildOrgJsonHeadersMock = vi.hoisted(() =>
+  vi.fn((orgId: string) => ({ 'Content-Type': 'application/json', 'x-test-json-org-id': orgId })),
+);
+
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
+}));
+
+vi.mock('@/lib/api/org-headers', () => ({
+  buildOrgHeaders: buildOrgHeadersMock,
+  buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
 
 vi.mock('sonner', () => ({
@@ -143,9 +155,10 @@ describe('DocumentTemplateContent', () => {
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
         '/api/templates/template_1',
-        expect.objectContaining({ method: 'DELETE', headers: { 'x-org-id': 'org_1' } }),
+        expect.objectContaining({ method: 'DELETE', headers: { 'x-test-org-id': 'org_1' } }),
       );
     });
+    expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
   });
 
   it('surfaces hidden document template counts from the bounded template list', async () => {
@@ -220,8 +233,9 @@ describe('DocumentTemplateContent', () => {
     expect(mutationCalls.map(([, init]) => init.method)).toEqual(['PATCH']);
     expect(mutationCalls[0][1].headers).toEqual({
       'Content-Type': 'application/json',
-      'x-org-id': 'org_1',
+      'x-test-json-org-id': 'org_1',
     });
+    expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
     expect(JSON.parse(String(mutationCalls[0][1].body))).toMatchObject({
       name: '主治医報告 基本',
       template_type: 'care_report',
@@ -262,6 +276,37 @@ describe('DocumentTemplateContent', () => {
     await waitFor(() => {
       expect(templatesCalls).toBeGreaterThan(callsBeforeRetry);
     });
+  });
+
+  it('uses shared collection paths and org headers for template reads', async () => {
+    renderContent();
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith('/api/templates', {
+        headers: { 'x-test-org-id': 'org_1' },
+      });
+    });
+    expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
+  });
+
+  it('creates templates through the shared collection path and JSON org headers', async () => {
+    renderContent();
+
+    fireEvent.change(await screen.findByLabelText('テンプレート名'), {
+      target: { value: '新規テンプレート' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/templates',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-test-json-org-id': 'org_1' },
+        }),
+      );
+    });
+    expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
   });
 
   it('names the edit action and loads the selected template into the form', async () => {

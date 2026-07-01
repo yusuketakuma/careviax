@@ -27,7 +27,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
-import { buildDocumentTemplateApiPath } from '@/lib/document-templates/api-paths';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import {
+  DOCUMENT_TEMPLATES_API_PATH,
+  buildDocumentTemplateApiPath,
+  buildDocumentTemplatesApiPath,
+} from '@/lib/document-templates/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { DocumentDeliveryRuleManager } from './document-delivery-rule-manager';
 import { PageScaffold } from '@/components/layout/page-scaffold';
@@ -159,9 +164,8 @@ export function DocumentTemplateContent() {
         params.set('template_type', filterType);
       }
 
-      const suffix = params.toString();
-      const res = await fetch(`/api/templates${suffix ? `?${suffix}` : ''}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildDocumentTemplatesApiPath(params), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('文書テンプレートの取得に失敗しました');
       return res.json() as Promise<DocumentTemplatesResponse>;
@@ -200,15 +204,12 @@ export function DocumentTemplateContent() {
       };
       const url = editingTemplateId
         ? buildDocumentTemplateApiPath(editingTemplateId)
-        : '/api/templates';
+        : DOCUMENT_TEMPLATES_API_PATH;
       const method = editingTemplateId ? 'PATCH' : 'POST';
 
       const res = await fetch(url, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
@@ -233,7 +234,7 @@ export function DocumentTemplateContent() {
     mutationFn: async (templateId: string) => {
       const res = await fetch(buildDocumentTemplateApiPath(templateId), {
         method: 'DELETE',
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
