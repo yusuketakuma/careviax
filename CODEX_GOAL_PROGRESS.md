@@ -30,6 +30,44 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Visit Handoff Confirmation Typed Error - 2026-07-01 08:40 JST
+
+- Scope:
+  - Continued visit-time and multi-professional handoff hardening for `PUT /api/visit-records/[id]/handoff`.
+  - Focused on the confirmation response boundary when no extracted handoff exists yet, and on failing closed when persisted handoff JSON is malformed.
+- Fixed:
+  - Added typed `VisitHandoffMissingDataError` in `src/server/services/visit-handoff.ts`.
+  - Added typed `VisitHandoffInvalidDataError` and confirmation-time persisted-handoff shape validation.
+  - `confirmHandoff()` now throws the typed missing-data error instead of a generic `Error` with message text.
+  - `confirmHandoff()` now rejects non-object, empty, or structurally invalid persisted handoff data before any visit-record update or `handoff_confirmation` task resolution.
+  - `confirmHandoff()` also rejects structurally valid but clinically empty handoff envelopes such as empty arrays, blank-only strings, and blank/null rationale.
+  - `confirmHandoff()` revalidates the final handoff after confirmation edits so staff cannot blank out all clinical content and still close the confirmation task.
+  - `processHandoffExtraction()` now marks clinically empty extraction output as retryable failed without touching the VisitRecord or enqueueing a confirmation task.
+  - `GET /api/visit-records/[id]/handoff` now uses the same confirmable handoff validator and returns a sanitized conflict instead of normal 200 data for malformed or clinically empty persisted handoff JSON.
+  - The route now maps only `VisitHandoffMissingDataError` to the fixed 404 "AI extraction may not be complete" response.
+  - The route maps `VisitHandoffInvalidDataError` to a sanitized 409 asking staff to rerun AI extraction before confirmation.
+  - Raw unexpected errors whose message happens to contain `No handoff found` now remain fixed 500 responses and do not leak patient/token text.
+  - Service and route tests lock typed missing-data behavior, malformed persisted handoff behavior, and raw-message non-classification.
+- Safety:
+  - Reduces false 404 classification and raw-error trust risk on a visit-record handoff confirmation path.
+  - Reduces missed-follow-up and false-normal display risk by preventing malformed, clinically empty, or edit-blanked handoff data from being shown as normal handoff data, marked confirmed, saved as a normal extraction, or closing/enqueueing the confirmation operational task.
+  - Preserves existing canVisit permission, assignment access checks, expected visit-record version conflict handling, no-store wrappers, operational-task resolution, live DB data, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Adds constant-time in-memory persisted handoff shape/content checks during extraction, read, and confirmation only.
+  - No query, dependency, polling, background job, broad scan, render path, or unbounded loop changed.
+- Validation:
+  - `pnpm exec vitest run src/server/services/visit-handoff.test.ts src/app/api/visit-records/'[id]'/handoff/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `43` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check on visit handoff files: passed.
+  - Medical safety subagent review finding on malformed handoff confirmation was fixed in this slice.
+  - `pnpm typecheck --pretty false`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Broad visit-time, report, and multi-professional cooperation objective remains open.
+  - Concurrent dirty `contact-profiles` files are outside this slice and were preserved.
+
 ### Report Resend Deep Link - 2026-07-01 08:24 JST
 
 - Scope:
