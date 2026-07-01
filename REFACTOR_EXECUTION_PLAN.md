@@ -67,8 +67,32 @@ If any of those are needed, create a proposal first. Do not implement silently.
     structured logger overload, with POST upsert failure coverage
   - pharmacist-shifts bulk POST added to the shared protected POST
     auth/body/no-store matrix
+  - notification route-local logger sanitizer converged on the shared safe
+    structured logger overload, with GET/PATCH sanitized failure coverage
 
 ## Completed Slices
+
+### 2026-07-01 13:47 JST: Notifications Structured Logger Convergence
+
+- Completed observability/privacy refactor follow-up:
+  `Notifications Structured Logger Convergence`.
+- Files changed:
+  - `src/app/api/notifications/route.ts`
+  - `src/app/api/notifications/route.test.ts`
+- Validation:
+  - focused logger + notifications route suite passed `2` files / `17` tests
+  - scoped Prettier check passed after formatting the route file
+  - scoped ESLint passed
+  - scoped diff whitespace check passed
+  - full typecheck passed
+  - no-unused typecheck passed
+  - full lint passed
+  - full format check passed
+  - full diff whitespace check passed
+  - production build passed
+- Remaining follow-up:
+  - Continue with small, tested route-local logger convergence or route-matrix
+    candidates.
 
 ### 2026-07-01 13:39 JST: Pharmacist Shift Bulk Protected POST Matrix
 

@@ -30,6 +30,50 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Notifications Structured Logger Convergence - 2026-07-01 13:47 JST
+
+- Scope:
+  - Continued safe structured logger convergence on notification routes.
+  - Focused only on `/api/notifications` GET/PATCH unexpected-error logs.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string overload calls with
+    `logger.error({ event, route, method, status }, err)` for GET and PATCH
+    unexpected-error catch blocks.
+  - Updated sanitized 500 route tests to assert minimal route-supplied context
+    and to delegate raw `Error` redaction to the shared logger contract tests.
+- Safety:
+  - Preserved response bodies/statuses, no-store wrapping, auth gates, admin
+    cross-user read guard, PATCH validation, notification filters, RLS
+    request-context options, and update predicates.
+  - Privacy review's route-test concern was addressed by avoiding full mock-call
+    serialization after the raw `Error` became the intentional second argument.
+  - The event-name normalization concern was cross-checked against the shared
+    logger underscore-event contract, and the focused logger suite passed.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/notifications/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `17` tests.
+  - Scoped Prettier check, scoped ESLint, and scoped diff-check on changed
+    route/test files: passed after formatting the route file.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Continue only with small, tested logger convergence candidates; do not add
+    notification payloads, request bodies, notification IDs, user IDs, org IDs,
+    or raw error metadata to route log context without separate privacy review.
+  - Browser smoke was not run because this slice changes server logging behavior
+    and tests only, with no visible DOM layout, copy, or interaction-state
+    change.
+
 ### Pharmacist Shift Bulk Protected POST Matrix - 2026-07-01 13:39 JST
 
 - Scope:

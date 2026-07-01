@@ -15,6 +15,70 @@ validation output.
   - `REFACTOR_RISK_MAP.md`
   - `REFACTOR_EXECUTION_PLAN.md`
 
+## Slice: Notifications Structured Logger Convergence
+
+- Timestamp: 2026-07-01 13:47 JST
+- Purpose:
+  - Route notification GET/PATCH unexpected-error logs through the shared
+    PHI-safe structured logger overload.
+  - Remove route-local `safeErrorName()` duplication now that shared logger owns
+    safe error-name normalization.
+  - Preserve notification response, no-store, auth, RLS request-context, and DB
+    update behavior.
+- Changed files:
+  - `src/app/api/notifications/route.ts`
+  - `src/app/api/notifications/route.test.ts`
+- Change reason:
+  - The notification route still used the string logger overload with local
+    `SAFE_ERROR_NAMES` and `safeErrorName()` despite existing shared logger
+    runtime allowlisting and raw `Error` redaction.
+- Deleted code:
+  - Removed the route-local `SAFE_ERROR_NAMES` set and `safeErrorName()` helper.
+- Commonized processing:
+  - GET and PATCH unexpected-error paths now call
+    `logger.error({ event, route, method, status }, err)`.
+  - Route tests assert only minimal operational context is supplied by the route
+    while the raw `Error` is delegated to the shared logger contract tests.
+- Safety:
+  - API response bodies/statuses, no-store wrapping, auth gates, admin
+    cross-user read guard, PATCH validation, notification read filters, RLS
+    request-context options, and `updateMany` predicates were unchanged.
+  - Privacy review's route-test concern was handled by switching assertions to
+    the structured overload and checking that route-supplied context omits body,
+    ids, notification, user, and raw error fields.
+  - The event-name normalization concern was cross-checked against the existing
+    shared logger underscore-event contract; the focused logger suite passed.
+- Performance:
+  - Removes a small duplicated helper and changes logging call shape only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/notifications/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `17` tests.
+  - `pnpm exec prettier --check src/app/api/notifications/route.ts src/app/api/notifications/route.test.ts`: passed after formatting the route file.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/notifications/route.ts src/app/api/notifications/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/notifications/route.ts src/app/api/notifications/route.test.ts`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Known risks:
+  - Route tests mock the logger and therefore intentionally prove route
+    delegation/context only; emitted console/Sentry redaction remains the shared
+    logger test's responsibility.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS policies, auth/authz semantics, notification
+    response DTO contracts, notification read/update business rules, audit
+    semantics, external sends, production config, secrets, deployment, and
+    dependency versions.
+- Next improvements:
+  - Continue small, tested route-local logger convergence only where existing
+    tests can prove responses and mutations remain unchanged.
+- PR split:
+  - Commit this route logger/test slice independently.
+  - Commit report/progress updates separately.
+
 ## Slice: Pharmacist Shift Bulk Protected POST Matrix
 
 - Timestamp: 2026-07-01 13:39 JST
