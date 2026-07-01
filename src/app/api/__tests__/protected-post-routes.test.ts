@@ -58,6 +58,7 @@ import { POST as visitRecordsPost } from '../visit-records/route';
 import { POST as prescriptionIntakesPost } from '../prescription-intakes/route';
 import { POST as prescriptionIntakesFacilityBatchPost } from '../prescription-intakes/facility-batch/route';
 import { POST as pharmacistShiftsPost } from '../pharmacist-shifts/route';
+import { POST as pharmacistShiftsBulkPost } from '../pharmacist-shifts/bulk/route';
 import { POST as setPlansPost } from '../set-plans/route';
 import { POST as setPlanGenerateBatchesPost } from '../set-plans/[id]/generate-batches/route';
 import { POST as setBatchesPost } from '../set-batches/route';
@@ -176,6 +177,10 @@ const routes: RouteEntry[] = [
   {
     name: 'pharmacist-shifts POST',
     handler: (req) => pharmacistShiftsPost(req, emptyRouteContext),
+  },
+  {
+    name: 'pharmacist-shifts/bulk POST',
+    handler: (req) => pharmacistShiftsBulkPost(req, emptyRouteContext),
   },
   { name: 'set-plans POST', handler: (req) => setPlansPost(req) },
   {
@@ -296,6 +301,7 @@ describe('protected POST routes auth/body matrix', () => {
         route.name === 'tasks POST' ||
         route.name === 'pharmacists POST' ||
         route.name === 'pharmacist-shifts POST' ||
+        route.name === 'pharmacist-shifts/bulk POST' ||
         route.name === 'residual-medications POST' ||
         route.name === 'visit-records POST' ||
         route.name === 'set-plans POST' ||
@@ -340,6 +346,7 @@ describe('protected POST routes auth/body matrix', () => {
         route.name === 'tasks POST' ||
         route.name === 'pharmacists POST' ||
         route.name === 'pharmacist-shifts POST' ||
+        route.name === 'pharmacist-shifts/bulk POST' ||
         route.name === 'residual-medications POST' ||
         route.name === 'visit-records POST' ||
         route.name === 'set-plans POST' ||
@@ -386,6 +393,7 @@ describe('protected POST routes auth/body matrix', () => {
         route.name === 'tasks POST' ||
         route.name === 'pharmacists POST' ||
         route.name === 'pharmacist-shifts POST' ||
+        route.name === 'pharmacist-shifts/bulk POST' ||
         route.name === 'residual-medications POST' ||
         route.name === 'visit-records POST' ||
         route.name === 'set-plans POST' ||
