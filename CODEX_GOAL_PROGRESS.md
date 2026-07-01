@@ -30381,3 +30381,27 @@ Next loop:
 - Remaining:
   - Broad master/report/document-delivery objective remains open.
   - `/admin/performance` still uses "サンプル" in the measurement-sample sense; wording could be clarified separately, but it is not fabricated demo data.
+
+### Refactor Phase 0 Inventory And Plan - 2026-07-01 11:22 JST
+
+- Scope:
+  - Returned to the original broad behavior-preserving refactor objective and filled the missing Phase 0 deliverables before selecting more implementation slices.
+  - Focused on repository inventory, risk classification, and execution sequencing rather than production behavior changes.
+- Fixed:
+  - Added `REFACTOR_REPOSITORY_INVENTORY.md` as the live repository baseline for stack, directories, entrypoints, commands, CI gates, environment-variable names, external services, domain surfaces, and refactor candidates.
+  - Added `REFACTOR_RISK_MAP.md` to classify P0/P1/P2/P3 work and keep auth/authz/tenant/RLS, DB/migration/RLS/audit, PHI/file/report sharing, medical-safety, billing, external-send, and date/database semantics proposal-only by default.
+  - Added `REFACTOR_EXECUTION_PLAN.md` with the standard change unit, validation matrix, first 10 safe candidates, rollback expectations, commit/PR split, and required specialist subagent routing.
+- Safety:
+  - Reduces broad-refactor drift risk by making the proposal-only boundaries explicit before additional implementation.
+  - No secret values, PHI, live DB data, migrations, auth/RLS behavior, external sends, push/deploy, or destructive operations were touched.
+- Performance:
+  - No runtime behavior changed.
+  - The plan preserves bounded refactor slices and highlights where false-empty/truncation fixes, aggregate counts, async jobs, offline/realtime, and large-module extraction need focused validation.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+- Remaining:
+  - The broad repository refactor objective remains open.
+  - Next implementation work should start from `REFACTOR_EXECUTION_PLAN.md` safe candidates, with P0 areas staying proposal-only unless explicitly approved.
