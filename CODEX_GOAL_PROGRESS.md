@@ -30294,3 +30294,32 @@ Next loop:
 - Remaining:
   - Broad visit/report/collaboration objective remains open.
   - Current dirty `src/app/api/admin/uat-feedback/*` files are owned by `codex` and preserved outside this report UI slice.
+
+### Document Delivery Rule API No-Store Boundary - 2026-07-01 10:39 JST
+
+- Scope:
+  - Continued document-template/delivery-rule administration hardening.
+  - Focused on `/api/document-delivery-rules` collection and item mutation endpoints.
+- Fixed:
+  - Added sensitive no-store headers to document delivery rule GET/POST/PATCH/DELETE success responses.
+  - Added sensitive no-store headers to auth failures, validation failures, and not-found responses.
+  - Converted unexpected DB/RLS throws to fixed no-store `INTERNAL_ERROR` envelopes instead of framework-default 500 behavior.
+  - Added tests for success, validation, auth-failure, not-found, and thrown-error response paths.
+- Safety:
+  - Reduces cache leakage risk for operational document routing-rule data.
+  - Prevents raw thrown error messages from reaching API clients on document-delivery-rules failures.
+  - Preserves existing canAdmin permission, org/RLS scope, payload validation, success response shape, migrations, external sends, push/deploy, secret handling, and destructive-operation boundaries.
+- Performance:
+  - Header setting and catch/log handling only.
+  - No new DB query, dependency, external call, polling, background job, broad scan, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/document-delivery-rules/route.test.ts 'src/app/api/document-delivery-rules/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `2` files / `24` tests.
+  - `pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - Verifier reran the same focused Vitest and cheap gates and reported PASS.
+- Remaining:
+  - Broad master/report/document-delivery objective remains open.
+  - Broader audit parity for document-template and delivery-rule admin mutations remains a follow-up if later review finds additional gaps.
