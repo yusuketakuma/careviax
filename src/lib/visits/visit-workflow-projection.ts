@@ -162,6 +162,7 @@ export function buildPostVisitWorkflowActions(args: {
   billingCandidateCount?: number;
   billingCandidatesLoading?: boolean;
   billingCandidatesError?: boolean;
+  billingBlockersUnknown?: boolean;
   billingMonth?: string | null;
   careTeamContactCount: number;
   hasNextVisitSuggestion: boolean;
@@ -182,6 +183,11 @@ export function buildPostVisitWorkflowActions(args: {
   // (報告書/請求候補の新規生成)を露出しない。安全な確認導線へ切り替え、上部の再読み込みに誘導する。
   const reportsError = args.reportsError === true;
   const billingError = args.billingCandidatesError === true;
+  // 請求根拠(billing_blockers)が訪問準備の取得失敗で不確定な場合、billingBlockerCount は
+  // 0 に化けて「算定を止める理由なし」に見えてしまう。候補取得失敗(billingError)と同様に
+  // needs_review へ降格し、generate 系の破壊的アクションは出さない(非破壊の確認導線のみ)。
+  const billingBlockersUnknown = args.billingBlockersUnknown === true;
+  const billingUncertain = billingError || billingBlockersUnknown;
   const conferenceActionCount = conferenceNotes.reduce(
     (count, note) => count + (note.action_items?.length ?? 0),
     0,
@@ -317,18 +323,20 @@ export function buildPostVisitWorkflowActions(args: {
       description:
         args.billingBlockerCount > 0
           ? '算定を止めている理由を先に閉じると候補レビューの差戻しを減らせます。'
-          : billingError
-            ? '請求候補の取得に失敗しました。候補件数が不確定のため、生成はせず月次レビュー画面で実際の候補を確認してください。'
-            : billingCandidatesLoading
-              ? 'この患者の請求候補を確認しています。読み込み完了後に月次レビューへ進めます。'
-              : billingCandidateCount > 0
-                ? 'この患者の請求候補を月次レビュー画面で確認します。確定・除外は月次画面で行います。'
-                : '算定を止めている理由は目立っていません。候補生成後に月次締めへ進めます。',
+          : billingBlockersUnknown
+            ? '訪問準備情報の取得に失敗し、算定を止める理由（請求根拠）の有無が未確定です。生成はせず月次レビュー画面で実際の候補と根拠を確認してください。'
+            : billingError
+              ? '請求候補の取得に失敗しました。候補件数が不確定のため、生成はせず月次レビュー画面で実際の候補を確認してください。'
+              : billingCandidatesLoading
+                ? 'この患者の請求候補を確認しています。読み込み完了後に月次レビューへ進めます。'
+                : billingCandidateCount > 0
+                  ? 'この患者の請求候補を月次レビュー画面で確認します。確定・除外は月次画面で行います。'
+                  : '算定を止めている理由は目立っていません。候補生成後に月次締めへ進めます。',
       priority: args.billingBlockerCount > 0 ? 'high' : 'normal',
       status:
         args.billingBlockerCount > 0
           ? 'blocked'
-          : billingError
+          : billingUncertain
             ? 'needs_review'
             : billingCandidatesLoading
               ? 'waiting'
@@ -342,7 +350,7 @@ export function buildPostVisitWorkflowActions(args: {
               label: firstBillingBlocker?.action_label ?? '止まっている理由を確認',
               href: firstBillingBlocker?.action_href ?? visitRecordHref,
             }
-          : billingError
+          : billingUncertain
             ? {
                 operation: 'open_billing_candidates',
                 label: '請求候補を確認',
@@ -374,6 +382,13 @@ export function buildPostVisitWorkflowActions(args: {
               tone: 'warning',
             }
           : null,
+        billingBlockersUnknown
+          ? {
+              label: '請求根拠',
+              value: '取得失敗',
+              tone: 'warning',
+            }
+          : null,
         !billingError && billingCandidatesLoading
           ? {
               label: '候補',
@@ -396,7 +411,7 @@ export function buildPostVisitWorkflowActions(args: {
       action_label:
         args.billingBlockerCount > 0
           ? (firstBillingBlocker?.action_label ?? '止まっている理由を確認')
-          : billingError
+          : billingUncertain
             ? '請求候補を確認'
             : billingCandidatesLoading
               ? '請求候補を確認中'
@@ -406,11 +421,13 @@ export function buildPostVisitWorkflowActions(args: {
       evidence:
         args.billingBlockerCount > 0
           ? [`止まっている理由 ${args.billingBlockerCount}件`]
-          : billingError
-            ? ['請求候補の取得に失敗（件数は不確定）']
-            : billingCandidatesLoading
-              ? ['請求候補を読み込み中']
-              : ['2026要件を候補生成へ連携'],
+          : billingBlockersUnknown
+            ? ['訪問準備の取得に失敗（請求根拠は不確定）']
+            : billingError
+              ? ['請求候補の取得に失敗（件数は不確定）']
+              : billingCandidatesLoading
+                ? ['請求候補を読み込み中']
+                : ['2026要件を候補生成へ連携'],
     },
     {
       key: 'next_visit',

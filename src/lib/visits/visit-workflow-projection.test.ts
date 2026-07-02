@@ -143,6 +143,31 @@ describe('visit-workflow-projection', () => {
     });
   });
 
+  it('degrades billing review to needs_review without a generate affordance when billing blockers are unknown', () => {
+    // 訪問準備の取得失敗で billingBlockerCount が 0 に化けても、算定レビューを ready にしない(CE02b)。
+    const actions = buildPostVisitWorkflowActions({
+      recordId: 'record_1',
+      scheduleId: 'schedule_1',
+      patientId: 'patient_1',
+      soapComplete: true,
+      collaborationMentioned: false,
+      medicationManagementComplete: false,
+      billingBlockerCount: 0,
+      billingBlockersUnknown: true,
+      billingCandidateCount: 0,
+      billingMonth: '2026-04-01',
+      careTeamContactCount: 0,
+      hasNextVisitSuggestion: false,
+    });
+
+    const billingReview = actions.find((action) => action.key === 'billing_review');
+    expect(billingReview?.status).toBe('needs_review');
+    // 破壊的な候補生成は出さず、非破壊の確認導線のみ(件数が不確定のため)。
+    expect(billingReview?.primary_action?.operation).toBe('open_billing_candidates');
+    expect(billingReview?.primary_action?.operation).not.toBe('generate_billing_candidates');
+    expect(billingReview?.evidence).toContain('訪問準備の取得に失敗（請求根拠は不確定）');
+  });
+
   it('encodes dynamic path segments while keeping query identities raw', () => {
     const scheduleId = '../schedule?x=1#frag';
     const reportId = 'report/../x?download=1#frag';

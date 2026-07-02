@@ -704,6 +704,9 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     missingMedicationManagementLabels: missingHomeVisit2026Items.map((item) => item.label),
     billingBlockerCount: visitPreparationPack?.billing_blockers.length ?? 0,
     billingBlockers: visitPreparationPack?.billing_blockers ?? [],
+    // 訪問準備の取得失敗時は billingBlockerCount が 0 に化けるため、算定レビューを
+    // needs_review へ降格させて破壊的な候補生成導線を出さない(CE02b)。
+    billingBlockersUnknown: visitPreparationError,
     billingCandidateCount: billingCandidates.length,
     billingCandidatesLoading,
     billingCandidatesError,
