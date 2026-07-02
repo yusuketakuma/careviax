@@ -36160,3 +36160,106 @@ Next loop:
     finding was fixed; test architect found no blocker.
 - Memory:
   - `projects/careviax/failures/2026-07-02/my-day-task-triage-admin-status-cache`
+
+## FEUX-1 Analytics Loading Aria Drift - 2026-07-02 16:57 JST
+
+- Scope:
+  - `.agent-loop/FEATURE_QUEUE.md` FEUX-1 first slice.
+  - `src/app/(dashboard)/admin/analytics/analytics-content.tsx`
+  - `src/app/(dashboard)/admin/analytics/analytics-content.test.tsx`
+- Status:
+  - Implemented, validated, committed, and sent for agmsg review.
+  - Commit: `11b431e9` (`fix(admin): announce analytics loading skeletons`).
+- Fixed:
+  - Replaced the admin analytics screen's five bare visual loading skeletons
+    with the shared `Skeleton` primitive.
+  - Added named `role="status"` loading regions for the KPI strip, blocker
+    reasons, top billing codes, area summary, and site response list.
+  - Kept `MetricCard` skeletons decorative so loading announcements happen at
+    region level rather than once per card.
+  - Extended the pending-query test to prevent false-empty and false-zero copy
+    during loading.
+  - Added a regression test that all pulse skeleton shapes are `aria-hidden`.
+- Safety:
+  - Improves loading/error/empty separation for assistive technology on the
+    admin analytics workbench.
+  - No auth, RLS, tenant boundary, PHI logging/export, billing, migration,
+    production config, push/deploy, external send, or destructive operation
+    behavior changed.
+- Performance:
+  - No performance optimization is claimed.
+  - Existing query and layout shape are preserved.
+- Validation:
+  - Focused analytics/loading suite passed `2` files / `13` tests.
+  - Scoped Prettier, scoped ESLint, and scoped diff-check passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm build`: passed.
+  - `pnpm format:check`: failed only on pre-existing unrelated
+    `.agent-loop/FEATURE_QUEUE.md`; touched analytics files passed scoped
+    Prettier.
+  - Verifier independently reran focused Vitest, scoped ESLint, scoped
+    Prettier, and scoped diff-check successfully.
+- Review:
+  - Code mapper recommended analytics-only as the safest first FEUX-1 slice.
+  - Accessibility reviewer approved the plan and recommended named
+    region-level loading statuses.
+  - Verifier found no blocking implementation findings.
+- Remaining:
+  - FEUX-1 still has additional naked loading skeleton candidates outside this
+    analytics slice; patient detail candidates should be separate
+    safety-focused slices.
+  - `DataTable` mobile loading announcement remains a separate shared-component
+    follow-up.
+- Review:
+  - Claude approved `11b431e9`; independent analytics test rerun was green and
+    confirmed named status regions, decorative shared `Skeleton`, and
+    false-zero pending-query teeth.
+- Remaining:
+  - FEUX-2 is next: converge `MetricCard` / `KpiCard` / `SummaryCard`
+    duplications into `StatCard` in small screen-level patches, preserving this
+    slice's loading status wiring in analytics.
+
+## CE14/N25 Evidence Draft Org Guard Follow-up - 2026-07-02 17:16 JST
+
+- Scope:
+  - Claude follow-up after CE14/N25 approval.
+  - `src/lib/offline/evidence-drafts.ts`
+  - `src/lib/offline/evidence-drafts.test.ts`
+- Status:
+  - Implemented, validated, committed, and sent for agmsg review.
+  - Commit: `9c06c73f` (`fix(offline): fail closed evidence drafts without org`).
+- Fixed:
+  - `listEvidenceDraftSummaries` and
+    `listEvidenceDraftSummariesForSchedule` now return `[]` before IndexedDB
+    access when orgId is blank or runtime-falsy.
+  - `syncEvidenceDrafts` returns `{ synced: 0, skipped: 0, failed: 0 }` before
+    active-run map, IndexedDB, fetch, decrypt, update, or delete when orgId is
+    blank or runtime-falsy.
+  - `resetFailedEvidenceDraftRetries` returns `0` before IndexedDB access when
+    orgId is blank or runtime-falsy.
+  - Regression coverage includes blank strings, `undefined`, and `null` runtime
+    inputs.
+- Safety:
+  - Reduces future tenant-boundary risk if a caller forgets to gate orgId.
+  - Existing valid-org exact `draft.orgId === orgId` filters are preserved.
+  - No auth, RLS, PHI logging/export, billing, migration, production config,
+    push/deploy, external send, or destructive operation behavior changed.
+- Validation:
+  - Focused evidence-drafts suite passed `1` file / `23` tests.
+  - Related offline/gallery/visit bundle passed `4` files / `47` tests.
+  - Scoped Prettier, scoped ESLint, and scoped diff-check passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm build`: passed.
+  - `format:check`: still fails only on pre-existing unrelated
+    `.agent-loop/FEATURE_QUEUE.md`; touched files passed scoped Prettier.
+- Review:
+  - Security critic initially found a LOW runtime-falsy gap.
+  - The guard was changed to `unknown`/`config?.orgId`, tests were expanded, and
+    security critic re-review found no remaining issues.
+- Remaining:
+  - Claude approved `9c06c73f`.
+  - FEUX-1 analytics diff was committed separately as `11b431e9` and approved.
