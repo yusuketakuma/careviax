@@ -5,7 +5,8 @@ const {
   requireAuthContextMock,
   withOrgContextMock,
   pcaPumpFindFirstMock,
-  pcaPumpUpdateMock,
+  pcaPumpRefetchMock,
+  pcaPumpUpdateManyMock,
   pcaPumpDeleteMock,
   pcaPumpMaintenanceEventCreateMock,
   auditLogCreateMock,
@@ -14,7 +15,8 @@ const {
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   pcaPumpFindFirstMock: vi.fn(),
-  pcaPumpUpdateMock: vi.fn(),
+  pcaPumpRefetchMock: vi.fn(),
+  pcaPumpUpdateManyMock: vi.fn(),
   pcaPumpDeleteMock: vi.fn(),
   pcaPumpMaintenanceEventCreateMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
@@ -73,6 +75,20 @@ function expectNoStore(response: Response) {
   expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
+const observedPumpUpdatedAt = new Date('2026-06-10T00:00:00.000Z');
+const updatedPumpRecord = {
+  id: 'pump_1',
+  asset_code: 'PCA-001',
+  serial_number: null,
+  model_name: 'CADD Legacy PCA',
+  manufacturer: null,
+  status: 'maintenance',
+  maintenance_due_at: null,
+  notes: null,
+  created_at: new Date('2026-06-10T00:00:00.000Z'),
+  updated_at: new Date('2026-06-10T00:00:00.000Z'),
+};
+
 describe('/api/pca-pumps/[id] PATCH', () => {
   const originalTimeZone = process.env.TZ;
 
@@ -96,26 +112,19 @@ describe('/api/pca-pumps/[id] PATCH', () => {
     pcaPumpFindFirstMock.mockResolvedValue({
       id: 'pump_1',
       status: 'maintenance',
+      updated_at: observedPumpUpdatedAt,
       rentals: [],
       _count: { rentals: 0 },
     });
-    pcaPumpUpdateMock.mockResolvedValue({
-      id: 'pump_1',
-      asset_code: 'PCA-001',
-      serial_number: null,
-      model_name: 'CADD Legacy PCA',
-      manufacturer: null,
-      status: 'maintenance',
-      maintenance_due_at: null,
-      notes: null,
-      created_at: new Date('2026-06-10T00:00:00.000Z'),
-      updated_at: new Date('2026-06-10T00:00:00.000Z'),
-    });
+    pcaPumpUpdateManyMock.mockResolvedValue({ count: 1 });
+    pcaPumpRefetchMock.mockResolvedValue(updatedPumpRecord);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         pcaPump: {
-          findFirst: pcaPumpFindFirstMock,
-          update: pcaPumpUpdateMock,
+          findFirst: vi.fn((args: { select?: unknown }) =>
+            args?.select ? pcaPumpFindFirstMock(args) : pcaPumpRefetchMock(args),
+          ),
+          updateMany: pcaPumpUpdateManyMock,
           delete: pcaPumpDeleteMock,
         },
         pcaPumpMaintenanceEvent: {
@@ -146,7 +155,7 @@ describe('/api/pca-pumps/[id] PATCH', () => {
       message: '未完了の貸出があるPCAポンプは利用可能・点検・退役へ変更できません',
     });
     expect(withOrgContextMock).toHaveBeenCalledTimes(1);
-    expect(pcaPumpUpdateMock).not.toHaveBeenCalled();
+    expect(pcaPumpUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('allows maintenance status when there are no open rentals', async () => {
@@ -167,6 +176,7 @@ describe('/api/pca-pumps/[id] PATCH', () => {
       select: {
         id: true,
         status: true,
+        updated_at: true,
         rentals: {
           where: {
             status: 'returned',
@@ -184,11 +194,18 @@ describe('/api/pca-pumps/[id] PATCH', () => {
         },
       },
     });
-    expect(pcaPumpUpdateMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ status: 'maintenance' }),
-      }),
-    );
+    expect(pcaPumpUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'pump_1',
+        org_id: 'org_1',
+        status: 'maintenance',
+        updated_at: observedPumpUpdatedAt,
+        rentals: {
+          none: { status: { in: ['scheduled', 'active', 'overdue'] } },
+        },
+      },
+      data: expect.objectContaining({ status: 'maintenance' }),
+    });
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -201,18 +218,52 @@ describe('/api/pca-pumps/[id] PATCH', () => {
     });
   });
 
+  it('rejects stale pump updates before maintenance event and audit side effects run', async () => {
+    pcaPumpUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await PATCH(
+      createRequest({
+        status: 'available',
+        maintenance_event_type: 'maintenance_completed',
+        maintenance_result: 'available',
+        maintenance_notes: '整備完了',
+      }),
+      { params: Promise.resolve({ id: 'pump_1' }) },
+    );
+
+    expect(response.status).toBe(409);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'PCAポンプが他の操作で更新されています。最新の状態を再読み込みしてください',
+    });
+    expect(pcaPumpUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'pump_1',
+          org_id: 'org_1',
+          status: 'maintenance',
+          updated_at: observedPumpUpdatedAt,
+          rentals: {
+            none: {
+              OR: [
+                { status: { in: ['scheduled', 'active', 'overdue'] } },
+                { status: 'returned', return_inspection_status: 'pending' },
+              ],
+            },
+          },
+        },
+      }),
+    );
+    expect(pcaPumpRefetchMock).not.toHaveBeenCalled();
+    expect(pcaPumpMaintenanceEventCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('serializes updated maintenance due dates by the local pharmacy calendar day', async () => {
-    pcaPumpUpdateMock.mockResolvedValue({
-      id: 'pump_1',
-      asset_code: 'PCA-001',
-      serial_number: null,
-      model_name: 'CADD Legacy PCA',
-      manufacturer: null,
-      status: 'maintenance',
+    pcaPumpRefetchMock.mockResolvedValue({
+      ...updatedPumpRecord,
       maintenance_due_at: new Date('2026-03-02T15:30:00.000Z'),
-      notes: null,
-      created_at: new Date('2026-06-10T00:00:00.000Z'),
-      updated_at: new Date('2026-06-10T00:00:00.000Z'),
     });
 
     const response = await PATCH(createRequest({ maintenance_due_at: '2026-03-03' }), {
@@ -246,7 +297,7 @@ describe('/api/pca-pumps/[id] PATCH', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: '返却検品が未完了のPCAポンプは利用可能にできません',
     });
-    expect(pcaPumpUpdateMock).not.toHaveBeenCalled();
+    expect(pcaPumpUpdateManyMock).not.toHaveBeenCalled();
     expect(pcaPumpMaintenanceEventCreateMock).not.toHaveBeenCalled();
   });
 
@@ -264,7 +315,7 @@ describe('/api/pca-pumps/[id] PATCH', () => {
 
     expect(response.status).toBe(200);
     expectNoStore(response);
-    expect(pcaPumpUpdateMock).toHaveBeenCalledWith(
+    expect(pcaPumpUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           status: 'available',
@@ -299,12 +350,12 @@ describe('/api/pca-pumps/[id] PATCH', () => {
     expect(response.status).toBe(401);
     expectNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(pcaPumpUpdateMock).not.toHaveBeenCalled();
+    expect(pcaPumpUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when PCA pump update fails unexpectedly', async () => {
-    pcaPumpUpdateMock.mockRejectedValueOnce(new Error('raw PCA pump patch serial secret'));
+    pcaPumpUpdateManyMock.mockRejectedValueOnce(new Error('raw PCA pump patch serial secret'));
 
     const response = await PATCH(createRequest({ status: 'maintenance' }), {
       params: Promise.resolve({ id: 'pump_1' }),

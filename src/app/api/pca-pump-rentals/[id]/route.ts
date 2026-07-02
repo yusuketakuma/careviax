@@ -8,6 +8,7 @@ import { conflict, notFound, success, validationError } from '@/lib/api/response
 import { withOrgContext } from '@/lib/db/rls';
 import {
   isCompletePassingPcaPumpAccessoryChecklist,
+  pcaPumpOpenRentalStatuses,
   updatePcaPumpRentalSchema,
 } from '@/lib/validations/pca-pump-rental';
 import { syncPcaRentalAccessoriesFromReturnInspection } from '@/server/services/pca-rental-accessories';
@@ -158,7 +159,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               org_id: ctx.orgId,
               pump_id: existing.pump_id,
               id: { not: existing.id },
-              status: { in: ['scheduled', 'active', 'overdue'] },
+              status: { in: [...pcaPumpOpenRentalStatuses] },
             },
             select: { id: true, status: true },
           });
@@ -317,7 +318,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               org_id: ctx.orgId,
               pump_id: existing.pump_id,
               id: { not: existing.id },
-              status: { in: ['scheduled', 'active', 'overdue'] },
+              status: { in: [...pcaPumpOpenRentalStatuses] },
             },
             select: { id: true },
           });

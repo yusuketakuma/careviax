@@ -4,6 +4,15 @@ import { optionalNullablePhoneNumberSchema } from '@/lib/validations/phone';
 
 const optionalTextSchema = z.string().trim().optional().nullable();
 const dateSchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）');
+export const pcaPumpRentalStatuses = [
+  'scheduled',
+  'active',
+  'overdue',
+  'returned',
+  'cancelled',
+] as const;
+export const pcaPumpOpenRentalStatuses = ['scheduled', 'active', 'overdue'] as const;
+const pcaPumpRentalStatusSchema = z.enum(pcaPumpRentalStatuses);
 const returnInspectionStatusSchema = z.enum(['pending', 'passed', 'needs_maintenance']);
 const pcaPumpMaintenanceEventTypeSchema = z.enum([
   'manual_status_change',
@@ -174,7 +183,7 @@ export const createPcaPumpRentalSchema = z
   .object({
     pump_id: z.string().trim().min(1, 'PCAポンプIDは必須です'),
     institution_id: z.string().trim().min(1, '貸出先医療機関は必須です'),
-    status: z.enum(['scheduled', 'active', 'overdue', 'returned', 'cancelled']).optional(),
+    status: pcaPumpRentalStatusSchema.optional(),
     rented_at: dateSchema,
     due_at: dateSchema.optional().nullable(),
     returned_at: dateSchema.optional().nullable(),
@@ -191,7 +200,7 @@ export const createPcaPumpRentalSchema = z
 export const updatePcaPumpRentalSchema = z
   .object({
     institution_id: z.string().trim().min(1).optional(),
-    status: z.enum(['scheduled', 'active', 'overdue', 'returned', 'cancelled']).optional(),
+    status: pcaPumpRentalStatusSchema.optional(),
     rented_at: dateSchema.optional(),
     due_at: dateSchema.optional().nullable(),
     returned_at: dateSchema.optional().nullable(),

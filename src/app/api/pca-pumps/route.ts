@@ -10,7 +10,7 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
-import { createPcaPumpSchema } from '@/lib/validations/pca-pump-rental';
+import { createPcaPumpSchema, pcaPumpOpenRentalStatuses } from '@/lib/validations/pca-pump-rental';
 import { serializePcaPump, toPcaPumpDateKey } from '@/server/services/pca-pump-serialization';
 
 const ROUTE = '/api/pca-pumps';
@@ -71,7 +71,7 @@ async function authenticatedGET(req: NextRequest) {
               select: { rentals: true },
             },
             rentals: {
-              where: { status: { in: ['scheduled', 'active', 'overdue'] } },
+              where: { status: { in: [...pcaPumpOpenRentalStatuses] } },
               orderBy: [{ rented_at: 'desc' }, { created_at: 'desc' }],
               take: 1,
               include: {

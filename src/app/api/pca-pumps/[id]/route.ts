@@ -1,16 +1,17 @@
 import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
+import type { Prisma } from '@prisma/client';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
-import { updatePcaPumpSchema } from '@/lib/validations/pca-pump-rental';
+import { pcaPumpOpenRentalStatuses, updatePcaPumpSchema } from '@/lib/validations/pca-pump-rental';
 import { serializePcaPump } from '@/server/services/pca-pump-serialization';
 
 const ROUTE = '/api/pca-pumps/[id]';
@@ -74,6 +75,7 @@ async function authenticatedPATCH(req: NextRequest, params: Promise<{ id: string
           select: {
             id: true,
             status: true,
+            updated_at: true,
             rentals: {
               where: {
                 status: 'returned',
@@ -85,7 +87,7 @@ async function authenticatedPATCH(req: NextRequest, params: Promise<{ id: string
             _count: {
               select: {
                 rentals: {
-                  where: { status: { in: ['scheduled', 'active', 'overdue'] } },
+                  where: { status: { in: [...pcaPumpOpenRentalStatuses] } },
                 },
               },
             },
@@ -114,34 +116,67 @@ async function authenticatedPATCH(req: NextRequest, params: Promise<{ id: string
         const pumpAuditChanges = Object.fromEntries(
           Object.entries(pumpUpdatePayload).filter(([, value]) => value !== undefined),
         );
-        const pump = await tx.pcaPump.update({
-          where: { id },
-          data: {
-            ...(pumpUpdatePayload.asset_code !== undefined
-              ? { asset_code: pumpUpdatePayload.asset_code }
-              : {}),
-            ...(pumpUpdatePayload.serial_number !== undefined
-              ? { serial_number: pumpUpdatePayload.serial_number || null }
-              : {}),
-            ...(pumpUpdatePayload.model_name !== undefined
-              ? { model_name: pumpUpdatePayload.model_name }
-              : {}),
-            ...(pumpUpdatePayload.manufacturer !== undefined
-              ? { manufacturer: pumpUpdatePayload.manufacturer || null }
-              : {}),
-            ...(pumpUpdatePayload.status !== undefined ? { status: pumpUpdatePayload.status } : {}),
-            ...(pumpUpdatePayload.maintenance_due_at !== undefined
+        const pumpUpdateData: Prisma.PcaPumpUncheckedUpdateManyInput = {
+          ...(pumpUpdatePayload.asset_code !== undefined
+            ? { asset_code: pumpUpdatePayload.asset_code }
+            : {}),
+          ...(pumpUpdatePayload.serial_number !== undefined
+            ? { serial_number: pumpUpdatePayload.serial_number || null }
+            : {}),
+          ...(pumpUpdatePayload.model_name !== undefined
+            ? { model_name: pumpUpdatePayload.model_name }
+            : {}),
+          ...(pumpUpdatePayload.manufacturer !== undefined
+            ? { manufacturer: pumpUpdatePayload.manufacturer || null }
+            : {}),
+          ...(pumpUpdatePayload.status !== undefined ? { status: pumpUpdatePayload.status } : {}),
+          ...(pumpUpdatePayload.maintenance_due_at !== undefined
+            ? {
+                maintenance_due_at: pumpUpdatePayload.maintenance_due_at
+                  ? new Date(pumpUpdatePayload.maintenance_due_at)
+                  : null,
+              }
+            : {}),
+          ...(pumpUpdatePayload.notes !== undefined
+            ? { notes: pumpUpdatePayload.notes || null }
+            : {}),
+        };
+        const disallowedRentalClauses: Prisma.PcaPumpRentalWhereInput[] = [];
+        if (parsed.data.status && parsed.data.status !== 'rented') {
+          disallowedRentalClauses.push({
+            status: { in: [...pcaPumpOpenRentalStatuses] },
+          });
+        }
+        if (parsed.data.status === 'available') {
+          disallowedRentalClauses.push({
+            status: 'returned',
+            return_inspection_status: 'pending',
+          });
+        }
+        const claim = await tx.pcaPump.updateMany({
+          where: {
+            id,
+            org_id: ctx.orgId,
+            status: existing.status,
+            updated_at: existing.updated_at,
+            ...(disallowedRentalClauses.length > 0
               ? {
-                  maintenance_due_at: pumpUpdatePayload.maintenance_due_at
-                    ? new Date(pumpUpdatePayload.maintenance_due_at)
-                    : null,
+                  rentals: {
+                    none:
+                      disallowedRentalClauses.length === 1
+                        ? disallowedRentalClauses[0]
+                        : { OR: disallowedRentalClauses },
+                  },
                 }
               : {}),
-            ...(pumpUpdatePayload.notes !== undefined
-              ? { notes: pumpUpdatePayload.notes || null }
-              : {}),
           },
+          data: pumpUpdateData,
         });
+        if (claim.count !== 1) return { kind: 'stale_update' as const };
+
+        const pump = await tx.pcaPump.findFirst({ where: { id, org_id: ctx.orgId } });
+        if (!pump) return { kind: 'not_found' as const };
+
         if (shouldCreateMaintenanceEvent) {
           await tx.pcaPumpMaintenanceEvent.create({
             data: {
@@ -185,6 +220,9 @@ async function authenticatedPATCH(req: NextRequest, params: Promise<{ id: string
     }
     if (result.kind === 'pending_return_inspection') {
       return validationError('返却検品が未完了のPCAポンプは利用可能にできません');
+    }
+    if (result.kind === 'stale_update') {
+      return conflict('PCAポンプが他の操作で更新されています。最新の状態を再読み込みしてください');
     }
 
     return success({ data: serializePcaPump(result.pump) });

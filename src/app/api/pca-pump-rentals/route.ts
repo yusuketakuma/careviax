@@ -9,29 +9,33 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
-import { createPcaPumpRentalSchema } from '@/lib/validations/pca-pump-rental';
+import {
+  createPcaPumpRentalSchema,
+  pcaPumpOpenRentalStatuses,
+  pcaPumpRentalStatuses,
+} from '@/lib/validations/pca-pump-rental';
 import { createDefaultPcaRentalAccessories } from '@/server/services/pca-rental-accessories';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { serializePcaPumpRental, toDateKey } from '@/server/services/pca-pump-rental-serialization';
 
 const ROUTE = '/api/pca-pump-rentals';
-const rentalStatuses = ['scheduled', 'active', 'overdue', 'returned', 'cancelled'] as const;
-const openRentalStatuses = ['scheduled', 'active', 'overdue'] as const;
 const returnInspectionStatuses = ['pending', 'passed', 'needs_maintenance'] as const;
-type RentalStatus = (typeof rentalStatuses)[number];
+type RentalStatus = (typeof pcaPumpRentalStatuses)[number];
 type ReturnInspectionStatus = (typeof returnInspectionStatuses)[number];
 
 function parseRentalStatusParam(value: string | undefined) {
   if (!value || value === 'all') return { ok: true as const, status: undefined };
-  if (value === 'open') return { ok: true as const, statuses: [...openRentalStatuses] };
-  if (rentalStatuses.includes(value as RentalStatus)) {
+  if (value === 'open') return { ok: true as const, statuses: [...pcaPumpOpenRentalStatuses] };
+  if (pcaPumpRentalStatuses.includes(value as RentalStatus)) {
     return { ok: true as const, status: value as RentalStatus };
   }
   return { ok: false as const };
 }
 
-function isOpenRentalStatus(value: RentalStatus): value is (typeof openRentalStatuses)[number] {
-  return openRentalStatuses.includes(value as (typeof openRentalStatuses)[number]);
+function isOpenRentalStatus(
+  value: RentalStatus,
+): value is (typeof pcaPumpOpenRentalStatuses)[number] {
+  return pcaPumpOpenRentalStatuses.includes(value as (typeof pcaPumpOpenRentalStatuses)[number]);
 }
 
 function parseReturnInspectionStatusParam(value: string | undefined) {
