@@ -99,11 +99,58 @@ const RECORD = {
   },
 };
 
+type HeaderSummaryStub = {
+  name: string;
+  name_kana: string | null;
+  birth_date: string;
+  gender_label: string;
+  care_level_label: string | null;
+  residence_label: string | null;
+  primary_diagnosis: string | null;
+  intervention_start_date: string | null;
+  primary_pharmacist_name: string | null;
+  backup_pharmacist_name: string | null;
+  primary_staff_name: string | null;
+  backup_staff_name: string | null;
+  safety: {
+    allergy: string | null;
+    renal: string | null;
+    handling_tags: string[];
+    swallowing: string | null;
+    cautions: string[];
+  };
+};
+
+const HEADER_SUMMARY: HeaderSummaryStub = {
+  name: '訪問花子',
+  name_kana: 'ホウモンハナコ',
+  birth_date: '1948-04-10T00:00:00.000Z',
+  gender_label: '女性',
+  care_level_label: '要介護3',
+  residence_label: '自宅',
+  primary_diagnosis: '高血圧症',
+  intervention_start_date: null,
+  primary_pharmacist_name: '担当薬剤師',
+  backup_pharmacist_name: null,
+  primary_staff_name: null,
+  backup_staff_name: null,
+  safety: {
+    allergy: 'ペニシリン',
+    renal: null,
+    handling_tags: [],
+    swallowing: null,
+    cautions: [],
+  },
+};
+
 type QueryStubOptions = {
   careReportsError?: boolean;
   billingError?: boolean;
   residualsError?: boolean;
   visitPreparationError?: boolean;
+  headerSummary?: HeaderSummaryStub | null;
+  headerSummaryError?: boolean;
+  headerSummaryLoading?: boolean;
   billingBlockers?: Array<{ key: string; reason: string; severity?: 'high' | 'normal' }>;
   record?: typeof RECORD;
 };
@@ -114,6 +161,7 @@ function setupQueries(options: QueryStubOptions = {}) {
     'billing-candidates-by-visit': vi.fn(),
     'residual-medications': vi.fn(),
     'visit-preparation-care-team': vi.fn(),
+    'patient-header-summary': vi.fn(),
   };
   useOrgIdMock.mockReturnValue('org_1');
   useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
@@ -122,6 +170,30 @@ function setupQueries(options: QueryStubOptions = {}) {
     const key = String(queryKey[0]);
     if (key === 'visit-record') {
       return { data: options.record ?? RECORD, isLoading: false, isError: false, refetch: vi.fn() };
+    }
+    if (key === 'patient-header-summary') {
+      if (options.headerSummaryError) {
+        return {
+          data: undefined,
+          isLoading: false,
+          isError: true,
+          refetch: refetchSpies['patient-header-summary'],
+        };
+      }
+      if (options.headerSummaryLoading) {
+        return {
+          data: undefined,
+          isLoading: true,
+          isError: false,
+          refetch: refetchSpies['patient-header-summary'],
+        };
+      }
+      return {
+        data: options.headerSummary === null ? undefined : (options.headerSummary ?? undefined),
+        isLoading: false,
+        isError: false,
+        refetch: refetchSpies['patient-header-summary'],
+      };
     }
     if (key === 'visit-preparation-care-team') {
       if (options.visitPreparationError) {
@@ -184,6 +256,38 @@ describe('VisitRecordDetail fetch-error handling (no false-empty workflow)', () 
     setupQueries();
     render(<VisitRecordDetail recordId="record_1" />);
     expect(screen.queryByText(/データの一部を取得できませんでした/)).toBeNull();
+  });
+
+  it('pins the patient identity and allergy safety tag above the visit summary (SSOT 2.3)', () => {
+    setupQueries({ headerSummary: HEADER_SUMMARY });
+    render(<VisitRecordDetail recordId="record_1" />);
+
+    // 患者識別(氏名)と重大安全タグ(アレルギー)が訪問詳細に常時表示される(sticky)。
+    const header = screen.getByTestId('patient-header');
+    expect(header.getAttribute('data-sticky')).toBe('true');
+    expect(header.textContent).toContain('訪問花子');
+    expect(header.textContent).toContain('ペニシリン');
+    expect(screen.queryByTestId('visit-patient-header-error')).toBeNull();
+  });
+
+  it('fails closed with an alert when the patient header summary cannot be loaded', () => {
+    const { refetchSpies } = setupQueries({ headerSummaryError: true });
+    render(<VisitRecordDetail recordId="record_1" />);
+
+    // 取得失敗を「安全タグなし」と誤認させない(fail-close)。role=alert + 再試行導線。
+    const banner = screen.getByTestId('visit-patient-header-error');
+    expect(banner.getAttribute('role')).toBe('alert');
+    expect(banner.textContent).toContain('「なし」とは判断せず');
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetchSpies['patient-header-summary']).toHaveBeenCalledTimes(1);
+  });
+
+  it('reserves the header area with a labelled skeleton while loading (no false-empty)', () => {
+    setupQueries({ headerSummaryLoading: true });
+    render(<VisitRecordDetail recordId="record_1" />);
+
+    expect(screen.getByRole('status', { name: '患者情報を読み込み中' })).toBeTruthy();
+    expect(screen.queryByTestId('visit-patient-header-error')).toBeNull();
   });
 
   it('uses soap identity tokens instead of raw Tailwind colors (FEUX-4)', () => {

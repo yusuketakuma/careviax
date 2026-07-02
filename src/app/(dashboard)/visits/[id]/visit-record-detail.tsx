@@ -22,12 +22,18 @@ import {
   ArrowUpRight,
   ReceiptText,
   UsersRound,
+  TriangleAlert,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ErrorState } from '@/components/ui/error-state';
+import { Skeleton } from '@/components/ui/loading';
+import { PatientHeader } from '@/components/features/patients/patient-header';
+import type { PatientHeaderSummary } from '@/server/services/patient-detail';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { generateCareReportFromVisit } from '@/lib/reports/generate-from-visit-client';
 import { OUTCOME_LABELS, OUTCOME_VARIANTS } from '@/lib/constants/visit';
@@ -479,6 +485,24 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     },
     enabled: !!orgId && !!recordId,
   });
+  // 患者識別 + 安全タグ(SSOT 2.3 / 4.1)。訪問詳細は患者を跨いで開くため、誰の記録かと
+  // アレルギー等の安全情報を PatientHeader で常時可視にする(P1: 取り違え/fail-open 解消)。
+  const {
+    data: headerSummary,
+    isLoading: isHeaderSummaryLoading,
+    isError: headerSummaryError,
+    refetch: refetchHeaderSummary,
+  } = useQuery<PatientHeaderSummary>({
+    queryKey: ['patient-header-summary', record?.patient_id, orgId],
+    queryFn: async () => {
+      const res = await fetch(buildPatientApiPath(record?.patient_id ?? '', '/header-summary'), {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('患者ヘッダー情報の取得に失敗しました');
+      return res.json();
+    },
+    enabled: !!orgId && !!record?.patient_id,
+  });
   const billingMonth = formatBillingMonth(record?.visit_date);
 
   const {
@@ -865,6 +889,58 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
 
   return (
     <div className="space-y-4">
+      {/* 患者識別バナー(SSOT 2.3/4.1 Pinned)。sticky はPatientHeader既定。取得失敗は
+          fail-close: 「安全タグなし」と視覚的に区別できる alert を出し、空表示に潰さない。 */}
+      {headerSummary ? (
+        <PatientHeader
+          name={headerSummary.name}
+          kana={headerSummary.name_kana}
+          birthDate={headerSummary.birth_date}
+          genderLabel={headerSummary.gender_label}
+          careLevelLabel={headerSummary.care_level_label}
+          residenceLabel={headerSummary.residence_label}
+          careTeam={{
+            primaryPharmacist: headerSummary.primary_pharmacist_name,
+            backupPharmacist: headerSummary.backup_pharmacist_name,
+            primaryStaff: headerSummary.primary_staff_name,
+            backupStaff: headerSummary.backup_staff_name,
+          }}
+          primaryDiagnosis={headerSummary.primary_diagnosis}
+          interventionStartDate={headerSummary.intervention_start_date}
+          safety={{
+            allergy: headerSummary.safety.allergy,
+            renal: headerSummary.safety.renal,
+            handlingTags: headerSummary.safety.handling_tags,
+            swallowing: headerSummary.safety.swallowing,
+            cautions: headerSummary.safety.cautions,
+          }}
+          safetyCheckHref={buildPatientHref(record.patient_id, '/safety-check')}
+        />
+      ) : headerSummaryError ? (
+        <div
+          role="alert"
+          data-testid="visit-patient-header-error"
+          className="flex flex-wrap items-center gap-3 rounded-lg border border-l-4 border-border/70 border-l-state-blocked bg-card px-4 py-3 text-sm"
+        >
+          <TriangleAlert className="size-4 shrink-0 text-state-blocked" aria-hidden="true" />
+          <p className="min-w-0 flex-1 leading-6 text-foreground">
+            患者識別・安全情報（アレルギー等）を取得できませんでした。安全タグが「なし」とは判断せず、再試行するか患者詳細で確認してください。
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void refetchHeaderSummary()}
+          >
+            再試行
+          </Button>
+        </div>
+      ) : isHeaderSummaryLoading ? (
+        <div role="status" aria-label="患者情報を読み込み中">
+          <Skeleton className="h-28 w-full rounded-lg" />
+          <span className="sr-only">患者情報を読み込み中...</span>
+        </div>
+      ) : null}
       <Card>
         <CardHeader className="space-y-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
