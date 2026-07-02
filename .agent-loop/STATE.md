@@ -4,7 +4,47 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
-## Current Codex Resume Note - 2026-07-02 23:04 JST
+## Current Codex Resume Note - 2026-07-02 23:17 JST
+
+- Active mode for this slice: Codex backend/API implementation with Claude
+  coordination through agmsg, real validation, gbrain writeback, explicit-path
+  commits, and review interrupts handled before the next commit. Preserve
+  unrelated dirty files; do not push/deploy/migrate or destructively mutate
+  data.
+- Latest completed product slice:
+  `backend-external-access-visit-date-boundary`.
+- Product commit:
+  `9022841f` (`fix(api): use JST date boundary for external visit sharing`).
+- Files changed:
+  - `src/server/services/external-access.ts`
+  - `src/server/services/external-access.test.ts`
+  - progress-ledger updates in `CODEX_GOAL_PROGRESS.md`,
+    `.codex/ralph-state.md`, `ops/refactor/VERIFICATION.md`, and this file
+- Fixed:
+  - External share payloads now filter upcoming `VisitSchedule.scheduled_date`
+    using `todayUtcRange().gte`, matching the repository's `@db.Date`
+    UTC-midnight sentinel convention.
+  - Removed server-local `startOfDay(new Date())` from the `@db.Date`
+    comparison so UTC runtimes during 00:00-08:59 JST do not include the
+    previous Japan business date.
+  - Added a regression test at JST 2026-07-04 02:00 that asserts the Prisma
+    lower bound is `2026-07-04T00:00:00.000Z`.
+- Validation:
+  - Focused external-access service test passed `1` file / `35` tests.
+  - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm build` passed.
+- Review:
+  - Codex sent a backend `PATCH_REVIEW_REQUEST` before commit.
+  - Claude approved the uncommitted N20 diff after independent date-boundary
+    verification and focused service tests.
+  - Codex handled Claude's C1 my-day review interrupts before this commit:
+    `e9ff1379` and `317afe09` were approved after focused UI tests and type
+    gates.
+- gbrain writeback slug:
+  `projects/careviax/decisions/2026-07-02/external-access-visit-date-boundary`.
+- Next action: check agmsg inbox and select the next backend/API candidate.
+
+## Previous Codex Resume Note - 2026-07-02 23:04 JST
 
 - Active mode for this slice: Codex backend/API implementation with Claude
   coordination through agmsg, real validation, gbrain writeback, explicit-path
@@ -25,32 +65,21 @@ end. It is the first file consulted on resume and the last file written on a har
   - `src/app/api/files/complete/route.ts`
   - `src/app/api/files/presigned-upload/route.ts`
   - `src/app/api/patient-self-reports/route.ts`
-  - progress-ledger updates in `CODEX_GOAL_PROGRESS.md`,
-    `.codex/ralph-state.md`, `ops/refactor/VERIFICATION.md`, and this file
 - Fixed:
   - Seven duplicated `trimStringOrUndefined` implementations are now one shared
     `src/lib/validations/string.ts` helper.
   - Existing named imports from `communication-request` and `tracing-report`
     remain backward compatible via shared-helper re-export constants.
-  - Care report, admin organization provisioning, file upload completion,
-    presigned upload, and patient self report routes now import the shared
-    normalizer instead of carrying route-local copies.
   - The shared helper test locks nullish/blank to `undefined`, non-string
     passthrough, and trimmed nonblank string behavior.
 - Validation:
   - Focused CE18 bundle passed `12` files / `275` tests.
-  - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
-  - `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm build` passed.
+  - Scoped ESLint, scoped Prettier, scoped `git diff --check`,
+    `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm build` passed.
 - Review:
-  - Codex sent a backend `PATCH_REVIEW_REQUEST` before commit.
-  - Claude approved the uncommitted CE18 diff after independent duplicate scan
-    and focused route/helper tests.
-  - Codex handled Claude's C1 my-day review interrupts before this commit:
-    `73f4a9ca` and `55e0e3b2` were approved after focused my-day tests,
-    scoped ESLint, and diff-check.
+  - Claude approved the uncommitted CE18 diff before commit.
 - gbrain writeback slug:
   `projects/careviax/decisions/2026-07-02/trim-string-normalizer-consolidation`.
-- Next action: check agmsg inbox and select the next backend/API candidate.
 
 ## Previous Codex Resume Note - 2026-07-02 22:42 JST
 

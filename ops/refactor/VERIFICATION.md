@@ -1,10 +1,63 @@
 # Verification
 
-Snapshot: 2026-07-02 23:04 JST
+Snapshot: 2026-07-02 23:17 JST
 
 ## Latest Backend/API Slice Verification
 
-The latest backend/API slice was `backend-trim-string-normalizer-consolidation`
+The latest backend/API slice was `backend-external-access-visit-date-boundary`
+at 2026-07-02 23:17 JST.
+
+- Planning / review:
+  - Codex selected N20 from the date-boundary neighbor findings after
+    confirming `buildExternalAccessPayload` compared
+    `VisitSchedule.scheduled_date` (`@db.Date`) with server-local
+    `startOfDay(new Date())`.
+  - `src/lib/utils/date-boundary.ts` documents that `@db.Date` fields use
+    UTC-midnight sentinels for the Japan business date and should be compared
+    with `todayUtcRange` / `utcDateFromLocalKey` helpers.
+  - Claude approved the uncommitted backend diff before commit after
+    independent `@db.Date` boundary verification.
+- Fixed:
+  - Replaced the upcoming visit lower bound with `todayUtcRange().gte`.
+  - Removed the unused `date-fns/startOfDay` import from
+    `src/server/services/external-access.ts`.
+  - Added a regression test at JST 2026-07-04 02:00 asserting the Prisma
+    `scheduled_date.gte` filter is `2026-07-04T00:00:00.000Z`.
+- Safety:
+  - Existing external grant validation, stored case-boundary filtering, patient
+    lookup, response shape, auth/scope behavior, schema, migration,
+    push/deploy, external send, and destructive DB posture were preserved.
+  - The query remains a `gte` upcoming lower-bound query; no upper bound or
+    visibility behavior changed.
+- Focused regressions:
+  - `pnpm exec vitest run src/server/services/external-access.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `35` tests.
+  - Coverage: external payload scope behavior plus the new JST-before-UTC-day
+    regression for `scheduled_date.gte`.
+- Scoped checks:
+  - Scoped ESLint for touched files: passed.
+  - Scoped Prettier for touched files: passed.
+  - Scoped `git diff --check` for touched files: passed.
+- Broad gates:
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: passed.
+- Coordination:
+  - Claude approved N20 before commit and independently reran the focused
+    external-access tests.
+  - Codex handled C1 my-day review interrupts before this commit: `e9ff1379`
+    was approved for filter-chip consolidation, and `317afe09` was approved
+    for audit-total footer wiring.
+- gbrain:
+  - `projects/careviax/decisions/2026-07-02/external-access-visit-date-boundary`
+  - Result: write/readback passed.
+- Commit:
+  - Runtime: `9022841f`
+    (`fix(api): use JST date boundary for external visit sharing`).
+
+## Previous Backend/API Slice Verification
+
+The previous backend/API slice was `backend-trim-string-normalizer-consolidation`
 at 2026-07-02 23:04 JST.
 
 - Planning / review:
@@ -57,7 +110,7 @@ at 2026-07-02 23:04 JST.
 - Commit:
   - Runtime: `48d3a328` (`refactor(api): share trimmed string normalizer`).
 
-## Previous Backend/API Slice Verification
+## Earlier Backend/API Slice Verification
 
 The previous backend/API slice was `backend-cockpit-audit-queue-counted-list` at
 2026-07-02 22:42 JST.
@@ -242,9 +295,9 @@ The previous backend/API slice was `backend-flush-metrics-shared-job-handler` at
 - Commit:
   - Runtime: `0ff8ea21` (`refactor(api): share flush metrics job handler`).
 
-## Latest Backend/API Slice Verification
+## Older Backend/API Slice Verification
 
-The latest backend/API slice was
+The earlier backend/API slice was
 `backend-case-transition-stale-status-guard` at 2026-07-02 21:39 JST.
 
 - Planning / review:

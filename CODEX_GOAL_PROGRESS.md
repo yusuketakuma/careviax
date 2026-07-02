@@ -42,6 +42,49 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### Backend: External Access Visit Date Boundary - 2026-07-02 23:17 JST
+
+- Scope:
+  - Continued backend/API implementation with Claude coordination through
+    agmsg.
+  - Fixed the external patient-share payload's upcoming visit lower bound for
+    `VisitSchedule.scheduled_date`, an `@db.Date` UTC-midnight sentinel.
+  - Commit: `9022841f`
+    (`fix(api): use JST date boundary for external visit sharing`).
+  - gbrain writeback:
+    `projects/careviax/decisions/2026-07-02/external-access-visit-date-boundary`.
+- Fixed:
+  - `buildExternalAccessPayload` now uses `todayUtcRange().gte` instead of
+    server-local `startOfDay(new Date())` when filtering shared future visits.
+  - This prevents UTC-runtime 00:00-08:59 JST windows from including the
+    previous Japan business date's `scheduled_date` sentinel in external share
+    payloads.
+  - Added a regression test at JST 2026-07-04 02:00 proving the Prisma
+    lower-bound sentinel is `2026-07-04T00:00:00.000Z`.
+- Safety:
+  - Preserved external grant validation, stored case-boundary scoping, patient
+    lookup, response shape, auth/scope behavior, schema, migrations,
+    production config, push/deploy, external sends, and destructive DB posture.
+  - The query remains an upcoming lower-bound query; only the `gte` date
+    sentinel was corrected.
+- Validation:
+  - Focused external-access service suite passed `1` file / `35` tests:
+    `pnpm exec vitest run src/server/services/external-access.test.ts --reporter=dot --testTimeout=60000`.
+  - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: passed.
+  - gbrain write/readback passed.
+- Review / coordination:
+  - Claude approved the N20 backend diff before commit after independent
+    `@db.Date` / `todayUtcRange` verification and focused tests.
+  - Codex handled Claude C1 my-day review interrupts before this commit:
+    `e9ff1379` filter-chip consolidation was approved;
+    `317afe09` audit-total footer wiring was approved.
+- Remaining:
+  - Continue backend/API candidate selection after checking agmsg inbox and
+    current dirty state.
+
 ### Backend: Trimmed String Normalizer Consolidation - 2026-07-02 23:04 JST
 
 - Scope:
