@@ -44,6 +44,7 @@ import type {
   InquiryWorkbenchItem,
   WorkflowData,
 } from './workflow-dashboard.types';
+import { Skeleton } from '@/components/ui/loading';
 
 // 工程ラベルのみ保持。色は MEDICATION_CYCLE_STATUS_ROLE(6軸セマンティックの正本)から導出する。
 const CYCLE_STATUS_LABELS: Record<string, string> = {
@@ -171,10 +172,17 @@ export function WorkflowDashboardView({
 }: WorkflowDashboardViewProps) {
   if (isLoading) {
     return (
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div
+        role="status"
+        aria-label="ワークフロー状況を読み込み中"
+        className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"
+      >
+        <span className="sr-only">ワークフロー状況を読み込み中...</span>
         {Array.from({ length: 8 }).map((_, index) => (
           <Card key={index}>
-            <CardContent className="h-24 animate-pulse rounded bg-muted" />
+            <CardContent>
+              <Skeleton className="h-24" />
+            </CardContent>
           </Card>
         ))}
       </div>

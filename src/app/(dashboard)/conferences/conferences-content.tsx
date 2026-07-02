@@ -66,6 +66,7 @@ import { ActionRail } from '@/components/ui/action-rail';
 import { cn } from '@/lib/utils';
 import type { ConferencesFocus } from '@/lib/dashboard/home-link-builders';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
+import { Skeleton } from '@/components/ui/loading';
 
 type Participant = {
   name: string;
@@ -1267,9 +1268,9 @@ export function ConferencesContent({
           </div>
         </div>
         {isConferenceDataLoading ? (
-          <div className="space-y-2" aria-label="カンファレンス記録を読み込み中">
+          <div role="status" className="space-y-2" aria-label="カンファレンス記録を読み込み中">
             {[1, 2].map((item) => (
-              <div key={item} className="h-20 animate-pulse rounded-lg bg-muted" />
+              <Skeleton key={item} className="h-20 rounded-lg" />
             ))}
           </div>
         ) : noteViewMode === 'list' ? (

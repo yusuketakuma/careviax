@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, CheckCircle2, KeyRound, ShieldCheck, Smartphone } from 'lucide-react';
+import { Skeleton } from '@/components/ui/loading';
 
 const ERROR_MESSAGES: Record<string, string> = {
   CredentialsSignin: 'メールアドレスまたはパスワードが正しくありません。',
@@ -252,8 +253,9 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="w-full max-w-5xl">
-          <div className="h-[31rem] animate-pulse rounded-2xl bg-muted" />
+        <div role="status" aria-label="ログイン画面を読み込み中" className="w-full max-w-5xl">
+          <Skeleton className="h-[31rem] rounded-2xl" />
+          <span className="sr-only">ログイン画面を読み込み中...</span>
         </div>
       }
     >

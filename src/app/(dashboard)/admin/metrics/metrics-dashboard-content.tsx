@@ -16,6 +16,7 @@ import { HelpPopover } from '@/components/ui/help-popover';
 import { SegmentedProgressBar } from '@/components/ui/segmented-progress-bar';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/loading';
 
 /** 指標カードの注意文。重大度(role)で色とアイコンを分け、色だけに依存させない。 */
 type MetricAlert = { text: string; role: 'confirm' | 'blocked' };
@@ -176,7 +177,7 @@ export function MetricsDashboardContent() {
         {Array.from({ length: 5 }).map((_, index) => (
           <Card key={index}>
             <CardContent className="py-10">
-              <div className="h-8 w-24 animate-pulse rounded bg-muted" />
+              <Skeleton className="h-8 w-24" />
             </CardContent>
           </Card>
         ))}

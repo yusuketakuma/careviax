@@ -16,6 +16,7 @@ import {
   type StatisticsCategory,
   type StatisticsSurface,
 } from './statistics-surfaces';
+import { Skeleton } from '@/components/ui/loading';
 
 // V1 direct-fetch allowlist: the ONLY endpoint the hub fetches on load.
 // /api/dashboard/dispensing-stats is org-scoped (withAuthContext + org_id=ctx.orgId),
@@ -84,8 +85,8 @@ function DispensingKpiStrip() {
             key={index}
             className="rounded-md border border-l-2 border-l-transparent bg-card p-3 ring-1 ring-foreground/10"
           >
-            <div className="h-3 w-20 animate-pulse rounded bg-muted" />
-            <div className="mt-2 h-7 w-16 animate-pulse rounded bg-muted" />
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="mt-2 h-7 w-16" />
           </div>
         ))}
       </div>
