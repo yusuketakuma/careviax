@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePathname, useRouter } from 'next/navigation';
 import { BellOff } from 'lucide-react';
@@ -73,6 +73,18 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
   const queryClient = useQueryClient();
   const [category, setCategory] = useState<NotificationCategoryFilter>(initialCategory);
   const pendingSyncCount = useOfflineStore((state) => state.pendingSyncCount);
+  const refreshSyncCount = useOfflineStore((state) => state.refreshSyncCount);
+
+  // オフラインストアは record/offline-sync ページでしか hydrate されないため、直接遷移や
+  // リロードで /notifications を開くと pendingSyncCount が初期値 0 のままになり、
+  // IndexedDB に未同期の医療記録が残っていても「未同期 N件」行が抑制されてしまう。
+  // マウント時に一度 IndexedDB の実状態を読み込み、未同期件数を正しく反映する。
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    void refreshSyncCount().catch((error) => {
+      console.warn('[notifications] pending sync count refresh failed', error);
+    });
+  }, [refreshSyncCount]);
 
   const handleRealtimeEvent = useCallback(
     (event: unknown) => {

@@ -11,6 +11,7 @@ const useQueryClientMock = vi.hoisted(() => vi.fn());
 const useRouterMock = vi.hoisted(() => vi.fn());
 const usePathnameMock = vi.hoisted(() => vi.fn());
 const useOfflineStoreMock = vi.hoisted(() => vi.fn());
+const refreshSyncCountMock = vi.hoisted(() => vi.fn());
 const useRealtimeEventsMock = vi.hoisted(() => vi.fn());
 const buildOrgHeadersMock = vi.hoisted(() =>
   vi.fn((orgId: string) => ({ 'x-test-org-id': orgId })),
@@ -97,9 +98,14 @@ describe('NotificationsContent', () => {
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn(), setQueryData: vi.fn() });
     useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
     useRealtimeEventsMock.mockReturnValue({ connected: false });
+    refreshSyncCountMock.mockResolvedValue(undefined);
     useOfflineStoreMock.mockImplementation(
-      (selector: (state: { pendingSyncCount: number }) => unknown) =>
-        selector({ pendingSyncCount: 2 }),
+      (
+        selector: (state: {
+          pendingSyncCount: number;
+          refreshSyncCount: () => Promise<void>;
+        }) => unknown,
+      ) => selector({ pendingSyncCount: 2, refreshSyncCount: refreshSyncCountMock }),
     );
     useQueryMock.mockReturnValue({
       data: { data: NOTIFICATIONS },
@@ -128,6 +134,14 @@ describe('NotificationsContent', () => {
     expect(screen.getByText('送信できていない記録があります')).toBeTruthy();
   });
 
+  it('bootstraps the offline pending-sync count on mount so a fresh load does not hide unsynced records (N22)', () => {
+    render(<NotificationsContent />);
+
+    // マウント時に IndexedDB の実状態を読み込むため refreshSyncCount を呼ぶ。これがないと
+    // 直接遷移/リロードで pendingSyncCount が初期値 0 のまま「未同期」行が抑制されてしまう。
+    expect(refreshSyncCountMock).toHaveBeenCalledTimes(1);
+  });
+
   it('filters cards by the selected category chip', () => {
     render(<NotificationsContent />);
 
@@ -144,8 +158,12 @@ describe('NotificationsContent', () => {
     useRouterMock.mockReturnValue({ replace: vi.fn(), push });
     useMutationMock.mockReturnValue({ mutate, isPending: false });
     useOfflineStoreMock.mockImplementation(
-      (selector: (state: { pendingSyncCount: number }) => unknown) =>
-        selector({ pendingSyncCount: 0 }),
+      (
+        selector: (state: {
+          pendingSyncCount: number;
+          refreshSyncCount: () => Promise<void>;
+        }) => unknown,
+      ) => selector({ pendingSyncCount: 0, refreshSyncCount: refreshSyncCountMock }),
     );
 
     render(<NotificationsContent />);
