@@ -17,6 +17,7 @@ interface ShortcutHelpModalProps {
 
 const SCOPE_LABELS: Record<string, string> = {
   global: 'グローバル',
+  navigation: 'ページ内移動',
   dispensing: '調剤キュー',
   auditing: '調剤鑑査',
   'qr-drafts': 'QR下書き',
@@ -36,9 +37,13 @@ function formatKey(shortcut: ShortcutDefinition): string {
     ArrowUp: '\u2191',
     ArrowDown: '\u2193',
     Enter: 'Enter',
+    ArrowRight: '\u2192',
+    ArrowLeft: '\u2190',
     ' ': 'Space',
     Escape: 'Esc',
     Tab: 'Tab',
+    Home: 'Home',
+    End: 'End',
     '?': '?',
   };
   parts.push(keyLabels[shortcut.key] ?? shortcut.key.toUpperCase());
@@ -55,7 +60,14 @@ export function ShortcutHelpModal({ open, onOpenChange, shortcuts }: ShortcutHel
     return acc;
   }, {});
 
-  const scopeOrder = ['global', 'dispensing', 'auditing', 'qr-drafts', 'prescriptions'];
+  const scopeOrder = [
+    'global',
+    'navigation',
+    'dispensing',
+    'auditing',
+    'qr-drafts',
+    'prescriptions',
+  ];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

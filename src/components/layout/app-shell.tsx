@@ -15,6 +15,7 @@ import {
   useKeyboardShortcuts,
   type ShortcutDefinition,
 } from '@/components/features/keyboard/use-keyboard-shortcuts';
+import { useFocusNotObscured } from '@/components/features/keyboard/use-focus-not-obscured';
 import { ShortcutHelpModal } from '@/components/features/keyboard/shortcut-help-modal';
 import { GLOBAL_SHORTCUTS } from '@/components/features/keyboard/global-shortcuts';
 import { CommandPalette } from '@/components/features/search/command-palette';
@@ -139,6 +140,8 @@ export function AppShell({ children }: AppShellProps) {
   const sidebarSheetOpen = resolveSidebarSheetOpen(viewport.isCompactLayout, sidebarOpen);
   const chromeHidden = useMinimalShell;
 
+  useFocusNotObscured();
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -218,6 +221,12 @@ export function AppShell({ children }: AppShellProps) {
   const handleCommandK = useCallback(() => {
     openPalette();
   }, [openPalette]);
+
+  const handleSkipToMain = useCallback(() => {
+    const main = document.getElementById('main-content');
+    main?.focus({ preventScroll: true });
+    main?.scrollIntoView({ block: 'start', inline: 'nearest' });
+  }, []);
 
   const handleCommandN = useCallback(() => {
     const target = resolveQuickCreateTarget(pathname);
@@ -366,13 +375,38 @@ export function AppShell({ children }: AppShellProps) {
       >
         {/* Skip to main content link for keyboard users */}
         {chromeHidden ? null : (
-          <a
-            href="#main-content"
-            className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-background focus:px-4 focus:py-2 focus:text-sm focus:shadow"
+          <nav
+            aria-label="キーボード操作"
+            className="fixed left-4 top-4 z-50 flex flex-wrap gap-2"
             data-print-skip="true"
           >
-            メインコンテンツへスキップ
-          </a>
+            <a
+              href="#main-content"
+              onClick={(event) => {
+                event.preventDefault();
+                handleSkipToMain();
+              }}
+              className="sr-only rounded-md border border-border bg-background px-4 py-2 text-sm font-medium shadow-sm focus:not-sr-only focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              メインコンテンツへスキップ
+            </a>
+            <button
+              type="button"
+              onClick={handleCommandK}
+              aria-keyshortcuts="/ Meta+K Control+K"
+              className="sr-only rounded-md border border-border bg-background px-4 py-2 text-sm font-medium shadow-sm focus:not-sr-only focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              検索を開く
+            </button>
+            <button
+              type="button"
+              onClick={() => setShortcutHelpOpen(true)}
+              aria-keyshortcuts="?"
+              className="sr-only rounded-md border border-border bg-background px-4 py-2 text-sm font-medium shadow-sm focus:not-sr-only focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              キーボード操作を見る
+            </button>
+          </nav>
         )}
 
         {chromeHidden ? null : (

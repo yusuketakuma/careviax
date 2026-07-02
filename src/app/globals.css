@@ -281,6 +281,24 @@
   }
   html {
     @apply font-sans;
+    scroll-padding-block: 72px 88px;
+  }
+  #main-content {
+    scroll-padding-block: 72px 88px;
+  }
+  :is(
+    a[href],
+    button,
+    input,
+    select,
+    textarea,
+    [role='button'],
+    [role='link'],
+    [role='menuitem'],
+    [tabindex]:not([tabindex='-1'])
+  ):focus {
+    scroll-margin-block: 72px 88px;
+    scroll-margin-inline: 16px;
   }
 }
 

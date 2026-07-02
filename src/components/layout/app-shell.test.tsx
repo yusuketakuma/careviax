@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import {
@@ -14,15 +14,21 @@ import {
 setupDomTestEnv();
 
 // AppShell が useKeyboardShortcuts に渡すグローバルショートカット定義を捕捉する。
-const { capturedShortcuts, mockOpenPalette, mockClosePalette, paletteState, nav } = vi.hoisted(
-  () => ({
-    capturedShortcuts: [] as Array<{ key: string; metaKey?: boolean; handler: () => void }>,
-    mockOpenPalette: vi.fn(),
-    mockClosePalette: vi.fn(),
-    paletteState: { open: false },
-    nav: { pathname: '/dashboard' },
-  }),
-);
+const {
+  capturedShortcuts,
+  mockOpenPalette,
+  mockClosePalette,
+  mockSetShortcutHelpOpen,
+  paletteState,
+  nav,
+} = vi.hoisted(() => ({
+  capturedShortcuts: [] as Array<{ key: string; metaKey?: boolean; handler: () => void }>,
+  mockOpenPalette: vi.fn(),
+  mockClosePalette: vi.fn(),
+  mockSetShortcutHelpOpen: vi.fn(),
+  paletteState: { open: false },
+  nav: { pathname: '/dashboard' },
+}));
 
 vi.mock('@/components/features/keyboard/use-keyboard-shortcuts', () => ({
   useKeyboardShortcuts: (shortcuts: typeof capturedShortcuts) => {
@@ -45,7 +51,7 @@ vi.mock('@/lib/stores/ui-store', () => ({
     workspaceRailOpen: false,
     setWorkspaceRailOpen: vi.fn(),
     shortcutHelpOpen: false,
-    setShortcutHelpOpen: vi.fn(),
+    setShortcutHelpOpen: mockSetShortcutHelpOpen,
     toggleShortcutHelp: vi.fn(),
   }),
 }));
@@ -227,5 +233,21 @@ describe('AppShell global search shortcuts', () => {
 
     nav.pathname = '/dashboard'; // reset
     paletteState.open = false;
+  });
+
+  it('exposes keyboard-only skip actions for main, search, and shortcut help', async () => {
+    const { AppShell } = await import('./app-shell');
+    mockOpenPalette.mockClear();
+    mockSetShortcutHelpOpen.mockClear();
+
+    render(<AppShell>content</AppShell>);
+
+    expect(screen.getByRole('navigation', { name: 'キーボード操作' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '検索を開く' }));
+    expect(mockOpenPalette).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'キーボード操作を見る' }));
+    expect(mockSetShortcutHelpOpen).toHaveBeenCalledWith(true);
   });
 });

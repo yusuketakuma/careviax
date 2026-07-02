@@ -1,23 +1,21 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
+import * as React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { PageShortcutLinks } from './page-shortcut-links';
 
 vi.mock('next/link', () => ({
-  default: ({
-    href,
-    children,
-    className,
-  }: {
-    href: string;
-    children: React.ReactNode;
-    className?: string;
-  }) => (
-    <a href={href} className={className}>
-      {children}
-    </a>
-  ),
+  default: React.forwardRef<
+    HTMLAnchorElement,
+    React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }
+  >(function MockLink({ href, children, ...props }, ref) {
+    return (
+      <a ref={ref} href={href} {...props}>
+        {children}
+      </a>
+    );
+  }),
 }));
 
 describe('PageShortcutLinks', () => {
@@ -39,6 +37,7 @@ describe('PageShortcutLinks', () => {
     expect(patients.className).toContain('min-h-[44px]');
     expect(patients.className).toContain('sm:min-h-[44px]');
     expect(patients.className).not.toContain('sm:min-h-0');
+    expect(screen.getByRole('toolbar', { name: 'ページショートカット' })).toBeTruthy();
   });
 
   it('renders grouped shortcut sections when groups are provided', () => {
@@ -59,5 +58,41 @@ describe('PageShortcutLinks', () => {
     expect(prescriptionHistory.className).toContain('min-h-[44px]');
     expect(prescriptionHistory.className).toContain('sm:min-h-[44px]');
     expect(prescriptionHistory.className).not.toContain('sm:min-h-0');
+    expect(screen.getByRole('toolbar', { name: '服薬・経過ショートカット' })).toBeTruthy();
+  });
+
+  it('uses one tab stop per shortcut group and arrow keys move inside the group', () => {
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      callback(0);
+      return 0;
+    });
+
+    render(
+      <PageShortcutLinks
+        links={[
+          { href: '/patients', label: '患者一覧' },
+          { href: '/workflow', label: 'ワークフロー' },
+          { href: '/reports', label: '報告書' },
+        ]}
+      />,
+    );
+
+    const patients = screen.getByRole('link', { name: '患者一覧' });
+    const workflow = screen.getByRole('link', { name: 'ワークフロー' });
+    const reports = screen.getByRole('link', { name: '報告書' });
+
+    expect(patients).toHaveProperty('tabIndex', 0);
+    expect(workflow).toHaveProperty('tabIndex', -1);
+    expect(reports).toHaveProperty('tabIndex', -1);
+
+    patients.focus();
+    fireEvent.keyDown(patients, { key: 'ArrowRight' });
+
+    expect(document.activeElement).toBe(workflow);
+    expect(patients).toHaveProperty('tabIndex', -1);
+    expect(workflow).toHaveProperty('tabIndex', 0);
+
+    fireEvent.keyDown(workflow, { key: 'End' });
+    expect(document.activeElement).toBe(reports);
   });
 });

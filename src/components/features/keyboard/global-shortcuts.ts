@@ -13,6 +13,23 @@ export const GLOBAL_SHORTCUTS: ShortcutDefinition[] = [
   { key: '?', handler: () => {}, description: 'ショートカット一覧', scope: 'global' },
   { key: 'Escape', handler: () => {}, description: 'モーダルを閉じる', scope: 'global' },
 
+  // Shared roving-focus groups
+  { key: 'Tab', handler: () => {}, description: '次の操作グループへ移動', scope: 'navigation' },
+  {
+    key: 'ArrowRight',
+    handler: () => {},
+    description: '同じ操作グループ内で次へ移動',
+    scope: 'navigation',
+  },
+  {
+    key: 'ArrowLeft',
+    handler: () => {},
+    description: '同じ操作グループ内で前へ移動',
+    scope: 'navigation',
+  },
+  { key: 'Home', handler: () => {}, description: '操作グループの先頭へ移動', scope: 'navigation' },
+  { key: 'End', handler: () => {}, description: '操作グループの末尾へ移動', scope: 'navigation' },
+
   // Dispensing queue
   { key: 'ArrowUp', handler: () => {}, description: '前の行へ移動', scope: 'dispensing' },
   { key: 'ArrowDown', handler: () => {}, description: '次の行へ移動', scope: 'dispensing' },

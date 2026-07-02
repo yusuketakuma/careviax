@@ -9,7 +9,7 @@ export type ShortcutDefinition = {
   shiftKey?: boolean;
   handler: () => void;
   description: string;
-  scope: 'global' | 'dispensing' | 'auditing' | 'qr-drafts' | 'prescriptions';
+  scope: 'global' | 'navigation' | 'dispensing' | 'auditing' | 'qr-drafts' | 'prescriptions';
 };
 
 /**
@@ -33,7 +33,8 @@ export function useKeyboardShortcuts(shortcuts: ShortcutDefinition[]) {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       for (const shortcut of shortcuts) {
-        const keyMatch = e.key === shortcut.key || e.key.toLowerCase() === shortcut.key.toLowerCase();
+        const keyMatch =
+          e.key === shortcut.key || e.key.toLowerCase() === shortcut.key.toLowerCase();
         if (!keyMatch) continue;
 
         // Check modifier keys

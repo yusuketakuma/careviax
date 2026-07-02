@@ -229,6 +229,7 @@ export function AppHeader() {
         <button
           type="button"
           onClick={goToSearch}
+          aria-keyshortcuts="/ Meta+K Control+K"
           className="hidden min-h-9 min-w-0 flex-1 items-center gap-2 rounded-md border border-input bg-muted/40 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:flex"
           data-testid="app-header-search"
         >
@@ -251,6 +252,7 @@ export function AppHeader() {
             className="min-h-[44px] min-w-[44px] md:hidden"
             onClick={goToSearch}
             aria-label="検索"
+            aria-keyshortcuts="/ Meta+K Control+K"
             data-testid="app-header-search-compact"
           >
             <Search className="size-4" aria-hidden="true" />
