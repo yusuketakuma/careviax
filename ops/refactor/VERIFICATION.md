@@ -2486,3 +2486,67 @@ The latest backend date-boundary slice was
   - Browser/E2E smoke was skipped because this backend route/date-boundary fix
     changes no DOM layout, navigation, route contract shape, or human workflow
     shape.
+
+## My Day / Tasks Triage Admin Status Cache Guard Verification
+
+The latest frontend task-triage/privacy slice was
+`RR-BUG-20260702-F16-F17-F29-F39-F51-my-day-task-triage` at 2026-07-02 15:46
+JST.
+
+- Planning / review:
+  - Code mapper recommended F16 as the safest next candidate.
+  - Implementation planner approved grouping F16/F17/F29/F39/F51 because the
+    My Day issues share one query/display surface and F17 is adjacent task
+    triage.
+  - API contract reviewer found a high stale-cache issue after the first
+    implementation; query key, data derivation, and render gates were hardened
+    and the reviewer re-approved.
+  - Privacy reviewer found a low raw patient-link interpolation issue; the link
+    was moved to `buildPatientHref()` and hostile-id coverage was added.
+  - Test architect found no blocker after focused tests proved queryFn params,
+    admin gate, encoded JST boundary, missing patient-name rendering, and
+    urgent/high KPI behavior.
+- Focused regressions:
+  - `pnpm exec vitest run 'src/app/(dashboard)/my-day/my-day-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx' --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `23` tests.
+  - Coverage: My Day `/api/tasks` queryFn sends `assigned_to=user_1` and
+    `status=open`; non-admin status-change query is disabled and stale cached
+    admin rows/errors do not render; admin status-change query encodes
+    `date_from=...T00%3A00%3A00%2B09%3A00`; status-change cards render without
+    `changes.patient_name`; hostile patient ids are encoded through
+    `buildPatientHref()`; Tasks summary renders `緊急・高優先度 2件` for
+    urgent+high fixtures.
+- Related API contract tests:
+  - `pnpm exec vitest run 'src/app/api/tasks/route.test.ts' 'src/app/api/audit-logs/route.test.ts' --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `57` tests.
+  - Note: `src/lib/api/audit-log-filters.test.ts` does not exist.
+- Scoped checks:
+  - `pnpm exec eslint 'src/app/(dashboard)/my-day/my-day-content.tsx' 'src/app/(dashboard)/my-day/my-day-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx'`
+  - Result: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/my-day/my-day-content.tsx' 'src/app/(dashboard)/my-day/my-day-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx'`
+  - Result: passed.
+  - `git diff --check -- 'src/app/(dashboard)/my-day/my-day-content.tsx' 'src/app/(dashboard)/my-day/my-day-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx'`
+  - Result: passed.
+- Full gates:
+  - `pnpm typecheck`
+  - Result: passed after fixing a test helper tuple typing issue exposed by the
+    first run.
+  - `pnpm typecheck:no-unused`
+  - Result: passed.
+  - `pnpm lint`
+  - Result: passed.
+  - `pnpm format:check`
+  - Result: passed.
+  - `pnpm build`
+  - Result: passed.
+  - `pnpm test -- --reporter=dot --testTimeout=60000`
+  - Result: passed, `1266` files passed / `1` skipped; `12592` tests passed /
+    `2` skipped.
+- gbrain:
+  - `projects/careviax/failures/2026-07-02/my-day-task-triage-admin-status-cache`
+  - Result: write/readback passed.
+- Skipped:
+  - Browser/E2E smoke was skipped because no authenticated role-specific
+    browser session was available in this turn, and the changed network/DOM
+    behavior is directly covered by component queryFn/DOM assertions plus full
+    build/full Vitest.

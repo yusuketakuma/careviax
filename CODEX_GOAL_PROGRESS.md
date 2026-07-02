@@ -36074,3 +36074,41 @@ Next loop:
   - The broad ULTRACODE/refactor objective remains open.
   - Browser smoke was skipped because this backend route/date-boundary fix
     changes no DOM, navigation, route contract shape, or human workflow shape.
+
+## Latest Slice - 2026-07-02 15:46 JST
+
+- Change ID:
+  `RR-BUG-20260702-F16-F17-F29-F39-F51-my-day-task-triage`.
+- Status: implemented and validated; commit pending.
+- Files changed:
+  - `src/app/(dashboard)/my-day/my-day-content.tsx`
+  - `src/app/(dashboard)/my-day/my-day-content.test.tsx`
+  - `src/app/(dashboard)/tasks/tasks-content.tsx`
+  - `src/app/(dashboard)/tasks/tasks-content.test.tsx`
+- Summary:
+  - My Day task fetch now sends `status=open` to `/api/tasks`, preserving the
+    existing client-side pending/in_progress filter as a safeguard.
+  - My Day status-change audit reads now use `japanDateKey()` and encoded
+    `T00:00:00+09:00` date_from values.
+  - Admin-only status-change data is fetch-gated, query-key partitioned, and
+    render-gated by `canAdmin`; stale cached admin data is hidden for non-admin
+    viewers.
+  - Status-change cards no longer depend on omitted `changes.patient_name` and
+    patient links now use `buildPatientHref()`.
+  - Tasks immediate summary now counts urgent and high tasks together as
+    `緊急・高優先度`.
+- Validation:
+  - Focused My Day + Tasks suite passed `2` files / `23` tests.
+  - Related `/api/tasks` + `/api/audit-logs` route tests passed `2` files /
+    `57` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, `pnpm build`, and full `pnpm test -- --reporter=dot
+--testTimeout=60000` passed.
+  - Full test suite: `1266` files passed / `1` skipped; `12592` tests passed /
+    `2` skipped.
+  - Implementation planner approved; API contract reviewer high finding was
+    fixed and re-reviewed as resolved; privacy reviewer low link-hardening
+    finding was fixed; test architect found no blocker.
+- Memory:
+  - `projects/careviax/failures/2026-07-02/my-day-task-triage-admin-status-cache`

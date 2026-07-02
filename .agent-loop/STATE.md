@@ -1230,3 +1230,38 @@ User-directed program after the org-header sweep. Method: ultracode 51-screen re
 continuity`).
 - Next action: commit the F09 ledgers with explicit paths, notify via agmsg if
   available, then continue the next highest-value ULTRACODE/refactor item.
+
+### Resume point - 2026-07-02 15:46 JST
+
+- Active broad ULTRACODE/refactor objective remains open. Latest validated
+  slice:
+  `RR-BUG-20260702-F16-F17-F29-F39-F51-my-day-task-triage`.
+- Changed owned runtime files:
+  `src/app/(dashboard)/my-day/my-day-content.tsx`,
+  `src/app/(dashboard)/my-day/my-day-content.test.tsx`,
+  `src/app/(dashboard)/tasks/tasks-content.tsx`, and
+  `src/app/(dashboard)/tasks/tasks-content.test.tsx`.
+- Fixed My Day / Tasks triage behavior:
+  My Day now requests only open assigned tasks from `/api/tasks`, uses Japan
+  date keys and encoded JST midnight for admin status-change audit reads,
+  hides admin-only status-change query data for non-admins even if React Query
+  has stale cache, avoids relying on omitted audit-log patient names, and uses
+  shared patient href encoding. Tasks now counts urgent plus high in the
+  immediate priority summary.
+- Validation passed:
+  focused My Day + Tasks suite `2` files / `23` tests, related task/audit route
+  tests `2` files / `57` tests, scoped ESLint/Prettier/diff-check,
+  `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+  `pnpm format:check`, `pnpm build`, and full `pnpm test -- --reporter=dot
+--testTimeout=60000` (`1266` files passed / `1` skipped, `12592` tests
+  passed / `2` skipped).
+- Review:
+  implementation planner approved; API contract reviewer high finding was
+  resolved after query-key/render-gate hardening; privacy reviewer low
+  link-hardening finding was addressed; test architect found no blocker.
+- gbrain writeback slug:
+  `projects/careviax/failures/2026-07-02/my-day-task-triage-admin-status-cache`.
+- Commit:
+  pending.
+- Next action: commit this slice with explicit owned paths, send agmsg FYI, then
+  continue the next highest-value ULTRACODE/refactor item.

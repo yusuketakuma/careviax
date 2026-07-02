@@ -528,3 +528,36 @@ re-audits are complete.
   - Codex test architect and medical-safety reviewer reported no blockers.
 - Memory:
   - `projects/careviax/failures/2026-07-02/medication-profile-unresolved-code-dead-key`
+
+## Latest Slice - 2026-07-02 15:46 JST
+
+- Change ID:
+  `RR-BUG-20260702-F16-F17-F29-F39-F51-my-day-task-triage`.
+- Status: implemented and validated; commit pending.
+- Files changed:
+  - `src/app/(dashboard)/my-day/my-day-content.tsx`
+  - `src/app/(dashboard)/my-day/my-day-content.test.tsx`
+  - `src/app/(dashboard)/tasks/tasks-content.tsx`
+  - `src/app/(dashboard)/tasks/tasks-content.test.tsx`
+- Summary:
+  - Added `status=open` to My Day task cursor pagination.
+  - Moved My Day status-change audit date basis to `japanDateKey()` and encoded
+    JST midnight.
+  - Gated admin-only status-change data at query key, fetch, data derivation,
+    and render branches.
+  - Removed stale patient-name dependency from audit-log changes and routed
+    patient links through `buildPatientHref()`.
+  - Counted urgent plus high priorities in the Tasks immediate summary.
+- Validation:
+  - Focused My Day + Tasks suite passed `2` files / `23` tests.
+  - Related task/audit route tests passed `2` files / `57` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, `pnpm build`, and full test suite passed.
+  - Full suite: `1266` files passed / `1` skipped; `12592` tests passed / `2`
+    skipped.
+  - Implementation planner, API contract reviewer re-review,
+    privacy-compliance reviewer, and test architect reported no remaining
+    blockers.
+- Memory:
+  - `projects/careviax/failures/2026-07-02/my-day-task-triage-admin-status-cache`

@@ -2272,3 +2272,44 @@ continuity`).
   - Codex db steward and test architect reported no blockers for the date fix.
   - gbrain write/readback:
     `projects/careviax/failures/2026-07-02/pharmacist-shift-template-apply-local-date`.
+
+## 2026-07-02 15:46 JST - My Day / Tasks Triage Admin Status Cache Guard
+
+- Change ID:
+  `RR-BUG-20260702-F16-F17-F29-F39-F51-my-day-task-triage`.
+- Category: bug fix / frontend API contract / privacy / task triage
+  performance.
+- Files changed:
+  - `src/app/(dashboard)/my-day/my-day-content.tsx`
+  - `src/app/(dashboard)/my-day/my-day-content.test.tsx`
+  - `src/app/(dashboard)/tasks/tasks-content.tsx`
+  - `src/app/(dashboard)/tasks/tasks-content.test.tsx`
+- Summary:
+  - Added `status=open` to the My Day `/api/tasks` cursor-pagination request.
+  - Replaced My Day's browser-local day formatting with `japanDateKey()` and
+    encoded the status-change audit-log `date_from` as JST midnight.
+  - Gated admin-only status changes at query `enabled`, query key, derived data,
+    and render branches to prevent stale cache disclosure to non-admin renders.
+  - Removed the stale `changes.patient_name` UI dependency and kept status
+    change copy non-PHI.
+  - Routed status-change patient links through `buildPatientHref()`.
+  - Changed the Tasks immediate KPI from high-only to urgent-or-high.
+- Safety:
+  - Does not weaken `/api/audit-logs` `canAdmin` authorization.
+  - Does not reintroduce patient names into audit-log change payloads.
+  - Keeps patient links encoded/fail-closed through the shared helper.
+  - Preserves DB schema, migrations, RLS/auth semantics, external sends,
+    billing, production config, push/deploy, and destructive operations.
+- Performance:
+  - Reduces unnecessary My Day task pagination by using the existing server-side
+    open-status contract.
+- Validation:
+  - Focused My Day + Tasks suite passed `2` files / `23` tests.
+  - Related task/audit route tests passed `2` files / `57` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, `pnpm build`, and full test suite passed.
+  - Full test suite: `1266` files passed / `1` skipped; `12592` tests passed /
+    `2` skipped.
+  - gbrain write/readback:
+    `projects/careviax/failures/2026-07-02/my-day-task-triage-admin-status-cache`.
