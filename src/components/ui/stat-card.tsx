@@ -1,12 +1,18 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { STATUS_TOKENS, type StatusRole } from '@/lib/constants/status-tokens';
+import { StatusDot } from '@/components/ui/status-dot';
 
 export type StatCardProps = {
   /** 上部の小見出し（指標名）。 */
   label: string;
+  /** label の要素。画面内の見出し階層を保つ必要がある場合だけ指定する。 */
+  labelElement?: 'span' | 'h2' | 'h3';
+  labelClassName?: string;
   /** 主数値。等幅数字で表示する。 */
   value: React.ReactNode;
+  /** 主数値の追加 className。状態を数値そのものへ塗らない画面では中立色を明示する。 */
+  valueClassName?: string;
   /** 数値の後置単位（件 / % / 円 など）。 */
   unit?: string;
   /** 補足（前期間比・内訳など）。 */
@@ -16,12 +22,21 @@ export type StatCardProps = {
    * 良し悪しが「ない」中立指標では undefined のままにする。
    */
   role?: StatusRole;
+  /** role の表示ラベル。未指定なら role の標準ラベル。 */
+  roleLabel?: string;
+  /** role ラベルを視覚表示するか。false でも sr-only ラベルは出す。 */
+  showRoleLabel?: boolean;
   /** アイコン（指標名の左に小さく添える）。 */
   icon?: React.ReactNode;
   /** アイコン wrapper の追加 className。レスポンシブ表示制御が必要な画面で使う。 */
   iconClassName?: string;
   /** 補足 wrapper の追加 className。レスポンシブ表示制御が必要な画面で使う。 */
   hintClassName?: string;
+  /** 進捗バー。指定時のみ中立 track と clamped fill を表示する。 */
+  progress?: {
+    percent: number;
+    className?: string;
+  };
   /**
    * フィルタチップとして使うとき。指定するとボタンとして描画し aria-pressed を付ける。
    * 監査の「選択中キューが視覚的に判別できない」是正用。
@@ -32,6 +47,11 @@ export type StatCardProps = {
   className?: string;
 };
 
+function clampProgressPercent(percent: number): number {
+  if (!Number.isFinite(percent)) return 0;
+  return Math.min(Math.max(percent, 0), 100);
+}
+
 /**
  * KPI / 件数ストリップの共通カード。各画面で再実装されていた MetricCard/KpiCard/SummaryCard を統合する。
  * - 数値は tabular-nums（縦揃え・誤読防止）。
@@ -40,13 +60,19 @@ export type StatCardProps = {
  */
 export function StatCard({
   label,
+  labelElement: LabelElement = 'span',
+  labelClassName,
   value,
+  valueClassName,
   unit,
   hint,
   role,
+  roleLabel,
+  showRoleLabel = false,
   icon,
   iconClassName,
   hintClassName,
+  progress,
   onSelect,
   active = false,
   className,
@@ -63,22 +89,37 @@ export function StatCard({
             {icon}
           </span>
         ) : null}
-        <span className="truncate">{label}</span>
-        {spec ? (
-          <span
-            aria-hidden
-            className={cn('ml-auto size-2 shrink-0 rounded-full', spec.dotClassName)}
+        <LabelElement className={cn('truncate', labelClassName)}>{label}</LabelElement>
+        {role ? (
+          <StatusDot
+            role={role}
+            label={roleLabel}
+            showLabel={showRoleLabel}
+            className="ml-auto shrink-0 text-muted-foreground"
           />
         ) : null}
       </div>
       <div className="mt-1 flex items-baseline gap-1">
-        <span className="font-heading text-2xl leading-none font-semibold tabular-nums">
+        <span
+          className={cn(
+            'font-heading text-2xl leading-none font-semibold tabular-nums',
+            valueClassName,
+          )}
+        >
           {value}
         </span>
         {unit ? <span className="text-xs text-muted-foreground">{unit}</span> : null}
       </div>
       {hint ? (
         <div className={cn('mt-1 text-xs text-muted-foreground', hintClassName)}>{hint}</div>
+      ) : null}
+      {progress ? (
+        <div aria-hidden="true" className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+          <div
+            className={cn('h-full rounded-full', progress.className ?? 'bg-muted-foreground/45')}
+            style={{ width: `${clampProgressPercent(progress.percent)}%` }}
+          />
+        </div>
       ) : null}
     </>
   );

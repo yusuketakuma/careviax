@@ -66,7 +66,12 @@ const authenticatedGET = withAuthContext(
         where: { org_id: ctx.orgId, status: 'completed', updated_at: todayInstantRange },
       }),
       prisma.setPlan.findMany({
-        where: { org_id: ctx.orgId },
+        where: {
+          org_id: ctx.orgId,
+          target_period_start: { lt: todayRange.lt },
+          target_period_end: { gte: todayRange.gte },
+          cycle: { overall_status: { not: 'cancelled' } },
+        },
         select: {
           audits: {
             orderBy: { audited_at: 'desc' },

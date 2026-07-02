@@ -211,6 +211,22 @@ describe('/api/admin/capacity', () => {
         },
       },
     });
+    // セット計画は今日と対象期間が重なるものだけを数え、古い履歴や取消サイクルを混ぜない。
+    expect(setPlanFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        target_period_start: { lt: new Date('2026-06-14T00:00:00.000Z') },
+        target_period_end: { gte: new Date('2026-06-13T00:00:00.000Z') },
+        cycle: { overall_status: { not: 'cancelled' } },
+      },
+      select: {
+        audits: {
+          orderBy: { audited_at: 'desc' },
+          take: 1,
+          select: { result: true },
+        },
+      },
+    });
     // 当日シフトは @db.Date 境界で照会していること
     expect(shiftFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -291,6 +307,14 @@ describe('/api/admin/capacity', () => {
         },
       },
     });
+    expect(setPlanFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          target_period_start: { lt: new Date('2026-06-13T00:00:00.000Z') },
+          target_period_end: { gte: new Date('2026-06-12T00:00:00.000Z') },
+        }),
+      }),
+    );
     expect(shiftFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

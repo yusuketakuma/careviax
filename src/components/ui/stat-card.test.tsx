@@ -43,6 +43,62 @@ describe('StatCard', () => {
     );
   });
 
+  it('can apply value classes without changing the card state role', () => {
+    render(<StatCard label="疑義" value={3} valueClassName="text-state-confirm" />);
+    expect(screen.getByText('3').className).toContain('text-state-confirm');
+  });
+
+  it('can preserve caller-owned heading semantics for labels', () => {
+    render(<StatCard label="訪問枠" labelElement="h2" labelClassName="text-sm" value="6 / 10件" />);
+    expect(screen.getByRole('heading', { name: '訪問枠', level: 2 }).className).toContain(
+      'text-sm',
+    );
+  });
+
+  it('can show an explicit visible role label while preserving status data-role', () => {
+    render(
+      <StatCard
+        label="スタッフ稼働"
+        value="100%"
+        role="blocked"
+        roleLabel="過負荷"
+        showRoleLabel
+      />,
+    );
+    const dot = screen.getByText('過負荷').closest('[data-role]');
+    expect(dot?.getAttribute('data-role')).toBe('blocked');
+  });
+
+  it('renders a clamped progress bar with the supplied fill class', () => {
+    const { container } = render(
+      <StatCard
+        label="訪問枠"
+        value="6 / 10件"
+        progress={{ percent: 125, className: 'bg-muted-foreground/45' }}
+      />,
+    );
+    const fill = Array.from(container.querySelectorAll('div')).find((element) =>
+      element.className.includes('bg-muted-foreground/45'),
+    ) as HTMLElement | undefined;
+    expect(fill).toBeTruthy();
+    expect(fill?.style.width).toBe('100%');
+  });
+
+  it('clamps negative and non-finite progress values to zero', () => {
+    const { container, rerender } = render(
+      <StatCard label="訪問枠" value="0件" progress={{ percent: -10 }} />,
+    );
+    const findDefaultFill = () =>
+      Array.from(container.querySelectorAll('div')).find((element) =>
+        element.className.includes('bg-muted-foreground/45'),
+      ) as HTMLElement | undefined;
+
+    expect(findDefaultFill()?.style.width).toBe('0%');
+
+    rerender(<StatCard label="訪問枠" value="0件" progress={{ percent: Number.NaN }} />);
+    expect(findDefaultFill()?.style.width).toBe('0%');
+  });
+
   it('can apply responsive classes to icon and hint wrappers', () => {
     const { container } = render(
       <StatCard

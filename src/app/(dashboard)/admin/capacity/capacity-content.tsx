@@ -6,7 +6,7 @@ import { getAdminCapacityShortcutLinks } from '@/components/features/admin/admin
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
-import { StatusDot } from '@/components/ui/status-dot';
+import { StatCard } from '@/components/ui/stat-card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import type { CapacityProcessKey } from '@/lib/analytics/capacity';
 
@@ -62,25 +62,13 @@ const PROCESS_COLORS: Record<CapacityProcessKey, string> = {
 // スタッフバーの系列色(--chart-* トークンを繰り返し使用)。
 const STAFF_COLORS = ['bg-chart-1', 'bg-chart-2', 'bg-chart-3', 'bg-chart-5', 'bg-chart-4'];
 
+// KPI 進捗バーは状態色ではなく中立色で統一し、閾値超過は role dot + label で表す。
+const KPI_PROGRESS_CLASS = 'bg-muted-foreground/45';
+
 /** 緊急余力バーのフルスケール(10件で満タン表示) */
 const EMERGENCY_BAR_FULL_SCALE = 10;
 
-function clampPercent(value: number): number {
-  return Math.min(Math.max(value, 0), 100);
-}
-
-function ProgressBar({ percent, colorClass }: { percent: number; colorClass: string }) {
-  return (
-    <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-      <div
-        className={`h-full rounded-full ${colorClass}`}
-        style={{ width: `${clampPercent(percent)}%` }}
-      />
-    </div>
-  );
-}
-
-function KpiCard({
+function CapacityKpiCard({
   label,
   value,
   percent,
@@ -93,23 +81,18 @@ function KpiCard({
   state?: CapacityKpiState;
 }) {
   return (
-    <section
-      className="rounded-lg border border-border/70 bg-card p-3 sm:p-4"
-      aria-label={`${label} ${value}`}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-medium text-muted-foreground">{label}</h2>
-        {state ? <StatusDot role={state.role} label={state.label} showLabel /> : null}
-      </div>
-      <div className="mt-2 flex items-center gap-3">
-        {/* 値テキストは中立(text-foreground)。状態は閾値超過時の点表示のみが担う。 */}
-        <p className="whitespace-nowrap text-xl font-bold tabular-nums text-foreground sm:text-2xl">
-          {value}
-        </p>
-        {/* 進捗バーは KPI ごとの分類色を避け単一中立にし、状態色と誤認させない。 */}
-        <ProgressBar percent={percent} colorClass="bg-muted-foreground/45" />
-      </div>
-    </section>
+    <StatCard
+      label={label}
+      labelElement="h2"
+      labelClassName="text-sm"
+      value={value}
+      valueClassName="whitespace-nowrap text-xl text-foreground sm:text-2xl"
+      role={state?.role}
+      roleLabel={state?.label}
+      showRoleLabel={!!state}
+      progress={{ percent, className: KPI_PROGRESS_CLASS }}
+      className="rounded-lg p-3 sm:p-4"
+    />
   );
 }
 
@@ -218,23 +201,23 @@ export function CapacityContent() {
       {/* KPI 4 枚: 訪問枠 / 調剤・セット / スタッフ稼働 / 緊急余力 */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4" data-testid="capacity-kpis">
         {/* 訪問枠・調剤セットは進捗(完了/全体)で、時刻文脈なしの閾値警告は誤シグナルになるため中立。 */}
-        <KpiCard
+        <CapacityKpiCard
           label="訪問枠"
           value={`${kpis.visit_slots.completed} / ${kpis.visit_slots.total}件`}
           percent={ratioPercent(kpis.visit_slots.completed, kpis.visit_slots.total)}
         />
-        <KpiCard
+        <CapacityKpiCard
           label="調剤・セット"
           value={`${kpis.dispense_set.completed} / ${kpis.dispense_set.total}件`}
           percent={ratioPercent(kpis.dispense_set.completed, kpis.dispense_set.total)}
         />
-        <KpiCard
+        <CapacityKpiCard
           label="スタッフ稼働"
           value={`${kpis.staff_utilization_percent}%`}
           percent={kpis.staff_utilization_percent}
           state={staffUtilizationState(kpis.staff_utilization_percent)}
         />
-        <KpiCard
+        <CapacityKpiCard
           label="緊急余力"
           value={`${kpis.emergency_capacity_count.toFixed(1)}件`}
           percent={(kpis.emergency_capacity_count / EMERGENCY_BAR_FULL_SCALE) * 100}

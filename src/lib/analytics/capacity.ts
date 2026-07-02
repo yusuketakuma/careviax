@@ -124,7 +124,7 @@ export type SetPlanInput = {
 /**
  * 調剤・セット KPI。
  * - 調剤: 未完了タスク全件 + 本日完了したタスク(完了済みの古いタスクは分母に入れない)
- * - セット: SetPlan 全件のうち最新監査が承認済みのものを完了とみなす
+ * - セット: 対象日と重なる SetPlan のうち最新監査が承認済みのものを完了とみなす
  */
 export function buildDispenseSetSummary(args: {
   dispenseOpenCount: number;
