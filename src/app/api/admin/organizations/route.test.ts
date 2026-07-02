@@ -103,6 +103,12 @@ function setupCleanupTransaction() {
   );
 }
 
+function parseConsoleErrorEntries(consoleError: { mock: { calls: unknown[][] } }) {
+  return consoleError.mock.calls.map(
+    (call) => JSON.parse(String(call[0])) as Record<string, unknown>,
+  );
+}
+
 describe('/api/admin/organizations POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -378,6 +384,7 @@ describe('/api/admin/organizations POST', () => {
   });
 
   it('rolls back created tenant state when Cognito invite fails', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     setupCreateTransaction();
     setupCleanupTransaction();
     inviteCognitoUserMock.mockRejectedValue(new Error('UsernameExistsException'));
@@ -409,6 +416,99 @@ describe('/api/admin/organizations POST', () => {
     });
     expect(deleteCognitoUserMock).not.toHaveBeenCalled();
     expect(userUpdateMock).not.toHaveBeenCalled();
+    expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  it('returns generic Cognito create errors without raw provider diagnostics', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    setupCreateTransaction();
+    setupCleanupTransaction();
+    inviteCognitoUserMock.mockRejectedValue(
+      new Error('Cognito create failed patient=山田 token=secret-cognito-token'),
+    );
+
+    const response = await POST(
+      createRequest({
+        name: '新規法人',
+        corporate_number: '1234567890123',
+        site_name: '新宿店',
+        site_address: '東京都新宿区1-1-1',
+        admin_email: 'admin@example.com',
+        admin_name: '管理者',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(502);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'COGNITO_CREATE_FAILED',
+      message: 'Cognito ユーザー作成に失敗しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('Cognito create failed');
+    expect(bodyText).not.toContain('山田');
+    expect(bodyText).not.toContain('secret-cognito-token');
+
+    const entries = parseConsoleErrorEntries(consoleError);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      level: 'error',
+      message: 'admin_organizations.cognito_invite_failed',
+      event: 'admin_organizations.cognito_invite_failed',
+      route: '/api/admin/organizations',
+      method: 'POST',
+      operation: 'invite_cognito_user',
+      entityType: 'organization_provisioning',
+      error_name: 'Error',
+    });
+    const logs = JSON.stringify(entries);
+    expect(logs).not.toContain('Cognito create failed');
+    expect(logs).not.toContain('山田');
+    expect(logs).not.toContain('secret-cognito-token');
+    expect(logs).not.toContain('user_new');
+    expect(logs).not.toContain('org_new');
+  });
+
+  it('logs Cognito invite rollback failures without raw cleanup diagnostics', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    setupCreateTransaction();
+    transactionMock.mockRejectedValueOnce(
+      new Error('tenant cleanup failed org=org_new token=secret-cleanup-token'),
+    );
+    inviteCognitoUserMock.mockRejectedValue(
+      new Error('Cognito create failed patient=山田 token=secret-cognito-token'),
+    );
+
+    const response = await POST(
+      createRequest({
+        name: '新規法人',
+        site_name: '新宿店',
+        site_address: '東京都新宿区1-1-1',
+        admin_email: 'admin@example.com',
+        admin_name: '管理者',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'ORGANIZATION_PROVISIONING_PARTIAL_FAILURE',
+    });
+
+    const entries = parseConsoleErrorEntries(consoleError);
+    expect(entries.map((entry) => entry.event)).toEqual([
+      'admin_organizations.cognito_invite_cleanup_failed',
+      'admin_organizations.cognito_invite_failed',
+    ]);
+    const logs = JSON.stringify(entries);
+    expect(logs).not.toContain('tenant cleanup failed');
+    expect(logs).not.toContain('Cognito create failed');
+    expect(logs).not.toContain('山田');
+    expect(logs).not.toContain('secret-cleanup-token');
+    expect(logs).not.toContain('secret-cognito-token');
+    expect(logs).not.toContain('org_new');
+    expect(logs).not.toContain('user_new');
   });
 
   it('deletes the invited Cognito user and tenant state when final user update fails', async () => {
@@ -453,13 +553,21 @@ describe('/api/admin/organizations POST', () => {
   });
 
   it('reports a partial failure when final user update rollback fails', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     setupCreateTransaction();
-    transactionMock.mockRejectedValueOnce(new Error('tenant cleanup failed'));
+    transactionMock.mockRejectedValueOnce(
+      new Error('tenant cleanup failed org=org_new token=secret-tenant-token'),
+    );
     inviteCognitoUserMock.mockResolvedValue({
       sub: 'cognito_sub_1',
       username: 'admin@example.com',
     });
-    userUpdateMock.mockRejectedValueOnce(new Error('final update failed'));
+    deleteCognitoUserMock.mockRejectedValueOnce(
+      new Error('Cognito cleanup failed user=user_new token=secret-delete-token'),
+    );
+    userUpdateMock.mockRejectedValueOnce(
+      new Error('final update failed patient=山田 token=secret-final-token'),
+    );
 
     const response = await POST(
       createRequest({
@@ -482,5 +590,22 @@ describe('/api/admin/organizations POST', () => {
     expect(userDeleteMock).not.toHaveBeenCalled();
     expect(pharmacySiteDeleteMock).not.toHaveBeenCalled();
     expect(organizationDeleteMock).not.toHaveBeenCalled();
+
+    const entries = parseConsoleErrorEntries(consoleError);
+    expect(entries.map((entry) => entry.event)).toEqual([
+      'admin_organizations.cognito_cleanup_failed',
+      'admin_organizations.tenant_cleanup_failed',
+      'admin_organizations.final_user_update_failed',
+    ]);
+    const logs = JSON.stringify(entries);
+    expect(logs).not.toContain('Cognito cleanup failed');
+    expect(logs).not.toContain('tenant cleanup failed');
+    expect(logs).not.toContain('final update failed');
+    expect(logs).not.toContain('山田');
+    expect(logs).not.toContain('secret-delete-token');
+    expect(logs).not.toContain('secret-tenant-token');
+    expect(logs).not.toContain('secret-final-token');
+    expect(logs).not.toContain('org_new');
+    expect(logs).not.toContain('user_new');
   });
 });

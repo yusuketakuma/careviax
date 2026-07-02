@@ -63,7 +63,7 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
     },
     "exception_command_center": [
       {
-        "action_href": "/workflow",
+        "action_href": "/workflow?focus=exceptions",
         "action_label": "例外を確認",
         "created_at": "2026-03-25T08:00:00.000Z",
         "description": "薬剤残数が不足しています",
@@ -74,7 +74,7 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
         "type": "workflow_exception",
       },
       {
-        "action_href": "/workflow",
+        "action_href": "/workflow?focus=exceptions",
         "action_label": "期限超過を確認",
         "created_at": null,
         "description": "2件の訪問が期限を超えています。",
@@ -85,7 +85,7 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
         "type": "overdue_visit",
       },
       {
-        "action_href": "/workflow",
+        "action_href": "/reports?focus=delivery&delivery_status=response_waiting",
         "action_label": "報告待ちを確認",
         "created_at": null,
         "description": "5件が訪問後報告の送信待ちです。",
@@ -96,7 +96,7 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
         "type": "report_backlog",
       },
       {
-        "action_href": "/workflow",
+        "action_href": "/external?focus=self_reports",
         "action_label": "セルフレポートを確認",
         "created_at": null,
         "description": "1件が triage 待ちです。",
@@ -136,7 +136,7 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
     "inquiry_workbench": [],
     "intake_linkage": [
       {
-        "action_href": "/workflow",
+        "action_href": "/prescriptions/intake_1",
         "action_label": "訪問導線を作成",
         "category": "リフィル",
         "due_at": "2026-03-30T00:00:00.000Z",
@@ -274,7 +274,7 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
         "title": "緊急連絡先の整備が必要です",
       },
       {
-        "action_href": "/patients",
+        "action_href": "/patients?readiness_issue=missing_primary_physician",
         "action_label": "患者一覧で確認",
         "count": 1,
         "description": "主治医が未登録のケースがあります。初回訪問判断、疑義照会、報告導線が不完全です。",
@@ -283,7 +283,7 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
         "title": "主治医連携の登録が必要です",
       },
       {
-        "action_href": "/workflow",
+        "action_href": "/tasks?status=&task_type=visit_intake_linkage",
         "action_label": "未接続の処方を確認",
         "count": 1,
         "description": "受付済み処方が訪問候補・架電・確定フローへ接続されていません。",
@@ -292,7 +292,7 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
         "title": "処方受付から訪問導線への接続が必要です",
       },
       {
-        "action_href": "/workflow",
+        "action_href": "/external?focus=self_reports",
         "action_label": "セルフレポートを確認",
         "count": 1,
         "description": "患者または家族からの申告が triage 待ちまたは triage 中です。",
@@ -304,7 +304,7 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
     "role_inboxes": {
       "buckets": [
         {
-          "action_href": "/workflow",
+          "action_href": "/workflow?focus=workbench",
           "communication_items": 2,
           "label": "薬剤師 inbox",
           "open_items": 7,
@@ -357,7 +357,7 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
     ],
     "unified_workbench": [
       {
-        "action_href": "/workflow",
+        "action_href": "/external?focus=self_reports",
         "action_label": "triage を進める",
         "badges": [
           "submitted",
@@ -392,7 +392,7 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
         "title": "訪問準備が未完了です",
       },
       {
-        "action_href": "/schedules",
+        "action_href": "/schedules?focus=schedule&schedule_id=schedule_1",
         "action_label": "訪問予定を確認",
         "badges": [
           "planned",
@@ -409,7 +409,7 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
         "title": "山田 太郎 の訪問前対応",
       },
       {
-        "action_href": "/schedules",
+        "action_href": "/schedules?focus=schedule&schedule_id=schedule_2",
         "action_label": "訪問予定を確認",
         "badges": [
           "ready",
@@ -426,7 +426,7 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
         "title": "山田 花子 の訪問前対応",
       },
       {
-        "action_href": "/schedules",
+        "action_href": "/schedules/proposals?detail=proposal_1",
         "action_label": "架電を記録",
         "badges": [
           "patient_contact_pending",
@@ -443,7 +443,7 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
         "title": "山田 太郎 の訪問候補を進めてください",
       },
       {
-        "action_href": "/workflow",
+        "action_href": "/tasks?status=&task_type=visit_intake_linkage",
         "action_label": "未接続の処方を確認",
         "badges": [
           "visit_intake_linkage",
@@ -459,7 +459,7 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
         "title": "訪問導線に未接続の処方受付があります",
       },
       {
-        "action_href": "/workflow",
+        "action_href": "/reports?focus=delivery&delivery_status=response_waiting",
         "action_label": "報告待ちを確認",
         "badges": [
           "visit_completed",

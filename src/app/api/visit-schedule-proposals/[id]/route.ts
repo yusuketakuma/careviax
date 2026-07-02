@@ -876,17 +876,18 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     }),
   ]);
 
+  const pharmacistIds = Array.from(
+    new Set([
+      proposal.proposed_pharmacist_id,
+      ...relatedProposals.map((item) => item.proposed_pharmacist_id),
+    ]),
+  );
   const pharmacists = await prisma.user
     .findMany({
       where: {
         org_id: ctx.orgId,
         id: {
-          in: Array.from(
-            new Set([
-              proposal.proposed_pharmacist_id,
-              ...relatedProposals.map((item) => item.proposed_pharmacist_id),
-            ]),
-          ),
+          in: pharmacistIds,
         },
       },
       select: {
@@ -895,7 +896,22 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
         name_kana: true,
       },
     })
-    .catch(() => []);
+    .catch((enrichmentError: unknown) => {
+      logger.warn(
+        {
+          event: 'visit_schedule_proposal_pharmacist_enrichment_failed',
+          route: '/api/visit-schedule-proposals/[id]',
+          method: 'GET',
+          operation: 'load_proposal_pharmacists',
+          orgId: ctx.orgId,
+          entityType: 'visit_schedule_proposal',
+          targetId: id,
+          count: pharmacistIds.length,
+        },
+        enrichmentError,
+      );
+      return [];
+    });
 
   const pharmacistById = new Map(pharmacists.map((user) => [user.id, user]));
   const routePreview = await buildRoutePreview({

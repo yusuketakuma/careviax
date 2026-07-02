@@ -6,6 +6,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { internalError, success, validationError, notFound } from '@/lib/api/response';
+import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { buildVisitRecordScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
@@ -17,20 +18,6 @@ import type { Prisma } from '@prisma/client';
 
 const ROUTE = '/api/residual-medications';
 const MAX_RESIDUAL_MEDICATION_LIMIT = 200;
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 function blankStringToUndefined(value: unknown) {
   return typeof value === 'string' && value.trim().length === 0 ? undefined : value;
@@ -45,40 +32,8 @@ const residualMedicationQuerySchema = z.object({
   limit: optionalBoundedIntegerSearchParam('limit', 1, MAX_RESIDUAL_MEDICATION_LIMIT),
 });
 
-function readStrictOptionalIdFilter(
-  searchParams: URLSearchParams,
-  name: 'visit_record_id' | 'patient_id',
-  messages: { blank: string; invalid: string },
-) {
-  const values = searchParams.getAll(name);
-  if (values.length === 0) return { ok: true as const, value: undefined };
-  if (values.length > 1) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [`${name} は1つだけ指定してください`] },
-    };
-  }
-
-  const value = values[0];
-  if (value.trim().length === 0) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [messages.blank] },
-    };
-  }
-
-  if (value !== value.trim() || value.length > 100) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [messages.invalid] },
-    };
-  }
-
-  return { ok: true as const, value };
-}
-
 function parseResidualMedicationFilters(searchParams: URLSearchParams) {
-  const visitRecordResult = readStrictOptionalIdFilter(searchParams, 'visit_record_id', {
+  const visitRecordResult = readStrictOptionalSearchParam(searchParams, 'visit_record_id', {
     blank: '訪問記録IDを指定してください',
     invalid: '訪問記録IDの形式が不正です',
   });
@@ -91,7 +46,7 @@ function parseResidualMedicationFilters(searchParams: URLSearchParams) {
     };
   }
 
-  const patientResult = readStrictOptionalIdFilter(searchParams, 'patient_id', {
+  const patientResult = readStrictOptionalSearchParam(searchParams, 'patient_id', {
     blank: '患者IDを指定してください',
     invalid: '患者IDの形式が不正です',
   });
@@ -205,13 +160,15 @@ export async function GET(req: NextRequest, routeContext?: unknown) {
       return withSensitiveNoStore(await authenticatedGET(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('residual_medications_get_unhandled_error', undefined, {
-        event: 'residual_medications_get_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'residual_medications_get_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });
@@ -324,13 +281,15 @@ export async function POST(req: NextRequest, routeContext?: unknown) {
       return withSensitiveNoStore(await authenticatedPOST(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('residual_medications_post_unhandled_error', undefined, {
-        event: 'residual_medications_post_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'residual_medications_post_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

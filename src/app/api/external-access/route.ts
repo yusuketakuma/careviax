@@ -35,6 +35,7 @@ import {
   maskContactValueForAudit,
   maskPhoneContact,
 } from '@/lib/privacy/contact-mask';
+import { logger } from '@/lib/utils/logger';
 import { z } from 'zod';
 
 const requiredTrimmedStringSchema = (message: string) => z.string().trim().min(1, message);
@@ -604,12 +605,28 @@ export const POST = withAuthContext(
           }),
         );
       } catch {
-        await withOrgContext(ctx.orgId, (tx) =>
-          tx.externalAccessGrant.update({
-            where: { id: grant.id },
-            data: { revoked_at: new Date() },
-          }),
-        ).catch(() => undefined);
+        try {
+          await withOrgContext(ctx.orgId, (tx) =>
+            tx.externalAccessGrant.update({
+              where: { id: grant.id },
+              data: { revoked_at: new Date() },
+            }),
+          );
+        } catch (revokeError) {
+          logger.warn(
+            {
+              event: 'external_access_grant_rollback_failed',
+              route: '/api/external-access',
+              method: 'POST',
+              operation: 'revoke_external_access_grant_after_audit_failure',
+              orgId: ctx.orgId,
+              actorId: ctx.userId,
+              entityType: 'external_access_grant',
+              targetId: grant.id,
+            },
+            revokeError,
+          );
+        }
         return withSensitiveNoStore(
           error(
             'EXTERNAL_ACCESS_OTP_DELIVERY_AUDIT_FAILED',

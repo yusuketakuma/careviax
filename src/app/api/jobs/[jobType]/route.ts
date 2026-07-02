@@ -141,6 +141,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ job
         errorCount: result.errors?.length ?? 0,
       }) as NextResponse;
     }
+    if (jobType === 'medication-history-bulk-export-drain') {
+      return success({
+        jobType,
+        processedCount: result.processedCount,
+        errorCount: result.errors?.length ?? 0,
+      }) as NextResponse;
+    }
     return success({ jobType, ...result }) as NextResponse;
   } catch (err) {
     logger.error(

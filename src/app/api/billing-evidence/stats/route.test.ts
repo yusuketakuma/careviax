@@ -251,10 +251,9 @@ describe('/api/billing-evidence/stats GET', () => {
   });
 
   it('returns a no-store fixed error without leaking raw billing evidence failures', async () => {
+    const thrownError = new Error('patient 山田太郎 billing stats failed');
     billingEvidenceCountMock.mockReset();
-    billingEvidenceCountMock.mockRejectedValueOnce(
-      new Error('patient 山田太郎 billing stats failed'),
-    );
+    billingEvidenceCountMock.mockRejectedValueOnce(thrownError);
 
     const response = await GET(createRequest());
 
@@ -267,18 +266,20 @@ describe('/api/billing-evidence/stats GET', () => {
     expect(body).not.toContain('billing stats failed');
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'billing_evidence_stats_unhandled_error',
-      undefined,
       {
         event: 'billing_evidence_stats_unhandled_error',
         route: '/api/billing-evidence/stats',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       },
+      thrownError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('patient 山田太郎');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('billing stats failed');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('stack');
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(thrownError);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(logContext);
+    expect(logged).not.toContain('patient 山田太郎');
+    expect(logged).not.toContain('billing stats failed');
+    expect(logged).not.toContain('stack');
   });
 });

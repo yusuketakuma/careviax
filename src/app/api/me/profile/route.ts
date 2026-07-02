@@ -8,6 +8,7 @@ import { externalError, success, unauthorized, validationError } from '@/lib/api
 import { updateCognitoUserProfile } from '@/server/services/cognito-admin';
 import { getUserMfaState } from '@/server/services/cognito-auth';
 import { optionalPhoneNumberSchema } from '@/lib/validations/phone';
+import { logger } from '@/lib/utils/logger';
 
 const profileUpdateSchema = z.object({
   name: z.string().trim().min(1, '表示名は必須です'),
@@ -86,7 +87,15 @@ export async function GET(request: NextRequest) {
       mfaEnabled = mfaState.enabled;
     } catch (error) {
       if ((error as Error).message !== 'COGNITO_NOT_CONFIGURED') {
-        console.warn('Failed to resolve Cognito MFA state', error);
+        logger.warn(
+          {
+            event: 'me_profile.mfa_state_failed',
+            route: '/api/me/profile',
+            method: 'GET',
+            operation: 'resolve_cognito_mfa_state',
+          },
+          error,
+        );
       }
     }
   }

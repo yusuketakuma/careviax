@@ -5,6 +5,8 @@ import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 import { runBackupMonitorChecks } from '@/server/services/backup-monitor';
 
+const BACKUP_MONITOR_FAILED_MESSAGE = 'backup monitor failed';
+
 export async function GET(req: NextRequest) {
   const checks: Record<
     string,
@@ -42,10 +44,10 @@ export async function GET(req: NextRequest) {
         if (backupResult.overall !== 'ok') {
           overall = 'degraded';
         }
-      } catch (error) {
+      } catch {
         checks.backups = {
           status: 'error',
-          message: error instanceof Error ? error.message : 'backup monitor failed',
+          message: BACKUP_MONITOR_FAILED_MESSAGE,
         };
 
         overall = 'degraded';

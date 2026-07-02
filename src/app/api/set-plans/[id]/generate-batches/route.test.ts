@@ -279,9 +279,9 @@ describe('set-plans/[id]/generate-batches POST', () => {
   });
 
   it('returns a sanitized no-store 500 when generation plan lookup fails unexpectedly', async () => {
-    txMock.setPlan.findFirst.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw generate batches detail failure'),
-    );
+    const unsafeError = new Error('患者 山田太郎 raw generate batches detail failure');
+    unsafeError.name = 'SetPlanGenerateBatchesSecretError';
+    txMock.setPlan.findFirst.mockRejectedValueOnce(unsafeError);
 
     const response = await POST(createRequest({ force: false }), {
       params: Promise.resolve({ id: 'plan_1' }),
@@ -298,15 +298,20 @@ describe('set-plans/[id]/generate-batches POST', () => {
     expect(JSON.stringify(body)).not.toContain('山田太郎');
     expect(JSON.stringify(body)).not.toContain('raw generate batches detail failure');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'set_plan_generate_batches_post_unhandled_error',
-      undefined,
-      expect.objectContaining({
+      {
         event: 'set_plan_generate_batches_post_unhandled_error',
         route: '/api/set-plans/[id]/generate-batches',
         method: 'POST',
-        error_name: 'Error',
-      }),
+        status: 500,
+      },
+      unsafeError,
     );
+    const [routeContext] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(routeContext).not.toHaveProperty('error_name');
+    const serializedRouteContext = JSON.stringify(routeContext);
+    expect(serializedRouteContext).not.toContain('山田太郎');
+    expect(serializedRouteContext).not.toContain('raw generate batches detail failure');
+    expect(serializedRouteContext).not.toContain('SetPlanGenerateBatchesSecretError');
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 

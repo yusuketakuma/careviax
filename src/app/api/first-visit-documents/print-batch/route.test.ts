@@ -341,9 +341,9 @@ describe('/api/first-visit-documents/print-batch', () => {
   });
 
   it('returns a sanitized no-store 500 without raw logging when the print batch transaction fails unexpectedly', async () => {
-    withOrgContextMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw first visit print batch secret'),
-    );
+    const err = new Error('患者 山田太郎 raw first visit print batch secret');
+    err.name = 'FirstVisitDocumentPrintBatchSecretError';
+    withOrgContextMock.mockRejectedValueOnce(err);
 
     const response = (await POST(
       createPostRequest({
@@ -363,18 +363,21 @@ describe('/api/first-visit-documents/print-batch', () => {
     expect(JSON.stringify(body)).not.toContain('山田太郎');
     expect(JSON.stringify(body)).not.toContain('raw first visit');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'first_visit_documents_print_batch_post_unhandled_error',
-      undefined,
       expect.objectContaining({
         event: 'first_visit_documents_print_batch_post_unhandled_error',
         route: '/api/first-visit-documents/print-batch',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
       }),
+      err,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw first visit');
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(err);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logContextText = JSON.stringify(logContext);
+    expect(logContextText).not.toContain('山田太郎');
+    expect(logContextText).not.toContain('raw first visit');
+    expect(logContextText).not.toContain('FirstVisitDocumentPrintBatchSecretError');
     expect(firstVisitDocumentUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });

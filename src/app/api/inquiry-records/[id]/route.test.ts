@@ -221,21 +221,20 @@ describe('/api/inquiry-records/[id] PATCH', () => {
     expect(bodyText).toContain('INTERNAL_ERROR');
     expect(bodyText).not.toContain('raw patient inquiry secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'inquiry_record_patch_unhandled_error',
-      undefined,
-      {
+      expect.objectContaining({
         event: 'inquiry_record_patch_unhandled_error',
         route: '/api/inquiry-records/[id]',
         method: 'PATCH',
         status: 500,
-        error_name: 'Error',
-      },
+      }),
+      unsafeError,
     );
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
-    expect(logged).not.toContain('raw patient inquiry secret');
-    expect(logged).not.toContain('InquiryPatientSecretError');
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(unsafeError);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logContextText = JSON.stringify(logContext);
+    expect(logContextText).not.toContain('raw patient inquiry secret');
+    expect(logContextText).not.toContain('InquiryPatientSecretError');
   });
 
   it('updates the linked prescription line when confirming a changed inquiry', async () => {

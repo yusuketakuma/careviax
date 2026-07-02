@@ -177,9 +177,9 @@ describe('/api/set-plans/[id]', () => {
   });
 
   it('returns a sanitized no-store 500 when set plan detail lookup fails unexpectedly', async () => {
-    txMock.setPlan.findFirst.mockRejectedValueOnce(
-      new Error('患者 山田太郎 東京都千代田区 raw set plan packaging detail'),
-    );
+    const unsafeError = new Error('患者 山田太郎 東京都千代田区 raw set plan packaging detail');
+    unsafeError.name = 'SetPlanDetailSecretError';
+    txMock.setPlan.findFirst.mockRejectedValueOnce(unsafeError);
 
     const response = await GET(createRequest(), {
       params: Promise.resolve({ id: 'plan_1' }),
@@ -197,15 +197,21 @@ describe('/api/set-plans/[id]', () => {
     expect(JSON.stringify(body)).not.toContain('東京都千代田区');
     expect(JSON.stringify(body)).not.toContain('raw set plan packaging detail');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'set_plans_detail_get_unhandled_error',
-      undefined,
-      expect.objectContaining({
+      {
         event: 'set_plans_detail_get_unhandled_error',
         route: '/api/set-plans/[id]',
         method: 'GET',
-        error_name: 'Error',
-      }),
+        status: 500,
+      },
+      unsafeError,
     );
+    const [routeContext] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(routeContext).not.toHaveProperty('error_name');
+    const serializedRouteContext = JSON.stringify(routeContext);
+    expect(serializedRouteContext).not.toContain('山田太郎');
+    expect(serializedRouteContext).not.toContain('東京都千代田区');
+    expect(serializedRouteContext).not.toContain('raw set plan packaging detail');
+    expect(serializedRouteContext).not.toContain('SetPlanDetailSecretError');
   });
 
   it('updates set plan metadata', async () => {
@@ -438,9 +444,9 @@ describe('/api/set-plans/[id]', () => {
   });
 
   it('returns a sanitized no-store 500 when set plan update fails unexpectedly', async () => {
-    withOrgContextMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 東京都千代田区 raw set plan packaging update'),
-    );
+    const unsafeError = new Error('患者 山田太郎 東京都千代田区 raw set plan packaging update');
+    unsafeError.name = 'SetPlanPatchSecretError';
+    withOrgContextMock.mockRejectedValueOnce(unsafeError);
 
     const response = await PATCH(
       createRequest({
@@ -464,15 +470,21 @@ describe('/api/set-plans/[id]', () => {
     expect(JSON.stringify(body)).not.toContain('東京都千代田区');
     expect(JSON.stringify(body)).not.toContain('raw set plan packaging update');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'set_plans_detail_patch_unhandled_error',
-      undefined,
-      expect.objectContaining({
+      {
         event: 'set_plans_detail_patch_unhandled_error',
         route: '/api/set-plans/[id]',
         method: 'PATCH',
-        error_name: 'Error',
-      }),
+        status: 500,
+      },
+      unsafeError,
     );
+    const [routeContext] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(routeContext).not.toHaveProperty('error_name');
+    const serializedRouteContext = JSON.stringify(routeContext);
+    expect(serializedRouteContext).not.toContain('山田太郎');
+    expect(serializedRouteContext).not.toContain('東京都千代田区');
+    expect(serializedRouteContext).not.toContain('raw set plan packaging update');
+    expect(serializedRouteContext).not.toContain('SetPlanPatchSecretError');
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 

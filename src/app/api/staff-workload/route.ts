@@ -23,15 +23,6 @@ const STAFF_ROLES = [
 ] as const;
 const RECENT_TASK_PREVIEW_LIMIT_PER_STAFF = 2;
 const RECENT_VISIT_PREVIEW_LIMIT_PER_STAFF = 2;
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
 
 const querySchema = z.object({
   date: dateKeySchema('date は YYYY-MM-DD で指定してください').optional(),
@@ -66,11 +57,6 @@ type OpenTask = {
 type RecentOpenTaskRow = OpenTask & {
   assigned_to: string | null;
 };
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return typeof err;
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 async function authenticatedGET(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
@@ -271,13 +257,15 @@ export async function GET(req: NextRequest) {
       return withSensitiveNoStore(await authenticatedGET(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('staff_workload_unhandled_error', undefined, {
-        event: 'staff_workload_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'staff_workload_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

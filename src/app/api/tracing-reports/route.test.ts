@@ -260,16 +260,40 @@ describe('/api/tracing-reports', () => {
   });
 
   it('returns a fixed sensitive no-store 500 when scoped report loading fails', async () => {
-    withOrgContextMock.mockRejectedValueOnce(new Error('database unavailable'));
+    const unsafeError = new Error('patient 山田太郎 tracing report list raw SQL stack');
+    unsafeError.name = 'PatientTracingReportListRawSqlStackError';
+    withOrgContextMock.mockRejectedValueOnce(unsafeError);
 
     const response = (await GET(createRequest('http://localhost/api/tracing-reports')))!;
 
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(payload).toMatchObject({
       code: 'INTERNAL_ERROR',
       message: 'サーバー内部でエラーが発生しました',
     });
+    const responseBody = JSON.stringify(payload);
+    expect(responseBody).not.toContain('山田太郎');
+    expect(responseBody).not.toContain('raw SQL');
+    expect(responseBody).not.toContain('stack');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'tracing_reports_unhandled_error',
+        route: '/api/tracing-reports',
+        method: 'GET',
+        status: 500,
+      },
+      unsafeError,
+    );
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(unsafeError);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(logContext);
+    expect(logged).not.toContain('山田太郎');
+    expect(logged).not.toContain('raw SQL');
+    expect(logged).not.toContain('stack');
+    expect(logged).not.toContain('PatientTracingReportListRawSqlStackError');
   });
 
   it('creates a tracing report', async () => {
@@ -453,16 +477,19 @@ describe('/api/tracing-reports', () => {
     expect(body).not.toContain('tracing report content');
     expect(body).not.toContain('raw SQL');
     expect(body).not.toContain('status_change_reason');
-    expect(loggerErrorMock).toHaveBeenCalledWith('tracing_reports_unhandled_error', undefined, {
-      event: 'tracing_reports_unhandled_error',
-      route: '/api/tracing-reports',
-      method: 'POST',
-      status: 500,
-      error_name: 'Error',
-    });
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'tracing_reports_unhandled_error',
+        route: '/api/tracing-reports',
+        method: 'POST',
+        status: 500,
+      },
+      unsafeError,
+    );
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(unsafeError);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(logContext);
     expect(logged).not.toContain('山田太郎');
     expect(logged).not.toContain('tracing report content');
     expect(logged).not.toContain('raw SQL');

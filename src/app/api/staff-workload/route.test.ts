@@ -406,15 +406,19 @@ describe('/api/staff-workload', () => {
     expect(responseBody).not.toContain('SELECT * FROM');
     expect(responseBody).not.toContain('stack line');
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
-    expect(loggerErrorMock).toHaveBeenCalledWith('staff_workload_unhandled_error', undefined, {
-      event: 'staff_workload_unhandled_error',
-      route: '/api/staff-workload',
-      method: 'GET',
-      status: 500,
-      error_name: 'Error',
-    });
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(thrownError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'staff_workload_unhandled_error',
+        route: '/api/staff-workload',
+        method: 'GET',
+        status: 500,
+      },
+      thrownError,
+    );
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(thrownError);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(logContext);
     expect(logged).not.toContain('田中 花子');
     expect(logged).not.toContain('鈴木さんの監査');
     expect(logged).not.toContain('SELECT * FROM');

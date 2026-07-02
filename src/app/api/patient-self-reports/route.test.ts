@@ -265,7 +265,9 @@ describe('/api/patient-self-reports', () => {
   });
 
   it('returns a sanitized no-store 500 when self report listing fails unexpectedly', async () => {
-    patientSelfReportFindManyMock.mockRejectedValueOnce(new Error('raw self report secret'));
+    const err = new Error('raw self report secret');
+    err.name = 'PatientSelfReportSecretError';
+    patientSelfReportFindManyMock.mockRejectedValueOnce(err);
 
     const response = (await GET(createGetRequest(), { params: Promise.resolve({}) }))!;
 
@@ -275,17 +277,20 @@ describe('/api/patient-self-reports', () => {
     expect(bodyText).toContain('INTERNAL_ERROR');
     expect(bodyText).not.toContain('raw self report secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'patient_self_reports_get_unhandled_error',
-      undefined,
       expect.objectContaining({
         event: 'patient_self_reports_get_unhandled_error',
         route: '/api/patient-self-reports',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       }),
+      err,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw self report secret');
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(err);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logContextText = JSON.stringify(logContext);
+    expect(logContextText).not.toContain('raw self report secret');
+    expect(logContextText).not.toContain('PatientSelfReportSecretError');
   });
 
   it.each([
@@ -532,7 +537,9 @@ describe('/api/patient-self-reports', () => {
   });
 
   it('returns a sanitized no-store 500 without raw logging when self report creation fails', async () => {
-    withOrgContextMock.mockRejectedValueOnce(new Error('raw self report create secret'));
+    const err = new Error('raw self report create secret');
+    err.name = 'PatientSelfReportCreateSecretError';
+    withOrgContextMock.mockRejectedValueOnce(err);
 
     const response = (await POST(
       createPostRequest({
@@ -551,19 +558,20 @@ describe('/api/patient-self-reports', () => {
     expect(bodyText).toContain('INTERNAL_ERROR');
     expect(bodyText).not.toContain('raw self report create secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'patient_self_reports_post_unhandled_error',
-      undefined,
       expect.objectContaining({
         event: 'patient_self_reports_post_unhandled_error',
         route: '/api/patient-self-reports',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
       }),
+      err,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(
-      'raw self report create secret',
-    );
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(err);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logContextText = JSON.stringify(logContext);
+    expect(logContextText).not.toContain('raw self report create secret');
+    expect(logContextText).not.toContain('PatientSelfReportCreateSecretError');
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 });

@@ -10,6 +10,7 @@ import {
   queueMedicationHistoryBulkExport,
 } from '@/server/services/pdf-bulk-export';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { logger } from '@/lib/utils/logger';
 
 export const runtime = 'nodejs';
 
@@ -50,8 +51,17 @@ async function authenticatedPOST(req: NextRequest) {
     });
 
     if (data.startedImmediately) {
-      void drainMedicationHistoryBulkExportQueue({ orgId: authResult.ctx.orgId }).catch(() => {
-        // The queued job remains pending and can be drained later via the job endpoint.
+      void drainMedicationHistoryBulkExportQueue({ orgId: authResult.ctx.orgId }).catch((cause) => {
+        logger.warn(
+          {
+            event: 'medication_history_bulk_export.drain_failed',
+            orgId: authResult.ctx.orgId,
+            targetId: data.jobId,
+            jobType: 'medication-history-bulk-export-drain',
+            operation: 'drain',
+          },
+          cause,
+        );
       });
     }
 

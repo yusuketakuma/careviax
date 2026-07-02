@@ -18,20 +18,6 @@ import { withRoutePerformance } from '@/lib/utils/performance';
 import { z } from 'zod';
 
 const ROUTE = '/api/set-batches/[id]';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 const updateSetBatchSchema = z.object({
   quantity: z.number().positive('数量は正の数です').optional(),
@@ -115,12 +101,15 @@ export async function GET(req: NextRequest, routeContext: AuthRouteContext<{ id:
       return withSensitiveNoStore(await authenticatedGET(req, routeContext));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('set_batches_detail_get_unhandled_error', undefined, {
-        event: 'set_batches_detail_get_unhandled_error',
-        route: ROUTE,
-        method: 'GET',
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'set_batches_detail_get_unhandled_error',
+          route: ROUTE,
+          method: 'GET',
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });
@@ -273,12 +262,15 @@ export async function PATCH(req: NextRequest, routeContext: AuthRouteContext<{ i
       return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('set_batches_detail_patch_unhandled_error', undefined, {
-        event: 'set_batches_detail_patch_unhandled_error',
-        route: ROUTE,
-        method: 'PATCH',
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'set_batches_detail_patch_unhandled_error',
+          route: ROUTE,
+          method: 'PATCH',
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });
@@ -387,12 +379,15 @@ export async function DELETE(req: NextRequest, routeContext: AuthRouteContext<{ 
       return withSensitiveNoStore(await authenticatedDELETE(req, routeContext));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('set_batches_detail_delete_unhandled_error', undefined, {
-        event: 'set_batches_detail_delete_unhandled_error',
-        route: ROUTE,
-        method: 'DELETE',
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'set_batches_detail_delete_unhandled_error',
+          route: ROUTE,
+          method: 'DELETE',
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

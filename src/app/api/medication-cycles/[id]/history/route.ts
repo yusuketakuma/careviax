@@ -11,23 +11,6 @@ import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
 
 const ROUTE_TEMPLATE = '/api/medication-cycles/[id]/history';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'PrismaClientKnownRequestError',
-  'PrismaClientUnknownRequestError',
-  'PrismaClientRustPanicError',
-  'PrismaClientInitializationError',
-  'PrismaClientValidationError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return typeof err;
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 function authAuditRequest(req: NextRequest): NextRequest {
   return new NextRequest(new URL(ROUTE_TEMPLATE, req.url), {
@@ -102,13 +85,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return withSensitiveNoStore(await authenticatedGET(req, { params }));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('medication_cycle_history_unhandled_error', undefined, {
-        event: 'medication_cycle_history_unhandled_error',
-        route: ROUTE_TEMPLATE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'medication_cycle_history_unhandled_error',
+          route: ROUTE_TEMPLATE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

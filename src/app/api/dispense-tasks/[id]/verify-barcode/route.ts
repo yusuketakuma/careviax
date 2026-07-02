@@ -14,25 +14,11 @@ import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescript
 import { verifyDispenseBarcodeForLine } from '@/lib/dispensing/dispense-barcode-verification';
 
 const ROUTE = '/api/dispense-tasks/[id]/verify-barcode';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
 
 const verifyBarcodeSchema = z.object({
   barcode: z.string().min(1, 'バーコードは必須です'),
   line_id: z.string().min(1, '処方明細IDは必須です'),
 });
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 async function authenticatedPOST(req: NextRequest, routeContext: AuthRouteContext<{ id: string }>) {
   const authResult = await requireAuthContext(req, {
@@ -106,13 +92,15 @@ export async function POST(req: NextRequest, routeContext: AuthRouteContext<{ id
       return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('dispense_task_verify_barcode_unhandled_error', undefined, {
-        event: 'dispense_task_verify_barcode_unhandled_error',
-        route: ROUTE,
-        method: 'POST',
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'dispense_task_verify_barcode_unhandled_error',
+          route: ROUTE,
+          method: 'POST',
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

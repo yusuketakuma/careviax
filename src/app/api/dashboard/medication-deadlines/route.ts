@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { internalError, success, validationError } from '@/lib/api/response';
+import { parseExactIntegerSearchParam, readSingleSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
@@ -12,15 +13,6 @@ import { withRoutePerformance } from '@/lib/utils/performance';
 const DEFAULT_MEDICATION_DEADLINE_WITHIN_DAYS = 7;
 const MAX_MEDICATION_DEADLINE_WITHIN_DAYS = 365;
 const ROUTE = '/api/dashboard/medication-deadlines';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
 
 type MedicationDeadlineQuery = {
   withinDays: number;
@@ -32,59 +24,31 @@ type QueryParseResult =
   | { ok: true; data: MedicationDeadlineQuery }
   | { ok: false; response: ReturnType<typeof validationError> };
 
-function parseSingleSearchParam(params: URLSearchParams, field: string) {
-  const values = params.getAll(field);
-  if (values.length === 0) return { ok: true as const, value: null };
-  if (values.length > 1) {
-    return {
-      ok: false as const,
-      message: `${field} は1つだけ指定してください`,
-    };
-  }
-  return { ok: true as const, value: values[0] ?? '' };
-}
-
-function parseExactIntegerParam(
-  params: URLSearchParams,
-  field: string,
-  min: number,
-  max: number,
-  defaultValue?: number,
-) {
-  const parsed = parseSingleSearchParam(params, field);
-  if (!parsed.ok) return parsed;
-  if (parsed.value === null) return { ok: true as const, value: defaultValue };
-  if (!/^-?\d+$/.test(parsed.value)) {
-    return {
-      ok: false as const,
-      message: `${field} は整数で指定してください`,
-    };
-  }
-  const value = Number(parsed.value);
-  if (value < min || value > max) {
-    return {
-      ok: false as const,
-      message: `${field} は${min}以上${max}以下で指定してください`,
-    };
-  }
-  return { ok: true as const, value };
-}
-
 function parseMedicationDeadlineQuery(params: URLSearchParams): QueryParseResult {
   const fieldErrors: Record<string, string[]> = {};
-  const withinDays = parseExactIntegerParam(
+  const withinDays = parseExactIntegerSearchParam(
     params,
     'within_days',
     0,
     MAX_MEDICATION_DEADLINE_WITHIN_DAYS,
     DEFAULT_MEDICATION_DEADLINE_WITHIN_DAYS,
   );
-  if (!withinDays.ok) fieldErrors.within_days = [withinDays.message];
+  let withinDaysValue = DEFAULT_MEDICATION_DEADLINE_WITHIN_DAYS;
+  if (!withinDays.ok) {
+    fieldErrors.within_days = [withinDays.message];
+  } else {
+    withinDaysValue = withinDays.value ?? DEFAULT_MEDICATION_DEADLINE_WITHIN_DAYS;
+  }
 
-  const limit = parseExactIntegerParam(params, 'limit', 1, 50);
-  if (!limit.ok) fieldErrors.limit = [limit.message];
+  const limit = parseExactIntegerSearchParam(params, 'limit', 1, 50);
+  let limitValue: number | undefined;
+  if (!limit.ok) {
+    fieldErrors.limit = [limit.message];
+  } else {
+    limitValue = limit.value;
+  }
 
-  const q = parseSingleSearchParam(params, 'q');
+  const q = readSingleSearchParam(params, 'q');
   let query: string | null = null;
   if (!q.ok) {
     fieldErrors.q = [q.message];
@@ -109,16 +73,11 @@ function parseMedicationDeadlineQuery(params: URLSearchParams): QueryParseResult
   return {
     ok: true,
     data: {
-      withinDays: withinDays.value ?? DEFAULT_MEDICATION_DEADLINE_WITHIN_DAYS,
-      limit: limit.value,
+      withinDays: withinDaysValue,
+      limit: limitValue,
       query,
     },
   };
-}
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
 }
 
 async function authenticatedGET(req: NextRequest) {
@@ -221,13 +180,15 @@ export async function GET(req: NextRequest, routeContext?: unknown) {
       return withSensitiveNoStore(await authenticatedGET(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('dashboard_medication_deadlines_unhandled_error', undefined, {
-        event: 'dashboard_medication_deadlines_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'dashboard_medication_deadlines_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

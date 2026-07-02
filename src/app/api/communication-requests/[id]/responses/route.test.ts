@@ -237,9 +237,9 @@ describe('/api/communication-requests/[id]/responses', () => {
   });
 
   it('returns a sanitized no-store 500 when response listing fails unexpectedly', async () => {
-    communicationResponseFindManyMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw communication response content facility memo'),
-    );
+    const unsafeError = new Error('患者 山田太郎 raw communication response content facility memo');
+    unsafeError.name = 'CommunicationResponseListSecretError';
+    communicationResponseFindManyMock.mockRejectedValueOnce(unsafeError);
 
     const response = (await GET(createGetRequest(), {
       params: Promise.resolve({ id: 'request_1' }),
@@ -256,18 +256,21 @@ describe('/api/communication-requests/[id]/responses', () => {
     expect(JSON.stringify(body)).not.toContain('raw communication response');
     expect(JSON.stringify(body)).not.toContain('facility memo');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'communication_request_responses_get_unhandled_error',
-      undefined,
-      expect.objectContaining({
+      {
         event: 'communication_request_responses_get_unhandled_error',
         route: '/api/communication-requests/[id]/responses',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
-      }),
+      },
+      unsafeError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw communication response');
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(unsafeError);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(logContext);
+    expect(logged).not.toContain('山田太郎');
+    expect(logged).not.toContain('raw communication response');
+    expect(logged).not.toContain('CommunicationResponseListSecretError');
   });
 
   it('creates a response and updates the request status', async () => {
@@ -355,9 +358,9 @@ describe('/api/communication-requests/[id]/responses', () => {
   });
 
   it('returns a sanitized no-store 500 without raw logging when response creation fails unexpectedly', async () => {
-    withOrgContextMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw communication response create secret'),
-    );
+    const unsafeError = new Error('患者 山田太郎 raw communication response create secret');
+    unsafeError.name = 'CommunicationResponseCreateSecretError';
+    withOrgContextMock.mockRejectedValueOnce(unsafeError);
 
     const response = (await POST(
       createPostRequest({
@@ -380,18 +383,21 @@ describe('/api/communication-requests/[id]/responses', () => {
     expect(JSON.stringify(body)).not.toContain('山田太郎');
     expect(JSON.stringify(body)).not.toContain('raw communication response');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'communication_request_responses_post_unhandled_error',
-      undefined,
-      expect.objectContaining({
+      {
         event: 'communication_request_responses_post_unhandled_error',
         route: '/api/communication-requests/[id]/responses',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
-      }),
+      },
+      unsafeError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw communication response');
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(unsafeError);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(logContext);
+    expect(logged).not.toContain('山田太郎');
+    expect(logged).not.toContain('raw communication response');
+    expect(logged).not.toContain('CommunicationResponseCreateSecretError');
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 

@@ -9,6 +9,7 @@ const {
   setPresenceMock,
   getPresenceMock,
   broadcastStatusUpdateMock,
+  loggerWarnMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   userFindUniqueMock: vi.fn(),
@@ -17,6 +18,7 @@ const {
   setPresenceMock: vi.fn(),
   getPresenceMock: vi.fn(),
   broadcastStatusUpdateMock: vi.fn(),
+  loggerWarnMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -40,6 +42,12 @@ vi.mock('@/server/adapters/realtime', () => ({
   getRealtimeAdapter: () => ({
     broadcastStatusUpdate: broadcastStatusUpdateMock,
   }),
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    warn: loggerWarnMock,
+  },
 }));
 
 import { POST, GET } from './route';
@@ -233,6 +241,36 @@ describe('/api/presence', () => {
           entity_id: 'vr_1',
         }),
       );
+    });
+
+    it('logs safe warning metadata when realtime broadcast fails', async () => {
+      userFindUniqueMock.mockResolvedValue({ name: 'Taro' });
+      const rawError = 'redis unavailable token=secret 患者A';
+      const cause = new Error(rawError);
+      broadcastStatusUpdateMock.mockRejectedValue(cause);
+
+      const req = createRequest('http://localhost/api/presence', {
+        entity_type: 'visit_record',
+        entity_id: 'vr_1',
+        active_field: 'soap_plan',
+      });
+      const res = await POST(req);
+
+      expect(res!.status).toBe(200);
+      expect(loggerWarnMock).toHaveBeenCalledWith(
+        {
+          event: 'presence_realtime_broadcast_failed',
+          route: '/api/presence',
+          method: 'POST',
+          operation: 'presence_update_broadcast',
+          orgId: 'org_1',
+          entityType: 'visit_record',
+        },
+        cause,
+      );
+      expect(JSON.stringify(loggerWarnMock.mock.calls[0]?.[0])).not.toContain(rawError);
+      expect(JSON.stringify(loggerWarnMock.mock.calls[0]?.[0])).not.toContain('soap_plan');
+      expect(JSON.stringify(loggerWarnMock.mock.calls[0]?.[0])).not.toContain('Taro');
     });
   });
 

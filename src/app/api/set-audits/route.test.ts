@@ -535,9 +535,9 @@ describe('/api/set-audits POST', () => {
   });
 
   it('returns a sanitized no-store 500 when set audit mutation fails unexpectedly', async () => {
-    withOrgContextMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw set audit mutation drug reject_reason'),
-    );
+    const unsafeError = new Error('患者 山田太郎 raw set audit mutation drug reject_reason');
+    unsafeError.name = 'SetAuditMutationSecretError';
+    withOrgContextMock.mockRejectedValueOnce(unsafeError);
 
     const response = await POST(
       createRequest(
@@ -564,15 +564,21 @@ describe('/api/set-audits POST', () => {
     expect(JSON.stringify(body)).not.toContain('raw set audit mutation');
     expect(JSON.stringify(body)).not.toContain('drug reject_reason');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'set_audits_post_unhandled_error',
-      undefined,
-      expect.objectContaining({
+      {
         event: 'set_audits_post_unhandled_error',
         route: '/api/set-audits',
         method: 'POST',
-        error_name: 'Error',
-      }),
+        status: 500,
+      },
+      unsafeError,
     );
+    const [routeContext] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(routeContext).not.toHaveProperty('error_name');
+    const serializedRouteContext = JSON.stringify(routeContext);
+    expect(serializedRouteContext).not.toContain('山田太郎');
+    expect(serializedRouteContext).not.toContain('raw set audit mutation');
+    expect(serializedRouteContext).not.toContain('drug reject_reason');
+    expect(serializedRouteContext).not.toContain('SetAuditMutationSecretError');
   });
 
   it('rejects approval without the current checklist before transaction side effects', async () => {
@@ -1990,9 +1996,9 @@ describe('/api/set-audits GET', () => {
   });
 
   it('returns a sanitized no-store 500 when set audit queue lookup fails unexpectedly', async () => {
-    setPlanFindManyMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw set audit queue drug reject_reason'),
-    );
+    const unsafeError = new Error('患者 山田太郎 raw set audit queue drug reject_reason');
+    unsafeError.name = 'SetAuditQueueSecretError';
+    setPlanFindManyMock.mockRejectedValueOnce(unsafeError);
 
     const response = await GET(createGetRequest());
 
@@ -2009,15 +2015,21 @@ describe('/api/set-audits GET', () => {
     expect(JSON.stringify(body)).not.toContain('raw set audit queue');
     expect(JSON.stringify(body)).not.toContain('drug reject_reason');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'set_audits_get_unhandled_error',
-      undefined,
-      expect.objectContaining({
+      {
         event: 'set_audits_get_unhandled_error',
         route: '/api/set-audits',
         method: 'GET',
-        error_name: 'Error',
-      }),
+        status: 500,
+      },
+      unsafeError,
     );
+    const [routeContext] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(routeContext).not.toHaveProperty('error_name');
+    const serializedRouteContext = JSON.stringify(routeContext);
+    expect(serializedRouteContext).not.toContain('山田太郎');
+    expect(serializedRouteContext).not.toContain('raw set audit queue');
+    expect(serializedRouteContext).not.toContain('drug reject_reason');
+    expect(serializedRouteContext).not.toContain('SetAuditQueueSecretError');
   });
 
   it('filters by plan_id when provided', async () => {

@@ -321,22 +321,20 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('adoption note secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'pharmacy_drug_stocks_bulk_post_unhandled_error',
-      undefined,
       {
         event: 'pharmacy_drug_stocks_bulk_post_unhandled_error',
         route: '/api/pharmacy-drug-stocks/bulk',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
-    expect(logged).not.toContain('adoption note secret');
-    expect(logged).not.toContain('PharmacyDrugStockBulkSecretError');
-    expect(logged).not.toContain('患者宅メモ');
+    const routeContext = loggerErrorMock.mock.calls[0]?.[0];
+    expect(routeContext).not.toHaveProperty('error_name');
+    const routeContextText = JSON.stringify(routeContext);
+    expect(routeContextText).not.toContain('adoption note secret');
+    expect(routeContextText).not.toContain('PharmacyDrugStockBulkSecretError');
+    expect(routeContextText).not.toContain('患者宅メモ');
   });
 
   it('numbers CSV rows after JSON rows when both inputs are provided', async () => {

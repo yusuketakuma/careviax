@@ -39,20 +39,6 @@ import { z } from 'zod';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
 const ROUTE = '/api/set-audits';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 // 調剤ワークベンチ共通 NG 分類 (RejectCode, 14種)。差戻し/セル NG の理由を構造化する。
 const REJECT_CODE_VALUES = Object.values(RejectCode) as [RejectCode, ...RejectCode[]];
@@ -641,12 +627,15 @@ export async function GET(req: NextRequest) {
       return withSensitiveNoStore(await authenticatedGET(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('set_audits_get_unhandled_error', undefined, {
-        event: 'set_audits_get_unhandled_error',
-        route: ROUTE,
-        method: 'GET',
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'set_audits_get_unhandled_error',
+          route: ROUTE,
+          method: 'GET',
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });
@@ -1371,12 +1360,15 @@ export async function POST(req: NextRequest) {
       return withSensitiveNoStore(await authenticatedPOST(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('set_audits_post_unhandled_error', undefined, {
-        event: 'set_audits_post_unhandled_error',
-        route: ROUTE,
-        method: 'POST',
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'set_audits_post_unhandled_error',
+          route: ROUTE,
+          method: 'POST',
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

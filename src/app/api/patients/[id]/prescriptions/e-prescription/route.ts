@@ -27,15 +27,6 @@ const fetchEPrescriptionSchema = z.object({
 });
 
 const ROUTE = '/api/patients/[id]/prescriptions/e-prescription';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
 const ACCEPTABLE_EPRESCRIPTION_STATUSES = ['issued', 'partially_dispensed'] as const;
 const EPRESCRIPTION_INTAKE_CYCLE_STATUSES = [
   'intake_received',
@@ -44,11 +35,6 @@ const EPRESCRIPTION_INTAKE_CYCLE_STATUSES = [
   'inquiry_resolved',
   'ready_to_dispense',
 ] as const;
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 function normalizeComparablePatientName(value: string | null | undefined) {
   return value?.replace(/\s+/g, '').trim() || null;
@@ -480,13 +466,15 @@ export async function POST(req: NextRequest, routeContext: { params: Promise<{ i
       return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('patient_eprescription_post_unhandled_error', undefined, {
-        event: 'patient_eprescription_post_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'patient_eprescription_post_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

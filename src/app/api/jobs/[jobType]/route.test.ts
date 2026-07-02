@@ -536,11 +536,12 @@ describe('/api/jobs/[jobType] POST', () => {
     expect(payload.errors).toBeUndefined();
   });
 
-  it('returns drain errors in the bulk export drain response', async () => {
+  it('returns bulk export drain error counts without leaking drain error details', async () => {
     authMock.mockResolvedValue(null);
+    const rawFailure = 'storage unavailable patient=患者A token=secret s3://bucket/private.zip';
     drainMedicationHistoryBulkExportJobsMock.mockResolvedValue({
       processedCount: 2,
-      errors: ['storage unavailable'],
+      errors: [rawFailure],
     });
 
     const response = await POST(createRequest({ 'x-api-key': 'job-secret' }), {
@@ -548,11 +549,14 @@ describe('/api/jobs/[jobType] POST', () => {
     });
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(payload).toMatchObject({
       jobType: 'medication-history-bulk-export-drain',
       processedCount: 2,
-      errors: ['storage unavailable'],
+      errorCount: 1,
     });
+    expect(payload.errors).toBeUndefined();
+    expect(JSON.stringify(payload)).not.toContain(rawFailure);
   });
 
   it('allows api key webhook delivery retries across organizations', async () => {

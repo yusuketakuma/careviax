@@ -400,9 +400,9 @@ describe('/api/dispense-audits GET', () => {
   });
 
   it('returns a fixed no-store 500 when audit queue loading fails without exposing raw PHI', async () => {
-    dispenseTaskFindManyMock.mockRejectedValue(
-      new Error('audit queue failed for patient 佐藤 花子 insurance 98765432'),
-    );
+    const unsafeError = new Error('audit queue failed for patient 佐藤 花子 insurance 98765432');
+    unsafeError.name = 'DispenseAuditQueueSecretError';
+    dispenseTaskFindManyMock.mockRejectedValueOnce(unsafeError);
 
     const response = await GET(createGetRequest());
 
@@ -417,18 +417,20 @@ describe('/api/dispense-audits GET', () => {
     expect(bodyText).not.toContain('佐藤');
     expect(bodyText).not.toContain('98765432');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'dispense_audits_get_unhandled_error',
-      undefined,
-      expect.objectContaining({
+      {
         event: 'dispense_audits_get_unhandled_error',
         route: '/api/dispense-audits',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
-      }),
+      },
+      unsafeError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('佐藤');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('98765432');
+    const [routeContext] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(routeContext).not.toHaveProperty('error_name');
+    const serializedRouteContext = JSON.stringify(routeContext);
+    expect(serializedRouteContext).not.toContain('佐藤');
+    expect(serializedRouteContext).not.toContain('98765432');
+    expect(serializedRouteContext).not.toContain('DispenseAuditQueueSecretError');
   });
 });
 
@@ -511,9 +513,9 @@ describe('/api/dispense-audits POST', () => {
   });
 
   it('returns a sanitized no-store 500 without raw logging when audit transaction fails unexpectedly', async () => {
-    withOrgContextMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw dispense audit transaction secret'),
-    );
+    const unsafeError = new Error('患者 山田太郎 raw dispense audit transaction secret');
+    unsafeError.name = 'DispenseAuditMutationSecretError';
+    withOrgContextMock.mockRejectedValueOnce(unsafeError);
 
     const response = await POST(
       createRequest({
@@ -532,18 +534,20 @@ describe('/api/dispense-audits POST', () => {
     expect(JSON.stringify(body)).not.toContain('山田太郎');
     expect(JSON.stringify(body)).not.toContain('raw dispense audit');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'dispense_audits_post_unhandled_error',
-      undefined,
-      expect.objectContaining({
+      {
         event: 'dispense_audits_post_unhandled_error',
         route: '/api/dispense-audits',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
-      }),
+      },
+      unsafeError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw dispense audit');
+    const [routeContext] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(routeContext).not.toHaveProperty('error_name');
+    const serializedRouteContext = JSON.stringify(routeContext);
+    expect(serializedRouteContext).not.toContain('山田太郎');
+    expect(serializedRouteContext).not.toContain('raw dispense audit');
+    expect(serializedRouteContext).not.toContain('DispenseAuditMutationSecretError');
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });

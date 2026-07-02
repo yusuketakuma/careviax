@@ -334,9 +334,8 @@ describe('/api/billing-evidence/check GET', () => {
   });
 
   it('returns a no-store fixed error without leaking raw billing evidence failures', async () => {
-    txMock.billingCandidate.findMany.mockRejectedValueOnce(
-      new Error('PHI leak candidate: patient 山田太郎 billing evidence failed'),
-    );
+    const thrownError = new Error('PHI leak candidate: patient 山田太郎 billing evidence failed');
+    txMock.billingCandidate.findMany.mockRejectedValueOnce(thrownError);
 
     const response = await GET(createRequest());
 
@@ -349,18 +348,20 @@ describe('/api/billing-evidence/check GET', () => {
     expect(body).not.toContain('山田太郎');
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'billing_evidence_check_unhandled_error',
-      undefined,
       {
         event: 'billing_evidence_check_unhandled_error',
         route: '/api/billing-evidence/check',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       },
+      thrownError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('PHI leak candidate');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('stack');
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(thrownError);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(logContext);
+    expect(logged).not.toContain('PHI leak candidate');
+    expect(logged).not.toContain('山田太郎');
+    expect(logged).not.toContain('stack');
   });
 });

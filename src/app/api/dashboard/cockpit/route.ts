@@ -42,20 +42,6 @@ const AUDIT_QUEUE_FETCH_LIMIT = 30;
 const AUDIT_QUEUE_RESPONSE_LIMIT = 5;
 const BLOCKED_REASONS_LIMIT = 3;
 const ROUTE = '/api/dashboard/cockpit';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 type DashboardScopeQuery =
   | { ok: true; scope: DashboardCockpitScope | null }
@@ -411,13 +397,15 @@ export async function GET(req: NextRequest, routeContext?: unknown) {
       return withSensitiveNoStore(await authenticatedGET(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('dashboard_cockpit_unhandled_error', undefined, {
-        event: 'dashboard_cockpit_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'dashboard_cockpit_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

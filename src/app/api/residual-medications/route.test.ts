@@ -155,8 +155,10 @@ describe('/api/residual-medications', () => {
   it.each([
     ['patient_id=', 'patient_id', '患者IDを指定してください'],
     ['patient_id=%20patient_1', 'patient_id', '患者IDの形式が不正です'],
+    [`patient_id=${'a'.repeat(101)}`, 'patient_id', '患者IDの形式が不正です'],
     ['visit_record_id=%20%20', 'visit_record_id', '訪問記録IDを指定してください'],
     ['visit_record_id=visit_1%20', 'visit_record_id', '訪問記録IDの形式が不正です'],
+    [`visit_record_id=${'v'.repeat(101)}`, 'visit_record_id', '訪問記録IDの形式が不正です'],
   ])(
     'rejects blank or padded residual medication filter query "%s" before DB access',
     async (query, fieldName, message) => {
@@ -233,9 +235,9 @@ describe('/api/residual-medications', () => {
   });
 
   it('returns a sanitized no-store 500 without raw logging when residual listing fails unexpectedly', async () => {
-    residualMedicationFindManyMock.mockRejectedValueOnce(
-      new Error('raw residual medication listing secret'),
-    );
+    const err = new Error('raw residual medication listing secret');
+    err.name = 'ResidualMedicationListingSecretError';
+    residualMedicationFindManyMock.mockRejectedValueOnce(err);
 
     const response = await GET(
       createRequest('http://localhost/api/residual-medications'),
@@ -250,19 +252,20 @@ describe('/api/residual-medications', () => {
     expect(bodyText).toContain('INTERNAL_ERROR');
     expect(bodyText).not.toContain('raw residual medication listing secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'residual_medications_get_unhandled_error',
-      undefined,
       expect.objectContaining({
         event: 'residual_medications_get_unhandled_error',
         route: '/api/residual-medications',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       }),
+      err,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(
-      'raw residual medication listing secret',
-    );
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(err);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logContextText = JSON.stringify(logContext);
+    expect(logContextText).not.toContain('raw residual medication listing secret');
+    expect(logContextText).not.toContain('ResidualMedicationListingSecretError');
   });
 
   it('rejects oversized residual medication limits before visit record lookup', async () => {
@@ -499,7 +502,9 @@ describe('/api/residual-medications', () => {
   });
 
   it('returns a sanitized no-store 500 without raw logging when residual create fails unexpectedly', async () => {
-    residualMedicationCreateMock.mockRejectedValueOnce(new Error('raw residual medication secret'));
+    const err = new Error('患者 山田太郎 raw residual medication secret');
+    err.name = 'ResidualMedicationCreateSecretError';
+    residualMedicationCreateMock.mockRejectedValueOnce(err);
 
     const response = await POST(
       createRequest('http://localhost/api/residual-medications', {
@@ -520,20 +525,23 @@ describe('/api/residual-medications', () => {
     expect(response.headers.get('Pragma')).toBe('no-cache');
     const bodyText = await response.text();
     expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('山田太郎');
     expect(bodyText).not.toContain('raw residual medication secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'residual_medications_post_unhandled_error',
-      undefined,
       expect.objectContaining({
         event: 'residual_medications_post_unhandled_error',
         route: '/api/residual-medications',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
       }),
+      err,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(
-      'raw residual medication secret',
-    );
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(err);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logContextText = JSON.stringify(logContext);
+    expect(logContextText).not.toContain('山田太郎');
+    expect(logContextText).not.toContain('raw residual medication secret');
+    expect(logContextText).not.toContain('ResidualMedicationCreateSecretError');
   });
 });

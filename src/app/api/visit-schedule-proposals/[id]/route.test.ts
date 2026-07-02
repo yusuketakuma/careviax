@@ -38,6 +38,8 @@ const {
   upsertOperationalTaskMock,
   resolveOperationalTasksMock,
   notifyWorkflowMutationMock,
+  loggerErrorMock,
+  loggerWarnMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -74,6 +76,8 @@ const {
   upsertOperationalTaskMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
+  loggerWarnMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -139,6 +143,13 @@ vi.mock('@/server/services/visit-route-engine', async (importOriginal) => {
 
 vi.mock('@/server/services/workflow-dashboard-cache', () => ({
   notifyWorkflowMutation: notifyWorkflowMutationMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+    warn: loggerWarnMock,
+  },
 }));
 
 import { GET, PATCH } from './route';
@@ -1018,6 +1029,41 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       }),
     );
     expect(scheduleFindManyMock.mock.calls[0]?.[0]?.where).not.toHaveProperty('AND');
+  });
+
+  it('logs a safe warning when proposal pharmacist enrichment fails', async () => {
+    const enrichmentError = new Error(
+      'pharmacist lookup failed patient=患者A phone=090-0000-0000 token=secret 薬剤師A',
+    );
+    userFindManyMock.mockRejectedValueOnce(enrichmentError);
+
+    const response = await GET(createRequest(undefined, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    const body = await response.json();
+    expect(body.data.proposed_pharmacist).toBeNull();
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      {
+        event: 'visit_schedule_proposal_pharmacist_enrichment_failed',
+        route: '/api/visit-schedule-proposals/[id]',
+        method: 'GET',
+        operation: 'load_proposal_pharmacists',
+        orgId: 'org_1',
+        entityType: 'visit_schedule_proposal',
+        targetId: 'proposal_1',
+        count: 1,
+      },
+      enrichmentError,
+    );
+    const warningContext = JSON.stringify(loggerWarnMock.mock.calls[0]?.[0]);
+    expect(warningContext).not.toContain('患者A');
+    expect(warningContext).not.toContain('090-0000-0000');
+    expect(warningContext).not.toContain('token=secret');
+    expect(warningContext).not.toContain('薬剤師A');
   });
 
   it('rejects blank proposal ids before detail lookups or route preview side effects', async () => {

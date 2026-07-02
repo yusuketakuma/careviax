@@ -355,9 +355,9 @@ describe('/api/care-reports GET', () => {
   });
 
   it('returns a sanitized no-store 500 without raw logging when report listing fails unexpectedly', async () => {
-    careReportFindManyMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw care report listing secret'),
-    );
+    const unsafeError = new Error('患者 山田太郎 raw care report listing secret');
+    unsafeError.name = 'CareReportListingPatientSecretError';
+    careReportFindManyMock.mockRejectedValueOnce(unsafeError);
 
     const response = await getCareReports(createAuthenticatedRequest());
 
@@ -371,18 +371,21 @@ describe('/api/care-reports GET', () => {
     expect(JSON.stringify(body)).not.toContain('山田太郎');
     expect(JSON.stringify(body)).not.toContain('raw care report');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'care_reports_get_unhandled_error',
-      undefined,
       expect.objectContaining({
         event: 'care_reports_get_unhandled_error',
         route: '/api/care-reports',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       }),
+      unsafeError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw care report');
+    const [routeContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(unsafeError);
+    expect(routeContext).not.toHaveProperty('error_name');
+    const serializedRouteContext = JSON.stringify(routeContext);
+    expect(serializedRouteContext).not.toContain('山田太郎');
+    expect(serializedRouteContext).not.toContain('raw care report');
+    expect(serializedRouteContext).not.toContain('CareReportListingPatientSecretError');
   });
 
   it('returns a bounded minimal projection for palette report search', async () => {
@@ -1535,9 +1538,9 @@ describe('/api/care-reports POST', () => {
   });
 
   it('returns a sanitized no-store 500 without raw logging when report creation fails unexpectedly', async () => {
-    withOrgContextMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw care report create secret'),
-    );
+    const unsafeError = new Error('患者 山田太郎 raw care report create secret');
+    unsafeError.name = 'CareReportCreatePatientSecretError';
+    withOrgContextMock.mockRejectedValueOnce(unsafeError);
 
     const response = await createCareReport(
       createPostRequest({
@@ -1559,18 +1562,21 @@ describe('/api/care-reports POST', () => {
     expect(JSON.stringify(body)).not.toContain('山田太郎');
     expect(JSON.stringify(body)).not.toContain('raw care report');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'care_reports_post_unhandled_error',
-      undefined,
       expect.objectContaining({
         event: 'care_reports_post_unhandled_error',
         route: '/api/care-reports',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
       }),
+      unsafeError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw care report');
+    const [routeContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(unsafeError);
+    expect(routeContext).not.toHaveProperty('error_name');
+    const serializedRouteContext = JSON.stringify(routeContext);
+    expect(serializedRouteContext).not.toContain('山田太郎');
+    expect(serializedRouteContext).not.toContain('raw care report');
+    expect(serializedRouteContext).not.toContain('CareReportCreatePatientSecretError');
     expect(careReportCreateMock).not.toHaveBeenCalled();
   });
 

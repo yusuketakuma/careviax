@@ -210,13 +210,58 @@ describe('/api/dispense-tasks GET', () => {
       { status: ['status は1つだけ指定してください'] },
     ],
     [
+      'blank status',
+      'http://localhost/api/dispense-tasks?status=',
+      { status: ['ステータスを指定してください'] },
+    ],
+    [
+      'padded status',
+      'http://localhost/api/dispense-tasks?status=%20pending',
+      { status: ['対応していないステータスです'] },
+    ],
+    [
+      'overlong status',
+      `http://localhost/api/dispense-tasks?status=${'s'.repeat(101)}`,
+      { status: ['対応していないステータスです'] },
+    ],
+    [
+      'duplicate cycle_id',
+      'http://localhost/api/dispense-tasks?cycle_id=cycle_1&cycle_id=cycle_2',
+      { cycle_id: ['cycle_id は1つだけ指定してください'] },
+    ],
+    [
       'blank cycle_id',
       'http://localhost/api/dispense-tasks?cycle_id=',
       { cycle_id: ['サイクルIDを指定してください'] },
     ],
     [
+      'padded cycle_id',
+      'http://localhost/api/dispense-tasks?cycle_id=cycle_1%20',
+      { cycle_id: ['サイクルIDの形式が不正です'] },
+    ],
+    [
+      'overlong cycle_id',
+      `http://localhost/api/dispense-tasks?cycle_id=${'c'.repeat(101)}`,
+      { cycle_id: ['サイクルIDの形式が不正です'] },
+    ],
+    [
+      'duplicate assigned_to',
+      'http://localhost/api/dispense-tasks?assigned_to=user_1&assigned_to=user_2',
+      { assigned_to: ['assigned_to は1つだけ指定してください'] },
+    ],
+    [
+      'blank assigned_to',
+      'http://localhost/api/dispense-tasks?assigned_to=',
+      { assigned_to: ['担当者IDを指定してください'] },
+    ],
+    [
       'padded assigned_to',
       'http://localhost/api/dispense-tasks?assigned_to=%20user_1',
+      { assigned_to: ['担当者IDの形式が不正です'] },
+    ],
+    [
+      'overlong assigned_to',
+      `http://localhost/api/dispense-tasks?assigned_to=${'u'.repeat(101)}`,
       { assigned_to: ['担当者IDの形式が不正です'] },
     ],
   ])(

@@ -4,6 +4,7 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import {
@@ -28,55 +29,9 @@ import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
 
 const ROUTE = '/api/medication-issues';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
-
-function readStrictOptionalMedicationIssueFilter(
-  searchParams: URLSearchParams,
-  name: 'patient_id' | 'case_id' | 'status',
-  messages: { blank: string; invalid?: string },
-) {
-  const values = searchParams.getAll(name);
-  if (values.length === 0) return { ok: true as const, value: undefined };
-  if (values.length > 1) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [`${name} は1つだけ指定してください`] },
-    };
-  }
-
-  const value = values[0];
-  if (value.trim().length === 0) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [messages.blank] },
-    };
-  }
-
-  if (value !== value.trim() || value.length > 100) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [messages.invalid ?? messages.blank] },
-    };
-  }
-
-  return { ok: true as const, value };
-}
 
 function parseMedicationIssueListFilters(searchParams: URLSearchParams) {
-  const patientResult = readStrictOptionalMedicationIssueFilter(searchParams, 'patient_id', {
+  const patientResult = readStrictOptionalSearchParam(searchParams, 'patient_id', {
     blank: '患者IDを指定してください',
     invalid: '患者IDの形式が不正です',
   });
@@ -89,7 +44,7 @@ function parseMedicationIssueListFilters(searchParams: URLSearchParams) {
     };
   }
 
-  const caseResult = readStrictOptionalMedicationIssueFilter(searchParams, 'case_id', {
+  const caseResult = readStrictOptionalSearchParam(searchParams, 'case_id', {
     blank: 'ケースIDを指定してください',
     invalid: 'ケースIDの形式が不正です',
   });
@@ -100,7 +55,7 @@ function parseMedicationIssueListFilters(searchParams: URLSearchParams) {
     };
   }
 
-  const statusResult = readStrictOptionalMedicationIssueFilter(searchParams, 'status', {
+  const statusResult = readStrictOptionalSearchParam(searchParams, 'status', {
     blank: 'ステータスを指定してください',
     invalid: '対応していないステータスです',
   });
@@ -271,13 +226,15 @@ export async function GET(req: NextRequest) {
       return withSensitiveNoStore(await authenticatedGET(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('medication_issues_get_unhandled_error', undefined, {
-        event: 'medication_issues_get_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'medication_issues_get_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });
@@ -338,13 +295,15 @@ export async function POST(req: NextRequest) {
       return withSensitiveNoStore(await authenticatedPOST(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('medication_issues_post_unhandled_error', undefined, {
-        event: 'medication_issues_post_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'medication_issues_post_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

@@ -309,21 +309,22 @@ describe('/api/billing-evidence/analytics GET', () => {
     expect(body).not.toContain('billing_evidence');
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'billing_evidence_analytics_unhandled_error',
-      undefined,
       {
         event: 'billing_evidence_analytics_unhandled_error',
         route: '/api/billing-evidence/analytics',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       },
+      thrownError,
     );
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(thrownError);
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('patient 山田太郎');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('SQL select');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('select * from');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('stack');
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(thrownError);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(logContext);
+    expect(logged).not.toContain('patient 山田太郎');
+    expect(logged).not.toContain('SQL select');
+    expect(logged).not.toContain('select * from');
+    expect(logged).not.toContain('stack');
   });
 
   it('sanitizes unexpected error names with a strict allowlist', async () => {
@@ -335,13 +336,14 @@ describe('/api/billing-evidence/analytics GET', () => {
 
     expect(response.status).toBe(500);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'billing_evidence_analytics_unhandled_error',
-      undefined,
-      expect.objectContaining({
-        error_name: 'Error',
-      }),
+      expect.objectContaining({ event: 'billing_evidence_analytics_unhandled_error' }),
+      thrownError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('PatientName');
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(thrownError);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(logContext);
+    expect(logged).not.toContain('山田太郎');
+    expect(logged).not.toContain('PatientName');
   });
 });

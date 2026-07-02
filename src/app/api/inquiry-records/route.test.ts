@@ -166,7 +166,9 @@ describe('/api/inquiry-records GET', () => {
   });
 
   it('returns a sanitized no-store 500 without raw logging when inquiry listing fails', async () => {
-    inquiryRecordFindManyMock.mockRejectedValueOnce(new Error('raw patient inquiry list secret'));
+    const err = new Error('raw patient inquiry list secret');
+    err.name = 'PatientInquiryListSecretError';
+    inquiryRecordFindManyMock.mockRejectedValueOnce(err);
 
     const response = await GET(createRequest('http://localhost/api/inquiry-records'));
 
@@ -177,19 +179,20 @@ describe('/api/inquiry-records GET', () => {
     expect(bodyText).toContain('INTERNAL_ERROR');
     expect(bodyText).not.toContain('raw patient inquiry list secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'inquiry_records_get_unhandled_error',
-      undefined,
       expect.objectContaining({
         event: 'inquiry_records_get_unhandled_error',
         route: '/api/inquiry-records',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       }),
+      err,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(
-      'raw patient inquiry list secret',
-    );
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(err);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logContextText = JSON.stringify(logContext);
+    expect(logContextText).not.toContain('raw patient inquiry list secret');
+    expect(logContextText).not.toContain('PatientInquiryListSecretError');
   });
 
   it.each([
@@ -592,7 +595,9 @@ describe('/api/inquiry-records POST', () => {
   });
 
   it('returns a sanitized no-store 500 without raw logging when inquiry creation fails', async () => {
-    withOrgContextMock.mockRejectedValueOnce(new Error('raw patient inquiry create secret'));
+    const err = new Error('raw patient inquiry create secret');
+    err.name = 'PatientInquiryCreateSecretError';
+    withOrgContextMock.mockRejectedValueOnce(err);
 
     const response = await POST(
       createPostRequest({
@@ -611,19 +616,20 @@ describe('/api/inquiry-records POST', () => {
     expect(bodyText).toContain('INTERNAL_ERROR');
     expect(bodyText).not.toContain('raw patient inquiry create secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'inquiry_records_post_unhandled_error',
-      undefined,
       expect.objectContaining({
         event: 'inquiry_records_post_unhandled_error',
         route: '/api/inquiry-records',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
       }),
+      err,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(
-      'raw patient inquiry create secret',
-    );
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(err);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logContextText = JSON.stringify(logContext);
+    expect(logContextText).not.toContain('raw patient inquiry create secret');
+    expect(logContextText).not.toContain('PatientInquiryCreateSecretError');
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 });

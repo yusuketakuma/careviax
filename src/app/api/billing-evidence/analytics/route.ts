@@ -10,24 +10,6 @@ import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
 import { billingMonthForJapanTimestamp } from '@/server/services/billing-evidence';
 
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'PrismaClientKnownRequestError',
-  'PrismaClientUnknownRequestError',
-  'PrismaClientRustPanicError',
-  'PrismaClientInitializationError',
-  'PrismaClientValidationError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return typeof err;
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
-
 function addUtcMonths(value: Date, months: number) {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + months, 1));
 }
@@ -293,13 +275,15 @@ export async function GET(req: NextRequest) {
       return withSensitiveNoStore(await authenticatedGET(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('billing_evidence_analytics_unhandled_error', undefined, {
-        event: 'billing_evidence_analytics_unhandled_error',
-        route: req.nextUrl?.pathname ?? '/api/billing-evidence/analytics',
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'billing_evidence_analytics_unhandled_error',
+          route: req.nextUrl?.pathname ?? '/api/billing-evidence/analytics',
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

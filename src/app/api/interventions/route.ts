@@ -1,6 +1,7 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { notFound, success, validationError } from '@/lib/api/response';
+import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -13,40 +14,8 @@ import {
 import { canAccessPatient, listAccessiblePatientIds } from '@/server/services/patient-access';
 import type { Prisma } from '@prisma/client';
 
-function readStrictOptionalInterventionFilter(
-  searchParams: URLSearchParams,
-  name: 'patient_id' | 'issue_id',
-  messages: { blank: string; invalid: string },
-) {
-  const values = searchParams.getAll(name);
-  if (values.length === 0) return { ok: true as const, value: undefined };
-  if (values.length > 1) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [`${name} は1つだけ指定してください`] },
-    };
-  }
-
-  const value = values[0];
-  if (value.trim().length === 0) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [messages.blank] },
-    };
-  }
-
-  if (value !== value.trim() || value.length > 100) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [messages.invalid] },
-    };
-  }
-
-  return { ok: true as const, value };
-}
-
 function parseInterventionListFilters(searchParams: URLSearchParams) {
-  const patientResult = readStrictOptionalInterventionFilter(searchParams, 'patient_id', {
+  const patientResult = readStrictOptionalSearchParam(searchParams, 'patient_id', {
     blank: '患者IDを指定してください',
     invalid: '患者IDの形式が不正です',
   });
@@ -59,7 +28,7 @@ function parseInterventionListFilters(searchParams: URLSearchParams) {
     };
   }
 
-  const issueResult = readStrictOptionalInterventionFilter(searchParams, 'issue_id', {
+  const issueResult = readStrictOptionalSearchParam(searchParams, 'issue_id', {
     blank: '服薬課題IDを指定してください',
     invalid: '服薬課題IDの形式が不正です',
   });

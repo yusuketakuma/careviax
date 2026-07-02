@@ -161,9 +161,9 @@ describe('/api/set-batches/[id]', () => {
 
   it('returns a sanitized no-store 500 when set-batch detail lookup fails unexpectedly', async () => {
     setBatchFindFirstMock.mockReset();
-    setBatchFindFirstMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw set batch drug line detail'),
-    );
+    const unsafeError = new Error('患者 山田太郎 raw set batch drug line detail');
+    unsafeError.name = 'SetBatchDetailSecretError';
+    setBatchFindFirstMock.mockRejectedValueOnce(unsafeError);
 
     const response = (await GET(createRequest(), {
       params: Promise.resolve({ id: 'batch_1' }),
@@ -181,14 +181,21 @@ describe('/api/set-batches/[id]', () => {
     expect(JSON.stringify(body)).not.toContain('raw set batch');
     expect(JSON.stringify(body)).not.toContain('drug line detail');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'set_batches_detail_get_unhandled_error',
-      undefined,
-      expect.objectContaining({
-        error_name: 'Error',
+      {
+        event: 'set_batches_detail_get_unhandled_error',
         method: 'GET',
         route: '/api/set-batches/[id]',
-      }),
+        status: 500,
+      },
+      unsafeError,
     );
+    const routeContext = loggerErrorMock.mock.calls[0]?.[0];
+    expect(routeContext).not.toHaveProperty('error_name');
+    const routeContextText = JSON.stringify(routeContext);
+    expect(routeContextText).not.toContain('山田太郎');
+    expect(routeContextText).not.toContain('raw set batch');
+    expect(routeContextText).not.toContain('drug line detail');
+    expect(routeContextText).not.toContain('SetBatchDetailSecretError');
   });
 
   it('updates a set batch with optimistic locking', async () => {
@@ -235,9 +242,9 @@ describe('/api/set-batches/[id]', () => {
   });
 
   it('returns a sanitized no-store 500 when set-batch update fails unexpectedly', async () => {
-    withOrgContextMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw set batch update drug line detail'),
-    );
+    const unsafeError = new Error('患者 山田太郎 raw set batch update drug line detail');
+    unsafeError.name = 'SetBatchPatchSecretError';
+    withOrgContextMock.mockRejectedValueOnce(unsafeError);
 
     const response = (await PATCH(
       createRequest('PATCH', {
@@ -261,14 +268,21 @@ describe('/api/set-batches/[id]', () => {
     expect(JSON.stringify(body)).not.toContain('raw set batch update');
     expect(JSON.stringify(body)).not.toContain('drug line detail');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'set_batches_detail_patch_unhandled_error',
-      undefined,
-      expect.objectContaining({
-        error_name: 'Error',
+      {
+        event: 'set_batches_detail_patch_unhandled_error',
         method: 'PATCH',
         route: '/api/set-batches/[id]',
-      }),
+        status: 500,
+      },
+      unsafeError,
     );
+    const routeContext = loggerErrorMock.mock.calls[0]?.[0];
+    expect(routeContext).not.toHaveProperty('error_name');
+    const routeContextText = JSON.stringify(routeContext);
+    expect(routeContextText).not.toContain('山田太郎');
+    expect(routeContextText).not.toContain('raw set batch update');
+    expect(routeContextText).not.toContain('drug line detail');
+    expect(routeContextText).not.toContain('SetBatchPatchSecretError');
   });
 
   it('rejects updates after the set cycle has left setting status', async () => {
@@ -381,9 +395,9 @@ describe('/api/set-batches/[id]', () => {
   });
 
   it('returns a sanitized no-store 500 when set-batch delete fails unexpectedly', async () => {
-    withOrgContextMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw set batch delete drug line detail'),
-    );
+    const unsafeError = new Error('患者 山田太郎 raw set batch delete drug line detail');
+    unsafeError.name = 'SetBatchDeleteSecretError';
+    withOrgContextMock.mockRejectedValueOnce(unsafeError);
 
     const response = (await DELETE(createRequest('DELETE'), {
       params: Promise.resolve({ id: 'batch_1' }),
@@ -401,14 +415,21 @@ describe('/api/set-batches/[id]', () => {
     expect(JSON.stringify(body)).not.toContain('raw set batch delete');
     expect(JSON.stringify(body)).not.toContain('drug line detail');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'set_batches_detail_delete_unhandled_error',
-      undefined,
-      expect.objectContaining({
-        error_name: 'Error',
+      {
+        event: 'set_batches_detail_delete_unhandled_error',
         method: 'DELETE',
         route: '/api/set-batches/[id]',
-      }),
+        status: 500,
+      },
+      unsafeError,
     );
+    const routeContext = loggerErrorMock.mock.calls[0]?.[0];
+    expect(routeContext).not.toHaveProperty('error_name');
+    const routeContextText = JSON.stringify(routeContext);
+    expect(routeContextText).not.toContain('山田太郎');
+    expect(routeContextText).not.toContain('raw set batch delete');
+    expect(routeContextText).not.toContain('drug line detail');
+    expect(routeContextText).not.toContain('SetBatchDeleteSecretError');
   });
 
   it('rejects deletes after the set cycle has left setting status', async () => {

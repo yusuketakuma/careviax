@@ -787,19 +787,18 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
     expect(bodyText).not.toContain('raw e-prescription secret');
     expect(bodyText).not.toContain('rx_abc123');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'patient_eprescription_post_unhandled_error',
-      undefined,
       {
         event: 'patient_eprescription_post_unhandled_error',
         route: '/api/patients/[id]/prescriptions/e-prescription',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    const [routeContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(unsafeError);
+    expect(routeContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(routeContext);
     expect(logged).not.toContain('raw e-prescription secret');
     expect(logged).not.toContain('rx_abc123');
     expect(txMock.prescriptionIntake.create).not.toHaveBeenCalled();

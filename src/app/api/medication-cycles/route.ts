@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
+import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
@@ -14,41 +15,9 @@ import { canAccessCareCase } from '@/server/services/patient-access';
 import { z } from 'zod';
 
 const medicationCycleStatusSchema = z.enum(MEDICATION_CYCLE_STATUSES);
-type MedicationCycleQueryName = 'status' | 'case_id' | 'patient_id';
-
-function readStrictOptionalMedicationCycleFilter(
-  searchParams: URLSearchParams,
-  name: MedicationCycleQueryName,
-  messages: { blank: string; invalid: string },
-) {
-  const values = searchParams.getAll(name);
-  if (values.length === 0) return { ok: true as const, value: undefined };
-  if (values.length > 1) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [`${name} は1つだけ指定してください`] },
-    };
-  }
-
-  const value = values[0];
-  if (value.trim().length === 0) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [messages.blank] },
-    };
-  }
-  if (value !== value.trim() || value.length > 100) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [messages.invalid] },
-    };
-  }
-
-  return { ok: true as const, value };
-}
 
 function parseMedicationCycleListFilters(searchParams: URLSearchParams) {
-  const statusResult = readStrictOptionalMedicationCycleFilter(searchParams, 'status', {
+  const statusResult = readStrictOptionalSearchParam(searchParams, 'status', {
     blank: 'ステータスを指定してください',
     invalid: '対応していないステータスです',
   });
@@ -59,7 +28,7 @@ function parseMedicationCycleListFilters(searchParams: URLSearchParams) {
     };
   }
 
-  const caseResult = readStrictOptionalMedicationCycleFilter(searchParams, 'case_id', {
+  const caseResult = readStrictOptionalSearchParam(searchParams, 'case_id', {
     blank: 'ケースIDを指定してください',
     invalid: 'ケースIDの形式が不正です',
   });
@@ -70,7 +39,7 @@ function parseMedicationCycleListFilters(searchParams: URLSearchParams) {
     };
   }
 
-  const patientResult = readStrictOptionalMedicationCycleFilter(searchParams, 'patient_id', {
+  const patientResult = readStrictOptionalSearchParam(searchParams, 'patient_id', {
     blank: '患者IDを指定してください',
     invalid: '患者IDの形式が不正です',
   });

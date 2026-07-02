@@ -99,6 +99,26 @@ function expectSensitiveNoStore(response: Response) {
   expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
+function expectStructuredLifecycleErrorLog(method: 'PATCH' | 'DELETE', error: Error) {
+  expect(loggerErrorMock).toHaveBeenCalledWith(
+    {
+      event: 'tracing_report_lifecycle_unhandled_error',
+      route: '/api/tracing-reports/[id]',
+      method,
+      status: 500,
+    },
+    error,
+  );
+  const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+  expect(logError).toBe(error);
+  expect(logContext).not.toHaveProperty('error_name');
+  const logged = JSON.stringify(logContext);
+  expect(logged).not.toContain('山田太郎');
+  expect(logged).not.toContain('raw SQL');
+  expect(logged).not.toContain('stack');
+  expect(logged).not.toContain(error.name);
+}
+
 describe('/api/tracing-reports/[id] PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -180,6 +200,37 @@ describe('/api/tracing-reports/[id] PATCH', () => {
       code: 'VALIDATION_ERROR',
       message: 'トレーシングレポートIDが不正です',
     });
+    expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns sensitive no-store auth failures before patch lookups', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json({ code: 'AUTH_FORBIDDEN' }, { status: 403 }),
+    });
+
+    const response = await PATCH(
+      createRequest(
+        {
+          status: 'sent',
+          sent_to_physician: '在宅主治医',
+          status_change_reason: '医師へ服薬情報提供書を送付',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'tracing_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({ code: 'AUTH_FORBIDDEN' });
     expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
@@ -783,6 +834,40 @@ describe('/api/tracing-reports/[id] PATCH', () => {
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
+
+  it('returns a fixed sensitive no-store 500 and delegates raw errors to the shared logger', async () => {
+    const unsafeError = new Error('患者 山田太郎 tracing report lifecycle raw SQL stack');
+    unsafeError.name = 'PatientTracingReportLifecycleRawSqlStackError';
+    tracingReportFindFirstMock.mockRejectedValueOnce(unsafeError);
+
+    const response = await PATCH(
+      createRequest(
+        {
+          status: 'sent',
+          sent_to_physician: '在宅主治医',
+          status_change_reason: '医師へ服薬情報提供書を送付',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'tracing_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain('山田太郎');
+    expect(body).not.toContain('raw SQL');
+    expect(body).not.toContain('stack');
+    expectStructuredLifecycleErrorLog('PATCH', unsafeError);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('/api/tracing-reports/[id] DELETE', () => {
@@ -902,6 +987,29 @@ describe('/api/tracing-reports/[id] DELETE', () => {
     expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({ code: 'AUTH_FORBIDDEN' });
     expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(tracingReportDeleteManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a fixed sensitive no-store 500 and delegates raw delete errors to the shared logger', async () => {
+    const unsafeError = new Error('患者 山田太郎 tracing report delete raw SQL stack');
+    unsafeError.name = 'PatientTracingReportDeleteRawSqlStackError';
+    tracingReportFindFirstMock.mockRejectedValueOnce(unsafeError);
+
+    const response = await DELETE(createRequest(null, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'tracing_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain('山田太郎');
+    expect(body).not.toContain('raw SQL');
+    expect(body).not.toContain('stack');
+    expectStructuredLifecycleErrorLog('DELETE', unsafeError);
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(tracingReportDeleteManyMock).not.toHaveBeenCalled();

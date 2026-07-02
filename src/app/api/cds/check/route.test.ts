@@ -156,7 +156,9 @@ describe('/api/cds/check POST', () => {
   });
 
   it('returns a sanitized no-store 500 without raw logging when CDS checking fails unexpectedly', async () => {
-    checkDispenseAlertsMock.mockRejectedValueOnce(new Error('患者 山田太郎 raw cds alert secret'));
+    const unsafeError = new Error('患者 山田太郎 raw cds alert secret');
+    unsafeError.name = 'PatientCdsRawAlertSecretError';
+    checkDispenseAlertsMock.mockRejectedValueOnce(unsafeError);
 
     const response = await POST(createRequest({ cycleId: 'cycle_1' }));
 
@@ -171,17 +173,20 @@ describe('/api/cds/check POST', () => {
     expect(JSON.stringify(body)).not.toContain('山田太郎');
     expect(JSON.stringify(body)).not.toContain('raw cds');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'cds_check_post_unhandled_error',
-      undefined,
-      expect.objectContaining({
+      {
         event: 'cds_check_post_unhandled_error',
         route: '/api/cds/check',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
-      }),
+      },
+      unsafeError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw cds');
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(unsafeError);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(logContext);
+    expect(logged).not.toContain('山田太郎');
+    expect(logged).not.toContain('raw cds');
+    expect(logged).not.toContain('PatientCdsRawAlertSecretError');
   });
 });

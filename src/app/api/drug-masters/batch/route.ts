@@ -11,15 +11,6 @@ import { withRoutePerformance } from '@/lib/utils/performance';
 import { z } from 'zod';
 
 const ROUTE = '/api/drug-masters/batch';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
 
 const batchSchema = z
   .object({
@@ -36,11 +27,6 @@ const batchSchema = z
       });
     }
   });
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 function buildDrugMasterBatchWhere(yjCodes: string[], drugMasterIds: string[]) {
   if (yjCodes.length > 0 && drugMasterIds.length > 0) {
@@ -112,13 +98,15 @@ export async function POST(req: NextRequest) {
       return withSensitiveNoStore(await authenticatedPOST(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('drug_masters_batch_post_unhandled_error', undefined, {
-        event: 'drug_masters_batch_post_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'drug_masters_batch_post_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

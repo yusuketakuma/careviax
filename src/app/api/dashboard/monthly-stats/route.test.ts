@@ -320,6 +320,7 @@ describe('/api/dashboard/monthly-stats GET', () => {
     expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
     expect(visitRecordGroupByMock).not.toHaveBeenCalled();
     expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('returns a no-store fixed error without leaking raw monthly stats failures', async () => {
@@ -345,24 +346,21 @@ describe('/api/dashboard/monthly-stats GET', () => {
     expect(body).not.toContain('SELECT');
     expect(body).not.toContain('stack trace');
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(leakyError);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'dashboard_monthly_stats_unhandled_error',
-      undefined,
       {
         event: 'dashboard_monthly_stats_unhandled_error',
         route: '/api/dashboard/monthly-stats',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       },
+      leakyError,
     );
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
-    expect(logged).not.toContain('PatientLeakError');
-    expect(logged).not.toContain('山田太郎');
-    expect(logged).not.toContain('insurance_number');
-    expect(logged).not.toContain('SELECT');
-    expect(logged).not.toContain('stack');
+    expect(loggerErrorMock.mock.calls[0]?.[0]).not.toHaveProperty('error_name');
+    const loggedContext = JSON.stringify(loggerErrorMock.mock.calls[0]?.[0]);
+    expect(loggedContext).not.toContain('PatientLeakError');
+    expect(loggedContext).not.toContain('山田太郎');
+    expect(loggedContext).not.toContain('insurance_number');
+    expect(loggedContext).not.toContain('SELECT');
+    expect(loggedContext).not.toContain('stack');
   });
 });

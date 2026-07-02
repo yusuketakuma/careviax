@@ -279,24 +279,24 @@ describe('/api/visit-billing-candidates/summary GET', () => {
     expect(body).not.toContain('raw_error_object');
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'visit_billing_candidates_summary_unhandled_error',
-      undefined,
       {
         event: 'visit_billing_candidates_summary_unhandled_error',
         route: '/api/visit-billing-candidates/summary',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
-    expect(logged).not.toContain('share_case_secret');
-    expect(logged).not.toContain('patient_secret');
-    expect(logged).not.toContain('billing_secret');
-    expect(logged).not.toContain('SQL_SECRET');
-    expect(logged).not.toContain('stack_secret');
-    expect(logged).not.toContain('raw_error_object');
-    expect(logged).not.toContain(unsafeError.name);
+    const [routeContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(unsafeError);
+    expect(routeContext).not.toHaveProperty('error_name');
+    const serializedRouteContext = JSON.stringify(routeContext);
+    expect(serializedRouteContext).not.toContain('share_case_secret');
+    expect(serializedRouteContext).not.toContain('patient_secret');
+    expect(serializedRouteContext).not.toContain('billing_secret');
+    expect(serializedRouteContext).not.toContain('SQL_SECRET');
+    expect(serializedRouteContext).not.toContain('stack_secret');
+    expect(serializedRouteContext).not.toContain('raw_error_object');
+    expect(serializedRouteContext).not.toContain(unsafeError.name);
   });
 });

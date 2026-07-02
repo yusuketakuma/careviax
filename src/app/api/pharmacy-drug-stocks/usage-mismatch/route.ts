@@ -18,20 +18,6 @@ import {
 } from '@/lib/pharmacy/drug-identity-resolution';
 
 const ROUTE = '/api/pharmacy-drug-stocks/usage-mismatch';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 const usageMismatchQuerySchema = z.object({
   site_id: z.string().trim().min(1, 'site_id は必須です'),
@@ -489,13 +475,15 @@ export async function GET(
       return withSensitiveNoStore(await authenticatedGET(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('pharmacy_drug_stocks_usage_mismatch_get_unhandled_error', undefined, {
-        event: 'pharmacy_drug_stocks_usage_mismatch_get_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'pharmacy_drug_stocks_usage_mismatch_get_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

@@ -101,13 +101,22 @@ describe('cloudwatch metrics helper', () => {
   it('swallows CloudWatch send errors so metrics do not break callers', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const { StandardUnit, putMetrics } = await import('./cloudwatch');
-    cloudWatchSendMock.mockRejectedValue(new Error('cloudwatch down'));
+    cloudWatchSendMock.mockRejectedValue(
+      new Error('cloudwatch down token=secret db_password=value'),
+    );
 
     await expect(
       putMetrics([{ MetricName: 'Failing', Value: 1, Unit: StandardUnit.Count }]),
     ).resolves.toBeUndefined();
 
-    expect(errorSpy).toHaveBeenCalledWith('[cloudwatch] putMetrics failed', 'cloudwatch down');
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[cloudwatch] putMetrics failed',
+      'CloudWatch metric emission failed',
+    );
+    const logged = JSON.stringify(errorSpy.mock.calls);
+    expect(logged).not.toContain('token=secret');
+    expect(logged).not.toContain('db_password=value');
+    expect(logged).not.toContain('cloudwatch down');
     errorSpy.mockRestore();
   });
 });

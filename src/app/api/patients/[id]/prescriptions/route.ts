@@ -20,15 +20,6 @@ import {
 
 const ROUTE = '/api/patients/[id]/prescriptions';
 const PATIENT_PRESCRIPTION_CURSOR_KEYS = ['prescribed_date', 'created_at'] as const;
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
 
 // p0_11「処方の変化を確認」: 変化 / 前回 / 今回 / 薬剤師メモ の 4 列 + サブカード用の差分集約
 
@@ -79,11 +70,6 @@ const CHANGE_LABELS: Record<DiffReviewChangeType, string> = {
   changed: '変更',
   unchanged: '変化なし',
 };
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 function readOptionalCaseIdFilter(
   searchParams: URLSearchParams,
@@ -439,13 +425,15 @@ export async function GET(req: NextRequest, routeContext: { params: Promise<{ id
       return withSensitiveNoStore(await authenticatedGET(req, routeContext));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('patient_prescriptions_get_unhandled_error', undefined, {
-        event: 'patient_prescriptions_get_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'patient_prescriptions_get_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

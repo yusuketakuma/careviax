@@ -332,19 +332,18 @@ describe('/api/drug-master-imports/pmda', () => {
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('pmda import secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'drug_master_imports_pmda_post_unhandled_error',
-      undefined,
       {
         event: 'drug_master_imports_pmda_post_unhandled_error',
         route: '/api/drug-master-imports/pmda',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(unsafeError);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(logContext);
     expect(logged).not.toContain('pmda import secret');
     expect(logged).not.toContain('PmdaImportSecretError');
   });
@@ -363,17 +362,18 @@ describe('/api/drug-master-imports/pmda', () => {
     expect(JSON.stringify(body)).not.toContain('pmda preview secret');
     expect(importPmdaPackageInsertsMock).not.toHaveBeenCalled();
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'drug_master_imports_pmda_post_unhandled_error',
-      undefined,
       {
         event: 'drug_master_imports_pmda_post_unhandled_error',
         route: '/api/drug-master-imports/pmda',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(unsafeError);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(logContext);
     expect(logged).not.toContain('pmda preview secret');
     expect(logged).not.toContain('PmdaPreviewSecretError');
   });

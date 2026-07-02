@@ -249,9 +249,11 @@ describe('/api/consent-records', () => {
   });
 
   it('fails closed when consent list view audit cannot be recorded', async () => {
-    recordConsentRecordsViewedAuditMock.mockRejectedValueOnce(
-      new Error('audit unavailable for raw consent document https://files.example.test/leak.pdf'),
+    const unsafeError = new Error(
+      'audit unavailable for raw consent document https://files.example.test/leak.pdf',
     );
+    unsafeError.name = 'ConsentListAuditSecretError';
+    recordConsentRecordsViewedAuditMock.mockRejectedValueOnce(unsafeError);
 
     // 監査記録に失敗したら成功扱いにせず fail closed。route-local boundary が想定外 throw を
     // 標準 500 エンベロープに変換するため、200 ではなく 500/INTERNAL_ERROR を返す。
@@ -267,17 +269,20 @@ describe('/api/consent-records', () => {
     // 監査未記録のまま同意レコードを漏らさない
     expect(body.data).toBeUndefined();
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'consent_records_get_unhandled_error',
-      undefined,
-      expect.objectContaining({
+      {
         event: 'consent_records_get_unhandled_error',
         route: '/api/consent-records',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
-      }),
+      },
+      unsafeError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('leak.pdf');
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(unsafeError);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(logContext);
+    expect(logged).not.toContain('leak.pdf');
+    expect(logged).not.toContain('ConsentListAuditSecretError');
   });
 
   it('returns no-store validation errors for missing patient ids', async () => {
@@ -473,9 +478,11 @@ describe('/api/consent-records', () => {
   });
 
   it('fails closed when consent create audit cannot be recorded', async () => {
-    recordConsentRecordCreatedAuditMock.mockRejectedValueOnce(
-      new Error('audit unavailable for raw consent document https://files.example.test/leak.pdf'),
+    const unsafeError = new Error(
+      'audit unavailable for raw consent document https://files.example.test/leak.pdf',
     );
+    unsafeError.name = 'ConsentCreateAuditSecretError';
+    recordConsentRecordCreatedAuditMock.mockRejectedValueOnce(unsafeError);
 
     // 監査記録に失敗したら成功(2xx)を返さず fail closed。route-local boundary が想定外 throw を
     // 標準 500 エンベロープに変換するため、クライアントには 500/INTERNAL_ERROR を返す。
@@ -494,17 +501,20 @@ describe('/api/consent-records', () => {
     expect(body.code).toBe('INTERNAL_ERROR');
     expect(JSON.stringify(body)).not.toContain('leak.pdf');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'consent_records_post_unhandled_error',
-      undefined,
-      expect.objectContaining({
+      {
         event: 'consent_records_post_unhandled_error',
         route: '/api/consent-records',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
-      }),
+      },
+      unsafeError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('leak.pdf');
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(unsafeError);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(logContext);
+    expect(logged).not.toContain('leak.pdf');
+    expect(logged).not.toContain('ConsentCreateAuditSecretError');
     expect(consentRecordCreateMock).toHaveBeenCalled();
   });
 

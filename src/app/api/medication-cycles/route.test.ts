@@ -185,6 +185,7 @@ describe('/api/medication-cycles', () => {
     ['status', '?status=', { status: ['ステータスを指定してください'] }],
     ['blank status', '?status=%20%20', { status: ['ステータスを指定してください'] }],
     ['padded status', '?status=%20dispensing', { status: ['対応していないステータスです'] }],
+    ['overlong status', `?status=${'s'.repeat(101)}`, { status: ['対応していないステータスです'] }],
     ['case_id', '?case_id=', { case_id: ['ケースIDを指定してください'] }],
     ['blank case_id', '?case_id=%20%20', { case_id: ['ケースIDを指定してください'] }],
     ['padded case_id', '?case_id=case_1%20', { case_id: ['ケースIDの形式が不正です'] }],

@@ -30,29 +30,17 @@ import {
 import { canAccessCaseScopedPatientResource } from '@/server/services/patient-access';
 
 const ROUTE = '/api/tracing-reports/[id]';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 function logUnhandledRouteError(method: string, err: unknown) {
-  logger.error('tracing_report_lifecycle_unhandled_error', undefined, {
-    event: 'tracing_report_lifecycle_unhandled_error',
-    route: ROUTE,
-    method,
-    status: 500,
-    error_name: safeErrorName(err),
-  });
+  logger.error(
+    {
+      event: 'tracing_report_lifecycle_unhandled_error',
+      route: ROUTE,
+      method,
+      status: 500,
+    },
+    err,
+  );
 }
 
 async function authenticatedDELETE(

@@ -313,6 +313,27 @@ function isProductionRuntime() {
   );
 }
 
+function getSafeRateLimitErrorName(error: unknown) {
+  if (error instanceof Error) return 'Error';
+  if (error === undefined) return undefined;
+  return typeof error;
+}
+
+function logRateLimitStoreFailure(
+  message: string,
+  error: unknown,
+  context: {
+    event: 'rate_limit_dynamodb_store_unavailable' | 'rate_limit_dynamodb_store_fallback';
+    operation: 'deny_request' | 'fallback_to_memory';
+  },
+) {
+  console.error(message, {
+    event: context.event,
+    operation: context.operation,
+    error_name: getSafeRateLimitErrorName(error),
+  });
+}
+
 class DynamoRateLimitStore implements RateLimitStore {
   constructor(
     private readonly config: DynamoRateLimitConfig,
@@ -380,7 +401,14 @@ class DynamoRateLimitStore implements RateLimitStore {
       };
     } catch (error) {
       if (isProductionRuntime()) {
-        console.error('[rate-limit] DynamoDB store unavailable; denying request', error);
+        logRateLimitStoreFailure(
+          '[rate-limit] DynamoDB store unavailable; denying request',
+          error,
+          {
+            event: 'rate_limit_dynamodb_store_unavailable',
+            operation: 'deny_request',
+          },
+        );
         return {
           allowed: false,
           remaining: 0,
@@ -389,7 +417,10 @@ class DynamoRateLimitStore implements RateLimitStore {
         };
       }
 
-      console.error('[rate-limit] Falling back to in-memory store', error);
+      logRateLimitStoreFailure('[rate-limit] Falling back to in-memory store', error, {
+        event: 'rate_limit_dynamodb_store_fallback',
+        operation: 'fallback_to_memory',
+      });
       return this.fallback.increment(key, windowMs, maxRequests);
     }
   }
@@ -797,6 +828,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/visit-schedule-proposals/reorder',
   '/api/visit-schedules',
   '/api/visit-schedules/:id',
+  '/api/visit-schedules/:id/conflict-reconfirmation',
   '/api/visit-schedules/:id/reopen',
   '/api/visit-schedules/:id/reschedule',
   '/api/visit-schedules/:id/reschedule/approve',

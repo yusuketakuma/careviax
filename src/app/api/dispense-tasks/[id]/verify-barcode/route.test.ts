@@ -249,9 +249,9 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
   });
 
   it('returns a sanitized no-store 500 and PHI-safe log metadata on unexpected failures', async () => {
-    dispenseTaskFindFirstMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 verify barcode raw SQL stack GTIN'),
-    );
+    const err = new Error('患者 山田太郎 verify barcode raw SQL stack GTIN');
+    err.name = 'DispenseTaskVerifyBarcodeSecretError';
+    dispenseTaskFindFirstMock.mockRejectedValueOnce(err);
 
     const response = (await POST(
       createVerifyBarcodeRequest('task_1', {
@@ -275,18 +275,22 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
     expect(JSON.stringify(body)).not.toContain('raw SQL');
     expect(JSON.stringify(body)).not.toContain('GTIN');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'dispense_task_verify_barcode_unhandled_error',
-      undefined,
       expect.objectContaining({
+        event: 'dispense_task_verify_barcode_unhandled_error',
         route: '/api/dispense-tasks/[id]/verify-barcode',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
       }),
+      err,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw SQL');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('GTIN');
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(err);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logContextText = JSON.stringify(logContext);
+    expect(logContextText).not.toContain('山田太郎');
+    expect(logContextText).not.toContain('raw SQL');
+    expect(logContextText).not.toContain('GTIN');
+    expect(logContextText).not.toContain('DispenseTaskVerifyBarcodeSecretError');
     expect(parseGS1BarcodeMock).not.toHaveBeenCalled();
   });
 });

@@ -125,7 +125,7 @@ describe('/api/health GET', () => {
     expect(runBackupMonitorChecksMock).not.toHaveBeenCalled();
   });
 
-  it('keeps backup monitor errors private to authenticated admins', async () => {
+  it('keeps raw backup monitor errors out of authenticated admin responses', async () => {
     getAuthContextMock.mockResolvedValue({
       userId: 'user_1',
       orgId: 'org_1',
@@ -136,12 +136,14 @@ describe('/api/health GET', () => {
 
     const response = await GET(healthRequest());
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(payload).toMatchObject({
       status: 'degraded',
       checks: {
         database: { status: 'ok' },
-        backups: { status: 'error', message: 'backup secret detail' },
+        backups: { status: 'error', message: 'backup monitor failed' },
       },
     });
+    expect(JSON.stringify(payload)).not.toContain('backup secret detail');
   });
 });

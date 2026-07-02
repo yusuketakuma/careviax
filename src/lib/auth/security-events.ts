@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db/client';
+import { logger } from '@/lib/utils/logger';
 
 export type SecurityEventType =
   | 'auth_failure'
@@ -71,6 +72,14 @@ export function logSecurityEvent(event: SecurityEvent): void {
     })
     .catch((err: unknown) => {
       // Silently absorb — security logging must not propagate errors
-      console.error('[security-event] Failed to log:', event.event_type, event.path, err);
+      logger.warn(
+        {
+          event: 'security_event.audit_log_failed',
+          entityType: 'security_event',
+          code: event.event_type,
+          method: event.method,
+        },
+        err,
+      );
     });
 }

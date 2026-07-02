@@ -3,6 +3,7 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { notFound, success, validationError } from '@/lib/api/response';
+import { logger } from '@/lib/utils/logger';
 import { getRealtimeAdapter } from '@/server/adapters/realtime';
 import { setPresence, getPresence } from '@/server/services/presence-store';
 import {
@@ -63,7 +64,19 @@ export async function POST(req: NextRequest) {
       active_field,
       updated_at: new Date().toISOString(),
     })
-    .catch(() => undefined);
+    .catch((cause: unknown) => {
+      logger.warn(
+        {
+          event: 'presence_realtime_broadcast_failed',
+          route: '/api/presence',
+          method: 'POST',
+          operation: 'presence_update_broadcast',
+          orgId: ctx.orgId,
+          entityType: entity_type,
+        },
+        cause,
+      );
+    });
 
   return success({ ok: true });
 }

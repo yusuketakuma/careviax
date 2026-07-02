@@ -159,9 +159,9 @@ describe('set-batches POST', () => {
   });
 
   it('returns a sanitized no-store 500 when set-batch list lookup fails unexpectedly', async () => {
-    txMock.setBatch.findMany.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw set batch list drug packaging instruction'),
-    );
+    const unsafeError = new Error('患者 山田太郎 raw set batch list drug packaging instruction');
+    unsafeError.name = 'SetBatchListSecretError';
+    txMock.setBatch.findMany.mockRejectedValueOnce(unsafeError);
 
     const response = await GET(createGetRequest('http://localhost/api/set-batches?plan_id=plan_1'));
 
@@ -178,14 +178,21 @@ describe('set-batches POST', () => {
     expect(JSON.stringify(body)).not.toContain('raw set batch list');
     expect(JSON.stringify(body)).not.toContain('drug packaging instruction');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'set_batches_get_unhandled_error',
-      undefined,
-      expect.objectContaining({
-        error_name: 'Error',
+      {
+        event: 'set_batches_get_unhandled_error',
         method: 'GET',
         route: '/api/set-batches',
-      }),
+        status: 500,
+      },
+      unsafeError,
     );
+    const routeContext = loggerErrorMock.mock.calls[0]?.[0];
+    expect(routeContext).not.toHaveProperty('error_name');
+    const routeContextText = JSON.stringify(routeContext);
+    expect(routeContextText).not.toContain('山田太郎');
+    expect(routeContextText).not.toContain('raw set batch list');
+    expect(routeContextText).not.toContain('drug packaging instruction');
+    expect(routeContextText).not.toContain('SetBatchListSecretError');
   });
 
   it('rejects lines that do not belong to the plan cycle', async () => {
@@ -323,9 +330,9 @@ describe('set-batches POST', () => {
   });
 
   it('returns a sanitized no-store 500 when batch creation fails unexpectedly', async () => {
-    withOrgContextMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw set batch create drug packaging instruction'),
-    );
+    const unsafeError = new Error('患者 山田太郎 raw set batch create drug packaging instruction');
+    unsafeError.name = 'SetBatchCreateSecretError';
+    withOrgContextMock.mockRejectedValueOnce(unsafeError);
 
     const response = await POST(
       createRequest({
@@ -351,14 +358,21 @@ describe('set-batches POST', () => {
     expect(JSON.stringify(body)).not.toContain('raw set batch create');
     expect(JSON.stringify(body)).not.toContain('drug packaging instruction');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'set_batches_post_unhandled_error',
-      undefined,
-      expect.objectContaining({
-        error_name: 'Error',
+      {
+        event: 'set_batches_post_unhandled_error',
         method: 'POST',
         route: '/api/set-batches',
-      }),
+        status: 500,
+      },
+      unsafeError,
     );
+    const routeContext = loggerErrorMock.mock.calls[0]?.[0];
+    expect(routeContext).not.toHaveProperty('error_name');
+    const routeContextText = JSON.stringify(routeContext);
+    expect(routeContextText).not.toContain('山田太郎');
+    expect(routeContextText).not.toContain('raw set batch create');
+    expect(routeContextText).not.toContain('drug packaging instruction');
+    expect(routeContextText).not.toContain('SetBatchCreateSecretError');
   });
 
   it('returns 404 for unassigned pharmacist batch creation before line lookup or writes', async () => {

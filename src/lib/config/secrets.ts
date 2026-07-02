@@ -135,8 +135,7 @@ export function isSecretsManagerConfigured(): boolean {
 
 function secretName(): string {
   const explicit =
-    process.env.SECRETS_MANAGER_SECRET_ID?.trim() ||
-    process.env.SECRETS_MANAGER_SECRET_ARN?.trim();
+    process.env.SECRETS_MANAGER_SECRET_ID?.trim() || process.env.SECRETS_MANAGER_SECRET_ARN?.trim();
   if (explicit) return explicit;
   return `ph-os/${APP_ENV}/app-secrets`;
 }
@@ -175,6 +174,28 @@ export function parseAppSecrets(raw: string, sourceLabel = `Secret "${secretName
     JWT_SIGNING_SECRET: readRequiredSecretString(record, 'JWT_SIGNING_SECRET', sourceLabel),
     JOB_API_KEY: readRequiredSecretString(record, 'JOB_API_KEY', sourceLabel),
   };
+}
+
+function getSafeSecretsErrorName(error: unknown) {
+  if (error instanceof Error) return 'Error';
+  if (error === undefined) return undefined;
+  return typeof error;
+}
+
+function logSecretsManagerFallback(error: unknown) {
+  console.warn('[secrets] Falling back to environment variables after Secrets Manager failure', {
+    event: 'secrets_manager_fetch_failed',
+    operation: 'fallback_to_env',
+    error_name: getSafeSecretsErrorName(error),
+  });
+}
+
+function logSecretsBootstrapFailure(error: unknown) {
+  console.warn('[secrets] bootstrapSecretsIntoEnv failed; continuing with environment values', {
+    event: 'secrets_bootstrap_failed',
+    operation: 'continue_with_env',
+    error_name: getSafeSecretsErrorName(error),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -287,10 +308,7 @@ export async function getSecrets(): Promise<AppSecrets> {
   try {
     cachedSecrets = await fetchFromSecretsManager();
   } catch (error) {
-    console.warn(
-      `[secrets] Falling back to environment variables for ${secretName()}:`,
-      error instanceof Error ? error.message : String(error),
-    );
+    logSecretsManagerFallback(error);
     cachedSecrets = fromEnv();
   }
   cachePopulatedAt = now;
@@ -345,10 +363,7 @@ export async function bootstrapSecretsIntoEnv(): Promise<void> {
       }
     } catch (error) {
       // Never block startup on Secrets Manager; env remains authoritative.
-      console.warn(
-        '[secrets] bootstrapSecretsIntoEnv failed; continuing with environment values:',
-        error instanceof Error ? error.message : String(error),
-      );
+      logSecretsBootstrapFailure(error);
     }
   })();
 

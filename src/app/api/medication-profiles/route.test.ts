@@ -173,7 +173,9 @@ describe('/api/medication-profiles', () => {
   });
 
   it('returns a sanitized no-store 500 when medication profile listing fails unexpectedly', async () => {
-    medicationProfileFindManyMock.mockRejectedValueOnce(new Error('raw medication profile secret'));
+    const err = new Error('raw medication profile list secret');
+    err.name = 'MedicationProfileListSecretError';
+    medicationProfileFindManyMock.mockRejectedValueOnce(err);
 
     const response = (await GET(createGetRequest(), emptyRouteContext))!;
 
@@ -182,21 +184,22 @@ describe('/api/medication-profiles', () => {
     expect(response.headers.get('Pragma')).toBe('no-cache');
     const bodyText = await response.text();
     expect(bodyText).toContain('INTERNAL_ERROR');
-    expect(bodyText).not.toContain('raw medication profile secret');
+    expect(bodyText).not.toContain('raw medication profile list secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'medication_profiles_get_unhandled_error',
-      undefined,
       expect.objectContaining({
         event: 'medication_profiles_get_unhandled_error',
         route: '/api/medication-profiles',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       }),
+      err,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(
-      'raw medication profile secret',
-    );
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(err);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logContextText = JSON.stringify(logContext);
+    expect(logContextText).not.toContain('raw medication profile list secret');
+    expect(logContextText).not.toContain('MedicationProfileListSecretError');
   });
 
   it.each([
@@ -408,7 +411,9 @@ describe('/api/medication-profiles', () => {
   });
 
   it('returns a sanitized no-store 500 when medication profile creation fails unexpectedly', async () => {
-    medicationProfileCreateMock.mockRejectedValueOnce(new Error('raw medication profile create'));
+    const err = new Error('患者 山田太郎 raw medication profile create');
+    err.name = 'MedicationProfileCreateSecretError';
+    medicationProfileCreateMock.mockRejectedValueOnce(err);
 
     const response = (await POST(
       createPostRequest({
@@ -423,20 +428,23 @@ describe('/api/medication-profiles', () => {
     expect(response.headers.get('Pragma')).toBe('no-cache');
     const bodyText = await response.text();
     expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('山田太郎');
     expect(bodyText).not.toContain('raw medication profile create');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'medication_profiles_post_unhandled_error',
-      undefined,
       expect.objectContaining({
         event: 'medication_profiles_post_unhandled_error',
         route: '/api/medication-profiles',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
       }),
+      err,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(
-      'raw medication profile create',
-    );
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(err);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logContextText = JSON.stringify(logContext);
+    expect(logContextText).not.toContain('山田太郎');
+    expect(logContextText).not.toContain('raw medication profile create');
+    expect(logContextText).not.toContain('MedicationProfileCreateSecretError');
   });
 });

@@ -3,6 +3,7 @@ import { ADMIN_MEMBER_ROLES } from '@/lib/auth/member-roles';
 import { hasPermission } from '@/lib/auth/permissions';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict, forbidden } from '@/lib/api/response';
+import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -28,41 +29,9 @@ const createDispenseTaskSchema = z.object({
 });
 
 const dispenseTaskStatusSchema = z.enum(['pending', 'in_progress', 'completed']);
-type DispenseTaskQueryName = 'status' | 'cycle_id' | 'assigned_to';
-
-function readStrictOptionalDispenseTaskFilter(
-  searchParams: URLSearchParams,
-  name: DispenseTaskQueryName,
-  messages: { blank: string; invalid: string },
-) {
-  const values = searchParams.getAll(name);
-  if (values.length === 0) return { ok: true as const, value: undefined };
-  if (values.length > 1) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [`${name} は1つだけ指定してください`] },
-    };
-  }
-
-  const value = values[0];
-  if (value.trim().length === 0) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [messages.blank] },
-    };
-  }
-  if (value !== value.trim() || value.length > 100) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [messages.invalid] },
-    };
-  }
-
-  return { ok: true as const, value };
-}
 
 function parseDispenseTaskListFilters(searchParams: URLSearchParams) {
-  const statusResult = readStrictOptionalDispenseTaskFilter(searchParams, 'status', {
+  const statusResult = readStrictOptionalSearchParam(searchParams, 'status', {
     blank: 'ステータスを指定してください',
     invalid: '対応していないステータスです',
   });
@@ -73,7 +42,7 @@ function parseDispenseTaskListFilters(searchParams: URLSearchParams) {
     };
   }
 
-  const cycleResult = readStrictOptionalDispenseTaskFilter(searchParams, 'cycle_id', {
+  const cycleResult = readStrictOptionalSearchParam(searchParams, 'cycle_id', {
     blank: 'サイクルIDを指定してください',
     invalid: 'サイクルIDの形式が不正です',
   });
@@ -84,7 +53,7 @@ function parseDispenseTaskListFilters(searchParams: URLSearchParams) {
     };
   }
 
-  const assignedToResult = readStrictOptionalDispenseTaskFilter(searchParams, 'assigned_to', {
+  const assignedToResult = readStrictOptionalSearchParam(searchParams, 'assigned_to', {
     blank: '担当者IDを指定してください',
     invalid: '担当者IDの形式が不正です',
   });

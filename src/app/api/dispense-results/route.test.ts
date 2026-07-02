@@ -302,9 +302,9 @@ describe('/api/dispense-results POST', () => {
   });
 
   it('returns a sanitized no-store 500 without raw logging when transaction setup fails unexpectedly', async () => {
-    withOrgContextMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw dispense result transaction secret'),
-    );
+    const unsafeError = new Error('患者 山田太郎 raw dispense result transaction secret');
+    unsafeError.name = 'DispenseResultsRawPatientSecretError';
+    withOrgContextMock.mockRejectedValueOnce(unsafeError);
 
     const response = await POST(
       createRequest({
@@ -333,18 +333,21 @@ describe('/api/dispense-results POST', () => {
     expect(JSON.stringify(body)).not.toContain('山田太郎');
     expect(JSON.stringify(body)).not.toContain('raw dispense result');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'dispense_results_post_unhandled_error',
-      undefined,
       expect.objectContaining({
         event: 'dispense_results_post_unhandled_error',
         route: '/api/dispense-results',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
       }),
+      unsafeError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw dispense result');
+    const [routeContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(unsafeError);
+    expect(routeContext).not.toHaveProperty('error_name');
+    const serializedRouteContext = JSON.stringify(routeContext);
+    expect(serializedRouteContext).not.toContain('山田太郎');
+    expect(serializedRouteContext).not.toContain('raw dispense result');
+    expect(serializedRouteContext).not.toContain('DispenseResultsRawPatientSecretError');
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();

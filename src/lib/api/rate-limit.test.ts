@@ -610,7 +610,9 @@ describe('rate-limit', () => {
     expect(consoleErrorMock).toHaveBeenCalledWith(
       '[rate-limit] DynamoDB store unavailable; denying request',
       expect.objectContaining({
-        message: 'AWS container credentials response is missing required fields',
+        error_name: 'Error',
+        event: 'rate_limit_dynamodb_store_unavailable',
+        operation: 'deny_request',
       }),
     );
   });
@@ -664,7 +666,43 @@ describe('rate-limit', () => {
     expect(consoleErrorMock).toHaveBeenCalledWith(
       '[rate-limit] DynamoDB store unavailable; denying request',
       expect.objectContaining({
-        message: 'DynamoDB rate limit response is missing required counters',
+        error_name: 'Error',
+        event: 'rate_limit_dynamodb_store_unavailable',
+        operation: 'deny_request',
+      }),
+    );
+  });
+
+  it('does not log raw DynamoDB failure details in production', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    process.env.RATE_LIMIT_STORE = 'dynamodb';
+    process.env.RATE_LIMIT_DDB_TABLE_NAME = 'ph-os-rate-limit';
+    process.env.RATE_LIMIT_DDB_REGION = 'ap-northeast-1';
+    process.env.AWS_ACCESS_KEY_ID = 'AKIA_TEST';
+    process.env.AWS_SECRET_ACCESS_KEY = 'secret-test-key';
+    resetRateLimitStoreForTests();
+    const rawFailure =
+      'ddb failure patient=患者A token=secret signed_url=https://example.invalid/x';
+    const consoleErrorMock = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error(rawFailure));
+
+    await expect(checkRateLimit('user:1', '/api/patients', 'POST')).resolves.toMatchObject({
+      allowed: false,
+      remaining: 0,
+      reason: 'store_unavailable',
+    });
+
+    const serializedLog = consoleErrorMock.mock.calls
+      .flat()
+      .map((value) => (value instanceof Error ? value.message : JSON.stringify(value)))
+      .join('\n');
+    expect(serializedLog).not.toContain(rawFailure);
+    expect(consoleErrorMock).toHaveBeenCalledWith(
+      '[rate-limit] DynamoDB store unavailable; denying request',
+      expect.objectContaining({
+        error_name: 'Error',
+        event: 'rate_limit_dynamodb_store_unavailable',
+        operation: 'deny_request',
       }),
     );
   });

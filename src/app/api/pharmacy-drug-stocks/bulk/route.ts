@@ -13,20 +13,6 @@ import { withRoutePerformance } from '@/lib/utils/performance';
 
 const MAX_REORDER_POINT = 2_147_483_647;
 const ROUTE = '/api/pharmacy-drug-stocks/bulk';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 const reorderPointIntegerSchema = z
   .union([
@@ -671,13 +657,15 @@ export async function POST(
       return withSensitiveNoStore(await authenticatedPOST(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('pharmacy_drug_stocks_bulk_post_unhandled_error', undefined, {
-        event: 'pharmacy_drug_stocks_bulk_post_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'pharmacy_drug_stocks_bulk_post_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

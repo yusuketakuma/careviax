@@ -33,21 +33,6 @@ import { withRoutePerformance } from '@/lib/utils/performance';
 import { z } from 'zod';
 
 const ROUTE = '/api/set-plans/[id]/generate-batches';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-  'SetBatchGenerateRetryLimitError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 const generateBatchesSchema = z.object({
   force: z.boolean().optional().default(false),
@@ -698,12 +683,15 @@ export async function POST(req: NextRequest, routeContext: AuthRouteContext<{ id
       return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('set_plan_generate_batches_post_unhandled_error', undefined, {
-        event: 'set_plan_generate_batches_post_unhandled_error',
-        route: ROUTE,
-        method: 'POST',
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'set_plan_generate_batches_post_unhandled_error',
+          route: ROUTE,
+          method: 'POST',
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

@@ -347,19 +347,18 @@ describe('/api/dashboard/medication-deadlines', () => {
     expect(body).not.toContain('raw-error');
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'dashboard_medication_deadlines_unhandled_error',
-      undefined,
       {
         event: 'dashboard_medication_deadlines_unhandled_error',
         route: '/api/dashboard/medication-deadlines',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    const [routeContext, loggedError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(routeContext).not.toHaveProperty('error_name');
+    expect(loggedError).toBe(unsafeError);
+    const logged = JSON.stringify(routeContext);
     expect(logged).not.toContain('raw patient');
     expect(logged).not.toContain('raw medication');
     expect(logged).not.toContain('deadline_secret');

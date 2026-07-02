@@ -634,7 +634,8 @@ describe('/api/patients/[id]/prescriptions', () => {
 
   it('returns a sanitized no-store 500 when prescription reads fail', async () => {
     const rawError = 'raw patient prescriptions read failure';
-    patientFindFirstMock.mockRejectedValueOnce(new Error(rawError));
+    const unsafeError = new Error(rawError);
+    patientFindFirstMock.mockRejectedValueOnce(unsafeError);
 
     const response = (await GET(createGetRequest('patient_1', 'limit=5'), {
       params: Promise.resolve({ id: 'patient_1' }),
@@ -646,17 +647,18 @@ describe('/api/patients/[id]/prescriptions', () => {
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain(rawError);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'patient_prescriptions_get_unhandled_error',
-      undefined,
       {
         event: 'patient_prescriptions_get_unhandled_error',
         route: '/api/patients/[id]/prescriptions',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(rawError);
+    const [routeContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(unsafeError);
+    expect(routeContext).not.toHaveProperty('error_name');
+    expect(JSON.stringify(routeContext)).not.toContain(rawError);
   });
 
   it.each([

@@ -18,20 +18,6 @@ import { withRoutePerformance } from '@/lib/utils/performance';
  */
 
 const ROUTE = '/api/drug-masters/[id]/package-insert';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 export type DrugPackageInsertSectionItem = { text: string; severity?: string; detail?: string };
 
@@ -243,13 +229,15 @@ export async function GET(req: NextRequest, routeContext: { params: Promise<{ id
       return withSensitiveNoStore(await authenticatedGET(req, routeContext.params));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('drug_masters_package_insert_get_unhandled_error', undefined, {
-        event: 'drug_masters_package_insert_get_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'drug_masters_package_insert_get_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

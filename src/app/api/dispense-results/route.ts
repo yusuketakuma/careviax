@@ -95,20 +95,6 @@ const createDispenseResultSchema = z.object({
 type SubmittedDispenseResultLine = z.infer<typeof dispenseResultLineSchema>;
 
 const ROUTE = '/api/dispense-results';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 type ReplayableDispenseResult = {
   id: string;
@@ -1085,13 +1071,15 @@ export async function POST(req: NextRequest) {
       return withSensitiveNoStore(await authenticatedPOST(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('dispense_results_post_unhandled_error', undefined, {
-        event: 'dispense_results_post_unhandled_error',
-        route: ROUTE,
-        method: 'POST',
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'dispense_results_post_unhandled_error',
+          route: ROUTE,
+          method: 'POST',
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

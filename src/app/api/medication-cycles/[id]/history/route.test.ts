@@ -199,21 +199,22 @@ describe('/api/medication-cycles/[id]/history', () => {
 
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'medication_cycle_history_unhandled_error',
-      undefined,
       {
         event: 'medication_cycle_history_unhandled_error',
         route: '/api/medication-cycles/[id]/history',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       },
+      thrown,
     );
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(thrown);
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('cycle_1');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('麻薬指導');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('SQL select');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('stack trace');
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(thrown);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(logContext);
+    expect(logged).not.toContain('cycle_1');
+    expect(logged).not.toContain('山田太郎');
+    expect(logged).not.toContain('麻薬指導');
+    expect(logged).not.toContain('SQL select');
+    expect(logged).not.toContain('stack trace');
   });
 });

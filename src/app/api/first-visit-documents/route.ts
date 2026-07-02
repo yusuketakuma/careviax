@@ -5,6 +5,7 @@ import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
+import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -42,20 +43,6 @@ const FIRST_VISIT_TEMPLATE_DOCUMENT_TYPES: Record<
   privacy_consent: 'privacy_consent',
   consent_form: 'consent',
 };
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 function relationLabelForDocument(relation: string) {
   const labels: Record<string, string> = {
@@ -73,40 +60,11 @@ function relationLabelForDocument(relation: string) {
   return labels[relation] ?? relation;
 }
 
-type FirstVisitDocumentFilterName = 'patient_id' | 'case_id';
-
-function readOptionalFirstVisitDocumentFilter(
-  searchParams: URLSearchParams,
-  name: FirstVisitDocumentFilterName,
-) {
-  const values = searchParams.getAll(name);
-  if (values.length === 0) return { ok: true as const, value: undefined };
-  if (values.length > 1) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [`${name} は1つだけ指定してください`] },
-    };
-  }
-
-  const value = values[0];
-  if (value.trim().length === 0) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [`${name} を指定してください`] },
-    };
-  }
-  if (value !== value.trim() || value.length > 100) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [`${name} の形式が不正です`] },
-    };
-  }
-
-  return { ok: true as const, value };
-}
-
 function parseFirstVisitDocumentListFilters(searchParams: URLSearchParams) {
-  const patientResult = readOptionalFirstVisitDocumentFilter(searchParams, 'patient_id');
+  const patientResult = readStrictOptionalSearchParam(searchParams, 'patient_id', {
+    blank: 'patient_id を指定してください',
+    invalid: 'patient_id の形式が不正です',
+  });
   if (!patientResult.ok) {
     return {
       ok: false as const,
@@ -114,7 +72,10 @@ function parseFirstVisitDocumentListFilters(searchParams: URLSearchParams) {
     };
   }
 
-  const caseResult = readOptionalFirstVisitDocumentFilter(searchParams, 'case_id');
+  const caseResult = readStrictOptionalSearchParam(searchParams, 'case_id', {
+    blank: 'case_id を指定してください',
+    invalid: 'case_id の形式が不正です',
+  });
   if (!caseResult.ok) {
     return {
       ok: false as const,
@@ -223,13 +184,15 @@ export async function GET(req: NextRequest) {
       return withSensitiveNoStore(await authenticatedGET(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('first_visit_documents_get_unhandled_error', undefined, {
-        event: 'first_visit_documents_get_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'first_visit_documents_get_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });
@@ -406,13 +369,15 @@ export async function POST(req: NextRequest) {
       return withSensitiveNoStore(await authenticatedPOST(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('first_visit_documents_post_unhandled_error', undefined, {
-        event: 'first_visit_documents_post_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'first_visit_documents_post_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

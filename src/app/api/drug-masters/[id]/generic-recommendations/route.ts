@@ -11,15 +11,6 @@ import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
 
 const ROUTE = '/api/drug-masters/[id]/generic-recommendations';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
 
 const routeParamsSchema = z.object({
   id: z.string().trim().min(1),
@@ -34,11 +25,6 @@ function toNumber(value: unknown): number | null {
   if (value == null) return null;
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : null;
-}
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
 }
 
 async function authenticatedGET(req: NextRequest, params: Promise<{ id: string }>) {
@@ -174,13 +160,15 @@ export async function GET(req: NextRequest, routeContext: { params: Promise<{ id
       return withSensitiveNoStore(await authenticatedGET(req, routeContext.params));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('drug_masters_generic_recommendations_get_unhandled_error', undefined, {
-        event: 'drug_masters_generic_recommendations_get_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'drug_masters_generic_recommendations_get_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

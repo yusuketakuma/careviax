@@ -187,7 +187,9 @@ describe('/api/medication-issues', () => {
   });
 
   it('returns a sanitized no-store 500 when medication issue listing fails unexpectedly', async () => {
-    medicationIssueFindManyMock.mockRejectedValueOnce(new Error('raw medication issue secret'));
+    const err = new Error('raw medication issue list secret');
+    err.name = 'MedicationIssueListSecretError';
+    medicationIssueFindManyMock.mockRejectedValueOnce(err);
 
     const response = (await GET(createRequest('http://localhost/api/medication-issues')))!;
 
@@ -195,24 +197,28 @@ describe('/api/medication-issues', () => {
     expectSensitiveNoStore(response);
     const bodyText = await response.text();
     expect(bodyText).toContain('INTERNAL_ERROR');
-    expect(bodyText).not.toContain('raw medication issue secret');
+    expect(bodyText).not.toContain('raw medication issue list secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'medication_issues_get_unhandled_error',
-      undefined,
       expect.objectContaining({
         event: 'medication_issues_get_unhandled_error',
         route: '/api/medication-issues',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       }),
+      err,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw medication issue secret');
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(err);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logContextText = JSON.stringify(logContext);
+    expect(logContextText).not.toContain('raw medication issue list secret');
+    expect(logContextText).not.toContain('MedicationIssueListSecretError');
   });
 
   it.each([
     ['patient_id=', 'patient_id', '患者IDを指定してください'],
     ['patient_id=%20patient_1', 'patient_id', '患者IDの形式が不正です'],
+    [`patient_id=${'a'.repeat(101)}`, 'patient_id', '患者IDの形式が不正です'],
     ['case_id=%20%20', 'case_id', 'ケースIDを指定してください'],
     ['case_id=case_1%20', 'case_id', 'ケースIDの形式が不正です'],
     ['status=', 'status', 'ステータスを指定してください'],
@@ -389,9 +395,9 @@ describe('/api/medication-issues', () => {
   });
 
   it('returns a sanitized no-store 500 without raw logging when medication issue creation fails unexpectedly', async () => {
-    withOrgContextMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw medication issue create secret'),
-    );
+    const err = new Error('患者 山田太郎 raw medication issue create secret');
+    err.name = 'MedicationIssueCreateSecretError';
+    withOrgContextMock.mockRejectedValueOnce(err);
 
     const response = (await POST(
       createRequest('http://localhost/api/medication-issues', {
@@ -411,18 +417,21 @@ describe('/api/medication-issues', () => {
     expect(JSON.stringify(body)).not.toContain('山田太郎');
     expect(JSON.stringify(body)).not.toContain('raw medication issue');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'medication_issues_post_unhandled_error',
-      undefined,
       expect.objectContaining({
         event: 'medication_issues_post_unhandled_error',
         route: '/api/medication-issues',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
       }),
+      err,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw medication issue');
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(err);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logContextText = JSON.stringify(logContext);
+    expect(logContextText).not.toContain('山田太郎');
+    expect(logContextText).not.toContain('raw medication issue');
+    expect(logContextText).not.toContain('MedicationIssueCreateSecretError');
     expect(medicationIssueCreateMock).not.toHaveBeenCalled();
   });
 });

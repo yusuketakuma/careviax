@@ -111,6 +111,41 @@ describe('/api/me/profile', () => {
     });
   });
 
+  it('logs MFA state resolution failures without raw Cognito diagnostics', async () => {
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    getUserMfaStateMock.mockRejectedValueOnce(
+      new Error('Cognito MFA failed patient=山田 token=secret-mfa-token'),
+    );
+
+    const response = await GET(new NextRequest('http://localhost/api/me/profile'));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'user_1',
+        mfaEnabled: false,
+      },
+    });
+    expect(consoleWarn).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    const entry = JSON.parse(String(consoleError.mock.calls[0]?.[0])) as Record<string, unknown>;
+    expect(entry).toMatchObject({
+      level: 'warn',
+      message: 'me_profile.mfa_state_failed',
+      event: 'me_profile.mfa_state_failed',
+      route: '/api/me/profile',
+      method: 'GET',
+      operation: 'resolve_cognito_mfa_state',
+      error_name: 'Error',
+    });
+    const serialized = JSON.stringify(entry);
+    expect(serialized).not.toContain('Cognito MFA failed');
+    expect(serialized).not.toContain('山田');
+    expect(serialized).not.toContain('secret-mfa-token');
+    expect(serialized).not.toContain('user@example.com');
+  });
+
   it('updates the current user profile and syncs Cognito', async () => {
     const response = await PATCH(
       new NextRequest('http://localhost/api/me/profile', {

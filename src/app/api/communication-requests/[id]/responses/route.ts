@@ -37,20 +37,6 @@ import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
 
 const ROUTE = '/api/communication-requests/[id]/responses';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -118,13 +104,15 @@ export async function GET(req: NextRequest, routeContext: RouteContext) {
       return withSensitiveNoStore(await authenticatedGET(req, routeContext));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('communication_request_responses_get_unhandled_error', undefined, {
-        event: 'communication_request_responses_get_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'communication_request_responses_get_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });
@@ -322,13 +310,15 @@ export async function POST(req: NextRequest, routeContext: RouteContext) {
       return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('communication_request_responses_post_unhandled_error', undefined, {
-        event: 'communication_request_responses_post_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'communication_request_responses_post_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

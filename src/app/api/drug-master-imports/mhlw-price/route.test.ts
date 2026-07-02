@@ -318,19 +318,18 @@ describe('/api/drug-master-imports/mhlw-price', () => {
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('mhlw price import secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'drug_master_imports_mhlw_price_post_unhandled_error',
-      undefined,
       {
         event: 'drug_master_imports_mhlw_price_post_unhandled_error',
         route: '/api/drug-master-imports/mhlw-price',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(unsafeError);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(logContext);
     expect(logged).not.toContain('mhlw price import secret');
     expect(logged).not.toContain('MhlwPriceImportSecretError');
   });
@@ -349,17 +348,18 @@ describe('/api/drug-master-imports/mhlw-price', () => {
     expect(JSON.stringify(body)).not.toContain('mhlw price preview secret');
     expect(importMhlwPriceListMock).not.toHaveBeenCalled();
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'drug_master_imports_mhlw_price_post_unhandled_error',
-      undefined,
       {
         event: 'drug_master_imports_mhlw_price_post_unhandled_error',
         route: '/api/drug-master-imports/mhlw-price',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(unsafeError);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(logContext);
     expect(logged).not.toContain('mhlw price preview secret');
     expect(logged).not.toContain('MhlwPricePreviewSecretError');
   });

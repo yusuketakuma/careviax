@@ -25,20 +25,6 @@ import { withRoutePerformance } from '@/lib/utils/performance';
 import { z } from 'zod';
 
 const ROUTE = '/api/set-plans';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 const createSetPlanSchema = z
   .object({
@@ -213,12 +199,15 @@ export async function GET(req: NextRequest) {
       return withSensitiveNoStore(await authenticatedGET(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('set_plans_get_unhandled_error', undefined, {
-        event: 'set_plans_get_unhandled_error',
-        route: ROUTE,
-        method: 'GET',
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'set_plans_get_unhandled_error',
+          route: ROUTE,
+          method: 'GET',
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });
@@ -434,12 +423,15 @@ export async function POST(req: NextRequest) {
       return withSensitiveNoStore(await authenticatedPOST(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('set_plans_post_unhandled_error', undefined, {
-        event: 'set_plans_post_unhandled_error',
-        route: ROUTE,
-        method: 'POST',
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'set_plans_post_unhandled_error',
+          route: ROUTE,
+          method: 'POST',
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

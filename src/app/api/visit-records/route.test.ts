@@ -361,9 +361,8 @@ describe('/api/visit-records GET', () => {
   );
 
   it('returns a sanitized no-store 500 without raw logging when visit record listing fails unexpectedly', async () => {
-    visitRecordFindManyMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw visit record listing secret'),
-    );
+    const rawError = new Error('患者 山田太郎 raw visit record listing secret');
+    visitRecordFindManyMock.mockRejectedValueOnce(rawError);
 
     const response = await GET(createGetRequest('http://localhost/api/visit-records'));
 
@@ -377,18 +376,20 @@ describe('/api/visit-records GET', () => {
     expect(JSON.stringify(body)).not.toContain('山田太郎');
     expect(JSON.stringify(body)).not.toContain('raw visit record');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'visit_records_get_unhandled_error',
-      undefined,
       expect.objectContaining({
         event: 'visit_records_get_unhandled_error',
         route: '/api/visit-records',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       }),
+      rawError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw visit record');
+    const [routeContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(rawError);
+    expect(routeContext).not.toHaveProperty('error_name');
+    const serializedRouteContext = JSON.stringify(routeContext);
+    expect(serializedRouteContext).not.toContain('山田太郎');
+    expect(serializedRouteContext).not.toContain('raw visit record');
   });
 
   it.each([
@@ -1354,22 +1355,24 @@ describe('/api/visit-records POST', () => {
         }),
       );
       expect(loggerErrorMock).toHaveBeenCalledWith(
-        'visit_records_patient_state_snapshot_build_failed',
-        undefined,
         expect.objectContaining({
           event: 'visit_records_patient_state_snapshot_build_failed',
           route: '/api/visit-records',
           operation: 'build_patient_state_snapshot',
-          error_name: 'Error',
         }),
+        rawError,
       );
+      const [routeContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+      expect(logError).toBe(rawError);
+      expect(routeContext).not.toHaveProperty('error_name');
       expect(warnSpy).not.toHaveBeenCalledWith(
         '[visit-records] patient_state_snapshot build failed',
         rawError,
       );
-      expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
-      expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('アムロジピン');
-      expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw snapshot secret');
+      const serializedRouteContext = JSON.stringify(routeContext);
+      expect(serializedRouteContext).not.toContain('山田太郎');
+      expect(serializedRouteContext).not.toContain('アムロジピン');
+      expect(serializedRouteContext).not.toContain('raw snapshot secret');
       expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('山田太郎');
       expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('アムロジピン');
       expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('raw snapshot secret');
@@ -1789,9 +1792,8 @@ describe('/api/visit-records POST', () => {
   });
 
   it('returns a sanitized no-store 500 without raw logging when visit record creation fails unexpectedly', async () => {
-    withOrgContextMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw visit record create secret'),
-    );
+    const rawError = new Error('患者 山田太郎 raw visit record create secret');
+    withOrgContextMock.mockRejectedValueOnce(rawError);
 
     const response = await POST(
       createRequest(
@@ -1817,18 +1819,20 @@ describe('/api/visit-records POST', () => {
     expect(JSON.stringify(body)).not.toContain('山田太郎');
     expect(JSON.stringify(body)).not.toContain('raw visit record');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'visit_records_post_unhandled_error',
-      undefined,
       expect.objectContaining({
         event: 'visit_records_post_unhandled_error',
         route: '/api/visit-records',
         method: 'POST',
         status: 500,
-        error_name: 'Error',
       }),
+      rawError,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw visit record');
+    const [routeContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(rawError);
+    expect(routeContext).not.toHaveProperty('error_name');
+    const serializedRouteContext = JSON.stringify(routeContext);
+    expect(serializedRouteContext).not.toContain('山田太郎');
+    expect(serializedRouteContext).not.toContain('raw visit record');
     expect(processHandoffExtractionMock).not.toHaveBeenCalled();
   });
 
@@ -2760,18 +2764,21 @@ describe('/api/visit-records POST', () => {
     expect(response.status).toBe(201);
     await Promise.resolve();
     expect(loggerWarnMock).toHaveBeenCalledWith(
-      'visit_records_handoff_extraction_failed',
       expect.objectContaining({
         event: 'visit_records_handoff_extraction_failed',
         route: '/api/visit-records',
         operation: 'process_handoff_extraction',
         targetId: 'record_1',
-        error_name: 'Error',
       }),
+      expect.any(Error),
     );
-    expect(JSON.stringify(loggerWarnMock.mock.calls)).not.toContain('Patient Tanaka');
-    expect(JSON.stringify(loggerWarnMock.mock.calls)).not.toContain('田中太郎');
-    expect(JSON.stringify(loggerWarnMock.mock.calls)).not.toContain('SOAP=服薬状況');
-    expect(JSON.stringify(loggerWarnMock.mock.calls)).not.toContain('token=secret');
+    const [routeContext, warnError] = loggerWarnMock.mock.calls[0] ?? [];
+    expect(warnError).toBeInstanceOf(Error);
+    expect(routeContext).not.toHaveProperty('error_name');
+    const serializedRouteContext = JSON.stringify(routeContext);
+    expect(serializedRouteContext).not.toContain('Patient Tanaka');
+    expect(serializedRouteContext).not.toContain('田中太郎');
+    expect(serializedRouteContext).not.toContain('SOAP=服薬状況');
+    expect(serializedRouteContext).not.toContain('token=secret');
   });
 });

@@ -403,9 +403,9 @@ describe('/api/set-plans', () => {
   });
 
   it('returns a sanitized no-store 500 when set-plan listing fails unexpectedly', async () => {
-    setPlanFindManyMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw set plan list medication notes'),
-    );
+    const unsafeError = new Error('患者 山田太郎 raw set plan list medication notes');
+    unsafeError.name = 'SetPlanListSecretError';
+    setPlanFindManyMock.mockRejectedValueOnce(unsafeError);
 
     const response = (await GET(createRequest('http://localhost/api/set-plans?cycle_id=cycle_1')))!;
 
@@ -420,21 +420,27 @@ describe('/api/set-plans', () => {
     expect(JSON.stringify(body)).not.toContain('raw set plan list');
     expect(JSON.stringify(body)).not.toContain('medication notes');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'set_plans_get_unhandled_error',
-      undefined,
-      expect.objectContaining({
+      {
         event: 'set_plans_get_unhandled_error',
         route: '/api/set-plans',
         method: 'GET',
-        error_name: 'Error',
-      }),
+        status: 500,
+      },
+      unsafeError,
     );
+    const [routeContext] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(routeContext).not.toHaveProperty('error_name');
+    const serializedRouteContext = JSON.stringify(routeContext);
+    expect(serializedRouteContext).not.toContain('山田太郎');
+    expect(serializedRouteContext).not.toContain('raw set plan list');
+    expect(serializedRouteContext).not.toContain('medication notes');
+    expect(serializedRouteContext).not.toContain('SetPlanListSecretError');
   });
 
   it('returns a sanitized no-store 500 when set-plan creation fails unexpectedly', async () => {
-    withOrgContextMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw set plan create medication notes'),
-    );
+    const unsafeError = new Error('患者 山田太郎 raw set plan create medication notes');
+    unsafeError.name = 'SetPlanCreateSecretError';
+    withOrgContextMock.mockRejectedValueOnce(unsafeError);
 
     const response = (await POST(
       createRequest('http://localhost/api/set-plans', {
@@ -456,15 +462,21 @@ describe('/api/set-plans', () => {
     expect(JSON.stringify(body)).not.toContain('raw set plan create');
     expect(JSON.stringify(body)).not.toContain('medication notes');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'set_plans_post_unhandled_error',
-      undefined,
-      expect.objectContaining({
+      {
         event: 'set_plans_post_unhandled_error',
         route: '/api/set-plans',
         method: 'POST',
-        error_name: 'Error',
-      }),
+        status: 500,
+      },
+      unsafeError,
     );
+    const [routeContext] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(routeContext).not.toHaveProperty('error_name');
+    const serializedRouteContext = JSON.stringify(routeContext);
+    expect(serializedRouteContext).not.toContain('山田太郎');
+    expect(serializedRouteContext).not.toContain('raw set plan create');
+    expect(serializedRouteContext).not.toContain('medication notes');
+    expect(serializedRouteContext).not.toContain('SetPlanCreateSecretError');
   });
 
   it('rejects pharmacist set-plan creation when the cycle is not found in-org before writes or cycle transition', async () => {

@@ -708,9 +708,9 @@ describe('/api/first-visit-documents/[id]', () => {
   });
 
   it('returns a sanitized no-store 500 without raw logging when document lookup fails unexpectedly', async () => {
-    firstVisitDocumentFindFirstMock.mockRejectedValueOnce(
-      new Error('患者 山田太郎 raw first visit document patch secret'),
-    );
+    const err = new Error('患者 山田太郎 raw first visit document patch secret');
+    err.name = 'FirstVisitDocumentPatchSecretError';
+    firstVisitDocumentFindFirstMock.mockRejectedValueOnce(err);
 
     const response = (await PATCH(createPatchRequest({ delivered_to: '山田太郎' })))!;
 
@@ -724,18 +724,21 @@ describe('/api/first-visit-documents/[id]', () => {
     expect(JSON.stringify(body)).not.toContain('山田太郎');
     expect(JSON.stringify(body)).not.toContain('raw first visit');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'first_visit_documents_id_patch_unhandled_error',
-      undefined,
       expect.objectContaining({
         event: 'first_visit_documents_id_patch_unhandled_error',
         route: '/api/first-visit-documents/[id]',
         method: 'PATCH',
         status: 500,
-        error_name: 'Error',
       }),
+      err,
     );
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw first visit');
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(err);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logContextText = JSON.stringify(logContext);
+    expect(logContextText).not.toContain('山田太郎');
+    expect(logContextText).not.toContain('raw first visit');
+    expect(logContextText).not.toContain('FirstVisitDocumentPatchSecretError');
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });

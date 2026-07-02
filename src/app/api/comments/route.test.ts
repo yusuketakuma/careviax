@@ -270,7 +270,9 @@ describe('/api/comments', () => {
     });
 
     it('returns a sanitized no-store 500 when comment listing fails unexpectedly', async () => {
-      taskCommentFindManyMock.mockRejectedValueOnce(new Error('raw patient comment secret'));
+      const unsafeError = new Error('raw patient comment secret');
+      unsafeError.name = 'CommentListSecretError';
+      taskCommentFindManyMock.mockRejectedValueOnce(unsafeError);
 
       const response = (await GET(createGetRequest('entity_type=dispense_task&entity_id=dt_1')))!;
 
@@ -280,19 +282,20 @@ describe('/api/comments', () => {
       expect(bodyText).toContain('INTERNAL_ERROR');
       expect(bodyText).not.toContain('raw patient comment secret');
       expect(loggerErrorMock).toHaveBeenCalledWith(
-        'comments_get_unhandled_error',
-        undefined,
-        expect.objectContaining({
+        {
           event: 'comments_get_unhandled_error',
           route: '/api/comments',
           method: 'GET',
           status: 500,
-          error_name: 'Error',
-        }),
+        },
+        unsafeError,
       );
-      expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(
-        'raw patient comment secret',
-      );
+      const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+      expect(logError).toBe(unsafeError);
+      expect(logContext).not.toHaveProperty('error_name');
+      const logged = JSON.stringify(logContext);
+      expect(logged).not.toContain('raw patient comment secret');
+      expect(logged).not.toContain('CommentListSecretError');
     });
   });
 
@@ -618,9 +621,9 @@ describe('/api/comments', () => {
     });
 
     it('returns a sanitized no-store 500 without raw logging when comment creation fails unexpectedly', async () => {
-      withOrgContextMock.mockRejectedValueOnce(
-        new Error('患者 山田太郎 raw comment create secret'),
-      );
+      const unsafeError = new Error('患者 山田太郎 raw comment create secret');
+      unsafeError.name = 'CommentCreateSecretError';
+      withOrgContextMock.mockRejectedValueOnce(unsafeError);
 
       const response = (await POST(
         createPostRequest({
@@ -641,18 +644,21 @@ describe('/api/comments', () => {
       expect(JSON.stringify(body)).not.toContain('山田太郎');
       expect(JSON.stringify(body)).not.toContain('raw comment');
       expect(loggerErrorMock).toHaveBeenCalledWith(
-        'comments_post_unhandled_error',
-        undefined,
-        expect.objectContaining({
+        {
           event: 'comments_post_unhandled_error',
           route: '/api/comments',
           method: 'POST',
           status: 500,
-          error_name: 'Error',
-        }),
+        },
+        unsafeError,
       );
-      expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
-      expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw comment');
+      const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+      expect(logError).toBe(unsafeError);
+      expect(logContext).not.toHaveProperty('error_name');
+      const logged = JSON.stringify(logContext);
+      expect(logged).not.toContain('山田太郎');
+      expect(logged).not.toContain('raw comment');
+      expect(logged).not.toContain('CommentCreateSecretError');
       expect(taskCommentCreateMock).not.toHaveBeenCalled();
       expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
     });

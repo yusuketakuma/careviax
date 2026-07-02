@@ -27,15 +27,6 @@ import {
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 
 const ROUTE = '/api/tracing-reports';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
 
 const createTracingReportSchema = z.object({
   patient_id: requiredTrimmedStringSchema('患者IDは必須です'),
@@ -45,19 +36,16 @@ const createTracingReportSchema = z.object({
   sent_to_physician: optionalTrimmedStringSchema,
 });
 
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
-
 function logUnhandledRouteError(method: string, err: unknown) {
-  logger.error('tracing_reports_unhandled_error', undefined, {
-    event: 'tracing_reports_unhandled_error',
-    route: ROUTE,
-    method,
-    status: 500,
-    error_name: safeErrorName(err),
-  });
+  logger.error(
+    {
+      event: 'tracing_reports_unhandled_error',
+      route: ROUTE,
+      method,
+      status: 500,
+    },
+    err,
+  );
 }
 
 function readPresentOptionalSearchParam(

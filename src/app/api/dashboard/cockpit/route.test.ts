@@ -504,16 +504,19 @@ describe('/api/dashboard/cockpit', () => {
     expect(body).not.toContain('crafted.raw_patient_secret');
     expect(body).not.toContain('raw-error text');
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
-    expect(loggerErrorMock).toHaveBeenCalledWith('dashboard_cockpit_unhandled_error', undefined, {
-      event: 'dashboard_cockpit_unhandled_error',
-      route: '/api/dashboard/cockpit',
-      method: 'GET',
-      status: 500,
-      error_name: 'Error',
-    });
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'dashboard_cockpit_unhandled_error',
+        route: '/api/dashboard/cockpit',
+        method: 'GET',
+        status: 500,
+      },
+      unsafeError,
+    );
+    const [routeContext, loggedError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(routeContext).not.toHaveProperty('error_name');
+    expect(loggedError).toBe(unsafeError);
+    const logged = JSON.stringify(routeContext);
     expect(logged).not.toContain('raw_patient_secret');
     expect(logged).not.toContain('raw_dashboard_secret');
     expect(logged).not.toContain('SQL_SECRET');

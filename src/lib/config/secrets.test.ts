@@ -52,6 +52,60 @@ describe('parseAppSecrets', () => {
 });
 
 describe('getSecrets', () => {
+  it('falls back to env values without logging raw Secrets Manager failure details', async () => {
+    vi.resetModules();
+    vi.stubEnv('APP_ENV', 'staging');
+    vi.stubEnv('AWS_REGION', 'ap-northeast-1');
+    vi.stubEnv('SECRETS_MANAGER_SECRET_ID', 'ph-os/staging/app-secrets/token-secret-id');
+    vi.stubEnv('DATABASE_URL', 'postgresql://env-secret/db');
+    vi.stubEnv('NEXTAUTH_SECRET', 'env-nextauth-secret');
+    vi.stubEnv('ENCRYPTION_KEY', 'env-encryption-key');
+    vi.stubEnv('JWT_SIGNING_SECRET', 'env-jwt-signing-secret');
+    vi.stubEnv('JOB_API_KEY', 'env-job-api-key');
+
+    const sendMock = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error(
+          'AccessDeniedException for ph-os/staging/app-secrets/token-secret-id token=secret-provider-token patient=山田',
+        ),
+      );
+    const secretsManagerClientMock = vi.fn(function MockSecretsManagerClient() {
+      return {
+        send: sendMock,
+      };
+    });
+    const getSecretValueCommandMock = vi.fn(function MockGetSecretValueCommand(
+      this: { input?: unknown },
+      input: unknown,
+    ) {
+      this.input = input;
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    vi.doMock('@aws-sdk/client-secrets-manager', () => ({
+      SecretsManagerClient: secretsManagerClientMock,
+      GetSecretValueCommand: getSecretValueCommandMock,
+    }));
+
+    const { getSecrets } = await import('./secrets');
+
+    await expect(getSecrets()).resolves.toMatchObject({
+      DATABASE_URL: 'postgresql://env-secret/db',
+      NEXTAUTH_SECRET: 'env-nextauth-secret',
+    });
+
+    expect(warnSpy).toHaveBeenCalledOnce();
+    const logged = JSON.stringify(warnSpy.mock.calls);
+    expect(logged).toContain('secrets_manager_fetch_failed');
+    expect(logged).not.toContain('AccessDeniedException');
+    expect(logged).not.toContain('token-secret-id');
+    expect(logged).not.toContain('secret-provider-token');
+    expect(logged).not.toContain('山田');
+
+    warnSpy.mockRestore();
+  });
+
   it('reuses the Secrets Manager client across explicit secret cache clears', async () => {
     vi.resetModules();
     vi.stubEnv('APP_ENV', 'staging');

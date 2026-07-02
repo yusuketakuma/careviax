@@ -32,7 +32,15 @@ type SafeLogContextKey = Exclude<keyof SafeLogContext, 'event'>;
 
 const SAFE_EVENT_PATTERN = /^[a-z][a-z0-9_.-]{1,127}$/;
 const SAFE_STRING_PATTERN = /^[A-Za-z0-9_.:/@-]{1,160}$/;
-const SAFE_ERROR_NAME_PATTERN = /^(?:Error|[A-Z][A-Za-z0-9]{0,80}(?:Error|Exception))$/;
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
 const SAFE_LOG_CONTEXT_KEYS: readonly SafeLogContextKey[] = [
   'orgId',
   'actorId',
@@ -106,10 +114,7 @@ function normalizeErrorName(error: Error): string {
   if (name !== constructorName) {
     return 'Error';
   }
-  if (!SAFE_ERROR_NAME_PATTERN.test(name)) {
-    return 'Error';
-  }
-  return name;
+  return SAFE_ERROR_NAMES.has(name) ? name : 'Error';
 }
 
 function buildSafeErrorMeta(error: unknown): LogContext {
@@ -164,20 +169,21 @@ function safeLog(level: 'warn' | 'error', ctx: SafeLogContext, error?: unknown) 
 }
 
 function warn(message: string, ctx?: LogContext): void;
-function warn(ctx: SafeLogContext): void;
-function warn(messageOrContext: string | SafeLogContext, ctx?: LogContext) {
+function warn(ctx: SafeLogContext, error?: unknown): void;
+function warn(messageOrContext: string | SafeLogContext, ctxOrError?: LogContext | unknown) {
   if (typeof messageOrContext !== 'string') {
-    safeLog('warn', messageOrContext);
+    safeLog('warn', messageOrContext, ctxOrError);
     return;
   }
   const message = messageOrContext;
+  const ctx = ctxOrError as LogContext | undefined;
   log('warn', message, ctx);
   if (process.env.NODE_ENV === 'production') {
     Sentry.captureMessage(message, { level: 'warning', extra: redactCtx(ctx) });
   }
 }
 
-function error(message: string, error?: unknown, ctx?: LogContext): void;
+function error(message: string, error?: undefined, ctx?: LogContext): void;
 function error(ctx: SafeLogContext, error?: unknown): void;
 function error(messageOrContext: string | SafeLogContext, error?: unknown, ctx?: LogContext) {
   if (typeof messageOrContext !== 'string') {
@@ -185,24 +191,15 @@ function error(messageOrContext: string | SafeLogContext, error?: unknown, ctx?:
     return;
   }
   const message = messageOrContext;
-  const errorMeta =
-    error instanceof Error
-      ? { error_message: error.message, error_name: error.name, stack: error.stack }
-      : error !== undefined
-        ? { error_raw: String(error) }
-        : {};
+  const errorMeta = buildSafeErrorMeta(error);
 
   log('error', message, { ...errorMeta, ...ctx });
 
   if (process.env.NODE_ENV === 'production') {
-    if (error instanceof Error) {
-      Sentry.captureException(error, { extra: redactCtx(ctx) });
-    } else {
-      Sentry.captureMessage(message, {
-        level: 'error',
-        extra: redactCtx({ ...errorMeta, ...ctx }),
-      });
-    }
+    Sentry.captureMessage(message, {
+      level: 'error',
+      extra: redactCtx({ ...errorMeta, ...ctx }),
+    });
   }
 }
 

@@ -5,10 +5,12 @@ const {
   requireAuthContextMock,
   queueMedicationHistoryBulkExportMock,
   drainMedicationHistoryBulkExportQueueMock,
+  loggerWarnMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   queueMedicationHistoryBulkExportMock: vi.fn(),
   drainMedicationHistoryBulkExportQueueMock: vi.fn(),
+  loggerWarnMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -35,6 +37,12 @@ vi.mock('@/server/services/pdf-bulk-export', () => ({
   },
   queueMedicationHistoryBulkExport: queueMedicationHistoryBulkExportMock,
   drainMedicationHistoryBulkExportQueue: drainMedicationHistoryBulkExportQueueMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    warn: loggerWarnMock,
+  },
 }));
 
 import { POST } from './route';
@@ -139,6 +147,33 @@ describe('/api/patients/medications/bulk-export POST', () => {
     }
     expect(response.status).toBe(202);
     expect(drainMedicationHistoryBulkExportQueueMock).not.toHaveBeenCalled();
+  });
+
+  it('logs a safe warning when immediate background drain fails', async () => {
+    const rawError = '患者A medication-history raw export token=secret drain failed';
+    drainMedicationHistoryBulkExportQueueMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await POST(createRequest({ patient_ids: ['patient_1'] }));
+    await Promise.resolve();
+
+    if (!response) {
+      throw new Error('Expected a response from bulk export POST with failed drain');
+    }
+    expect(response.status).toBe(202);
+    expectSensitiveNoStore(response);
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      {
+        event: 'medication_history_bulk_export.drain_failed',
+        orgId: 'org_1',
+        targetId: 'job_1',
+        jobType: 'medication-history-bulk-export-drain',
+        operation: 'drain',
+      },
+      expect.any(Error),
+    );
+    expect(JSON.stringify(loggerWarnMock.mock.calls[0]?.[0])).not.toContain(rawError);
+    expect(JSON.stringify(loggerWarnMock.mock.calls[0]?.[0])).not.toContain('患者A');
+    expect(JSON.stringify(loggerWarnMock.mock.calls[0]?.[0])).not.toContain('token=secret');
   });
 
   it('returns 400 for invalid payloads', async () => {

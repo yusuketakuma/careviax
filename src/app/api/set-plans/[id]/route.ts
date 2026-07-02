@@ -19,20 +19,6 @@ import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
 const ROUTE = '/api/set-plans/[id]';
-const SAFE_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
-
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return 'Error';
-  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 const updateSetPlanSchema = z.object({
   expected_updated_at: z.string().datetime('セットプランの版情報が不正です'),
@@ -225,12 +211,15 @@ export async function GET(req: NextRequest, routeContext: AuthRouteContext<{ id:
       return withSensitiveNoStore(await authenticatedGET(req, routeContext));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('set_plans_detail_get_unhandled_error', undefined, {
-        event: 'set_plans_detail_get_unhandled_error',
-        route: ROUTE,
-        method: 'GET',
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'set_plans_detail_get_unhandled_error',
+          route: ROUTE,
+          method: 'GET',
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });
@@ -481,12 +470,15 @@ export async function PATCH(req: NextRequest, routeContext: AuthRouteContext<{ i
       return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('set_plans_detail_patch_unhandled_error', undefined, {
-        event: 'set_plans_detail_patch_unhandled_error',
-        route: ROUTE,
-        method: 'PATCH',
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'set_plans_detail_patch_unhandled_error',
+          route: ROUTE,
+          method: 'PATCH',
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

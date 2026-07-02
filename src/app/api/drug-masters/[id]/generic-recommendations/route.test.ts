@@ -213,19 +213,18 @@ describe('/api/drug-masters/[id]/generic-recommendations', () => {
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('recommendation secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      'drug_masters_generic_recommendations_get_unhandled_error',
-      undefined,
       {
         event: 'drug_masters_generic_recommendations_get_unhandled_error',
         route: '/api/drug-masters/[id]/generic-recommendations',
         method: 'GET',
         status: 500,
-        error_name: 'Error',
       },
+      unsafeError,
     );
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(logError).toBe(unsafeError);
+    expect(logContext).not.toHaveProperty('error_name');
+    const logged = JSON.stringify(logContext);
     expect(logged).not.toContain('recommendation secret');
     expect(logged).not.toContain('GenericRecommendationSecretError');
   });

@@ -7,6 +7,10 @@ import { z } from 'zod';
 import { deleteCognitoUser, inviteCognitoUser } from '@/server/services/cognito-admin';
 import { optionalPhoneNumberSchema } from '@/lib/validations/phone';
 import { phosRoleFromMemberRole } from '@/lib/auth/phos-role';
+import { logger } from '@/lib/utils/logger';
+
+const ADMIN_ORGANIZATIONS_ROUTE = '/api/admin/organizations';
+const COGNITO_CREATE_FAILED_MESSAGE = 'Cognito ユーザー作成に失敗しました';
 
 function trimStringOrUndefined(value: unknown) {
   if (value === null || value === undefined) return undefined;
@@ -48,6 +52,23 @@ type ProvisionedTenantState = {
   site: { id: string };
   user: { id: string };
 };
+
+function logOrganizationProvisioningError(input: {
+  event: string;
+  operation: string;
+  error: unknown;
+}) {
+  logger.error(
+    {
+      event: input.event,
+      route: ADMIN_ORGANIZATIONS_ROUTE,
+      method: 'POST',
+      operation: input.operation,
+      entityType: 'organization_provisioning',
+    },
+    input.error,
+  );
+}
 
 async function cleanupProvisionedTenant(records: ProvisionedTenantState) {
   await prisma.$transaction(async (tx) => {
@@ -183,31 +204,41 @@ export async function POST(req: NextRequest) {
     cognitoUsername = cognitoUser.username;
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
+    const isUsernameExists = message.includes('UsernameExistsException');
     let cleanupFailed = false;
     try {
       await cleanupProvisionedTenant(result);
     } catch (cleanupError) {
       cleanupFailed = true;
-      console.error(
-        `[organizations] Cleanup failed after Cognito error for org ${result.org.id}:`,
-        cleanupError,
-      );
+      logOrganizationProvisioningError({
+        event: 'admin_organizations.cognito_invite_cleanup_failed',
+        operation: 'cleanup_provisioned_tenant_after_cognito_invite',
+        error: cleanupError,
+      });
     }
-    console.error(
-      `[organizations] Cognito user creation failed for user ${result.user.id}:`,
-      cause,
-    );
     if (cleanupFailed) {
+      if (!isUsernameExists) {
+        logOrganizationProvisioningError({
+          event: 'admin_organizations.cognito_invite_failed',
+          operation: 'invite_cognito_user',
+          error: cause,
+        });
+      }
       return error(
         'ORGANIZATION_PROVISIONING_PARTIAL_FAILURE',
         '組織作成中に外部連携が失敗し、ロールバックにも失敗しました。手動確認が必要です。',
         500,
       );
     }
-    if (message.includes('UsernameExistsException')) {
+    if (isUsernameExists) {
       return conflict('指定した管理者メールアドレスは既に登録されています');
     }
-    return error('COGNITO_CREATE_FAILED', `Cognito ユーザー作成に失敗しました: ${message}`, 502);
+    logOrganizationProvisioningError({
+      event: 'admin_organizations.cognito_invite_failed',
+      operation: 'invite_cognito_user',
+      error: cause,
+    });
+    return error('COGNITO_CREATE_FAILED', COGNITO_CREATE_FAILED_MESSAGE, 502);
   }
 
   // Step 3: Update user record with Cognito sub and set status to invited
@@ -226,21 +257,27 @@ export async function POST(req: NextRequest) {
       await deleteCognitoUser(cognitoUsername);
     } catch (cleanupError) {
       cleanupFailed = true;
-      console.error(
-        `[organizations] Cognito cleanup failed after final update error for user ${result.user.id}:`,
-        cleanupError,
-      );
+      logOrganizationProvisioningError({
+        event: 'admin_organizations.cognito_cleanup_failed',
+        operation: 'delete_cognito_user_after_final_update',
+        error: cleanupError,
+      });
     }
     try {
       await cleanupProvisionedTenant(result);
     } catch (cleanupError) {
       cleanupFailed = true;
-      console.error(
-        `[organizations] Tenant cleanup failed after final update error for org ${result.org.id}:`,
-        cleanupError,
-      );
+      logOrganizationProvisioningError({
+        event: 'admin_organizations.tenant_cleanup_failed',
+        operation: 'cleanup_provisioned_tenant_after_final_update',
+        error: cleanupError,
+      });
     }
-    console.error(`[organizations] Final user update failed for user ${result.user.id}:`, cause);
+    logOrganizationProvisioningError({
+      event: 'admin_organizations.final_user_update_failed',
+      operation: 'update_local_user_after_cognito_invite',
+      error: cause,
+    });
     if (cleanupFailed) {
       return error(
         'ORGANIZATION_PROVISIONING_PARTIAL_FAILURE',

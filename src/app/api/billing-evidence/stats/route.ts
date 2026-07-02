@@ -10,11 +10,6 @@ import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
 import { billingMonthForJapanTimestamp } from '@/server/services/billing-evidence';
 
-function safeErrorName(err: unknown): string {
-  if (!(err instanceof Error)) return typeof err;
-  return /^[A-Za-z0-9_.:-]{1,80}$/.test(err.name) ? err.name : 'Error';
-}
-
 async function authenticatedGET(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
     permission: 'canReport',
@@ -254,13 +249,15 @@ export async function GET(req: NextRequest) {
       return withSensitiveNoStore(await authenticatedGET(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error('billing_evidence_stats_unhandled_error', undefined, {
-        event: 'billing_evidence_stats_unhandled_error',
-        route: req.nextUrl?.pathname ?? '/api/billing-evidence/stats',
-        method: req.method,
-        status: 500,
-        error_name: safeErrorName(err),
-      });
+      logger.error(
+        {
+          event: 'billing_evidence_stats_unhandled_error',
+          route: req.nextUrl?.pathname ?? '/api/billing-evidence/stats',
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
       return withSensitiveNoStore(internalError());
     }
   });

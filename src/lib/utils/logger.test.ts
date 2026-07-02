@@ -128,6 +128,60 @@ describe('logger structured errors', () => {
     expect(entry).not.toHaveProperty('error_message');
   });
 
+  it('does not write Error.message or stack to PHI-safe structured warning logs', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const err = new Error(
+      'patient=田中太郎 SOAP=服薬状況 token=secret visit handoff extraction secret',
+    );
+    err.stack = 'Error: patient=田中太郎 token=secret\n    at route.ts:1:1';
+
+    logger.warn(
+      {
+        event: 'visit_records_handoff_extraction_failed',
+        route: '/api/visit-records',
+        operation: 'process_handoff_extraction',
+        targetId: 'record_1',
+      },
+      err,
+    );
+
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    const entry = JSON.parse(String(consoleError.mock.calls[0]?.[0])) as Record<string, unknown>;
+    expect(entry).toMatchObject({
+      level: 'warn',
+      message: 'visit_records_handoff_extraction_failed',
+      event: 'visit_records_handoff_extraction_failed',
+      route: '/api/visit-records',
+      operation: 'process_handoff_extraction',
+      targetId: 'record_1',
+      error_name: 'Error',
+    });
+    expect(JSON.stringify(entry)).not.toContain('田中太郎');
+    expect(JSON.stringify(entry)).not.toContain('服薬状況');
+    expect(JSON.stringify(entry)).not.toContain('token=secret');
+    expect(JSON.stringify(entry)).not.toContain('visit handoff extraction secret');
+    expect(entry).not.toHaveProperty('stack');
+    expect(entry).not.toHaveProperty('error_message');
+
+    expect(captureExceptionMock).not.toHaveBeenCalled();
+    expect(captureMessageMock).toHaveBeenCalledWith(
+      'visit_records_handoff_extraction_failed',
+      expect.objectContaining({
+        level: 'warning',
+        extra: expect.objectContaining({
+          event: 'visit_records_handoff_extraction_failed',
+          route: '/api/visit-records',
+          operation: 'process_handoff_extraction',
+          targetId: 'record_1',
+          error_name: 'Error',
+        }),
+      }),
+    );
+    expect(JSON.stringify(captureMessageMock.mock.calls)).not.toContain('田中太郎');
+    expect(JSON.stringify(captureMessageMock.mock.calls)).not.toContain('token=secret');
+  });
+
   it('uses a sanitized Sentry message event for PHI-safe structured error logs', () => {
     vi.stubEnv('NODE_ENV', 'production');
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -199,6 +253,46 @@ describe('logger structured errors', () => {
     });
     expect(JSON.stringify(entry)).not.toContain('YamadaTaroSecretError');
     expect(JSON.stringify(captureMessageMock.mock.calls)).not.toContain('YamadaTaroSecretError');
+    expect(captureExceptionMock).not.toHaveBeenCalled();
+  });
+
+  it('normalizes custom error class names on PHI-safe structured error logs', () => {
+    class PatientInsuranceEligibilityError extends Error {
+      constructor() {
+        super('insurance eligibility failed for patient Yamada Taro');
+        this.name = new.target.name;
+      }
+    }
+
+    vi.stubEnv('NODE_ENV', 'production');
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const err = new PatientInsuranceEligibilityError();
+
+    logger.error(
+      {
+        event: 'dashboard_monthly_stats_unhandled_error',
+        route: '/api/dashboard/monthly-stats',
+        method: 'GET',
+        status: 500,
+      },
+      err,
+    );
+
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    const entry = JSON.parse(String(consoleError.mock.calls[0]?.[0])) as Record<string, unknown>;
+    expect(entry).toMatchObject({
+      event: 'dashboard_monthly_stats_unhandled_error',
+      route: '/api/dashboard/monthly-stats',
+      method: 'GET',
+      status: 500,
+      error_name: 'Error',
+    });
+    expect(JSON.stringify(entry)).not.toContain('PatientInsuranceEligibilityError');
+    expect(JSON.stringify(entry)).not.toContain('Yamada');
+    expect(JSON.stringify(captureMessageMock.mock.calls)).not.toContain(
+      'PatientInsuranceEligibilityError',
+    );
+    expect(JSON.stringify(captureMessageMock.mock.calls)).not.toContain('Yamada');
     expect(captureExceptionMock).not.toHaveBeenCalled();
   });
 
@@ -358,5 +452,63 @@ describe('logger structured errors', () => {
     expect(sentryPayload).not.toContain('secret-token');
     expect(sentryPayload).not.toContain('secret-password');
     expect(sentryPayload).not.toContain('adapter failed with body');
+  });
+
+  it('does not leak raw errors when the legacy string overload is bypassed at runtime', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const sentinel =
+      'patient=佐藤次郎 phone=090-9999-1111 medication=SecretDrug string_overload_secret';
+    const err = new Error(`legacy string overload failed: ${sentinel}`);
+    err.stack = `Error: ${sentinel}\n    at POST (/api/patients/route.ts:1:1)`;
+    const legacyLoggerError = logger.error as (
+      message: string,
+      error?: unknown,
+      ctx?: Record<string, unknown>,
+    ) => void;
+
+    legacyLoggerError('legacy_route_unhandled_error', err, {
+      route: '/api/patients',
+      method: 'POST',
+      status: 500,
+    });
+
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    const entry = JSON.parse(String(consoleError.mock.calls[0]?.[0])) as Record<string, unknown>;
+    expect(entry).toMatchObject({
+      level: 'error',
+      message: 'legacy_route_unhandled_error',
+      route: '/api/patients',
+      method: 'POST',
+      status: 500,
+      error_name: 'Error',
+    });
+    expect(entry).not.toHaveProperty('error_message');
+    expect(entry).not.toHaveProperty('stack');
+    expect(entry).not.toHaveProperty('error_raw');
+
+    expect(captureExceptionMock).not.toHaveBeenCalled();
+    expect(captureMessageMock).toHaveBeenCalledWith(
+      'legacy_route_unhandled_error',
+      expect.objectContaining({
+        level: 'error',
+        extra: expect.objectContaining({
+          route: '/api/patients',
+          method: 'POST',
+          status: 500,
+          error_name: 'Error',
+        }),
+      }),
+    );
+
+    const consolePayload = JSON.stringify(entry);
+    const sentryPayload = JSON.stringify(captureMessageMock.mock.calls);
+    for (const payload of [consolePayload, sentryPayload]) {
+      expect(payload).not.toContain('佐藤');
+      expect(payload).not.toContain('090-9999-1111');
+      expect(payload).not.toContain('SecretDrug');
+      expect(payload).not.toContain('string_overload_secret');
+      expect(payload).not.toContain('legacy string overload failed');
+    }
   });
 });

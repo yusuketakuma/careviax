@@ -20,6 +20,7 @@ const {
   auditLogCreateMock,
   validateExternalAccessScopeForRoleMock,
   MissingExternalAccessSecretErrorMock,
+  loggerWarnMock,
 } = vi.hoisted(() => ({
   currentRole: { value: 'pharmacist' },
   validateOrgReferencesMock: vi.fn(),
@@ -44,6 +45,7 @@ const {
       this.name = 'MissingExternalAccessSecretError';
     }
   },
+  loggerWarnMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -122,6 +124,12 @@ vi.mock('@/server/adapters/sms', () => ({
     async sendSms(phoneNumber: string, message: string) {
       return sendSmsMock(phoneNumber, message);
     }
+  },
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    warn: loggerWarnMock,
   },
 }));
 
@@ -1038,6 +1046,54 @@ describe('/api/external-access POST', () => {
     expect(responseText).not.toContain('jwt-token');
     expect(responseText).not.toContain('090-1234-5678');
     expect(responseText).not.toContain('09012345678');
+    expect(responseText).not.toMatch(/\b\d{6}\b/);
+  });
+
+  it('logs a safe warning when grant revocation fails after fallback audit persistence fails', async () => {
+    sendSmsMock.mockRejectedValueOnce(new Error('sms unavailable'));
+    auditLogCreateMock
+      .mockResolvedValueOnce({ id: 'grant-audit' })
+      .mockRejectedValueOnce(new Error('audit unavailable'));
+    const revokeError = new Error('revocation failed for 090-1234-5678 token=jwt-token otp=123456');
+    updateMock.mockResolvedValueOnce({ id: 'grant_1' }).mockRejectedValueOnce(revokeError);
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: '090-1234-5678',
+        scope: { medication_list: true },
+        expires_hours: 24,
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expect(updateMock).toHaveBeenNthCalledWith(2, {
+      where: { id: 'grant_1' },
+      data: { revoked_at: expect.any(Date) },
+    });
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      {
+        event: 'external_access_grant_rollback_failed',
+        route: '/api/external-access',
+        method: 'POST',
+        operation: 'revoke_external_access_grant_after_audit_failure',
+        orgId: 'org_1',
+        actorId: 'user_1',
+        entityType: 'external_access_grant',
+        targetId: 'grant_1',
+      },
+      revokeError,
+    );
+    const loggedContext = loggerWarnMock.mock.calls[0]?.[0];
+    expect(JSON.stringify(loggedContext)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(loggedContext)).not.toContain('jwt-token');
+    expect(JSON.stringify(loggedContext)).not.toMatch(/\b\d{6}\b/);
+    const responseText = await response.text();
+    expect(responseText).not.toContain('jwt-token');
+    expect(responseText).not.toContain('090-1234-5678');
     expect(responseText).not.toMatch(/\b\d{6}\b/);
   });
 
