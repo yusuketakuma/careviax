@@ -47,12 +47,12 @@
 
 ## E3 重複候補
 
-| #    | 組                                                                  | 判定                                                                           |
-| ---- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| E3-1 | /api/external-professionals/_ ↔ /api/admin/external-professionals/_ | 非 admin 側は薄い再エクスポートで死蔵 → **廃止推奨（要承認）**                 |
-| E3-2 | /api/facilities* ↔ /api/admin/facilities/*（再エクスポート）        | **両方 FE 使用中**（admin 62 / 非 admin 18）→ 権限差の意図を明文化 or 片側統合 |
-| E3-3 | /api/admin/flush-metrics ↔ /api/jobs/flush-metrics                  | 同機能・認証方式差のみ → 1 本化候補                                            |
-| E3-4 | dashboard/monthly-stats・overdue ↔ cockpit・admin/metrics           | 新 UI より既存ダッシュボード API へ統合                                        |
+| #    | 組                                                                  | 判定                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| E3-1 | /api/external-professionals/_ ↔ /api/admin/external-professionals/_ | 非 admin 側は薄い再エクスポートで死蔵 → **廃止推奨（要承認）**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| E3-2 | /api/facilities* ↔ /api/admin/facilities/*（再エクスポート）        | **解決（2026-07-02 Codex 精査・明文化）**: 二重公開は意図的に維持。GET=canVisit / mutations=canAdmin の権限差あり。[id]/patients は非 admin 側が archive/limit/assignment スコープ+count metadata を持つ別実装（admin 側は helper 形状）で真の重複でない。運用: FE/admin ヘルパは /api/admin/facilities へ正準化、/api/facilities は検索（グローバル検索が使用）+臨床 patients 面として維持。締める場合は公開側 mutations をテスト移行後に 405 ラッパ化。search / protected-route / rate-limit テストの移行なしに /api/facilities を削除しない |
+| E3-3 | /api/admin/flush-metrics ↔ /api/jobs/flush-metrics                  | 同機能・認証方式差のみ → 1 本化候補                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| E3-4 | dashboard/monthly-stats・overdue ↔ cockpit・admin/metrics           | 新 UI より既存ダッシュボード API へ統合                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ## INTERNAL（UI 不要が妥当）
 
@@ -68,4 +68,4 @@
 - [ ] 廃止提案（retire?）群のユーザー承認取得 → 承認後に削除スライス
 - [ ] hard-stop? 3 件（logout-all / mfa-disable / e-prescription）の着手承認
 - [ ] wire 群を C wave へ割付（備考欄の wave 記載が初期案）
-- [ ] E3-2 facilities の権限差意図の確認（Codex に諮問）
+- [x] E3-2 facilities の権限差意図の確認（Codex 精査済み → 上表に明文化、二重公開維持で決着）
