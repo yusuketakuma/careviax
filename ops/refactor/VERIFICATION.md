@@ -1,10 +1,70 @@
 # Verification
 
-Snapshot: 2026-07-02 21:50 JST
+Snapshot: 2026-07-02 22:17 JST
 
 ## Latest Backend/API Slice Verification
 
-The latest backend/API slice was `backend-flush-metrics-shared-job-handler` at
+The latest backend/API slice was `backend-qr-draft-line-reader-consolidation`
+at 2026-07-02 22:17 JST.
+
+- Planning / review:
+  - The backend duplicate-removal candidate was selected from the QR
+    draft/prescription intake routes because both implemented the same
+    `parsed_data.lines` reading, mismatch detection, drug-code-review, and
+    fallback hydration logic with a trimming drift.
+  - Next.js route-handler docs were inspected before the route refactor.
+  - Claude was sent a `PATCH_REVIEW_REQUEST` before commit and approved the
+    uncommitted diff after independent focused tests.
+- Fixed:
+  - Added `src/lib/prescription/qr-draft-line-readers.ts` as the canonical QR
+    draft line helper.
+  - `POST /api/prescription-intakes` and
+    `POST /api/qr-scan-drafts/[id]/confirm` now share QR draft string trimming,
+    positive-number reads, enum reads, enum-array filtering, mismatch
+    comparison, drug-code-resolution review details, and fallback hydration.
+  - The direct intake route's raw-request `is_generic` semantics remain
+    explicit: absent submitted values may fall back to QR `isGeneric`, while
+    explicit values are compared and preserved.
+  - `qr-scan-drafts/[id]/confirm` now trims
+    `prescriptionExpirationDate` fallback consistently with the direct intake
+    path.
+- Safety:
+  - Auth, RLS/org scoping, assignment checks, QR draft claim/update behavior,
+    transaction boundaries, response envelopes, JAHIS sidecars, medication
+    issue side effects, realtime broadcasts, and webhook behavior were
+    preserved.
+  - No schema, migration, DB write outside tests, production config,
+    push/deploy, dependency, or destructive operation changed.
+- Focused regressions:
+  - `pnpm exec vitest run src/lib/prescription/qr-draft-line-readers.test.ts 'src/app/api/prescription-intakes/route.test.ts' 'src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts' --reporter=dot --testTimeout=60000`
+  - Result: passed, `3` files / `102` tests.
+  - Coverage: helper trim/enum-array behavior, raw-request `is_generic`
+    override semantics, drug-code review trimming, direct intake QR import,
+    QR draft confirm fallback hydration, mismatch rejection, drug-code review,
+    packaging metadata validation, patient identity checks, claim conflict,
+    sidecar handling, and existing success/error route contracts.
+- Scoped checks:
+  - Scoped ESLint for touched files: passed.
+  - Scoped Prettier for touched files: passed.
+  - Scoped `git diff --check` for touched files: passed.
+- Broad gates:
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: passed.
+- Coordination:
+  - Claude approved the backend diff and confirmed no follow-up was required.
+  - Codex also handled UI review interrupts before this commit: B1-b was
+    approved, B5 received REQUEST_CHANGES for a `TWO_WHEELER` label mismatch,
+    and B5 delta `a7374423` was approved.
+- gbrain:
+  - `projects/careviax/decisions/2026-07-02/qr-draft-line-reader-consolidation`
+  - Result: write/readback passed.
+- Commit:
+  - Runtime: `8936afee` (`refactor(api): share QR draft line readers`).
+
+## Previous Backend/API Slice Verification
+
+The previous backend/API slice was `backend-flush-metrics-shared-job-handler` at
 2026-07-02 21:50 JST.
 
 - Planning / review:

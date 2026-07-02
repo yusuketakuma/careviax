@@ -42,6 +42,58 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### Backend: QR Draft Line Reader Consolidation - 2026-07-02 22:17 JST
+
+- Scope:
+  - Continued backend/API implementation with Claude coordination through
+    agmsg.
+  - Removed duplicated QR `parsed_data.lines` reader, mismatch,
+    drug-code-review, and fallback hydration implementations from
+    `POST /api/prescription-intakes` and
+    `POST /api/qr-scan-drafts/[id]/confirm`.
+  - Commit: `8936afee` (`refactor(api): share QR draft line readers`).
+  - gbrain writeback:
+    `projects/careviax/decisions/2026-07-02/qr-draft-line-reader-consolidation`.
+- Fixed:
+  - Added `src/lib/prescription/qr-draft-line-readers.ts` as the canonical
+    parser/comparison/fallback helper for QR draft prescription lines.
+  - Both routes now share the same trimmed string, positive-number, enum, enum
+    array, line mismatch, drug-code-review, and fallback hydration semantics.
+  - Preserved direct prescription-intake raw request semantics for
+    `is_generic`: absent request values are allowed to fall back to QR
+    `isGeneric`, but explicit submitted values are compared and preserved.
+  - `qr-scan-drafts/[id]/confirm` now trims `prescriptionExpirationDate`
+    fallback consistently with the direct intake path.
+- Safety:
+  - Preserved auth, RLS/org scoping, assignment checks, transaction boundaries,
+    QR draft claim/update behavior, response envelopes, JAHIS sidecars,
+    medication-issue candidate creation, realtime notifications, and webhook
+    behavior.
+  - No schema, migration, production config, external send beyond existing
+    behavior, push/deploy, dependency, or destructive DB operation changed.
+- Validation:
+  - Focused QR draft bundle passed `3` files / `102` tests:
+    `pnpm exec vitest run src/lib/prescription/qr-draft-line-readers.test.ts 'src/app/api/prescription-intakes/route.test.ts' 'src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts' --reporter=dot --testTimeout=60000`.
+  - Helper-focused regression passed `1` file / `4` tests after a type-only
+    cleanup.
+  - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: passed.
+  - gbrain write/readback passed.
+- Coordination:
+  - Codex sent a backend `PATCH_REVIEW_REQUEST` before commit.
+  - Claude approved the uncommitted diff and independently reran the focused QR
+    draft test bundle (`3` files / `102` tests).
+  - Codex handled Claude UI review interrupts before this commit:
+    B1-b `b27085be` was approved after focused tests/typecheck, B5
+    `14962770` received REQUEST_CHANGES for a `TWO_WHEELER` label mismatch,
+    and B5 delta `a7374423` was approved after focused test/eslint/diff-check.
+- Remaining:
+  - No known backend follow-up for this slice. Future QR parsed-data line
+    fields should be added to `qr-draft-line-readers.ts` first and covered by
+    helper plus both route tests.
+
 ### Backend: Case Transition Stale-State Guard - 2026-07-02 21:39 JST
 
 - Scope:
