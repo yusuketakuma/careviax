@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { requestNavigationConfirmation } from '@/components/providers/navigation-confirm-provider';
+import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -45,6 +47,8 @@ const PRIORITY_OPTIONS = Object.entries(PRIORITY_LABELS) as Array<[VisitPriority
 const TRAVEL_MODE_OPTIONS = Object.entries(TRAVEL_MODE_LABELS) as Array<[TravelMode, string]>;
 const SCHEDULE_DRAWER_SAVE_BLOCKER_ID = 'schedule-drawer-save-blocker';
 const SCHEDULE_DRAWER_SAVE_ERROR_FALLBACK = '予定の保存に失敗しました';
+const SCHEDULE_DRAWER_UNSAVED_MESSAGE =
+  '予定の変更が保存されていません。このまま閉じると入力内容は失われます。閉じますか？';
 
 type ScheduleDrawerErrorEnvelope = {
   error?: unknown;
@@ -225,17 +229,22 @@ export function ScheduleCreateEditDrawer({
   // React 推奨の「レンダー中に state を調整する」パターンで effect を回避する。
   const formSessionKey = `${open ? '1' : '0'}:${editingProposal?.id ?? 'new'}`;
   const [lastFormSessionKey, setLastFormSessionKey] = useState(formSessionKey);
+  const [baselineForm, setBaselineForm] = useState(form);
   if (open && formSessionKey !== lastFormSessionKey) {
     setLastFormSessionKey(formSessionKey);
-    setForm(
-      buildScheduleCreateEditDrawerForm({
-        defaultDate,
-        proposal: editingProposal,
-        cases,
-        pharmacists,
-      }),
-    );
+    const nextForm = buildScheduleCreateEditDrawerForm({
+      defaultDate,
+      proposal: editingProposal,
+      cases,
+      pharmacists,
+    });
+    setForm(nextForm);
+    setBaselineForm(nextForm);
   }
+
+  // 未保存離脱ガード(SSOT 5.7 / FEUX-8): controlled-state フォームなので dirty をベースライン比較で判定。
+  const isDirty = open && JSON.stringify(form) !== JSON.stringify(baselineForm);
+  useUnsavedChangesGuard({ enabled: isDirty, message: SCHEDULE_DRAWER_UNSAVED_MESSAGE });
 
   const selectedCase = useMemo(
     () => cases.find((careCase) => careCase.id === form.case_id) ?? null,
@@ -284,8 +293,20 @@ export function ScheduleCreateEditDrawer({
   const draftDescriptionId = draftBlocker ? SCHEDULE_DRAWER_SAVE_BLOCKER_ID : undefined;
   const contactDescriptionId = contactBlocker ? SCHEDULE_DRAWER_SAVE_BLOCKER_ID : undefined;
 
+  // Escape/オーバーレイ/×による close も未保存時は確認を挟む(保存成功時の close は
+  // onSuccess が親の onOpenChange を直接呼ぶためこのラッパを通らず、確認は出ない)。
+  const handleOpenChange = (next: boolean) => {
+    if (!next && isDirty && !saveMutation.isPending) {
+      void requestNavigationConfirmation(SCHEDULE_DRAWER_UNSAVED_MESSAGE).then((confirmed) => {
+        if (confirmed) onOpenChange(false);
+      });
+      return;
+    }
+    onOpenChange(next);
+  };
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>予定を作成・編集</SheetTitle>

@@ -22,12 +22,26 @@ vi.mock('sonner', () => ({
   },
 }));
 
+const requestNavigationConfirmationMock = vi.hoisted(() => vi.fn());
+const useUnsavedChangesGuardMock = vi.hoisted(() => vi.fn());
+
+vi.mock('@/components/providers/navigation-confirm-provider', () => ({
+  requestNavigationConfirmation: requestNavigationConfirmationMock,
+}));
+
+vi.mock('@/lib/hooks/use-unsaved-changes-guard', () => ({
+  useUnsavedChangesGuard: useUnsavedChangesGuardMock,
+}));
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
 
-function renderCreateEditDrawer(props?: { editingProposal?: Proposal | null }) {
+function renderCreateEditDrawer(props?: {
+  editingProposal?: Proposal | null;
+  onOpenChange?: (open: boolean) => void;
+}) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -57,7 +71,7 @@ function renderCreateEditDrawer(props?: { editingProposal?: Proposal | null }) {
       { client: queryClient },
       createElement(ScheduleCreateEditDrawer, {
         open: true,
-        onOpenChange: () => undefined,
+        onOpenChange: props?.onOpenChange ?? (() => undefined),
         orgId: 'org_1',
         cases,
         pharmacists,
@@ -67,6 +81,46 @@ function renderCreateEditDrawer(props?: { editingProposal?: Proposal | null }) {
     ),
   );
 }
+
+describe('schedule create/edit drawer unsaved-changes guard (FEUX-8)', () => {
+  it('intercepts drawer close while dirty and honors cancel', async () => {
+    requestNavigationConfirmationMock.mockResolvedValue(false);
+    const onOpenChange = vi.fn();
+    renderCreateEditDrawer({ onOpenChange });
+
+    // controlled-state フォームを dirty 化する。
+    fireEvent.change(screen.getByLabelText('候補日'), { target: { value: '2026-07-01' } });
+    // ページ離脱ガードも dirty で有効化されている(結線 teeth)。
+    const lastGuardCall = useUnsavedChangesGuardMock.mock.calls.at(-1)?.[0];
+    expect(lastGuardCall?.enabled).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+
+    await waitFor(() => expect(requestNavigationConfirmationMock).toHaveBeenCalledTimes(1));
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it('closes after the user confirms discarding changes', async () => {
+    requestNavigationConfirmationMock.mockResolvedValue(true);
+    const onOpenChange = vi.fn();
+    renderCreateEditDrawer({ onOpenChange });
+
+    fireEvent.change(screen.getByLabelText('候補日'), { target: { value: '2026-07-01' } });
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  });
+
+  it('closes cleanly without confirmation when nothing changed', () => {
+    const onOpenChange = vi.fn();
+    renderCreateEditDrawer({ onOpenChange });
+
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+
+    expect(requestNavigationConfirmationMock).not.toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+});
 
 describe('schedule create/edit drawer helpers', () => {
   it('keeps patient contact status out of draft drawer payloads', () => {
