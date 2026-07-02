@@ -440,9 +440,11 @@ describe('BusinessHolidaysContent', () => {
       screen.getByText('休日一覧を取得できませんでした。上部の再読み込みからやり直してください。'),
     ).toBeTruthy();
 
-    // SummaryCard は 0 件ではなく「—」を表示する(誤った休日数での営業判断を防ぐ)。
+    // StatCard は 0 件ではなく「—」を表示する(誤った休日数での営業判断を防ぐ)。
+    // StatCard は label を flex 行で包むため、カードルート(rounded-md)まで辿って value を含める。
     const summaryLabel = screen.getByText('今月の休日数');
-    const summaryCard = summaryLabel.parentElement as HTMLElement;
+    const summaryCard = summaryLabel.closest('div.rounded-md') as HTMLElement;
+    expect(summaryCard).not.toBeNull();
     expect(summaryCard.textContent).toContain('—');
     expect(summaryCard.textContent).not.toContain('0');
 

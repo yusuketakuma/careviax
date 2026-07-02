@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { StatCard } from '@/components/ui/stat-card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -591,12 +592,12 @@ export function BusinessHolidaysContent() {
 
       <div className="grid gap-4 md:grid-cols-3">
         {/* 取得失敗時は 0 件を表示せず「—」。誤った休日数での判断を防ぐ。 */}
-        <SummaryCard label="今月の休日数" value={isHolidaysError ? '—' : holidays.length} />
-        <SummaryCard
+        <StatCard label="今月の休日数" value={isHolidaysError ? '—' : holidays.length} />
+        <StatCard
           label="休業日"
           value={isHolidaysError ? '—' : holidays.filter((h) => h.is_closed).length}
         />
-        <SummaryCard
+        <StatCard
           label="営業日"
           value={isHolidaysError ? '—' : holidays.filter((h) => !h.is_closed).length}
         />
@@ -721,17 +722,6 @@ export function BusinessHolidaysContent() {
         }}
       />
     </div>
-  );
-}
-
-function SummaryCard({ label, value }: { label: string; value: number | string }) {
-  return (
-    <Card>
-      <CardContent>
-        <div className="text-sm text-muted-foreground">{label}</div>
-        <div className="mt-2 text-3xl font-semibold">{value}</div>
-      </CardContent>
-    </Card>
   );
 }
 
