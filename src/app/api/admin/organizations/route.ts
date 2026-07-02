@@ -6,18 +6,12 @@ import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
 import { deleteCognitoUser, inviteCognitoUser } from '@/server/services/cognito-admin';
 import { optionalPhoneNumberSchema } from '@/lib/validations/phone';
+import { trimStringOrUndefined } from '@/lib/validations/string';
 import { phosRoleFromMemberRole } from '@/lib/auth/phos-role';
 import { logger } from '@/lib/utils/logger';
 
 const ADMIN_ORGANIZATIONS_ROUTE = '/api/admin/organizations';
 const COGNITO_CREATE_FAILED_MESSAGE = 'Cognito ユーザー作成に失敗しました';
-
-function trimStringOrUndefined(value: unknown) {
-  if (value === null || value === undefined) return undefined;
-  if (typeof value !== 'string') return value;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
 
 const optionalTrimmedStringSchema = z.preprocess(
   trimStringOrUndefined,

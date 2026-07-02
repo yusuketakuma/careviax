@@ -4,14 +4,8 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { error, success, validationError } from '@/lib/api/response';
 import { legacyFileApiDisabledResponse } from '@/lib/api/legacy-file-api-boundary';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { trimStringOrUndefined } from '@/lib/validations/string';
 import { completeUploadedFile, FileStorageError } from '@/server/services/file-storage';
-
-function trimStringOrUndefined(value: unknown) {
-  if (value === null || value === undefined) return undefined;
-  if (typeof value !== 'string') return value;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
 
 const completeUploadSchema = z.object({
   file_id: z.string().trim().uuid('file_id の形式が不正です'),

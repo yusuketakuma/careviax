@@ -11,6 +11,7 @@ import {
 } from '@/lib/auth/visit-schedule-access';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { trimStringOrUndefined } from '@/lib/validations/string';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import {
   assertFileUploadConstraints,
@@ -18,13 +19,6 @@ import {
   FileStorageError,
   type FilePurpose,
 } from '@/server/services/file-storage';
-
-function trimStringOrUndefined(value: unknown) {
-  if (value === null || value === undefined) return undefined;
-  if (typeof value !== 'string') return value;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
 
 const optionalTrimmedStringSchema = z.preprocess(
   trimStringOrUndefined,

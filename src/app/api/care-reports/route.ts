@@ -10,6 +10,7 @@ import { parseOptionalBoundedIntegerParam, parsePaginationParams } from '@/lib/a
 import { prisma } from '@/lib/db/client';
 import { readJsonObject, readJsonObjectString, toPrismaJsonInput } from '@/lib/db/json';
 import { dateKeySchema } from '@/lib/validations/date-key';
+import { trimStringOrUndefined } from '@/lib/validations/string';
 import { Prisma, ReportStatus, ReportType, type CareReport } from '@prisma/client';
 import { z } from 'zod';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
@@ -25,13 +26,6 @@ import { withRoutePerformance } from '@/lib/utils/performance';
 import { japanDayInstantRangeFromDateKey } from '@/lib/utils/date-boundary';
 
 const ROUTE = '/api/care-reports';
-
-function trimStringOrUndefined(value: unknown) {
-  if (value === null || value === undefined) return undefined;
-  if (typeof value !== 'string') return value;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
 
 const requiredTrimmedStringSchema = (message: string) => z.string().trim().min(1, message);
 const optionalTrimmedStringSchema = z.preprocess(

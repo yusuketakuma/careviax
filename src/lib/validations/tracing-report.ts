@@ -1,14 +1,10 @@
 import { z } from 'zod';
+import { trimStringOrUndefined as sharedTrimStringOrUndefined } from './string';
 
 export const tracingReportStatusSchema = z.enum(['draft', 'sent', 'received', 'acknowledged']);
 export type TracingReportStatusValue = z.infer<typeof tracingReportStatusSchema>;
 
-export function trimStringOrUndefined(value: unknown) {
-  if (value === null || value === undefined) return undefined;
-  if (typeof value !== 'string') return value;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
+export const trimStringOrUndefined = sharedTrimStringOrUndefined;
 
 export const requiredTrimmedStringSchema = (message: string) => z.string().trim().min(1, message);
 

@@ -1,15 +1,11 @@
 import { RequestStatus } from '@prisma/client';
 import { z } from 'zod';
+import { trimStringOrUndefined as sharedTrimStringOrUndefined } from './string';
 
 export const communicationRequestStatusSchema = z.nativeEnum(RequestStatus);
 export const COMMUNICATION_RESPONSE_CONTENT_MAX_LENGTH = 4000;
 
-export function trimStringOrUndefined(value: unknown) {
-  if (value === null || value === undefined) return undefined;
-  if (typeof value !== 'string') return value;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
+export const trimStringOrUndefined = sharedTrimStringOrUndefined;
 
 export const requiredTrimmedStringSchema = (message: string) => z.string().trim().min(1, message);
 

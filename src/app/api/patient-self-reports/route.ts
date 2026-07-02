@@ -17,17 +17,11 @@ import {
 } from '@/lib/patient/self-report-response';
 import { z } from 'zod';
 import { selfReportStatusSchema } from '@/lib/validations/self-report';
+import { trimStringOrUndefined } from '@/lib/validations/string';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
 
 const ROUTE = '/api/patient-self-reports';
-
-function trimStringOrUndefined(value: unknown) {
-  if (value === null || value === undefined) return undefined;
-  if (typeof value !== 'string') return value;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
 
 const requiredTrimmedStringSchema = (message: string) => z.string().trim().min(1, message);
 const optionalTrimmedStringSchema = (max: number) =>
