@@ -34,28 +34,24 @@ import {
   validatePackagingInstructionConsistency,
 } from '@/lib/validations/dispensing-line';
 import {
+  QR_DRAFT_DISPENSING_METHOD_VALUES,
+  QR_DRAFT_PACKAGING_METHOD_VALUES,
+  QR_DRAFT_PACKAGING_TAG_VALUES,
+  QR_DRAFT_ROUTE_VALUES,
+  collectDrugCodeResolutionReviewDetails,
+  enrichQrDraftLineFromParsedData,
+  findQrDraftLineMismatches,
+  readQrDraftString,
+} from '@/lib/prescription/qr-draft-line-readers';
+import {
   buildQrDraftAssignmentWhere,
   canAccessPrescriptionPatient,
   getAssignedPatientIds,
 } from '@/server/services/prescription-access';
 import { prisma } from '@/lib/db/client';
 import { Prisma } from '@prisma/client';
-import {
-  PACKAGING_INSTRUCTION_TAG_OPTIONS,
-  PACKAGING_METHOD_OPTIONS,
-  type PackagingInstructionTagValue,
-  type PackagingMethodValue,
-} from '@/lib/dispensing/packaging';
 
 const requiredTrimmedStringSchema = z.string().trim().min(1);
-const PACKAGING_METHOD_VALUES = PACKAGING_METHOD_OPTIONS.map((option) => option.value) as [
-  PackagingMethodValue,
-  ...PackagingMethodValue[],
-];
-const PACKAGING_TAG_VALUES = PACKAGING_INSTRUCTION_TAG_OPTIONS.map((option) => option.value) as [
-  PackagingInstructionTagValue,
-  ...PackagingInstructionTagValue[],
-];
 
 const optionalTrimmedStringSchema = z.preprocess(
   (value) => (typeof value === 'string' && value.trim().length === 0 ? undefined : value),
@@ -68,25 +64,17 @@ const optionalDateStringSchema = z.preprocess(
 );
 const prescriptionRouteSchema = z.preprocess(
   (value) => (typeof value === 'string' && value.trim().length === 0 ? undefined : value),
-  z
-    .string()
-    .trim()
-    .pipe(z.enum(['internal', 'external', 'injection', 'other']))
-    .optional(),
+  z.string().trim().pipe(z.enum(QR_DRAFT_ROUTE_VALUES)).optional(),
 );
 const dispensingMethodSchema = z.preprocess(
   (value) => (typeof value === 'string' && value.trim().length === 0 ? undefined : value),
-  z
-    .string()
-    .trim()
-    .pipe(z.enum(['standard', 'unit_dose', 'crushed', 'other']))
-    .optional(),
+  z.string().trim().pipe(z.enum(QR_DRAFT_DISPENSING_METHOD_VALUES)).optional(),
 );
 const packagingMethodSchema = z.preprocess(
   (value) => (typeof value === 'string' && value.trim().length === 0 ? undefined : value),
-  z.string().trim().pipe(z.enum(PACKAGING_METHOD_VALUES)).optional(),
+  z.string().trim().pipe(z.enum(QR_DRAFT_PACKAGING_METHOD_VALUES)).optional(),
 );
-const packagingInstructionTagSchema = z.enum(PACKAGING_TAG_VALUES);
+const packagingInstructionTagSchema = z.enum(QR_DRAFT_PACKAGING_TAG_VALUES);
 
 const confirmQrDraftLineSchema = z
   .object({
@@ -209,191 +197,6 @@ function createIntakeErrorResponse(result: IntakeInTxErrorResult) {
 
 function validateConfirmPrescriptionDate(prescribedDate: string) {
   return validatePrescriptionDateWindow(prescribedDate);
-}
-
-function readDraftLineAt(parsedData: Record<string, unknown> | null, index: number) {
-  const lines = Array.isArray(parsedData?.lines) ? parsedData.lines : [];
-  return readJsonObject(lines[index]);
-}
-
-function readString(value: unknown) {
-  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
-}
-
-function readBoolean(value: unknown) {
-  return typeof value === 'boolean' ? value : undefined;
-}
-
-function readPositiveNumber(value: unknown) {
-  if (typeof value === 'number') {
-    return Number.isFinite(value) && value > 0 ? value : undefined;
-  }
-  if (typeof value === 'string' && value.trim().length > 0) {
-    const parsed = Number(value.trim());
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-  }
-  return undefined;
-}
-
-function readStringArray(value: unknown) {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-    : undefined;
-}
-
-const ROUTE_VALUES = ['internal', 'external', 'injection', 'other'] as const;
-const DISPENSING_METHOD_VALUES = ['standard', 'unit_dose', 'crushed', 'other'] as const;
-const DRUG_CODE_RESOLUTION_STATUS_VALUES = ['resolved', 'review_required', 'unresolved'] as const;
-
-function readEnumValue<const T extends readonly string[]>(
-  value: unknown,
-  allowed: T,
-): T[number] | undefined {
-  const text = readString(value);
-  return text && (allowed as readonly string[]).includes(text) ? (text as T[number]) : undefined;
-}
-
-function readEnumArray<const T extends readonly string[]>(
-  value: unknown,
-  allowed: T,
-): T[number][] | undefined {
-  const values = readStringArray(value)?.filter((item): item is T[number] =>
-    (allowed as readonly string[]).includes(item),
-  );
-  return values && values.length > 0 ? values : undefined;
-}
-
-function readDraftLines(parsedData: Record<string, unknown> | null | undefined) {
-  if (!Array.isArray(parsedData?.lines)) return [];
-  return parsedData.lines.flatMap((line) => {
-    const object = readJsonObject(line);
-    return object ? [object] : [];
-  });
-}
-
-function normalizeLineComparableValue(value: unknown): string {
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => normalizeLineComparableValue(item))
-      .sort()
-      .join(',');
-  }
-  if (value == null) return '';
-  return String(value).trim().replace(/\s+/g, '').toLocaleLowerCase('ja-JP');
-}
-
-function findQrDraftLineMismatches(
-  input: z.infer<typeof confirmQrDraftSchema>,
-  parsedData: Record<string, unknown> | null | undefined,
-) {
-  const draftLines = readDraftLines(parsedData);
-  const mismatches: string[] = [];
-
-  if (draftLines.length !== input.lines.length) {
-    mismatches.push('line_count');
-  }
-
-  input.lines.forEach((line, index) => {
-    const draftLine = draftLines[index];
-    if (!draftLine) return;
-
-    const comparisons = [
-      {
-        key: 'drug_code',
-        requestValue: line.drug_code,
-        draftValue: readString(draftLine.drugCode),
-      },
-      {
-        key: 'drug_name',
-        requestValue: line.drug_name,
-        draftValue: readString(draftLine.drugName),
-      },
-      {
-        key: 'dosage_form',
-        requestValue: line.dosage_form,
-        draftValue: readString(draftLine.dosageForm),
-      },
-      { key: 'dose', requestValue: line.dose, draftValue: readString(draftLine.dose) },
-      {
-        key: 'frequency',
-        requestValue: line.frequency,
-        draftValue: readString(draftLine.frequency),
-      },
-      { key: 'days', requestValue: line.days, draftValue: draftLine.days },
-      { key: 'quantity', requestValue: line.quantity, draftValue: draftLine.quantity },
-      { key: 'unit', requestValue: line.unit, draftValue: readString(draftLine.unit) },
-      {
-        key: 'is_generic',
-        requestValue: line.is_generic,
-        draftValue: readBoolean(draftLine.isGeneric),
-      },
-      {
-        key: 'packaging_method',
-        requestValue: line.packaging_method,
-        draftValue: readEnumValue(draftLine.packagingMethod, PACKAGING_METHOD_VALUES),
-      },
-      {
-        key: 'packaging_instructions',
-        requestValue: line.packaging_instructions,
-        draftValue: readString(draftLine.packagingInstructions),
-      },
-      {
-        key: 'packaging_instruction_tags',
-        requestValue: line.packaging_instruction_tags,
-        draftValue: readEnumArray(draftLine.packagingInstructionTags, PACKAGING_TAG_VALUES),
-      },
-      {
-        key: 'route',
-        requestValue: line.route,
-        draftValue: readEnumValue(draftLine.route, ROUTE_VALUES),
-      },
-      {
-        key: 'dispensing_method',
-        requestValue: line.dispensing_method,
-        draftValue: readEnumValue(draftLine.dispensingMethod, DISPENSING_METHOD_VALUES),
-      },
-      {
-        key: 'start_date',
-        requestValue: line.start_date,
-        draftValue: readString(draftLine.startDate),
-      },
-      { key: 'end_date', requestValue: line.end_date, draftValue: readString(draftLine.endDate) },
-      { key: 'notes', requestValue: line.notes, draftValue: readString(draftLine.notes) },
-    ];
-
-    for (const comparison of comparisons) {
-      if (comparison.requestValue === undefined) continue;
-      const requestValue = normalizeLineComparableValue(comparison.requestValue);
-      const draftValue = normalizeLineComparableValue(comparison.draftValue);
-      if (requestValue !== draftValue) {
-        mismatches.push(`line_${index + 1}_${comparison.key}`);
-      }
-    }
-  });
-
-  return mismatches;
-}
-
-function collectDrugCodeResolutionReviewDetails(
-  parsedData: Record<string, unknown> | null | undefined,
-  input: z.infer<typeof confirmQrDraftSchema>,
-) {
-  const draftLines = readDraftLines(parsedData);
-  const details: Record<string, string[]> = {};
-
-  draftLines.forEach((draftLine, index) => {
-    const status = readEnumValue(
-      draftLine.drugCodeResolutionStatus,
-      DRUG_CODE_RESOLUTION_STATUS_VALUES,
-    );
-    const drugCode = readString(draftLine.drugCode);
-    if (status === 'resolved' && drugCode) return;
-    if (status === 'review_required' && input.lines[index]?.drug_master_id) return;
-
-    details[`line_${index + 1}_drug_code`] = ['薬剤コードを医薬品マスターコードで確認してください'];
-  });
-
-  return Object.keys(details).length > 0 ? details : null;
 }
 
 function buildConfirmedParsedData(confirmedIntakeId: string) {
@@ -524,52 +327,13 @@ export const POST = withAuthContext(
           patient_id,
           source_type: 'qr_scan' as const,
           prescribed_date,
-          prescription_expiry_date:
-            typeof parsedData?.prescriptionExpirationDate === 'string'
-              ? parsedData.prescriptionExpirationDate
-              : undefined,
+          prescription_expiry_date: readQrDraftString(parsedData?.prescriptionExpirationDate),
           prescriber_name,
           prescriber_institution_id,
           prescriber_institution,
           lines: lines.map((line, index) => ({
-            ...(() => {
-              const draftLine = readDraftLineAt(parsedData, index);
-              return {
-                line_number: index + 1,
-                drug_name: line.drug_name,
-                drug_master_id: line.drug_master_id,
-                drug_code: line.drug_code ?? readString(draftLine?.drugCode),
-                source_drug_code:
-                  readString(draftLine?.sourceDrugCode) ??
-                  line.drug_code ??
-                  readString(draftLine?.drugCode),
-                source_drug_code_type: readString(draftLine?.sourceDrugCodeType),
-                dosage_form: line.dosage_form ?? readString(draftLine?.dosageForm),
-                dose: line.dose,
-                frequency: line.frequency,
-                days: line.days,
-                quantity: line.quantity ?? readPositiveNumber(draftLine?.quantity),
-                unit: line.unit ?? readString(draftLine?.unit),
-                is_generic:
-                  line.is_generic ??
-                  (typeof draftLine?.isGeneric === 'boolean' ? draftLine.isGeneric : undefined),
-                packaging_method:
-                  line.packaging_method ??
-                  readEnumValue(draftLine?.packagingMethod, PACKAGING_METHOD_VALUES),
-                packaging_instructions:
-                  line.packaging_instructions ?? readString(draftLine?.packagingInstructions),
-                packaging_instruction_tags:
-                  line.packaging_instruction_tags ??
-                  readEnumArray(draftLine?.packagingInstructionTags, PACKAGING_TAG_VALUES),
-                route: line.route ?? readEnumValue(draftLine?.route, ROUTE_VALUES),
-                dispensing_method:
-                  line.dispensing_method ??
-                  readEnumValue(draftLine?.dispensingMethod, DISPENSING_METHOD_VALUES),
-                start_date: line.start_date ?? readString(draftLine?.startDate),
-                end_date: line.end_date ?? readString(draftLine?.endDate),
-                notes: line.notes ?? readString(draftLine?.notes),
-              };
-            })(),
+            line_number: index + 1,
+            ...enrichQrDraftLineFromParsedData(line, parsedData, index),
           })),
         };
         const lineValidationDetails = collectDispensingLineMetadataValidationDetails(

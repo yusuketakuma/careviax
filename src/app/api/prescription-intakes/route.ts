@@ -45,23 +45,16 @@ import {
   readQrPatientIdentityFromDraftParsedData,
 } from '@/lib/pharmacy/qr-patient-match';
 import {
-  PACKAGING_INSTRUCTION_TAG_OPTIONS,
-  PACKAGING_METHOD_OPTIONS,
-  type PackagingInstructionTagValue,
-  type PackagingMethodValue,
-} from '@/lib/dispensing/packaging';
+  QR_DRAFT_PACKAGING_TAG_VALUES,
+  collectDrugCodeResolutionReviewDetails,
+  enrichQrDraftLineFromParsedData,
+  findQrDraftLineMismatches,
+  readQrDraftString,
+} from '@/lib/prescription/qr-draft-line-readers';
 
 const prescriptionSourceTypeSchema = z.enum(PRESCRIPTION_SOURCE_TYPES);
 const medicationCycleStatusSchema = z.enum(MEDICATION_CYCLE_STATUSES);
-const PACKAGING_METHOD_VALUES = PACKAGING_METHOD_OPTIONS.map((option) => option.value) as [
-  PackagingMethodValue,
-  ...PackagingMethodValue[],
-];
-const PACKAGING_TAG_VALUES = PACKAGING_INSTRUCTION_TAG_OPTIONS.map((option) => option.value) as [
-  PackagingInstructionTagValue,
-  ...PackagingInstructionTagValue[],
-];
-const prescriptionCareTagSchema = z.enum(PACKAGING_TAG_VALUES);
+const prescriptionCareTagSchema = z.enum(QR_DRAFT_PACKAGING_TAG_VALUES);
 
 type CreatePrescriptionIntakeInput = z.infer<typeof createPrescriptionIntakeSchema>;
 type IntakeInTxResult = Awaited<ReturnType<typeof createPrescriptionIntakeInTx>>;
@@ -318,209 +311,6 @@ function validateSplitDispense(input: {
   return null;
 }
 
-const ROUTE_VALUES = ['internal', 'external', 'injection', 'other'] as const;
-const DISPENSING_METHOD_VALUES = ['standard', 'unit_dose', 'crushed', 'other'] as const;
-const DRUG_CODE_RESOLUTION_STATUS_VALUES = ['resolved', 'review_required', 'unresolved'] as const;
-
-function readDraftLineAt(parsedData: Record<string, unknown> | null | undefined, index: number) {
-  const lines = Array.isArray(parsedData?.lines) ? parsedData.lines : [];
-  const line = lines[index];
-  return readJsonObject(line);
-}
-
-function readRequestLineAt(payload: Record<string, unknown> | null | undefined, index: number) {
-  const lines = Array.isArray(payload?.lines) ? payload.lines : [];
-  const line = lines[index];
-  return readJsonObject(line);
-}
-
-function hasRequestLineValue(line: Record<string, unknown> | null | undefined, key: string) {
-  return line ? Object.prototype.hasOwnProperty.call(line, key) && line[key] !== undefined : false;
-}
-
-function readDraftLines(parsedData: Record<string, unknown> | null | undefined) {
-  if (!Array.isArray(parsedData?.lines)) return [];
-  return parsedData.lines.flatMap((line) => {
-    const object = readJsonObject(line);
-    return object ? [object] : [];
-  });
-}
-
-function readString(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const text = value.trim();
-  return text.length > 0 ? text : undefined;
-}
-
-function readBoolean(value: unknown): boolean | undefined {
-  return typeof value === 'boolean' ? value : undefined;
-}
-
-function readPositiveNumber(value: unknown): number | undefined {
-  if (typeof value === 'number') {
-    return Number.isFinite(value) && value > 0 ? value : undefined;
-  }
-  if (typeof value === 'string' && value.trim().length > 0) {
-    const parsed = Number(value.trim());
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-  }
-  return undefined;
-}
-
-function readStringArray(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const values = value.flatMap((item): string[] => {
-    const text = readString(item);
-    return text ? [text] : [];
-  });
-  return values.length > 0 ? values : undefined;
-}
-
-function readEnumValue<const T extends readonly string[]>(
-  value: unknown,
-  allowed: T,
-): T[number] | undefined {
-  const text = readString(value);
-  return text && (allowed as readonly string[]).includes(text) ? (text as T[number]) : undefined;
-}
-
-function readEnumArray<const T extends readonly string[]>(
-  value: unknown,
-  allowed: T,
-): T[number][] | undefined {
-  const values = readStringArray(value)?.filter((item): item is T[number] =>
-    (allowed as readonly string[]).includes(item),
-  );
-  return values && values.length > 0 ? values : undefined;
-}
-
-function normalizeLineComparableValue(value: unknown): string {
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => normalizeLineComparableValue(item))
-      .sort()
-      .join(',');
-  }
-  if (value == null) return '';
-  return String(value).trim().replace(/\s+/g, '').toLocaleLowerCase('ja-JP');
-}
-
-function findQrDraftLineMismatches(
-  input: CreatePrescriptionIntakeInput,
-  parsedData: Record<string, unknown> | null | undefined,
-  rawInput: Record<string, unknown> | null | undefined,
-) {
-  const draftLines = readDraftLines(parsedData);
-  const mismatches: string[] = [];
-
-  if (draftLines.length !== input.lines.length) {
-    mismatches.push('line_count');
-  }
-
-  input.lines.forEach((line, index) => {
-    const draftLine = draftLines[index];
-    if (!draftLine) return;
-    const rawLine = readRequestLineAt(rawInput, index);
-
-    const comparisons = [
-      {
-        key: 'drug_code',
-        requestValue: line.drug_code,
-        draftValue: readString(draftLine.drugCode),
-      },
-      {
-        key: 'drug_name',
-        requestValue: line.drug_name,
-        draftValue: readString(draftLine.drugName),
-      },
-      {
-        key: 'dosage_form',
-        requestValue: line.dosage_form,
-        draftValue: readString(draftLine.dosageForm),
-      },
-      { key: 'dose', requestValue: line.dose, draftValue: readString(draftLine.dose) },
-      {
-        key: 'frequency',
-        requestValue: line.frequency,
-        draftValue: readString(draftLine.frequency),
-      },
-      { key: 'days', requestValue: line.days, draftValue: draftLine.days },
-      { key: 'quantity', requestValue: line.quantity, draftValue: draftLine.quantity },
-      { key: 'unit', requestValue: line.unit, draftValue: readString(draftLine.unit) },
-      {
-        key: 'is_generic',
-        requestValue: hasRequestLineValue(rawLine, 'is_generic') ? line.is_generic : undefined,
-        draftValue: readBoolean(draftLine.isGeneric),
-      },
-      {
-        key: 'packaging_method',
-        requestValue: line.packaging_method,
-        draftValue: readEnumValue(draftLine.packagingMethod, PACKAGING_METHOD_VALUES),
-      },
-      {
-        key: 'packaging_instructions',
-        requestValue: line.packaging_instructions,
-        draftValue: readString(draftLine.packagingInstructions),
-      },
-      {
-        key: 'packaging_instruction_tags',
-        requestValue: line.packaging_instruction_tags,
-        draftValue: readEnumArray(draftLine.packagingInstructionTags, PACKAGING_TAG_VALUES),
-      },
-      {
-        key: 'route',
-        requestValue: line.route,
-        draftValue: readEnumValue(draftLine.route, ROUTE_VALUES),
-      },
-      {
-        key: 'dispensing_method',
-        requestValue: line.dispensing_method,
-        draftValue: readEnumValue(draftLine.dispensingMethod, DISPENSING_METHOD_VALUES),
-      },
-      {
-        key: 'start_date',
-        requestValue: line.start_date,
-        draftValue: readString(draftLine.startDate),
-      },
-      { key: 'end_date', requestValue: line.end_date, draftValue: readString(draftLine.endDate) },
-      { key: 'notes', requestValue: line.notes, draftValue: readString(draftLine.notes) },
-    ];
-
-    for (const comparison of comparisons) {
-      if (comparison.requestValue === undefined) continue;
-      const requestValue = normalizeLineComparableValue(comparison.requestValue);
-      const draftValue = normalizeLineComparableValue(comparison.draftValue);
-      if (requestValue !== draftValue) {
-        mismatches.push(`line_${index + 1}_${comparison.key}`);
-      }
-    }
-  });
-
-  return mismatches;
-}
-
-function collectDrugCodeResolutionReviewDetails(
-  parsedData: Record<string, unknown> | null | undefined,
-  input: CreatePrescriptionIntakeInput,
-) {
-  const draftLines = readDraftLines(parsedData);
-  const details: Record<string, string[]> = {};
-
-  draftLines.forEach((draftLine, index) => {
-    const status = readEnumValue(
-      draftLine.drugCodeResolutionStatus,
-      DRUG_CODE_RESOLUTION_STATUS_VALUES,
-    );
-    const drugCode = readString(draftLine.drugCode);
-    if (status === 'resolved' && drugCode) return;
-    if (status === 'review_required' && input.lines[index]?.drug_master_id) return;
-
-    details[`line_${index + 1}_drug_code`] = ['薬剤コードを医薬品マスターコードで確認してください'];
-  });
-
-  return Object.keys(details).length > 0 ? details : null;
-}
-
 function buildConfirmedQrParsedData(confirmedIntakeId: string) {
   return {
     confirmed: true,
@@ -537,42 +327,10 @@ function enrichQrIntakeInputFromDraft(
   return {
     ...input,
     prescription_expiry_date:
-      input.prescription_expiry_date ?? readString(parsedData?.prescriptionExpirationDate),
-    lines: input.lines.map((line, index) => {
-      const draftLine = readDraftLineAt(parsedData, index);
-      const rawLine = readRequestLineAt(rawInput, index);
-      const isGeneric = hasRequestLineValue(rawLine, 'is_generic')
-        ? line.is_generic
-        : (readBoolean(draftLine?.isGeneric) ?? line.is_generic);
-      return {
-        ...line,
-        drug_code: line.drug_code ?? readString(draftLine?.drugCode),
-        source_drug_code:
-          readString(draftLine?.sourceDrugCode) ??
-          line.drug_code ??
-          readString(draftLine?.drugCode),
-        source_drug_code_type: readString(draftLine?.sourceDrugCodeType),
-        dosage_form: line.dosage_form ?? readString(draftLine?.dosageForm),
-        quantity: line.quantity ?? readPositiveNumber(draftLine?.quantity),
-        unit: line.unit ?? readString(draftLine?.unit),
-        is_generic: isGeneric,
-        packaging_method:
-          line.packaging_method ??
-          readEnumValue(draftLine?.packagingMethod, PACKAGING_METHOD_VALUES),
-        packaging_instructions:
-          line.packaging_instructions ?? readString(draftLine?.packagingInstructions),
-        packaging_instruction_tags:
-          line.packaging_instruction_tags ??
-          readEnumArray(draftLine?.packagingInstructionTags, PACKAGING_TAG_VALUES),
-        route: line.route ?? readEnumValue(draftLine?.route, ROUTE_VALUES),
-        dispensing_method:
-          line.dispensing_method ??
-          readEnumValue(draftLine?.dispensingMethod, DISPENSING_METHOD_VALUES),
-        start_date: line.start_date ?? readString(draftLine?.startDate),
-        end_date: line.end_date ?? readString(draftLine?.endDate),
-        notes: line.notes ?? readString(draftLine?.notes),
-      };
-    }),
+      input.prescription_expiry_date ?? readQrDraftString(parsedData?.prescriptionExpirationDate),
+    lines: input.lines.map((line, index) =>
+      enrichQrDraftLineFromParsedData(line, parsedData, index, rawInput),
+    ),
   };
 }
 
