@@ -1,10 +1,78 @@
 # Verification
 
-Snapshot: 2026-07-02 23:36 JST
+Snapshot: 2026-07-03 00:05 JST
 
 ## Latest Backend/API Slice Verification
 
 The latest backend/API slice was
+`backend-patient-header-summary-safety-contract` at 2026-07-03 00:05 JST.
+
+- Planning / review:
+  - Claude identified the P1 visit hot-path gap: visit record detail/form need
+    a lightweight patient identity + safety source for shared `PatientHeader`.
+  - Codex recommended extending existing
+    `GET /api/patients/[id]/header-summary` instead of adding a separate
+    `/safety-summary` endpoint because the existing route already carries
+    `canVisit`, `buildPatientDetailWhere`, readable case scope, rate-limit
+    canonicalization, and no-store behavior.
+  - Codex found duplicated safety tag ordering/visibility logic in
+    `SafetyTagBadge`, patients board, and visits today-preparation, then
+    expanded the backend slice to converge that logic in a pure helper.
+  - Claude approved the uncommitted backend diff before commit after
+    independent contract, helper-convergence, visible-order, and focused-test
+    checks.
+- Fixed:
+  - `getPatientHeaderSummary` now returns PatientHeader identity/context fields
+    plus a safety payload for visit hot paths while preserving existing
+    care-team/date fields.
+  - Added safety fields: allergy, renal summary, handling tags, swallowing,
+    cautions, full safety tags, visible safety tags, and hidden safety tag
+    count.
+  - Added `src/lib/patient/safety-tags.ts` as the canonical pure helper for
+    patient safety tag ordering and critical-visible selection.
+  - `SafetyTagBadge` re-exports the shared helper so existing UI imports and
+    DOM behavior remain stable.
+  - Patients board and visits today-preparation now use the shared order; visits
+    today-preparation intentionally follows board/shared order, moving allergy
+    after swallowing while still displaying all safety tags.
+- Safety:
+  - Existing route auth, `canVisit`, readable patient/case scope, no-store
+    fail-close behavior, schema, migration, push/deploy, external send, and
+    destructive DB posture were preserved.
+  - Additional reads are bounded org/patient-scoped latest/summary reads.
+  - `home_status_label` is intentionally `null` for now; consumers omit it
+    rather than showing false data.
+- Focused regressions:
+  - `pnpm exec vitest run src/server/services/patient-detail.test.ts 'src/app/api/patients/[id]/detail-slices.test.ts' src/app/api/__tests__/protected-get-routes.test.ts src/components/features/patients/safety-tag-badge.test.tsx src/app/api/patients/board/route.test.ts src/app/api/visits/today-preparation/route.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `6` files / `535` tests.
+  - Coverage: full header-summary identity/safety contract, route response
+    shape, protected route matrix, critical visible safety tags, board ordering,
+    and today-preparation safety tag ordering.
+- Scoped checks:
+  - Scoped ESLint for touched files: passed.
+  - Scoped Prettier for touched files: passed.
+  - Scoped `git diff --check` for touched files: passed.
+- Broad gates:
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: passed.
+- Coordination:
+  - Codex handled Claude review interrupts for visit-record-form and design
+    SSOT docs before committing the backend slice.
+  - Claude approved P1 before commit and requested two notes: document the
+    visits today-preparation order unification in the commit message and queue
+    the renal date-label timezone/display debt.
+  - Follow-up queued as `F-20260702-001` in `.agent-loop/FEATURE_QUEUE.md`.
+- gbrain:
+  - `projects/careviax/decisions/2026-07-02/patient-header-summary-safety-contract`
+  - Result: write/readback passed.
+- Commit:
+  - Runtime: `4c740880`
+    (`feat(api): extend patient header safety summary`).
+
+## Previous Backend/API Slice Verification
+
+The previous backend/API slice was
 `backend-visit-billing-candidate-regeneration-guard` at 2026-07-02 23:36 JST.
 
 - Planning / review:

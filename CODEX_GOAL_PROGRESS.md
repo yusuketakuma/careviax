@@ -42,6 +42,66 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### Backend: Patient Header Summary Safety Contract - 2026-07-03 00:05 JST
+
+- Scope:
+  - Continued backend/API implementation with Claude coordination through
+    agmsg.
+  - Implemented the agreed P1 visit hot-path patient identity/safety backend
+    data source by extending the existing
+    `GET /api/patients/[id]/header-summary` contract.
+  - Commit: `4c740880`
+    (`feat(api): extend patient header safety summary`).
+  - gbrain writeback:
+    `projects/careviax/decisions/2026-07-02/patient-header-summary-safety-contract`.
+- Fixed:
+  - `getPatientHeaderSummary` now returns lightweight PatientHeader
+    identity/context fields (`patient_id`, name/kana, birth date, gender,
+    care level, residence, primary diagnosis, intervention start) while keeping
+    the existing care-team/date fields.
+  - Added `safety` fields for allergy, renal summary, handling tags,
+    swallowing, cautions, full safety tags, visible safety tags, and hidden
+    safety tag count.
+  - Reused the existing protected route instead of adding a new
+    `/safety-summary` endpoint, preserving `canVisit`, `buildPatientDetailWhere`,
+    readable case scope, no-store behavior, route auth, and fail-close
+    semantics.
+  - Extracted pure safety tag ordering/visibility logic to
+    `src/lib/patient/safety-tags.ts`, re-exported from `SafetyTagBadge` to keep
+    the UI contract stable, and removed duplicate ordering constants from
+    patients board and visits today-preparation.
+  - Visits today-preparation now intentionally uses the shared board safety
+    order, moving allergy after swallowing while continuing to display all
+    safety tags.
+- Safety:
+  - Additional reads stay org/patient scoped and use existing case-readable
+    boundary data where applicable.
+  - No schema change, migration, production config, external send, destructive
+    DB operation, push, or deploy was performed.
+  - `home_status_label` is intentionally `null` until a cheap/current source is
+    added; current consumers simply omit it.
+- Validation:
+  - Focused bundle passed `6` files / `535` tests:
+    `pnpm exec vitest run src/server/services/patient-detail.test.ts 'src/app/api/patients/[id]/detail-slices.test.ts' src/app/api/__tests__/protected-get-routes.test.ts src/components/features/patients/safety-tag-badge.test.tsx src/app/api/patients/board/route.test.ts src/app/api/visits/today-preparation/route.test.ts --reporter=dot --testTimeout=60000`.
+  - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: passed.
+  - gbrain write/readback passed.
+- Review / coordination:
+  - Codex handled Claude review interrupts for visit-record-form and design
+    SSOT doc commits before this backend commit.
+  - Claude approved the P1 backend diff before commit after independent
+    contract, helper-convergence, route-ordering, and focused-test checks.
+  - Claude flagged a non-blocking renal date-label debt shared with existing
+    workspace code; queued as `F-20260702-001` so both producers can be fixed
+    together.
+- Remaining:
+  - Claude can now wire `PatientHeader` into visit-record hot-path FE screens
+    using the finalized header-summary contract.
+  - Continue backend/API candidate selection after checking agmsg inbox and
+    current dirty state.
+
 ### Backend: Visit Billing Candidate Regeneration Guard - 2026-07-02 23:36 JST
 
 - Scope:

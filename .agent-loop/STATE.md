@@ -4,7 +4,60 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
-## Current Codex Resume Note - 2026-07-02 23:36 JST
+## Current Codex Resume Note - 2026-07-03 00:05 JST
+
+- Active mode for this slice: Codex backend/API implementation with Claude
+  coordination through agmsg, real validation, gbrain writeback, explicit-path
+  commits, and review interrupts handled before the next commit. Preserve
+  unrelated dirty files; do not push/deploy/migrate or destructively mutate
+  data.
+- Latest completed product slice:
+  `backend-patient-header-summary-safety-contract`.
+- Product commit:
+  `4c740880` (`feat(api): extend patient header safety summary`).
+- Files changed:
+  - `src/server/services/patient-detail.ts`
+  - `src/server/services/patient-detail.test.ts`
+  - `src/app/api/patients/[id]/detail-slices.test.ts`
+  - `src/app/api/__tests__/protected-get-routes.test.ts`
+  - `src/lib/patient/safety-tags.ts`
+  - `src/components/features/patients/safety-tag-badge.tsx`
+  - `src/app/api/patients/board/route.ts`
+  - `src/app/api/visits/today-preparation/route.ts`
+  - progress-ledger updates in `CODEX_GOAL_PROGRESS.md`,
+    `.codex/ralph-state.md`, `ops/refactor/VERIFICATION.md`,
+    `.agent-loop/FEATURE_QUEUE.md`, and this file
+- Fixed:
+  - `GET /api/patients/[id]/header-summary` now returns lightweight
+    PatientHeader identity/context fields plus a safety payload for visit hot
+    paths without adding a second safety endpoint.
+  - The route stays on the existing `canVisit` / `buildPatientDetailWhere` /
+    readable case scope / no-store fail-close boundary.
+  - Added `src/lib/patient/safety-tags.ts` as the pure shared safety tag order
+    and critical-visible helper, then re-exported it from `SafetyTagBadge` to
+    keep the UI import contract stable.
+  - Removed duplicate safety tag ordering from patients board and visits
+    today-preparation. Visits today-preparation intentionally follows the
+    shared board order now, so allergy appears after swallowing while all tags
+    remain visible.
+- Validation:
+  - Focused bundle passed `6` files / `535` tests.
+  - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm build` passed.
+- Review:
+  - Codex sent a backend `PATCH_REVIEW_REQUEST` before commit.
+  - Claude approved the uncommitted P1 diff after independent contract,
+    helper-convergence, route-ordering, and focused-test verification.
+  - Claude noted a non-blocking renal date-label debt shared with existing
+    workspace code; it is queued as `F-20260702-001` in
+    `.agent-loop/FEATURE_QUEUE.md`.
+- gbrain writeback slug:
+  `projects/careviax/decisions/2026-07-02/patient-header-summary-safety-contract`.
+- Next action: commit this ledger slice with explicit paths, notify via agmsg,
+  then let Claude proceed with visit-record PatientHeader FE wiring or select
+  the next non-overlapping backend/API candidate after checking inbox.
+
+## Previous Codex Resume Note - 2026-07-02 23:36 JST
 
 - Active mode for this slice: Codex backend/API implementation with Claude
   coordination through agmsg, real validation, gbrain writeback, explicit-path

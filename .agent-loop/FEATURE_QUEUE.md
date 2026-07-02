@@ -126,6 +126,44 @@ old tasks unless they are actively being edited for another reason.
 ## Queue
 
 ```yaml
+- task_id: F-20260702-001
+  status: queued
+  owner: codex-lead
+  reviewer: claude-lead
+  origin_agent: claude-lead
+  type: bugfix
+  risk_level: medium
+  priority: P2
+  feature_name: Normalize renal safety date labels to JST-safe clinical display
+  background: >
+    The patient detail workspace and the visit hot-path header-summary backend
+    both format renal safety labels as `eGFR x(M/d)` from `measured_at` with
+    date-fns `format()`. This is consistent across the two screens today, but
+    it depends on the server-local timezone and uses numeric `M/d` formatting
+    in a clinical display. Fixing only one path would make the two patient
+    safety surfaces disagree.
+  user_value: >
+    Pharmacists should see the same renal observation date on patient detail
+    and visit hot-path patient headers, independent of runtime timezone, with a
+    date label that matches the PH-OS clinical date-display rules.
+  acceptance_criteria:
+    - Renal safety labels in patient detail workspace and header-summary use one shared formatter.
+    - The shared formatter is Asia/Tokyo calendar-date safe and covered by a non-JST runtime regression.
+    - The clinical date label avoids bare ambiguous MM/DD where PH-OS requires safer clinical date display.
+    - Patient detail and visit header-summary renal labels remain visually/semantically consistent.
+  constraints:
+    - Update both renal label producers in the same slice; do not create cross-screen date drift.
+    - Preserve patient/org scoping, existing safety payload shape, and no-store/fail-close route behavior.
+    - No DB migration, external fetch, destructive DB operation, push, or deploy.
+  verification:
+    - pnpm exec vitest run src/server/services/patient-detail.test.ts --reporter=dot --testTimeout=60000
+    - pnpm exec eslint --max-warnings=0 src/server/services/patient-detail.ts src/server/services/patient-detail.test.ts
+    - pnpm exec prettier --check src/server/services/patient-detail.ts src/server/services/patient-detail.test.ts
+    - git diff --check -- src/server/services/patient-detail.ts src/server/services/patient-detail.test.ts
+    - pnpm typecheck
+```
+
+```yaml
 - task_id: F-20260629-006
   status: done
   owner: codex-lead
