@@ -426,9 +426,10 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
       expect(group.textContent).toContain('+2');
     }
     expect(screen.queryByTestId('visit-header-safety-unavailable')).toBeNull();
-    // md+ ヘッダは sticky で入力中も消えない(SSOT 2.3)。
+    // md+ ヘッダは AppHeader の下で sticky になり、入力中も安全タグが隠れない(SSOT 2.3)。
     const modeHeader = screen.getByTestId('visit-mode-header');
     expect(modeHeader.className).toContain('sticky');
+    expect(modeHeader.className).toContain('top-14');
   });
 
   it('fails closed in the header when safety tags cannot be loaded', async () => {

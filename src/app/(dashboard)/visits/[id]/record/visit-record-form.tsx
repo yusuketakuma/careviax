@@ -1587,9 +1587,9 @@ export function VisitRecordForm({
 
         {/* p0_22 訪問モード(md 以上): ヘッダ(患者+訪問中+オフライン/未同期)→ 3カラム
             (左=訪問ステップ / 中央=フォーム / 右=写真・証跡)。pb は下部固定バー分の余白 */}
-        {/* md+ も sticky 化: SOAP 入力中に患者識別と安全タグが消えない(SSOT 2.3/4.1)。 */}
+        {/* md+ も sticky 化: AppHeader の下で患者識別と安全タグを隠さない(SSOT 2.3/4.1)。 */}
         <VisitModeHeader
-          className="sticky top-0 z-20 max-md:hidden"
+          className="sticky top-14 z-20 max-md:hidden"
           patientName={patientName}
           dateTimeLabel={visitDateTimeLabel}
           safety={headerSafety}
