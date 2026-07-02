@@ -333,6 +333,8 @@ function mockPatientQuery(
     };
     managementPlansError?: Error;
     managementPlansRefetch?: ReturnType<typeof vi.fn>;
+    homeOperationsError?: boolean;
+    homeOperationsRefetch?: ReturnType<typeof vi.fn>;
     patientDocuments?: {
       data?: PatientDocumentsSnapshot;
       error?: Error;
@@ -720,9 +722,11 @@ function mockPatientQuery(
     }
     if (queryKey[0] === 'patient-home-operations') {
       return {
-        data: homeOperations ?? undefined,
+        data: options.homeOperationsError ? undefined : (homeOperations ?? undefined),
         isLoading: false,
-        error: null,
+        isError: Boolean(options.homeOperationsError),
+        error: options.homeOperationsError ? new Error('在宅運用管理の取得に失敗しました') : null,
+        refetch: options.homeOperationsRefetch ?? vi.fn(),
       };
     }
     if (queryKey[0] === 'patient-documents') {
@@ -1503,6 +1507,39 @@ describe('CardWorkspace', () => {
     expect(screen.getByTestId('patient-profile-summary')).toBeTruthy();
     expect(screen.getByTestId('patient-home-operations-panel')).toBeTruthy();
     expect(screen.queryByTestId('card-prescription-section')).toBeNull();
+  });
+
+  it('surfaces a degraded banner instead of a false all-clear when home operations fail (FEUX-3)', () => {
+    const homeOperationsRefetch = vi.fn();
+    mockPatientQuery(null, null, {}, { homeOperationsError: true, homeOperationsRefetch });
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const homeOps = screen.getByTestId('patient-home-operations-panel');
+    // 取得失敗を「主要項目 確認済み」(偽の全クリア)に潰さない。
+    expect(within(homeOps).queryByText('主要項目 確認済み')).toBeNull();
+    expect(within(homeOps).getByText('サーバー集計 取得失敗')).toBeTruthy();
+
+    const banner = screen.getByTestId('patient-home-operations-error');
+    expect(banner.getAttribute('role')).toBe('alert');
+    expect(banner.textContent).toContain('サーバー集計を取得できませんでした');
+
+    fireEvent.click(within(banner).getByRole('button', { name: '再試行' }));
+    expect(homeOperationsRefetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the all-clear badge available when home operations load successfully (FEUX-3 guard)', () => {
+    mockPatientQuery(null, null, {}, {});
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    // 成功時は劣化バナーを出さない(誤検知防止)。
+    expect(screen.queryByTestId('patient-home-operations-error')).toBeNull();
+    expect(
+      within(screen.getByTestId('patient-home-operations-panel')).queryByText(
+        'サーバー集計 取得失敗',
+      ),
+    ).toBeNull();
   });
 
   it('creates a draft patient share case from the patient master without sending patient PHI', async () => {

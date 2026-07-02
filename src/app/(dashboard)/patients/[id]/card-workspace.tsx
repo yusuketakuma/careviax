@@ -655,6 +655,8 @@ function buildHomeOperationsItems(patient: PatientOverview): PatientHomeOperatio
 function PatientHomeOperationsPanel({
   patient,
   operations,
+  operationsError = false,
+  onRetryOperations,
   markingFaxOriginalIntakeId,
   savingPrescriptionDocumentIntakeId,
   recordingPrescriptionOriginalManagementIntakeId,
@@ -673,6 +675,9 @@ function PatientHomeOperationsPanel({
 }: {
   patient: PatientOverview;
   operations?: PatientHomeOperationsSnapshot | null;
+  /** サーバー集計の取得失敗。true のときは近似表示である旨を明示し、全クリア表示を出さない。 */
+  operationsError?: boolean;
+  onRetryOperations?: () => void;
   markingFaxOriginalIntakeId?: string | null;
   savingPrescriptionDocumentIntakeId?: string | null;
   recordingPrescriptionOriginalManagementIntakeId?: string | null;
@@ -731,14 +736,38 @@ function PatientHomeOperationsPanel({
         <span
           className={cn(
             'inline-flex min-h-8 items-center rounded-full border border-transparent px-3 text-xs font-medium',
-            attentionCount > 0
-              ? 'bg-state-confirm/10 text-state-confirm'
-              : 'bg-state-done/10 text-state-done',
+            operationsError
+              ? 'bg-state-blocked/10 text-state-blocked'
+              : attentionCount > 0
+                ? 'bg-state-confirm/10 text-state-confirm'
+                : 'bg-state-done/10 text-state-done',
           )}
         >
-          {attentionCount > 0 ? `要確認 ${attentionCount}件` : '主要項目 確認済み'}
+          {operationsError
+            ? 'サーバー集計 取得失敗'
+            : attentionCount > 0
+              ? `要確認 ${attentionCount}件`
+              : '主要項目 確認済み'}
         </span>
       </div>
+      {operationsError ? (
+        // 取得失敗を全クリア表示に潰さない(false-empty禁止)。近似表示である旨と欠けうる情報を明示し、
+        // 再試行導線を付ける(SSOT 6.3: 原因+次の行動+再試行)。
+        <div
+          role="alert"
+          className="mt-4 flex flex-wrap items-center gap-3 rounded-md border border-border/70 border-l-4 border-l-state-blocked bg-card p-3"
+          data-testid="patient-home-operations-error"
+        >
+          <p className="min-w-0 flex-1 text-sm leading-6 text-foreground">
+            在宅運用管理のサーバー集計を取得できませんでした。以下は端末側の近似表示で、FAX原本の回収期限や未収金などサーバー算出のアラートが欠けている可能性があります。再読み込みしても直らない場合は時間をおいて再試行してください。
+          </p>
+          {onRetryOperations ? (
+            <Button type="button" variant="outline" size="sm" onClick={onRetryOperations}>
+              再試行
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
       {topAlerts.length > 0 ? (
         <div
           className="mt-4 rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card p-3"
@@ -3885,7 +3914,11 @@ export function CardWorkspace({
     staleTime: initialPatient ? SSR_PATIENT_OVERVIEW_STALE_TIME_MS : 0,
   });
 
-  const { data: homeOperations } = useQuery<PatientHomeOperationsSnapshot>({
+  const {
+    data: homeOperations,
+    isError: homeOperationsError,
+    refetch: refetchHomeOperations,
+  } = useQuery<PatientHomeOperationsSnapshot>({
     queryKey: ['patient-home-operations', patientId, orgId],
     queryFn: async () => {
       const res = await fetch(buildPatientApiPath(patientId, '/home-operations'), {
@@ -4324,6 +4357,8 @@ export function CardWorkspace({
         <PatientHomeOperationsPanelMemo
           patient={patient}
           operations={homeOperations}
+          operationsError={homeOperationsError}
+          onRetryOperations={() => void refetchHomeOperations()}
           markingFaxOriginalIntakeId={
             markFaxOriginalCollectedMutation.isPending
               ? markFaxOriginalCollectedMutation.variables
@@ -4704,6 +4739,8 @@ export function CardWorkspace({
           <PatientHomeOperationsPanelMemo
             patient={patient}
             operations={homeOperations}
+            operationsError={homeOperationsError}
+            onRetryOperations={() => void refetchHomeOperations()}
             markingFaxOriginalIntakeId={
               markFaxOriginalCollectedMutation.isPending
                 ? markFaxOriginalCollectedMutation.variables
