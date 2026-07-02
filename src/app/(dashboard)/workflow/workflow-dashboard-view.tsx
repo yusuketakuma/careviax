@@ -20,6 +20,7 @@ import { PageSection } from '@/components/layout/page-section';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { StatCard } from '@/components/ui/stat-card';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -1491,6 +1492,8 @@ function QueueCard({ label, count }: { label: string; count: number }) {
   );
 }
 
+// KPI ストリップは共通 StatCard に一本化する(重複していたカード styling を SSOT へ集約)。
+// 24 箇所の呼び出し API(icon はコンポーネント / caption)は据え置き、内部を StatCard へ委譲する。
 function MetricCard({
   icon: Icon,
   label,
@@ -1503,18 +1506,12 @@ function MetricCard({
   caption: string;
 }) {
   return (
-    <Card size="sm">
-      <CardContent className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">{label}</p>
-          <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">{value}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{caption}</p>
-        </div>
-        <div className="rounded-full border border-border bg-background p-2">
-          <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-        </div>
-      </CardContent>
-    </Card>
+    <StatCard
+      icon={<Icon className="size-4" aria-hidden="true" />}
+      label={label}
+      value={value}
+      hint={caption}
+    />
   );
 }
 
