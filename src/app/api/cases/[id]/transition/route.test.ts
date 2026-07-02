@@ -5,7 +5,8 @@ const {
   requireAuthContextMock,
   careCaseFindFirstMock,
   firstVisitDocFindFirstMock,
-  careCaseUpdateMock,
+  careCaseUpdateManyMock,
+  txCareCaseFindFirstMock,
   taskUpsertMock,
   withOrgContextMock,
   upsertOperationalTaskMock,
@@ -13,7 +14,8 @@ const {
   requireAuthContextMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   firstVisitDocFindFirstMock: vi.fn(),
-  careCaseUpdateMock: vi.fn(),
+  careCaseUpdateManyMock: vi.fn(),
+  txCareCaseFindFirstMock: vi.fn(),
   taskUpsertMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
@@ -79,7 +81,8 @@ describe('/api/cases/[id]/transition', () => {
       id: 'fvd_1',
       delivered_at: new Date('2026-01-15T10:00:00Z'),
     });
-    careCaseUpdateMock.mockResolvedValue({
+    careCaseUpdateManyMock.mockResolvedValue({ count: 1 });
+    txCareCaseFindFirstMock.mockResolvedValue({
       id: 'case_1',
       status: 'active',
     });
@@ -87,7 +90,8 @@ describe('/api/cases/[id]/transition', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         careCase: {
-          update: careCaseUpdateMock,
+          updateMany: careCaseUpdateManyMock,
+          findFirst: txCareCaseFindFirstMock,
         },
         task: {
           upsert: taskUpsertMock,
@@ -108,9 +112,19 @@ describe('/api/cases/[id]/transition', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    expect(careCaseUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'case_1' },
+    expect(careCaseUpdateManyMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: 'case_1',
+        org_id: 'org_1',
+        status: 'assessment',
+      }),
       data: { status: 'active' },
+    });
+    expect(txCareCaseFindFirstMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: 'case_1',
+        org_id: 'org_1',
+      }),
     });
   });
 
@@ -130,6 +144,14 @@ describe('/api/cases/[id]/transition', () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.warnings).toContain('初回訪問文書が未交付です');
+    expect(careCaseUpdateManyMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: 'case_1',
+        org_id: 'org_1',
+        status: 'assessment',
+      }),
+      data: { status: 'active' },
+    });
     expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -151,7 +173,37 @@ describe('/api/cases/[id]/transition', () => {
     ))!;
 
     expect(response.status).toBe(400);
-    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale transitions when the case changes after the preflight status check', async () => {
+    careCaseUpdateManyMock.mockResolvedValue({ count: 0 });
+
+    const response = (await PATCH(
+      createTransitionRequest('case_1', {
+        from: 'assessment',
+        to: 'active',
+      }),
+      {
+        params: Promise.resolve({ id: 'case_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'ケースが同時に更新されました。再読み込みしてください',
+    });
+    expect(careCaseUpdateManyMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: 'case_1',
+        org_id: 'org_1',
+        status: 'assessment',
+      }),
+      data: { status: 'active' },
+    });
+    expect(txCareCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object transition payloads before loading the case', async () => {
@@ -163,7 +215,7 @@ describe('/api/cases/[id]/transition', () => {
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(firstVisitDocFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
@@ -186,7 +238,7 @@ describe('/api/cases/[id]/transition', () => {
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(firstVisitDocFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
@@ -202,7 +254,7 @@ describe('/api/cases/[id]/transition', () => {
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(firstVisitDocFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
@@ -221,7 +273,7 @@ describe('/api/cases/[id]/transition', () => {
 
     expect(response.status).toBe(404);
     expect(firstVisitDocFindFirstMock).not.toHaveBeenCalled();
-    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 });

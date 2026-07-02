@@ -3,7 +3,7 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { caseTransitionSchema, caseStatusTransitions } from '@/lib/validations/case';
 import { prisma } from '@/lib/db/client';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
@@ -66,13 +66,38 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
-  const careCase = await withOrgContext(
+  const transitionResult = await withOrgContext(
     ctx.orgId,
     async (tx) => {
-      const updated = await tx.careCase.update({
-        where: { id },
+      const updated = await tx.careCase.updateMany({
+        where: {
+          id,
+          org_id: ctx.orgId,
+          status: from,
+          ...(caseAssignmentWhere ? { AND: [caseAssignmentWhere] } : {}),
+        },
         data: { status: to },
       });
+      if (updated.count !== 1) {
+        return {
+          ok: false as const,
+          response: conflict('ケースが同時に更新されました。再読み込みしてください'),
+        };
+      }
+
+      const updatedCareCase = await tx.careCase.findFirst({
+        where: {
+          id,
+          org_id: ctx.orgId,
+          ...(caseAssignmentWhere ? { AND: [caseAssignmentWhere] } : {}),
+        },
+      });
+      if (!updatedCareCase) {
+        return {
+          ok: false as const,
+          response: conflict('更新後のケースを取得できません。再読み込みしてください'),
+        };
+      }
 
       // Auto-create a first_visit_document_delivery task when activating a case
       // without a delivered first visit document
@@ -90,10 +115,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         });
       }
 
-      return updated;
+      return { ok: true as const, careCase: updatedCareCase };
     },
     { requestContext: ctx },
   );
 
-  return success({ data: careCase, warnings });
+  if (!transitionResult.ok) return transitionResult.response;
+
+  return success({ data: transitionResult.careCase, warnings });
 }
