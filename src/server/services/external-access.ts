@@ -1,7 +1,6 @@
 import { createHash, timingSafeEqual } from 'crypto';
 import bcrypt from 'bcryptjs';
 import type { MemberRole, Prisma } from '@prisma/client';
-import { startOfDay } from 'date-fns';
 import { decode, encode } from 'next-auth/jwt';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { hasPermission, type PermissionKey } from '@/lib/auth/permissions';
@@ -9,6 +8,7 @@ import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 import { buildPatientArchiveSummary } from '@/lib/patient/archive-summary';
 import { maskContactValueForAudit } from '@/lib/privacy/contact-mask';
+import { todayUtcRange } from '@/lib/utils/date-boundary';
 
 type ExternalGrantRecord = {
   id: string;
@@ -808,7 +808,7 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
               case_id: { in: caseIds },
               org_id: grant.org_id,
               scheduled_date: {
-                gte: startOfDay(new Date()),
+                gte: todayUtcRange().gte,
               },
             },
             select: {

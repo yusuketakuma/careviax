@@ -610,6 +610,36 @@ describe('buildExternalAccessPayload', () => {
     });
   });
 
+  it('filters shared upcoming visits from the Japan business date sentinel', async () => {
+    vi.setSystemTime(new Date('2026-07-04T02:00:00+09:00'));
+    prismaMock.careCase.findMany.mockResolvedValue([{ id: 'case_allowed' }]);
+    prismaMock.visitSchedule.findMany.mockResolvedValue([]);
+
+    const payload = await buildExternalAccessPayload({
+      id: 'grant_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      otp_hash: 'otp_hash',
+      expires_at: new Date('2026-07-05T00:00:00.000Z'),
+      revoked_at: null,
+      scope: {
+        visit_schedule: true,
+        allowed_case_ids: ['case_allowed'],
+      },
+    });
+
+    expect(payload).not.toBeNull();
+    expect(prismaMock.visitSchedule.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          scheduled_date: {
+            gte: new Date('2026-07-04T00:00:00.000Z'),
+          },
+        }),
+      }),
+    );
+  });
+
   it('limits care report payload reads to the stored report document boundary', async () => {
     prismaMock.careReport.findMany.mockResolvedValue([
       {
