@@ -386,6 +386,96 @@ describe('MyDayContent', () => {
     expect(screen.getByText('今日の確認は落ち着いています')).toBeTruthy();
   });
 
+  it('surfaces the true audit total when the cockpit hides part of the queue', () => {
+    const cockpitWithHiddenAudits = {
+      ...emptyCockpit,
+      audit_pending_count: 12,
+      audit_queue_total_count: 12,
+      audit_queue_visible_count: 1,
+      audit_queue_hidden_count: 11,
+      audit_queue: [
+        {
+          task_id: 'audit_1',
+          cycle_id: 'cycle_1',
+          patient_name: '監査花子',
+          priority: 'urgent',
+          due_at: null,
+          intake_id: null,
+          prescribed_date: null,
+          handling_tags: [],
+          has_narcotic: false,
+          waiting_since: null,
+        },
+      ],
+    };
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'my-day-visits') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      if (queryKey[0] === 'my-day-tasks') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      if (queryKey[0] === 'dashboard') {
+        return { data: cockpitWithHiddenAudits, isLoading: false };
+      }
+      if (queryKey[0] === 'my-day-status-changes') {
+        return { data: [], isLoading: false };
+      }
+      throw new Error(`Unexpected query key: ${String(queryKey[0])}`);
+    });
+
+    render(<MyDayContent />);
+
+    // 上位1件だけが緊急カードに載るが、総数と隠れ件数を明示して過小認識を防ぐ。
+    expect(screen.getByText('監査花子さんの監査待ち')).toBeTruthy();
+    expect(screen.getByText(/監査待ちは全部で12件です/)).toBeTruthy();
+    expect(screen.getByText(/ほか11件を監査一覧で確認/)).toBeTruthy();
+  });
+
+  it('omits the audit total footer when nothing is hidden', () => {
+    const cockpitNoHidden = {
+      ...emptyCockpit,
+      audit_pending_count: 1,
+      audit_queue_total_count: 1,
+      audit_queue_visible_count: 1,
+      audit_queue_hidden_count: 0,
+      audit_queue: [
+        {
+          task_id: 'audit_only',
+          cycle_id: 'cycle_1',
+          patient_name: '監査太郎',
+          priority: 'urgent',
+          due_at: null,
+          intake_id: null,
+          prescribed_date: null,
+          handling_tags: [],
+          has_narcotic: false,
+          waiting_since: null,
+        },
+      ],
+    };
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'my-day-visits') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      if (queryKey[0] === 'my-day-tasks') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      if (queryKey[0] === 'dashboard') {
+        return { data: cockpitNoHidden, isLoading: false };
+      }
+      if (queryKey[0] === 'my-day-status-changes') {
+        return { data: [], isLoading: false };
+      }
+      throw new Error(`Unexpected query key: ${String(queryKey[0])}`);
+    });
+
+    render(<MyDayContent />);
+
+    expect(screen.getByText('監査太郎さんの監査待ち')).toBeTruthy();
+    expect(screen.queryByText(/監査待ちは全部で/)).toBeNull();
+  });
+
   it('shows section errors instead of empty states when assigned visits fail to load', () => {
     useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
       if (queryKey[0] === 'my-day-visits') {

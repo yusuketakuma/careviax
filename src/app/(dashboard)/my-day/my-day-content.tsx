@@ -274,6 +274,11 @@ export function MyDayContent({
   const urgentActions = (actionsQuery.data ? buildCockpitActions(actionsQuery.data) : []).filter(
     (a) => a.priority === 'urgent' || a.priority === 'high',
   );
+  // 監査待ちは cockpit BFF が上位のみ audit_queue に載せる(可視 <= 5)。緊急カードで見えている
+  // 分だけが全てだと誤認させないよう、隠れ件数があるときは正確な総数を提示する(4e2a19cb)。
+  const auditQueueTotal =
+    actionsQuery.data?.audit_queue_total_count ?? actionsQuery.data?.audit_pending_count ?? 0;
+  const auditQueueHidden = actionsQuery.data?.audit_queue_hidden_count ?? 0;
   const unpreparedVisits = activeVisits.filter((v) => !v.preparation?.prepared_at);
   const filteredVisits = activeVisits.filter((visit) => {
     if (initialVisitFilter === 'unprepared') return !visit.preparation?.prepared_at;
@@ -520,6 +525,19 @@ export function MyDayContent({
                       </StateBadge>
                     </Link>
                   ))}
+                  {auditQueueHidden > 0 ? (
+                    <Link
+                      href="/audit"
+                      className="flex min-h-[44px] items-center justify-between rounded-md border border-dashed border-state-blocked/40 px-2.5 text-sm text-state-blocked transition-colors hover:bg-state-blocked/5"
+                    >
+                      <span className="min-w-0 truncate">
+                        監査待ちは全部で{auditQueueTotal}件です
+                      </span>
+                      <span className="ml-2 shrink-0 text-xs">
+                        ほか{auditQueueHidden}件を監査一覧で確認 →
+                      </span>
+                    </Link>
+                  ) : null}
                 </CardContent>
               </Card>
             ) : null}
