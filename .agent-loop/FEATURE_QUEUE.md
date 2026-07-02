@@ -19,6 +19,24 @@ of work is a task with a stable `task_id` and a status that advances through the
 - F-20260620-008 introduces optional Control Plane fields. Existing tasks without those fields
   are valid **legacy manifests** and inherit defaults from `CONTROL_PLANE_CONFIG.yml`.
 
+### RUN-20260702-FEUX フロントエンド改善キャンペーン（design-analyst 監査 + 台帳、Codex maker / Claude checker）
+
+ユーザー指示（2026-07-02）: **全項目 Codex 実装、goal モードで全完了までループ**。maker=Codex 一貫 / checker=Claude（reviewer-audit 独立クロスチェック + objective gate + land）。進捗はユーザーに逐次確認せず Claude↔Codex 直接調整で自走、hard-stop / 根本変更のみ相談。CE14/N25（Codex 現行）完了後に着手。各スライス小・自レーン LOCK・相互レビュー・objective gate 必須。
+
+| id     | 優先 | 内容                                                                                                                                                                                                                 | owner | reviewer | 状態                                                                                                                                                |
+| ------ | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FEUX-1 | T1   | ローディング aria drift: 裸 `animate-pulse` スケルトンを `Skeleton`/`SkeletonRows`（`role="status"`+`sr-only`）へ寄せる。最悪例 `admin/analytics/analytics-content.tsx` L328/351/445/497/571 ほか ~18箇所/11ファイル | codex | claude   | **done** 11b431e9（analytics 5裸→LoadingRegion+Skeleton、Claude APPROVE 二重検証・9/9 teeth green）。※他ファイルの残 animate-pulse は後続スライスへ |
+| FEUX-2 | T1   | `MetricCard`/`KpiCard`/`SummaryCard` 11重複を `StatCard` へ統合。`tabular-nums`/状態アクセント/44px を SSOT 準拠に。reports/billing/external/workflow/admin 配下                                                     | codex | claude   | queued                                                                                                                                              |
+| FEUX-3 | T2   | 患者カード homeOperations false-empty: `patients/[id]/card-workspace.tsx:3861` の useQuery が isError 未読→500 で「主要項目 確認済み」誤バッジ。isError 伝播+degraded バナー+retry。ホットパス                       | codex | claude   | queued                                                                                                                                              |
+| FEUX-4 | T2   | SOAP セクション色の生 Tailwind 直書き `visit-record-detail.tsx:999/1005/1013/1019`。**先に SSOT 追補（`--soap-s/o/a/p` 識別色トークン、AA 検証）→ コード置換**。`text-purple-500` パレット外                         | codex | claude   | queued                                                                                                                                              |
+| FEUX-5 | T2   | 44px 未満フィルタチップ `search/advanced-filter-modal.tsx:208`（`min-h-[36px]`→44px）。WCAG 2.2 target-size                                                                                                          | codex | claude   | queued                                                                                                                                              |
+| FEUX-6 | T3   | 生 Tailwind 状態色 ~102箇所/56ファイル。**lint ガード追加 + 漸進 sweep**（単発 PR でなく）。正当 identity と drift を切り分け                                                                                        | codex | claude   | queued                                                                                                                                              |
+| FEUX-7 | T3   | Gantt travel バンド生 hex `schedule-team-board.tsx:225` をトークン化（map route hex は要判定）                                                                                                                       | codex | claude   | queued                                                                                                                                              |
+| FEUX-8 | T3   | 非RHF controlled-state フォームの離脱ガード欠落を `use-unsaved-changes-guard` へ結線（voice-memo / schedule-create-edit-drawer 等、残ギャップのみ）                                                                  | codex | claude   | queued                                                                                                                                              |
+
+除外・保留: 破壊的確認 sweep（adoption 済み・不要）/ 密度リワーク（SSOT 準拠済み）/ EPIC7 no-store（MFA secret・PHI = security hard-stop、ユーザー在席必須）/ offline CE14・N25（Codex 現行、Claude review 待ち）。
+SSOT 追補（FEUX-4 前提）: `docs/ui-ux-design-guidelines.md` の「識別目的の固定色」に S/O/A/P トークン定義（AA 検証）+「ローディングスケルトンは `Skeleton`/`SkeletonRows` 必須、裸 `animate-pulse` 禁止」拘束規則。doc 変更も Codex 起案→Claude review。
+
 ## Task schema
 
 ```yaml
