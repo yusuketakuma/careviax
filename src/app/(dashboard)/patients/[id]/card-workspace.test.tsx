@@ -331,6 +331,8 @@ function mockPatientQuery(
         updated_at: string;
       }>;
     };
+    managementPlansError?: Error;
+    managementPlansRefetch?: ReturnType<typeof vi.fn>;
     patientDocuments?: {
       data?: PatientDocumentsSnapshot;
       error?: Error;
@@ -361,6 +363,11 @@ function mockPatientQuery(
   useOrgIdMock.mockReturnValue('org_1');
   useRouterMock.mockReturnValue({ push: vi.fn(), replace: vi.fn() });
   useQueryClientMock.mockReturnValue({ invalidateQueries });
+  const patientShareCaseMutationResult = {
+    mutate: patientShareCaseMutate,
+    isPending: Boolean(pending.patientShareCase),
+    variables: null,
+  };
   const mutationResults = [
     {
       mutate: faxMutate,
@@ -397,11 +404,7 @@ function mockPatientQuery(
       isPending: Boolean(pending.mcsCheckLog),
       variables: pending.mcsCheckLog ? { patientId: 'patient_1' } : null,
     },
-    {
-      mutate: patientShareCaseMutate,
-      isPending: Boolean(pending.patientShareCase),
-      variables: null,
-    },
+    patientShareCaseMutationResult,
   ];
   let mutationCallIndex = 0;
   useMutationMock.mockImplementation(
@@ -410,10 +413,11 @@ function mockPatientQuery(
       onSuccess?: () => Promise<void> | void;
       onError?: (error: Error) => void;
     }) => {
-      if (
-        options.executePatientShareCaseMutation &&
-        String(mutationOptions?.mutationFn).includes('/api/patient-share-cases')
-      ) {
+      if (String(mutationOptions?.mutationFn).includes('/api/patient-share-cases')) {
+        if (!options.executePatientShareCaseMutation) {
+          return patientShareCaseMutationResult;
+        }
+
         return {
           mutate: async (input: unknown) => {
             patientShareCaseMutate(input);
@@ -694,11 +698,24 @@ function mockPatientQuery(
       };
     }
     if (queryKey[0] === 'management-plans') {
+      if (options.managementPlansError) {
+        return {
+          data: options.managementPlans,
+          isLoading: false,
+          isError: true,
+          isRefetching: false,
+          error: options.managementPlansError,
+          refetch: options.managementPlansRefetch ?? vi.fn(),
+        };
+      }
+
       return {
         data: options.managementPlans ?? { data: [] },
         isLoading: false,
         isError: false,
+        isRefetching: false,
         error: null,
+        refetch: options.managementPlansRefetch ?? vi.fn(),
       };
     }
     if (queryKey[0] === 'patient-home-operations') {
@@ -765,6 +782,25 @@ function mockPatientQuery(
     mcsCheckLogMutate,
     patientShareCaseMutate,
     invalidateQueries,
+  };
+}
+
+function buildActivePatientCase(): PatientOverview['cases'][number] {
+  return {
+    id: 'case_1',
+    status: 'active',
+    primary_pharmacist_id: null,
+    backup_pharmacist_id: null,
+    referral_source: null,
+    referral_date: null,
+    start_date: '2026-06-01',
+    end_date: null,
+    end_reason: null,
+    notes: null,
+    created_at: '2026-06-01T00:00:00.000Z',
+    updated_at: '2026-06-01T00:00:00.000Z',
+    required_visit_support: null,
+    care_team_links: [],
   };
 }
 
@@ -1541,13 +1577,20 @@ describe('CardWorkspace', () => {
     const panel = screen.getByTestId('patient-share-case-create-panel');
     expect(panel.textContent).not.toMatch(/田中 一郎|090-0000-0000|東京都/);
     expect(panel.textContent).not.toContain('田中 一郎 様 管理計画');
+    const managementPlanSelect = within(panel).getByLabelText(
+      '共有ケース作成の管理計画版',
+    ) as HTMLSelectElement;
+    expect(within(panel).queryByText('承認済み計画なし')).toBeNull();
+    expect(within(panel).getByText('計画 plan_approved / v3')).toBeTruthy();
+    expect(within(panel).queryByText('計画 plan_draft / v4')).toBeNull();
+    expect(managementPlanSelect.disabled).toBe(false);
     fireEvent.change(within(panel).getByLabelText('共有ケース作成の共有開始日'), {
       target: { value: '2026-06-20' },
     });
     fireEvent.change(within(panel).getByLabelText('共有ケース作成の共有終了日'), {
       target: { value: '2026-12-31' },
     });
-    fireEvent.change(within(panel).getByLabelText('共有ケース作成の管理計画版'), {
+    fireEvent.change(managementPlanSelect, {
       target: { value: 'plan_approved' },
     });
     fireEvent.click(within(panel).getByLabelText('共有範囲 添付閲覧'));
@@ -1592,6 +1635,125 @@ describe('CardWorkspace', () => {
       queryKey: ['pharmacy-cooperation-share-cases', 'org_1'],
     });
     vi.unstubAllGlobals();
+  });
+
+  it('shows a retryable management plan error instead of a false empty approved-plan option', () => {
+    const refetchManagementPlans = vi.fn();
+    mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        managementPlansError: new Error('管理計画書を取得できませんでした'),
+        managementPlansRefetch: refetchManagementPlans,
+        patientOverrides: {
+          cases: [buildActivePatientCase()],
+        },
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const panel = screen.getByTestId('patient-share-case-create-panel');
+    const managementPlanSelect = within(panel).getByLabelText(
+      '共有ケース作成の管理計画版',
+    ) as HTMLSelectElement;
+    expect(within(panel).queryByText('承認済み計画なし')).toBeNull();
+    expect(managementPlanSelect.textContent).toContain('管理計画を取得できませんでした');
+    expect(managementPlanSelect.disabled).toBe(true);
+
+    const alert = within(panel).getByRole('alert');
+    expect(alert.textContent).toContain('管理計画書を取得できませんでした');
+    expect(alert.textContent).toContain('計画を付けずに作成できます');
+
+    const createButton = within(panel).getByRole('button', { name: '共有ケースを作成' });
+    expect((createButton as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(within(panel).getByRole('button', { name: '再試行' }));
+    expect(refetchManagementPlans).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits a stale selected management plan from the share case payload after refetch errors', () => {
+    const queryOptions: NonNullable<Parameters<typeof mockPatientQuery>[3]> = {
+      managementPlans: {
+        data: [
+          {
+            id: 'plan_approved',
+            case_id: 'case_1',
+            title: '田中 一郎 様 管理計画',
+            version: 3,
+            status: 'approved',
+            effective_from: '2026-06-01T00:00:00.000Z',
+            updated_at: '2026-06-18T00:00:00.000Z',
+          },
+        ],
+      },
+      patientOverrides: {
+        cases: [buildActivePatientCase()],
+      },
+    };
+    const { patientShareCaseMutate } = mockPatientQuery(buildWorkspace(), null, {}, queryOptions);
+    const { rerender } = render(<CardWorkspace patientId="patient_1" />);
+
+    const panel = screen.getByTestId('patient-share-case-create-panel');
+    const managementPlanSelect = within(panel).getByLabelText(
+      '共有ケース作成の管理計画版',
+    ) as HTMLSelectElement;
+    fireEvent.change(managementPlanSelect, { target: { value: 'plan_approved' } });
+    expect(managementPlanSelect.value).toBe('plan_approved');
+
+    queryOptions.managementPlansError = new Error('管理計画書を取得できませんでした');
+    const erroredMocks = mockPatientQuery(buildWorkspace(), null, {}, queryOptions);
+    rerender(<CardWorkspace patientId="patient_1" />);
+
+    const erroredPanel = screen.getByTestId('patient-share-case-create-panel');
+    const erroredManagementPlanSelect = within(erroredPanel).getByLabelText(
+      '共有ケース作成の管理計画版',
+    ) as HTMLSelectElement;
+    expect(erroredManagementPlanSelect.disabled).toBe(true);
+    expect(erroredManagementPlanSelect.textContent).toContain('管理計画を取得できませんでした');
+    expect(within(erroredPanel).queryByText('計画 plan_approved / v3')).toBeNull();
+
+    fireEvent.click(within(erroredPanel).getByRole('button', { name: '共有ケースを作成' }));
+
+    expect(patientShareCaseMutate).not.toHaveBeenCalled();
+    expect(erroredMocks.patientShareCaseMutate).toHaveBeenCalledTimes(1);
+    const payload = erroredMocks.patientShareCaseMutate.mock.calls[0]?.[0];
+    expect(payload).toEqual({
+      partnership_id: 'partnership_1',
+      base_patient_id: 'patient_1',
+      base_case_id: 'case_1',
+      share_scope: {
+        prescription_history: true,
+        medication_profile: true,
+        care_reports: true,
+        attachments: false,
+        print: false,
+        pdf_output: false,
+        download: false,
+      },
+    });
+  });
+
+  it('keeps the true empty management plan state distinct from load errors', () => {
+    mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        managementPlans: { data: [] },
+        patientOverrides: {
+          cases: [buildActivePatientCase()],
+        },
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const panel = screen.getByTestId('patient-share-case-create-panel');
+    expect(within(panel).getByText('承認済み計画なし')).toBeTruthy();
+    expect(within(panel).queryByRole('alert')).toBeNull();
+    expect(within(panel).queryByRole('button', { name: '再試行' })).toBeNull();
   });
 
   it('blocks draft patient share case creation when the requested share window is invalid', () => {

@@ -1,6 +1,6 @@
 # Refactor State
 
-Snapshot: 2026-07-02 12:06 JST
+Snapshot: 2026-07-02 13:08 JST
 
 ## Phase
 
@@ -13,28 +13,47 @@ Snapshot: 2026-07-02 12:06 JST
 
 ## Last Change ID
 
-- `RR-FE-20260702-F03-schedule-drawer-error-envelope`
+- `RR-FE-20260702-F05-F10-F12-patient-share-management-plan-error-state`
 
 ## Build State
 
 - Last full production build evidence:
-  `pnpm build` passed after the schedule drawer error-envelope fix.
+  `pnpm build` passed after the patient-share management-plan error-state fix.
 - Last full cheap gate bundle evidence:
-  - `pnpm typecheck`: passed after the schedule drawer error-envelope fix.
+  - `pnpm typecheck`: passed after the patient-share management-plan
+    error-state fix.
   - `pnpm typecheck:no-unused`: passed after the schedule drawer error-envelope
+    fix and again after the patient-share management-plan error-state fix.
+  - `pnpm lint`: passed after the patient-share management-plan error-state
     fix.
-  - `pnpm lint`: passed after the schedule drawer error-envelope fix.
   - `pnpm format:check`: failed on unrelated untracked
-    `ops/refactor/ultracode-crossreview-codex-workflow.mjs`; scoped Prettier
-    passed for the changed drawer files.
-  - Scoped Prettier and diff-check passed for the schedule drawer component and
-    test before this state update; final ledger formatting/diff checks are
-    pending until this state update lands.
+    `ops/refactor/ultracode-crossreview-codex-workflow.mjs` and unrelated
+    `ops/refactor/ultracode-refactor-scan-workflow.mjs`; scoped Prettier
+    passed for the changed patient-share files and the incidental data-table
+    test typing fix.
+  - Scoped Prettier passed for the patient-share component/test before this
+    state update; final ledger formatting/diff checks are pending until this
+    state update lands.
 
 ## Current Worktree
 
 - The worktree is intentionally dirty from verified small slices. Preserve all
   existing dirty files unless explicitly owning a new slice.
+- Latest patient-share frontend safety slice changed only the patient card
+  workspace management-plan selector:
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx` and
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`. It prevents
+  management-plan lookup failures from rendering as `承認済み計画なし`, adds a
+  retryable alert, keeps true-empty distinct, suppresses stale retained plan
+  options on refetch error, and prevents stale selected plan IDs/versions from
+  entering the share-case payload. Codex frontend/test/strict reviewers checked
+  the slice; focused and broad local gates passed except unrelated
+  `ops/refactor/*.mjs` format warnings.
+- Incidental current-worktree note: `src/components/ui/data-table.test.tsx`
+  already had a dirty CSV export regression. Full typecheck exposed a typed
+  `URL.createObjectURL` mock issue in that dirty test; the mock typing was
+  corrected locally and the test passes. Do not mix this file into the
+  patient-share commit unless explicitly owning that separate test slice.
 - Latest frontend/API-contract compatibility slice changed only the schedule
   create/edit drawer:
   `src/app/(dashboard)/schedules/schedule-create-edit-drawer.tsx` and

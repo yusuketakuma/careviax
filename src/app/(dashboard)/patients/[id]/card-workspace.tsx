@@ -1040,7 +1040,10 @@ function PatientShareCaseCreatePanel({
   const approvedPlans = (managementPlansQuery.data?.data ?? []).filter(
     (plan) => plan.status === 'approved',
   );
-  const selectedPlan = approvedPlans.find((plan) => plan.id === form.managementPlanId) ?? null;
+  const managementPlansFailed = managementPlansQuery.isError;
+  const selectedPlan = managementPlansFailed
+    ? null
+    : (approvedPlans.find((plan) => plan.id === form.managementPlanId) ?? null);
   const hasInvalidDateWindow =
     form.startsAt.length > 0 && form.endsAt.length > 0 && form.endsAt < form.startsAt;
   const isArchived = Boolean(patient.archived_at);
@@ -1216,6 +1219,7 @@ function PatientShareCaseCreatePanel({
                 !effectiveCaseId ||
                 approvedPlans.length === 0 ||
                 managementPlansQuery.isLoading ||
+                managementPlansFailed ||
                 isArchived
               }
               aria-label="共有ケース作成の管理計画版"
@@ -1224,16 +1228,39 @@ function PatientShareCaseCreatePanel({
               <option value="">
                 {managementPlansQuery.isLoading
                   ? '管理計画を取得中'
-                  : approvedPlans.length === 0
-                    ? '承認済み計画なし'
-                    : '選択しない'}
+                  : managementPlansFailed
+                    ? '管理計画を取得できませんでした'
+                    : approvedPlans.length === 0
+                      ? '承認済み計画なし'
+                      : '選択しない'}
               </option>
-              {approvedPlans.map((plan) => (
-                <option key={plan.id} value={plan.id}>
-                  計画 {plan.id} / v{plan.version}
-                </option>
-              ))}
+              {managementPlansFailed
+                ? null
+                : approvedPlans.map((plan) => (
+                    <option key={plan.id} value={plan.id}>
+                      計画 {plan.id} / v{plan.version}
+                    </option>
+                  ))}
             </select>
+            {managementPlansFailed ? (
+              <div
+                role="alert"
+                className="flex flex-col gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between"
+              >
+                <p>
+                  管理計画書を取得できませんでした。対象計画を付ける場合は再試行してください。共有ケースは計画を付けずに作成できます。
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void managementPlansQuery.refetch()}
+                  disabled={managementPlansQuery.isRefetching}
+                >
+                  再試行
+                </Button>
+              </div>
+            ) : null}
           </div>
         </div>
 

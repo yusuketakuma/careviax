@@ -1,8 +1,62 @@
 # Verification
 
-Snapshot: 2026-07-02 11:29 JST
+Snapshot: 2026-07-02 13:08 JST
 
 ## Latest Full Code Slice Verification
+
+The latest runtime code slice was
+`RR-FE-20260702-F05-F10-F12-patient-share-management-plan-error-state` at
+2026-07-02 13:08 JST.
+
+- Planning / review:
+  - ULTRACODE F05/F10/F12 duplicated the same patient-share management-plan
+    false-empty issue.
+  - Codex frontend reviewer confirmed fetch failure was rendered as
+    `承認済み計画なし`.
+  - Codex test architect required error-vs-empty, retry, and success-path
+    regressions.
+  - Codex strict reviewer found a stale retained-data blocker: TanStack Query
+    refetch errors can keep previous `data`, so stale selected plan IDs could
+    still enter the payload if submit-time `selectedPlan` was not guarded.
+  - The stale-data blocker was fixed and re-reviewed with no blockers.
+- Focused regressions:
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `62` tests.
+  - Coverage: initial management-plan error, retry `refetch`, select
+    fail-closed, create button still enabled for optional plan attachment, true
+    empty distinct from error, success path still ID/version-only, draft plans
+    hidden, and refetch-error retained data suppressed from options/payload.
+- Related UI bundle:
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/visit-constraints-card.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-packaging-card.test.tsx' --reporter=dot --testTimeout=60000`
+  - Result: passed, `4` files / `87` tests.
+- Incidental dirty-test verification:
+  - `pnpm exec vitest run 'src/components/ui/data-table.test.tsx' --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `6` tests.
+  - Note: this covered a pre-existing dirty CSV export regression whose
+    `URL.createObjectURL` mock typing was corrected to restore full typecheck.
+- Scoped checks:
+  - Scoped ESLint for patient-share files and the incidental data-table typing
+    fix: passed.
+  - Scoped Prettier for the same files: passed.
+- Full gates:
+  - `pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`:
+    passed.
+  - `pnpm lint`: passed.
+  - `pnpm build`: passed.
+  - `pnpm format:check`: failed on unrelated existing
+    `ops/refactor/ultracode-crossreview-codex-workflow.mjs` and
+    `ops/refactor/ultracode-refactor-scan-workflow.mjs`; all touched files
+    passed scoped Prettier.
+- gbrain:
+  - `gbrain put projects/careviax/failures/2026-07-02/patient-share-management-plan-false-empty`
+    -> created/updated.
+- Skipped:
+  - Browser/E2E smoke was skipped because this targeted form-state change is
+    covered by jsdom assertions and production build, and changes no navigation,
+    API route contract, DB, or external-send behavior.
+
+## Prior Full Code Slice Verification
 
 The latest runtime code slice was the drug-master formulary error-state and
 clipboard fail-closed fix at 2026-07-02 11:29 JST.

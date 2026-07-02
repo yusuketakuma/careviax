@@ -7,6 +7,44 @@ evidence also exists in root `REFACTOR_REPORT.md`,
 `REFACTOR_EXECUTION_PLAN.md`, `CODEX_GOAL_PROGRESS.md`, and
 `.codex/ralph-state.md`.
 
+## 2026-07-02 13:08 JST - Patient Share Management Plan Error State
+
+- Change ID:
+  `RR-FE-20260702-F05-F10-F12-patient-share-management-plan-error-state`.
+- Category: bug fix / medical-safety frontend false-empty prevention /
+  stale payload prevention.
+- Files changed:
+  - `src/app/(dashboard)/patients/[id]/card-workspace.tsx`
+  - `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`
+- Summary:
+  - Split management-plan loading/error/true-empty states in the patient-share
+    case creation panel.
+  - Fetch/refetch failures now disable the selector, show fixed retryable
+    `role="alert"` copy, and call `managementPlansQuery.refetch()`.
+  - True empty success remains `承認済み計画なし` without alert/retry.
+  - Error state suppresses stale retained plan options and forces the
+    submit-time selected plan to `null`, preventing stale
+    `shared_management_plan_id/version` from entering the payload after a
+    TanStack Query refetch error.
+  - Existing success path still keeps plan titles and patient PHI out of the
+    option text and POST body.
+- Safety:
+  - Prevents management-plan lookup failure from being mistaken for an approved
+    plan empty state while preserving optional plan attachment.
+  - No API, DB, auth/RLS, route contract, org header, mutation endpoint,
+    migration, external send, billing, production config, dependency,
+    push/deploy, or destructive-operation behavior changed.
+- Validation:
+  - Card-workspace suite passed `1` file / `62` tests.
+  - Related patient UI bundle passed `4` files / `87` tests.
+  - Scoped ESLint and Prettier passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and
+    `pnpm build` passed.
+  - `pnpm format:check` failed only on unrelated existing `ops/refactor/*.mjs`
+    formatting issues; scoped Prettier passed for touched files.
+  - Strict reviewer found stale retained query data could still enter payload;
+    the blocker was fixed and re-reviewed with no blockers.
+
 ## 2026-07-02 11:29 JST - Drug Master Formulary Error And Clipboard Failure States
 
 - Change ID: `RR-FE-20260702-C-drug-master-formulary-error-and-clipboard-states`.

@@ -42,6 +42,68 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### Patient Share Management Plan Error State - 2026-07-02 13:08 JST
+
+- Scope:
+  - Executed duplicate ULTRACODE findings F05/F10/F12 for the patient card
+    workspace patient-share case creation panel.
+  - Focused on the optional management-plan selector and its colocated
+    component tests.
+- Fixed:
+  - Management-plan fetch failures now render a distinct disabled select label
+    and `role="alert"` retry affordance instead of `承認済み計画なし`.
+  - Retry calls `managementPlansQuery.refetch()`.
+  - True empty success (`data: []`, no error) remains distinct and still shows
+    `承認済み計画なし` without alert/retry.
+  - TanStack Query refetch-error stale data is fail-closed: retained approved
+    plans are not rendered as options and the submit-time selected plan is
+    forced to `null`, so stale `shared_management_plan_id/version` cannot enter
+    the create payload.
+  - Existing success path still exposes only plan ID/version, not plan title or
+    patient PHI, and draft plans remain unselectable.
+- Safety:
+  - Prevents a retryable plan lookup failure from being mistaken for "no
+    approved plans" while preserving the product contract that plan attachment
+    is optional.
+  - No API route, DB, auth/RLS, route contract, org header, mutation endpoint,
+    migration, external send, billing, production config, dependency,
+    push/deploy, or destructive-operation behavior changed.
+- Incidental:
+  - Full typecheck initially exposed a pre-existing dirty
+    `src/components/ui/data-table.test.tsx` CSV export regression with an
+    incorrectly inferred `URL.createObjectURL` mock. The mock typing was
+    corrected locally and the data-table test now passes, but that existing
+    dirty test is not part of the patient-share slice.
+- Validation:
+  - Full card-workspace component suite passed:
+    `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=60000`
+    -> `1` file / `62` tests.
+  - Related patient UI bundle passed:
+    `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/visit-constraints-card.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-packaging-card.test.tsx' --reporter=dot --testTimeout=60000`
+    -> `4` files / `87` tests.
+  - Pre-existing dirty data-table test passed:
+    `pnpm exec vitest run 'src/components/ui/data-table.test.tsx' --reporter=dot --testTimeout=60000`
+    -> `1` file / `6` tests.
+  - Scoped ESLint and Prettier passed for touched files.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm build`: passed.
+  - `pnpm format:check`: failed only on unrelated existing
+    `ops/refactor/ultracode-crossreview-codex-workflow.mjs` and
+    `ops/refactor/ultracode-refactor-scan-workflow.mjs`; scoped Prettier passed
+    for touched files.
+  - Codex `frontend_reviewer`, `test_architect`, and `reviewer-strict` were
+    used. Strict review found the stale retained data blocker; the fix was
+    re-reviewed with no blockers.
+  - gbrain writeback:
+    `projects/careviax/failures/2026-07-02/patient-share-management-plan-false-empty`.
+- Remaining:
+  - Broad repo-wide objective remains open. Browser/E2E smoke was skipped
+    because this form-state change is covered by DOM assertions for error,
+    retry, true-empty, success, and stale-payload behavior plus production
+    build, and changes no navigation/API/DB/external-send behavior.
+
 ### Offline Base64 Chunking And Evidence Payload Integrity - 2026-07-02 12:36 JST
 
 - Scope:

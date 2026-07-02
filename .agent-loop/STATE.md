@@ -967,3 +967,33 @@ User-directed program after the org-header sweep. Method: ultracode 51-screen re
   inefficiency inventory; keep DB schema, migrations, RLS/auth semantics,
   external sends, billing semantics, production config, and destructive
   operations proposal-only unless explicitly approved.
+
+### Resume point - 2026-07-02 13:08 JST
+
+- Active broad ULTRACODE/refactor objective remains open. Latest validated
+  slice:
+  `RR-FE-20260702-F05-F10-F12-patient-share-management-plan-error-state`.
+- Changed owned runtime files:
+  `src/app/(dashboard)/patients/[id]/card-workspace.tsx` and
+  `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`.
+- Fixed patient-share management-plan false-empty and stale payload behavior:
+  lookup failures now show a retryable alert instead of `承認済み計画なし`;
+  true empty remains distinct; retry calls `refetch`; stale retained
+  TanStack Query data is not rendered as options and cannot populate
+  `shared_management_plan_id/version`.
+- Validation passed:
+  full card-workspace suite `1` file / `62` tests, related patient UI bundle
+  `4` files / `87` tests, scoped ESLint/Prettier, `pnpm typecheck`,
+  `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm build`.
+  `pnpm format:check` failed only on unrelated existing `ops/refactor/*.mjs`
+  formatting warnings.
+- Incidental current-worktree note:
+  `src/components/ui/data-table.test.tsx` had a pre-existing dirty CSV export
+  test whose mock typing broke full typecheck; the local mock typing was fixed
+  and its suite passed `1` file / `6` tests. Keep it separate from the
+  patient-share commit unless explicitly owning that test slice.
+- gbrain writeback slug:
+  `projects/careviax/failures/2026-07-02/patient-share-management-plan-false-empty`.
+- Next action: commit the patient-share slice and ledgers with explicit paths,
+  leave unrelated dirty files unstaged, send coordination FYI if messenger is
+  available, then continue the next highest-value ULTRACODE/refactor item.
