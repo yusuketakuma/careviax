@@ -11,6 +11,31 @@ let sub: Redis | null = null;
 const subscribedChannels = new Set<string>();
 const pendingUnsubscribes = new Map<string, Promise<void>>();
 
+function warnRealtimeAdapterFailure({
+  event,
+  channel,
+  operation,
+  code,
+  error,
+}: {
+  event: string;
+  channel: string;
+  operation: string;
+  code: string;
+  error: unknown;
+}) {
+  logger.warn(
+    {
+      event,
+      operation,
+      entityType: 'realtime_channel',
+      entityId: channel,
+      code,
+    },
+    error,
+  );
+}
+
 export function parseRedisRealtimeMessage(message: string): Record<string, unknown> | null {
   return parseJsonObjectOrNull(message);
 }
@@ -35,9 +60,12 @@ function getConnections(): { pub: Redis; sub: Redis } {
           listener(data);
         } catch (err) {
           // Isolate listener failures so one bad listener does not block others.
-          logger.warn('[realtime] listener threw', {
+          warnRealtimeAdapterFailure({
+            event: 'realtime.listener_failed',
             channel,
-            error: err instanceof Error ? err.message : String(err),
+            operation: 'handle_message',
+            code: 'LISTENER_FAILED',
+            error: err,
           });
         }
       }
@@ -96,9 +124,12 @@ export class RealtimeAdapter {
         try {
           await subscriber.unsubscribe(channel);
         } catch (err) {
-          logger.warn('[realtime] unsubscribe failed', {
+          warnRealtimeAdapterFailure({
+            event: 'realtime.unsubscribe_failed',
             channel,
-            error: err instanceof Error ? err.message : String(err),
+            operation: 'unsubscribe',
+            code: 'UNSUBSCRIBE_FAILED',
+            error: err,
           });
           subscribedChannels.delete(channel);
           return;
@@ -110,9 +141,12 @@ export class RealtimeAdapter {
         try {
           await subscribeRedisChannel(subscriber, channel);
         } catch (err) {
-          logger.warn('[realtime] resubscribe after unsubscribe race failed', {
+          warnRealtimeAdapterFailure({
+            event: 'realtime.resubscribe_race_failed',
             channel,
-            error: err instanceof Error ? err.message : String(err),
+            operation: 'resubscribe_after_unsubscribe_race',
+            code: 'RESUBSCRIBE_RACE_FAILED',
+            error: err,
           });
         }
       })().finally(() => {

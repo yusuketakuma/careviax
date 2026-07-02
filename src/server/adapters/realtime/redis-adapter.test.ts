@@ -62,8 +62,14 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.REDIS_URL;
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
+
+async function flushRedisUnsubscribeWork() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
 
 describe('redis realtime adapter message parsing', () => {
   it('parses object messages', async () => {
@@ -132,5 +138,82 @@ describe('redis realtime adapter subscriptions', () => {
 
     expect(subscriber?.subscribe).toHaveBeenCalledTimes(2);
     expect(subscriber?.subscribe).toHaveBeenLastCalledWith(channel);
+  });
+
+  it('logs Redis unsubscribe failures without leaking raw error messages', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { RealtimeAdapter } = await import('./redis-adapter');
+    const adapter = new RealtimeAdapter();
+    const channel = 'org_1:presence';
+    const listener = vi.fn();
+
+    await adapter.subscribeToChannel(channel, listener);
+    const subscriber = redisMock.instances[1];
+    const unsubscribe = redisMock.deferUnsubscribe();
+    adapter.unsubscribeFromChannel(channel, listener);
+
+    unsubscribe.reject(new Error('patient=田中太郎 realtime secret'));
+    await expect(unsubscribe.promise).rejects.toThrow('patient=田中太郎 realtime secret');
+    await flushRedisUnsubscribeWork();
+
+    expect(subscriber?.unsubscribe).toHaveBeenCalledWith(channel);
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    const entry = JSON.parse(String(consoleError.mock.calls[0]?.[0])) as Record<string, unknown>;
+    expect(entry).toMatchObject({
+      level: 'warn',
+      message: 'realtime.unsubscribe_failed',
+      event: 'realtime.unsubscribe_failed',
+      operation: 'unsubscribe',
+      entityType: 'realtime_channel',
+      entityId: channel,
+      code: 'UNSUBSCRIBE_FAILED',
+      error_name: 'Error',
+    });
+    expect(JSON.stringify(entry)).not.toContain('田中太郎');
+    expect(JSON.stringify(entry)).not.toContain('realtime secret');
+    expect(entry).not.toHaveProperty('error');
+    expect(entry).not.toHaveProperty('error_message');
+    expect(entry).not.toHaveProperty('stack');
+  });
+
+  it('logs resubscribe race failures safely and allows the waiting subscriber to recover', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { RealtimeAdapter } = await import('./redis-adapter');
+    const adapter = new RealtimeAdapter();
+    const channel = 'org_1:presence';
+    const firstListener = vi.fn();
+    const secondListener = vi.fn();
+
+    await adapter.subscribeToChannel(channel, firstListener);
+    const subscriber = redisMock.instances[1];
+    const unsubscribe = redisMock.deferUnsubscribe();
+    adapter.unsubscribeFromChannel(channel, firstListener);
+
+    const resubscribeError = new Error('patient=青葉花子 resubscribe secret');
+    redisMock.rejectNextSubscribe(resubscribeError);
+    const subscribeDuringUnsubscribe = adapter.subscribeToChannel(channel, secondListener);
+    unsubscribe.resolve(1);
+
+    await subscribeDuringUnsubscribe;
+
+    expect(subscriber?.subscribe).toHaveBeenCalledTimes(3);
+    expect(subscriber?.subscribe).toHaveBeenLastCalledWith(channel);
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    const entry = JSON.parse(String(consoleError.mock.calls[0]?.[0])) as Record<string, unknown>;
+    expect(entry).toMatchObject({
+      level: 'warn',
+      message: 'realtime.resubscribe_race_failed',
+      event: 'realtime.resubscribe_race_failed',
+      operation: 'resubscribe_after_unsubscribe_race',
+      entityType: 'realtime_channel',
+      entityId: channel,
+      code: 'RESUBSCRIBE_RACE_FAILED',
+      error_name: 'Error',
+    });
+    expect(JSON.stringify(entry)).not.toContain('青葉花子');
+    expect(JSON.stringify(entry)).not.toContain('resubscribe secret');
+    expect(entry).not.toHaveProperty('error');
+    expect(entry).not.toHaveProperty('error_message');
+    expect(entry).not.toHaveProperty('stack');
   });
 });
