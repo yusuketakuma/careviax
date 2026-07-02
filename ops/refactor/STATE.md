@@ -395,7 +395,7 @@ re-audits are complete.
 ## Latest Slice - 2026-07-02 13:47 JST
 
 - Change ID: `RR-BUG-20260702-F01-patient-status-window-query-order`.
-- Status: implemented and validated, pending commit at time of ledger update.
+- Status: implemented, validated, and committed as `a5a9c84f`.
 - Files changed:
   - `src/server/services/patient-status-tracker.ts`
   - `src/server/services/patient-status-tracker.test.ts`
