@@ -3,11 +3,20 @@ import { cn } from '@/lib/utils';
 
 // Skeleton for list/table loading states
 // rest props(data-slot 等)を透過する。aria-hidden は装飾契約として常に固定(上書き不可)。
-export function Skeleton({ className, ...props }: ComponentProps<'div'>) {
+// as="span" でインライン文脈(<span>内の値プレースホルダ等)でも不正な DOM 入れ子を作らない。
+export function Skeleton({
+  className,
+  as: Comp = 'div',
+  ...props
+}: ComponentProps<'div'> & { as?: 'div' | 'span' }) {
   return (
-    <div
+    <Comp
       {...props}
-      className={cn('animate-pulse rounded bg-muted motion-reduce:animate-none', className)}
+      className={cn(
+        'animate-pulse rounded bg-muted motion-reduce:animate-none',
+        Comp === 'span' && 'inline-block',
+        className,
+      )}
       aria-hidden="true"
     />
   );

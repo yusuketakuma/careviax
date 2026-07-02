@@ -376,7 +376,7 @@ export function MyDayContent({
               visitsQuery.isError ? (
                 '—'
               ) : visitsQuery.isLoading || isUserPending ? (
-                <Skeleton className="h-7 w-10" />
+                <Skeleton as="span" className="h-7 w-10" />
               ) : (
                 todayVisits.length
               )
@@ -389,7 +389,7 @@ export function MyDayContent({
               tasksQuery.isError ? (
                 '—'
               ) : tasksQuery.isLoading || isUserPending ? (
-                <Skeleton className="h-7 w-10" />
+                <Skeleton as="span" className="h-7 w-10" />
               ) : (
                 pendingTasks.length
               )
@@ -402,7 +402,7 @@ export function MyDayContent({
               actionsQuery.isError ? (
                 '—'
               ) : actionsQuery.isLoading ? (
-                <Skeleton className="h-7 w-10" />
+                <Skeleton as="span" className="h-7 w-10" />
               ) : (
                 totalPipeline
               )
@@ -420,7 +420,7 @@ export function MyDayContent({
               actionsQuery.isError ? (
                 '—'
               ) : actionsQuery.isLoading ? (
-                <Skeleton className="h-7 w-10" />
+                <Skeleton as="span" className="h-7 w-10" />
               ) : (
                 urgentActions.length
               )
