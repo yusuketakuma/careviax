@@ -83,6 +83,63 @@ describe('/api/community-activities', () => {
     ]);
   });
 
+  it('filters community activities by inclusive Japan business-day date range', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/community-activities?from=2026-06-30&to=2026-07-01'),
+      { params: Promise.resolve({}) },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(communityActivityFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          activity_date: {
+            gte: new Date('2026-06-29T15:00:00.000Z'),
+            lt: new Date('2026-07-01T15:00:00.000Z'),
+          },
+        }),
+      }),
+    );
+    expect(communityActivityFindManyMock.mock.calls[0]?.[0].where.activity_date).not.toHaveProperty(
+      'lte',
+    );
+  });
+
+  it('rejects invalid date range filters before querying activities', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/community-activities?from=2026-02-31'),
+      { params: Promise.resolve({}) },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: {
+        from: ['from はYYYY-MM-DD形式で指定してください'],
+      },
+    });
+    expect(communityActivityFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects reversed date range filters before querying activities', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/community-activities?from=2026-07-02&to=2026-07-01'),
+      { params: Promise.resolve({}) },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: {
+        to: ['to は from 以降を指定してください'],
+      },
+    });
+    expect(communityActivityFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('creates a community activity record', async () => {
     const response = (await POST(
       createRequest('http://localhost/api/community-activities', {

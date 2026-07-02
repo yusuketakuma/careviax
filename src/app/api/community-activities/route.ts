@@ -4,6 +4,8 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
+import { japanDayInstantRangeFromDateKey } from '@/lib/utils/date-boundary';
+import { dateKeySchema } from '@/lib/validations/date-key';
 import { z } from 'zod';
 
 const createCommunityActivitySchema = z.object({
@@ -19,6 +21,21 @@ const createCommunityActivitySchema = z.object({
   outcome_summary: z.string().trim().max(4000).optional(),
 });
 
+const communityActivityQuerySchema = z
+  .object({
+    from: dateKeySchema('from はYYYY-MM-DD形式で指定してください').optional(),
+    to: dateKeySchema('to はYYYY-MM-DD形式で指定してください').optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.from && value.to && value.to < value.from) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['to'],
+        message: 'to は from 以降を指定してください',
+      });
+    }
+  });
+
 export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
@@ -28,17 +45,34 @@ export const GET = withAuthContext(
     const from = searchParams.get('from');
     const to = searchParams.get('to');
 
+    const parsedRange = communityActivityQuerySchema.safeParse({
+      ...(from !== null ? { from } : {}),
+      ...(to !== null ? { to } : {}),
+    });
+    if (!parsedRange.success) {
+      return validationError('検索条件が不正です', parsedRange.error.flatten().fieldErrors);
+    }
+
+    const activityDateRange =
+      parsedRange.data.from || parsedRange.data.to
+        ? {
+            ...(parsedRange.data.from
+              ? { gte: japanDayInstantRangeFromDateKey(parsedRange.data.from).gte }
+              : {}),
+            ...(parsedRange.data.to
+              ? { lt: japanDayInstantRangeFromDateKey(parsedRange.data.to).lt }
+              : {}),
+          }
+        : null;
+
     const items = await prisma.communityActivity.findMany({
       where: {
         org_id: ctx.orgId,
         ...(activityType ? { activity_type: activityType } : {}),
         ...(followUpRequired === null ? {} : { follow_up_required: followUpRequired === 'true' }),
-        ...(from || to
+        ...(activityDateRange
           ? {
-              activity_date: {
-                ...(from ? { gte: new Date(from) } : {}),
-                ...(to ? { lte: new Date(to) } : {}),
-              },
+              activity_date: activityDateRange,
             }
           : {}),
       },
