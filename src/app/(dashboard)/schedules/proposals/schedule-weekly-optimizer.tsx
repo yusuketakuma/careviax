@@ -1302,7 +1302,9 @@ export function ScheduleWeeklyOptimizer({
                       ? '車'
                       : plannerSettings.travel_mode === 'BICYCLE'
                         ? '自転車'
-                        : '徒歩'}
+                        : plannerSettings.travel_mode === 'TWO_WHEELER'
+                          ? '二輪'
+                          : '徒歩'}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
