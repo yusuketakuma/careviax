@@ -44,6 +44,12 @@ const VISIT_TYPE_OPTIONS = Object.entries(VISIT_TYPE_LABELS) as Array<[VisitType
 const PRIORITY_OPTIONS = Object.entries(PRIORITY_LABELS) as Array<[VisitPriority, string]>;
 const TRAVEL_MODE_OPTIONS = Object.entries(TRAVEL_MODE_LABELS) as Array<[TravelMode, string]>;
 const SCHEDULE_DRAWER_SAVE_BLOCKER_ID = 'schedule-drawer-save-blocker';
+const SCHEDULE_DRAWER_SAVE_ERROR_FALLBACK = '予定の保存に失敗しました';
+
+type ScheduleDrawerErrorEnvelope = {
+  error?: unknown;
+  message?: unknown;
+};
 
 export type ScheduleCreateEditDrawerForm = {
   case_id: string;
@@ -151,6 +157,18 @@ export function getScheduleCreateEditDrawerContactBlocker(
   return null;
 }
 
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function readScheduleDrawerSaveErrorMessage(body: ScheduleDrawerErrorEnvelope | null): string {
+  return (
+    nonEmptyString(body?.message) ??
+    nonEmptyString(body?.error) ??
+    SCHEDULE_DRAWER_SAVE_ERROR_FALLBACK
+  );
+}
+
 export function buildScheduleCreateEditDrawerPayload(args: {
   form: ScheduleCreateEditDrawerForm;
   proposalId?: string;
@@ -242,8 +260,8 @@ export function ScheduleCreateEditDrawer({
         ),
       });
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? '予定の保存に失敗しました');
+        const body = (await res.json().catch(() => null)) as ScheduleDrawerErrorEnvelope | null;
+        throw new Error(readScheduleDrawerSaveErrorMessage(body));
       }
       return submitForContact;
     },
@@ -254,7 +272,7 @@ export function ScheduleCreateEditDrawer({
       onSaved?.();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '予定の保存に失敗しました');
+      toast.error(error instanceof Error ? error.message : SCHEDULE_DRAWER_SAVE_ERROR_FALLBACK);
     },
   });
 

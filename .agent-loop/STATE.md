@@ -4,6 +4,45 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
+## Current Codex Resume Note - 2026-07-02 12:06 JST
+
+- Active mode for this slice: Codex-only execution with Codex subagent
+  contract/test review (`api_contract_reviewer`, `test_architect`) plus real
+  validation. Preserve unrelated dirty files; do not push/deploy/migrate or
+  destructively mutate data.
+- Latest completed slice:
+  `RR-FE-20260702-F03-schedule-drawer-error-envelope`.
+- Files changed:
+  - `src/app/(dashboard)/schedules/schedule-create-edit-drawer.tsx`
+  - `src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts`
+  - progress-ledger working-tree updates in `ops/refactor/*`,
+    `CODEX_GOAL_PROGRESS.md`, `.codex/ralph-state.md`, and this file
+- Fixed:
+  - The schedule create/edit drawer now reads failed
+    `PUT /api/visit-schedule-proposals` standard `message` first, then legacy
+    `error`, then a generic fallback.
+  - Non-string or missing envelope fields fail closed to the generic save error,
+    and response `details` are not displayed in the toast.
+- Validation:
+  - Drawer focused suite passed `1` file / `17` tests.
+  - Drawer + visit-schedule-proposals route bundle passed `2` files / `106`
+    tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and
+    `pnpm build` passed.
+  - `pnpm format:check` failed on unrelated untracked
+    `ops/refactor/ultracode-crossreview-codex-workflow.mjs`; scoped Prettier for
+    the changed drawer files passed.
+- Remaining:
+  - Broad repo-wide objective remains open; no DB/API/auth/RLS/migration,
+    external-send, billing, push/deploy, dependency, or destructive-operation
+    behavior was changed.
+  - Browser/E2E smoke was skipped because this is a toast/error-envelope fix
+    covered by component DOM assertions, route contract tests, and full build.
+- Next action:
+  - After this validated slice is committed, continue the next highest-value
+    ULTRACODE/refactor finding with fresh file inspection and focused tests.
+
 ## Current Codex Resume Note - 2026-07-02 11:52 JST
 
 - Active mode for this slice: Codex-only execution with Codex subagent planning

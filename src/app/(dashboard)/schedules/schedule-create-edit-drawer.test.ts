@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement } from 'react';
+import { toast } from 'sonner';
 import {
   ScheduleCreateEditDrawer,
   buildScheduleCreateEditDrawerForm,
@@ -20,6 +21,11 @@ vi.mock('sonner', () => ({
     success: vi.fn(),
   },
 }));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.clearAllMocks();
+});
 
 function renderCreateEditDrawer(props?: { editingProposal?: Proposal | null }) {
   const queryClient = new QueryClient({
@@ -306,6 +312,118 @@ describe('schedule create/edit drawer helpers', () => {
       time_window_end: '10:30',
       submit_for_contact: true,
     });
+  });
+
+  it('shows the standard API message when proposal save returns a code/message envelope', async () => {
+    const message = '同一ケース・同一日付の訪問予定が既に存在します。既存予定を確認してください';
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Response.json(
+        { code: 'WORKFLOW_CONFLICT', message, details: { field: 'proposed_date' } },
+        { status: 409 },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderCreateEditDrawer();
+    fireEvent.click(screen.getByRole('button', { name: '下書き保存' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(message);
+    });
+  });
+
+  it('prefers the standard API message when legacy error and message are both present', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Response.json(
+        {
+          error: 'legacy compatibility message',
+          code: 'WORKFLOW_CONFLICT',
+          message: 'standard workflow conflict message',
+          details: {},
+        },
+        { status: 409 },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderCreateEditDrawer();
+    fireEvent.click(screen.getByRole('button', { name: '下書き保存' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('standard workflow conflict message');
+    });
+    expect(toast.error).not.toHaveBeenCalledWith('legacy compatibility message');
+  });
+
+  it('keeps legacy error-envelope compatibility when proposal save fails', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Response.json({ error: 'legacy compatibility message' }, { status: 400 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderCreateEditDrawer();
+    fireEvent.click(screen.getByRole('button', { name: '下書き保存' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('legacy compatibility message');
+    });
+  });
+
+  it('falls back to the generic save error when proposal save returns a non-JSON body', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response('not json', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderCreateEditDrawer();
+    fireEvent.click(screen.getByRole('button', { name: '下書き保存' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('予定の保存に失敗しました');
+    });
+  });
+
+  it('falls back to the generic save error when proposal save returns malformed envelope fields', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Response.json(
+        {
+          code: 'INTERNAL_ERROR',
+          error: 123,
+          message: { raw: 'patient secret' },
+          details: { raw: 'db stack patient secret' },
+        },
+        { status: 500 },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderCreateEditDrawer();
+    fireEvent.click(screen.getByRole('button', { name: '下書き保存' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('予定の保存に失敗しました');
+    });
+    const firstToastMessage = vi.mocked(toast.error).mock.calls[0]?.[0];
+    expect(String(firstToastMessage)).not.toContain('patient secret');
+    expect(String(firstToastMessage)).not.toContain('db stack');
+  });
+
+  it('falls back to the generic save error when proposal save omits message and error fields', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Response.json(
+        { code: 'INTERNAL_ERROR', details: { raw: 'db stack patient secret' } },
+        { status: 500 },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderCreateEditDrawer();
+    fireEvent.click(screen.getByRole('button', { name: '下書き保存' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('予定の保存に失敗しました');
+    });
+    const firstToastMessage = vi.mocked(toast.error).mock.calls[0]?.[0];
+    expect(String(firstToastMessage)).not.toContain('patient secret');
+    expect(String(firstToastMessage)).not.toContain('db stack');
   });
 
   it('summarizes missing save fields without copying patient or staff values', () => {

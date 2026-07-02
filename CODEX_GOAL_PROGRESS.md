@@ -42,6 +42,53 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### Schedule Drawer Error Envelope Handling - 2026-07-02 12:06 JST
+
+- Scope:
+  - Executed `RR-FE-20260702-F03-schedule-drawer-error-envelope` from the
+    ULTRACODE findings.
+  - Focused only on the schedule create/edit drawer failed-save toast and its
+    colocated tests.
+- Fixed:
+  - Failed `PUT /api/visit-schedule-proposals` now reads the standard API
+    envelope `message` first, then legacy `error`, then the generic fallback.
+  - Malformed non-string `message` / `error` values and missing fields now
+    fail closed to `予定の保存に失敗しました`.
+  - The drawer never displays `details` from the failed response body.
+- Safety:
+  - Restores actionable scheduling conflict and validation messages in the
+    drawer without weakening the API route contract.
+  - Prevents malformed envelope fields or raw details from leaking into the
+    user-facing toast.
+  - No API, DB, auth/RLS, route contract, org header, mutation payload,
+    migration, external send, billing, production config, dependency,
+    push/deploy, or destructive-operation behavior was changed.
+- Performance:
+  - No performance change is claimed. The fix adds a small local parser and
+    focused tests only.
+- Validation:
+  - Drawer focused suite passed:
+    `pnpm exec vitest run 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts' --reporter=dot --testTimeout=60000`
+    -> `1` file / `17` tests.
+  - Drawer + route contract bundle passed:
+    `pnpm exec vitest run 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts' 'src/app/api/visit-schedule-proposals/route.test.ts' --reporter=dot --testTimeout=60000`
+    -> `2` files / `106` tests.
+  - Scoped ESLint, Prettier, and diff-check passed for the two changed files.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm build`: passed.
+  - `pnpm format:check`: failed on unrelated untracked
+    `ops/refactor/ultracode-crossreview-codex-workflow.mjs`; scoped Prettier for
+    the changed drawer files passed.
+  - Codex `api_contract_reviewer` approved the contract direction and
+    `test_architect` findings were addressed before final validation.
+- Remaining:
+  - Broad repo-wide objective remains open. Browser/E2E smoke was skipped
+    because this slice is covered by component DOM assertions, route contract
+    tests, scoped static checks, and production build, and it changes no layout
+    or navigation.
+
 ### Cockpit Rail False-Safe Loading/Error States - 2026-07-02 11:52 JST
 
 - Scope:

@@ -1965,3 +1965,48 @@ surfacing at 2026-07-02 11:52 JST.
     by component-level DOM assertions for loading/error/success states plus full
     production build, and it changes no navigation, API route contract, DB, or
     mutation behavior.
+
+## Schedule Drawer Error Envelope Verification
+
+The latest frontend/backend contract compatibility slice was schedule drawer
+error-envelope handling at 2026-07-02 12:06 JST.
+
+- Planning / review:
+  - ULTRACODE F03 identified the drawer as the only `.error`-only reader of a
+    failed schedule proposal save response.
+  - Codex `api_contract_reviewer` approved reading standard `message` plus
+    legacy `error` compatibility and flagged non-string hardening as useful.
+  - Codex `test_architect` flagged message priority and malformed-envelope
+    coverage as blocking gaps; both were addressed before final validation.
+- Focused component regression:
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts' --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `17` tests.
+- Drawer + API route contract regression:
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts' 'src/app/api/visit-schedule-proposals/route.test.ts' --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `106` tests.
+  - Notes: route test emitted the expected structured sanitized 500 log for an
+    existing unexpected-failure test; the command exited `0`.
+- Scoped checks:
+  - `pnpm exec eslint 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.tsx' 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts'`
+  - Result: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.tsx' 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts'`
+  - Result: passed.
+  - `git diff --check -- 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.tsx' 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts'`
+  - Result: passed.
+- Full gates:
+  - `pnpm typecheck`
+  - Result: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  - Result: passed.
+  - `pnpm lint`
+  - Result: passed.
+  - `pnpm format:check`
+  - Result: failed on unrelated untracked
+    `ops/refactor/ultracode-crossreview-codex-workflow.mjs`; the touched drawer
+    files passed scoped Prettier.
+  - `pnpm build`
+  - Result: passed.
+- Skipped:
+  - Browser/E2E smoke was skipped because this toast/error-envelope fix is
+    covered by component DOM assertions, API route contract tests, scoped static
+    checks, and production build, and it changes no layout or navigation.

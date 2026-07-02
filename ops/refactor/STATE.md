@@ -1,6 +1,6 @@
 # Refactor State
 
-Snapshot: 2026-07-02 11:52 JST
+Snapshot: 2026-07-02 12:06 JST
 
 ## Phase
 
@@ -13,28 +13,37 @@ Snapshot: 2026-07-02 11:52 JST
 
 ## Last Change ID
 
-- `RR-FE-20260702-F14-F27-cockpit-rail-false-safe`
+- `RR-FE-20260702-F03-schedule-drawer-error-envelope`
 
 ## Build State
 
 - Last full production build evidence:
-  `pnpm build` passed after the cockpit rail false-safe loading/error fix.
+  `pnpm build` passed after the schedule drawer error-envelope fix.
 - Last full cheap gate bundle evidence:
-  - `pnpm typecheck`: passed after the cockpit rail false-safe loading/error
+  - `pnpm typecheck`: passed after the schedule drawer error-envelope fix.
+  - `pnpm typecheck:no-unused`: passed after the schedule drawer error-envelope
     fix.
-  - `pnpm typecheck:no-unused`: passed after the cockpit rail false-safe
-    loading/error fix.
-  - `pnpm lint`: passed after the cockpit rail false-safe loading/error fix.
-  - `pnpm format:check`: passed after the cockpit rail false-safe loading/error
-    fix.
-  - Scoped Prettier and diff-check passed for the handoff/schedule components
-    and tests before this state update; final ledger formatting/diff checks are
+  - `pnpm lint`: passed after the schedule drawer error-envelope fix.
+  - `pnpm format:check`: failed on unrelated untracked
+    `ops/refactor/ultracode-crossreview-codex-workflow.mjs`; scoped Prettier
+    passed for the changed drawer files.
+  - Scoped Prettier and diff-check passed for the schedule drawer component and
+    test before this state update; final ledger formatting/diff checks are
     pending until this state update lands.
 
 ## Current Worktree
 
 - The worktree is intentionally dirty from verified small slices. Preserve all
   existing dirty files unless explicitly owning a new slice.
+- Latest frontend/API-contract compatibility slice changed only the schedule
+  create/edit drawer:
+  `src/app/(dashboard)/schedules/schedule-create-edit-drawer.tsx` and
+  `src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts`. It reads
+  failed save standard `message` before legacy `error`, falls back safely for
+  malformed/missing envelope fields, and does not display response `details`.
+  Codex subagents reviewed the slice, focused/local gates passed, and full
+  format check is blocked only by unrelated untracked
+  `ops/refactor/ultracode-crossreview-codex-workflow.mjs`.
 - Latest frontend medical-safety slice changed only the handoff and schedule
   cockpit-derived UI state:
   `src/app/(dashboard)/handoff/handoff-workspace.tsx`,

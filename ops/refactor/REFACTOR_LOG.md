@@ -1873,3 +1873,38 @@ evidence also exists in root `REFACTOR_REPORT.md`,
   - Codex frontend and medical-safety reviewers found no actionable findings.
   - Codex test architect flagged loading-branch coverage as a low issue; loading
     regressions were added and revalidated before this log entry.
+
+## 2026-07-02 12:06 JST - Schedule Drawer Error Envelope Handling
+
+- Change ID: `RR-FE-20260702-F03-schedule-drawer-error-envelope`.
+- Category: bug fix / frontend-backend contract compatibility.
+- Files changed:
+  - `src/app/(dashboard)/schedules/schedule-create-edit-drawer.tsx`
+  - `src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts`
+- Summary:
+  - Replaced the drawer failed-save `body.error`-only reader with a guarded
+    standard-envelope parser.
+  - Failed save toasts now prefer standard `message`, fall back to legacy
+    `error`, then use `予定の保存に失敗しました`.
+  - Non-string or missing `message` / `error` fields fail closed to the generic
+    fallback and response `details` are never displayed.
+  - Added regression coverage for standard envelope, both-field priority,
+    legacy compatibility, non-JSON fallback, malformed fields, and missing
+    fields.
+- Safety:
+  - Restores actionable schedule conflict / validation messages without
+    changing API route behavior or mutation payloads.
+  - Reduces malformed response/raw-detail leakage risk in the user-facing toast.
+  - No API, DB, auth/RLS, route contract, org header, migration, external send,
+    billing, production config, dependency, push/deploy, or destructive
+    operation behavior was changed.
+- Validation:
+  - Drawer focused suite passed `1` file / `17` tests.
+  - Drawer plus visit-schedule-proposals route bundle passed `2` files / `106`
+    tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and
+    `pnpm build` passed.
+  - `pnpm format:check` failed on unrelated untracked
+    `ops/refactor/ultracode-crossreview-codex-workflow.mjs`; scoped Prettier for
+    the changed drawer files passed.
