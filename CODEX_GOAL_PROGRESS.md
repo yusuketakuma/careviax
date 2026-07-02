@@ -42,6 +42,54 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### Backend: Trimmed String Normalizer Consolidation - 2026-07-02 23:04 JST
+
+- Scope:
+  - Continued backend/API implementation with Claude coordination through
+    agmsg.
+  - Consolidated duplicated `trimStringOrUndefined` validation normalizers
+    across backend validation modules and API routes.
+  - Commit: `48d3a328` (`refactor(api): share trimmed string normalizer`).
+  - gbrain writeback:
+    `projects/careviax/decisions/2026-07-02/trim-string-normalizer-consolidation`.
+- Fixed:
+  - Added `src/lib/validations/string.ts` as the canonical helper for
+    `null`/`undefined` and blank-string normalization, non-string passthrough,
+    and trimmed nonblank strings.
+  - Removed route-local duplicate normalizers from care reports, admin
+    organization provisioning, file complete, file presigned upload, and
+    patient self reports.
+  - `communication-request.ts` and `tracing-report.ts` now reuse the shared
+    helper while preserving their existing named export contract for current
+    route imports.
+  - Added `src/lib/validations/string.test.ts` to lock the shared helper
+    contract.
+- Safety:
+  - Preserved existing auth, authorization, tenancy, storage side effects,
+    request parsing, response envelopes, schema, migration, production config,
+    push/deploy, external sends, and destructive DB posture.
+  - This was behavior-preserving deduplication; no route validation contract
+    was intentionally widened or narrowed.
+- Validation:
+  - Focused helper/route suite passed `12` files / `275` tests:
+    `pnpm exec vitest run src/lib/validations/string.test.ts src/app/api/admin/organizations/route.test.ts src/app/api/care-reports/route.test.ts src/app/api/files/complete/route.test.ts src/app/api/files/presigned-upload/route.test.ts src/app/api/patient-self-reports/route.test.ts 'src/app/api/communication-requests/[id]/route.test.ts' 'src/app/api/communication-requests/[id]/resolve-followup/route.test.ts' 'src/app/api/communication-requests/[id]/responses/route.test.ts' src/app/api/communication-requests/route.test.ts 'src/app/api/tracing-reports/[id]/route.test.ts' src/app/api/tracing-reports/route.test.ts --reporter=dot --testTimeout=60000`.
+  - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: passed.
+  - gbrain write/readback passed.
+- Review / coordination:
+  - Claude approved the CE18 backend diff before commit after independent
+    duplicate scan and focused tests.
+  - Codex handled Claude C1 my-day review interrupts before this commit:
+    `73f4a9ca` fixed the JST date-label drift and was approved;
+    `55e0e3b2` fixed the completed-visit next-step fallback and was approved.
+- Remaining:
+  - Claude has locked `src/app/(dashboard)/my-day/**` for a P3 UI slice and
+    declared it non-conflicting with CE18/backend work.
+  - Next backend candidate should be selected after checking agmsg inbox and
+    current dirty state.
+
 ### Backend: Cockpit Audit Queue Counted List - 2026-07-02 22:42 JST
 
 - Scope:

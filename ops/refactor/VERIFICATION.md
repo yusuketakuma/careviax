@@ -1,10 +1,65 @@
 # Verification
 
-Snapshot: 2026-07-02 22:42 JST
+Snapshot: 2026-07-02 23:04 JST
 
 ## Latest Backend/API Slice Verification
 
-The latest backend/API slice was `backend-cockpit-audit-queue-counted-list` at
+The latest backend/API slice was `backend-trim-string-normalizer-consolidation`
+at 2026-07-02 23:04 JST.
+
+- Planning / review:
+  - Codex selected CE18 from the backend duplicate-normalizer inventory after
+    confirming identical `trimStringOrUndefined` bodies in validation modules
+    and API routes.
+  - The shared helper contract was defined from the existing implementation:
+    `null`/`undefined` and blank strings become `undefined`, non-string values
+    pass through for downstream schema validation, and nonblank strings are
+    trimmed.
+  - Claude approved the uncommitted CE18 backend diff before commit after an
+    independent duplicate scan and focused validation.
+- Fixed:
+  - Added `src/lib/validations/string.ts` as the canonical
+    `trimStringOrUndefined` helper.
+  - Removed duplicated route-local normalizers from care reports, admin
+    organization provisioning, file complete, file presigned upload, and
+    patient self reports.
+  - `communication-request.ts` and `tracing-report.ts` now reuse the shared
+    helper while preserving their named export contract.
+  - Added `src/lib/validations/string.test.ts` to lock the helper contract.
+- Safety:
+  - Existing auth, authorization, tenancy, storage side effects, request
+    parsing, response envelopes, schema, migration, push/deploy, external
+    sends, and destructive DB posture were preserved.
+  - The change is intended as behavior-preserving deduplication and does not
+    widen or narrow route validation semantics.
+- Focused regressions:
+  - `pnpm exec vitest run src/lib/validations/string.test.ts src/app/api/admin/organizations/route.test.ts src/app/api/care-reports/route.test.ts src/app/api/files/complete/route.test.ts src/app/api/files/presigned-upload/route.test.ts src/app/api/patient-self-reports/route.test.ts 'src/app/api/communication-requests/[id]/route.test.ts' 'src/app/api/communication-requests/[id]/resolve-followup/route.test.ts' 'src/app/api/communication-requests/[id]/responses/route.test.ts' src/app/api/communication-requests/route.test.ts 'src/app/api/tracing-reports/[id]/route.test.ts' src/app/api/tracing-reports/route.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `12` files / `275` tests.
+  - Coverage: shared helper normalization contract, direct route users, and
+    existing communication-request/tracing-report named-import users.
+- Scoped checks:
+  - Scoped ESLint for touched files: passed.
+  - Scoped Prettier for touched files: passed.
+  - Scoped `git diff --check` for touched files: passed.
+- Broad gates:
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: passed.
+- Coordination:
+  - Claude approved CE18 before commit and confirmed only one shared helper
+    implementation remains.
+  - Codex handled C1 my-day review interrupts before this commit: `73f4a9ca`
+    was approved for the JST date-label fix, and `55e0e3b2` was approved for
+    the completed-visit fallback fix.
+- gbrain:
+  - `projects/careviax/decisions/2026-07-02/trim-string-normalizer-consolidation`
+  - Result: write/readback passed.
+- Commit:
+  - Runtime: `48d3a328` (`refactor(api): share trimmed string normalizer`).
+
+## Previous Backend/API Slice Verification
+
+The previous backend/API slice was `backend-cockpit-audit-queue-counted-list` at
 2026-07-02 22:42 JST.
 
 - Planning / review:
@@ -60,16 +115,13 @@ The latest backend/API slice was `backend-cockpit-audit-queue-counted-list` at
     nesting, then delta `e26b82cc` was approved.
   - C1 my-day slice2 `7819e347` later received REQUEST_CHANGES for
     client-timezone date-label drift and completed-visit next-step fallback.
-  - Claude's current uncommitted
-    `src/app/(dashboard)/my-day/my-day-content.tsx` slice2 WIP was not staged by
-    Codex.
 - gbrain:
   - `projects/careviax/decisions/2026-07-02/cockpit-audit-queue-counted-list`
   - Result: write/readback passed.
 - Commit:
   - Runtime: `4e2a19cb` (`fix(api): return exact cockpit audit queue counts`).
 
-## Previous Backend/API Slice Verification
+## Earlier Backend/API Slice Verification
 
 The previous backend/API slice was `backend-qr-draft-line-reader-consolidation`
 at 2026-07-02 22:17 JST.
@@ -129,7 +181,7 @@ at 2026-07-02 22:17 JST.
 - Commit:
   - Runtime: `8936afee` (`refactor(api): share QR draft line readers`).
 
-## Earlier Backend/API Slice Verification
+## Older Backend/API Slice Verification
 
 The previous backend/API slice was `backend-flush-metrics-shared-job-handler` at
 2026-07-02 21:50 JST.

@@ -4,7 +4,7 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
-## Current Codex Resume Note - 2026-07-02 22:17 JST
+## Current Codex Resume Note - 2026-07-02 23:04 JST
 
 - Active mode for this slice: Codex backend/API implementation with Claude
   coordination through agmsg, real validation, gbrain writeback, explicit-path
@@ -12,41 +12,78 @@ end. It is the first file consulted on resume and the last file written on a har
   unrelated dirty files; do not push/deploy/migrate or destructively mutate
   data.
 - Latest completed product slice:
-  `backend-qr-draft-line-reader-consolidation`.
+  `backend-trim-string-normalizer-consolidation`.
 - Product commit:
-  `8936afee` (`refactor(api): share QR draft line readers`).
+  `48d3a328` (`refactor(api): share trimmed string normalizer`).
 - Files changed:
-  - `src/lib/prescription/qr-draft-line-readers.ts`
-  - `src/lib/prescription/qr-draft-line-readers.test.ts`
-  - `src/app/api/prescription-intakes/route.ts`
-  - `src/app/api/qr-scan-drafts/[id]/confirm/route.ts`
+  - `src/lib/validations/string.ts`
+  - `src/lib/validations/string.test.ts`
+  - `src/lib/validations/communication-request.ts`
+  - `src/lib/validations/tracing-report.ts`
+  - `src/app/api/care-reports/route.ts`
+  - `src/app/api/admin/organizations/route.ts`
+  - `src/app/api/files/complete/route.ts`
+  - `src/app/api/files/presigned-upload/route.ts`
+  - `src/app/api/patient-self-reports/route.ts`
   - progress-ledger updates in `CODEX_GOAL_PROGRESS.md`,
     `.codex/ralph-state.md`, `ops/refactor/VERIFICATION.md`, and this file
 - Fixed:
-  - `POST /api/prescription-intakes` and
-    `POST /api/qr-scan-drafts/[id]/confirm` now share one QR draft line helper
-    for `parsed_data.lines` reads, mismatch detection, drug-code review
-    details, and fallback hydration.
-  - The confirm route's padded string fallback drift is resolved by using the
-    same trimmed reader semantics as the direct intake path.
-  - Direct intake raw-request `is_generic` semantics are preserved: absent
-    submitted values may fall back to QR `isGeneric`, while explicit submitted
-    values are compared and preserved.
-  - Future QR parsed-data line fields now have one canonical helper/test target.
+  - Seven duplicated `trimStringOrUndefined` implementations are now one shared
+    `src/lib/validations/string.ts` helper.
+  - Existing named imports from `communication-request` and `tracing-report`
+    remain backward compatible via shared-helper re-export constants.
+  - Care report, admin organization provisioning, file upload completion,
+    presigned upload, and patient self report routes now import the shared
+    normalizer instead of carrying route-local copies.
+  - The shared helper test locks nullish/blank to `undefined`, non-string
+    passthrough, and trimmed nonblank string behavior.
 - Validation:
-  - Focused QR draft bundle passed `3` files / `102` tests.
-  - Helper-focused test passed `1` file / `4` tests after type-only cleanup.
+  - Focused CE18 bundle passed `12` files / `275` tests.
   - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
   - `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm build` passed.
 - Review:
   - Codex sent a backend `PATCH_REVIEW_REQUEST` before commit.
-  - Claude approved the uncommitted QR draft-line helper/route diff and
-    independently reran the focused QR draft tests (`3` files / `102` tests).
-  - Claude UI review interrupts were handled before the backend commit: B1-b
-    `b27085be` was approved; B5 `14962770` received REQUEST_CHANGES for a
-    `TWO_WHEELER` label mismatch; B5 delta `a7374423` was approved.
+  - Claude approved the uncommitted CE18 diff after independent duplicate scan
+    and focused route/helper tests.
+  - Codex handled Claude's C1 my-day review interrupts before this commit:
+    `73f4a9ca` and `55e0e3b2` were approved after focused my-day tests,
+    scoped ESLint, and diff-check.
 - gbrain writeback slug:
-  `projects/careviax/decisions/2026-07-02/qr-draft-line-reader-consolidation`.
+  `projects/careviax/decisions/2026-07-02/trim-string-normalizer-consolidation`.
+- Next action: check agmsg inbox and select the next backend/API candidate.
+
+## Previous Codex Resume Note - 2026-07-02 22:42 JST
+
+- Active mode for this slice: Codex backend/API implementation with Claude
+  coordination through agmsg, real validation, gbrain writeback, explicit-path
+  commits, and review interrupts handled before the next commit. Preserve
+  unrelated dirty files; do not push/deploy/migrate or destructively mutate
+  data.
+- Latest completed product slice:
+  `backend-cockpit-audit-queue-counted-list`.
+- Product commit:
+  `4e2a19cb` (`fix(api): return exact cockpit audit queue counts`).
+- Files changed:
+  - `src/app/api/dashboard/cockpit/route.ts`
+  - `src/app/api/dashboard/cockpit/route.test.ts`
+  - `src/types/dashboard-cockpit.ts`
+  - progress-ledger updates in `CODEX_GOAL_PROGRESS.md`,
+    `.codex/ralph-state.md`, `ops/refactor/VERIFICATION.md`, and this file
+- Fixed:
+  - `/api/dashboard/cockpit` now returns an exact audit queue backlog count
+    instead of deriving `audit_pending_count` from the capped visible fetch.
+  - Added `audit_queue_total_count`, `audit_queue_visible_count`, and
+    `audit_queue_hidden_count` without exposing hidden queue row details.
+  - Visible queue response shape and slice behavior were preserved.
+- Validation:
+  - Focused cockpit route test passed `1` file / `14` tests.
+  - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm build` passed.
+- Review:
+  - Codex sent a backend `PATCH_REVIEW_REQUEST` before commit.
+  - Claude approved the backend counted-list diff before commit.
+- gbrain writeback slug:
+  `projects/careviax/decisions/2026-07-02/cockpit-audit-queue-counted-list`.
 - Next action: check agmsg inbox and select the next backend/API candidate.
 
 ## Previous Codex Resume Note - 2026-07-02 21:50 JST
