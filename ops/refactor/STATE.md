@@ -1,6 +1,6 @@
 # Refactor State
 
-Snapshot: 2026-07-02 13:21 JST
+Snapshot: 2026-07-02 14:31 JST
 
 ## Phase
 
@@ -13,27 +13,40 @@ Snapshot: 2026-07-02 13:21 JST
 
 ## Last Change ID
 
-- `RR-FE-20260702-F11-visit-record-schedule-error-fail-closed`
+- `RR-BUG-20260702-F09-medication-profile-unresolved-code-name-fallback`
 
 ## Build State
 
 - Last full production build evidence:
-  `pnpm build` passed after the visit-record schedule fail-closed fix.
+  `pnpm build` passed after the medication-profile unresolved-code continuity
+  fix.
 - Last full cheap gate bundle evidence:
-  - `pnpm typecheck`: passed after the visit-record schedule fail-closed fix.
-  - `pnpm typecheck:no-unused`: passed after the visit-record schedule
-    fail-closed fix.
-  - `pnpm lint`: passed after the visit-record schedule fail-closed fix.
-  - `pnpm format:check`: passed after the visit-record schedule fail-closed
+  - `pnpm typecheck`: passed after the medication-profile unresolved-code
+    continuity fix.
+  - `pnpm typecheck:no-unused`: passed after the medication-profile
+    unresolved-code continuity fix.
+  - `pnpm lint`: passed after the medication-profile unresolved-code continuity
     fix.
-  - Scoped Prettier passed for the visit-record form/test before this state
-    update; final ledger formatting/diff checks are pending until this state
-    update lands.
+  - `pnpm format:check`: failed only on unrelated existing dirty
+    `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`; scoped
+    Prettier passed for touched files.
+  - Scoped Prettier and diff-check passed for the prescription-intake service
+    files before this state update; final ledger formatting/diff checks are
+    pending until this state update lands.
 
 ## Current Worktree
 
 - The worktree is intentionally dirty from verified small slices. Preserve all
   existing dirty files unless explicitly owning a new slice.
+- Latest backend medication-identity slice changed only
+  `src/server/services/prescription-intake-service.ts` and
+  `src/server/services/prescription-intake-service.test.ts`. It prevents
+  unresolved incoming prescription codes from producing a dead profile-sync
+  `code:` key that discontinues and recreates same-name unresolved medication
+  profiles. Resolved DrugMaster lines remain code/master-first and do not match
+  by name. The focused service/API regressions, full type/lint/build gates, and
+  Codex test/medical-safety reviews passed; full `format:check` is blocked only
+  by unrelated existing PCA Pumps formatting.
 - Latest visit-record frontend medical-safety slice changed only:
   `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx` and
   `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`. It
@@ -471,3 +484,37 @@ re-audits are complete.
   - DB steward and test architect reported no blockers.
 - Memory:
   - `projects/careviax/failures/2026-07-02/pharmacist-shift-template-apply-local-date`
+
+## Latest Slice - 2026-07-02 14:31 JST
+
+- Change ID:
+  `RR-BUG-20260702-F09-medication-profile-unresolved-code-name-fallback`.
+- Status: implemented, validated, and committed as `0a070fbc`.
+- Files changed:
+  - `src/server/services/prescription-intake-service.ts`
+  - `src/server/services/prescription-intake-service.test.ts`
+- Summary:
+  - Incoming prescription lines with a normalized code that does not resolve in
+    DrugMaster now add a `name:` fallback key for matching existing unresolved
+    medication profiles.
+  - Resolved DrugMaster identities still use `master:` and `legacy-code:` keys
+    without name fallback.
+  - Source-code-only DrugMaster lookup predicates are now flat ORs; combined
+    source-code plus explicit-master-id lookups retain grouped OR semantics.
+  - Added regression coverage for no duplicate create, one tenant-scoped update,
+    no fake `drug_master_id`, and stable sync counters.
+- Validation:
+  - Focused F09 regression passed `1` file / `1` selected test.
+  - Focused prescription-intake route backstop passed `1` file / `1` selected
+    test.
+  - Full prescription-intake service suite passed `1` file / `35` tests.
+  - Related prescription-intake/CDS API bundle passed `4` files / `119` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and
+    `pnpm build` passed.
+  - `pnpm format:check` failed only on unrelated existing dirty
+    `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`; scoped
+    Prettier passed for touched files.
+  - Codex test architect and medical-safety reviewer reported no blockers.
+- Memory:
+  - `projects/careviax/failures/2026-07-02/medication-profile-unresolved-code-dead-key`

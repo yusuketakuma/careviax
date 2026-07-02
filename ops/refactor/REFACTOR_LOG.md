@@ -7,6 +7,55 @@ evidence also exists in root `REFACTOR_REPORT.md`,
 `REFACTOR_EXECUTION_PLAN.md`, `CODEX_GOAL_PROGRESS.md`, and
 `.codex/ralph-state.md`.
 
+## 2026-07-02 14:31 JST - Medication Profile Unresolved-Code Continuity
+
+- Change ID:
+  `RR-BUG-20260702-F09-medication-profile-unresolved-code-name-fallback`.
+- Category: bug fix / backend medication identity / prescription intake
+  continuity.
+- Files changed:
+  - `src/server/services/prescription-intake-service.ts`
+  - `src/server/services/prescription-intake-service.test.ts`
+- Summary:
+  - Added a `name:` fallback key for incoming prescription lines only when a
+    non-empty drug code does not resolve to DrugMaster.
+  - Preserved code/master-first behavior for resolved DrugMaster identities, so
+    same-name matching cannot keep a master-linked profile current.
+  - Added a regression proving an unresolved same-name profile is updated, not
+    discontinued plus recreated, and that no unresolved code is persisted as
+    `drug_master_id`.
+  - Flattened the DrugMaster lookup OR shape for source-code-only queries while
+    preserving grouped OR behavior when explicit master IDs are queried
+    together with source codes.
+- Safety:
+  - Prevents false medication discontinuation/recreation, reset start dates, and
+    noisy medication-list history when local DrugMaster lacks an incoming code.
+  - No auth, RLS, API permission, DB schema, migration, external send, billing,
+    production config, dependency, push/deploy, or destructive-operation
+    behavior changed.
+- Performance:
+  - No performance optimization is claimed.
+  - The fallback adds one bounded in-memory key over already-loaded intake and
+    profile rows.
+- Validation:
+  - Focused F09 regression passed `1` file / `1` selected test.
+  - Focused prescription-intake route backstop passed `1` file / `1` selected
+    test.
+  - Full prescription-intake service suite passed `1` file / `35` tests.
+  - Related prescription-intake/CDS API bundle passed `4` files / `119` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and
+    `pnpm build` passed.
+  - `pnpm format:check` failed only on unrelated existing dirty
+    `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`; scoped
+    Prettier passed for touched files.
+  - Codex test architect and medical-safety reviewer reported no blockers.
+  - gbrain write/readback:
+    `projects/careviax/failures/2026-07-02/medication-profile-unresolved-code-dead-key`.
+- Commit:
+  - `0a070fbc` (`fix(prescriptions): preserve unresolved medication profile
+continuity`).
+
 ## 2026-07-02 13:21 JST - Visit Record Schedule Error Fail-Closed
 
 - Change ID: `RR-FE-20260702-F11-visit-record-schedule-error-fail-closed`.

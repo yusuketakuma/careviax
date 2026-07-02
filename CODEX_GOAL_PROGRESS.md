@@ -42,6 +42,66 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### Medication Profile Unresolved-Code Continuity - 2026-07-02 14:31 JST
+
+- Scope:
+  - Executed ULTRACODE F09 for prescription-intake medication-profile sync.
+  - Focused on unresolved DrugMaster codes and continuity of current
+    unresolved medication profiles.
+- Fixed:
+  - `incomingLineKeys()` now adds a trimmed `name:` fallback only when an
+    incoming prescription code exists but no DrugMaster identity resolves.
+  - Existing unresolved same-name profiles are updated instead of discontinued
+    plus recreated.
+  - Resolved DrugMaster lines remain code/master-first and do not match by
+    name, preserving the safety guard against same-name/LASA variants.
+  - `resolveCreateIntakeLineDrugIdentities()` now keeps DrugMaster lookup OR
+    predicates flat when only source codes are queried, while preserving the
+    nested source-code plus explicit-master-id grouping.
+- Safety:
+  - Prevents medication-list history churn, false discontinuation, reset start
+    dates, and inflated sync counters when local DrugMaster lacks an incoming
+    code.
+  - Does not persist unresolved source codes as `drug_master_id`.
+  - No auth, RLS, API permission, DB schema, migration, external send, billing,
+    production config, dependency, push/deploy, or destructive-operation
+    behavior changed.
+- Validation:
+  - Focused F09 regression passed:
+    `pnpm exec vitest run src/server/services/prescription-intake-service.test.ts -t "matches an unresolved medication profile by name when an incoming code does not resolve" --reporter=dot --testTimeout=60000`
+    -> `1` file / `1` selected test.
+  - Focused prescription-intake route backstop passed:
+    `pnpm exec vitest run src/app/api/prescription-intakes/route.test.ts -t "uses canonical QR parsed line metadata for intake creation and medication profile hooks" --reporter=dot --testTimeout=60000`
+    -> `1` file / `1` selected test.
+  - Full service suite passed:
+    `pnpm exec vitest run src/server/services/prescription-intake-service.test.ts --reporter=dot --testTimeout=60000`
+    -> `1` file / `35` tests.
+  - Related prescription-intake/CDS API bundle passed:
+    `pnpm exec vitest run src/server/services/prescription-intake-service.test.ts src/app/api/prescription-intakes/route.test.ts src/app/api/prescription-intakes/facility-batch/route.test.ts src/app/api/cds/check/route.test.ts --reporter=dot --testTimeout=60000`
+    -> `4` files / `119` tests.
+  - Scoped ESLint, Prettier, and diff-check passed for touched files.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm build`: passed.
+  - `pnpm format:check`: failed only on unrelated existing dirty
+    `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`; scoped
+    Prettier for touched files passed.
+  - Codex test architect and medical-safety reviewer found no blockers. The
+    recommended no-fake-`drug_master_id` assertion was added.
+  - gbrain writeback:
+    `projects/careviax/failures/2026-07-02/medication-profile-unresolved-code-dead-key`.
+- Commit:
+  - Runtime: `0a070fbc` (`fix(prescriptions): preserve unresolved medication
+profile continuity`).
+- Remaining:
+  - Broad repo-wide objective remains open. Existing duplicate unresolved
+    same-name profile cleanup and unresolved-code provenance display remain
+    separate audit-visible follow-ups.
+  - Browser/E2E smoke was skipped because this backend service identity fix is
+    covered by service/API regressions and production build, and changes no DOM
+    or navigation.
+
 ### Visit Record Schedule Error Fail-Closed - 2026-07-02 13:21 JST
 
 - Scope:

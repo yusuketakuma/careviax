@@ -1,8 +1,69 @@
 # Verification
 
-Snapshot: 2026-07-02 13:21 JST
+Snapshot: 2026-07-02 14:31 JST
 
 ## Latest Full Code Slice Verification
+
+The latest backend medication-identity slice was
+`RR-BUG-20260702-F09-medication-profile-unresolved-code-name-fallback` at
+2026-07-02 14:31 JST.
+
+- Planning / review:
+  - ULTRACODE F09 identified `incomingLineKeys()` producing `code:` keys for
+    unresolved incoming prescription codes while existing unresolved
+    `MedicationProfile` rows can only produce `name:` keys.
+  - Codex medical-safety review found no blocker for adding name fallback only
+    when no DrugMaster identity resolves, and warned against broad same-name
+    matching for resolved DrugMaster lines.
+  - Codex test architect confirmed the regression should assert no duplicate
+    create, one tenant-scoped update, stable counters, and no fake
+    `drug_master_id`.
+- Focused regressions:
+  - `pnpm exec vitest run src/server/services/prescription-intake-service.test.ts -t "matches an unresolved medication profile by name when an incoming code does not resolve" --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `1` selected test.
+  - `pnpm exec vitest run src/app/api/prescription-intakes/route.test.ts -t "uses canonical QR parsed line metadata for intake creation and medication profile hooks" --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `1` selected test.
+  - Coverage: same-name unresolved profile plus unresolved incoming code updates
+    the existing profile, does not call `createMany`, does not write
+    `drug_master_id`, preserves source/prescriber/end-date update fields, and
+    returns `{ created: 0, updated: 1, discontinued: 0 }`.
+- Related regressions:
+  - `pnpm exec vitest run src/server/services/prescription-intake-service.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `35` tests.
+  - `pnpm exec vitest run src/server/services/prescription-intake-service.test.ts src/app/api/prescription-intakes/route.test.ts src/app/api/prescription-intakes/facility-batch/route.test.ts src/app/api/cds/check/route.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `4` files / `119` tests.
+- Scoped checks:
+  - `pnpm exec eslint src/server/services/prescription-intake-service.ts src/server/services/prescription-intake-service.test.ts`
+  - Result: passed.
+  - `pnpm exec prettier --check src/server/services/prescription-intake-service.ts src/server/services/prescription-intake-service.test.ts`
+  - Result: passed.
+  - `git diff --check -- src/server/services/prescription-intake-service.ts src/server/services/prescription-intake-service.test.ts`
+  - Result: passed.
+- Full gates:
+  - `pnpm typecheck`
+  - Result: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  - Result: passed.
+  - `pnpm lint`
+  - Result: passed.
+  - `pnpm format:check`
+  - Result: failed only on unrelated existing dirty
+    `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`; touched
+    prescription-intake files passed scoped Prettier.
+  - `pnpm build`
+  - Result: passed.
+- gbrain:
+  - `projects/careviax/failures/2026-07-02/medication-profile-unresolved-code-dead-key`
+  - Result: write/readback passed.
+- Commit:
+  - Runtime: `0a070fbc` (`fix(prescriptions): preserve unresolved medication
+profile continuity`).
+- Skipped:
+  - Browser/E2E smoke was skipped because this backend service identity fix
+    changes no DOM layout, navigation, route contract shape, or human workflow
+    shape.
+
+## Prior Full Code Slice Verification
 
 The latest runtime code slice was
 `RR-FE-20260702-F11-visit-record-schedule-error-fail-closed` at

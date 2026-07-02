@@ -530,6 +530,7 @@ next_action: >
 - FailurePattern: projects/careviax/failures/2026-07-02/health-check-db-s3-raw-error-message (RR-BUG-20260702-0318; generic DB/S3 health-check failures now return fixed safe messages instead of raw database/AWS exception text)
 - FailurePattern: projects/careviax/failures/2026-07-02/admin-capacity-completed-today-server-local-midnight (RR-BUG-20260702-F06; admin capacity completed-today DateTime filter now uses Japan business-day instant range instead of server-local midnight)
 - FailurePattern: projects/careviax/failures/2026-07-02/pharmacist-shift-template-apply-local-date (RR-BUG-20260702-F07; shift template apply now writes UTC-midnight @db.Date sentinels and propagates requestContext into RLS)
+- FailurePattern: projects/careviax/failures/2026-07-02/medication-profile-unresolved-code-dead-key (RR-BUG-20260702-F09; unresolved incoming prescription codes now fall back to same-name unresolved MedicationProfile continuity without broad resolved-name matching)
 - FixPattern: projects/careviax/fix-patterns/2026-06-22/agloop-shell-backticks-strip-tokens (RUN-20260622-001 agmsg transport hygiene; avoid shell backticks in AGLOOP bodies built through shell variables because command substitution can strip tokens.)
 - FixPattern: projects/careviax/fix-patterns/2026-06-23/href-helper-convergence-test-teeth (F-040〜F-048 claude-maker; raw entity href→共有ヘルパ収束の test teeth=actual-backed spy+sentinel return-value委譲+per-callsite mock.calls厳密+hostile encode+dot-segment fail-fast。API URLはencodeURIComponent('.')no-op正規化をlocal helperで遮断。)
 - CandidateLesson: projects/careviax/lessons/role-agnostic-load-balancing (LOOP_POLICY §23; maker/checkロール非依存・相互チェックのみ不変・2軸負荷均等化。codex=supervisor pattern採用でドレインラグ低減。href収束で gap 22:11→22:14。)
@@ -1142,3 +1143,38 @@ User-directed program after the org-header sweep. Method: ultracode 51-screen re
   `ba3b9689` (`fix(shifts): apply templates with UTC date sentinels`).
 - Next action: notify via agmsg if available, then continue the next
   highest-value ULTRACODE/refactor item.
+
+### Resume point - 2026-07-02 14:31 JST
+
+- Active broad ULTRACODE/refactor objective remains open. Latest validated
+  slice:
+  `RR-BUG-20260702-F09-medication-profile-unresolved-code-name-fallback`.
+- Changed owned runtime files:
+  `src/server/services/prescription-intake-service.ts` and
+  `src/server/services/prescription-intake-service.test.ts`.
+- Fixed medication-profile unresolved-code continuity:
+  incoming prescription lines with a normalized code but no DrugMaster
+  resolution now also emit a `name:` fallback key, so same-name unresolved
+  current profiles are updated instead of discontinued and recreated. Resolved
+  DrugMaster lines remain code/master-first and do not match by name.
+- Validation passed:
+  focused F09 regression `1` file / `1` selected test, focused
+  prescription-intake route backstop `1` file / `1` selected test, full
+  prescription-intake service suite `1` file / `35` tests, related
+  prescription-intake/CDS API bundle `4` files / `119` tests, scoped
+  ESLint/Prettier/diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`,
+  `pnpm lint`, and `pnpm build`.
+- Validation caveat:
+  `pnpm format:check` failed only on unrelated existing dirty
+  `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`; scoped Prettier
+  for touched files passed.
+- Review:
+  Codex test architect and medical-safety reviewer reported no blockers; the
+  recommended no-fake-`drug_master_id` assertion was added.
+- gbrain writeback slug:
+  `projects/careviax/failures/2026-07-02/medication-profile-unresolved-code-dead-key`.
+- Commit:
+  `0a070fbc` (`fix(prescriptions): preserve unresolved medication profile
+continuity`).
+- Next action: commit the F09 ledgers with explicit paths, notify via agmsg if
+  available, then continue the next highest-value ULTRACODE/refactor item.
