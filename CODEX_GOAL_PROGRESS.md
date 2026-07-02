@@ -42,6 +42,56 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### FEUX-2/F32 Admin Capacity StatCard + SetPlan Scope - 2026-07-02 18:07 JST
+
+- Scope:
+  - Continued FEUX-2 by migrating `/admin/capacity` KPI cards from a local
+    `KpiCard` implementation to shared `StatCard`.
+  - Fixed the same screen's capacity API input bug: `dispense_set` no longer
+    reads all historical `SetPlan` rows for a today's-capacity KPI.
+  - Commit: `65a4c795` (`fix(admin): scope capacity KPI set plans`).
+  - gbrain writeback:
+    `projects/careviax/decisions/2026-07-02/capacity-statcard-setplan-overlap`.
+- Fixed:
+  - `StatCard` gained narrow optional support for caller-owned label semantics,
+    value class, visible role labels, and finite-clamped progress bars.
+  - Capacity KPI labels remain `h2`, visible state labels remain text plus
+    `StatusDot`, and KPI values/progress bars stay neutral rather than
+    chart/state-colored.
+  - `/api/admin/capacity` now filters SetPlans to today's date-sentinel
+    overlap (`target_period_start < todayRange.lt` and
+    `target_period_end >= todayRange.gte`) and excludes cancelled cycles.
+  - `DispenseTask.updated_at` continues using the existing JST instant
+    `japanDayInstantRange(now)` because it is a real DateTime column.
+- Safety:
+  - Preserved `canAdmin`, org scoping, no-store response handling, response
+    shape, and `buildDispenseSetSummary` completion semantics.
+  - No schema, migration, index, DB write, billing transition, auth/RLS,
+    external send, production config, push/deploy, dependency, or destructive
+    operation changed.
+- Validation:
+  - Focused capacity bundle passed `4` files / `44` tests.
+  - Scoped Prettier, scoped ESLint, and scoped diff-check passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm build`: passed.
+  - Browser check passed for `/admin/capacity` at `375x812` and `1280x900`
+    with a fixed capacity payload: no horizontal overflow, KPI labels visible,
+    visible status labels present, neutral progress bars, no chart colors in
+    the KPI grid, and no console/page errors.
+- Review:
+  - Codex implementation-planner and data-integrity reviewers approved the
+    capacity-only split and constrained SetPlan handling to `todayUtcRange`.
+  - Codex frontend, API-contract, and strict reviewers found no blockers.
+- Remaining:
+  - Continue FEUX-2 in small screen groups for remaining
+    `MetricCard`/`KpiCard`/`SummaryCard` duplicates in billing, workflow,
+    admin analytics, admin metrics, performance, staff, business holidays, and
+    operations insights.
+  - FEUX-1b naked loading skeleton sweep remains after the FEUX-2 pass.
+
 ### FEUX-2 StatCard Summary First Slice - 2026-07-02 17:45 JST
 
 - Scope:

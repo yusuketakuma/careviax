@@ -4,7 +4,54 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
-## Current Codex Resume Note - 2026-07-02 17:45 JST
+## Current Codex Resume Note - 2026-07-02 18:07 JST
+
+- Active mode for this slice: Codex execution with agmsg context, Codex
+  subagent planning/review, real validation, browser metrics, gbrain writeback,
+  and explicit-path commits. Preserve unrelated dirty files; do not
+  push/deploy/migrate or destructively mutate data.
+- Latest completed product slice:
+  `FEUX-2-F32-admin-capacity-statcard-setplan-scope`.
+- Product commit:
+  `65a4c795` (`fix(admin): scope capacity KPI set plans`).
+- Files changed:
+  - `src/components/ui/stat-card.tsx`
+  - `src/components/ui/stat-card.test.tsx`
+  - `src/app/(dashboard)/admin/capacity/capacity-content.tsx`
+  - `src/app/api/admin/capacity/route.ts`
+  - `src/app/api/admin/capacity/route.test.ts`
+  - `src/lib/analytics/capacity.ts`
+  - progress-ledger updates in `CODEX_GOAL_PROGRESS.md`,
+    `.codex/ralph-state.md`, and this file
+- Fixed:
+  - `admin/capacity` KPI cards now use shared `StatCard` while preserving h2
+    labels, visible capacity threshold labels, neutral KPI values/progress
+    bars, loading/error/true-empty states, and KPI source order.
+  - `StatCard` now has narrow optional props for caller-owned label element,
+    value classes, visible status labels, and finite-clamped progress bars.
+  - `/api/admin/capacity` now reads only SetPlans whose UTC-midnight date-key
+    target period overlaps today's Japan business date sentinel range, and
+    excludes cancelled cycles.
+- Validation:
+  - Focused capacity bundle passed `4` files / `44` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, and `pnpm build` passed.
+  - Browser metrics for `/admin/capacity` at `375x812` and `1280x900` passed:
+    no horizontal overflow, KPI h2 labels visible, visible threshold labels,
+    neutral progress bars, no chart colors in KPI grid, and no console/page
+    errors.
+- Review:
+  - Codex implementation-planner and data-integrity reviewers approved the
+    capacity-only split, `todayUtcRange` SetPlan overlap, and cancelled-only
+    cycle exclusion.
+  - Codex frontend, API-contract, and strict reviewers found no blockers.
+- gbrain writeback slug:
+  `projects/careviax/decisions/2026-07-02/capacity-statcard-setplan-overlap`.
+- Next action: commit this ledger slice with explicit paths, notify via agmsg,
+  then continue FEUX-2 on the next small screen group.
+
+## Previous Codex Resume Note - 2026-07-02 17:45 JST
 
 - Active mode for this slice: Codex execution with agmsg context, Codex
   subagent planning/review, real validation, browser metrics, and explicit-path
