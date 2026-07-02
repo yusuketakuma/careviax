@@ -64,13 +64,14 @@ import type {
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 import {
   InlineFilterButton,
-  MyDayEmptyAction,
   MyDayNextStepPanel,
-  MyDaySectionError,
-  QuickStat,
   SectionSkeleton,
   UnpreparedVisitLink,
 } from './my-day-sections';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
+import { Skeleton } from '@/components/ui/loading';
+import { StatCard } from '@/components/ui/stat-card';
 
 type Task = {
   id: string;
@@ -85,12 +86,12 @@ type Task = {
 };
 
 // QueuePriority 写像(PRIORITY_ROLE 準拠): urgent(緊急+至急統合)=blocked, high=confirm, normal=info, low=readonly。
-const PRIORITY_STYLES: Record<string, string> = {
-  urgent: 'bg-state-blocked/10 text-state-blocked',
-  high: 'bg-state-confirm/10 text-state-confirm',
-  normal: 'bg-tag-info/10 text-tag-info',
-  low: 'bg-state-readonly/10 text-state-readonly',
-};
+const QUEUE_PRIORITY_ROLE = {
+  urgent: 'blocked',
+  high: 'confirm',
+  normal: 'info',
+  low: 'readonly',
+} as const;
 
 function toQueuePriority(priority: string): QueuePriority {
   if (priority === 'emergency' || priority === 'urgent') return 'urgent';
@@ -368,26 +369,62 @@ export function MyDayContent({
       >
         <MyDayNextStepPanel {...nextStep} />
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <QuickStat
+          <StatCard
             label="訪問"
-            value={todayVisits.length}
-            loading={visitsQuery.isLoading || visitsQuery.isError || isUserPending}
+            className="min-w-0"
+            value={
+              visitsQuery.isError ? (
+                '—'
+              ) : visitsQuery.isLoading || isUserPending ? (
+                <Skeleton className="h-7 w-10" />
+              ) : (
+                todayVisits.length
+              )
+            }
           />
-          <QuickStat
+          <StatCard
             label="タスク"
-            value={pendingTasks.length}
-            loading={tasksQuery.isLoading || tasksQuery.isError || isUserPending}
+            className="min-w-0"
+            value={
+              tasksQuery.isError ? (
+                '—'
+              ) : tasksQuery.isLoading || isUserPending ? (
+                <Skeleton className="h-7 w-10" />
+              ) : (
+                pendingTasks.length
+              )
+            }
           />
-          <QuickStat
+          <StatCard
             label="パイプライン"
-            value={totalPipeline}
-            loading={actionsQuery.isLoading || actionsQuery.isError}
+            className="min-w-0"
+            value={
+              actionsQuery.isError ? (
+                '—'
+              ) : actionsQuery.isLoading ? (
+                <Skeleton className="h-7 w-10" />
+              ) : (
+                totalPipeline
+              )
+            }
           />
-          <QuickStat
+          <StatCard
             label="緊急"
-            value={urgentActions.length}
-            loading={actionsQuery.isLoading || actionsQuery.isError}
-            urgent={urgentActions.length > 0}
+            className="min-w-0"
+            role={
+              !actionsQuery.isError && !actionsQuery.isLoading && urgentActions.length > 0
+                ? 'blocked'
+                : undefined
+            }
+            value={
+              actionsQuery.isError ? (
+                '—'
+              ) : actionsQuery.isLoading ? (
+                <Skeleton className="h-7 w-10" />
+              ) : (
+                urgentActions.length
+              )
+            }
           />
         </div>
       </PageSection>
@@ -401,11 +438,19 @@ export function MyDayContent({
             contentClassName="space-y-3"
           >
             {actionsQuery.isError ? (
-              <MyDaySectionError
+              <ErrorState
+                variant="server"
+                live="assertive"
+                headingLevel={3}
                 title="優先アクションを取得できません"
-                description="緊急対応とパイプラインの取得に失敗しました。空状態ではない可能性があるため、ワークフロー画面で確認してください。"
-                href="/workflow"
-                label="ワークフローを確認"
+                cause="緊急対応とパイプラインの取得に失敗しました。"
+                nextAction="空状態ではない可能性があります。再試行するか、ワークフロー画面で確認してください。"
+                onRetry={() => void actionsQuery.refetch()}
+                secondaryAction={{
+                  label: 'ワークフローを確認',
+                  href: '/workflow',
+                  variant: 'outline',
+                }}
               />
             ) : urgentActions.length > 0 ? (
               <Card className="border-state-blocked/30 bg-state-blocked/5">
@@ -429,9 +474,9 @@ export function MyDayContent({
                           {item.queue_label}
                         </p>
                       </div>
-                      <Badge variant="outline" className={PRIORITY_STYLES[item.priority] ?? ''}>
+                      <StateBadge role={QUEUE_PRIORITY_ROLE[item.priority] ?? 'confirm'}>
                         {item.priority === 'urgent' ? '緊急' : '高'}
-                      </Badge>
+                      </StateBadge>
                     </Link>
                   ))}
                 </CardContent>
@@ -502,23 +547,31 @@ export function MyDayContent({
                   </button>
                 </div>
                 {visitsQuery.isError ? (
-                  <MyDaySectionError
+                  <ErrorState
+                    variant="server"
+                    live="assertive"
+                    headingLevel={3}
                     title="本日の訪問を取得できません"
-                    description="担当訪問の取得に失敗しました。訪問なしとは判断せず、スケジュール画面で担当予定を確認してください。"
-                    href="/schedules"
-                    label="スケジュールを確認"
+                    cause="担当訪問の取得に失敗しました。"
+                    nextAction="訪問なしとは判断せず、再試行するかスケジュール画面で担当予定を確認してください。"
+                    onRetry={() => void visitsQuery.refetch()}
+                    secondaryAction={{
+                      label: 'スケジュールを確認',
+                      href: '/schedules',
+                      variant: 'outline',
+                    }}
                   />
                 ) : isUserPending || visitsQuery.isLoading ? (
                   <SectionSkeleton />
                 ) : filteredVisits.length === 0 ? (
-                  <MyDayEmptyAction
-                    message={
+                  <EmptyState
+                    headingLevel={3}
+                    title={
                       initialVisitFilter === 'all'
                         ? '本日の訪問はありません'
                         : 'この条件に一致する本日の訪問はありません'
                     }
-                    href="/schedules"
-                    label="スケジュールを確認"
+                    action={{ label: 'スケジュールを確認', href: '/schedules' }}
                   />
                 ) : (
                   filteredVisits.map((visit) => {
@@ -566,11 +619,19 @@ export function MyDayContent({
             contentClassName="space-y-3"
           >
             {actionsQuery.isError ? (
-              <MyDaySectionError
+              <ErrorState
+                variant="server"
+                live="assertive"
+                headingLevel={3}
                 title="パイプラインを取得できません"
-                description="未解決の業務件数を取得できませんでした。空状態ではない可能性があるため、ワークフロー画面で確認してください。"
-                href="/workflow"
-                label="ワークフローを確認"
+                cause="未解決の業務件数を取得できませんでした。"
+                nextAction="空状態ではない可能性があります。再試行するか、ワークフロー画面で確認してください。"
+                onRetry={() => void actionsQuery.refetch()}
+                secondaryAction={{
+                  label: 'ワークフローを確認',
+                  href: '/workflow',
+                  variant: 'outline',
+                }}
               />
             ) : pipeline.length > 0 ? (
               <Card>
@@ -659,23 +720,31 @@ export function MyDayContent({
                   </button>
                 </div>
                 {tasksQuery.isError ? (
-                  <MyDaySectionError
+                  <ErrorState
+                    variant="server"
+                    live="assertive"
+                    headingLevel={3}
                     title="未完了タスクを取得できません"
-                    description="担当タスクの取得に失敗しました。タスクなしとは判断せず、タスク一覧で確認してください。"
-                    href="/tasks"
-                    label="タスク一覧を確認"
+                    cause="担当タスクの取得に失敗しました。"
+                    nextAction="タスクなしとは判断せず、再試行するかタスク一覧で確認してください。"
+                    onRetry={() => void tasksQuery.refetch()}
+                    secondaryAction={{
+                      label: 'タスク一覧を確認',
+                      href: '/tasks',
+                      variant: 'outline',
+                    }}
                   />
                 ) : isUserPending || tasksQuery.isLoading ? (
                   <SectionSkeleton />
                 ) : filteredPendingTasks.length === 0 ? (
-                  <MyDayEmptyAction
-                    message={
+                  <EmptyState
+                    headingLevel={3}
+                    title={
                       initialTaskFilter === 'all'
                         ? '未完了のタスクはありません'
                         : 'この条件に一致する未完了タスクはありません'
                     }
-                    href="/tasks"
-                    label="タスク一覧を確認"
+                    action={{ label: 'タスク一覧を確認', href: '/tasks' }}
                   />
                 ) : (
                   filteredPendingTasks.slice(0, 8).map((task) => {
@@ -694,12 +763,12 @@ export function MyDayContent({
                         </div>
                         <div className="ml-2 flex shrink-0 items-center gap-1">
                           {(task.priority === 'urgent' || task.priority === 'high') && (
-                            <Badge
-                              variant="outline"
-                              className={`text-xs ${PRIORITY_STYLES[task.priority] ?? ''}`}
+                            <StateBadge
+                              className="text-xs"
+                              role={QUEUE_PRIORITY_ROLE[task.priority] ?? 'confirm'}
                             >
                               {task.priority === 'urgent' ? '緊急' : '高'}
-                            </Badge>
+                            </StateBadge>
                           )}
                           <ArrowRight
                             className="size-3.5 text-muted-foreground"
@@ -724,11 +793,15 @@ export function MyDayContent({
             tone="subtle"
           >
             {canViewStatusChanges && statusChangesQuery.isError ? (
-              <MyDaySectionError
+              <ErrorState
+                variant="server"
+                live="assertive"
+                headingLevel={3}
                 title="ステータス変更を取得できません"
-                description="患者ステータスの変更履歴を取得できませんでした。必要に応じて患者一覧または監査ログで確認してください。"
-                href="/patients"
-                label="患者一覧を確認"
+                cause="患者ステータスの変更履歴を取得できませんでした。"
+                nextAction="再試行するか、必要に応じて患者一覧または監査ログで確認してください。"
+                onRetry={() => void statusChangesQuery.refetch()}
+                secondaryAction={{ label: '患者一覧を確認', href: '/patients', variant: 'outline' }}
               />
             ) : canViewStatusChanges && statusChanges.length > 0 ? (
               <Card>

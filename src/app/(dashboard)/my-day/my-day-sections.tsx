@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { AlertTriangle, ArrowRight, ClipboardList } from 'lucide-react';
+import { ArrowRight, ClipboardList } from 'lucide-react';
 import { Skeleton } from '@/components/ui/loading';
 
 export function SectionSkeleton() {
@@ -26,29 +26,6 @@ export function InlineFilterButton({ active, label }: { active: boolean; label: 
     >
       {label}
     </span>
-  );
-}
-
-export function QuickStat({
-  label,
-  value,
-  loading,
-  urgent,
-}: {
-  label: string;
-  value: number;
-  loading: boolean;
-  urgent?: boolean;
-}) {
-  return (
-    <div
-      className={`flex min-h-[72px] flex-col justify-center rounded-lg border p-2.5 text-center ${urgent ? 'border-state-blocked/30 bg-state-blocked/5' : ''}`}
-    >
-      <p className={`text-xl font-bold ${urgent ? 'text-state-blocked' : 'text-foreground'}`}>
-        {loading ? '...' : value}
-      </p>
-      <p className="text-xs text-muted-foreground">{label}</p>
-    </div>
   );
 }
 
@@ -88,63 +65,6 @@ export function MyDayNextStepPanel({
           {ctaLabel}
           <ArrowRight className="size-4" aria-hidden="true" />
         </Link>
-      </div>
-    </div>
-  );
-}
-
-export function MyDayEmptyAction({
-  message,
-  href,
-  label,
-}: {
-  message: string;
-  href: string;
-  label: string;
-}) {
-  return (
-    <div className="space-y-2 rounded-lg border border-dashed p-3 text-center">
-      <p className="text-sm text-muted-foreground">{message}</p>
-      <Link
-        href={href}
-        className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors hover:bg-muted/50"
-      >
-        {label}
-        <ArrowRight className="size-4" aria-hidden="true" />
-      </Link>
-    </div>
-  );
-}
-
-export function MyDaySectionError({
-  title,
-  description,
-  href,
-  label,
-}: {
-  title: string;
-  description: string;
-  href: string;
-  label: string;
-}) {
-  return (
-    <div
-      role="alert"
-      className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-destructive"
-    >
-      <div className="flex gap-2">
-        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
-        <div className="min-w-0">
-          <p className="text-sm font-semibold">{title}</p>
-          <p className="mt-1 text-xs leading-5 text-destructive">{description}</p>
-          <Link
-            href={href}
-            className="mt-3 inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg bg-background px-3 py-2 text-sm font-medium text-foreground ring-1 ring-destructive/30 transition-colors hover:bg-destructive/15"
-          >
-            {label}
-            <ArrowRight className="size-4" aria-hidden="true" />
-          </Link>
-        </div>
       </div>
     </div>
   );
