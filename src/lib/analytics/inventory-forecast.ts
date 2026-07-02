@@ -48,6 +48,12 @@ export type ForecastIntakeInput = {
   lines: ForecastLineInput[];
 };
 
+export type ForecastIntakeIdentityInput = {
+  patientId: string;
+  prescribedDate: Date;
+  createdAt: Date;
+};
+
 export type ForecastVisitInput = {
   patientId: string;
   patientName: string;
@@ -364,10 +370,10 @@ export function estimateDailyDose(line: ForecastLineInput): number {
 }
 
 /** 患者ごとに最新(処方日 → 取込日時の降順)の処方取込 1 件を選ぶ。 */
-export function selectLatestIntakeByPatient(
-  intakes: ForecastIntakeInput[],
-): Map<string, ForecastIntakeInput> {
-  const latestByPatient = new Map<string, ForecastIntakeInput>();
+export function selectLatestIntakeByPatient<T extends ForecastIntakeIdentityInput>(
+  intakes: T[],
+): Map<string, T> {
+  const latestByPatient = new Map<string, T>();
   for (const intake of intakes) {
     const current = latestByPatient.get(intake.patientId);
     if (

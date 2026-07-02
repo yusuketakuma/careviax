@@ -58,6 +58,47 @@ function expectSensitiveNoStore(response: Response) {
   expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
+type IntakeMockRow = {
+  id?: string;
+  prescribed_date: Date;
+  created_at: Date;
+  cycle: { patient_id: string };
+  lines: Array<Record<string, unknown>>;
+};
+
+function mockPrescriptionIntakes(rows: IntakeMockRow[]) {
+  const rowsWithIds = rows.map((row, index) => ({
+    ...row,
+    id: row.id ?? `intake_${index + 1}`,
+  }));
+  const latestByPatient = new Map<string, (typeof rowsWithIds)[number]>();
+  for (const row of rowsWithIds) {
+    const current = latestByPatient.get(row.cycle.patient_id);
+    if (
+      !current ||
+      row.prescribed_date.getTime() > current.prescribed_date.getTime() ||
+      (row.prescribed_date.getTime() === current.prescribed_date.getTime() &&
+        row.created_at.getTime() > current.created_at.getTime())
+    ) {
+      latestByPatient.set(row.cycle.patient_id, row);
+    }
+  }
+  const latestIds = new Set([...latestByPatient.values()].map((row) => row.id));
+
+  intakeFindManyMock
+    .mockResolvedValueOnce(
+      rowsWithIds.map((row) => ({
+        id: row.id,
+        prescribed_date: row.prescribed_date,
+        created_at: row.created_at,
+        cycle: row.cycle,
+      })),
+    )
+    .mockResolvedValueOnce(rowsWithIds.filter((row) => latestIds.has(row.id)));
+
+  return rowsWithIds;
+}
+
 describe('/api/admin/inventory-forecast', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -85,7 +126,7 @@ describe('/api/admin/inventory-forecast', () => {
       }),
     ]);
     facilityFindManyMock.mockResolvedValue([{ id: 'fac_a', name: '施設A' }]);
-    intakeFindManyMock.mockResolvedValue([
+    mockPrescriptionIntakes([
       {
         prescribed_date: new Date('2026-06-08T00:00:00.000Z'),
         created_at: new Date('2026-06-08T10:00:00.000Z'),
@@ -266,12 +307,31 @@ describe('/api/admin/inventory-forecast', () => {
         }),
       }),
     );
-    // 訪問予定患者のケースに絞って処方を照会していること
-    expect(intakeFindManyMock).toHaveBeenCalledWith(
+    // 訪問予定患者のケースに絞って、まず明細なしの軽い候補だけを照会していること
+    expect(intakeFindManyMock).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
         where: expect.objectContaining({
           org_id: 'org_1',
           cycle: { case_id: { in: ['case_tanaka', 'case_res1'] } },
+        }),
+        orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
+        select: expect.objectContaining({
+          id: true,
+          prescribed_date: true,
+          created_at: true,
+          cycle: { select: { patient_id: true } },
+        }),
+      }),
+    );
+    expect(intakeFindManyMock.mock.calls[0]?.[0]?.select).not.toHaveProperty('lines');
+    // 最新候補IDだけに絞って、重い処方明細を取得していること
+    expect(intakeFindManyMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          id: { in: ['intake_1', 'intake_2'] },
         }),
         select: expect.objectContaining({
           lines: {
@@ -315,6 +375,106 @@ describe('/api/admin/inventory-forecast', () => {
     );
   });
 
+  it('loads prescription lines only for the latest intake candidate per patient', async () => {
+    visitScheduleFindManyMock.mockResolvedValue([
+      visitRow({
+        case_id: 'case_perf',
+        case_: { patient: { id: 'pt_perf', name: '性能 患者' } },
+      }),
+    ]);
+    facilityFindManyMock.mockResolvedValue([]);
+    mockPrescriptionIntakes([
+      {
+        id: 'intake_old',
+        prescribed_date: new Date('2026-06-01T00:00:00.000Z'),
+        created_at: new Date('2026-06-01T10:00:00.000Z'),
+        cycle: { patient_id: 'pt_perf' },
+        lines: [
+          {
+            drug_name: '古い履歴薬',
+            drug_code: 'YJ_OLD',
+            dose: '1錠',
+            frequency: '朝',
+            days: 28,
+            quantity: 28,
+            unit: '錠',
+            start_date: new Date('2026-06-01T00:00:00.000Z'),
+            end_date: null,
+          },
+        ],
+      },
+      {
+        id: 'intake_new',
+        prescribed_date: new Date('2026-06-08T00:00:00.000Z'),
+        created_at: new Date('2026-06-08T10:00:00.000Z'),
+        cycle: { patient_id: 'pt_perf' },
+        lines: [
+          {
+            drug_name: '最新履歴薬',
+            drug_code: 'YJ_NEW',
+            dose: '1錠',
+            frequency: '朝',
+            days: 28,
+            quantity: 28,
+            unit: '錠',
+            start_date: new Date('2026-06-08T00:00:00.000Z'),
+            end_date: null,
+          },
+        ],
+      },
+    ]);
+    drugMasterFindManyMock.mockResolvedValue([
+      { id: 'drug_new', yj_code: 'YJ_NEW', receipt_code: null, hot_code: null },
+    ]);
+    drugStockFindManyMock.mockResolvedValue([]);
+
+    const response = (await routeGET(
+      new NextRequest('http://localhost/api/admin/inventory-forecast'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        drugs: [
+          expect.objectContaining({
+            drugIdentityKey: 'master:drug_new',
+            drugCode: 'YJ_NEW',
+          }),
+        ],
+        unresolvedDrugs: [],
+      },
+    });
+    expect(intakeFindManyMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          id: { in: ['intake_new'] },
+        },
+        select: expect.objectContaining({
+          lines: expect.objectContaining({
+            select: expect.objectContaining({
+              drug_code: true,
+              start_date: true,
+              end_date: true,
+            }),
+          }),
+        }),
+      }),
+    );
+    expect(drugMasterFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { yj_code: { in: ['YJ_NEW'] } },
+            { receipt_code: { in: ['YJ_NEW'] } },
+            { hot_code: { in: ['YJ_NEW'] } },
+          ],
+        },
+      }),
+    );
+  });
+
   it('returns empty aggregates without querying intakes when no visits exist', async () => {
     visitScheduleFindManyMock.mockResolvedValue([]);
     drugStockFindManyMock.mockResolvedValue([]);
@@ -351,7 +511,7 @@ describe('/api/admin/inventory-forecast', () => {
       }),
     ]);
     facilityFindManyMock.mockResolvedValue([]);
-    intakeFindManyMock.mockResolvedValue([
+    mockPrescriptionIntakes([
       {
         prescribed_date: new Date('2026-06-08T00:00:00.000Z'),
         created_at: new Date('2026-06-08T10:00:00.000Z'),
@@ -469,7 +629,7 @@ describe('/api/admin/inventory-forecast', () => {
       }),
     ]);
     facilityFindManyMock.mockResolvedValue([]);
-    intakeFindManyMock.mockResolvedValue([
+    mockPrescriptionIntakes([
       {
         prescribed_date: new Date('2026-06-08T00:00:00.000Z'),
         created_at: new Date('2026-06-08T10:00:00.000Z'),
@@ -548,7 +708,7 @@ describe('/api/admin/inventory-forecast', () => {
       }),
     ]);
     facilityFindManyMock.mockResolvedValue([]);
-    intakeFindManyMock.mockResolvedValue([
+    mockPrescriptionIntakes([
       {
         prescribed_date: new Date('2026-06-08T00:00:00.000Z'),
         created_at: new Date('2026-06-08T10:00:00.000Z'),
@@ -614,7 +774,7 @@ describe('/api/admin/inventory-forecast', () => {
       }),
     ]);
     facilityFindManyMock.mockResolvedValue([]);
-    intakeFindManyMock.mockResolvedValue([
+    mockPrescriptionIntakes([
       {
         prescribed_date: new Date('2026-06-08T00:00:00.000Z'),
         created_at: new Date('2026-06-08T10:00:00.000Z'),

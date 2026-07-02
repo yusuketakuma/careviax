@@ -7,6 +7,7 @@ import {
   buildInventoryForecast,
   countFacilityPatients,
   nextWeekUtcRange,
+  selectLatestIntakeByPatient,
   type ForecastIntakeInput,
   type ForecastVisitInput,
   type DrugResolutionStatus,
@@ -106,14 +107,40 @@ const authenticatedGET = withAuthContext(
         : [],
     );
 
-    // 来週訪問患者の処方取込(最新 1 件の選定は純関数側で行う)
+    // 来週訪問患者の処方取込。履歴全件の明細を読まず、軽い候補から最新1件だけを明細取得する。
     const caseIds = [...new Set(visitRows.map((row) => row.case_id))];
-    const intakeRows =
+    const intakeCandidateRows =
       caseIds.length > 0
         ? await prisma.prescriptionIntake.findMany({
             where: {
               org_id: ctx.orgId,
               cycle: { case_id: { in: caseIds } },
+            },
+            orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
+            select: {
+              id: true,
+              prescribed_date: true,
+              created_at: true,
+              cycle: { select: { patient_id: true } },
+            },
+          })
+        : [];
+    const latestIntakeIds = [
+      ...selectLatestIntakeByPatient(
+        intakeCandidateRows.map((row) => ({
+          id: row.id,
+          patientId: row.cycle.patient_id,
+          prescribedDate: row.prescribed_date,
+          createdAt: row.created_at,
+        })),
+      ).values(),
+    ].map((row) => row.id);
+    const intakeRows =
+      latestIntakeIds.length > 0
+        ? await prisma.prescriptionIntake.findMany({
+            where: {
+              org_id: ctx.orgId,
+              id: { in: latestIntakeIds },
             },
             select: {
               prescribed_date: true,
