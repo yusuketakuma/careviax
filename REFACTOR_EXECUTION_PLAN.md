@@ -44,6 +44,11 @@ If any of those are needed, create a proposal first. Do not implement silently.
   - build
   - E2E / audit E2E
 - Recent validated progress includes:
+  - offline lifecycle CE14/N25: `visit_record` sync queue dedupe by
+    `schedule_id`, residual medication append-only preservation,
+    server-conflict preservation, org-scoped evidence draft list/sync/retry
+    reset, capture org fail-closed behavior, gallery retry reset/two-drain and
+    server refetch coverage, and generic sync error persistence/logging
   - document-delivery-rule helper/no-store hardening
   - unused admin `MasterEditorView` stub removal
   - `/admin/metrics` placeholder zero removal

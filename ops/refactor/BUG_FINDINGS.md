@@ -4,6 +4,67 @@ Snapshot: 2026-07-02 04:50 JST
 
 ## Confirmed And Fixed In Recent Slices
 
+### `BUG-OFFLINE-EVIDENCE-RETRY-ORG-SCOPE-001`: Evidence retry reset and gallery retry needed tenant scope and fresh drain
+
+- Severity: high tenant/privacy and visit evidence completeness.
+- Evidence:
+  - `src/lib/offline/evidence-drafts.ts`
+  - `src/lib/offline/evidence-drafts.test.ts`
+  - `src/app/(dashboard)/visits/evidence/evidence-gallery-content.tsx`
+  - `src/app/(dashboard)/visits/evidence/evidence-gallery-content.test.tsx`
+  - `src/app/(dashboard)/visits/[id]/capture/capture-content.tsx`
+  - `src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx`
+- Problem:
+  - Retry-exhausted evidence drafts had no manual reset path and evidence
+    list/sync/reset needed explicit org scoping.
+  - Manual gallery retry also needed to refetch server gallery data and avoid
+    returning an already active sync run that snapshotted rows before reset.
+- Impact:
+  - Evidence photos could remain stuck, hidden behind false-empty gallery state,
+    or become eligible for wrong-org handling if unscoped rows were ever reused.
+- Fix:
+  - New evidence drafts store `orgId`; list/schedule-list/sync/reset require
+    exact org match and legacy org-missing drafts fail closed.
+  - Capture refuses to save without org identity.
+  - Gallery retry performs org-scoped reset, sync drain, second drain after
+    reset, offline refetch, and server gallery refetch with count-only status.
+- Validation:
+  - Focused offline/evidence/sync bundle passed `5` files / `65` tests.
+  - Scoped ESLint, Prettier, diff-check, full typecheck, no-unused, lint, and
+    build passed.
+  - `pnpm format:check` failed only on unrelated existing dirty
+    `.agent-loop/FEATURE_QUEUE.md`; touched files passed scoped Prettier.
+  - Codex privacy and medical-safety reviewers found no blockers.
+
+### `BUG-OFFLINE-SYNC-VISIT-QUEUE-DEDUP-001`: Visit-record offline queue appended same-schedule drafts
+
+- Severity: medium-high offline reliability / data-integrity.
+- Evidence:
+  - `src/lib/stores/sync-engine.ts`
+  - `src/lib/stores/sync-engine.test.ts`
+  - `src/lib/stores/offline-db.ts`
+- Problem:
+  - `enqueueForSync('visit_record', ...)` always appended a new queue row even
+    for the same `schedule_id`.
+  - A dedupe fix also had to avoid collapsing residual-medication observations
+    and avoid overwriting `server_conflict` snapshots.
+- Impact:
+  - Same-schedule offline draft churn could replay stale payloads or create
+    avoidable duplicate sync work, while over-broad dedupe could lose residual
+    medication observations or conflict evidence.
+- Fix:
+  - Dedupe only `visit_record + schedule_id` rows inside a transaction.
+  - Update the newest same-scope non-conflict row, delete older non-conflict
+    duplicates, preserve `server_conflict` rows, and keep residual medication
+    append-only even with `patient_id`.
+  - Deterministic newest selection uses `createdAt` and `id` tie-breaker.
+- Validation:
+  - Sync-engine focused suite passed `1` file / `23` tests, including conflict
+    preservation, residual append-only, no-scope append-only, encrypted payload,
+    transaction, and same-timestamp tie-breaker coverage.
+  - Full focused offline/evidence/sync bundle and broad type/lint/build gates
+    passed as above.
+
 ### `BUG-PATIENT-SAFETY-BANNER-SILENT-LOSS-001`: Safety-check header hid patient safety fetch failure
 
 - Severity: high medical safety / allergy and high-risk banner loss.

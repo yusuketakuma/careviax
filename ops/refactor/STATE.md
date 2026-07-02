@@ -1,6 +1,6 @@
 # Refactor State
 
-Snapshot: 2026-07-02 15:12 JST
+Snapshot: 2026-07-02 16:34 JST
 
 ## Phase
 
@@ -13,27 +13,45 @@ Snapshot: 2026-07-02 15:12 JST
 
 ## Last Change ID
 
-- `RR-BUG-20260702-F20-community-activities-date-range-validation`
+- `RR-OFFLINE-EPIC-CE14-N25-sync-queue-evidence-retry`
 
 ## Build State
 
 - Last full production build evidence:
-  `pnpm build` passed after the community-activities F20 date-range validation
-  and validation-followup fixture drift repairs.
+  `pnpm build` passed after the offline lifecycle CE14/N25 sync queue and
+  evidence retry slice.
 - Last full cheap gate bundle evidence:
-  - `pnpm test -- --reporter=dot --testTimeout=60000`: passed `1265` files /
-    `12583` tests with existing skips.
+  - Focused offline/evidence/sync bundle passed `5` files / `65` tests.
   - `pnpm typecheck`: passed.
   - `pnpm typecheck:no-unused`: passed.
   - `pnpm lint`: passed.
-  - `pnpm format:check`: passed.
-  - `pnpm date-slices:check`: passed.
+  - `pnpm format:check`: failed only on unrelated existing dirty
+    `.agent-loop/FEATURE_QUEUE.md`; touched files passed scoped Prettier.
   - `pnpm build`: passed.
 
 ## Current Worktree
 
 - The worktree is intentionally dirty from verified small slices. Preserve all
   existing dirty files unless explicitly owning a new slice.
+- Latest offline lifecycle slice changed:
+  `src/lib/stores/offline-db.ts`, `src/lib/stores/sync-engine.ts`,
+  `src/lib/stores/sync-engine.test.ts`,
+  `src/lib/offline/evidence-drafts.ts`,
+  `src/lib/offline/evidence-drafts.test.ts`,
+  `src/app/(dashboard)/visits/evidence/evidence-gallery-content.tsx`,
+  `src/app/(dashboard)/visits/evidence/evidence-gallery-content.test.tsx`,
+  `src/app/(dashboard)/visits/[id]/capture/capture-content.tsx`,
+  `src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx`,
+  `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, and
+  `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`. It
+  dedupes `visit_record` sync queue rows by schedule while preserving
+  `server_conflict`, keeps residual medication append-only, org-scopes evidence
+  draft list/sync/reset, fails closed on org-missing capture, adds gallery
+  retry reset/two-drain/server-refetch behavior, and keeps sync error
+  persistence generic. Focused tests, typecheck, no-unused, lint, and build
+  passed; full format check is blocked only by unrelated
+  `.agent-loop/FEATURE_QUEUE.md`. gbrain memory:
+  `projects/careviax/decisions/2026-07-02/offline-lifecycle-sync-queue-evidence-retry`.
 - Latest backend/API validation slice changed:
   `src/app/api/community-activities/route.ts`,
   `src/app/api/community-activities/route.test.ts`,

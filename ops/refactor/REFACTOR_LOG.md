@@ -1,11 +1,60 @@
 # Refactor Log
 
-Snapshot: 2026-07-02 15:12 JST
+Snapshot: 2026-07-02 16:34 JST
 
 This log is the compact resume log for `ops/refactor`. Detailed per-slice
 evidence also exists in root `REFACTOR_REPORT.md`,
 `REFACTOR_EXECUTION_PLAN.md`, `CODEX_GOAL_PROGRESS.md`, and
 `.codex/ralph-state.md`.
+
+## 2026-07-02 16:34 JST - Offline Lifecycle Sync Queue And Evidence Retry
+
+- Change ID: `RR-OFFLINE-EPIC-CE14-N25-sync-queue-evidence-retry`.
+- Category: bug fix / offline sync reliability / tenant-scoped evidence retry /
+  medical-safety regression coverage.
+- Files changed:
+  - `src/lib/stores/offline-db.ts`
+  - `src/lib/stores/sync-engine.ts`
+  - `src/lib/stores/sync-engine.test.ts`
+  - `src/lib/offline/evidence-drafts.ts`
+  - `src/lib/offline/evidence-drafts.test.ts`
+  - `src/app/(dashboard)/visits/evidence/evidence-gallery-content.tsx`
+  - `src/app/(dashboard)/visits/evidence/evidence-gallery-content.test.tsx`
+  - `src/app/(dashboard)/visits/[id]/capture/capture-content.tsx`
+  - `src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx`
+  - `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`
+  - `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`
+- Summary:
+  - Deduped `visit_record` queue rows by `schedule_id` while preserving
+    `server_conflict` rows.
+  - Kept residual medication enqueue append-only even with `patient_id`.
+  - Stored `orgId` on new evidence drafts and required exact org match for
+    summary list, schedule list, sync, and retry reset.
+  - Treated legacy evidence drafts without `orgId` as fail-closed.
+  - Added gallery retry reset/sync/two-drain/server-refetch behavior and
+    count-only status messages.
+  - Added direct tests for capture org fail-closed behavior, gallery org query
+    keys/enabled flags, server refetch after retry, and same-timestamp queue
+    tie-breaker.
+- Safety:
+  - Reduces wrong-tenant offline evidence display/sync risk and prevents
+    same-patient residual observations from being collapsed.
+  - No auth, RLS, DB schema, migration, external send, billing, production
+    config, dependency, push/deploy, or destructive-operation behavior changed.
+- Performance:
+  - No performance optimization is claimed. Org filtering intentionally reuses
+    existing Dexie indexes plus predicates to avoid migration scope.
+- Validation:
+  - Focused offline/evidence/sync bundle passed `5` files / `65` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and
+    `pnpm build` passed.
+  - `pnpm format:check` failed only on unrelated existing dirty
+    `.agent-loop/FEATURE_QUEUE.md`; touched files passed scoped Prettier.
+  - Codex privacy and medical-safety reviewers found no blockers; Codex
+    test-architect blockers were addressed.
+  - gbrain write/readback:
+    `projects/careviax/decisions/2026-07-02/offline-lifecycle-sync-queue-evidence-retry`.
 
 ## 2026-07-02 15:12 JST - Community Activities Date Range Validation
 

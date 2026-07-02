@@ -4,6 +4,58 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
+## Current Codex Resume Note - 2026-07-02 16:34 JST
+
+- Active mode for this slice: Codex execution with agmsg context, Codex
+  subagent safety/privacy/test review, and real validation. Preserve unrelated
+  dirty files; do not push/deploy/migrate/destructively mutate data.
+- Latest completed slice:
+  `RR-OFFLINE-EPIC-CE14-N25-sync-queue-evidence-retry`.
+- Files changed:
+  - `src/lib/stores/offline-db.ts`
+  - `src/lib/stores/sync-engine.ts`
+  - `src/lib/stores/sync-engine.test.ts`
+  - `src/lib/offline/evidence-drafts.ts`
+  - `src/lib/offline/evidence-drafts.test.ts`
+  - `src/app/(dashboard)/visits/evidence/evidence-gallery-content.tsx`
+  - `src/app/(dashboard)/visits/evidence/evidence-gallery-content.test.tsx`
+  - `src/app/(dashboard)/visits/[id]/capture/capture-content.tsx`
+  - `src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx`
+  - `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`
+  - `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`
+  - progress-ledger working-tree updates in `ops/refactor/*`,
+    `CODEX_GOAL_PROGRESS.md`, `.codex/ralph-state.md`, and this file
+- Fixed:
+  - `visit_record` offline queue rows are deduped by schedule scope while
+    preserving `server_conflict` rows.
+  - `residual_medication` remains append-only even with `patient_id`.
+  - Evidence drafts now store `orgId`; list/schedule-list/sync/retry reset all
+    require exact org match and legacy org-missing rows fail closed.
+  - Capture refuses to save evidence drafts without org identity.
+  - Gallery retry performs org-scoped reset, sync drain, second drain after
+    reset, offline refetch, and server gallery refetch with count-only status.
+  - Unexpected sync queue errors are stored/logged as fixed generic text.
+- Validation:
+  - Focused offline/evidence/sync bundle passed `5` files / `65` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    and `pnpm build` passed.
+  - `pnpm format:check` failed only on unrelated existing dirty
+    `.agent-loop/FEATURE_QUEUE.md`; touched files passed scoped Prettier.
+  - Codex privacy and medical-safety reviewers found no blockers; Codex
+    test-architect blockers were addressed.
+  - gbrain memory ids:
+    `projects/careviax/decisions/2026-07-02/offline-lifecycle-sync-queue-evidence-retry`.
+- Remaining:
+  - Broad repo-wide objective remains open; no DB schema, migration, auth/RLS,
+    external-send, billing, push/deploy, dependency, or destructive-operation
+    behavior was changed.
+  - Residual debt: sync queue rows still rely on runtime org context at drain
+    time and plaintext `scope_id` metadata remains pre-existing IndexedDB debt.
+- Next action:
+  - Commit this validated slice with explicit owned paths, notify via agmsg,
+    then continue the next highest-value repo-quality finding.
+
 ## Current Codex Resume Note - 2026-07-02 15:12 JST
 
 - Active mode for this slice: Codex-only execution plus real validation.

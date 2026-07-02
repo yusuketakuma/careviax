@@ -16,6 +16,69 @@ validation output.
   - `REFACTOR_EXECUTION_PLAN.md`
   - `ops/refactor/*`
 
+## Slice: Offline Lifecycle Sync Queue And Evidence Retry
+
+- Timestamp: 2026-07-02 16:34 JST
+- Purpose:
+  - Make offline visit-record queue dedupe deterministic without losing
+    residual-medication observations or conflict snapshots.
+  - Make evidence draft retry reset/gallery retry tenant-scoped and recover
+    retry-exhausted drafts safely.
+- Changed files:
+  - `src/lib/stores/offline-db.ts`
+  - `src/lib/stores/sync-engine.ts`
+  - `src/lib/stores/sync-engine.test.ts`
+  - `src/lib/offline/evidence-drafts.ts`
+  - `src/lib/offline/evidence-drafts.test.ts`
+  - `src/app/(dashboard)/visits/evidence/evidence-gallery-content.tsx`
+  - `src/app/(dashboard)/visits/evidence/evidence-gallery-content.test.tsx`
+  - `src/app/(dashboard)/visits/[id]/capture/capture-content.tsx`
+  - `src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx`
+  - `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`
+  - `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`
+- Change reason:
+  - CE14 found same-schedule visit-record queue rows were append-only.
+  - N25 found retry-exhausted evidence drafts had no recovery path.
+  - Reviews found org-scoping, server refetch, active-run race, and tie-breaker
+    test gaps that needed direct coverage.
+- Commonized processing:
+  - Added small scope-resolution helpers for sync queue enqueue behavior.
+  - Added org-scoped evidence draft summary/sync/reset APIs and gallery retry
+    orchestration.
+- Safety:
+  - Evidence draft list/sync/reset now requires exact org match; legacy
+    org-missing drafts fail closed.
+  - Capture does not persist evidence drafts without org identity.
+  - Residual medication remains append-only and `server_conflict` rows are
+    preserved.
+  - Unexpected sync queue errors persist/log fixed generic text.
+  - No auth, RLS, DB schema/migration, external send, billing, production
+    config, secrets, deployment, dependency versions, or destructive operations
+    changed.
+- Performance:
+  - No performance optimization claimed. Org filtering reuses existing indexes
+    and predicates to avoid migration scope.
+- Validation:
+  - Focused offline/evidence/sync bundle passed `5` files / `65` tests.
+  - Scoped ESLint, Prettier, and diff-check for changed files passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm build`: passed.
+  - `pnpm format:check`: failed only on unrelated existing dirty
+    `.agent-loop/FEATURE_QUEUE.md`; touched files passed scoped Prettier.
+  - gbrain write/readback passed for
+    `projects/careviax/decisions/2026-07-02/offline-lifecycle-sync-queue-evidence-retry`.
+- Known risks:
+  - Browser smoke was not run because this slice is covered by jsdom/unit
+    regressions plus production build and changes no navigation route.
+  - Sync queue rows still rely on runtime org context at drain time rather than
+    row-level org metadata.
+- Untouched dangerous areas:
+  - DB schema/migrations/RLS, auth/authz logic, audit semantics, external send
+    semantics, billing, medication identity, production config, secrets,
+    deployment, dependency versions, and destructive operations.
+
 ## Slice: Rate Limit Safe Failure Log And Route Catalog Sync
 
 - Timestamp: 2026-07-02 05:52 JST

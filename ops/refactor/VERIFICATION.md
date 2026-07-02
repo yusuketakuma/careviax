@@ -1,10 +1,57 @@
 # Verification
 
-Snapshot: 2026-07-02 15:12 JST
+Snapshot: 2026-07-02 16:34 JST
 
 ## Latest Full Code Slice Verification
 
-The latest backend/API validation slice was
+The latest offline lifecycle slice was
+`RR-OFFLINE-EPIC-CE14-N25-sync-queue-evidence-retry` at
+2026-07-02 16:34 JST.
+
+- Planning / review:
+  - ULTRACODE CE14 identified `enqueueForSync()` as append-only for same
+    schedule visit-record drafts.
+  - ULTRACODE N25 identified retry-exhausted evidence drafts as permanently
+    excluded from sync.
+  - Codex medical-safety review required residual medication to remain
+    append-only, evidence retry/list/sync/reset to be org-scoped, legacy
+    org-missing drafts to fail closed, and reset-after-active-sync race coverage.
+  - Codex privacy review found no blockers after org scoping and generic
+    diagnostics.
+  - Codex test-architect blockers were fixed with direct assertions for gallery
+    server refetch, query key/enabled org scoping, capture org fail-closed, and
+    same-timestamp queue tie-breakers.
+- Focused regressions:
+  - `pnpm exec vitest run src/lib/offline/evidence-drafts.test.ts 'src/app/(dashboard)/visits/evidence/evidence-gallery-content.test.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx' src/lib/stores/sync-engine.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `5` files / `65` tests.
+  - Coverage: evidence draft org persistence, org-scoped summaries, org-scoped
+    schedule summaries, org-scoped sync/reset, legacy org-missing exclusion,
+    upload-resume metadata preservation, gallery reset/sync/two-drain/server
+    refetch, capture no-org fail-closed, visit-record queue dedupe,
+    server-conflict preservation, residual append-only behavior, generic sync
+    error persistence/logging, and same-timestamp id tie-breaker.
+- Scoped checks:
+  - Scoped ESLint for touched files: passed.
+  - Scoped Prettier for touched files: passed.
+  - Scoped `git diff --check` for touched files: passed.
+- Full gates:
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: failed only on unrelated existing dirty
+    `.agent-loop/FEATURE_QUEUE.md`; touched files passed scoped Prettier.
+  - `pnpm build`: passed.
+- gbrain:
+  - `projects/careviax/decisions/2026-07-02/offline-lifecycle-sync-queue-evidence-retry`
+  - Result: write/readback passed.
+- Skipped:
+  - Browser/E2E smoke was skipped because this slice is covered by jsdom/unit
+    regressions plus production build and changes no route contract, DB
+    mutation, external send, billing, or navigation workflow.
+
+## Prior Full Code Slice Verification
+
+The previous backend/API validation slice was
 `RR-BUG-20260702-F20-community-activities-date-range-validation` at
 2026-07-02 15:12 JST.
 

@@ -42,6 +42,54 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### Offline Lifecycle CE14/N25 - 2026-07-02 16:34 JST
+
+- Scope:
+  - Executed CE14 sync queue dedupe and N25 evidence retry reset/gallery retry
+    from the ULTRACODE expansion set.
+  - Kept Claude provider-bridge files out of scope and stayed on the Codex-owned
+    data/gallery/capture/record slice.
+- Fixed:
+  - `visit_record` offline queue enqueue now dedupes by `schedule_id` in a
+    transaction, updates the newest same-scope non-conflict row, deletes older
+    same-scope non-conflict rows, and preserves `server_conflict` snapshots.
+  - `residual_medication` remains append-only even when `patient_id` is present.
+  - Unexpected sync queue exceptions persist/log fixed generic text instead of
+    raw error messages.
+  - New evidence drafts store `orgId`; summary list, schedule list, sync, and
+    retry reset all require exact org match.
+  - Legacy evidence drafts without `orgId` fail closed: not listed, synced, or
+    reset by the new paths.
+  - Capture refuses to save an evidence draft when org identity is unavailable.
+  - Gallery retry resets retry-exhausted drafts for the current org, drains
+    sync, runs a second drain when reset rows exist, refetches both offline and
+    server gallery data, and reports count-only status.
+- Safety:
+  - Reduces wrong-tenant evidence display/sync risk and prevents residual
+    medication observation loss from over-broad dedupe.
+  - No auth, RLS, DB schema, migration, external send, billing, production
+    config, dependency, push/deploy, or destructive-operation behavior changed.
+- Validation:
+  - Focused offline/evidence/sync bundle passed `5` files / `65` tests.
+  - Scoped ESLint, Prettier, and diff-check passed for touched files.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm build`: passed.
+  - `pnpm format:check`: failed only on unrelated existing dirty
+    `.agent-loop/FEATURE_QUEUE.md`; touched files passed scoped Prettier.
+  - Codex privacy and medical-safety reviewers found no blockers. Codex
+    test-architect blockers were addressed with capture org fail-closed,
+    gallery org query-key/enabled/server-refetch, two-drain retry, and
+    same-timestamp queue tie-breaker coverage.
+  - gbrain writeback:
+    `projects/careviax/decisions/2026-07-02/offline-lifecycle-sync-queue-evidence-retry`.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Residual debt: sync queue rows still do not carry explicit row-level orgId;
+    current design applies runtime org context at drain time. `scope_id`
+    plaintext IndexedDB metadata remains pre-existing privacy debt.
+
 ### Community Activities Date Range Validation - 2026-07-02 15:12 JST
 
 - Scope:
