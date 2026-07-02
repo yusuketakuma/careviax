@@ -2,7 +2,6 @@
 
 import { useMemo } from 'react';
 import Link from 'next/link';
-import { format } from 'date-fns';
 import {
   AlertCircle,
   ArrowRight,
@@ -35,6 +34,9 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import { useAuthStore } from '@/lib/stores/auth-store';
+import { hasPermission } from '@/lib/auth/permission-matrix';
+import { japanDateKey } from '@/lib/utils/date-boundary';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { STATUS_ICON_CONFIG } from '@/lib/patient/status-icon';
 import { fetchDashboardCockpit } from '@/app/(dashboard)/dashboard/dashboard-cockpit';
 import { PROCESS_STEPS_9 } from '@/lib/prescription/cycle-workspace';
@@ -159,8 +161,10 @@ export function MyDayContent({
   const replaceMyDayUrl = useSyncedSearchParams();
   const orgId = useOrgId();
   const userId = useAuthStore((s) => s.currentUser.id);
+  const viewerRole = useAuthStore((s) => s.currentUser.role);
   const isUserPending = !!orgId && !userId;
-  const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
+  const today = useMemo(() => japanDateKey(), []);
+  const canViewStatusChanges = viewerRole ? hasPermission(viewerRole, 'canAdmin') : false;
 
   // My visits today
   const visitsQuery = useQuery({
@@ -183,6 +187,7 @@ export function MyDayContent({
     queryFn: async () => {
       const params = new URLSearchParams();
       if (userId) params.set('assigned_to', userId);
+      params.set('status', 'open');
       return fetchAllCursorPages<Task>({
         path: '/api/tasks',
         params,
@@ -203,21 +208,22 @@ export function MyDayContent({
 
   // Status change notifications (recent)
   const statusChangesQuery = useQuery({
-    queryKey: ['my-day-status-changes', orgId, today],
+    queryKey: ['my-day-status-changes', orgId, today, canViewStatusChanges],
     queryFn: async () => {
-      const res = await fetch(
-        `/api/audit-logs?action=patient_status_change&limit=10&date_from=${today}`,
-        {
-          headers: { 'x-org-id': orgId },
-        },
-      );
+      const params = new URLSearchParams({
+        action: 'patient_status_change',
+        limit: '10',
+        date_from: `${today}T00:00:00+09:00`,
+      });
+      const res = await fetch(`/api/audit-logs?${params.toString()}`, {
+        headers: { 'x-org-id': orgId },
+      });
       if (!res.ok) throw new Error('ステータス変更の取得に失敗しました');
       const json = await res.json();
       return (json.data ?? []) as Array<{
         id: string;
         target_id: string;
         changes: {
-          patient_name: string;
           from: PatientStatusIcon;
           from_label: string;
           to: PatientStatusIcon;
@@ -226,7 +232,7 @@ export function MyDayContent({
         created_at: string;
       }>;
     },
-    enabled: !!orgId,
+    enabled: !!orgId && canViewStatusChanges,
   });
 
   const todayVisits = visitsQuery.data?.data ?? [];
@@ -254,7 +260,7 @@ export function MyDayContent({
     }
     return true;
   });
-  const statusChanges = statusChangesQuery.data ?? [];
+  const statusChanges = canViewStatusChanges ? (statusChangesQuery.data ?? []) : [];
 
   const totalPipeline = pipeline.reduce((s, p) => s + p.count, 0);
   const nextTask = filteredPendingTasks[0] ?? pendingTasks[0] ?? null;
@@ -717,14 +723,14 @@ export function MyDayContent({
             contentClassName="space-y-3"
             tone="subtle"
           >
-            {statusChangesQuery.isError ? (
+            {canViewStatusChanges && statusChangesQuery.isError ? (
               <MyDaySectionError
                 title="ステータス変更を取得できません"
                 description="患者ステータスの変更履歴を取得できませんでした。必要に応じて患者一覧または監査ログで確認してください。"
                 href="/patients"
                 label="患者一覧を確認"
               />
-            ) : statusChanges.length > 0 ? (
+            ) : canViewStatusChanges && statusChanges.length > 0 ? (
               <Card>
                 <CardHeader className="pb-2">
                   <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
@@ -743,16 +749,14 @@ export function MyDayContent({
                     return (
                       <Link
                         key={change.id}
-                        href={`/patients/${change.target_id}`}
+                        href={buildPatientHref(change.target_id)}
                         className="flex min-h-[44px] items-center gap-2.5 rounded-lg border p-2.5 transition-colors hover:bg-muted/50"
                       >
                         <div className={`shrink-0 rounded-full p-1 ${toCfg.color} ${toCfg.bg}`}>
                           <ToIcon className="size-3.5" aria-hidden="true" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">
-                            {change.changes.patient_name}
-                          </p>
+                          <p className="truncate text-sm font-medium">ステータス変更を確認</p>
                           <p className="text-xs text-muted-foreground">
                             {change.changes.from_label} → {change.changes.to_label}
                           </p>

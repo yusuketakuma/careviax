@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MemberRole } from '@prisma/client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
@@ -10,6 +11,7 @@ const useAuthStoreMock = vi.hoisted(() => vi.fn());
 const useRouterMock = vi.hoisted(() => vi.fn());
 const usePathnameMock = vi.hoisted(() => vi.fn());
 const useSearchParamsMock = vi.hoisted(() => vi.fn());
+const fetchAllCursorPagesMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -17,6 +19,10 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: useQueryMock,
+}));
+
+vi.mock('@/lib/api/cursor-pagination-client', () => ({
+  fetchAllCursorPages: fetchAllCursorPagesMock,
 }));
 
 vi.mock('@/lib/stores/auth-store', () => ({
@@ -44,17 +50,54 @@ const emptyCockpit = {
   carryover_count: 0,
 };
 
+type MockAuthState = {
+  currentUser: {
+    id: string | null;
+    role: MemberRole | null;
+  };
+};
+
+type QueryCallOptions = {
+  queryKey: unknown[];
+  queryFn?: () => Promise<unknown>;
+  enabled?: boolean;
+};
+
+function mockCurrentUser({
+  id = 'user_1',
+  role = 'pharmacist',
+}: {
+  id?: string | null;
+  role?: MemberRole | null;
+} = {}) {
+  useAuthStoreMock.mockImplementation((selector: (state: MockAuthState) => unknown) =>
+    selector({ currentUser: { id, role } }),
+  );
+}
+
+function findQueryOptions(key: string): QueryCallOptions {
+  const call = useQueryMock.mock.calls.find((args) => {
+    const options = args[0] as QueryCallOptions | undefined;
+    return options?.queryKey[0] === key;
+  });
+  expect(call).toBeTruthy();
+  return call?.[0] as QueryCallOptions;
+}
+
 describe('MyDayContent', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
+    fetchAllCursorPagesMock.mockResolvedValue({ data: [] });
     useOrgIdMock.mockReturnValue('org_1');
     useRouterMock.mockReturnValue({ replace: vi.fn() });
     usePathnameMock.mockReturnValue('/my-day');
     useSearchParamsMock.mockReturnValue(new URLSearchParams('context=dashboard_home'));
-    useAuthStoreMock.mockImplementation(
-      (selector: (state: { currentUser: { id: string | null } }) => unknown) =>
-        selector({ currentUser: { id: 'user_1' } }),
-    );
+    mockCurrentUser();
     useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
       switch (queryKey[0]) {
         case 'my-day-visits':
@@ -182,11 +225,26 @@ describe('MyDayContent', () => {
     );
   });
 
-  it('waits for the current user before fetching assigned visits and tasks', () => {
-    useAuthStoreMock.mockImplementation(
-      (selector: (state: { currentUser: { id: string | null } }) => unknown) =>
-        selector({ currentUser: { id: null } }),
+  it('requests only open tasks assigned to the current user', async () => {
+    render(<MyDayContent />);
+
+    const tasksOptions = findQueryOptions('my-day-tasks');
+    await tasksOptions.queryFn?.();
+
+    expect(fetchAllCursorPagesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: '/api/tasks',
+        init: { headers: { 'x-org-id': 'org_1' } },
+        errorMessage: 'タスクの取得に失敗しました',
+      }),
     );
+    const params = fetchAllCursorPagesMock.mock.calls[0]?.[0].params as URLSearchParams;
+    expect(params.get('assigned_to')).toBe('user_1');
+    expect(params.get('status')).toBe('open');
+  });
+
+  it('waits for the current user before fetching assigned visits and tasks', () => {
+    mockCurrentUser({ id: null });
 
     render(<MyDayContent />);
 
@@ -287,6 +345,7 @@ describe('MyDayContent', () => {
   });
 
   it('shows a supplemental error when status changes fail to load', () => {
+    mockCurrentUser({ role: 'admin' });
     useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
       if (queryKey[0] === 'my-day-visits') {
         return { data: { data: [] }, isLoading: false, isError: false };
@@ -309,6 +368,116 @@ describe('MyDayContent', () => {
     expect(screen.getByRole('link', { name: /患者一覧を確認/ }).getAttribute('href')).toEqual(
       '/patients',
     );
+  });
+
+  it('hides stale admin-only status changes for non-admin users', () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'my-day-visits') {
+        return { data: { data: [] }, isLoading: false, isError: false };
+      }
+      if (queryKey[0] === 'my-day-tasks') {
+        return { data: { data: [] }, isLoading: false, isError: false };
+      }
+      if (queryKey[0] === 'dashboard') {
+        return { data: emptyCockpit, isLoading: false, isError: false };
+      }
+      if (queryKey[0] === 'my-day-status-changes') {
+        return {
+          data: [
+            {
+              id: 'audit_cached',
+              target_id: 'patient_cached',
+              changes: {
+                from: 'stable',
+                from_label: '安定',
+                to: 'urgent',
+                to_label: '要対応',
+              },
+              created_at: '2026-04-10T00:30:00.000Z',
+            },
+          ],
+          isLoading: false,
+          isError: true,
+        };
+      }
+      throw new Error(`Unexpected query key: ${String(queryKey[0])}`);
+    });
+
+    render(<MyDayContent />);
+
+    const statusChangesOptions = findQueryOptions('my-day-status-changes');
+    expect(statusChangesOptions.enabled).toEqual(false);
+    expect(screen.queryByText('ステータス変更を取得できません')).toBeNull();
+    expect(screen.queryByText('ステータス変更を確認')).toBeNull();
+    expect(screen.queryByText('安定 → 要対応')).toBeNull();
+  });
+
+  it('builds the admin status change query with an encoded JST day boundary', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-10T08:00:00+09:00'));
+    mockCurrentUser({ role: 'admin' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: [] }), { status: 200 })),
+    );
+
+    render(<MyDayContent />);
+
+    const statusChangesOptions = findQueryOptions('my-day-status-changes');
+    expect(statusChangesOptions.enabled).toEqual(true);
+    await statusChangesOptions.queryFn?.();
+
+    const requestUrl = vi.mocked(fetch).mock.calls[0]?.[0] as string;
+    expect(requestUrl).toContain('date_from=2026-04-10T00%3A00%3A00%2B09%3A00');
+    expect(new URL(requestUrl, 'http://localhost').searchParams.get('date_from')).toEqual(
+      '2026-04-10T00:00:00+09:00',
+    );
+  });
+
+  it('renders status changes without requiring patient names in audit-log changes', () => {
+    mockCurrentUser({ role: 'admin' });
+    const hostilePatientId = 'patient/1?tab=x#frag';
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'my-day-visits') {
+        return { data: { data: [] }, isLoading: false, isError: false };
+      }
+      if (queryKey[0] === 'my-day-tasks') {
+        return { data: { data: [] }, isLoading: false, isError: false };
+      }
+      if (queryKey[0] === 'dashboard') {
+        return { data: emptyCockpit, isLoading: false, isError: false };
+      }
+      if (queryKey[0] === 'my-day-status-changes') {
+        return {
+          data: [
+            {
+              id: 'audit_1',
+              target_id: hostilePatientId,
+              changes: {
+                from: 'stable',
+                from_label: '安定',
+                to: 'urgent',
+                to_label: '要対応',
+              },
+              created_at: '2026-04-10T00:30:00.000Z',
+            },
+          ],
+          isLoading: false,
+          isError: false,
+        };
+      }
+      throw new Error(`Unexpected query key: ${String(queryKey[0])}`);
+    });
+
+    render(<MyDayContent />);
+
+    const statusChangeLink = screen.getByRole('link', { name: /ステータス変更を確認/ });
+    const href = statusChangeLink.getAttribute('href') ?? '';
+    expect(href).toEqual(`/patients/${encodeURIComponent(hostilePatientId)}`);
+    expect(href).not.toContain('?tab=x');
+    expect(href).not.toContain('#frag');
+    expect(screen.getByText('安定 → 要対応')).toBeTruthy();
+    expect(screen.queryByText('undefined')).toBeNull();
   });
 
   it('syncs visit focus changes back into the URL', async () => {

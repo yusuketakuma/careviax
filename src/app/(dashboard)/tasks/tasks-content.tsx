@@ -386,7 +386,9 @@ export function TasksContent({
     const due = task.sla_due_at ?? task.due_date;
     return due && task.status !== 'completed' && new Date(due) < new Date();
   }).length;
-  const highPriorityTasks = tasks.filter((task) => task.priority === 'high').length;
+  const urgentOrHighPriorityTasks = tasks.filter(
+    (task) => task.priority === 'urgent' || task.priority === 'high',
+  ).length;
   const contextSummary =
     initialContext === 'dashboard_home'
       ? assignedToMe
@@ -498,7 +500,7 @@ export function TasksContent({
       ) : null}
       <PageSection
         title="今すぐ処理"
-        description="未完了タスクの量、期限超過、高優先度を先に確認します。"
+        description="未完了タスクの量、期限超過、緊急・高優先度を先に確認します。"
         tone="subtle"
         actions={
           <>
@@ -518,7 +520,7 @@ export function TasksContent({
           items={[
             { label: '表示件数', value: `${tasks.length}件` },
             { label: '期限超過', value: `${overdueTasks}件` },
-            { label: '高優先度', value: `${highPriorityTasks}件` },
+            { label: '緊急・高優先度', value: `${urgentOrHighPriorityTasks}件` },
             {
               label: '担当',
               value: assignedToMe ? '自分' : '全員',

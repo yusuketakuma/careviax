@@ -233,6 +233,78 @@ describe('TasksContent', () => {
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
+  it('counts urgent tasks in the immediate priority summary', () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'staff-workload') {
+        return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+      }
+      return {
+        data: {
+          data: [
+            {
+              id: 'task_urgent',
+              task_type: 'visit_preparation',
+              title: '緊急訪問準備',
+              description: null,
+              status: 'pending',
+              priority: 'urgent',
+              assigned_to: 'user_1',
+              assigned_to_name: '山田 薬剤師',
+              due_date: null,
+              sla_due_at: null,
+              related_entity_type: 'visit_schedule',
+              related_entity_id: 'schedule_1',
+              completed_at: null,
+              created_at: '2026-04-10T08:00:00.000Z',
+            },
+            {
+              id: 'task_high',
+              task_type: 'handoff_confirmation',
+              title: '高優先申し送り',
+              description: null,
+              status: 'pending',
+              priority: 'high',
+              assigned_to: 'user_1',
+              assigned_to_name: '山田 薬剤師',
+              due_date: null,
+              sla_due_at: null,
+              related_entity_type: 'visit_record',
+              related_entity_id: 'visit_record_1',
+              completed_at: null,
+              created_at: '2026-04-10T08:05:00.000Z',
+            },
+            {
+              id: 'task_normal',
+              task_type: 'follow_up_call',
+              title: '通常フォロー',
+              description: null,
+              status: 'pending',
+              priority: 'normal',
+              assigned_to: 'user_1',
+              assigned_to_name: '山田 薬剤師',
+              due_date: null,
+              sla_due_at: null,
+              related_entity_type: 'patient',
+              related_entity_id: 'patient_1',
+              completed_at: null,
+              created_at: '2026-04-10T08:10:00.000Z',
+            },
+          ],
+        },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      };
+    });
+
+    render(<TasksContent />);
+
+    const immediateSection = screen.getByRole('heading', { name: '今すぐ処理' }).closest('section');
+    expect(immediateSection).toBeTruthy();
+    expect(within(immediateSection as HTMLElement).getByText('緊急・高優先度 2件')).toBeTruthy();
+    expect(within(immediateSection as HTMLElement).queryByText('高優先度 1件')).toBeNull();
+  });
+
   it('shows a retry instead of a false-empty staff workload board when that query fails', () => {
     const refetchStaffWorkload = vi.fn();
     useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
