@@ -22,16 +22,16 @@
 
 ### Track A — 共通部品・ガード先行（System as product。C の前提）
 
-| id  | 内容                                                                                                                                                                                | owner  | 依存 | est |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ---- | --- |
-| A1  | **ESLint ガード新設**: 生状態色 / `text-[9-11px]` / 裸 animate-pulse / `order-*` / `100vh・min-h-screen` / 裸 SelectValue / `rounded-2xl` を warn→error 段階導入（FEUX-6 の実装形） | codex  | なし | M   |
-| A2  | **prefers-reduced-motion 基盤**: globals.css の `motion-reduce` グローバル対応 + `Skeleton` pulse の静的化 + transition 即時化。全画面に一括効く                                    | claude | なし | S/M |
-| A3  | **AlertBanner/AlertTier 共通部品**（4 段階、左ボーダー + role 分離。SSOT 7.5 の実装体）                                                                                             | claude | なし | M   |
-| A4  | **ExpiryBadge 共通部品**（expired/30 日 = blocked、90 日 = confirm。各画面の再実装 4+ 箇所を集約）                                                                                  | codex  | なし | M   |
-| A5  | **SafetyTagBadge**（重大タグ非省略のオーバーフロー対応）                                                                                                                            | claude | なし | S/M |
-| A6  | **LoadingRegion 昇格**: analytics ローカル実装 → `ui/loading.tsx` へ共通化                                                                                                          | codex  | なし | S   |
-| A7  | **DayNavigator 共通部品**（前日/今日/翌日、`?date` 依存排除）                                                                                                                       | 後続   | なし | M   |
-| A8  | **ErrorState 文言契約**: 「原因 + 次の行動」テンプレを ErrorState API に組み込み                                                                                                    | claude | なし | S   |
+| id  | 内容                                                                                                                                                                                                                                | owner       | 依存 | est |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ---- | --- |
+| A1  | **ESLint ガード新設**: 生状態色 / `text-[9-11px]` / 裸 animate-pulse / `order-*` / `100vh・min-h-screen` / 裸 SelectValue / `rounded-2xl` を warn→error 段階導入（FEUX-6 の実装形）                                                 | codex       | なし | M   |
+| A2  | **prefers-reduced-motion 基盤**: globals.css の `motion-reduce` グローバル対応 + `Skeleton` pulse の静的化 + transition 即時化。全画面に一括効く                                                                                    | claude      | なし | S/M |
+| A3  | ~~AlertBanner 新設~~ → **部品は既存**（`ui/alert-tier.tsx`、4段階+ARIA 出し分け+テスト済・**消費者ゼロ**）。残タスク = C wave での消費者移行（bg-state-\*/10 全面塗りバナー 8+ ファイルの置換）。新規部品は作らない（二重実装禁止） | —(C waveへ) | なし | —   |
+| A4  | ~~ExpiryBadge 新設~~ → **部品は既存**（`ui/expiry-badge.tsx`、消費者 1=pharmacist-credentials）。残タスク = facility-standards ExpiryCell / 車両 / institutions 等の重複実装を移行                                                  | codex       | なし | S/M |
+| A5  | **SafetyTagBadge 共通化**: patients-board.tsx のローカル実装（L296）を `ui/` へ抽出し、重大タグ非省略のオーバーフロー契約を付与                                                                                                     | claude      | なし | S/M |
+| A6  | **LoadingRegion 昇格**: analytics ローカル実装 → `ui/loading.tsx` へ共通化                                                                                                                                                          | codex       | なし | S   |
+| A7  | ~~DayNavigator 新設~~ → **部品は既存**（`ui/day-navigator.tsx`+テスト、消費者要確認）。残タスク = schedules/conflicts 等への結線（C1）                                                                                              | —(C waveへ) | なし | —   |
+| A8  | **ErrorState 文言契約**: 「原因 + 次の行動」テンプレを ErrorState API に組み込み                                                                                                                                                    | claude      | なし | S   |
 
 ### Track B — 機械的ルール sweep（lint 検出 → 一括是正。A1 と対で再発防止）
 
