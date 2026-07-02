@@ -1,6 +1,6 @@
 'use client';
 
-import { type ElementType, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { AlertTriangle, BarChart3, FileCheck2, Users } from 'lucide-react';
@@ -10,6 +10,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { StatCard } from '@/components/ui/stat-card';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildAdminStaffMetricsApiPath } from '@/lib/staff-metrics/api-paths';
@@ -175,29 +176,32 @@ export function StaffKpiPanel() {
       ) : (
         <>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <SummaryCard
-              icon={Users}
+            <StatCard
+              icon={<Users className="size-4" aria-hidden="true" />}
               label="対象スタッフ"
-              value={`${summary?.total_staff ?? 0}名`}
-              helper="KPI 集計対象"
+              value={summary?.total_staff ?? 0}
+              unit="名"
+              hint="KPI 集計対象"
             />
-            <SummaryCard
-              icon={BarChart3}
+            <StatCard
+              icon={<BarChart3 className="size-4" aria-hidden="true" />}
               label="平均月間訪問"
-              value={`${summary?.avg_monthly_visits ?? 0}件`}
-              helper="実績ベース"
+              value={summary?.avg_monthly_visits ?? 0}
+              unit="件"
+              hint="実績ベース"
             />
-            <SummaryCard
-              icon={FileCheck2}
+            <StatCard
+              icon={<FileCheck2 className="size-4" aria-hidden="true" />}
               label="平均提出率"
-              value={`${summary?.avg_report_submission_rate ?? 0}%`}
-              helper="CareReport 作成率"
+              value={summary?.avg_report_submission_rate ?? 0}
+              unit="%"
+              hint="CareReport 作成率"
             />
-            <SummaryCard
-              icon={AlertTriangle}
+            <StatCard
+              icon={<AlertTriangle className="size-4" aria-hidden="true" />}
               label="負荷偏り"
               value={`${summary?.overloaded_count ?? 0} / ${summary?.underutilized_count ?? 0}`}
-              helper="高負荷 / 余力あり"
+              hint="高負荷 / 余力あり"
             />
           </div>
 
@@ -217,32 +221,5 @@ export function StaffKpiPanel() {
         </>
       )}
     </div>
-  );
-}
-
-function SummaryCard({
-  icon: Icon,
-  label,
-  value,
-  helper,
-}: {
-  icon: ElementType;
-  label: string;
-  value: string;
-  helper: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">{label}</p>
-          <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">{value}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
-        </div>
-        <div className="rounded-full border border-border bg-background p-2">
-          <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-        </div>
-      </CardContent>
-    </Card>
   );
 }
