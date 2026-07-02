@@ -1139,7 +1139,6 @@ User-directed program after the org-header sweep. Method: ultracode 51-screen re
 - gbrain writeback slug:
   `projects/careviax/failures/2026-07-02/pharmacist-shift-template-apply-local-date`.
 - Commit:
-  pending.
-- Next action: commit this F07 slice and ledgers with explicit paths, notify
-  via agmsg if available, then continue the next highest-value
-  ULTRACODE/refactor item.
+  `ba3b9689` (`fix(shifts): apply templates with UTC date sentinels`).
+- Next action: notify via agmsg if available, then continue the next
+  highest-value ULTRACODE/refactor item.

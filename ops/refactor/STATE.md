@@ -448,7 +448,7 @@ re-audits are complete.
 
 - Change ID:
   `RR-BUG-20260702-F07-shift-template-apply-utc-date`.
-- Status: implemented and validated, pending commit at time of ledger update.
+- Status: implemented, validated, and committed as `ba3b9689`.
 - Files changed:
   - `src/app/api/pharmacist-shift-templates/apply/route.ts`
   - `src/app/api/pharmacist-shift-templates/apply/route.test.ts`
