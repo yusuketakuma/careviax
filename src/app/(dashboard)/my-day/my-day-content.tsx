@@ -58,6 +58,10 @@ import type {
 } from '@/types/dashboard-home';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import { PageSection } from '@/components/layout/page-section';
+import {
+  FilterChipBar,
+  type FilterChipOption,
+} from '@/components/features/workspace/filter-chip-bar';
 import type {
   MyDayFocus,
   MyDayTaskFilter,
@@ -65,7 +69,6 @@ import type {
 } from '@/lib/dashboard/home-link-builders';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 import {
-  InlineFilterButton,
   MyDayNextStepPanel,
   SectionSkeleton,
   UnpreparedVisitLink,
@@ -147,6 +150,19 @@ const STATUS_ICONS: Record<PatientStatusIcon, typeof Star> = {
 };
 
 const MY_DAY_SECTION_CLASS_NAME = 'min-w-0 overflow-hidden';
+
+// 絞り込みチップは共有 FilterChipBar(role=group/aria-pressed/44px/focus-visible)に集約する。
+// 静的定義で再生成を避け、型を MyDay*Filter に固定する。
+const VISIT_FILTER_OPTIONS: FilterChipOption<MyDayVisitFilter>[] = [
+  { value: 'all', label: '全て' },
+  { value: 'unprepared', label: '準備未完了のみ' },
+  { value: 'in_progress', label: '訪問進行中のみ' },
+];
+const TASK_FILTER_OPTIONS: FilterChipOption<MyDayTaskFilter>[] = [
+  { value: 'all', label: '全て' },
+  { value: 'urgent', label: '高優先のみ' },
+  { value: 'pending', label: '未着手のみ' },
+];
 
 type MyDayContentProps = {
   initialFocus?: MyDayFocus;
@@ -521,56 +537,19 @@ export function MyDayContent({
                 </h3>
               </CardHeader>
               <CardContent className="space-y-1.5">
-                <div className="mb-2 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    aria-pressed={initialVisitFilter === 'all'}
-                    onClick={() =>
-                      replaceMyDayUrl({
-                        focus: 'visits',
-                        visit_filter: null,
-                        context: initialContext ?? null,
-                      })
-                    }
-                    className="border-0 bg-transparent p-0"
-                  >
-                    <InlineFilterButton active={initialVisitFilter === 'all'} label="全て" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={initialVisitFilter === 'unprepared'}
-                    onClick={() =>
-                      replaceMyDayUrl({
-                        focus: 'visits',
-                        visit_filter: 'unprepared',
-                        context: initialContext ?? null,
-                      })
-                    }
-                    className="border-0 bg-transparent p-0"
-                  >
-                    <InlineFilterButton
-                      active={initialVisitFilter === 'unprepared'}
-                      label="準備未完了のみ"
-                    />
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={initialVisitFilter === 'in_progress'}
-                    onClick={() =>
-                      replaceMyDayUrl({
-                        focus: 'visits',
-                        visit_filter: 'in_progress',
-                        context: initialContext ?? null,
-                      })
-                    }
-                    className="border-0 bg-transparent p-0"
-                  >
-                    <InlineFilterButton
-                      active={initialVisitFilter === 'in_progress'}
-                      label="訪問進行中のみ"
-                    />
-                  </button>
-                </div>
+                <FilterChipBar
+                  className="mb-2"
+                  ariaLabel="訪問の絞り込み"
+                  value={initialVisitFilter}
+                  options={VISIT_FILTER_OPTIONS}
+                  onChange={(next) =>
+                    replaceMyDayUrl({
+                      focus: 'visits',
+                      visit_filter: next === 'all' ? null : next,
+                      context: initialContext ?? null,
+                    })
+                  }
+                />
                 {visitsQuery.isError ? (
                   <ErrorState
                     variant="server"
@@ -719,56 +698,19 @@ export function MyDayContent({
                 </h3>
               </CardHeader>
               <CardContent className="space-y-1.5">
-                <div className="mb-2 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    aria-pressed={initialTaskFilter === 'all'}
-                    onClick={() =>
-                      replaceMyDayUrl({
-                        focus: 'tasks',
-                        task_filter: null,
-                        context: initialContext ?? null,
-                      })
-                    }
-                    className="border-0 bg-transparent p-0"
-                  >
-                    <InlineFilterButton active={initialTaskFilter === 'all'} label="全て" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={initialTaskFilter === 'urgent'}
-                    onClick={() =>
-                      replaceMyDayUrl({
-                        focus: 'tasks',
-                        task_filter: 'urgent',
-                        context: initialContext ?? null,
-                      })
-                    }
-                    className="border-0 bg-transparent p-0"
-                  >
-                    <InlineFilterButton
-                      active={initialTaskFilter === 'urgent'}
-                      label="高優先のみ"
-                    />
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={initialTaskFilter === 'pending'}
-                    onClick={() =>
-                      replaceMyDayUrl({
-                        focus: 'tasks',
-                        task_filter: 'pending',
-                        context: initialContext ?? null,
-                      })
-                    }
-                    className="border-0 bg-transparent p-0"
-                  >
-                    <InlineFilterButton
-                      active={initialTaskFilter === 'pending'}
-                      label="未着手のみ"
-                    />
-                  </button>
-                </div>
+                <FilterChipBar
+                  className="mb-2"
+                  ariaLabel="タスクの絞り込み"
+                  value={initialTaskFilter}
+                  options={TASK_FILTER_OPTIONS}
+                  onChange={(next) =>
+                    replaceMyDayUrl({
+                      focus: 'tasks',
+                      task_filter: next === 'all' ? null : next,
+                      context: initialContext ?? null,
+                    })
+                  }
+                />
                 {tasksQuery.isError ? (
                   <ErrorState
                     variant="server"

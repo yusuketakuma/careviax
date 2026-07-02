@@ -205,6 +205,9 @@ describe('MyDayContent', () => {
     expect(screen.getByRole('button', { name: '高優先のみ' }).getAttribute('aria-pressed')).toEqual(
       'true',
     );
+    // 絞り込みは共有 FilterChipBar に集約され、名前付きグループとして提示される。
+    expect(screen.getByRole('group', { name: '訪問の絞り込み' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'タスクの絞り込み' })).toBeTruthy();
     expect(screen.getByText('山田花子')).toBeTruthy();
     expect(screen.queryByText('佐藤次郎')).toBeNull();
   });

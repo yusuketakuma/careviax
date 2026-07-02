@@ -46,6 +46,7 @@ export function FilterChipBar<T extends string>({
             title={option.disabledReason}
             className={cn(
               'inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-4 text-sm font-medium transition-colors',
+              'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
               option.disabled
                 ? 'cursor-not-allowed border-border bg-muted/40 text-muted-foreground/70'
                 : isActive
