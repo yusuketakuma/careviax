@@ -42,6 +42,51 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### Cockpit Rail False-Safe Loading/Error States - 2026-07-02 11:52 JST
+
+- Scope:
+  - Executed Codex-planned `RR-FE-20260702-F14-F27-cockpit-rail-false-safe`
+    from the ULTRACODE findings.
+  - Focused only on handoff and schedule team board cockpit-derived UI state.
+- Fixed:
+  - Handoff right rail now renders a loading skeleton or retryable
+    `稼働状況を取得できませんでした` error when cockpit data is loading or
+    failed, instead of falling through to the healthy no-blockers rail.
+  - Schedule team board now renders explicit degraded-risk loading/error UI for
+    the Gantt risk area and the right rail when cockpit data is unavailable.
+  - Cockpit error paths ignore stale query data for rail/risk rendering so
+    narcotic audit actions, blocked reasons, and clerical follow-up indicators
+    are not falsely shown as healthy or absent.
+  - Retry actions call `cockpitQuery.refetch()` and fixed error copy does not
+    echo PHI or raw API details.
+- Safety:
+  - Prevents false-safe / false-empty states around narcotic audit risk,
+    next actions, blocked reasons, and clerical follow-up counts.
+  - No API, DB, auth/RLS, route contract, org header, mutation payload,
+    migration, external send, billing, production config, dependency,
+    push/deploy, or destructive-operation behavior was changed.
+- Performance:
+  - No performance change is claimed. The fix adds frontend conditional
+    branches and test mock controls only.
+- Validation:
+  - Focused component regressions passed:
+    `pnpm exec vitest run 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=60000`
+    -> `2` files / `48` tests.
+  - Scoped ESLint, Prettier, and diff-check passed for the four changed files.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm build`: passed.
+  - Codex `frontend_reviewer` and `medical_safety_reviewer` reported no
+    actionable findings. `test_architect` identified a low loading-branch
+    coverage gap, which was fixed before final validation.
+- Remaining:
+  - Broad repo-wide objective remains open. Browser/E2E smoke was skipped
+    because this slice is covered by component DOM assertions for loading/error
+    states plus a full production build and changes no navigation, API route
+    contract, DB, or mutation behavior.
+
 ### Drug Master Formulary Error And Clipboard Failure States - 2026-07-02 11:29 JST
 
 - Scope:

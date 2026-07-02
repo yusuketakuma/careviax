@@ -146,10 +146,13 @@ function stubFetch(
   board: HandoffBoardResponse = BOARD,
   options: {
     handoffTasks?: Array<Record<string, unknown>>;
+    cockpitResponse?: Promise<Response>;
+    cockpitStatus?: number;
     recentCommentsStatus?: number;
     recentComments?: Array<Record<string, unknown>>;
   } = {},
 ) {
+  const cockpitStatus = options.cockpitStatus ?? 200;
   const recentCommentsStatus = options.recentCommentsStatus ?? 200;
   const recentComments = options.recentComments ?? [];
   const handoffTasks = options.handoffTasks ?? [
@@ -181,6 +184,17 @@ function stubFetch(
       return new Response(JSON.stringify({ data: board }), { status: 200 });
     }
     if (url.includes('/api/dashboard/cockpit')) {
+      if (options.cockpitResponse) {
+        return options.cockpitResponse;
+      }
+      if (cockpitStatus !== 200) {
+        return new Response(
+          JSON.stringify({ message: '当日オペレーション情報の取得に失敗しました' }),
+          {
+            status: cockpitStatus,
+          },
+        );
+      }
       return new Response(JSON.stringify({ data: COCKPIT }), { status: 200 });
     }
     if (url.includes('/api/tasks')) {
@@ -485,6 +499,43 @@ describe('HandoffWorkspace', () => {
     expect(overflow.textContent).toContain('2件');
     expect(overflow.textContent).toContain('FAX番号の確認が弱いため');
     expect(overflow.textContent).toContain('報告書に入れるべき確認事項');
+  });
+
+  it('keeps the action rail loading instead of showing false no-blockers copy while operation status loads', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+    stubFetch(BOARD, { cockpitResponse: new Promise<Response>(() => undefined) });
+
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('handoff-outgoing-section')).toBeTruthy();
+    });
+    expect(screen.getByTestId('handoff-action-rail-loading')).toBeTruthy();
+    expect(screen.queryByText('止まっている作業はありません')).toBeNull();
+    expect(screen.queryByText('いま期限で止まっている作業はありません。')).toBeNull();
+  });
+
+  it('shows a cockpit rail error instead of a false no-blockers state when operation status fails', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+    const fetchMock = stubFetch(BOARD, { cockpitStatus: 500 });
+
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('handoff-outgoing-section')).toBeTruthy();
+    });
+    expect(await screen.findByText('稼働状況を取得できませんでした')).toBeTruthy();
+    expect(screen.getByText(/問題なしではなく取得エラーです/)).toBeTruthy();
+    expect(screen.queryByText('止まっている作業はありません')).toBeNull();
+    expect(screen.queryByText('いま期限で止まっている作業はありません。')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(([input]) => String(input).includes('/api/dashboard/cockpit'))
+          .length,
+      ).toBeGreaterThanOrEqual(2);
+    });
   });
 
   it('keeps transfer submission disabled when no active recipient options are available', async () => {

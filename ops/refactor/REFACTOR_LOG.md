@@ -1839,3 +1839,37 @@ evidence also exists in root `REFACTOR_REPORT.md`,
     `pnpm build` passed.
   - Claude checker independently verified the patch and returned `APPROVED`
     before commit.
+
+## 2026-07-02 11:52 JST - Cockpit Rail False-Safe Loading/Error States
+
+- Change ID: `RR-FE-20260702-F14-F27-cockpit-rail-false-safe`.
+- Category: bug fix / medical safety / frontend false-empty prevention.
+- Files changed:
+  - `src/app/(dashboard)/handoff/handoff-workspace.tsx`
+  - `src/app/(dashboard)/handoff/handoff-workspace.test.tsx`
+  - `src/app/(dashboard)/schedules/schedule-team-board.tsx`
+  - `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`
+- Summary:
+  - Added handoff right-rail loading and retryable error states for cockpit
+    loading/error so the UI no longer falls through to healthy no-blocker copy.
+  - Added schedule Gantt risk-area and right-rail loading/error states for
+    cockpit loading/error.
+  - Dropped stale cockpit query data from rail/risk rendering when
+    `cockpitQuery.isError` is true.
+  - Added regression coverage for both loading and error paths, including stale
+    schedule cockpit data on error and retry calls to `cockpitQuery.refetch()`.
+- Safety:
+  - Prevents false-safe / false-empty UI around narcotic audit risk, next
+    actions, blocked reasons, and clerical follow-up counts.
+  - Error copy is fixed and PHI-free; no raw API error text is echoed.
+  - No API, DB, auth/RLS, route contract, org header, mutation payload,
+    migration, external send, billing, production config, dependency,
+    push/deploy, or destructive-operation behavior was changed.
+- Validation:
+  - Focused handoff/schedule component suites passed `2` files / `48` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, and `pnpm build` passed.
+  - Codex frontend and medical-safety reviewers found no actionable findings.
+  - Codex test architect flagged loading-branch coverage as a low issue; loading
+    regressions were added and revalidated before this log entry.

@@ -4,6 +4,47 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
+## Current Codex Resume Note - 2026-07-02 11:52 JST
+
+- Active mode for this slice: Codex-only execution with Codex subagent planning
+  and review (`code_mapper`, `implementation_planner`, `frontend_reviewer`,
+  `medical_safety_reviewer`, `test_architect`) plus real validation. Preserve
+  unrelated dirty files; do not push/deploy/migrate/destructively mutate data.
+- Latest completed slice:
+  `RR-FE-20260702-F14-F27-cockpit-rail-false-safe`.
+- Files changed:
+  - `src/app/(dashboard)/handoff/handoff-workspace.tsx`
+  - `src/app/(dashboard)/handoff/handoff-workspace.test.tsx`
+  - `src/app/(dashboard)/schedules/schedule-team-board.tsx`
+  - `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`
+  - progress-ledger working-tree updates in `ops/refactor/*`,
+    `CODEX_GOAL_PROGRESS.md`, `.codex/ralph-state.md`, and this file
+- Fixed:
+  - Handoff cockpit loading/error states now render skeleton or retryable
+    `ErrorState` instead of the healthy right-rail no-blockers copy.
+  - Schedule cockpit loading/error states now render explicit degraded-risk UI
+    in the Gantt risk area and the right rail instead of silently hiding
+    narcotic audit risk, blocked reasons, or clerical follow-up indicators.
+  - Cockpit error paths no longer use stale query data for rail/risk rendering,
+    and retry actions call `cockpitQuery.refetch()`.
+- Validation:
+  - Focused handoff/schedule component suites passed `2` files / `48` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, and `pnpm build` passed.
+  - Codex frontend and medical-safety reviewers found no actionable issues; a
+    low loading-branch test gap from `test_architect` was addressed.
+- Remaining:
+  - Broad repo-wide objective remains open; no DB/API/auth/RLS/migration,
+    external-send, billing, push/deploy, dependency, or destructive-operation
+    behavior was changed.
+  - Browser/E2E smoke was skipped because this slice is covered by component DOM
+    regressions plus a full production build and does not change navigation or
+    route contracts.
+- Next action:
+  - After this validated slice is committed, continue the next highest-value
+    ULTRACODE/refactor finding with fresh file inspection and focused tests.
+
 ## Current Codex Resume Note - 2026-07-02 11:29 JST
 
 - Active mode for this slice: Codex-only execution with Codex subagent review

@@ -1171,21 +1171,27 @@ function PreparationSummaryChip({
 function TeamGanttCard({
   board,
   cockpit,
+  cockpitLoading,
+  cockpitError,
   dateLabel,
   now,
   onStatusChange,
   pendingStatusScheduleId,
   onApplyRecommendedVehicle,
   applyingRecommendedVehicle,
+  onRetryCockpit,
 }: {
   board: ScheduleDayBoardResponse;
   cockpit: DashboardCockpitResponse | null;
+  cockpitLoading: boolean;
+  cockpitError: boolean;
   dateLabel: string;
   now: Date;
   onStatusChange: (payload: StatusChangePayload) => void;
   pendingStatusScheduleId: string | null;
   onApplyRecommendedVehicle: (payload: ApplyRecommendedVehiclePayload) => void;
   applyingRecommendedVehicle: boolean;
+  onRetryCockpit: () => void;
 }) {
   const riskPatientNames = new Set(
     (cockpit?.audit_queue ?? [])
@@ -1318,6 +1324,28 @@ function TeamGanttCard({
           >
             {riskAlert.actionLabel}
           </Link>
+        </div>
+      ) : cockpitLoading ? (
+        <div
+          className="mt-4 rounded-md border border-border/70 bg-muted/20 px-3 py-2.5"
+          role="status"
+          aria-label="リスク情報を読み込み中"
+          data-testid="schedule-risk-loading"
+        >
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-36" />
+            <Skeleton className="h-4 w-full" />
+          </div>
+        </div>
+      ) : cockpitError ? (
+        <div className="mt-4 rounded-md border border-border/70 bg-card p-3">
+          <ErrorState
+            variant="server"
+            size="inline"
+            title="リスク情報を取得できませんでした"
+            description="麻薬監査、期限超過、止まっている理由を表示できていません。リスクなしではなく取得エラーです。再試行してください。"
+            action={{ label: '再試行', onClick: onRetryCockpit }}
+          />
         </div>
       ) : null}
     </section>
@@ -1783,7 +1811,7 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
   });
 
   const board = boardQuery.data ?? null;
-  const cockpit = cockpitQuery.data ?? null;
+  const cockpit = cockpitQuery.isError ? null : (cockpitQuery.data ?? null);
   const operationalTasks = board?.operational_tasks ?? [];
   const proposalCounts = board ? pendingProposalCounts(board) : null;
 
@@ -1810,6 +1838,38 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
       href: '/schedules/proposals',
     },
   ];
+  const actionRail =
+    cockpitQuery.isLoading || cockpitQuery.isError ? (
+      <div className="rounded-lg border border-border/70 bg-card p-4">
+        {cockpitQuery.isLoading ? (
+          <div
+            className="space-y-3"
+            role="status"
+            aria-label="稼働状況を読み込み中"
+            data-testid="schedule-action-rail-loading"
+          >
+            <Skeleton className="h-5 w-28" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </div>
+        ) : (
+          <ErrorState
+            variant="server"
+            title="稼働状況を取得できませんでした"
+            description="次にやることと止まっている理由を表示できていません。問題なしではなく取得エラーです。再試行してください。"
+            action={{ label: '再試行', onClick: () => void cockpitQuery.refetch() }}
+          />
+        )}
+      </div>
+    ) : (
+      <WorkspaceActionRail
+        nextAction={buildNextAction(cockpit, board)}
+        blockedReasons={blockedReasons}
+        blockedReasonsEmptyLabel="止まっている作業はありません"
+        evidence={evidence}
+        evidenceOpenLabel="開く"
+      />
+    );
 
   return (
     <section aria-label="スケジュールボード" data-testid="schedule-team-board">
@@ -1853,6 +1913,8 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
                 <TeamGanttCard
                   board={board}
                   cockpit={cockpit}
+                  cockpitLoading={cockpitQuery.isLoading}
+                  cockpitError={cockpitQuery.isError}
                   dateLabel={dateLabel}
                   now={now}
                   onStatusChange={(payload) => statusMutation.mutate(payload)}
@@ -1863,6 +1925,7 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
                     applyRecommendedVehicleMutation.mutate(payload)
                   }
                   applyingRecommendedVehicle={applyRecommendedVehicleMutation.isPending}
+                  onRetryCockpit={() => void cockpitQuery.refetch()}
                 />
                 <ScheduleOperationalTasksCard
                   board={board}
@@ -1881,13 +1944,7 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
                   counts={proposalCounts ?? pendingProposalCounts(board)}
                 />
               </div>
-              <WorkspaceActionRail
-                nextAction={buildNextAction(cockpit, board)}
-                blockedReasons={blockedReasons}
-                blockedReasonsEmptyLabel="止まっている作業はありません"
-                evidence={evidence}
-                evidenceOpenLabel="開く"
-              />
+              {actionRail}
             </div>
           )}
         </div>

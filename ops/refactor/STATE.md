@@ -1,6 +1,6 @@
 # Refactor State
 
-Snapshot: 2026-07-02 11:29 JST
+Snapshot: 2026-07-02 11:52 JST
 
 ## Phase
 
@@ -13,30 +13,38 @@ Snapshot: 2026-07-02 11:29 JST
 
 ## Last Change ID
 
-- `RR-FE-20260702-C-drug-master-formulary-error-and-clipboard-states`
+- `RR-FE-20260702-F14-F27-cockpit-rail-false-safe`
 
 ## Build State
 
 - Last full production build evidence:
-  `pnpm build` passed after the drug-master formulary error-state and
-  clipboard fail-closed fix.
+  `pnpm build` passed after the cockpit rail false-safe loading/error fix.
 - Last full cheap gate bundle evidence:
-  - `pnpm typecheck`: passed after the drug-master formulary error-state and
-    clipboard fail-closed fix.
-  - `pnpm typecheck:no-unused`: passed after the drug-master formulary
-    error-state and clipboard fail-closed fix.
-  - `pnpm lint`: passed after the drug-master formulary error-state and
-    clipboard fail-closed fix.
-  - `pnpm format:check`: passed after the drug-master formulary error-state and
-    clipboard fail-closed fix.
-  - Scoped Prettier and diff-check passed for the drug-master component/test and
-    lock table before this state update; final ledger formatting/diff checks
-    are pending until this state update lands.
+  - `pnpm typecheck`: passed after the cockpit rail false-safe loading/error
+    fix.
+  - `pnpm typecheck:no-unused`: passed after the cockpit rail false-safe
+    loading/error fix.
+  - `pnpm lint`: passed after the cockpit rail false-safe loading/error fix.
+  - `pnpm format:check`: passed after the cockpit rail false-safe loading/error
+    fix.
+  - Scoped Prettier and diff-check passed for the handoff/schedule components
+    and tests before this state update; final ledger formatting/diff checks are
+    pending until this state update lands.
 
 ## Current Worktree
 
 - The worktree is intentionally dirty from verified small slices. Preserve all
   existing dirty files unless explicitly owning a new slice.
+- Latest frontend medical-safety slice changed only the handoff and schedule
+  cockpit-derived UI state:
+  `src/app/(dashboard)/handoff/handoff-workspace.tsx`,
+  `src/app/(dashboard)/handoff/handoff-workspace.test.tsx`,
+  `src/app/(dashboard)/schedules/schedule-team-board.tsx`, and
+  `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`.
+  It prevents cockpit loading/error states from rendering healthy right-rail
+  empty labels, stale narcotic-risk actions, or silent blocked-reason /
+  clerical-follow-up absence. Codex subagents reviewed the slice and full local
+  gates passed.
 - Latest approved frontend safety slice changed only the patient medications
   allergy section:
   `src/app/(dashboard)/patients/[id]/medications/medications-content.tsx` and

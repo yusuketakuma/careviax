@@ -1923,3 +1923,45 @@ surfacing at 2026-07-02 07:33 JST.
   - Browser/E2E smoke was skipped because this targeted pinned error-state
     branch is covered by component-level DOM assertions plus full production
     build.
+
+## Cockpit Rail False-Safe Loading/Error Verification
+
+The latest frontend safety slice was cockpit rail false-safe loading/error
+surfacing at 2026-07-02 11:52 JST.
+
+- Planning / review:
+  - Codex `code_mapper` and `implementation_planner` selected
+    `RR-FE-20260702-F14-F27-cockpit-rail-false-safe` as the highest-value clean
+    UI safety slice.
+  - Codex `frontend_reviewer` and `medical_safety_reviewer` reported no
+    actionable findings for the implemented diff.
+  - Codex `test_architect` flagged loading-branch coverage as a low issue; this
+    was addressed with loading regressions before final validation.
+- Focused component regression:
+  - `pnpm exec vitest run 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `48` tests.
+  - Notes: existing HandoffWorkspace act warnings were emitted by the preexisting
+    test suite, but the command exited `0`.
+- Scoped checks:
+  - `pnpm exec eslint 'src/app/(dashboard)/handoff/handoff-workspace.tsx' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx'`
+  - Result: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/handoff/handoff-workspace.tsx' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx'`
+  - Result: passed.
+  - `git diff --check -- 'src/app/(dashboard)/handoff/handoff-workspace.tsx' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx'`
+  - Result: passed.
+- Full gates:
+  - `pnpm typecheck`
+  - Result: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  - Result: passed.
+  - `pnpm lint`
+  - Result: passed.
+  - `pnpm format:check`
+  - Result: passed.
+  - `pnpm build`
+  - Result: passed.
+- Skipped:
+  - Browser/E2E smoke was skipped because this bounded UI state fix is covered
+    by component-level DOM assertions for loading/error/success states plus full
+    production build, and it changes no navigation, API route contract, DB, or
+    mutation behavior.

@@ -438,6 +438,14 @@ type QueryConfig = {
   queryFn: () => Promise<unknown>;
 };
 
+type QueryMockResult = {
+  data: unknown;
+  isLoading: boolean;
+  isError: boolean;
+  error: Error | null;
+  refetch: ReturnType<typeof vi.fn>;
+};
+
 type MutationConfig<TPayload = unknown> = {
   mutationFn: (payload: TPayload) => Promise<unknown>;
 };
@@ -479,10 +487,12 @@ function buildJsonResponse(data: unknown) {
 function mockQueries({
   board = buildBoardFixture(),
   cockpit = buildCockpitFixture(),
+  cockpitQueryOverride,
   onQueryConfig,
 }: {
   board?: ScheduleDayBoardResponse | null;
   cockpit?: DashboardCockpitResponse | null;
+  cockpitQueryOverride?: Partial<QueryMockResult>;
   onQueryConfig?: (config: QueryConfig) => void;
 } = {}) {
   useQueryMock.mockImplementation((options: QueryConfig) => {
@@ -491,7 +501,14 @@ function mockQueries({
     if (key === 'schedule-day-board') {
       return { data: board, isLoading: false, isError: false, error: null, refetch: vi.fn() };
     }
-    return { data: cockpit, isLoading: false, isError: false, error: null, refetch: vi.fn() };
+    return {
+      data: cockpit,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+      ...cockpitQueryOverride,
+    };
   });
 }
 
@@ -1067,6 +1084,54 @@ describe('ScheduleTeamBoard', () => {
 
     // 主操作(青)が 1 つだけ: 次にやることのリンク以外の主ボタンは存在しない
     expect(screen.getByRole('link', { name: '予定を作る' })).toBeTruthy();
+  });
+
+  it('keeps schedule risk and action rail loading instead of showing a false healthy state while cockpit loads', () => {
+    mockQueries({
+      cockpitQueryOverride: {
+        data: undefined,
+        isLoading: true,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      },
+    });
+
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    expect(screen.getByTestId('schedule-team-gantt')).toBeTruthy();
+    expect(screen.getByTestId('schedule-risk-loading')).toBeTruthy();
+    expect(screen.getByTestId('schedule-action-rail-loading')).toBeTruthy();
+    expect(screen.queryByTestId('schedule-risk-banner')).toBeNull();
+    expect(screen.queryByRole('link', { name: '麻薬監査を開始 — 12:00期限' })).toBeNull();
+    expect(screen.queryByText('止まっている作業はありません')).toBeNull();
+  });
+
+  it('surfaces cockpit fetch failure instead of hiding schedule risk and blocked reasons', () => {
+    const refetch = vi.fn();
+    mockQueries({
+      cockpitQueryOverride: {
+        data: buildCockpitFixture(),
+        isError: true,
+        error: new Error('cockpit failed'),
+        refetch,
+      },
+    });
+
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    expect(screen.getByTestId('schedule-team-gantt')).toBeTruthy();
+    expect(screen.getByText('リスク情報を取得できませんでした')).toBeTruthy();
+    expect(screen.getByText('稼働状況を取得できませんでした')).toBeTruthy();
+    expect(screen.getAllByText(/取得エラーです/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByTestId('schedule-risk-banner')).toBeNull();
+    expect(screen.queryByRole('link', { name: '麻薬監査を開始 — 12:00期限' })).toBeNull();
+    expect(screen.queryByText('止まっている作業はありません')).toBeNull();
+
+    screen.getAllByRole('button', { name: '再試行' }).forEach((button) => {
+      fireEvent.click(button);
+    });
+    expect(refetch).toHaveBeenCalledTimes(2);
   });
 
   it('surfaces archived patient badges on visits and pending proposals', () => {
