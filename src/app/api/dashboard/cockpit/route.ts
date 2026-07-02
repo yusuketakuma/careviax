@@ -1,5 +1,6 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { COCKPIT_CACHE_TTL_MS } from '@/lib/constants/workflow';
@@ -96,6 +97,10 @@ type AuditTaskLine = {
   dispensing_method: string | null;
 };
 
+type AuditQueueCountRow = {
+  count: bigint | number | string | null;
+};
+
 function collectHandlingTags(lines: AuditTaskLine[]): string[] {
   const tags = new Set<string>();
   for (const line of lines) {
@@ -124,6 +129,42 @@ function compareAuditQueueItems(left: CockpitAuditQueueItem, right: CockpitAudit
   if (left.due_at) return -1;
   if (right.due_at) return 1;
   return (left.waiting_since ?? '').localeCompare(right.waiting_since ?? '');
+}
+
+function readCount(value: AuditQueueCountRow['count'] | undefined): number {
+  if (typeof value === 'bigint') return Number(value);
+  const count = Number(value ?? 0);
+  return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+}
+
+async function countAuditQueueItems(args: { orgId: string; caseIds?: string[] }) {
+  if (args.caseIds && args.caseIds.length === 0) return 0;
+
+  const caseScope = args.caseIds
+    ? Prisma.sql`AND cycle."case_id" IN (${Prisma.join(args.caseIds)})`
+    : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<AuditQueueCountRow[]>(Prisma.sql`
+    SELECT COUNT(*)::bigint AS count
+    FROM "DispenseTask" task
+    INNER JOIN "MedicationCycle" cycle
+      ON cycle."id" = task."cycle_id"
+      AND cycle."org_id" = task."org_id"
+    LEFT JOIN LATERAL (
+      SELECT audit."result"
+      FROM "DispenseAudit" audit
+      WHERE audit."task_id" = task."id"
+        AND audit."org_id" = task."org_id"
+      ORDER BY audit."audited_at" DESC, audit."created_at" DESC, audit."id" DESC
+      LIMIT 1
+    ) latest_audit ON TRUE
+    WHERE task."org_id" = ${args.orgId}
+      AND task."status" = 'completed'
+      ${caseScope}
+      AND (latest_audit."result" IS NULL OR latest_audit."result"::text = 'hold')
+  `);
+
+  return readCount(rows[0]?.count);
 }
 
 async function authenticatedGET(req: NextRequest) {
@@ -183,6 +224,7 @@ async function authenticatedGET(req: NextRequest) {
     const [
       cycleCounts,
       auditTasks,
+      auditQueueTotalCount,
       todaySchedules,
       openExceptions,
       carryoverCount,
@@ -214,7 +256,7 @@ async function authenticatedGET(req: NextRequest) {
           due_date: true,
           updated_at: true,
           audits: {
-            orderBy: { audited_at: 'desc' },
+            orderBy: [{ audited_at: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
             take: 1,
             select: { result: true },
           },
@@ -245,6 +287,10 @@ async function authenticatedGET(req: NextRequest) {
             },
           },
         },
+      }),
+      countAuditQueueItems({
+        orgId: ctx.orgId,
+        caseIds: assignmentScope.caseIds,
       }),
       prisma.visitSchedule.findMany({
         where: {
@@ -368,6 +414,10 @@ async function authenticatedGET(req: NextRequest) {
 
     const blockedReasons: CockpitBlockedReason[] = buildBlockedReasons(openExceptions, now);
 
+    const auditQueue = auditQueueAll.slice(0, AUDIT_QUEUE_RESPONSE_LIMIT);
+    const auditQueueVisibleCount = auditQueue.length;
+    const auditQueueHiddenCount = Math.max(auditQueueTotalCount - auditQueueVisibleCount, 0);
+
     const responseData: DashboardCockpitResponse = {
       generated_at: now.toISOString(),
       scope: {
@@ -376,9 +426,12 @@ async function authenticatedGET(req: NextRequest) {
         can_view_team: canViewTeam,
       },
       cycle_status_counts: cycleStatusCounts,
-      audit_pending_count: auditQueueAll.length,
+      audit_pending_count: auditQueueTotalCount,
+      audit_queue_total_count: auditQueueTotalCount,
+      audit_queue_visible_count: auditQueueVisibleCount,
+      audit_queue_hidden_count: auditQueueHiddenCount,
       narcotic_audit_count: auditQueueAll.filter((item) => item.has_narcotic).length,
-      audit_queue: auditQueueAll.slice(0, AUDIT_QUEUE_RESPONSE_LIMIT),
+      audit_queue: auditQueue,
       today_visits: todayVisits,
       blocked_reasons: blockedReasons,
       carryover_count: carryoverCount,

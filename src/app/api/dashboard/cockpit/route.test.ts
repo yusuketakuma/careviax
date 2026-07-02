@@ -9,6 +9,7 @@ const {
   withRoutePerformanceMock,
   medicationCycleGroupByMock,
   dispenseTaskFindManyMock,
+  queryRawMock,
   visitScheduleFindManyMock,
   workflowExceptionFindManyMock,
   taskCountMock,
@@ -25,6 +26,7 @@ const {
   withRoutePerformanceMock: vi.fn((_req, handler) => handler()),
   medicationCycleGroupByMock: vi.fn(),
   dispenseTaskFindManyMock: vi.fn(),
+  queryRawMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   workflowExceptionFindManyMock: vi.fn(),
   taskCountMock: vi.fn(),
@@ -47,6 +49,7 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     medicationCycle: { groupBy: medicationCycleGroupByMock },
     dispenseTask: { findMany: dispenseTaskFindManyMock },
+    $queryRaw: queryRawMock,
     visitSchedule: { findMany: visitScheduleFindManyMock },
     workflowException: { findMany: workflowExceptionFindManyMock },
     task: { count: taskCountMock },
@@ -135,6 +138,7 @@ describe('/api/dashboard/cockpit', () => {
       { overall_status: 'audit_pending', _count: { id: 14 } },
       { overall_status: 'visit_completed', _count: { id: 2 } },
     ]);
+    queryRawMock.mockResolvedValue([{ count: BigInt(2) }]);
     dispenseTaskFindManyMock.mockResolvedValue([
       buildAuditTask({
         id: 'task_plain',
@@ -230,6 +234,9 @@ describe('/api/dashboard/cockpit', () => {
 
     // 監査済み(approved)タスクは除外され、麻薬を含むタスクが先頭に並ぶ
     expect(json.data.audit_pending_count).toBe(2);
+    expect(json.data.audit_queue_total_count).toBe(2);
+    expect(json.data.audit_queue_visible_count).toBe(2);
+    expect(json.data.audit_queue_hidden_count).toBe(0);
     expect(json.data.narcotic_audit_count).toBe(1);
     expect(json.data.audit_queue.map((item: { task_id: string }) => item.task_id)).toEqual([
       'task_narcotic',
@@ -281,9 +288,43 @@ describe('/api/dashboard/cockpit', () => {
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(serverCacheSetMock).toHaveBeenCalledWith(
       expect.stringContaining('cockpit:org_1:admin:user_1:2026-06-12:team'),
-      expect.objectContaining({ audit_pending_count: 2 }),
+      expect.objectContaining({
+        audit_pending_count: 2,
+        audit_queue_total_count: 2,
+        audit_queue_visible_count: 2,
+        audit_queue_hidden_count: 0,
+      }),
       15_000,
     );
+  });
+
+  it('keeps the visible audit queue capped while reporting the exact total count', async () => {
+    queryRawMock.mockResolvedValueOnce([{ count: BigInt(37) }]);
+    dispenseTaskFindManyMock.mockResolvedValue(
+      Array.from({ length: 8 }, (_, index) =>
+        buildAuditTask({
+          id: `task_${index}`,
+          priority: index === 0 ? 'emergency' : 'normal',
+          dueDate: new Date(2026, 5, 12, 10, index),
+          patientName: `患者${index}`,
+        }),
+      ),
+    );
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.audit_pending_count).toBe(37);
+    expect(json.data.audit_queue_total_count).toBe(37);
+    expect(json.data.audit_queue_visible_count).toBe(5);
+    expect(json.data.audit_queue_hidden_count).toBe(32);
+    expect(json.data.audit_queue).toHaveLength(5);
+
+    const auditQuery = dispenseTaskFindManyMock.mock.calls.at(-1)?.[0];
+    expect(auditQuery?.take).toBe(30);
+    expect(queryRawMock).toHaveBeenCalledTimes(1);
   });
 
   it('serves a cached cockpit response without rerunning aggregate queries', async () => {
@@ -309,6 +350,7 @@ describe('/api/dashboard/cockpit', () => {
     });
     expect(medicationCycleGroupByMock).not.toHaveBeenCalled();
     expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
+    expect(queryRawMock).not.toHaveBeenCalled();
     expect(serverCacheSetMock).not.toHaveBeenCalled();
   });
 
@@ -357,6 +399,7 @@ describe('/api/dashboard/cockpit', () => {
 
     const auditWhere = dispenseTaskFindManyMock.mock.calls.at(-1)?.[0]?.where;
     expect(auditWhere?.cycle).toEqual({ case_id: { in: ['case_1'] } });
+    expect(queryRawMock).toHaveBeenCalledTimes(1);
     expect(serverCacheSetMock).toHaveBeenCalledWith(
       expect.stringContaining('cockpit:org_1:pharmacist:user_1:2026-06-12:mine'),
       expect.objectContaining({
@@ -433,6 +476,7 @@ describe('/api/dashboard/cockpit', () => {
     expect(serverCacheGetMock).not.toHaveBeenCalled();
     expect(medicationCycleGroupByMock).not.toHaveBeenCalled();
     expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
+    expect(queryRawMock).not.toHaveBeenCalled();
     expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
   });
 
@@ -453,6 +497,7 @@ describe('/api/dashboard/cockpit', () => {
     expect(serverCacheGetMock).not.toHaveBeenCalled();
     expect(medicationCycleGroupByMock).not.toHaveBeenCalled();
     expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
+    expect(queryRawMock).not.toHaveBeenCalled();
     expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
   });
 
@@ -475,6 +520,7 @@ describe('/api/dashboard/cockpit', () => {
     expect(serverCacheSetMock).not.toHaveBeenCalled();
     expect(medicationCycleGroupByMock).not.toHaveBeenCalled();
     expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
+    expect(queryRawMock).not.toHaveBeenCalled();
     expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
     expect(workflowExceptionFindManyMock).not.toHaveBeenCalled();
     expect(taskCountMock).not.toHaveBeenCalled();

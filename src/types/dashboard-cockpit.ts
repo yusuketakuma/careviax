@@ -73,6 +73,12 @@ export type DashboardCockpitResponse = {
   };
   /** MedicationCycle.overall_status → 件数(cancelled を除く)。工程の今(9工程)の元データ */
   cycle_status_counts: Record<string, number>;
+  /** 監査待ちキューの総件数。旧クライアント互換のため audit_pending_count と同値で返す。 */
+  audit_queue_total_count?: number;
+  /** audit_queue に実際に含まれる表示件数。 */
+  audit_queue_visible_count?: number;
+  /** 総件数から表示件数を引いた非表示件数。PHI を含まない件数メタデータ。 */
+  audit_queue_hidden_count?: number;
   audit_pending_count: number;
   narcotic_audit_count: number;
   /** 監査待ちキュー(麻薬優先・緊急度順)。今すぐ対応カードの元データ */
