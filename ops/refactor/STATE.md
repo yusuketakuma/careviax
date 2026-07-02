@@ -419,7 +419,7 @@ re-audits are complete.
 
 - Change ID:
   `RR-BUG-20260702-F06-admin-capacity-jst-completed-today`.
-- Status: implemented and validated, pending commit at time of ledger update.
+- Status: implemented, validated, and committed as `38897c81`.
 - Files changed:
   - `src/app/api/admin/capacity/route.ts`
   - `src/app/api/admin/capacity/route.test.ts`

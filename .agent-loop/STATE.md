@@ -1107,7 +1107,6 @@ User-directed program after the org-header sweep. Method: ultracode 51-screen re
 - gbrain writeback slug:
   `projects/careviax/failures/2026-07-02/admin-capacity-completed-today-server-local-midnight`.
 - Commit:
-  pending.
-- Next action: commit this F06 slice and ledgers with explicit paths, notify
-  via agmsg if available, then continue the next highest-value
-  ULTRACODE/refactor item.
+  `38897c81` (`fix(capacity): count completed dispense tasks by JST day`).
+- Next action: notify via agmsg if available, then continue the next
+  highest-value ULTRACODE/refactor item.
