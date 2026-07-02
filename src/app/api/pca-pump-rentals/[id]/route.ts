@@ -4,7 +4,7 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { requireAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { notFound, success, validationError } from '@/lib/api/response';
+import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import {
   isCompletePassingPcaPumpAccessoryChecklist,
@@ -50,6 +50,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           due_at: true,
           returned_at: true,
           return_inspection_status: true,
+          updated_at: true,
           pump: {
             select: {
               status: true,
@@ -232,9 +233,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes || null } : {}),
         };
 
-        const rental = await tx.pcaPumpRental.update({
-          where: { id },
+        const claim = await tx.pcaPumpRental.updateMany({
+          where: {
+            id,
+            org_id: ctx.orgId,
+            status: existing.status,
+            updated_at: existing.updated_at,
+          },
           data: rentalUpdateData,
+        });
+        if (claim.count !== 1) {
+          return {
+            kind: 'error' as const,
+            error: 'rental_stale_update' as const,
+          };
+        }
+
+        const rental = await tx.pcaPumpRental.findFirst({
+          where: { id, org_id: ctx.orgId },
           include: {
             accessories: {
               orderBy: [{ created_at: 'asc' }],
@@ -243,6 +259,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             institution: true,
           },
         });
+        if (!rental) {
+          return {
+            kind: 'error' as const,
+            error: 'rental_not_found_after_update' as const,
+          };
+        }
         if (nextInspectionStatus === 'passed' || nextInspectionStatus === 'needs_maintenance') {
           if (parsed.data.accessory_checklist) {
             await syncPcaRentalAccessoriesFromReturnInspection(tx, {
@@ -333,6 +355,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   if (updated.kind === 'error') {
+    if (updated.error === 'rental_stale_update') {
+      return conflict(
+        'PCAポンプレンタルが他の操作で更新されています。最新の状態を再読み込みしてください',
+      );
+    }
+    if (updated.error === 'rental_not_found_after_update') {
+      return notFound('PCAポンプレンタルが見つかりません');
+    }
     return validationError('このPCAポンプには未完了の貸出があるため状態を変更できません');
   }
 
