@@ -326,6 +326,19 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* SSOT 3.5: 全 animation / transition を即時化する（装飾モーションの一括無効化）。
+     display:none ではなく duration 0.01ms にすることで、animationend / transitionend に
+     依存するコンポーネント（Radix の presence 等）のイベント発火を保ったまま
+     視覚上のモーションだけを消す。無限アニメ（spin / pulse）は iteration-count 1 で停止。 */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
   .phos-patient-card-motion,
   .phos-patient-empty-state {
     animation: none;

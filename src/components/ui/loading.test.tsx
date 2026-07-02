@@ -31,6 +31,17 @@ describe('Loading primitives', () => {
     expect(document.querySelector('[aria-hidden="true"]')).toBeTruthy();
   });
 
+  it('marks skeleton and spinner motion as reduced-motion safe (SSOT 3.5)', () => {
+    const { container } = render(<SkeletonRows rows={1} cols={1} />);
+    render(<Spinner />);
+
+    // prefers-reduced-motion 環境で pulse / spin が止まる Tailwind variant を欠かさない。
+    const skeleton = container.querySelector('.animate-pulse');
+    expect(skeleton?.className).toContain('motion-reduce:animate-none');
+    const spinner = document.querySelector('.animate-spin');
+    expect(spinner?.className).toContain('motion-reduce:animate-none');
+  });
+
   it('keeps loading button spinners decorative under the busy button label', () => {
     render(
       <LoadingButton loading loadingLabel="保存中">
