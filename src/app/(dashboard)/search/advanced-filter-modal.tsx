@@ -205,7 +205,8 @@ export function AdvancedFilterModal({
                     onClick={() => toggleCareTag(opt.value)}
                     aria-pressed={isActive}
                     className={cn(
-                      'inline-flex min-h-[36px] items-center rounded-full border px-4 text-sm font-medium transition-colors',
+                      // タッチターゲット 44px 無条件(SSOT 8.2、屋外タブレット・グローブ前提)。
+                      'inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-medium transition-colors',
                       isActive
                         ? 'border-primary/20 bg-primary/10 text-primary'
                         : 'border-border bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground',
