@@ -39,6 +39,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Skeleton, SkeletonRows } from '@/components/ui/loading';
+import { quotedCsvRow } from '@/lib/csv/safe-csv';
 import { cn } from '@/lib/utils';
 
 export type DataTableColumnMeta<TData> = {
@@ -108,10 +109,6 @@ function stringifyExportValue(value: unknown) {
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (value instanceof Date) return value.toISOString();
   return JSON.stringify(value);
-}
-
-function toCsvRow(values: string[]) {
-  return values.map((value) => `"${value.replace(/"/g, '""')}"`).join(',');
 }
 
 export function DataTable<TData>({
@@ -316,7 +313,7 @@ export function DataTable<TData>({
       }),
     );
 
-    const csv = [toCsvRow(headers), ...rows.map((row) => toCsvRow(row))].join('\n');
+    const csv = [quotedCsvRow(headers), ...rows.map((row) => quotedCsvRow(row))].join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -550,16 +547,16 @@ export function DataTable<TData>({
                       className={cn(
                         'border-b border-border transition-colors last:border-0 hover:bg-muted/40',
                         index % 2 === 1 && 'bg-muted/20',
-                        selectedRowIndex === index &&
+                        selectedRowIndex === row.index &&
                           'ring-2 ring-inset ring-primary/50 bg-primary/5',
                         row.getIsSelected() && 'bg-primary/5',
                       )}
-                      onClick={() => onRowClick?.(index)}
+                      onClick={() => onRowClick?.(row.index)}
                       onKeyDown={(event) => {
                         if (!onRowClick) return;
                         if (event.key === 'Enter' || event.key === ' ') {
                           event.preventDefault();
-                          onRowClick(index);
+                          onRowClick(row.index);
                         }
                       }}
                       role={onRowClick ? 'button' : undefined}

@@ -2020,3 +2020,39 @@ evidence also exists in root `REFACTOR_REPORT.md`,
     `pnpm build` passed.
   - `pnpm format:check` failed only on unrelated existing `ops/refactor/*`
     formatting issues; scoped Prettier passed for all changed files.
+
+## 2026-07-02 13:33 JST - DataTable Source Row Index And CSV Export Safety
+
+- Change ID: `RR-FE-20260702-F02-data-table-source-row-index`.
+- Category: bug fix / shared frontend component / CSV export safety.
+- Files changed:
+  - `src/components/ui/data-table.tsx`
+  - `src/components/ui/data-table.test.tsx`
+- Summary:
+  - Fixed desktop DataTable selected-row highlighting and row activation to use
+    TanStack `row.index` instead of the rendered sorted/filtered map index.
+  - Kept zebra striping on the rendered map index.
+  - Added regressions for both sorted and filtered desktop row models covering
+    pointer activation, Enter activation, and selected-row highlight.
+  - Validated the existing same-file CSV export hardening by using shared
+    `quotedCsvRow()` and a client export regression for formula-prefix cells.
+- Safety:
+  - Prevents DataTable consumers that index into original arrays from opening or
+    highlighting the wrong record after sort/filter, including medication master
+    and QR-draft style workflows.
+  - Client CSV export formula-prefix neutralization reduces spreadsheet formula
+    injection risk.
+  - No API, DB, auth/RLS, route contract, migration, billing, external send,
+    production config, secret, dependency, push/deploy, or destructive-operation
+    behavior changed.
+- Performance:
+  - No performance optimization is claimed.
+  - The patch only changes row identity selection and CSV helper reuse.
+- Validation:
+  - Focused DataTable suite passed `1` file / `7` tests before hardening.
+  - Final DataTable + safe-csv bundle passed `2` files / `17` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, and `pnpm build` passed.
+  - Codex frontend reviewer and test architect reported no blockers; their
+    optional hardening suggestions were applied before final validation.

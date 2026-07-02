@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -175,5 +175,115 @@ describe('DataTable', () => {
     fireEvent.keyDown(rowButtons[0], { key: 'Enter', code: 'Enter' });
 
     expect(onRowClick).toHaveBeenCalledWith(0);
+  });
+
+  it('keeps desktop row activation tied to the source data index after sorting', () => {
+    const onRowClick = vi.fn();
+
+    render(
+      <DataTable
+        columns={columns}
+        data={[
+          { id: 'row-0', name: 'Zulu' },
+          { id: 'row-1', name: 'Alpha' },
+        ]}
+        selectedRowIndex={1}
+        getRowId={(row) => row.id}
+        getRowA11yLabel={(row) => row.name}
+        onRowClick={onRowClick}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '氏名 で並び替え' }));
+
+    const alphaDesktopRow = within(screen.getByRole('table')).getByRole('button', {
+      name: 'Alpha の詳細を表示',
+    });
+
+    expect(alphaDesktopRow.className).toContain('ring-primary/50');
+
+    fireEvent.click(alphaDesktopRow);
+    expect(onRowClick).toHaveBeenCalledWith(1);
+
+    onRowClick.mockClear();
+    fireEvent.keyDown(alphaDesktopRow, { key: 'Enter', code: 'Enter' });
+    expect(onRowClick).toHaveBeenCalledWith(1);
+  });
+
+  it('keeps desktop row activation tied to the source data index after filtering', () => {
+    const onRowClick = vi.fn();
+
+    render(
+      <DataTable
+        columns={columns}
+        data={[
+          { id: 'row-0', name: 'Bravo' },
+          { id: 'row-1', name: 'Alpha' },
+          { id: 'row-2', name: 'Zulu' },
+        ]}
+        selectedRowIndex={1}
+        getRowId={(row) => row.id}
+        getRowA11yLabel={(row) => row.name}
+        onRowClick={onRowClick}
+        toolbar={{ enableGlobalFilter: true }}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('テーブル内を絞り込み'), {
+      target: { value: 'Alpha' },
+    });
+
+    const alphaDesktopRow = within(screen.getByRole('table')).getByRole('button', {
+      name: 'Alpha の詳細を表示',
+    });
+
+    expect(alphaDesktopRow.className).toContain('ring-primary/50');
+
+    fireEvent.click(alphaDesktopRow);
+    expect(onRowClick).toHaveBeenCalledWith(1);
+
+    onRowClick.mockClear();
+    fireEvent.keyDown(alphaDesktopRow, { key: 'Enter', code: 'Enter' });
+    expect(onRowClick).toHaveBeenCalledWith(1);
+  });
+
+  it('neutralizes CSV formula-prefix cells on client export (matches server-side safe-csv)', async () => {
+    const createObjectURL = vi.fn<(object: Blob | MediaSource) => string>(() => 'blob:mock');
+    const revokeObjectURL = vi.fn();
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = createObjectURL as unknown as typeof URL.createObjectURL;
+    URL.revokeObjectURL = revokeObjectURL as unknown as typeof URL.revokeObjectURL;
+
+    try {
+      render(
+        <DataTable
+          columns={columns}
+          data={[{ id: 'evil-1', name: '=SUM(A1:A9)' }]}
+          toolbar={{ enableExport: true }}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'CSV出力' }));
+
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+      const [blob] = createObjectURL.mock.calls[0] ?? [];
+      if (!(blob instanceof Blob)) {
+        throw new Error('CSV export did not pass a Blob to URL.createObjectURL');
+      }
+      const csv = await blob.text();
+
+      // Cell starting with '=' must be prefixed with an apostrophe so spreadsheets
+      // treat it as text, not a live formula (CSV injection). This mirrors the
+      // server-side export path (src/lib/csv/safe-csv.ts) that all 7 export routes use.
+      expect(anchorClick).toHaveBeenCalledTimes(1);
+      expect(csv).toContain('"\'=SUM(A1:A9)"');
+      expect(csv).not.toContain('"=SUM(A1:A9)"');
+    } finally {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+      anchorClick.mockRestore();
+    }
   });
 });

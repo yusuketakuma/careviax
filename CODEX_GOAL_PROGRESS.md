@@ -35758,3 +35758,53 @@ Next loop:
 - Remaining:
   - Slice D clipboard failure handling is next and uses the same drug-master
     file lock; release is deferred until D is committed.
+
+### DataTable Source Row Index And CSV Export Safety - 2026-07-02 13:33 JST
+
+- Scope:
+  - ULTRACODE F02 `RR-FE-20260702-F02-data-table-source-row-index`.
+  - `src/components/ui/data-table.tsx`
+  - `src/components/ui/data-table.test.tsx`
+- Fixed:
+  - Desktop DataTable activation now matches the mobile/source-index contract:
+    `selectedRowIndex`, pointer activation, and Enter/Space activation use
+    `row.index` after sorting/filtering.
+  - Zebra striping still uses the rendered map index.
+  - Added regressions for sorted and filtered desktop tables proving click,
+    keyboard activation, and selected-row highlight stay tied to the source data
+    index.
+  - Validated the same-file client CSV export hardening: export now delegates to
+    shared `quotedCsvRow()` and neutralizes formula-prefix cells consistently
+    with server safe-csv helpers.
+- Safety:
+  - Prevents wrong-record opening/highlighting in DataTable consumers that
+    resolve `onRowClick(index)` against the original data array, including
+    drug-master and QR-draft workflows.
+  - CSV export formula-prefix neutralization reduces spreadsheet formula
+    injection risk without changing API, DB, auth/RLS, route contract,
+    migration, billing, external-send, secret, dependency, push/deploy, or
+    destructive-operation behavior.
+- Performance:
+  - No performance optimization is claimed.
+  - The change is constant-time row identity selection plus shared CSV quoting;
+    no new request, DB query, dependency, polling, broad scan, render fan-out, or
+    unbounded loop was added.
+- Validation:
+  - Focused initial DataTable suite passed: `1` file / `7` tests.
+  - Hardened DataTable + safe-csv bundle passed:
+    `pnpm exec vitest run src/lib/csv/safe-csv.test.ts src/components/ui/data-table.test.tsx --reporter=dot --testTimeout=60000`:
+    `2` files / `17` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm build`: passed.
+  - Codex frontend reviewer and test architect reported no blockers; optional
+    filter coverage, table-scoped desktop lookup, and CSV click-mock hygiene
+    were applied before final validation.
+- Remaining:
+  - The broad ULTRACODE/refactor objective remains open.
+  - Browser smoke was skipped because this shared component patch is covered by
+    DOM component regressions for pointer/keyboard/highlight behavior and
+    production build, and changes no navigation or backend contract.

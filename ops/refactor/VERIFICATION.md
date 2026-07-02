@@ -2159,3 +2159,48 @@ The latest performance/privacy slice was
   - Real S3/Dynamo replay was skipped because external sends remain
     approval-gated and the no-send corrupt-payload behavior is asserted with
     mocked client/fetch.
+
+## DataTable Source Row Index And CSV Export Safety Verification
+
+The latest shared frontend component slice was
+`RR-FE-20260702-F02-data-table-source-row-index` at 2026-07-02 13:33 JST.
+
+- Planning / review:
+  - ULTRACODE F02 identified desktop DataTable using rendered sorted/filtered
+    map indexes while mobile and consumers expect source data indexes.
+  - Codex frontend reviewer found no blockers and confirmed desktop/mobile row
+    activation contracts are aligned after the fix.
+  - Codex test architect found no blockers and requested optional hardening for
+    table-scoped desktop lookup, filter-specific coverage, and CSV navigation
+    warning cleanup; all three were applied before final validation.
+- Focused regressions:
+  - `pnpm exec vitest run src/components/ui/data-table.test.tsx --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `7` tests before optional hardening.
+  - `pnpm exec vitest run src/lib/csv/safe-csv.test.ts src/components/ui/data-table.test.tsx --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `17` tests after hardening.
+  - Coverage: sorted desktop click and Enter return source index `1`;
+    filtered desktop click and Enter return source index `1`; selected-row ring
+    follows source `selectedRowIndex`; client CSV export neutralizes
+    formula-prefix cells and does not emit jsdom navigation warnings.
+- Scoped checks:
+  - `pnpm exec eslint src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx src/lib/csv/safe-csv.ts src/lib/csv/safe-csv.test.ts`
+  - Result: passed.
+  - `pnpm exec prettier --check src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx src/lib/csv/safe-csv.ts src/lib/csv/safe-csv.test.ts`
+  - Result: passed.
+  - `git diff --check -- src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx`
+  - Result: passed.
+- Full gates:
+  - `pnpm typecheck`
+  - Result: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  - Result: passed.
+  - `pnpm lint`
+  - Result: passed.
+  - `pnpm format:check`
+  - Result: passed.
+  - `pnpm build`
+  - Result: passed.
+- Skipped:
+  - Browser/E2E smoke was skipped because this shared component behavior is
+    covered by jsdom DOM regressions plus production build, and no navigation,
+    API route contract, DB, mutation, or external-send behavior changed.

@@ -1022,3 +1022,34 @@ User-directed program after the org-header sweep. Method: ultracode 51-screen re
 - Next action: commit this F11 slice and ledgers with explicit paths, notify
   via agmsg if messenger is available, then continue the next highest-value
   ULTRACODE/refactor item.
+
+### Resume point - 2026-07-02 13:33 JST
+
+- Active broad ULTRACODE/refactor objective remains open. Latest validated
+  slice:
+  `RR-FE-20260702-F02-data-table-source-row-index`.
+- Changed owned runtime files:
+  `src/components/ui/data-table.tsx` and
+  `src/components/ui/data-table.test.tsx`.
+- Fixed DataTable sorted/filtered desktop row identity:
+  selected-row highlight, click activation, and Enter/Space activation now use
+  source `row.index`, matching mobile behavior and DataTable consumers that
+  resolve callbacks against original arrays. Rendered zebra striping remains
+  based on rendered row order.
+- Validated same-file CSV export safety:
+  client export uses shared `quotedCsvRow()` and neutralizes formula-prefix
+  cells like `=SUM(...)`; the regression mocks anchor click to avoid jsdom
+  navigation warning noise.
+- Validation passed:
+  DataTable focused suite `1` file / `7` tests, final DataTable + safe-csv
+  bundle `2` files / `17` tests, scoped ESLint/Prettier/diff-check,
+  `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+  `pnpm format:check`, and `pnpm build`.
+- Review:
+  Codex frontend reviewer and test architect reported no blockers; optional
+  filter coverage and test hygiene suggestions were applied.
+- gbrain writeback slug:
+  `projects/careviax/failures/2026-07-02/data-table-sorted-filtered-row-index`.
+- Next action: commit this DataTable slice and ledgers with explicit paths,
+  notify via agmsg if available, then continue the next highest-value
+  ULTRACODE/refactor item.

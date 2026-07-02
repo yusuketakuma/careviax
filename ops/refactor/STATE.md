@@ -367,3 +367,27 @@ re-audits are complete.
 - Memory:
   - `projects/careviax/decisions/2026-07-02/offline-base64-helper-consolidation`
   - `projects/careviax/failures/2026-07-02/offline-evidence-unreadable-payload-hidden`
+
+## Latest Slice - 2026-07-02 13:33 JST
+
+- Change ID: `RR-FE-20260702-F02-data-table-source-row-index`.
+- Status: implemented and validated, pending commit at time of ledger update.
+- Files changed:
+  - `src/components/ui/data-table.tsx`
+  - `src/components/ui/data-table.test.tsx`
+- Summary:
+  - Desktop DataTable now uses source `row.index` for selected-row highlight,
+    click activation, and Enter/Space activation after sorting/filtering.
+  - Rendered-row zebra striping still uses the rendered map index.
+  - Added sorted and filtered desktop regressions for click, keyboard, and
+    highlight behavior.
+  - Validated client CSV export safe-csv alignment for formula-prefix cells.
+- Validation:
+  - Focused DataTable suite passed `1` file / `7` tests.
+  - Final DataTable + safe-csv bundle passed `2` files / `17` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, and `pnpm build` passed.
+  - Frontend reviewer and test architect reported no blockers.
+- Memory:
+  - `projects/careviax/failures/2026-07-02/data-table-sorted-filtered-row-index`
