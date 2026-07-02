@@ -93,8 +93,8 @@ describe('subscribeSharedRealtimeStream', () => {
   });
 
   it('isolates listener exceptions without reconnecting the shared stream', async () => {
-    const eventError = new Error('event listener failed');
-    const statusError = new Error('status listener failed');
+    const eventError = new Error('event listener failed token=secret');
+    const statusError = new Error('status listener failed patient=患者A db_password=value');
     const throwingListener = vi.fn(() => {
       throw eventError;
     });
@@ -139,13 +139,17 @@ describe('subscribeSharedRealtimeStream', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(consoleError).toHaveBeenCalledTimes(3);
     expect(consoleError).toHaveBeenCalledWith('[realtime] listener failed', {
-      name: 'Error',
-      message: eventError.message,
+      kind: 'Error',
+      message: 'Realtime listener failed',
     });
     expect(consoleError).toHaveBeenCalledWith('[realtime] listener failed', {
-      name: 'Error',
-      message: statusError.message,
+      kind: 'Error',
+      message: 'Realtime listener failed',
     });
+    const logged = JSON.stringify(consoleError.mock.calls);
+    expect(logged).not.toContain('token=secret');
+    expect(logged).not.toContain('db_password=value');
+    expect(logged).not.toContain('患者A');
 
     unsubscribeSecond();
     unsubscribeFirst();

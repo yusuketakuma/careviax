@@ -1,4 +1,5 @@
 import { readJsonResponseBody } from '@/lib/api/response-body';
+import { logger } from '@/lib/utils/logger';
 
 export type CollaborationRoomTokenResponse = {
   room: string;
@@ -30,6 +31,14 @@ export const ROOM_TOKEN_REFRESH_RETRY_MAX_MS = 60_000;
 export const ROOM_TOKEN_REFRESH_RETRY_JITTER_MS = 1_000;
 export const PROVIDER_RENEWAL_CANDIDATE_TIMEOUT_MS = 10_000;
 
+type RoomTokenFetchFailureCode =
+  | 'FETCH_REJECTED'
+  | 'TRANSIENT_HTTP'
+  | 'MALFORMED_PAYLOAD'
+  | 'EXPIRED_TOKEN';
+
+const warnedRoomTokenFetchFailures = new Set<string>();
+
 function readRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
@@ -37,6 +46,35 @@ function readRecord(value: unknown): Record<string, unknown> | null {
 
 function readNonBlankString(value: unknown) {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function warnRoomTokenFetchFailure({
+  entityType,
+  code,
+  status,
+  error,
+}: {
+  entityType: string;
+  code: RoomTokenFetchFailureCode;
+  status?: number;
+  error?: unknown;
+}) {
+  const warningKey = `${entityType}:${code}:${status ?? 'network'}`;
+  if (warnedRoomTokenFetchFailures.has(warningKey)) return;
+  warnedRoomTokenFetchFailures.add(warningKey);
+
+  logger.warn(
+    {
+      event: 'collaboration_room_token_fetch_failed',
+      route: '/api/collaboration/room-token',
+      method: 'POST',
+      operation: 'fetch_collaboration_room_token',
+      entityType,
+      ...(typeof status === 'number' ? { status } : {}),
+      code,
+    },
+    error,
+  );
 }
 
 export function readCollaborationRoomTokenResponse(
@@ -96,11 +134,21 @@ export async function fetchCollaborationRoomToken({
       entity_type: entityType,
       entity_id: entityId,
     }),
-  }).catch(() => null);
+  }).catch((error: unknown) => {
+    warnRoomTokenFetchFailure({ entityType, code: 'FETCH_REJECTED', error });
+    return null;
+  });
 
   if (!tokenResponse) return { kind: 'transient-error' };
   if (!tokenResponse.ok) {
     const isTransientFailure = tokenResponse.status === 429 || tokenResponse.status >= 500;
+    if (isTransientFailure) {
+      warnRoomTokenFetchFailure({
+        entityType,
+        code: 'TRANSIENT_HTTP',
+        status: tokenResponse.status,
+      });
+    }
     return isTransientFailure
       ? {
           kind: 'transient-error',
@@ -110,9 +158,21 @@ export async function fetchCollaborationRoomToken({
   }
 
   const roomToken = readCollaborationRoomTokenResponse(await readJsonResponseBody(tokenResponse));
-  if (!roomToken) return { kind: 'transient-error' };
+  if (!roomToken) {
+    warnRoomTokenFetchFailure({
+      entityType,
+      code: 'MALFORMED_PAYLOAD',
+      status: tokenResponse.status,
+    });
+    return { kind: 'transient-error' };
+  }
   const expiresAtMs = Date.parse(roomToken.expires_at);
   if (!Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs) {
+    warnRoomTokenFetchFailure({
+      entityType,
+      code: 'EXPIRED_TOKEN',
+      status: tokenResponse.status,
+    });
     return { kind: 'transient-error' };
   }
   return { kind: 'ok', roomToken };

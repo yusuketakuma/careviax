@@ -9,6 +9,7 @@ const channelListeners = new Map<string, Set<RealtimeListener>>();
 let pub: Redis | null = null;
 let sub: Redis | null = null;
 const subscribedChannels = new Set<string>();
+const pendingUnsubscribes = new Map<string, Promise<void>>();
 
 export function parseRedisRealtimeMessage(message: string): Record<string, unknown> | null {
   return parseJsonObjectOrNull(message);
@@ -45,6 +46,16 @@ function getConnections(): { pub: Redis; sub: Redis } {
   return { pub, sub };
 }
 
+async function subscribeRedisChannel(subscriber: Redis, channel: string): Promise<void> {
+  subscribedChannels.add(channel);
+  try {
+    await subscriber.subscribe(channel);
+  } catch (err) {
+    subscribedChannels.delete(channel);
+    throw err;
+  }
+}
+
 export class RealtimeAdapter {
   async broadcastStatusUpdate(channel: string, data: Record<string, unknown>): Promise<void> {
     const { pub: publisher } = getConnections();
@@ -58,9 +69,13 @@ export class RealtimeAdapter {
     listeners.add(callback);
     channelListeners.set(channel, listeners);
 
+    const pendingUnsubscribe = pendingUnsubscribes.get(channel);
+    if (pendingUnsubscribe) {
+      await pendingUnsubscribe;
+    }
+
     if (!subscribedChannels.has(channel)) {
-      subscribedChannels.add(channel);
-      await subscriber.subscribe(channel);
+      await subscribeRedisChannel(subscriber, channel);
     }
   }
 
@@ -70,8 +85,41 @@ export class RealtimeAdapter {
     listeners.delete(callback);
     if (listeners.size === 0) {
       channelListeners.delete(channel);
-      subscribedChannels.delete(channel);
-      sub?.unsubscribe(channel).catch(() => {});
+      if (pendingUnsubscribes.has(channel)) return;
+      const subscriber = sub;
+      if (!subscriber) {
+        subscribedChannels.delete(channel);
+        return;
+      }
+
+      const pendingUnsubscribe = (async () => {
+        try {
+          await subscriber.unsubscribe(channel);
+        } catch (err) {
+          logger.warn('[realtime] unsubscribe failed', {
+            channel,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          subscribedChannels.delete(channel);
+          return;
+        }
+
+        subscribedChannels.delete(channel);
+        if (!channelListeners.has(channel)) return;
+
+        try {
+          await subscribeRedisChannel(subscriber, channel);
+        } catch (err) {
+          logger.warn('[realtime] resubscribe after unsubscribe race failed', {
+            channel,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      })().finally(() => {
+        pendingUnsubscribes.delete(channel);
+      });
+
+      pendingUnsubscribes.set(channel, pendingUnsubscribe);
     }
   }
 }

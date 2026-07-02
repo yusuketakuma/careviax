@@ -24,6 +24,7 @@ type SharedRealtimeStream = {
 };
 
 const PRESENCE_TARGET_RECONNECT_DEBOUNCE_MS = 150;
+const REALTIME_LISTENER_FAILED_MESSAGE = 'Realtime listener failed';
 const streams = new Map<string, SharedRealtimeStream>();
 
 function presenceTargetKey(target: RealtimePresenceTarget) {
@@ -70,11 +71,10 @@ function schedulePresenceTargetReconnect(stream: SharedRealtimeStream) {
 }
 
 function logRealtimeListenerError(error: unknown) {
-  if (error instanceof Error) {
-    console.error('[realtime] listener failed', { name: error.name, message: error.message });
-    return;
-  }
-  console.error('[realtime] listener failed', { message: String(error) });
+  console.error('[realtime] listener failed', {
+    kind: error instanceof Error ? 'Error' : typeof error,
+    message: REALTIME_LISTENER_FAILED_MESSAGE,
+  });
 }
 
 function emitStatus(stream: SharedRealtimeStream, connected: boolean) {

@@ -1,4 +1,5 @@
 import { readJsonResponseBody } from '@/lib/api/response-body';
+import { logger } from '@/lib/utils/logger';
 import { readPresenceUsersResponse, type PresenceUser } from './presence-contract';
 
 interface PresenceRequestOptions {
@@ -9,6 +10,29 @@ interface PresenceRequestOptions {
 
 interface PostPresenceUpdateOptions extends PresenceRequestOptions {
   activeField?: string | null;
+}
+
+const warnedPresenceUpdateFailures = new Set<string>();
+
+function warnPresenceUpdateFailure(entityType: string, status?: number, error?: unknown) {
+  const warningKey = `${entityType}:${status ?? 'network'}`;
+  if (warnedPresenceUpdateFailures.has(warningKey)) return;
+  warnedPresenceUpdateFailures.add(warningKey);
+
+  const context = {
+    event: 'presence_update_post_failed',
+    route: '/api/presence',
+    method: 'POST',
+    operation: 'post_presence_update',
+    entityType,
+    ...(typeof status === 'number' ? { status } : {}),
+  };
+
+  if (error === undefined) {
+    logger.warn(context);
+    return;
+  }
+  logger.warn(context, error);
 }
 
 export function buildPresenceQueryKey(entityType: string, entityId: string, orgId: string) {
@@ -45,5 +69,13 @@ export function postPresenceUpdate({
       entity_id: entityId,
       active_field: activeField,
     }),
-  }).catch(() => undefined);
+  })
+    .then((response) => {
+      if (!response.ok) warnPresenceUpdateFailure(entityType, response.status);
+      return response;
+    })
+    .catch((error: unknown) => {
+      warnPresenceUpdateFailure(entityType, undefined, error);
+      return undefined;
+    });
 }
