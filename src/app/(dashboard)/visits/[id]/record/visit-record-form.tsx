@@ -7,6 +7,7 @@ import { useForm, FormProvider, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
+import { japanDateKey } from '@/lib/utils/date-boundary';
 import { toast } from 'sonner';
 import { formatYen } from '@/lib/ui/currency-format';
 import { timeIsoToString } from '@/lib/visits/time-of-day';
@@ -558,7 +559,9 @@ export function VisitRecordForm({
     enabled: !!orgId && !!schedule?.id,
   });
 
-  const today = format(new Date(), 'yyyy-MM-dd');
+  // 訪問日/受領日時の既定は国内業務日(JST)を正本にする(SSOT 2.8)。format(new Date(),...) は
+  // 端末ローカル TZ 解釈で、Asia/Tokyo より遅れた TZ では前日の既定日になり得るため使わない。
+  const today = japanDateKey();
   const carryItemsWarning =
     schedule?.carry_items_status === 'blocked'
       ? {

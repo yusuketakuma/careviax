@@ -405,6 +405,30 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
   });
 
+  it('defaults the visit date to the JST business date on a device timezone behind Japan (SSOT 2.8)', async () => {
+    // 既定訪問日は端末ローカル TZ ではなく JST 業務日を正本にする。format(new Date(),...) だと
+    // Asia/Tokyo より遅れた TZ では前日の既定日になってしまう回帰を固定する。
+    const originalTz = process.env.TZ;
+    process.env.TZ = 'Pacific/Honolulu'; // UTC-10、JST より遅れ
+    // Date のみ偽装し(setTimeout/rAF は実タイマーのまま)、react-query の非同期解決を妨げない。
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-07-04T02:00:00+09:00'));
+    try {
+      // 前提確認: ランタイム TZ が実際に JST より遅れている(偽ガード検知)。
+      expect(new Date('2026-07-04T00:00:00+09:00').getDate()).toBe(3);
+
+      renderVisitRecordForm();
+
+      const visitDateInput = (await screen.findByLabelText(/訪問日/)) as HTMLInputElement;
+      // JST 業務日(2026-07-04)。端末ローカル日付(2026-07-03)にならない。
+      expect(visitDateInput.value).toBe('2026-07-04');
+    } finally {
+      vi.useRealTimers();
+      if (originalTz === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTz;
+    }
+  });
+
   it('blocks the visit form with a retryable error when the schedule cannot be loaded', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
