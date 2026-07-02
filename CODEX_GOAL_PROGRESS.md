@@ -42,6 +42,56 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### Backend: Visit Billing Candidate Regeneration Guard - 2026-07-02 23:36 JST
+
+- Scope:
+  - Continued backend/API implementation with Claude coordination through
+    agmsg.
+  - Fixed the stale-update race in
+    `POST /api/visit-billing-candidates` regeneration for locked/invoiced
+    candidates.
+  - Commit: `be6bc9f8`
+    (`fix(api): guard visit billing regeneration updates`).
+  - gbrain writeback:
+    `projects/careviax/decisions/2026-07-02/visit-billing-candidate-regeneration-guard`.
+- Fixed:
+  - Existing candidate regeneration now writes through conditional
+    `updateMany` with `id`, `org_id`,
+    `billing_status in ['candidate', 'excluded']`, and
+    `invoice_items: { none: {} }` in the same database write predicate.
+  - The concurrent-create `P2002` retry path uses the same guarded helper.
+  - `count !== 1` is treated as a locked candidate and counted in
+    `skipped_locked_count`, preventing invoice-linked candidates from having
+    billing snapshots/amounts overwritten after invoicing.
+  - Added a regression where preflight sees an editable candidate, the guarded
+    update matches `0` rows, and the route skips instead of overwriting.
+- Safety:
+  - Preserved request auth, `canManageBilling`, org scoping, response envelope,
+    generated candidate id/count semantics, schema, migrations, production
+    config, push/deploy, external sends, and destructive DB posture.
+  - The POST response consumes only candidate ids and counts, so avoiding a
+    post-update row fetch preserves behavior while closing the write race.
+- Validation:
+  - Focused route suite passed `1` file / `19` tests:
+    `pnpm exec vitest run src/app/api/visit-billing-candidates/route.test.ts --reporter=dot --testTimeout=60000`.
+  - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: passed.
+  - gbrain write/readback passed.
+- Review / coordination:
+  - Codex locked the backend files, sent a `PATCH_REVIEW_REQUEST`, and waited
+    for Claude before committing.
+  - Claude approved N16 after independently verifying the atomic
+    compare-and-set behavior and focused tests.
+  - Claude also consulted on the P1 visit hot-path patient safety backend data
+    source; Codex recommended extending the existing
+    `/api/patients/[id]/header-summary` contract rather than adding a new
+    `/safety-summary` endpoint.
+- Remaining:
+  - Implement the agreed header-summary identity/safety backend contract for
+    visit hot paths after checking agmsg inbox and current locks.
+
 ### Backend: External Access Visit Date Boundary - 2026-07-02 23:17 JST
 
 - Scope:

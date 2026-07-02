@@ -1,10 +1,69 @@
 # Verification
 
-Snapshot: 2026-07-02 23:17 JST
+Snapshot: 2026-07-02 23:36 JST
 
 ## Latest Backend/API Slice Verification
 
-The latest backend/API slice was `backend-external-access-visit-date-boundary`
+The latest backend/API slice was
+`backend-visit-billing-candidate-regeneration-guard` at 2026-07-02 23:36 JST.
+
+- Planning / review:
+  - Codex selected N16 from the concurrency/check-then-act backend findings
+    after confirming
+    `src/app/api/visit-billing-candidates/route.ts` preflight-checked
+    `billing_status` / `invoice_items` but then updated by id only.
+  - `src/server/services/pharmacy-invoices.ts` already guards invoice final
+    status changes with conditional `updateMany`, confirming the id-only
+    regeneration update was the outlier.
+  - Claude approved the uncommitted backend diff before commit after
+    independent compare-and-set verification.
+- Fixed:
+  - Added a shared regeneration guard for `VisitBillingCandidate` writes:
+    `id`, `org_id`, `billing_status in ['candidate', 'excluded']`, and
+    `invoice_items: { none: {} }`.
+  - Existing-candidate regeneration and the concurrent-create `P2002` retry
+    now both use conditional `updateMany`.
+  - `count !== 1` is counted as `skipped_locked_count`, closing the race where
+    a candidate becomes invoice-linked after the preflight read.
+  - Added a regression for the stale preflight race.
+- Safety:
+  - Existing auth, `canManageBilling`, org scoping, response envelope,
+    generated candidate id/count semantics, schema, migration, push/deploy,
+    external send, and destructive DB posture were preserved.
+  - No post-update full-row fetch was added because the POST response consumes
+    only candidate ids and counts.
+- Focused regressions:
+  - `pnpm exec vitest run src/app/api/visit-billing-candidates/route.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `19` tests.
+  - Coverage: create path remains create-only, read-time locked candidates are
+    not mutated, stale preflight update count `0` skips instead of overwriting,
+    and the P2002 retry uses the same guarded update predicate.
+- Scoped checks:
+  - Scoped ESLint for touched files: passed.
+  - Scoped Prettier for touched files: passed.
+  - Scoped `git diff --check` for touched files: passed.
+- Broad gates:
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: passed.
+- Coordination:
+  - Codex locked the backend files and sent a `PATCH_REVIEW_REQUEST` before
+    commit.
+  - Claude approved N16 before commit and independently reran the focused
+    route tests.
+  - Claude also asked for a P1 visit hot-path patient identity/safety backend
+    data source; Codex recommended extending the existing
+    `/api/patients/[id]/header-summary` contract.
+- gbrain:
+  - `projects/careviax/decisions/2026-07-02/visit-billing-candidate-regeneration-guard`
+  - Result: write/readback passed.
+- Commit:
+  - Runtime: `be6bc9f8`
+    (`fix(api): guard visit billing regeneration updates`).
+
+## Previous Backend/API Slice Verification
+
+The previous backend/API slice was `backend-external-access-visit-date-boundary`
 at 2026-07-02 23:17 JST.
 
 - Planning / review:
@@ -55,7 +114,7 @@ at 2026-07-02 23:17 JST.
   - Runtime: `9022841f`
     (`fix(api): use JST date boundary for external visit sharing`).
 
-## Previous Backend/API Slice Verification
+## Earlier Backend/API Slice Verification
 
 The previous backend/API slice was `backend-trim-string-normalizer-consolidation`
 at 2026-07-02 23:04 JST.

@@ -4,7 +4,48 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
-## Current Codex Resume Note - 2026-07-02 23:17 JST
+## Current Codex Resume Note - 2026-07-02 23:36 JST
+
+- Active mode for this slice: Codex backend/API implementation with Claude
+  coordination through agmsg, real validation, gbrain writeback, explicit-path
+  commits, and review interrupts handled before the next commit. Preserve
+  unrelated dirty files; do not push/deploy/migrate or destructively mutate
+  data.
+- Latest completed product slice:
+  `backend-visit-billing-candidate-regeneration-guard`.
+- Product commit:
+  `be6bc9f8` (`fix(api): guard visit billing regeneration updates`).
+- Files changed:
+  - `src/app/api/visit-billing-candidates/route.ts`
+  - `src/app/api/visit-billing-candidates/route.test.ts`
+  - progress-ledger updates in `CODEX_GOAL_PROGRESS.md`,
+    `.codex/ralph-state.md`, `ops/refactor/VERIFICATION.md`, and this file
+- Fixed:
+  - Visit billing candidate regeneration now reasserts `id`, `org_id`,
+    editable billing status, and absence of invoice items in the database write
+    predicate.
+  - Replaced the id-only regeneration update with conditional `updateMany`;
+    `count !== 1` now fails closed into `skipped_locked_count`.
+  - The same guarded helper covers the concurrent-create `P2002` retry path.
+  - Added a regression for the preflight-read race where a candidate becomes
+    locked before the write.
+- Validation:
+  - Focused visit-billing-candidates route test passed `1` file / `19` tests.
+  - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm build` passed.
+- Review:
+  - Codex sent a backend `PATCH_REVIEW_REQUEST` before commit.
+  - Claude approved the uncommitted N16 diff after independent
+    compare-and-set verification and focused route tests.
+  - Claude consulted on the P1 visit hot-path patient safety backend contract;
+    Codex recommended extending `/api/patients/[id]/header-summary` with
+    identity/safety rather than adding a separate `/safety-summary` endpoint.
+- gbrain writeback slug:
+  `projects/careviax/decisions/2026-07-02/visit-billing-candidate-regeneration-guard`.
+- Next action: check agmsg inbox, lock exact backend paths, and implement the
+  header-summary identity/safety contract for visit hot paths.
+
+## Previous Codex Resume Note - 2026-07-02 23:17 JST
 
 - Active mode for this slice: Codex backend/API implementation with Claude
   coordination through agmsg, real validation, gbrain writeback, explicit-path
