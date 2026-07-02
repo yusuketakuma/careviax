@@ -4,7 +4,55 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
-## Current Codex Resume Note - 2026-07-02 16:34 JST
+## Current Codex Resume Note - 2026-07-02 17:45 JST
+
+- Active mode for this slice: Codex execution with agmsg context, Codex
+  subagent planning/review, real validation, browser metrics, and explicit-path
+  commits. Preserve unrelated dirty files; do not push/deploy/migrate or
+  destructively mutate data.
+- Latest completed product slice:
+  `FEUX-2-statcard-summary-first-slice`.
+- Product commit:
+  `16158be4` (`refactor(ui): consolidate report summary stat cards`).
+- Files changed:
+  - `src/components/ui/stat-card.tsx`
+  - `src/components/ui/stat-card.test.tsx`
+  - `src/app/(dashboard)/reports/report-delivery-dashboard.tsx`
+  - `src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx`
+  - `src/app/(dashboard)/external/external-viewer-content.tsx`
+  - `src/app/(dashboard)/external/external-viewer-content.test.tsx`
+  - progress-ledger updates in `CODEX_GOAL_PROGRESS.md`,
+    `.codex/ralph-state.md`, and this file
+- Fixed:
+  - Removed local `SummaryCard` duplicates from report delivery analytics and
+    external collaboration summary strips.
+  - Report KPIs and external summaries now use shared `StatCard` for
+    tabular-nums and token-based state accents.
+  - `StatCard` supports `iconClassName` and `hintClassName` so callers can hide
+    icon/hint wrappers on mobile without leaving empty layout gaps.
+  - External summary error states still show `—` and `取得に失敗しました` rather
+    than false-zero success summaries.
+- Validation:
+  - Focused FEUX-2 bundle passed `3` files / `22` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and
+    `pnpm build` passed.
+  - Browser metrics for `/external` and `/reports/analytics` at `375x812` and
+    `1280x900` passed: no horizontal overflow, labels visible, report DOM order
+    preserved, no console/page errors.
+  - `pnpm format:check` still fails only on unrelated dirty
+    `.agent-loop/FEATURE_QUEUE.md`; touched files passed scoped Prettier.
+- Review:
+  - `code_mapper` and `accessibility_ux_reviewer` approved the plan with
+    false-empty/loading/DOM-order/mobile-density constraints.
+  - `reviewer-strict` found one P3 mobile-density risk, which was fixed and
+    re-reviewed with no blockers.
+- gbrain writeback slug:
+  `projects/careviax/decisions/2026-07-02/feux2-statcard-summary-consolidation`.
+- Next action: commit this ledger slice with explicit paths, notify via agmsg,
+  then continue FEUX-2 on the next small screen group.
+
+## Previous Codex Resume Note - 2026-07-02 16:34 JST
 
 - Active mode for this slice: Codex execution with agmsg context, Codex
   subagent safety/privacy/test review, and real validation. Preserve unrelated

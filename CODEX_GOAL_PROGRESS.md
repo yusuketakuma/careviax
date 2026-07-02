@@ -42,6 +42,60 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### FEUX-2 StatCard Summary First Slice - 2026-07-02 17:45 JST
+
+- Scope:
+  - Migrated the report delivery analytics summary strip and external
+    collaboration summary strip from local `SummaryCard` implementations to the
+    shared `StatCard` primitive.
+  - Commit: `16158be4` (`refactor(ui): consolidate report summary stat cards`).
+  - gbrain writeback:
+    `projects/careviax/decisions/2026-07-02/feux2-statcard-summary-consolidation`.
+- Fixed:
+  - Removed local `SummaryCard` duplicates from
+    `src/app/(dashboard)/reports/report-delivery-dashboard.tsx` and
+    `src/app/(dashboard)/external/external-viewer-content.tsx`.
+  - Report KPIs now use `StatCard` with numeric values split from `%` / `件`
+    units, preserving tabular number rendering.
+  - External summary query failures still render `—` plus
+    `取得に失敗しました`, and do not show false-zero or normal success hint text.
+  - `StatCard` gained narrow `iconClassName` / `hintClassName` wrapper controls
+    so mobile grids can hide icon and hint wrappers without leaving empty
+    layout gaps.
+- Safety:
+  - Preserved report loading skeletons and kept placeholder `—` out of the
+    loading state.
+  - Preserved report action-first DOM order: `未確認報告書一覧` remains before
+    the analytics tables.
+  - No auth, RLS, tenant boundary, PHI logging/export, billing, migration,
+    production config, push/deploy, external send, or destructive operation
+    behavior changed.
+- Validation:
+  - Focused FEUX-2 bundle passed `3` files / `22` tests.
+  - Scoped Prettier, scoped ESLint, and scoped diff-check passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm build`: passed.
+  - Browser check passed for `/external` and `/reports/analytics` at `375x812`
+    and `1280x900`: no horizontal overflow, summary labels visible, report DOM
+    order preserved, and no console/page errors.
+  - `pnpm format:check`: failed only on pre-existing unrelated
+    `.agent-loop/FEATURE_QUEUE.md`; touched files passed scoped Prettier.
+- Review:
+  - `code_mapper` confirmed reports/external were safe first FEUX-2 slice
+    candidates.
+  - `accessibility_ux_reviewer` approved the plan with constraints around
+    false-empty, loading skeletons, DOM order, and mobile density.
+  - `reviewer-strict` found a P3 mobile wrapper-density issue; it was fixed via
+    `StatCard` wrapper class props and re-review found no blockers.
+- Remaining:
+  - Continue FEUX-2 in small screen groups for remaining
+    `MetricCard`/`KpiCard`/`SummaryCard` duplicates in billing, workflow,
+    admin analytics, admin metrics, capacity, performance, staff, business
+    holidays, and operations insights.
+  - FEUX-1b naked loading skeleton sweep remains after the first FEUX-2 pass.
+
 ### Offline Lifecycle CE14/N25 - 2026-07-02 16:34 JST
 
 - Scope:
