@@ -249,7 +249,7 @@ describe('outbound-webhook', () => {
     lookupMock.mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);
     fetchMock.mockResolvedValue({ status: 202, ok: true });
 
-    await dispatchWebhookEventForOrg('org_1', 'patient.created', {
+    const result = await dispatchWebhookEventForOrg('org_1', 'patient.created', {
       patientId: 'patient_1',
     });
 
@@ -268,6 +268,14 @@ describe('outbound-webhook', () => {
       }),
     );
     expect(JSON.stringify(webhookDeliveryUpsertMock.mock.calls)).not.toContain('super-secret');
+    expect(result).toMatchObject([
+      {
+        webhookId: 'webhook_1',
+        url: 'https://hooks.example.com/patient',
+        success: true,
+      },
+    ]);
+    expect(JSON.stringify(result)).not.toContain('super-secret');
   });
 
   it('does not follow webhook redirects after validating the registered URL', async () => {
@@ -325,6 +333,51 @@ describe('outbound-webhook', () => {
     ]);
     expect(JSON.stringify(webhookDeliveryUpdateMock.mock.calls)).not.toContain('169.254.169.254');
     expect(JSON.stringify(result)).not.toContain('169.254.169.254');
+  });
+
+  it('returns and persists fixed delivery failure messages for raw dispatch exceptions', async () => {
+    webhookRegistrationFindManyMock.mockResolvedValue([
+      {
+        id: 'webhook_fetch_failure',
+        org_id: 'org_1',
+        url: 'https://hooks.example.com/patient',
+        secret: 'secret_1',
+        events: ['patient.created'],
+        is_active: true,
+        created_at: new Date('2026-04-05T00:00:00.000Z'),
+      },
+    ]);
+    lookupMock.mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);
+    const rawFailure = new Error('partner network failed token=secret db_password=value');
+    fetchMock.mockRejectedValue(rawFailure);
+
+    const result = await dispatchWebhookEventForOrg('org_1', 'patient.created', {
+      patientId: 'patient_1',
+    });
+
+    expect(result).toMatchObject([
+      {
+        webhookId: 'webhook_fetch_failure',
+        event: 'patient.created',
+        statusCode: null,
+        success: false,
+        error: 'Webhook delivery failed',
+      },
+    ]);
+    expect(webhookDeliveryUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'failed',
+          status_code: null,
+          error: 'Webhook delivery failed',
+          attempt_count: { increment: 1 },
+        }),
+      }),
+    );
+    expect(JSON.stringify(result)).not.toContain('token=secret');
+    expect(JSON.stringify(result)).not.toContain('db_password=value');
+    expect(JSON.stringify(webhookDeliveryUpdateMock.mock.calls)).not.toContain('token=secret');
+    expect(JSON.stringify(webhookDeliveryUpdateMock.mock.calls)).not.toContain('db_password=value');
   });
 
   it('uses an unrefed cleanup timer for outbound webhook delivery requests', async () => {

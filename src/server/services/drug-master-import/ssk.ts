@@ -25,6 +25,7 @@ const SSK_ZIP_EXPANSION_LIMITS: ZipExpansionLimits = {
   maxEntryBytes: 128 * 1024 * 1024,
   maxTotalBytes: 128 * 1024 * 1024,
 };
+const SSK_IMPORT_FAILURE_MESSAGE = 'SSK取込に失敗しました';
 
 const SSK_DOSAGE_FORM_MAP: Record<string, string> = {
   '1': '内用薬',
@@ -594,12 +595,11 @@ export async function importSskDrugMaster(
       importedCount: parsed.records.length,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'SSK取込に失敗しました';
     await db.drugMasterImportLog.update({
       where: { id: log.id },
       data: {
         status: 'failed',
-        error_log: message,
+        error_log: SSK_IMPORT_FAILURE_MESSAGE,
       },
     });
     throw error;

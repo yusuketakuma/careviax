@@ -33,6 +33,12 @@ function securityEventTableName(deps: PhosLambdaRuntimeDependencies): string | u
   return deps.security_event_table_name ?? process.env.PHOS_SECURITY_EVENT_TABLE_NAME?.trim();
 }
 
+function safeLambdaObservabilityErrorName(error: unknown): string {
+  if (error instanceof Error) return 'Error';
+  if (error === undefined) return 'undefined';
+  return typeof error;
+}
+
 function defaultSecurityEventClient(): Pick<AwsDynamoDBClient, 'send'> | null {
   if (!shouldPersistSecurityEvents()) return null;
   return getDefaultPhosDynamoClient();
@@ -78,7 +84,7 @@ export function createLambdaObservabilitySink(
               user_id_hash: event.user_id ? hashUserId(event.user_id) : 'UNKNOWN',
               request_id: event.request_id,
               correlation_id: event.correlation_id,
-              error: error instanceof Error ? error.message : 'unknown',
+              error_name: safeLambdaObservabilityErrorName(error),
             }),
           );
         })

@@ -77,7 +77,7 @@ describe('createLambdaObservabilitySink', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const send = vi.fn(async () => {
-      throw new Error('ddb unavailable');
+      throw new Error('ddb unavailable patient=患者A token=secret-ddb-token');
     });
     const sink = createLambdaObservabilitySink({
       security_event_client: { send },
@@ -107,10 +107,14 @@ describe('createLambdaObservabilitySink', () => {
       user_id_hash: hashUserId('user_1'),
       request_id: 'req_1',
       correlation_id: 'corr_1',
-      error: 'ddb unavailable',
+      error_name: 'Error',
     });
-    expect(JSON.stringify(logged)).not.toContain('tenant_abc123');
-    expect(JSON.stringify(logged)).not.toContain('user_1');
+    const serialized = JSON.stringify(logged);
+    expect(serialized).not.toContain('tenant_abc123');
+    expect(serialized).not.toContain('user_1');
+    expect(serialized).not.toContain('ddb unavailable');
+    expect(serialized).not.toContain('患者A');
+    expect(serialized).not.toContain('secret-ddb-token');
   });
 
   it('bounds flush latency when security event persistence does not resolve', async () => {

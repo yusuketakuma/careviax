@@ -1262,7 +1262,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
 
   it('emits reason_code=evaluation_error when candidate evaluation throws unexpectedly', async () => {
     createRoadTravelEstimatorMock.mockReturnValue(() => {
-      throw new Error('simulated upstream failure');
+      throw new Error('simulated upstream failure patient=患者A db_password=value token=secret');
     });
 
     const result = await generateVisitScheduleProposalDrafts({
@@ -1279,8 +1279,12 @@ describe('generateVisitScheduleProposalDrafts', () => {
     for (const rejected of result.diagnostics.rejected) {
       expect(rejected.reason_code).toBe('evaluation_error');
       expect(rejected.reason_label).toBe('評価エラー');
-      expect(rejected.detail).toContain('評価中にエラーが発生しました');
+      expect(rejected.detail).toBe('評価中にエラーが発生しました');
     }
+    const rejectedDiagnostics = JSON.stringify(result.diagnostics.rejected);
+    expect(rejectedDiagnostics).not.toContain('patient=患者A');
+    expect(rejectedDiagnostics).not.toContain('db_password=value');
+    expect(rejectedDiagnostics).not.toContain('token=secret');
     // travel_limit must NOT appear in any rejection
     const travelLimitRejections = result.diagnostics.rejected.filter(
       (r) => r.reason_code === 'travel_limit',

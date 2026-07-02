@@ -125,6 +125,12 @@ function sanitizeCorrelationId(input: string | undefined, fallback: string): str
   return /^[A-Za-z0-9._:-]+$/.test(value) ? value : fallback;
 }
 
+function safeLambdaErrorName(error: unknown): string {
+  if (error instanceof Error) return 'Error';
+  if (error === undefined) return 'undefined';
+  return typeof error;
+}
+
 function emitBoundaryObservability(input: {
   observability: PhosObservabilitySink;
   event: PhosHttpEvent;
@@ -223,7 +229,7 @@ async function flushObservability(input: {
         request_id: input.request_id,
         correlation_id: input.correlation_id,
         route_key: routeKey(input.event),
-        error: error instanceof Error ? error.message : 'unknown',
+        error_name: safeLambdaErrorName(error),
       }),
     );
   }

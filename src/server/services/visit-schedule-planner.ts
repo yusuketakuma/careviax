@@ -2019,16 +2019,13 @@ export async function generateVisitScheduleProposalDrafts(
             existingSchedules: schedulesForShift,
           }),
         };
-      } catch (error) {
+      } catch {
         return {
           kind: 'rejected' as const,
           diagnostic: buildRejectedDiagnostic({
             shift,
             reasonCode: 'evaluation_error',
-            detail:
-              error instanceof Error
-                ? `評価中にエラーが発生しました: ${error.message}`
-                : '評価中にエラーが発生しました',
+            detail: '評価中にエラーが発生しました',
           }),
         };
       }

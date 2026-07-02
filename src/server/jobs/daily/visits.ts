@@ -22,7 +22,7 @@ import {
 } from '@/server/services/management-plans';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
-import { createManyNotifications } from './shared';
+import { createManyNotifications, getSafeDailyOperationErrorMessage } from './shared';
 import { buildVisitHref } from '@/lib/visits/navigation';
 
 export async function checkVisitRecordRetention() {
@@ -351,7 +351,7 @@ export async function generateVisitDemands() {
           continue;
         }
 
-        errors.push(error instanceof Error ? error.message : `cycle:${cycle.id}:unknown_error`);
+        errors.push(getSafeDailyOperationErrorMessage());
       }
     }
 

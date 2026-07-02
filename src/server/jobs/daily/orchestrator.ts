@@ -1,7 +1,11 @@
 import { runJob } from '../runner';
 import { checkDrugMasterFreshness } from '../drug-master';
 import { checkPrescriptionOriginalRetention } from '../daily-prescription-original-retention';
-import { resolveDailyOperationConcurrency, runDailyOperationTasks } from './shared';
+import {
+  getSafeDailyOperationErrorMessage,
+  resolveDailyOperationConcurrency,
+  runDailyOperationTasks,
+} from './shared';
 import {
   checkMedicationDeadlines,
   checkRefillPrescriptions,
@@ -80,10 +84,10 @@ export async function runDailyOperations() {
       if (result.status === 'fulfilled') {
         processedCount += result.value.processedCount;
         if ('errors' in result.value && result.value.errors) {
-          errors.push(...result.value.errors);
+          errors.push(...result.value.errors.map(() => getSafeDailyOperationErrorMessage()));
         }
       } else {
-        errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
+        errors.push(getSafeDailyOperationErrorMessage());
       }
     }
 

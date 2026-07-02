@@ -74,12 +74,24 @@ type CognitoModule = {
   DescribeUserPoolCommand: new (input: { UserPoolId: string }) => unknown;
 };
 
-let cachedRdsModule: Promise<RdsModule | null> | null = null;
+let cachedRdsModule: Promise<RdsModule> | null = null;
 let cachedS3Module: Promise<S3Module> | null = null;
 let cachedCognitoModule: Promise<CognitoModule> | null = null;
 const rdsClients = new Map<string, AwsClient<RdsSnapshotsResponse>>();
 const s3Clients = new Map<string, AwsClient<S3VersioningResponse | S3LifecycleResponse>>();
 const cognitoClients = new Map<string, AwsClient<CognitoResponse>>();
+const RDS_MODULE_LOAD_FAILED_MESSAGE =
+  'Unable to load @aws-sdk/client-rds for RDS backup monitoring';
+const RDS_SNAPSHOT_CHECK_FAILED_MESSAGE = 'RDS snapshot check failed';
+const S3_VERSIONING_CHECK_FAILED_MESSAGE = 'S3 versioning check failed';
+const AUDIT_ARCHIVE_CHECK_FAILED_MESSAGE = 'Audit archive lifecycle check failed';
+const COGNITO_ADVANCED_SECURITY_CHECK_FAILED_MESSAGE = 'Cognito Advanced Security check failed';
+
+class SafeBackupMonitorError extends Error {}
+
+function getSafeBackupMonitorMessage(err: unknown, fallback: string) {
+  return err instanceof SafeBackupMonitorError ? err.message : fallback;
+}
 
 function logBackupMonitorError(
   options: BackupMonitorOptions | undefined,
@@ -93,7 +105,10 @@ async function loadRdsModule() {
   if (!cachedRdsModule) {
     cachedRdsModule = import('@aws-sdk/client-rds')
       .then((module) => module as RdsModule)
-      .catch(() => null);
+      .catch(() => {
+        cachedRdsModule = null;
+        throw new SafeBackupMonitorError(RDS_MODULE_LOAD_FAILED_MESSAGE);
+      });
   }
   return cachedRdsModule;
 }
@@ -114,7 +129,6 @@ async function getRdsClient(region: string) {
   const cached = rdsClients.get(region);
   if (cached) return cached;
   const awsModule = await loadRdsModule();
-  if (!awsModule) return null;
   const client = withAwsClientTimeout(new awsModule.RDSClient({ region, ...awsClientConfig() }));
   rdsClients.set(region, client);
   return client;
@@ -157,9 +171,6 @@ export async function checkRdsSnapshot(
   try {
     const rdsModule = await loadRdsModule();
     const client = await getRdsClient(region);
-    if (!rdsModule || !client) {
-      return { status: 'skipped', message: '@aws-sdk/client-rds not installed' };
-    }
 
     const response = await client.send(
       new rdsModule.DescribeDBSnapshotsCommand({
@@ -203,10 +214,15 @@ export async function checkRdsSnapshot(
       },
     };
   } catch (err) {
-    logBackupMonitorError(options, '[backup-monitor] RDS snapshot check failed:', err);
+    const message = getSafeBackupMonitorMessage(err, RDS_SNAPSHOT_CHECK_FAILED_MESSAGE);
+    logBackupMonitorError(
+      options,
+      '[backup-monitor] RDS snapshot check failed:',
+      new Error(message),
+    );
     return {
       status: 'error',
-      message: err instanceof Error ? err.message : String(err),
+      message,
     };
   }
 }
@@ -242,10 +258,15 @@ export async function checkS3Versioning(
       details: { bucket: bucketName, versioningStatus },
     };
   } catch (err) {
-    logBackupMonitorError(options, '[backup-monitor] S3 versioning check failed:', err);
+    const message = getSafeBackupMonitorMessage(err, S3_VERSIONING_CHECK_FAILED_MESSAGE);
+    logBackupMonitorError(
+      options,
+      '[backup-monitor] S3 versioning check failed:',
+      new Error(message),
+    );
     return {
       status: 'error',
-      message: err instanceof Error ? err.message : String(err),
+      message,
     };
   }
 }
@@ -320,10 +341,15 @@ export async function checkAuditLogArchivePolicy(
       },
     };
   } catch (err) {
-    logBackupMonitorError(options, '[backup-monitor] Audit archive lifecycle check failed:', err);
+    const message = getSafeBackupMonitorMessage(err, AUDIT_ARCHIVE_CHECK_FAILED_MESSAGE);
+    logBackupMonitorError(
+      options,
+      '[backup-monitor] Audit archive lifecycle check failed:',
+      new Error(message),
+    );
     return {
       status: 'error',
-      message: err instanceof Error ? err.message : String(err),
+      message,
     };
   }
 }
@@ -361,10 +387,18 @@ export async function checkCognitoAdvancedSecurity(
       details: { userPoolId, mode },
     };
   } catch (err) {
-    logBackupMonitorError(options, '[backup-monitor] Cognito Advanced Security check failed:', err);
+    const message = getSafeBackupMonitorMessage(
+      err,
+      COGNITO_ADVANCED_SECURITY_CHECK_FAILED_MESSAGE,
+    );
+    logBackupMonitorError(
+      options,
+      '[backup-monitor] Cognito Advanced Security check failed:',
+      new Error(message),
+    );
     return {
       status: 'error',
-      message: err instanceof Error ? err.message : String(err),
+      message,
     };
   }
 }

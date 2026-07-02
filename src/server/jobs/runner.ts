@@ -3,6 +3,9 @@ import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
 
 const MAX_RETRIES = 3;
+const JOB_EXECUTION_FAILED_MESSAGE = 'Job execution failed';
+const JOB_CLEANUP_FAILED_MESSAGE = 'Job cleanup failed';
+const JOB_EXECUTION_FAILED_NOTIFICATION_MESSAGE = 'ジョブの実行に失敗しました';
 const DEFAULT_JOB_STALE_LOCK_MS = 6 * 60 * 60 * 1000;
 const MAX_JOB_STALE_LOCK_MS = 24 * 60 * 60 * 1000;
 type RunJobResult =
@@ -83,7 +86,6 @@ async function runJobOnce(
       return result;
     } catch (error) {
       lastError = error;
-      const errorMessage = error instanceof Error ? error.message : String(error);
 
       if (attempt < MAX_RETRIES) {
         // Update retry count and continue to next attempt
@@ -91,7 +93,7 @@ async function runJobOnce(
           where: { id: job.id },
           data: {
             retry_count: attempt + 1,
-            error_log: `Attempt ${attempt + 1}/${MAX_RETRIES} failed: ${errorMessage}`,
+            error_log: `Attempt ${attempt + 1}/${MAX_RETRIES} failed: ${JOB_EXECUTION_FAILED_MESSAGE}`,
           },
         });
         continue;
@@ -106,24 +108,26 @@ async function runJobOnce(
           where: { id: job.id },
           data: {
             status: 'failed',
-            error_log: `All ${MAX_RETRIES} retries exhausted. Last error: ${errorMessage}`,
+            error_log: `All ${MAX_RETRIES} retries exhausted. Last error: ${JOB_EXECUTION_FAILED_MESSAGE}`,
             completed_at: new Date(),
             locked_at: null,
             retry_count: attempt + 1,
           },
         });
       } catch (cleanupError) {
-        const cleanupMsg =
-          cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+        const cleanupKind = cleanupError instanceof Error ? 'Error' : typeof cleanupError;
+        const originalKind = error instanceof Error ? 'Error' : typeof error;
         console.error(
           `[runner] CRITICAL: failed to mark job ${job.id} (${jobType}) as 'failed' after retries exhausted. ` +
-            `Row may remain 'running' and block future runs. Cleanup error: ${cleanupMsg}. Original error: ${errorMessage}`,
+            `Row may remain 'running' and block future runs. ${JOB_CLEANUP_FAILED_MESSAGE}. ` +
+            `Original error: ${JOB_EXECUTION_FAILED_MESSAGE}. Cleanup kind: ${cleanupKind}. ` +
+            `Original kind: ${originalKind}`,
         );
         // Intentionally NOT overwriting lastError — caller must see the original failure.
       }
 
       // Notify admin users about the failure (already self-protected internally).
-      await notifyAdminsOfJobFailure(jobType, errorMessage, orgId);
+      await notifyAdminsOfJobFailure(jobType, orgId);
     }
   }
 
@@ -152,7 +156,7 @@ export async function runJob(
 /**
  * Create notifications for all admin users when a job permanently fails.
  */
-async function notifyAdminsOfJobFailure(jobType: string, errorMessage: string, orgId?: string) {
+async function notifyAdminsOfJobFailure(jobType: string, orgId?: string) {
   try {
     const membershipFilter: Prisma.MembershipWhereInput = {
       role: { in: ['admin', 'owner'] },
@@ -167,7 +171,7 @@ async function notifyAdminsOfJobFailure(jobType: string, errorMessage: string, o
       select: { user_id: true, org_id: true },
     });
     const dedupeKey = `job-failure:${jobType}:${new Date().toISOString().slice(0, 10)}`;
-    const message = `ジョブ「${jobType}」が${MAX_RETRIES}回リトライ後に失敗しました: ${errorMessage.slice(0, 200)}`;
+    const message = `ジョブ「${jobType}」が${MAX_RETRIES}回リトライ後に失敗しました: ${JOB_EXECUTION_FAILED_NOTIFICATION_MESSAGE}`;
 
     await prisma.notification.createMany({
       data: adminMemberships.map((m) => ({

@@ -44,6 +44,23 @@ vi.mock('@aws-sdk/client-rds', () => ({
   },
 }));
 
+function mockRdsSdk() {
+  vi.doMock('@aws-sdk/client-rds', () => ({
+    RDSClient: class RDSClient {
+      send = rdsSendMock;
+
+      constructor(config: unknown) {
+        rdsClientMock(config);
+      }
+    },
+    DescribeDBSnapshotsCommand: class DescribeDBSnapshotsCommand {
+      constructor(input: unknown) {
+        describeDbSnapshotsCommandMock(input);
+      }
+    },
+  }));
+}
+
 vi.mock('@aws-sdk/client-s3', () => ({
   S3Client: class S3Client {
     send = s3SendMock;
@@ -117,6 +134,93 @@ describe('backup-monitor', () => {
       status: 'skipped',
       message: 'RDS_DB_INSTANCE_ID not configured',
     });
+  });
+
+  it('returns an error when configured RDS monitoring cannot load the AWS SDK', async () => {
+    process.env.RDS_DB_INSTANCE_ID = 'ph-os-prod';
+    const importError = new Error('rds sdk load failed token=secret');
+    const logger = { error: vi.fn() };
+
+    vi.resetModules();
+    vi.doMock('@aws-sdk/client-rds', () => {
+      throw importError;
+    });
+
+    const {
+      checkRdsSnapshot: freshCheckRdsSnapshot,
+      runBackupMonitorChecks: freshRunBackupMonitorChecks,
+    } = await import('./backup-monitor');
+
+    await expect(freshCheckRdsSnapshot({ logger })).resolves.toMatchObject({
+      status: 'error',
+      message: 'Unable to load @aws-sdk/client-rds for RDS backup monitoring',
+    });
+    expect(logger.error).toHaveBeenCalledWith(
+      '[backup-monitor] RDS snapshot check failed:',
+      expect.any(Error),
+    );
+    const loggedError = logger.error.mock.calls[0]?.[1];
+    expect(loggedError).toBeInstanceOf(Error);
+    expect((loggedError as Error).message).toBe(
+      'Unable to load @aws-sdk/client-rds for RDS backup monitoring',
+    );
+    expect(String(loggedError)).not.toContain('token=secret');
+    expect(loggedError).not.toBe(importError);
+
+    logger.error.mockClear();
+    await expect(freshRunBackupMonitorChecks({ logger })).resolves.toMatchObject({
+      overall: 'error',
+      checks: {
+        rdsSnapshot: {
+          status: 'error',
+          message: 'Unable to load @aws-sdk/client-rds for RDS backup monitoring',
+        },
+      },
+    });
+
+    mockRdsSdk();
+    vi.resetModules();
+  });
+
+  it('returns safe fixed messages when AWS backup checks fail', async () => {
+    process.env.RDS_DB_INSTANCE_ID = 'ph-os-prod';
+    process.env.S3_BUCKET_NAME = 'ph-os-files';
+    process.env.AUDIT_LOG_ARCHIVE_BUCKET_NAME = 'ph-os-audit';
+    process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID = 'pool_1';
+    const logger = { error: vi.fn() };
+    const rawFailure = new Error('aws provider failed token=secret db_password=value');
+
+    rdsSendMock.mockRejectedValueOnce(rawFailure);
+    await expect(checkRdsSnapshot({ logger })).resolves.toMatchObject({
+      status: 'error',
+      message: 'RDS snapshot check failed',
+    });
+
+    s3SendMock.mockRejectedValueOnce(rawFailure);
+    await expect(checkS3Versioning({ logger })).resolves.toMatchObject({
+      status: 'error',
+      message: 'S3 versioning check failed',
+    });
+
+    s3SendMock.mockRejectedValueOnce(rawFailure);
+    await expect(checkAuditLogArchivePolicy({ logger })).resolves.toMatchObject({
+      status: 'error',
+      message: 'Audit archive lifecycle check failed',
+    });
+
+    cognitoSendMock.mockRejectedValueOnce(rawFailure);
+    await expect(checkCognitoAdvancedSecurity({ logger })).resolves.toMatchObject({
+      status: 'error',
+      message: 'Cognito Advanced Security check failed',
+    });
+
+    expect(logger.error).toHaveBeenCalledTimes(4);
+    for (const [, loggedError] of logger.error.mock.calls) {
+      expect(loggedError).toBeInstanceOf(Error);
+      expect(String(loggedError)).not.toContain('token=secret');
+      expect(String(loggedError)).not.toContain('db_password=value');
+      expect(loggedError).not.toBe(rawFailure);
+    }
   });
 
   it('skips the S3 versioning check when the bucket is not configured', async () => {

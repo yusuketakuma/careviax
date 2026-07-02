@@ -293,6 +293,44 @@ describe('parseSskDrugMasterZip', () => {
     });
   });
 
+  it('persists a safe failure message when SSK import upsert fails', async () => {
+    const csv = buildRow({
+      2: '123456789',
+      4: 'DRUG-A',
+      31: '123456789012',
+      34: 'DRUG-A',
+    });
+    const upsertError = new Error('upsert failed patient=患者A token=secret yj_code=123456789012');
+    const db = {
+      drugMasterImportLog: {
+        create: vi.fn().mockResolvedValue({ id: 'log_1', status: 'running' }),
+        update: vi.fn().mockResolvedValue({ id: 'log_1', status: 'failed' }),
+      },
+      drugMaster: {
+        upsert: vi.fn().mockRejectedValue(upsertError),
+      },
+    };
+
+    await expect(
+      importSskDrugMaster(db as unknown as Parameters<typeof importSskDrugMaster>[0], {
+        zipUrl: 'https://www.ssk.or.jp/y_ALL20260611.zip',
+        fetchImpl: buildZipFetch(buildSskZip(csv)),
+      }),
+    ).rejects.toBe(upsertError);
+
+    expect(db.drugMasterImportLog.update).toHaveBeenCalledWith({
+      where: { id: 'log_1' },
+      data: {
+        status: 'failed',
+        error_log: 'SSK取込に失敗しました',
+      },
+    });
+    const failedUpdate = JSON.stringify(db.drugMasterImportLog.update.mock.calls.at(-1)?.[0]);
+    expect(failedUpdate).not.toContain('患者A');
+    expect(failedUpdate).not.toContain('secret');
+    expect(failedUpdate).not.toContain('123456789012');
+  });
+
   it('previews create/update/unchanged SSK rows without writing import logs or upserts', async () => {
     const csv = [
       buildRow({

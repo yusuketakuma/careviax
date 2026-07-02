@@ -435,7 +435,7 @@ describe('withTenantContext', () => {
       annotateTrace: vi.fn(),
       recordSecurityEvent: vi.fn(),
       flush: vi.fn(async () => {
-        throw new Error('flush failed');
+        throw new Error('flush failed patient=患者A token=secret-provider-token');
       }),
     };
     const handler = withTenantContext(async () => ({ ok: true }), { observability });
@@ -453,8 +453,12 @@ describe('withTenantContext', () => {
       request_id: 'req_1',
       correlation_id: 'req_1',
       route_key: 'GET /cards',
-      error: 'flush failed',
+      error_name: 'Error',
     });
+    const serialized = JSON.stringify(flushFailure);
+    expect(serialized).not.toContain('flush failed');
+    expect(serialized).not.toContain('患者A');
+    expect(serialized).not.toContain('secret-provider-token');
   });
 
   it('returns a timeout response before the Lambda hard deadline is exhausted', async () => {

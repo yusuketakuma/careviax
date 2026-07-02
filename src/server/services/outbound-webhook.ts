@@ -122,6 +122,7 @@ const DEFAULT_WEBHOOK_RETRY_CONCURRENCY = 4;
 const MAX_WEBHOOK_RETRY_CONCURRENCY = 8;
 const WEBHOOK_MAX_DELIVERY_ATTEMPTS = 8;
 const WEBHOOK_DELIVERY_TIMEOUT_MS = 10_000;
+const WEBHOOK_DELIVERY_FAILED_MESSAGE = 'Webhook delivery failed';
 
 function normalizeHostname(hostname: string) {
   return hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
@@ -679,7 +680,7 @@ async function dispatchToEndpoint(
   const base: WebhookDeliveryResult = {
     webhookId: registration.id,
     event: payload.event,
-    url: registration.url,
+    url: redactWebhookUrlForDisplay(registration.url),
     statusCode: null,
     success: false,
   };
@@ -732,10 +733,10 @@ async function dispatchToEndpoint(
       result.success ? 'succeeded' : 'failed',
     );
     return result;
-  } catch (err) {
+  } catch {
     const result = {
       ...base,
-      error: err instanceof Error ? err.message : String(err),
+      error: WEBHOOK_DELIVERY_FAILED_MESSAGE,
     };
     await recordWebhookDeliveryResult(registration, payload, result, 'failed');
     return result;

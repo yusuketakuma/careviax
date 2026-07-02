@@ -165,6 +165,47 @@ describe('dispatchNotificationEvent', () => {
     );
   });
 
+  it('logs a safe warning when realtime broadcast fails without rejecting persisted notifications', async () => {
+    loggerWarnMock.mockReset();
+    const rawError = 'realtime failed for 患者A token=secret notification body';
+    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
+      createTx();
+
+    notificationRuleFindMany.mockResolvedValue([]);
+    membershipFindMany.mockResolvedValue([]);
+    userFindMany.mockResolvedValue([]);
+    notificationCreate.mockImplementation(async ({ data }) => ({
+      id: 'notification_1',
+      created_at: new Date('2026-06-17T00:00:00.000Z'),
+      is_read: false,
+      ...data,
+    }));
+    broadcastStatusUpdateMock.mockRejectedValueOnce(new Error(rawError));
+
+    const notifications = await dispatchNotificationEvent(tx, {
+      orgId: 'org_1',
+      eventType: 'visit_schedule_reschedule_requested',
+      type: 'business',
+      title: '承認待ち',
+      message: '通知を確認してください',
+      explicitUserIds: ['user_1'],
+    });
+
+    expect(notifications).toHaveLength(1);
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      {
+        event: 'notifications.realtime_delivery_failed',
+        entityType: 'notification',
+        operation: 'broadcast',
+        count: 1,
+      },
+      expect.any(Error),
+    );
+    expect(JSON.stringify(loggerWarnMock.mock.calls[0]?.[0])).not.toContain(rawError);
+    expect(JSON.stringify(loggerWarnMock.mock.calls[0]?.[0])).not.toContain('患者A');
+    expect(JSON.stringify(loggerWarnMock.mock.calls[0]?.[0])).not.toContain('token=secret');
+  });
+
   it('suppresses explicit notifications when in-app rules exist but are all disabled', async () => {
     const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
       createTx();

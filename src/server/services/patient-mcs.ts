@@ -30,6 +30,8 @@ const MCS_BROWSER_CONNECT_ERROR_MESSAGE =
   'MCS 連携用ブラウザに接続できません。ローカル端末で MCS にログインした Chrome を開いてから再試行してください。';
 const MCS_BROWSER_SCRAPE_ERROR_MESSAGE =
   'MCS からデータを取得できませんでした。MCS を開き直してから再試行してください。';
+const MCS_PATIENT_IDENTITY_CONFLICT_MESSAGE =
+  'MCS の患者情報が対象患者と一致しません。連携先 URL を確認してください';
 export const PATIENT_MCS_PROFILE_TASK_TYPE = 'patient_mcs_profile';
 
 export type PatientMcsLinkRecord = {
@@ -618,15 +620,11 @@ function assertPatientIdentityMatches(
   ].filter((value): value is string => Boolean(value?.trim()));
 
   if (mcsCandidateLabels.length === 0) {
-    throw conflictFailure(
-      `MCS 上の患者名を確認できませんでした。対象患者「${patient.name}」に紐づく URL か確認してください`,
-    );
+    throw conflictFailure(MCS_PATIENT_IDENTITY_CONFLICT_MESSAGE);
   }
 
   if (!matchesPatientIdentity(patient, mcsCandidateLabels)) {
-    throw conflictFailure(
-      `MCS の患者名「${mcsCandidateLabels[0]}」が対象患者「${patient.name}」と一致しません`,
-    );
+    throw conflictFailure(MCS_PATIENT_IDENTITY_CONFLICT_MESSAGE);
   }
 }
 
@@ -1087,7 +1085,18 @@ export async function syncPatientMcsTimeline(
           updated_by: userId,
         },
       });
-    }).catch(() => undefined);
+    }).catch((failureStateError: unknown) => {
+      logger.warn(
+        {
+          event: 'patient_mcs_sync_failure_state_persist_failed',
+          operation: 'record_sync_failure_state',
+          orgId,
+          actorId: userId,
+          entityType: 'patient_mcs_link',
+        },
+        failureStateError,
+      );
+    });
 
     throw syncError;
   }

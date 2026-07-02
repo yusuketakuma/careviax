@@ -199,6 +199,7 @@ import {
   checkPcaPumpRentalOverdues,
   checkPrescriptionExpiry,
   generateVisitDemands,
+  runDailyOperations,
   checkVisitRecordRetention,
   cleanupAbandonedQrDrafts,
   cleanupTerminalQrDraftPayloads,
@@ -263,6 +264,46 @@ describe('runDailyOperationTasks', () => {
       { status: 'rejected', reason: expect.any(Error) },
       { status: 'fulfilled', value: { processedCount: 3 } },
     ]);
+  });
+});
+
+describe('runDailyOperations', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns a safe error when a daily subtask rejects with provider details', async () => {
+    const rawFailure = 'daily failed patient=患者A token=secret s3://bucket/internal';
+    prescriptionIntakeFindManyMock.mockRejectedValueOnce(new Error(rawFailure));
+    pcaPumpRentalFindManyMock.mockResolvedValue([]);
+    visitScheduleFindManyMock.mockResolvedValue([]);
+    visitScheduleContactLogFindManyMock.mockResolvedValue([]);
+    businessHolidayFindManyMock.mockResolvedValue([]);
+    pharmacistShiftFindManyMock.mockResolvedValue([]);
+    conferenceNoteFindManyMock.mockResolvedValue([]);
+    careCaseFindManyMock.mockResolvedValue([]);
+    careCaseFindFirstMock.mockResolvedValue(null);
+    visitRecordFindManyMock.mockResolvedValue([]);
+    patientFindManyMock.mockResolvedValue([]);
+    membershipFindManyMock.mockResolvedValue([]);
+    firstVisitDocumentFindManyMock.mockResolvedValue([]);
+    patientSelfReportFindManyMock.mockResolvedValue([]);
+    inquiryRecordFindManyMock.mockResolvedValue([]);
+    facilityStandardRegistrationFindManyMock.mockResolvedValue([]);
+    consentRecordFindManyMock.mockResolvedValue([]);
+    patientInsuranceFindManyMock.mockResolvedValue([]);
+    medicationCycleFindManyMock.mockResolvedValue([]);
+    pharmacistCredentialFindManyMock.mockResolvedValue([]);
+    qrScanDraftUpdateManyMock.mockResolvedValue({ count: 0 });
+
+    const result = await runDailyOperations();
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        errors: expect.arrayContaining(['日次ジョブの一部処理に失敗しました']),
+      }),
+    );
+    expect(JSON.stringify(result)).not.toContain(rawFailure);
   });
 });
 
@@ -1740,6 +1781,47 @@ describe('generateVisitDemands', () => {
         slaDueAt: new Date('2026-06-10T00:00:00.000Z'),
       }),
     );
+  });
+
+  it('returns a safe error when visit demand generation fails with provider details', async () => {
+    const rawFailure = 'planner failed patient=患者A token=secret s3://bucket/internal';
+    medicationCycleFindManyMock.mockResolvedValue([
+      {
+        id: 'cycle_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        case_: {
+          primary_pharmacist_id: 'pharmacist_1',
+        },
+        prescription_intakes: [
+          {
+            refill_next_dispense_date: null,
+            split_next_dispense_date: null,
+            lines: [
+              {
+                drug_name: '継続薬',
+                frequency: '朝食後',
+                end_date: new Date('2026-06-10T00:00:00.000Z'),
+                start_date: null,
+                days: 7,
+              },
+            ],
+          },
+        ],
+        visit_schedules: [],
+        visit_schedule_proposals: [],
+      },
+    ]);
+    vi.mocked(generateVisitScheduleProposalDrafts).mockRejectedValueOnce(new Error(rawFailure));
+
+    const result = await generateVisitDemands();
+
+    expect(result).toEqual({
+      processedCount: 0,
+      errors: ['日次ジョブの一部処理に失敗しました'],
+    });
+    expect(JSON.stringify(result)).not.toContain(rawFailure);
   });
 
   it('generates urgent ASAP demand from the latest visit-record suggestion', async () => {

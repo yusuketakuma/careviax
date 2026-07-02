@@ -55,6 +55,19 @@ describe('health-check', () => {
     expect(queryRawMock).toHaveBeenCalledOnce();
   });
 
+  it('returns a safe fixed database message when the database check fails', async () => {
+    queryRawMock.mockRejectedValue(new Error('database failed token=secret db_password=value'));
+
+    const result = await checkDatabase();
+
+    expect(result).toMatchObject({
+      status: 'down',
+      message: 'Database health check failed',
+    });
+    expect(JSON.stringify(result)).not.toContain('token=secret');
+    expect(JSON.stringify(result)).not.toContain('db_password=value');
+  });
+
   it('skips S3 without constructing an AWS client when env is incomplete', async () => {
     process.env.S3_BUCKET_NAME = 'ph-os-files';
 
@@ -88,6 +101,21 @@ describe('health-check', () => {
     expect(headBucketCommandMock).toHaveBeenCalledTimes(2);
     expect(headBucketCommandMock).toHaveBeenNthCalledWith(1, { Bucket: 'ph-os-files' });
     expect(headBucketCommandMock).toHaveBeenNthCalledWith(2, { Bucket: 'ph-os-files' });
+  });
+
+  it('returns a safe fixed S3 message when the S3 check fails', async () => {
+    process.env.S3_BUCKET_NAME = 'ph-os-files';
+    process.env.AWS_REGION = 'ap-northeast-1';
+    s3SendMock.mockRejectedValue(new Error('s3 failed token=secret db_password=value'));
+
+    const result = await checkS3();
+
+    expect(result).toMatchObject({
+      status: 'down',
+      message: 'S3 health check failed',
+    });
+    expect(JSON.stringify(result)).not.toContain('token=secret');
+    expect(JSON.stringify(result)).not.toContain('db_password=value');
   });
 
   it('creates a separate S3 client when the health check region changes', async () => {

@@ -29,6 +29,7 @@ const DEFAULT_BULK_EXPORT_RETENTION_HOURS = 72;
 const DEFAULT_CONTRACT_DOCUMENT_RETENTION_YEARS = 7;
 const MAX_BULK_EXPORT_CLEANUP_BATCH_SIZE = 100;
 const DEFAULT_BULK_EXPORT_CLEANUP_MAX_PAGES = 10;
+const EXPIRED_GENERATED_FILE_CLEANUP_ERROR = '保持期限切れファイルの削除に失敗しました';
 
 const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const DOCUMENT_MIME_TYPES = new Set([...IMAGE_MIME_TYPES, 'application/pdf']);
@@ -1460,8 +1461,8 @@ export async function cleanupExpiredGeneratedFiles(args?: {
           try {
             await deleteGeneratedFile(record);
             processedCount += 1;
-          } catch (error) {
-            errors.push(error instanceof Error ? error.message : String(error));
+          } catch {
+            errors.push(EXPIRED_GENERATED_FILE_CLEANUP_ERROR);
           }
         }
 
@@ -1513,8 +1514,8 @@ export async function cleanupExpiredGeneratedFiles(args?: {
       try {
         await deleteGeneratedFile(record);
         processedCount += 1;
-      } catch (error) {
-        errors.push(error instanceof Error ? error.message : String(error));
+      } catch {
+        errors.push(EXPIRED_GENERATED_FILE_CLEANUP_ERROR);
       }
     }
 

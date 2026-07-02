@@ -6,6 +6,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createS3EvidenceObjectVerifier } from './evidence-upload-verification';
+import { hashLogIdentifier } from './structured-logger';
 
 const expected = {
   key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
@@ -347,7 +348,7 @@ describe('S3 evidence object verifier', () => {
     });
   });
 
-  it('logs default cleanup failures with tenant, user, request, and correlation fields', async () => {
+  it('logs default cleanup failures with hashed tenant/user and correlation fields', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const send = vi.fn(async (command: HeadObjectCommand | DeleteObjectCommand) => {
       if (command instanceof HeadObjectCommand) {
@@ -386,12 +387,15 @@ describe('S3 evidence object verifier', () => {
     expect(JSON.parse(String(errorSpy.mock.calls[0]?.[0]))).toMatchObject({
       level: 'WARNING',
       message: 'phos_evidence_cleanup_failed',
-      tenant_id: 'tenant_abc123',
-      user_id: 'user_1',
+      tenant_id_hash: hashLogIdentifier('tenant_abc123'),
+      user_id_hash: hashLogIdentifier('user_1'),
       request_id: 'req_1',
       correlation_id: 'corr_1',
       mismatch_reason: 'content_length_mismatch',
       cleanup_error: 'AccessDenied',
     });
+    const serialized = String(errorSpy.mock.calls[0]?.[0]);
+    expect(serialized).not.toContain('tenant_abc123');
+    expect(serialized).not.toContain('user_1');
   });
 });

@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db/client';
 import { hasPermission } from '@/lib/auth/permissions';
 import { buildFileDownloadHref } from '@/lib/files/navigation';
 import { mapWithConcurrency } from '@/lib/utils/concurrency';
+import { logger } from '@/lib/utils/logger';
 import {
   buildVisitScheduleAssignmentWhere,
   canAccessVisitScheduleAssignment,
@@ -28,6 +29,7 @@ const BULK_EXPORT_HEARTBEAT_INTERVAL_MS = 5 * 60_000;
 const BYTES_PER_MIB = 1024 * 1024;
 const DEFAULT_MAX_TOTAL_PDF_BYTES = 128 * BYTES_PER_MIB;
 const MAX_TOTAL_PDF_BYTES_ENV = 'MEDICATION_HISTORY_BULK_EXPORT_MAX_TOTAL_PDF_BYTES';
+const GENERIC_BULK_EXPORT_FAILURE_MESSAGE = '薬歴 PDF ZIP の生成に失敗しました';
 
 const bulkExportPatientIdsSchema = z
   .array(z.string().trim().min(1))
@@ -90,6 +92,12 @@ class BulkExportLockLostError extends Error {
     super('bulk export job lock was lost');
     this.name = 'BulkExportLockLostError';
   }
+}
+
+function getSafeBulkExportFailureMessage(cause: unknown) {
+  return cause instanceof MedicationHistoryBulkExportError
+    ? cause.message
+    : GENERIC_BULK_EXPORT_FAILURE_MESSAGE;
 }
 
 function uniqueStrings(values: string[]) {
@@ -421,7 +429,19 @@ async function cleanupStoredBulkExportFile(args: {
   try {
     await deleteGeneratedFile(args.file);
   } catch (cleanupError) {
-    console.error(`[bulk-export:${args.jobId}] stored file cleanup failed`, cleanupError);
+    logger.warn(
+      {
+        event: 'medication_history_bulk_export.cleanup_failed',
+        orgId: args.file.orgId,
+        entityType: 'file',
+        entityId: args.file.id,
+        targetId: args.jobId,
+        jobType: BULK_EXPORT_JOB_TYPE,
+        filePurpose: args.file.purpose,
+        operation: 'cleanup',
+      },
+      cleanupError,
+    );
   }
 }
 
@@ -814,7 +834,13 @@ export async function runMedicationHistoryBulkExportJob(
     });
 
     if (completed.count === 0) {
-      console.error(`[bulk-export:${job.id}] terminal completion skipped because lock was lost`);
+      logger.warn({
+        event: 'medication_history_bulk_export.completion_skipped_lock_lost',
+        orgId: job.org_id,
+        targetId: job.id,
+        jobType: BULK_EXPORT_JOB_TYPE,
+        operation: 'complete',
+      });
       await cleanupStoredBulkExportFile({
         jobId: job.id,
         file: storedFile,
@@ -834,7 +860,17 @@ export async function runMedicationHistoryBulkExportJob(
         jobId: job.id,
       });
     } catch (notificationError) {
-      console.error(`[bulk-export:${job.id}] ready notification failed`, notificationError);
+      logger.warn(
+        {
+          event: 'medication_history_bulk_export.ready_notification_failed',
+          orgId: job.org_id,
+          userId: parsedInput.data.requestedBy,
+          targetId: job.id,
+          jobType: BULK_EXPORT_JOB_TYPE,
+          operation: 'notify_ready',
+        },
+        notificationError,
+      );
     }
 
     return {
@@ -851,11 +887,17 @@ export async function runMedicationHistoryBulkExportJob(
           file: storedFileForCleanup,
         });
       }
-      console.error(`[bulk-export:${job.id}] aborted because lock was lost`);
+      logger.warn({
+        event: 'medication_history_bulk_export.aborted_lock_lost',
+        orgId: job.org_id,
+        targetId: job.id,
+        jobType: BULK_EXPORT_JOB_TYPE,
+        operation: 'run',
+      });
       return null;
     }
 
-    const message = cause instanceof Error ? cause.message : '薬歴 PDF ZIP の生成に失敗しました';
+    const message = getSafeBulkExportFailureMessage(cause);
 
     if (storedFileForCleanup) {
       await cleanupStoredBulkExportFile({
@@ -887,7 +929,17 @@ export async function runMedicationHistoryBulkExportJob(
         message,
       });
     } catch (notificationError) {
-      console.error(`[bulk-export:${job.id}] failure notification failed`, notificationError);
+      logger.warn(
+        {
+          event: 'medication_history_bulk_export.failure_notification_failed',
+          orgId: job.org_id,
+          userId: parsedInput.data.requestedBy,
+          targetId: job.id,
+          jobType: BULK_EXPORT_JOB_TYPE,
+          operation: 'notify_failure',
+        },
+        notificationError,
+      );
     }
 
     throw cause;
@@ -930,7 +982,7 @@ export async function drainMedicationHistoryBulkExportQueue(args?: { orgId?: str
       }
       processedCount += result.patientCount;
     } catch (cause) {
-      errors.push(cause instanceof Error ? cause.message : String(cause));
+      errors.push(getSafeBulkExportFailureMessage(cause));
       skippedJobIds.add(nextJob.id);
     }
   }

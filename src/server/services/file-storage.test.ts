@@ -906,7 +906,7 @@ describe('file-storage', () => {
     });
   });
 
-  it('records and logs a partial failure when an expired file deletion fails', async () => {
+  it('records sanitized partial failures when an expired file deletion fails', async () => {
     const expiredRecord = buildStoredFileRecord({
       id: 'expired_file',
       purpose: 'bulk-export',
@@ -915,7 +915,9 @@ describe('file-storage', () => {
       expiresAt: '2026-03-27T23:59:59.000Z',
     });
     settingFindManyMock.mockResolvedValue([{ value: expiredRecord }]);
-    s3SendMock.mockRejectedValueOnce(new Error('s3 delete failed'));
+    s3SendMock.mockRejectedValueOnce(
+      new Error('s3 delete failed patient=患者A token=secret storageKey=bulk-exports/org_1/raw'),
+    );
 
     const result = await cleanupExpiredGeneratedFiles({
       orgId: 'org_1',
@@ -924,7 +926,9 @@ describe('file-storage', () => {
 
     // 失敗が握り潰されず errors に積まれ、呼び出し側の検査有無に依らず warn で観測できる
     expect(result.processedCount).toBe(0);
-    expect(result.errors).toHaveLength(1);
+    expect(result.errors).toEqual(['保持期限切れファイルの削除に失敗しました']);
+    expect(result.errors.join(' ')).not.toContain('患者A');
+    expect(result.errors.join(' ')).not.toContain('secret');
     expect(loggerWarnMock).toHaveBeenCalledWith(
       'expired generated file cleanup completed with deletion failures',
       expect.objectContaining({

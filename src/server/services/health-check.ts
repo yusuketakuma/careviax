@@ -20,6 +20,8 @@ type S3Module = {
 
 let cachedS3Module: Promise<S3Module> | null = null;
 const s3Clients = new Map<string, AwsClient<unknown>>();
+const DATABASE_HEALTH_CHECK_FAILED_MESSAGE = 'Database health check failed';
+const S3_HEALTH_CHECK_FAILED_MESSAGE = 'S3 health check failed';
 
 async function loadS3Module() {
   cachedS3Module ??= import('@aws-sdk/client-s3').then((module) => module as S3Module);
@@ -43,10 +45,10 @@ export async function checkDatabase(): Promise<CheckResult> {
     const start = Date.now();
     await prisma.$queryRaw`SELECT 1`;
     return { status: 'ok', latencyMs: Date.now() - start };
-  } catch (err) {
+  } catch {
     return {
       status: 'down',
-      message: err instanceof Error ? err.message : String(err),
+      message: DATABASE_HEALTH_CHECK_FAILED_MESSAGE,
     };
   }
 }
@@ -69,10 +71,10 @@ export async function checkS3(): Promise<CheckResult> {
     const start = Date.now();
     await client.send(new HeadBucketCommand({ Bucket: bucketName }));
     return { status: 'ok', latencyMs: Date.now() - start };
-  } catch (err) {
+  } catch {
     return {
       status: 'down',
-      message: err instanceof Error ? err.message : String(err),
+      message: S3_HEALTH_CHECK_FAILED_MESSAGE,
     };
   }
 }

@@ -1,5 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { zipSync } from 'fflate';
+
+const { loggerWarnMock } = vi.hoisted(() => ({
+  loggerWarnMock: vi.fn(),
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    warn: loggerWarnMock,
+  },
+}));
+
 import {
   MHLW_IMPORT_URL_POLICY,
   extractImportSourceDateFromUrl,
@@ -7,10 +18,12 @@ import {
   parseImportSourceDateToken,
   unzipWithLimits,
   validateImportSourceUrl,
+  withImportLog,
 } from './shared';
 
 afterEach(() => {
   vi.restoreAllMocks();
+  loggerWarnMock.mockReset();
 });
 
 describe('validateImportSourceUrl', () => {
@@ -207,6 +220,50 @@ describe('fetchBytes', () => {
     ).rejects.toThrow(/サイズが上限/);
   });
 
+  it('logs a safe warning when oversized stream cancellation fails', async () => {
+    const cancelError = new Error('cancel failed token=secret');
+    const cancelMock = vi.fn(() => {
+      throw cancelError;
+    });
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new Uint8Array([1, 2, 3, 4]));
+              controller.enqueue(new Uint8Array([5, 6, 7, 8]));
+            },
+            cancel: cancelMock,
+          }),
+          { status: 200 },
+        ),
+    );
+
+    await expect(
+      fetchBytes('https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx', {
+        fetchImpl,
+        policy: MHLW_IMPORT_URL_POLICY,
+        maxBytes: 7,
+        resolveHostname: async () => ['8.8.8.8'],
+      }),
+    ).rejects.toThrow(/サイズが上限/);
+
+    expect(cancelMock).toHaveBeenCalledTimes(1);
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      {
+        event: 'drug-master-import.stream-cancel-failed',
+        operation: 'read-response-bytes',
+        code: 'max-bytes-exceeded',
+        filePurpose: 'drug-master-import',
+        externalProvider: 'mhlw-price',
+      },
+      cancelError,
+    );
+    const warningContext = JSON.stringify(loggerWarnMock.mock.calls[0]?.[0]);
+    expect(warningContext).not.toContain('token=secret');
+    expect(warningContext).not.toContain('https://www.mhlw.go.jp');
+  });
+
   it('stops following redirect loops at the configured redirect limit', async () => {
     const fetchImpl = vi.fn(
       async () =>
@@ -358,5 +415,77 @@ describe('unzipWithLimits', () => {
         },
       }),
     ).toThrow(/ZIP展開サイズが上限/);
+  });
+});
+
+describe('withImportLog', () => {
+  it('persists a safe failure message without leaking caught error diagnostics', async () => {
+    const db = {
+      drugMasterImportLog: {
+        create: vi.fn().mockResolvedValue({ id: 'log_1', status: 'running' }),
+        update: vi.fn().mockResolvedValue({ id: 'log_1', status: 'failed' }),
+      },
+    };
+    const unsafeError = new Error(
+      'database failed patient=患者A token=secret source_url=https://internal.example/import.xlsx',
+    );
+
+    await expect(
+      withImportLog(db, 'mhlw_price', async () => {
+        throw unsafeError;
+      }),
+    ).rejects.toBe(unsafeError);
+
+    expect(db.drugMasterImportLog.update).toHaveBeenCalledWith({
+      where: { id: 'log_1' },
+      data: {
+        status: 'failed',
+        error_log: '医薬品マスタ取込に失敗しました',
+      },
+    });
+    const failedUpdate = JSON.stringify(db.drugMasterImportLog.update.mock.calls.at(-1)?.[0]);
+    expect(failedUpdate).not.toContain('患者A');
+    expect(failedUpdate).not.toContain('token=secret');
+    expect(failedUpdate).not.toContain('internal.example');
+  });
+
+  it('rethrows the original importer error when recording the failed import log also fails', async () => {
+    const db = {
+      drugMasterImportLog: {
+        create: vi.fn().mockResolvedValue({ id: 'log_1', status: 'running' }),
+        update: vi.fn().mockRejectedValue(new Error('log update failed token=secret 患者A')),
+      },
+    };
+    const unsafeError = new Error(
+      'import failed patient=患者B source_url=https://internal.example/a',
+    );
+
+    await expect(
+      withImportLog(db, 'pmda', async () => {
+        throw unsafeError;
+      }),
+    ).rejects.toBe(unsafeError);
+
+    expect(db.drugMasterImportLog.update).toHaveBeenCalledWith({
+      where: { id: 'log_1' },
+      data: {
+        status: 'failed',
+        error_log: '医薬品マスタ取込に失敗しました',
+      },
+    });
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      {
+        event: 'drug-master-import.failure-log-update-failed',
+        operation: 'with-import-log',
+        filePurpose: 'drug-master-import',
+        externalProvider: 'pmda',
+      },
+      expect.any(Error),
+    );
+    const warningContext = JSON.stringify(loggerWarnMock.mock.calls.at(-1)?.[0]);
+    expect(warningContext).not.toContain('患者A');
+    expect(warningContext).not.toContain('患者B');
+    expect(warningContext).not.toContain('token=secret');
+    expect(warningContext).not.toContain('internal.example');
   });
 });

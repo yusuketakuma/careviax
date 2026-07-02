@@ -153,8 +153,16 @@ async function broadcastPersistedNotifications(notifications: PersistedNotificat
           toNotificationStreamItem(notification),
         ] as unknown as Record<string, unknown>),
     );
-  } catch {
-    // Realtime notification delivery is best-effort; persisted rows remain the source of truth.
+  } catch (cause) {
+    logger.warn(
+      {
+        event: 'notifications.realtime_delivery_failed',
+        entityType: 'notification',
+        operation: 'broadcast',
+        count: notifications.length,
+      },
+      cause,
+    );
   }
 }
 

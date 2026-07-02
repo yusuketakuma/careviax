@@ -190,6 +190,49 @@ describe('AuroraFeeRulesRepository', () => {
     expect(release).toHaveBeenCalledTimes(1);
   });
 
+  it('logs a structured warning when rollback fails without hiding the original query error', async () => {
+    const consoleErrorMock = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const queryError = new Error('database unavailable');
+    const rollbackError = new Error('ROLLBACK failed for postgres://secret');
+    const query = vi.fn(async (sql: string, params?: readonly unknown[]) => {
+      void params;
+      if (sql === 'ROLLBACK') throw rollbackError;
+      if (sql.includes('phos_fee_rule_master')) throw queryError;
+      return { rows: [] };
+    });
+    const release = vi.fn();
+    const pool: AuroraFeeRulesClient = {
+      connect: vi.fn(async () => ({ query, release })),
+    };
+    const repository = new AuroraFeeRulesRepository(pool);
+
+    try {
+      await expect(repository.searchFeeRules(ctx, { limit: 50 })).rejects.toBe(queryError);
+
+      expect(query).toHaveBeenCalledWith('ROLLBACK');
+      expect(release).toHaveBeenCalledTimes(1);
+      expect(consoleErrorMock).toHaveBeenCalledTimes(1);
+      const logLine = String(consoleErrorMock.mock.calls[0]?.[0]);
+      const logEntry = JSON.parse(logLine) as Record<string, unknown>;
+      expect(logEntry).toMatchObject({
+        level: 'WARNING',
+        message: 'PH-OS fee-rules transaction rollback failed',
+        result: 'ERROR',
+        request_id: 'req_1',
+        correlation_id: 'corr_1',
+        route_key: 'GET /fee-rules',
+        error_code: 'AURORA_ROLLBACK_FAILED',
+        details: { operation: 'searchFeeRules' },
+      });
+      expect(logLine).not.toContain(ctx.tenant_id);
+      expect(logLine).not.toContain(ctx.user_id);
+      expect(logLine).not.toContain('postgres://secret');
+      expect(logLine).not.toContain('ROLLBACK failed');
+    } finally {
+      consoleErrorMock.mockRestore();
+    }
+  });
+
   it('returns an opaque cursor when more rows than the requested limit exist', async () => {
     const { pool } = client([
       {

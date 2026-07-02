@@ -133,9 +133,63 @@ describe('runJob', () => {
     });
   });
 
+  it('stores fixed job failure diagnostics and admin notifications without raw provider details', async () => {
+    const original = new Error('患者A provider token=secret db_password=value');
+    const fn = vi.fn().mockRejectedValue(original);
+    membershipFindManyMock.mockResolvedValue([
+      { user_id: 'admin_1', org_id: 'org_1' },
+      { user_id: 'owner_1', org_id: 'org_1' },
+    ]);
+
+    await expect(runJob('test_job', fn, 'org_1')).rejects.toBe(original);
+
+    expect(fn).toHaveBeenCalledTimes(4);
+    const updatePayloads = integrationJobUpdateMock.mock.calls.map(([arg]) => arg);
+    const serializedUpdates = JSON.stringify(updatePayloads);
+    expect(serializedUpdates).not.toContain('token=secret');
+    expect(serializedUpdates).not.toContain('db_password=value');
+    expect(serializedUpdates).not.toContain('患者A');
+    expect(updatePayloads).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            retry_count: 1,
+            error_log: 'Attempt 1/3 failed: Job execution failed',
+          }),
+        }),
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'failed',
+            error_log: 'All 3 retries exhausted. Last error: Job execution failed',
+          }),
+        }),
+      ]),
+    );
+
+    expect(notificationCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          org_id: 'org_1',
+          user_id: 'admin_1',
+          message: 'ジョブ「test_job」が3回リトライ後に失敗しました: ジョブの実行に失敗しました',
+        }),
+        expect.objectContaining({
+          org_id: 'org_1',
+          user_id: 'owner_1',
+          message: 'ジョブ「test_job」が3回リトライ後に失敗しました: ジョブの実行に失敗しました',
+        }),
+      ],
+      skipDuplicates: true,
+    });
+    const serializedNotifications = JSON.stringify(notificationCreateManyMock.mock.calls);
+    expect(serializedNotifications).not.toContain('token=secret');
+    expect(serializedNotifications).not.toContain('db_password=value');
+    expect(serializedNotifications).not.toContain('患者A');
+  });
+
   it('preserves the ORIGINAL error when the cleanup status update itself fails', async () => {
-    const original = new Error('upstream-failure');
-    const cleanupError = new Error('db-down-during-cleanup');
+    const original = new Error('upstream token=secret patient=患者A');
+    const cleanupError = new Error('cleanup db_password=value');
     const fn = vi.fn().mockRejectedValue(original);
 
     integrationJobUpdateMock.mockImplementation(async ({ data }) => {
@@ -146,9 +200,13 @@ describe('runJob', () => {
 
     await expect(runJob('test_job', fn)).rejects.toBe(original);
 
-    // Verify the operator-facing log fired with both errors for triage.
+    // Verify the operator-facing log fires without leaking raw upstream details.
     expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('CRITICAL'));
-    expect(consoleErrorSpy.mock.calls.flat().join(' ')).toContain('db-down-during-cleanup');
-    expect(consoleErrorSpy.mock.calls.flat().join(' ')).toContain('upstream-failure');
+    const logged = consoleErrorSpy.mock.calls.flat().join(' ');
+    expect(logged).toContain('Job cleanup failed');
+    expect(logged).toContain('Job execution failed');
+    expect(logged).not.toContain('token=secret');
+    expect(logged).not.toContain('db_password=value');
+    expect(logged).not.toContain('患者A');
   });
 });

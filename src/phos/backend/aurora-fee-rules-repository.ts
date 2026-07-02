@@ -11,6 +11,7 @@ import { assertFeeRuleConditionAllowedFields } from '@/phos/domain/claim/feeRule
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 import type { FeeRuleSearchQuery, PhosFeeRulesRepository } from './fee-rules-repository';
 import { parseRequiredString, validationError } from './input-validation';
+import { buildLogEntry, logPhosEvent } from './structured-logger';
 import type { TenantContext } from './tenant-context';
 
 export type AuroraFeeRulesClient = {
@@ -100,6 +101,7 @@ export const MAX_PHOS_AURORA_QUERY_TIMEOUT_MS = 60_000;
 export const DEFAULT_PHOS_AURORA_IDLE_TIMEOUT_MS = 10_000;
 export const MAX_PHOS_AURORA_IDLE_TIMEOUT_MS = 60_000;
 const PHOS_AURORA_POOL_MAX_CONNECTIONS = 2;
+const FEE_RULES_ROUTE_KEY = 'GET /fee-rules';
 
 type AuroraPoolEnv = Partial<
   Record<
@@ -139,6 +141,20 @@ function assertSafeTenantId(tenant_id: string): void {
   if (!/^[A-Za-z0-9_-]+$/.test(tenant_id)) {
     throw new Error('PH-OS Aurora tenant_id contains unsafe characters');
   }
+}
+
+function logFeeRulesRollbackFailure(ctx: TenantContext): void {
+  logPhosEvent(
+    buildLogEntry({
+      level: 'WARNING',
+      message: 'PH-OS fee-rules transaction rollback failed',
+      result: 'ERROR',
+      ctx,
+      route_key: FEE_RULES_ROUTE_KEY,
+      error_code: 'AURORA_ROLLBACK_FAILED',
+      details: { operation: 'searchFeeRules' },
+    }),
+  );
 }
 
 function encodeCursor(row: FeeRuleRow): string {
@@ -367,7 +383,11 @@ LIMIT $${params.length}
         server_time: this.now().toISOString(),
       };
     } catch (error) {
-      await connection.query('ROLLBACK').catch(() => undefined);
+      try {
+        await connection.query('ROLLBACK');
+      } catch {
+        logFeeRulesRollbackFailure(ctx);
+      }
       throw error;
     } finally {
       connection.release();

@@ -22,6 +22,12 @@ export type DailyOperationResult = {
   errors?: string[];
 };
 
+export const SAFE_DAILY_OPERATION_ERROR_MESSAGE = '日次ジョブの一部処理に失敗しました';
+
+export function getSafeDailyOperationErrorMessage() {
+  return SAFE_DAILY_OPERATION_ERROR_MESSAGE;
+}
+
 export async function createManyNotifications(data: Prisma.NotificationCreateManyInput[]) {
   if (data.length === 0) return { count: 0 };
 

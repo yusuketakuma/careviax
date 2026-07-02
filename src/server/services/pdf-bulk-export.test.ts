@@ -19,6 +19,7 @@ const {
   buildMedicationHistoryPdfMock,
   storeGeneratedFileMock,
   deleteGeneratedFileMock,
+  loggerWarnMock,
 } = vi.hoisted(() => ({
   zipSyncMock: vi.fn(),
   transactionMock: vi.fn(),
@@ -37,6 +38,7 @@ const {
   buildMedicationHistoryPdfMock: vi.fn(),
   storeGeneratedFileMock: vi.fn(),
   deleteGeneratedFileMock: vi.fn(),
+  loggerWarnMock: vi.fn(),
 }));
 
 vi.mock('fflate', async (importOriginal) => {
@@ -87,6 +89,12 @@ vi.mock('@/server/services/pdf-documents', () => ({
 vi.mock('@/server/services/file-storage', () => ({
   storeGeneratedFile: storeGeneratedFileMock,
   deleteGeneratedFile: deleteGeneratedFileMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    warn: loggerWarnMock,
+  },
 }));
 
 import {
@@ -546,11 +554,12 @@ describe('pdf-bulk-export', () => {
     expect(storeGeneratedFileMock).toHaveBeenCalledOnce();
   });
 
-  it('fails the job when the final export audit cannot be written', async () => {
+  it('stores and notifies a safe failure message when the final export audit cannot be written', async () => {
+    const rawFailure = 'audit unavailable patient=患者A token=secret s3://bucket/private.zip';
     integrationJobFindFirstMock.mockResolvedValue(null);
-    auditLogCreateMock.mockRejectedValueOnce(new Error('audit unavailable'));
+    auditLogCreateMock.mockRejectedValueOnce(new Error(rawFailure));
 
-    await expect(runMedicationHistoryBulkExportJob('job_1')).rejects.toThrow('audit unavailable');
+    await expect(runMedicationHistoryBulkExportJob('job_1')).rejects.toThrow(rawFailure);
     expect(deleteGeneratedFileMock).toHaveBeenCalledWith(
       expect.objectContaining({
         id: 'file_1',
@@ -568,7 +577,7 @@ describe('pdf-bulk-export', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           status: 'failed',
-          error_log: 'audit unavailable',
+          error_log: '薬歴 PDF ZIP の生成に失敗しました',
         }),
       }),
     );
@@ -576,15 +585,18 @@ describe('pdf-bulk-export', () => {
       expect.objectContaining({
         create: expect.objectContaining({
           event_type: 'medication_history_bulk_export_failed',
+          message: '薬歴 PDF ZIP の生成に失敗しました',
         }),
       }),
     );
+    expect(JSON.stringify(integrationJobUpdateManyMock.mock.calls)).not.toContain(rawFailure);
+    expect(JSON.stringify(notificationUpsertMock.mock.calls)).not.toContain(rawFailure);
   });
 
   it('keeps a completed export completed when the ready notification fails', async () => {
+    const rawFailure = 'notification unavailable patient=患者A token=secret';
     integrationJobFindFirstMock.mockResolvedValue(null);
-    notificationUpsertMock.mockRejectedValueOnce(new Error('notification unavailable'));
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    notificationUpsertMock.mockRejectedValueOnce(new Error(rawFailure));
 
     const result = await runMedicationHistoryBulkExportJob('job_1');
 
@@ -607,6 +619,18 @@ describe('pdf-bulk-export', () => {
         }),
       }),
     );
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'medication_history_bulk_export.ready_notification_failed',
+        orgId: 'org_1',
+        userId: 'user_1',
+        targetId: 'job_1',
+        jobType: 'medication-history-bulk-export',
+        operation: 'notify_ready',
+      }),
+      expect.any(Error),
+    );
+    expect(JSON.stringify(loggerWarnMock.mock.calls[0]?.[0])).not.toContain(rawFailure);
   });
 
   it('refreshes the running job lock before expensive terminal phases', async () => {
@@ -643,6 +667,8 @@ describe('pdf-bulk-export', () => {
   });
 
   it('does not overwrite a stale-recovered running job after the worker loses its lock', async () => {
+    const rawCleanupFailure =
+      'cleanup failed patient=患者A token=secret storageKey=bulk-exports/org_1/raw.zip';
     integrationJobFindFirstMock.mockResolvedValue(null);
     integrationJobUpdateManyMock
       .mockResolvedValueOnce({ count: 1 })
@@ -650,7 +676,7 @@ describe('pdf-bulk-export', () => {
       .mockResolvedValueOnce({ count: 1 })
       .mockResolvedValueOnce({ count: 1 })
       .mockResolvedValueOnce({ count: 0 });
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    deleteGeneratedFileMock.mockRejectedValueOnce(new Error(rawCleanupFailure));
 
     const result = await runMedicationHistoryBulkExportJob('job_1');
 
@@ -676,15 +702,41 @@ describe('pdf-bulk-export', () => {
         }),
       }),
     );
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'medication_history_bulk_export.completion_skipped_lock_lost',
+        orgId: 'org_1',
+        targetId: 'job_1',
+        jobType: 'medication-history-bulk-export',
+        operation: 'complete',
+      }),
+    );
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'medication_history_bulk_export.cleanup_failed',
+        orgId: 'org_1',
+        entityType: 'file',
+        entityId: 'file_1',
+        targetId: 'job_1',
+        jobType: 'medication-history-bulk-export',
+        filePurpose: 'bulk-export',
+        operation: 'cleanup',
+      }),
+      expect.any(Error),
+    );
+    expect(JSON.stringify(loggerWarnMock.mock.calls.map(([context]) => context))).not.toContain(
+      rawCleanupFailure,
+    );
   });
 
-  it('preserves the original export failure when the failure notification also fails', async () => {
+  it('preserves the original export failure while storing a safe message when the failure notification also fails', async () => {
+    const rawFailure = 'storage unavailable patient=患者A token=secret s3://bucket/private.zip';
+    const rawNotificationFailure = 'notification unavailable patient=患者B token=secret';
     integrationJobFindFirstMock.mockResolvedValue(null);
-    storeGeneratedFileMock.mockRejectedValueOnce(new Error('storage unavailable'));
-    notificationUpsertMock.mockRejectedValueOnce(new Error('notification unavailable'));
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    storeGeneratedFileMock.mockRejectedValueOnce(new Error(rawFailure));
+    notificationUpsertMock.mockRejectedValueOnce(new Error(rawNotificationFailure));
 
-    await expect(runMedicationHistoryBulkExportJob('job_1')).rejects.toThrow('storage unavailable');
+    await expect(runMedicationHistoryBulkExportJob('job_1')).rejects.toThrow(rawFailure);
     expect(deleteGeneratedFileMock).not.toHaveBeenCalled();
     expect(integrationJobUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -695,12 +747,32 @@ describe('pdf-bulk-export', () => {
         }),
         data: expect.objectContaining({
           status: 'failed',
-          error_log: 'storage unavailable',
+          error_log: '薬歴 PDF ZIP の生成に失敗しました',
           locked_at: null,
         }),
       }),
     );
-    expect(notificationUpsertMock).toHaveBeenCalledOnce();
+    expect(notificationUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          message: '薬歴 PDF ZIP の生成に失敗しました',
+        }),
+      }),
+    );
+    expect(JSON.stringify(integrationJobUpdateManyMock.mock.calls)).not.toContain(rawFailure);
+    expect(JSON.stringify(notificationUpsertMock.mock.calls)).not.toContain(rawFailure);
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'medication_history_bulk_export.failure_notification_failed',
+        orgId: 'org_1',
+        userId: 'user_1',
+        targetId: 'job_1',
+        jobType: 'medication-history-bulk-export',
+        operation: 'notify_failure',
+      }),
+      expect.any(Error),
+    );
+    expect(JSON.stringify(loggerWarnMock.mock.calls[0]?.[0])).not.toContain(rawNotificationFailure);
   });
 
   it('drains the pending export queue', async () => {
@@ -829,32 +901,32 @@ describe('pdf-bulk-export', () => {
           patientIds: ['patient_1', 'patient_2'],
         },
       });
-    storeGeneratedFileMock
-      .mockRejectedValueOnce(new Error('storage unavailable'))
-      .mockResolvedValueOnce({
-        version: 1,
-        id: 'file_2',
-        orgId: 'org_2',
-        purpose: 'bulk-export',
-        storageKey: 'bulk-exports/org_2/job_success/file_2-medication-history.zip',
-        originalName: 'medication-history.zip',
-        mimeType: 'application/zip',
-        sizeBytes: 32,
-        status: 'uploaded',
-        uploadedBy: 'user_1',
-        jobId: 'job_success',
-        createdAt: '2026-05-21T00:00:00.000Z',
-        updatedAt: '2026-05-21T00:00:00.000Z',
-        completedAt: '2026-05-21T00:00:00.000Z',
-        downloadDisposition: 'attachment',
-      });
+    const rawFailure = 'storage unavailable patient=患者A token=secret s3://bucket/private.zip';
+    storeGeneratedFileMock.mockRejectedValueOnce(new Error(rawFailure)).mockResolvedValueOnce({
+      version: 1,
+      id: 'file_2',
+      orgId: 'org_2',
+      purpose: 'bulk-export',
+      storageKey: 'bulk-exports/org_2/job_success/file_2-medication-history.zip',
+      originalName: 'medication-history.zip',
+      mimeType: 'application/zip',
+      sizeBytes: 32,
+      status: 'uploaded',
+      uploadedBy: 'user_1',
+      jobId: 'job_success',
+      createdAt: '2026-05-21T00:00:00.000Z',
+      updatedAt: '2026-05-21T00:00:00.000Z',
+      completedAt: '2026-05-21T00:00:00.000Z',
+      downloadDisposition: 'attachment',
+    });
 
     const result = await drainMedicationHistoryBulkExportQueue();
 
     expect(result).toMatchObject({
       processedCount: 2,
-      errors: ['storage unavailable'],
+      errors: ['薬歴 PDF ZIP の生成に失敗しました'],
     });
+    expect(JSON.stringify(result)).not.toContain(rawFailure);
     expect(storeGeneratedFileMock).toHaveBeenCalledTimes(2);
   });
 

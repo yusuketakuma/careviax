@@ -29,12 +29,19 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: vi.fn(),
 }));
 
-const { generatePatientMcsAiSummaryMock } = vi.hoisted(() => ({
+const { generatePatientMcsAiSummaryMock, loggerWarnMock } = vi.hoisted(() => ({
   generatePatientMcsAiSummaryMock: vi.fn(),
+  loggerWarnMock: vi.fn(),
 }));
 
 vi.mock('./patient-mcs-ai', () => ({
   generatePatientMcsAiSummary: generatePatientMcsAiSummaryMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    warn: loggerWarnMock,
+  },
 }));
 
 import { prisma } from '@/lib/db/client';
@@ -297,7 +304,6 @@ describe('patient-mcs service helpers', () => {
     const rawError = new Error('patient 山田太郎 MCS body token=secret');
     rawError.name = 'Patient山田SecretError';
     generatePatientMcsAiSummaryMock.mockRejectedValueOnce(rawError);
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     await expect(
       generatePatientMcsSummarySafely({
@@ -307,16 +313,16 @@ describe('patient-mcs service helpers', () => {
       }),
     ).resolves.toBeNull();
 
-    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
-    const logged = String(consoleErrorSpy.mock.calls[0]?.[0] ?? '');
+    expect(loggerWarnMock).toHaveBeenCalledWith({
+      event: 'patient_mcs_summary_fallback',
+      externalProvider: 'patient_mcs_ai',
+      code: 'unknown_error',
+    });
+    const logged = JSON.stringify(loggerWarnMock.mock.calls[0]?.[0]);
     expect(logged).toContain('patient_mcs_summary_fallback');
-    expect(logged).toContain('"code":"unknown_error"');
-    expect(logged).toContain('"externalProvider":"patient_mcs_ai"');
     expect(logged).not.toContain('山田太郎');
     expect(logged).not.toContain('Patient山田SecretError');
     expect(logged).not.toContain('token=secret');
-
-    consoleErrorSpy.mockRestore();
   });
 
   it('enables browser sync only with an explicit local opt-in', () => {
@@ -468,6 +474,130 @@ describe('patient-mcs service helpers', () => {
     expect(tx.patientMcsMessage.upsert).toHaveBeenCalledTimes(1);
     expect(tx.patientMcsMessage.deleteMany).not.toHaveBeenCalled();
     expect(tx.patientMcsSummary.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('logs a safe warning when recording failed MCS sync state also fails', async () => {
+    mockPatientMcsSyncLookups();
+    const persistenceError = new Error(
+      'deadlock patient=山田太郎 phone=090-1234-5678 token=secret https://www.medical-care.net/patients/123',
+    );
+    const failureTx = {
+      patientMcsLink: {
+        upsert: vi.fn().mockRejectedValueOnce(persistenceError),
+      },
+    };
+    vi.mocked(withOrgContext).mockImplementationOnce(async (_orgId, callback) =>
+      callback(failureTx as unknown as TransactionClient),
+    );
+
+    const syncPromise = syncPatientMcsTimeline(
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        userId: 'user_1',
+      },
+      {
+        now: () => new Date('2026-04-02T03:00:00.000Z'),
+        scrapeTimeline: async () => {
+          throw new Error('browser failed patient=山田太郎 token=sync-secret');
+        },
+      },
+    );
+
+    await expect(syncPromise).rejects.toMatchObject({
+      kind: 'external',
+      message:
+        'MCS 連携用ブラウザに接続できません。ローカル端末で MCS にログインした Chrome を開いてから再試行してください。',
+    });
+    expect(failureTx.patientMcsLink.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { patient_id: 'patient_1' },
+        create: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          last_sync_status: 'failed',
+          last_sync_error:
+            'MCS 連携用ブラウザに接続できません。ローカル端末で MCS にログインした Chrome を開いてから再試行してください。',
+          created_by: 'user_1',
+          updated_by: 'user_1',
+        }),
+        update: expect.objectContaining({
+          last_sync_status: 'failed',
+          last_sync_error:
+            'MCS 連携用ブラウザに接続できません。ローカル端末で MCS にログインした Chrome を開いてから再試行してください。',
+          updated_by: 'user_1',
+        }),
+      }),
+    );
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      {
+        event: 'patient_mcs_sync_failure_state_persist_failed',
+        operation: 'record_sync_failure_state',
+        orgId: 'org_1',
+        actorId: 'user_1',
+        entityType: 'patient_mcs_link',
+      },
+      persistenceError,
+    );
+    const loggedContext = JSON.stringify(loggerWarnMock.mock.calls[0]?.[0]);
+    expect(loggedContext).not.toContain('山田太郎');
+    expect(loggedContext).not.toContain('090-1234-5678');
+    expect(loggedContext).not.toContain('token=secret');
+    expect(loggedContext).not.toContain('token=sync-secret');
+    expect(loggedContext).not.toContain('medical-care.net');
+  });
+
+  it('persists sanitized MCS identity conflict errors without patient names', async () => {
+    mockPatientMcsSyncLookups();
+    const failureTx = {
+      patientMcsLink: {
+        upsert: vi.fn().mockResolvedValue({ id: 'link_1' }),
+      },
+    };
+    vi.mocked(withOrgContext).mockImplementationOnce(async (_orgId, callback) =>
+      callback(failureTx as unknown as TransactionClient),
+    );
+
+    let caught: unknown;
+    await syncPatientMcsTimeline(
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        userId: 'user_1',
+      },
+      {
+        now: () => new Date('2026-04-02T03:00:00.000Z'),
+        scrapeTimeline: async () =>
+          buildScrapedMcsTimeline({
+            mcsPatientName: '別患者 山田太郎',
+            projectTitle: '別患者 山田太郎：年長者の里',
+          }),
+      },
+    ).catch((error: unknown) => {
+      caught = error;
+    });
+
+    expect(caught).toMatchObject({
+      kind: 'conflict',
+      message: 'MCS の患者情報が対象患者と一致しません。連携先 URL を確認してください',
+    });
+    expect(failureTx.patientMcsLink.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          last_sync_status: 'failed',
+          last_sync_error: 'MCS の患者情報が対象患者と一致しません。連携先 URL を確認してください',
+        }),
+        update: expect.objectContaining({
+          last_sync_status: 'failed',
+          last_sync_error: 'MCS の患者情報が対象患者と一致しません。連携先 URL を確認してください',
+        }),
+      }),
+    );
+    const persistedFailure = JSON.stringify(failureTx.patientMcsLink.upsert.mock.calls[0]);
+    expect(persistedFailure).not.toContain('板屋');
+    expect(persistedFailure).not.toContain('美恵子');
+    expect(persistedFailure).not.toContain('別患者');
+    expect(persistedFailure).not.toContain('山田太郎');
   });
 
   it('preserves existing MCS messages and summary when the linked project changes and summary generation fails', async () => {

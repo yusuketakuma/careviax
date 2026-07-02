@@ -6,6 +6,7 @@ import {
   type S3Client,
 } from '@aws-sdk/client-s3';
 import { EVIDENCE_TENANT_ID_TAG, evidenceObjectTagSet } from './evidence-object-tags';
+import { hashLogIdentifier } from './structured-logger';
 
 export class EvidenceObjectVerificationError extends Error {
   readonly reason: string;
@@ -118,6 +119,17 @@ function cleanupContextFields(
     ...(context.user_id ? { user_id: context.user_id } : {}),
     ...(context.request_id ? { request_id: context.request_id } : {}),
     ...(context.correlation_id ? { correlation_id: context.correlation_id } : {}),
+  };
+}
+
+function cleanupFailureLogFields(failure: EvidenceCleanupFailure) {
+  return {
+    mismatch_reason: failure.mismatch_reason,
+    cleanup_error: failure.cleanup_error,
+    tenant_id_hash: failure.tenant_id ? hashLogIdentifier(failure.tenant_id) : 'UNKNOWN',
+    user_id_hash: failure.user_id ? hashLogIdentifier(failure.user_id) : 'UNKNOWN',
+    request_id: failure.request_id ?? 'UNKNOWN',
+    correlation_id: failure.correlation_id ?? 'UNKNOWN',
   };
 }
 
@@ -243,11 +255,7 @@ function reportCleanupFailure(
         JSON.stringify({
           level: 'WARNING',
           message: 'phos_evidence_cleanup_failed',
-          ...event,
-          tenant_id: event.tenant_id ?? 'UNKNOWN',
-          user_id: event.user_id ?? 'UNKNOWN',
-          request_id: event.request_id ?? 'UNKNOWN',
-          correlation_id: event.correlation_id ?? 'UNKNOWN',
+          ...cleanupFailureLogFields(event),
         }),
       );
     });
@@ -258,10 +266,7 @@ function reportCleanupFailure(
       JSON.stringify({
         level: 'WARNING',
         message: 'phos_evidence_cleanup_failure_report_failed',
-        tenant_id: failure.tenant_id ?? 'UNKNOWN',
-        user_id: failure.user_id ?? 'UNKNOWN',
-        request_id: failure.request_id ?? 'UNKNOWN',
-        correlation_id: failure.correlation_id ?? 'UNKNOWN',
+        ...cleanupFailureLogFields(failure),
         reporter_error: cleanupErrorName(error),
       }),
     );

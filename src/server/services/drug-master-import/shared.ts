@@ -3,6 +3,7 @@ import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { unzipSync } from 'fflate';
+import { logger } from '@/lib/utils/logger';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 import { createFetchTimeout } from '@/server/services/fetch-timeout';
 
@@ -42,6 +43,7 @@ const MAX_IMPORT_MAX_REDIRECTS = 10;
 const DEFAULT_IMPORT_TEXT_MAX_BYTES = 2 * BYTES_PER_MIB;
 const MAX_IMPORT_POLICY_MAX_BYTES = 512 * BYTES_PER_MIB;
 const EXTRA_ALLOWED_IMPORT_HOSTS_ENV = 'DRUG_MASTER_IMPORT_ALLOWED_HOSTS';
+const DRUG_MASTER_IMPORT_FAILURE_MESSAGE = '医薬品マスタ取込に失敗しました';
 
 export type HostnameResolver = (hostname: string) => Promise<string[]>;
 
@@ -105,6 +107,8 @@ type FetchImportResponseResult = {
   clearTimeout: () => void;
 };
 
+type ImportStreamCancelFailureCode = 'read-error' | 'max-bytes-exceeded';
+
 function formatByteLimit(bytes: number) {
   if (bytes >= BYTES_PER_MIB && bytes % BYTES_PER_MIB === 0) {
     return `${bytes / BYTES_PER_MIB}MiB`;
@@ -118,6 +122,31 @@ function normalizeHostname(hostname: string) {
     .replace(/^\[(.*)\]$/, '$1')
     .replace(/\.$/, '')
     .toLowerCase();
+}
+
+function normalizeImportSourceForLog(source: DrugMasterImportSource) {
+  return source.replaceAll('_', '-');
+}
+
+async function cancelImportResponseReader(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  source: DrugMasterImportSource,
+  code: ImportStreamCancelFailureCode,
+) {
+  try {
+    await reader.cancel();
+  } catch (error) {
+    logger.warn(
+      {
+        event: 'drug-master-import.stream-cancel-failed',
+        operation: 'read-response-bytes',
+        code,
+        filePurpose: 'drug-master-import',
+        externalProvider: normalizeImportSourceForLog(source),
+      },
+      error,
+    );
+  }
 }
 
 function parseAllowedHost(value: string) {
@@ -407,7 +436,12 @@ function assertContentLength(response: Response, maxBytes: number) {
   }
 }
 
-async function readResponseBytes(response: Response, maxBytes: number, signal: AbortSignal) {
+async function readResponseBytes(
+  response: Response,
+  maxBytes: number,
+  signal: AbortSignal,
+  source: DrugMasterImportSource,
+) {
   assertContentLength(response, maxBytes);
 
   if (!response.body) {
@@ -427,7 +461,7 @@ async function readResponseBytes(response: Response, maxBytes: number, signal: A
     try {
       chunk = await abortable(reader.read(), signal);
     } catch (error) {
-      await reader.cancel().catch(() => undefined);
+      await cancelImportResponseReader(reader, source, 'read-error');
       throw error;
     }
 
@@ -437,7 +471,7 @@ async function readResponseBytes(response: Response, maxBytes: number, signal: A
 
     totalBytes += value.byteLength;
     if (totalBytes > maxBytes) {
-      await reader.cancel().catch(() => undefined);
+      await cancelImportResponseReader(reader, source, 'max-bytes-exceeded');
       throw new Error(`外部ファイルのサイズが上限（${formatByteLimit(maxBytes)}）を超えています`);
     }
 
@@ -462,7 +496,7 @@ export async function fetchBytes(url: string, options: FetchImportOptions) {
       throw new Error(`外部ファイルの取得に失敗しました: ${result.response.status}`);
     }
 
-    return await readResponseBytes(result.response, maxBytes, result.signal);
+    return await readResponseBytes(result.response, maxBytes, result.signal, options.policy.source);
   } finally {
     result.clearTimeout();
   }
@@ -531,7 +565,12 @@ export async function fetchText(url: string, options: FetchImportOptions) {
       throw new Error(`ページの取得に失敗しました: ${result.response.status}`);
     }
 
-    const buffer = await readResponseBytes(result.response, maxBytes, result.signal);
+    const buffer = await readResponseBytes(
+      result.response,
+      maxBytes,
+      result.signal,
+      options.policy.source,
+    );
     return new TextDecoder('utf-8').decode(buffer);
   } finally {
     result.clearTimeout();
@@ -731,14 +770,25 @@ export async function withImportLog<T>(
       importedCount: result.recordCount,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : '医薬品マスタ取込に失敗しました';
-    await db.drugMasterImportLog.update({
-      where: { id: log.id },
-      data: {
-        status: 'failed',
-        error_log: message,
-      },
-    });
+    try {
+      await db.drugMasterImportLog.update({
+        where: { id: log.id },
+        data: {
+          status: 'failed',
+          error_log: DRUG_MASTER_IMPORT_FAILURE_MESSAGE,
+        },
+      });
+    } catch (logError) {
+      logger.warn(
+        {
+          event: 'drug-master-import.failure-log-update-failed',
+          operation: 'with-import-log',
+          filePurpose: 'drug-master-import',
+          externalProvider: normalizeImportSourceForLog(source),
+        },
+        logError,
+      );
+    }
     throw error;
   }
 }
