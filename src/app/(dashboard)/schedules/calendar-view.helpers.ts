@@ -5,7 +5,11 @@ import { fetchVisitSchedulesWindow } from './visit-schedule-fetch.helpers';
 // 状態 enum は canonical な validations/visit-schedule を単一ソースとする(型 drift 防止)。
 // ローカル再定義は rescheduled / no_show が欠落し、実行時にそれらが来ると
 // カレンダーで生 enum 露出＋灰色化していたため、正本へ寄せた。
-export type { ScheduleStatus } from '@/lib/validations/visit-schedule';
+// ローカルの型注釈で使うため import し、canonical 型として再エクスポートする
+// (`export type { X } from '...'` は再エクスポートのみでローカル束縛を作らない)。
+import type { ScheduleStatus } from '@/lib/validations/visit-schedule';
+
+export type { ScheduleStatus };
 
 export type CalendarVisitSchedule = {
   id: string;
