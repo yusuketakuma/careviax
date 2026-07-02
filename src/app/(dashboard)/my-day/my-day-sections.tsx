@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { ArrowRight, ClipboardList } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/loading';
 
 export function SectionSkeleton() {
@@ -22,10 +23,13 @@ type MyDayNextStepPanelProps = {
   tone?: 'default' | 'warning' | 'danger';
 };
 
-const nextStepToneClassName = {
-  default: 'border-primary/20 bg-primary/5 text-primary',
-  warning: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
-  danger: 'border-destructive/30 bg-destructive/10 text-destructive',
+// SSOT 3.2: ステータスカードは全面塗りしない。タイルは bg-card 中立に保ち、tone は
+// 左ボーダー(border-l-4 border-l-state-*)と見出しラベルの文字色の2点だけで表す。
+// danger は 6軸の state-blocked(差戻し/エラー)を使う(生 destructive は使わない)。
+const nextStepAccent = {
+  default: { border: 'border-l-primary', eyebrow: 'text-primary' },
+  warning: { border: 'border-l-state-confirm', eyebrow: 'text-state-confirm' },
+  danger: { border: 'border-l-state-blocked', eyebrow: 'text-state-blocked' },
 } as const;
 
 export function MyDayNextStepPanel({
@@ -35,21 +39,22 @@ export function MyDayNextStepPanel({
   ctaLabel,
   tone = 'default',
 }: MyDayNextStepPanelProps) {
+  const accent = nextStepAccent[tone];
   return (
-    <div className={`rounded-xl border p-3 ${nextStepToneClassName[tone]}`}>
+    <div className={`rounded-xl border border-l-4 bg-card p-3 ${accent.border}`}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase">次にすること</p>
+          <p className={`text-xs font-semibold uppercase ${accent.eyebrow}`}>次にすること</p>
           <h3 className="mt-1 text-sm font-semibold text-foreground">{title}</h3>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
         </div>
-        <Link
-          href={href}
-          className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-1.5 rounded-lg bg-background px-3 py-2 text-sm font-medium text-foreground ring-1 ring-border transition-colors hover:bg-muted"
-        >
-          {ctaLabel}
-          <ArrowRight className="size-4" aria-hidden="true" />
-        </Link>
+        {/* SSOT 8: 画面の主操作は唯一の Primary(--primary 塗り)。my-day ではこの CTA のみ。 */}
+        <Button asChild className="shrink-0">
+          <Link href={href}>
+            {ctaLabel}
+            <ArrowRight className="size-4" aria-hidden="true" />
+          </Link>
+        </Button>
       </div>
     </div>
   );
