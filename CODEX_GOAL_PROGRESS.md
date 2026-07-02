@@ -35904,3 +35904,56 @@ Next loop:
   - The broad ULTRACODE/refactor objective remains open.
   - Browser smoke was skipped because this backend KPI query fix changes no DOM,
     navigation, route contract shape, or human workflow shape.
+
+### Shift Template Apply UTC Date Sentinel - 2026-07-02 14:17 JST
+
+- Scope:
+  - ULTRACODE F07
+    `RR-BUG-20260702-F07-shift-template-apply-utc-date`.
+  - `src/app/api/pharmacist-shift-templates/apply/route.ts`
+  - `src/app/api/pharmacist-shift-templates/apply/route.test.ts`
+  - `package.json`
+- Fixed:
+  - Shift template apply now enumerates target weekdays with `Date.UTC`,
+    `getUTCMonth()`, `getUTCDay()`, and `setUTCDate()`.
+  - `PharmacistShift.date` upsert keys and create payloads now receive exact
+    UTC-midnight `@db.Date` sentinels even under JST runtime.
+  - Template reads now run through the same RLS-scoped transaction as shift
+    writes, with `runWithRequestAuthContext(ctx, ...)` and
+    `withOrgContext(..., { requestContext: ctx })`.
+  - Added route assertions for April 2026 Monday sentinels and explicit
+    requestContext propagation.
+  - Added the apply route test to `test:schedule-time:tz`.
+- Safety:
+  - Prevents template-applied shifts from landing on the previous civil day and
+    from missing the `[user_id, date]` upsert key.
+  - Reduces RLS/audit metadata gaps in the apply route.
+  - Preserves auth permission, route response shape, DB schema, migrations,
+    external sends, billing, secrets, production config, push/deploy, and
+    destructive-operation boundaries.
+- Performance:
+  - No performance optimization is claimed.
+  - The same template read and per-date upsert shape is preserved.
+- Validation:
+  - Focused apply route suite passed `1` file / `3` tests.
+  - Related shift/date-boundary bundle passed `4` files / `49` tests.
+  - Targeted TZ bundles passed: Asia/Tokyo `5` files / `62` tests, UTC `5`
+    files / `62` tests, America/Los_Angeles `2` files / `24` tests.
+  - `TZ=Asia/Tokyo pnpm test:schedule-time:tz` passed `31` files / `555` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm build`: passed.
+  - gbrain write/readback:
+    `projects/careviax/failures/2026-07-02/pharmacist-shift-template-apply-local-date`.
+- Review:
+  - Codex db steward and test architect reported no blocker for the UTC date
+    sentinel fix.
+  - DB steward's same-route RLS/requestContext advisory was addressed in this
+    slice; historical data cleanup remains separate and approval-gated.
+- Remaining:
+  - The broad ULTRACODE/refactor objective remains open.
+  - Browser smoke was skipped because this backend route/date-boundary fix
+    changes no DOM, navigation, route contract shape, or human workflow shape.

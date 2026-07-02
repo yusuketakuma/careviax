@@ -3,11 +3,13 @@ import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
+  runWithRequestAuthContextMock,
   pharmacistShiftTemplateFindManyMock,
   pharmacistShiftUpsertMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn(),
   pharmacistShiftTemplateFindManyMock: vi.fn(),
   pharmacistShiftUpsertMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -17,12 +19,8 @@ vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
 }));
 
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    pharmacistShiftTemplate: {
-      findMany: pharmacistShiftTemplateFindManyMock,
-    },
-  },
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -47,8 +45,13 @@ describe('/api/pharmacist-shift-templates/apply POST', () => {
         orgId: 'org_1',
         userId: 'user_1',
         role: 'admin',
+        ipAddress: '203.0.113.10',
+        userAgent: 'vitest',
       },
     });
+    runWithRequestAuthContextMock.mockImplementation(
+      (_ctx: { orgId: string; userId: string; role: string }, fn: () => Promise<Response>) => fn(),
+    );
     pharmacistShiftTemplateFindManyMock.mockResolvedValue([
       {
         user_id: 'user_2',
@@ -63,6 +66,9 @@ describe('/api/pharmacist-shift-templates/apply POST', () => {
     pharmacistShiftUpsertMock.mockResolvedValue({ id: 'shift_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        pharmacistShiftTemplate: {
+          findMany: pharmacistShiftTemplateFindManyMock,
+        },
         pharmacistShift: {
           upsert: pharmacistShiftUpsertMock,
         },
@@ -97,7 +103,29 @@ describe('/api/pharmacist-shift-templates/apply POST', () => {
         user_id: 'user_2',
       },
     });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'admin' }),
+      expect.any(Function),
+    );
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'admin',
+      }),
+    });
     expect(pharmacistShiftUpsertMock).toHaveBeenCalledTimes(4);
+    const appliedDates = pharmacistShiftUpsertMock.mock.calls.map(([args]) => {
+      const date = args.where.user_id_date.date as Date;
+      expect(args.create.date).toEqual(date);
+      return date.toISOString();
+    });
+    expect(appliedDates).toEqual([
+      '2026-04-06T00:00:00.000Z',
+      '2026-04-13T00:00:00.000Z',
+      '2026-04-20T00:00:00.000Z',
+      '2026-04-27T00:00:00.000Z',
+    ]);
     await expect(response.json()).resolves.toMatchObject({
       data: {
         applied_count: 4,

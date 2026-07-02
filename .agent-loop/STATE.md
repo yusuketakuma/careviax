@@ -529,6 +529,7 @@ next_action: >
 - FailurePattern: projects/careviax/failures/2026-07-02/backup-monitor-aws-check-raw-error-message (RR-BUG-20260702-0310; backup monitor AWS check errors now return/log fixed safe messages instead of raw provider exception text)
 - FailurePattern: projects/careviax/failures/2026-07-02/health-check-db-s3-raw-error-message (RR-BUG-20260702-0318; generic DB/S3 health-check failures now return fixed safe messages instead of raw database/AWS exception text)
 - FailurePattern: projects/careviax/failures/2026-07-02/admin-capacity-completed-today-server-local-midnight (RR-BUG-20260702-F06; admin capacity completed-today DateTime filter now uses Japan business-day instant range instead of server-local midnight)
+- FailurePattern: projects/careviax/failures/2026-07-02/pharmacist-shift-template-apply-local-date (RR-BUG-20260702-F07; shift template apply now writes UTC-midnight @db.Date sentinels and propagates requestContext into RLS)
 - FixPattern: projects/careviax/fix-patterns/2026-06-22/agloop-shell-backticks-strip-tokens (RUN-20260622-001 agmsg transport hygiene; avoid shell backticks in AGLOOP bodies built through shell variables because command substitution can strip tokens.)
 - FixPattern: projects/careviax/fix-patterns/2026-06-23/href-helper-convergence-test-teeth (F-040〜F-048 claude-maker; raw entity href→共有ヘルパ収束の test teeth=actual-backed spy+sentinel return-value委譲+per-callsite mock.calls厳密+hostile encode+dot-segment fail-fast。API URLはencodeURIComponent('.')no-op正規化をlocal helperで遮断。)
 - CandidateLesson: projects/careviax/lessons/role-agnostic-load-balancing (LOOP_POLICY §23; maker/checkロール非依存・相互チェックのみ不変・2軸負荷均等化。codex=supervisor pattern採用でドレインラグ低減。href収束で gap 22:11→22:14。)
@@ -1110,3 +1111,35 @@ User-directed program after the org-header sweep. Method: ultracode 51-screen re
   `38897c81` (`fix(capacity): count completed dispense tasks by JST day`).
 - Next action: notify via agmsg if available, then continue the next
   highest-value ULTRACODE/refactor item.
+
+### Resume point - 2026-07-02 14:17 JST
+
+- Active broad ULTRACODE/refactor objective remains open. Latest validated
+  slice:
+  `RR-BUG-20260702-F07-shift-template-apply-utc-date`.
+- Changed owned runtime files:
+  `src/app/api/pharmacist-shift-templates/apply/route.ts`,
+  `src/app/api/pharmacist-shift-templates/apply/route.test.ts`, and
+  `package.json`.
+- Fixed shift template apply date/RLS behavior:
+  target `PharmacistShift.date` values are generated with UTC month/day
+  iteration, preserving `@db.Date` UTC-midnight sentinels under JST runtime.
+  Template reads now use the same RLS transaction as shift writes with explicit
+  requestContext.
+- Validation passed:
+  focused apply suite `1` file / `3` tests, related shift/date-boundary bundle
+  `4` files / `49` tests, targeted TZ bundles in Asia/Tokyo, UTC, and
+  America/Los_Angeles, `TZ=Asia/Tokyo pnpm test:schedule-time:tz` `31` files /
+  `555` tests, scoped ESLint/Prettier/diff-check, `pnpm typecheck`,
+  `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and
+  `pnpm build`.
+- Review:
+  Codex db steward and test architect reported no blockers; the RLS/requestContext
+  advisory and timezone-gate gap were addressed.
+- gbrain writeback slug:
+  `projects/careviax/failures/2026-07-02/pharmacist-shift-template-apply-local-date`.
+- Commit:
+  pending.
+- Next action: commit this F07 slice and ledgers with explicit paths, notify
+  via agmsg if available, then continue the next highest-value
+  ULTRACODE/refactor item.

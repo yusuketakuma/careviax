@@ -2304,3 +2304,64 @@ JST.
 - Skipped:
   - Browser/E2E smoke was skipped because this backend KPI query fix changes no
     DOM layout, navigation, route contract shape, or human workflow shape.
+
+## Shift Template Apply UTC Date Sentinel Verification
+
+The latest backend date-boundary slice was
+`RR-BUG-20260702-F07-shift-template-apply-utc-date` at 2026-07-02 14:17 JST.
+
+- Planning / review:
+  - ULTRACODE F07 identified local `new Date(year, monthIndex, 1)` weekday
+    iteration feeding `PharmacistShift.date`, an `@db.Date` sentinel column.
+  - Codex db steward found no blocker for UTC sentinel iteration, confirmed
+    sibling route consistency, and flagged same-route requestContext/RLS
+    propagation as an advisory.
+  - Codex test architect found no blocker, confirmed the exact ISO sentinel
+    assertion as the P0 regression, and recommended adding the apply route test
+    to `test:schedule-time:tz`.
+  - The same-route RLS/requestContext advisory and timezone-gate gap were both
+    addressed before final validation.
+- Focused regressions:
+  - `pnpm exec vitest run src/app/api/pharmacist-shift-templates/apply/route.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `3` tests.
+  - `pnpm exec vitest run src/app/api/pharmacist-shift-templates/apply/route.test.ts src/app/api/pharmacist-shifts/route.test.ts src/app/api/pharmacist-shifts/bulk/route.test.ts src/lib/utils/date-boundary.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `4` files / `49` tests.
+  - Coverage: April 2026 Monday template application writes
+    `2026-04-06T00:00:00.000Z`, `2026-04-13T00:00:00.000Z`,
+    `2026-04-20T00:00:00.000Z`, and `2026-04-27T00:00:00.000Z` to both upsert
+    key and create payload. The route also propagates request auth context into
+    the RLS transaction and reads templates through the transaction client.
+- Timezone gates:
+  - `TZ=Asia/Tokyo pnpm exec vitest run src/app/api/pharmacist-shift-templates/apply/route.test.ts src/app/api/pharmacist-shifts/route.test.ts src/app/api/pharmacist-shifts/bulk/route.test.ts src/app/api/pharmacist-shifts/available/route.test.ts src/lib/utils/date-boundary.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `5` files / `62` tests.
+  - `TZ=UTC pnpm exec vitest run src/app/api/pharmacist-shift-templates/apply/route.test.ts src/app/api/pharmacist-shifts/route.test.ts src/app/api/pharmacist-shifts/bulk/route.test.ts src/app/api/pharmacist-shifts/available/route.test.ts src/lib/utils/date-boundary.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `5` files / `62` tests.
+  - `TZ=America/Los_Angeles pnpm exec vitest run src/app/api/pharmacist-shift-templates/apply/route.test.ts src/lib/utils/date-boundary.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `24` tests.
+  - `TZ=Asia/Tokyo pnpm test:schedule-time:tz`
+  - Result: passed, `31` files / `555` tests.
+- Scoped checks:
+  - `pnpm exec eslint src/app/api/pharmacist-shift-templates/apply/route.ts src/app/api/pharmacist-shift-templates/apply/route.test.ts`
+  - Result: passed.
+  - `pnpm exec prettier --check package.json src/app/api/pharmacist-shift-templates/apply/route.ts src/app/api/pharmacist-shift-templates/apply/route.test.ts`
+  - Result: passed.
+  - `git diff --check -- package.json src/app/api/pharmacist-shift-templates/apply/route.ts src/app/api/pharmacist-shift-templates/apply/route.test.ts`
+  - Result: passed.
+- Full gates:
+  - `pnpm typecheck`
+  - Result: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  - Result: passed.
+  - `pnpm lint`
+  - Result: passed.
+  - `pnpm format:check`
+  - Result: passed.
+  - `pnpm build`
+  - Result: passed.
+- gbrain:
+  - `projects/careviax/failures/2026-07-02/pharmacist-shift-template-apply-local-date`
+  - Result: write/readback passed.
+- Skipped:
+  - Browser/E2E smoke was skipped because this backend route/date-boundary fix
+    changes no DOM layout, navigation, route contract shape, or human workflow
+    shape.

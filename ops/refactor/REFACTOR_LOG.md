@@ -2130,3 +2130,42 @@ evidence also exists in root `REFACTOR_REPORT.md`,
   - Codex db steward and test architect reported no blockers.
   - gbrain write/readback:
     `projects/careviax/failures/2026-07-02/admin-capacity-completed-today-server-local-midnight`.
+
+## 2026-07-02 14:17 JST - Shift Template Apply UTC Date Sentinel
+
+- Change ID:
+  `RR-BUG-20260702-F07-shift-template-apply-utc-date`.
+- Category: bug fix / backend date boundary / RLS context hardening.
+- Files changed:
+  - `src/app/api/pharmacist-shift-templates/apply/route.ts`
+  - `src/app/api/pharmacist-shift-templates/apply/route.test.ts`
+  - `package.json`
+- Summary:
+  - Replaced local-time month iteration with UTC month/day iteration for shift
+    template application.
+  - Added exact UTC-midnight sentinel assertions for the generated April 2026
+    Monday `PharmacistShift.date` upsert keys and create payloads.
+  - Moved template reads into the same `withOrgContext` transaction as shift
+    writes and passed explicit `requestContext`.
+  - Added the apply route regression to the schedule/timezone CI gate.
+- Safety:
+  - Prevents template-applied shifts from being stored on the previous civil day
+    under JST runtime.
+  - Keeps RLS/audit context aligned with sibling pharmacist shift routes.
+  - Preserves auth permission, route response shape, DB schema, migrations,
+    external sends, billing, secrets, production config, push/deploy, and
+    destructive-operation boundaries.
+- Performance:
+  - No performance optimization is claimed.
+  - The route still performs one template read and the same per-date upserts.
+- Validation:
+  - Focused apply route suite passed `1` file / `3` tests.
+  - Related shift/date-boundary bundle passed `4` files / `49` tests.
+  - Targeted TZ bundles passed in Asia/Tokyo, UTC, and America/Los_Angeles.
+  - `TZ=Asia/Tokyo pnpm test:schedule-time:tz` passed `31` files / `555` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, and `pnpm build` passed.
+  - Codex db steward and test architect reported no blockers for the date fix.
+  - gbrain write/readback:
+    `projects/careviax/failures/2026-07-02/pharmacist-shift-template-apply-local-date`.

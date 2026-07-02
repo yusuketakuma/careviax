@@ -443,3 +443,31 @@ re-audits are complete.
   - DB steward and test architect reported no blockers.
 - Memory:
   - `projects/careviax/failures/2026-07-02/admin-capacity-completed-today-server-local-midnight`
+
+## Latest Slice - 2026-07-02 14:17 JST
+
+- Change ID:
+  `RR-BUG-20260702-F07-shift-template-apply-utc-date`.
+- Status: implemented and validated, pending commit at time of ledger update.
+- Files changed:
+  - `src/app/api/pharmacist-shift-templates/apply/route.ts`
+  - `src/app/api/pharmacist-shift-templates/apply/route.test.ts`
+  - `package.json`
+- Summary:
+  - Shift template apply now generates target `PharmacistShift.date` values via
+    UTC month/day iteration, preserving `@db.Date` UTC-midnight sentinels under
+    JST runtime.
+  - Template reads now run inside the same RLS-scoped transaction as shift
+    writes, with explicit request auth context.
+  - The apply route regression is now included in `test:schedule-time:tz`.
+- Validation:
+  - Focused apply route suite passed `1` file / `3` tests.
+  - Related shift/date-boundary bundle passed `4` files / `49` tests.
+  - Targeted TZ bundles passed in Asia/Tokyo, UTC, and America/Los_Angeles.
+  - `TZ=Asia/Tokyo pnpm test:schedule-time:tz` passed `31` files / `555` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, and `pnpm build` passed.
+  - DB steward and test architect reported no blockers.
+- Memory:
+  - `projects/careviax/failures/2026-07-02/pharmacist-shift-template-apply-local-date`
