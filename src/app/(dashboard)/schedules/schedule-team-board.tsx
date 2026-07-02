@@ -221,8 +221,9 @@ const BLOCK_KIND_CLASSES: Record<BoardBlock['kind'], string> = {
   visit: 'bg-tag-info text-white',
   desk: 'bg-primary text-primary-foreground',
   prep: 'bg-state-confirm text-white',
+  // 移動帯の斜線ハッチは生 hex でなくテーマトークン(muted/border)で描く(SSOT: 生色直書き禁止、dark対応)。
   travel:
-    'bg-[repeating-linear-gradient(45deg,#e2e8f0,#e2e8f0_4px,#cbd5e1_4px,#cbd5e1_8px)] text-transparent',
+    'bg-[repeating-linear-gradient(45deg,var(--color-muted),var(--color-muted)_4px,var(--color-border)_4px,var(--color-border)_8px)] text-transparent',
   break: 'border border-dashed border-border bg-muted/40 text-muted-foreground',
   idle: 'border border-dashed border-state-done/50 bg-state-done/10 text-state-done',
 };
