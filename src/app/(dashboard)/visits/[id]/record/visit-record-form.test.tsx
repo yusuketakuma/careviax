@@ -358,6 +358,15 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
             { status: 201 },
           );
         }
+        if (url.endsWith('/header-summary')) {
+          // Pinned 安全タグ用の患者ヘッダサマリー(visible_safety_tags は critical 保証済み)。
+          return new Response(
+            JSON.stringify({
+              safety: { visible_safety_tags: ['allergy'], hidden_safety_tag_count: 2 },
+            }),
+            { status: 200 },
+          );
+        }
         throw new Error(`Unexpected fetch: ${url}`);
       }),
     );
@@ -404,6 +413,64 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     expect(visitTimeLabels.length).toBeGreaterThan(0);
     expect(await screen.findByText('訪問準備情報を読み込めませんでした')).toBeTruthy();
     expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
+  });
+
+  it('pins the allergy safety tag in the visit mode headers (SSOT 4.1)', async () => {
+    renderVisitRecordForm();
+
+    // md+/mobile 両ヘッダに critical 保証済みの安全タグ(アレルギー)と +N が常時表示される。
+    const tagGroups = await screen.findAllByTestId('visit-header-safety-tags');
+    expect(tagGroups.length).toBeGreaterThan(0);
+    for (const group of tagGroups) {
+      expect(group.textContent).toContain('アレルギー');
+      expect(group.textContent).toContain('+2');
+    }
+    expect(screen.queryByTestId('visit-header-safety-unavailable')).toBeNull();
+    // md+ ヘッダは sticky で入力中も消えない(SSOT 2.3)。
+    const modeHeader = screen.getByTestId('visit-mode-header');
+    expect(modeHeader.className).toContain('sticky');
+  });
+
+  it('fails closed in the header when safety tags cannot be loaded', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        fetchUrls.push(url);
+        if (url === '/api/visit-schedules/schedule_partial') {
+          return new Response(
+            JSON.stringify({
+              id: 'schedule_partial',
+              patient_id: 'patient_1',
+              cycle_id: null,
+              scheduled_date: '2026-04-09',
+              time_window_start: '1970-01-01T09:00:00.000Z',
+              schedule_status: 'ready',
+              visit_type: 'regular',
+              carry_items_status: 'none',
+              recurrence_rule: null,
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.endsWith('/header-summary')) {
+          return new Response(JSON.stringify({ message: 'boom' }), { status: 500 });
+        }
+        if (url === '/api/visit-preparations/schedule_partial') {
+          // 500 は form が明示ハンドリング済みの経路(retryable warning)。pack:null は crash する。
+          return new Response(JSON.stringify({ message: 'skip' }), { status: 500 });
+        }
+        return new Response(JSON.stringify({ alerts: [] }), { status: 200 });
+      }),
+    );
+
+    renderVisitRecordForm();
+
+    // 取得失敗を「タグなし」に潰さない(fail-close)。
+    const warnings = await screen.findAllByTestId('visit-header-safety-unavailable');
+    expect(warnings.length).toBeGreaterThan(0);
+    expect(warnings[0].textContent).toContain('「なし」とは判断しない');
+    expect(screen.queryByTestId('visit-header-safety-tags')).toBeNull();
   });
 
   it('keeps 訪問完了 as the single primary submit with no green fill (SSOT 5.1)', async () => {
@@ -900,22 +967,33 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
 
   it('患者詳細反映 PATCH を共有 patient API path helper 経由にする', async () => {
     schedulePatientId = 'pt/1?tab=x#frag';
-    vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_reflect__');
+    // header-summary query も同 helper を suffix 付きで呼ぶため、mockReturnValueOnce だと
+    // そちらが先に消費する。suffix なし(反映 PATCH)だけ sentinel へ差し替える。
+    const { buildPatientApiPath: actualBuildPatientApiPath } =
+      await vi.importActual<typeof import('@/lib/patient/api-paths')>('@/lib/patient/api-paths');
+    vi.mocked(buildPatientApiPath).mockImplementation((patientId: string, suffix = '') =>
+      suffix === ''
+        ? '/api/patients/__helper_reflect__'
+        : actualBuildPatientApiPath(patientId, suffix),
+    );
+    try {
+      renderForm();
+      await waitForPatientHydrated();
 
-    renderForm();
-    await waitForPatientHydrated();
+      fireEvent.click(screen.getByRole('button', { name: '延期' }));
+      fireEvent.change(screen.getByLabelText('介護度'), { target: { value: '要介護3' } });
+      fireEvent.click(screen.getByRole('checkbox', { name: 'この内容を患者詳細に反映する' }));
 
-    fireEvent.click(screen.getByRole('button', { name: '延期' }));
-    fireEvent.change(screen.getByLabelText('介護度'), { target: { value: '要介護3' } });
-    fireEvent.click(screen.getByRole('checkbox', { name: 'この内容を患者詳細に反映する' }));
+      fireEvent.submit(document.querySelector('form')!);
 
-    fireEvent.submit(document.querySelector('form')!);
-
-    await waitFor(() => {
-      expect(patientPatchUrls).toEqual(['/api/patients/__helper_reflect__']);
-    });
-    expect(buildPatientApiPath).toHaveBeenCalledWith(schedulePatientId);
-    expect(patientPatchUrls).not.toContain(`/api/patients/${schedulePatientId}`);
+      await waitFor(() => {
+        expect(patientPatchUrls).toEqual(['/api/patients/__helper_reflect__']);
+      });
+      expect(buildPatientApiPath).toHaveBeenCalledWith(schedulePatientId);
+      expect(patientPatchUrls).not.toContain(`/api/patients/${schedulePatientId}`);
+    } finally {
+      vi.mocked(buildPatientApiPath).mockImplementation(actualBuildPatientApiPath);
+    }
   });
 
   it('反映チェック無しなら患者詳細へ PATCH しない', async () => {

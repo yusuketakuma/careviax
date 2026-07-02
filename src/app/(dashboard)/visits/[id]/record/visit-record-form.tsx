@@ -509,6 +509,28 @@ export function VisitRecordForm({
     enabled: !!orgId && !!id,
   });
 
+  // 訪問キャプチャの Pinned に安全タグ(アレルギー等)を常時表示するための患者ヘッダサマリー
+  // (SSOT 4.1)。visible_safety_tags は selectVisibleSafetyTags 済み=critical は必ず含まれる。
+  const { data: headerSummary, isError: headerSummaryError } = useQuery<{
+    safety: { visible_safety_tags: string[]; hidden_safety_tag_count: number };
+  }>({
+    queryKey: ['patient-header-summary', schedule?.patient_id, orgId],
+    queryFn: async () => {
+      const res = await fetch(buildPatientApiPath(schedule?.patient_id ?? '', '/header-summary'), {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('患者ヘッダー情報の取得に失敗しました');
+      return res.json();
+    },
+    enabled: !!orgId && !!schedule?.patient_id,
+  });
+  // fail-close: 取得失敗は「タグなし」でなく明示の警告表示(VisitHeaderSafetyTags)。
+  const headerSafety = {
+    tags: headerSummary?.safety.visible_safety_tags ?? [],
+    hiddenCount: headerSummary?.safety.hidden_safety_tag_count ?? 0,
+    unavailable: headerSummaryError,
+  };
+
   const {
     data: visitAlertData,
     isLoading: visitAlertsLoading,
@@ -1551,6 +1573,7 @@ export function VisitRecordForm({
           <VisitMobileModeHeader
             patientName={patientName}
             dateTimeLabel={visitDateTimeLabel}
+            safety={headerSafety}
             isOffline={isOffline}
             pendingSyncCount={mobilePendingSyncCount}
             activeStepId={mobileStepId}
@@ -1564,10 +1587,12 @@ export function VisitRecordForm({
 
         {/* p0_22 訪問モード(md 以上): ヘッダ(患者+訪問中+オフライン/未同期)→ 3カラム
             (左=訪問ステップ / 中央=フォーム / 右=写真・証跡)。pb は下部固定バー分の余白 */}
+        {/* md+ も sticky 化: SOAP 入力中に患者識別と安全タグが消えない(SSOT 2.3/4.1)。 */}
         <VisitModeHeader
-          className="max-md:hidden"
+          className="sticky top-0 z-20 max-md:hidden"
           patientName={patientName}
           dateTimeLabel={visitDateTimeLabel}
+          safety={headerSafety}
           isOffline={isOffline}
           pendingSyncCount={pendingSyncCount}
         />

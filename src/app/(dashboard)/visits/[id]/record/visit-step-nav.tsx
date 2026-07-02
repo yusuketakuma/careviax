@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { LoadingButton } from '@/components/ui/loading-button';
+import { SafetyTagBadge } from '@/components/features/patients/safety-tag-badge';
 import { cn } from '@/lib/utils';
 
 /**
@@ -125,17 +127,56 @@ export function VisitStepNav({ activeId }: { activeId: VisitRecordStepId | null 
 }
 
 /**
- * p0_22 ヘッダ: 「患者名 様 M/d HH:mm 訪問中」+ オフライン / 未同期バッジ。
+ * 訪問モードヘッダの安全タグ(SSOT 4.1 訪問キャプチャ Pinned: ハイリスクタグ・アレルギー)。
+ * tags は selectVisibleSafetyTags 済み(critical は必ず含まれる)を前提とする。
+ * unavailable(取得失敗)は fail-close: 「タグなし」と区別できる警告を出す。
+ */
+export type VisitHeaderSafety = {
+  tags: string[];
+  hiddenCount: number;
+  unavailable: boolean;
+};
+
+export function VisitHeaderSafetyTags({ safety }: { safety: VisitHeaderSafety }) {
+  if (safety.unavailable) {
+    return (
+      <p
+        role="alert"
+        data-testid="visit-header-safety-unavailable"
+        className="flex items-center gap-1 text-xs font-medium text-state-blocked"
+      >
+        <TriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />
+        安全タグを取得できません（「なし」とは判断しないでください）
+      </p>
+    );
+  }
+  if (safety.tags.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1" data-testid="visit-header-safety-tags">
+      {safety.tags.map((tag) => (
+        <SafetyTagBadge key={tag} tag={tag} />
+      ))}
+      {safety.hiddenCount > 0 ? (
+        <span className="text-xs text-muted-foreground">+{safety.hiddenCount}</span>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * p0_22 ヘッダ: 「患者名 様 M月d日 HH:mm 訪問中」+ 安全タグ + オフライン / 未同期バッジ。
  */
 export function VisitModeHeader({
   patientName,
   dateTimeLabel,
+  safety,
   isOffline,
   pendingSyncCount,
   className,
 }: {
   patientName: string | null;
   dateTimeLabel: string | null;
+  safety?: VisitHeaderSafety;
   isOffline: boolean;
   pendingSyncCount: number;
   className?: string;
@@ -148,11 +189,14 @@ export function VisitModeHeader({
         className,
       )}
     >
-      <p className="text-base font-bold text-foreground">
-        {patientName ? `${patientName} 様` : '患者情報を読み込み中'}
-        {dateTimeLabel ? `　${dateTimeLabel}` : ''}
-        　訪問中
-      </p>
+      <div className="min-w-0 space-y-1">
+        <p className="text-base font-bold text-foreground">
+          {patientName ? `${patientName} 様` : '患者情報を読み込み中'}
+          {dateTimeLabel ? `　${dateTimeLabel}` : ''}
+          　訪問中
+        </p>
+        {safety ? <VisitHeaderSafetyTags safety={safety} /> : null}
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         {isOffline ? (
           <span className="inline-flex items-center rounded-full border border-state-confirm/30 bg-state-confirm/10 px-2.5 py-0.5 text-xs font-semibold text-state-confirm">
@@ -176,6 +220,7 @@ export function VisitModeHeader({
 export function VisitMobileModeHeader({
   patientName,
   dateTimeLabel,
+  safety,
   isOffline,
   pendingSyncCount,
   activeStepId,
@@ -183,6 +228,7 @@ export function VisitMobileModeHeader({
 }: {
   patientName: string | null;
   dateTimeLabel: string | null;
+  safety?: VisitHeaderSafety;
   isOffline: boolean;
   pendingSyncCount: number;
   activeStepId: VisitRecordStepId;
@@ -217,6 +263,11 @@ export function VisitMobileModeHeader({
       <p className="mt-0.5 text-xs text-muted-foreground">
         訪問中{dateTimeLabel ? ` ${dateTimeLabel}` : ''}
       </p>
+      {safety ? (
+        <div className="mt-1.5">
+          <VisitHeaderSafetyTags safety={safety} />
+        </div>
+      ) : null}
       <VisitStepDots activeId={activeStepId} onSelect={onStepSelect} />
     </header>
   );
