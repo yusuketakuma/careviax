@@ -321,8 +321,8 @@ export function AppShell({ children }: AppShellProps) {
 
   if (useMinimalShell) {
     return (
-      <div className="min-h-screen bg-background" data-testid="app-shell-print-route">
-        <main id="main-content" className="min-h-screen">
+      <div className="min-h-dvh bg-background" data-testid="app-shell-print-route">
+        <main id="main-content" className="min-h-dvh">
           {children}
         </main>
       </div>

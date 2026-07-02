@@ -2,7 +2,7 @@ import { Skeleton } from '@/components/ui/loading';
 
 export default function PrescriptionsLoading() {
   return (
-    <div className="flex h-[calc(100vh-64px)] flex-col overflow-hidden">
+    <div className="flex h-[calc(100dvh-64px)] flex-col overflow-hidden">
       {/* Status bar skeleton */}
       <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-1.5">
         <Skeleton className="h-4 w-4" />

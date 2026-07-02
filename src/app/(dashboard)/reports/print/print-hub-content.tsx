@@ -965,7 +965,7 @@ export function PrintHubContent() {
   return (
     <div
       data-testid="print-hub-root"
-      className="grid grid-cols-1 items-stretch gap-3 xl:grid-cols-[300px_minmax(0,1fr)_280px] xl:min-h-[calc(100vh-6rem)]"
+      className="grid grid-cols-1 items-stretch gap-3 xl:grid-cols-[300px_minmax(0,1fr)_280px] xl:min-h-[calc(100dvh-6rem)]"
     >
       {/* ── 左カラム: 印刷するもの ── */}
       <section

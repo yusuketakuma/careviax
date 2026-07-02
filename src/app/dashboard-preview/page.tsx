@@ -4,7 +4,7 @@ import { DashboardContent } from '@/app/(dashboard)/dashboard/dashboard-content'
 
 export default function DashboardPreviewPage() {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background">
       <div className="border-b border-border bg-background/95 px-6 py-4 backdrop-blur">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>

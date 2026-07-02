@@ -549,7 +549,7 @@ export default function ReportPrintPage() {
 
   if (printAuditQuery.isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-dvh items-center justify-center">
         <Loading label="印刷監査を記録中..." />
       </div>
     );
@@ -557,7 +557,7 @@ export default function ReportPrintPage() {
 
   if (isPrintForbidden) {
     return (
-      <div className="flex min-h-screen items-center justify-center p-6">
+      <div className="flex min-h-dvh items-center justify-center p-6">
         <div
           role="alert"
           className="max-w-md space-y-2 rounded-md border border-border/70 bg-card p-4"
@@ -573,7 +573,7 @@ export default function ReportPrintPage() {
 
   if (printAuditQuery.isError || !data || !canRenderPrintBody) {
     return (
-      <div className="flex min-h-screen items-center justify-center p-6">
+      <div className="flex min-h-dvh items-center justify-center p-6">
         <div
           role="alert"
           className="max-w-md space-y-2 rounded-md border border-border/70 bg-card p-4"
