@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -28,6 +27,13 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { PatientHeader } from '@/components/features/patients/patient-header';
@@ -391,20 +397,6 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
   const isBootstrappingOrg = !orgId;
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [showReportMenu, setShowReportMenu] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  // Close menu on outside click
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowReportMenu(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   const generateReportMutation = useMutation({
     mutationFn: async (input: {
       reportType?: string;
@@ -422,14 +414,12 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     },
     onSuccess: (result) => {
       toast.success('報告書を生成しました');
-      setShowReportMenu(false);
       queryClient.invalidateQueries({ queryKey: ['care-reports-by-visit', recordId, orgId] });
       const firstId = result.data?.[0]?.id;
       if (firstId) router.push(`/reports/${firstId}`);
     },
     onError: (err: Error) => {
       toast.error(err.message);
-      setShowReportMenu(false);
     },
   });
 
@@ -437,7 +427,6 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     // 報告書一覧の取得に失敗している間は下書きの有無が不確定なため、生成を実行しない
     // (重複/不正生成の防止)。メニューが開いたまま error に転じても発火させない。
     if (careReportsError) {
-      setShowReportMenu(false);
       toast.error('報告書の取得に失敗しています。再読み込みしてから作成してください。');
       return;
     }
@@ -769,49 +758,45 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
   // 取得失敗時は careReports=[] が「下書きゼロ」と区別できず自動生成を誤提示するため出さない。
   const showAutomaticReportGeneration =
     !careReportsError && canUseAutomaticReportGeneration(careReports);
+  // 共通 DropdownMenu(Escape/矢印キー/フォーカス返却内蔵)。手組み absolute popover は
+  // SSOT 5.7 で禁止(旧実装は mousedown outside close のみでキーボード完結不可だった)。
   const reportGenerationActions = (
-    <div className="relative" ref={menuRef}>
-      <Button
-        size="sm"
-        className="h-10 w-full gap-1 sm:h-8 sm:w-auto"
-        onClick={() => setShowReportMenu((v) => !v)}
-        disabled={generateReportMutation.isPending}
-        aria-haspopup="menu"
-        aria-expanded={showReportMenu}
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            size="sm"
+            className="h-10 w-full gap-1 sm:h-8 sm:w-auto"
+            disabled={generateReportMutation.isPending}
+          />
+        }
       >
         <FileText className="size-3.5" aria-hidden="true" />
         {generateReportMutation.isPending ? '生成中...' : '報告書生成'}
-      </Button>
-      {showReportMenu && (
-        <div
-          role="menu"
-          className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-border bg-popover shadow-md"
-        >
-          {reportAudienceItems.map((item) => (
-            <button
-              key={item.type}
-              role="menuitem"
-              className="w-full px-3 py-2.5 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none"
-              onClick={() => handleGenerateReport(record.updated_at, item.type)}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        {reportAudienceItems.map((item) => (
+          <DropdownMenuItem
+            key={item.type}
+            className="min-h-[44px] px-3"
+            onClick={() => handleGenerateReport(record.updated_at, item.type)}
+          >
+            {item.label}
+          </DropdownMenuItem>
+        ))}
+        {showAutomaticReportGeneration ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="min-h-[44px] px-3 font-medium text-primary"
+              onClick={() => handleGenerateReport(record.updated_at)}
             >
-              {item.label}
-            </button>
-          ))}
-          {showAutomaticReportGeneration ? (
-            <>
-              <div className="border-t border-border" />
-              <button
-                role="menuitem"
-                className="w-full px-3 py-2.5 text-left text-sm font-medium text-primary hover:bg-accent focus:bg-accent focus:outline-none"
-                onClick={() => handleGenerateReport(record.updated_at)}
-              >
-                自動判定（保険種別に応じて生成）
-              </button>
-            </>
-          ) : null}
-        </div>
-      )}
-    </div>
+              自動判定（保険種別に応じて生成）
+            </DropdownMenuItem>
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 
   function createNextVisitFromSuggestion() {
