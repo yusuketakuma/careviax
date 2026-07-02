@@ -42,6 +42,66 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### UI Accessibility: Keyboard-only Roving Navigation - 2026-07-03 00:50 JST
+
+- Scope:
+  - Researched current keyboard accessibility best practices from WAI-ARIA APG,
+    WCAG 2.2, MDN, web.dev, the local Next.js accessibility docs, and the PH-OS
+    UI/UX SSOT.
+  - Implemented a shared keyboard-only operation mechanism for composite action
+    groups and focus visibility under sticky chrome.
+  - Commit: `627c5225`
+    (`feat(ui): add keyboard navigation primitives`).
+  - gbrain writeback:
+    `projects/careviax/decisions/2026-07-03/keyboard-only-roving-navigation`.
+- Implemented:
+  - Added shared `useRovingFocus` with ArrowLeft/Right/Up/Down plus Home/End
+    support. This follows the APG convention that Tab moves between components
+    while arrow keys move inside a composite widget.
+  - Converted `PageShortcutLinks` into `role="toolbar"` shortcut groups with
+    one Tab stop per group and arrow-key movement inside the group.
+  - Added shared `useFocusNotObscured` to AppShell so keyboard focus events
+    scroll into view when sticky headers or bottom chrome would hide the
+    focused control.
+  - Added AppShell keyboard skip actions for main content, global search, and
+    shortcut help. Search controls now expose `aria-keyshortcuts`.
+  - Added global `scroll-padding` / `scroll-margin` defaults for keyboard focus
+    targets.
+  - Extended shortcut help display with page-level navigation rows for Tab,
+    arrows, Home, and End.
+- Review follow-up:
+  - Drained agmsg after `$agmsg` and reviewed Claude commit `8f838d52`
+    (`feat(visits): pin allergy safety tags in the visit mode headers`).
+  - Focused validation passed, but Codex found a sticky layering bug:
+    md+ `VisitModeHeader` used `sticky top-0 z-20` under `AppHeader`'s
+    `sticky top-0 z-30` in the same AppShell scroll container.
+  - Sent `REQUEST_CHANGES` to Claude, then fixed directly by offsetting the
+    md+ visit header to `top-14` and adding a test assertion.
+  - Commit: `66c5157f`
+    (`fix(visits): offset md+ visit header below the app header`).
+  - gbrain writeback:
+    `projects/careviax/reviews/2026-07-03/sticky-headers-must-offset-app-header`.
+- Safety:
+  - No API, auth, authorization, schema, migration, data write, external send,
+    production config, push, deploy, or destructive DB operation changed.
+  - Existing global shortcut suppression for editable fields is preserved.
+  - Visit safety-tag sticky offset now preserves visibility below the global
+    app header instead of hiding patient safety context behind it.
+- Validation:
+  - Focused keyboard/navigation suite passed `4` files / `27` tests:
+    `pnpm exec vitest run src/components/features/keyboard/use-roving-focus.test.tsx src/components/features/keyboard/use-focus-not-obscured.test.tsx src/components/features/workflow/page-shortcut-links.test.tsx src/components/layout/app-shell.test.tsx --reporter=dot --testTimeout=60000`.
+  - Focused visit record suite passed `2` files / `24` tests:
+    `pnpm exec vitest run 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-step-nav.test.tsx' --reporter=dot --testTimeout=60000`.
+  - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: passed after all product changes.
+- Remaining:
+  - No known code blocker for the shared keyboard-only mechanism. A live
+    authenticated browser traversal across representative dense pages remains a
+    useful follow-up if this needs visual QA evidence beyond DOM tests and
+    production build.
+
 ### Backend: PCA Rental Return Update Claim - 2026-07-03 00:31 JST
 
 - Scope:

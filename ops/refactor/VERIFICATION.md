@@ -3169,3 +3169,50 @@ JST.
     browser session was available in this turn, and the changed network/DOM
     behavior is directly covered by component queryFn/DOM assertions plus full
     build/full Vitest.
+
+## Keyboard-only Roving Navigation Verification
+
+The latest UI accessibility slice is `ui-keyboard-only-roving-navigation` at
+2026-07-03 00:50 JST.
+
+- Research:
+  - Checked WAI-ARIA APG keyboard interface guidance for Tab-between-components
+    and arrow-inside-composite behavior.
+  - Checked WCAG 2.2 focus-not-obscured guidance for sticky headers/footers.
+  - Checked MDN/web.dev tabindex and focus guidance.
+  - Checked local Next.js accessibility docs and PH-OS UI/UX SSOT sections 5.5
+    and 8.3.
+- Focused regressions:
+  - `pnpm exec vitest run src/components/features/keyboard/use-roving-focus.test.tsx src/components/features/keyboard/use-focus-not-obscured.test.tsx src/components/features/workflow/page-shortcut-links.test.tsx src/components/layout/app-shell.test.tsx --reporter=dot --testTimeout=60000`
+  - Result: passed, `4` files / `27` tests.
+  - Coverage: roving focus wraps and supports Home/End; PageShortcutLinks uses
+    one Tab stop per toolbar group and arrow movement; AppShell exposes
+    keyboard-only skip actions for main/search/help; keyboard focus hidden by
+    sticky chrome scrolls into view.
+  - `pnpm exec vitest run 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-step-nav.test.tsx' --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `24` tests.
+  - Coverage: Claude's safety-tag header commit was reviewed from agmsg; the
+    md+ visit header now uses `top-14` so patient safety tags pin below
+    AppHeader instead of behind it.
+- Scoped checks:
+  - `pnpm exec eslint --max-warnings=0 ...`
+  - Result: passed.
+  - `pnpm exec prettier --check ...`
+  - Result: passed.
+  - `git diff --check -- ...`
+  - Result: passed.
+- Full gates:
+  - `pnpm typecheck`
+  - Result: passed.
+  - `pnpm typecheck:no-unused`
+  - Result: passed.
+  - `pnpm build`
+  - Result: passed.
+- gbrain:
+  - `projects/careviax/decisions/2026-07-03/keyboard-only-roving-navigation`
+  - Result: write/readback passed.
+  - `projects/careviax/reviews/2026-07-03/sticky-headers-must-offset-app-header`
+  - Result: write/readback passed.
+- Skipped:
+  - Authenticated browser traversal was not run in this slice; keyboard DOM
+    behavior is covered by focused component tests and full production build.

@@ -4,7 +4,70 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
-## Current Codex Resume Note - 2026-07-03 00:31 JST
+## Current Codex Resume Note - 2026-07-03 00:50 JST
+
+- Active mode for this slice: Codex-only UI accessibility implementation with
+  internet research, real validation, gbrain writeback, explicit-path commit,
+  and preservation of unrelated dirty visit-record WIP files. Do not
+  push/deploy/migrate or destructively mutate data.
+- Latest completed product slice:
+  `ui-keyboard-only-roving-navigation`.
+- Product commit:
+  `627c5225` (`feat(ui): add keyboard navigation primitives`) and `66c5157f`
+  (`fix(visits): offset md+ visit header below the app header`).
+- Files changed:
+  - `src/components/features/keyboard/use-roving-focus.ts`
+  - `src/components/features/keyboard/use-roving-focus.test.tsx`
+  - `src/components/features/keyboard/use-focus-not-obscured.ts`
+  - `src/components/features/keyboard/use-focus-not-obscured.test.tsx`
+  - `src/components/features/keyboard/use-keyboard-shortcuts.ts`
+  - `src/components/features/keyboard/global-shortcuts.ts`
+  - `src/components/features/keyboard/shortcut-help-modal.tsx`
+  - `src/components/features/workflow/page-shortcut-links.tsx`
+  - `src/components/features/workflow/page-shortcut-links.test.tsx`
+  - `src/components/layout/app-shell.tsx`
+  - `src/components/layout/app-shell.test.tsx`
+  - `src/components/layout/app-header.tsx`
+  - `src/app/globals.css`
+  - `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`
+  - `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`
+  - progress-ledger updates in `CODEX_GOAL_PROGRESS.md`,
+    `.codex/ralph-state.md`, `ops/refactor/VERIFICATION.md`, and this file
+- Implemented:
+  - Shared roving tabindex hook for composite action groups, with
+    ArrowLeft/Right/Up/Down and Home/End movement.
+  - `PageShortcutLinks` now renders one Tab stop per toolbar group and uses
+    arrow keys inside the group.
+  - AppShell now includes keyboard-only skip actions for main content, global
+    search, and shortcut help.
+  - AppShell now installs a keyboard-focus visibility guard so focused controls
+    can scroll out from under sticky chrome.
+  - Global CSS now provides focus `scroll-padding` / `scroll-margin` defaults.
+  - Search controls expose `aria-keyshortcuts`; shortcut help includes page
+    movement rows.
+  - Reviewed Claude commit `8f838d52` from agmsg, found the md+
+    `VisitModeHeader sticky top-0 z-20` could hide behind the global
+    `AppHeader sticky top-0 z-30`, sent `REQUEST_CHANGES`, and fixed it by
+    offsetting the visit header to `top-14` with a test assertion.
+- Validation:
+  - Focused keyboard/navigation suite passed `4` files / `27` tests.
+  - Focused visit record suite passed `2` files / `24` tests.
+  - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm build` passed
+    after all product changes.
+- Review:
+  - Internet research used WAI-ARIA APG, WCAG 2.2, MDN, web.dev, and local
+    Next.js accessibility docs.
+  - agmsg review response to Claude: `REQUEST_CHANGES 8f838d52` for sticky
+    layering; Codex fixed the issue directly under current Codex-only mode.
+- gbrain writeback slug:
+  `projects/careviax/decisions/2026-07-03/keyboard-only-roving-navigation`.
+  Additional review finding:
+  `projects/careviax/reviews/2026-07-03/sticky-headers-must-offset-app-header`.
+- Next action: commit this product+ledger slice with explicit owned paths,
+  then continue from the latest user request or next repo-priority candidate.
+
+## Previous Codex Resume Note - 2026-07-03 00:31 JST
 
 - Active mode for this slice: Codex backend/API implementation with Claude
   coordination through agmsg, real validation, gbrain writeback,
