@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { render } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { EvidenceCaptureContent } from './capture-content';
@@ -10,7 +10,11 @@ setupDomTestEnv();
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
+const saveEvidenceDraftMock = vi.hoisted(() => vi.fn());
 const setupEvidenceAutoSyncMock = vi.hoisted(() => vi.fn());
+const syncEvidenceDraftsMock = vi.hoisted(() => vi.fn());
+const toastErrorMock = vi.hoisted(() => vi.fn());
+const toastSuccessMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -21,9 +25,9 @@ vi.mock('@tanstack/react-query', () => ({
 }));
 
 vi.mock('@/lib/offline/evidence-drafts', () => ({
-  saveEvidenceDraft: vi.fn(),
+  saveEvidenceDraft: saveEvidenceDraftMock,
   setupEvidenceAutoSync: setupEvidenceAutoSyncMock,
-  syncEvidenceDrafts: vi.fn(),
+  syncEvidenceDrafts: syncEvidenceDraftsMock,
 }));
 
 vi.mock('@/lib/patient/api-paths', async (importActual) => {
@@ -44,10 +48,47 @@ vi.mock('next/link', () => ({
 }));
 
 vi.mock('sonner', () => ({
-  toast: { error: vi.fn(), success: vi.fn() },
+  toast: { error: toastErrorMock, success: toastSuccessMock },
 }));
 
 describe('EvidenceCaptureContent', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('does not persist evidence files without organization context', async () => {
+    useOrgIdMock.mockReturnValue('');
+    setupEvidenceAutoSyncMock.mockReturnValue(undefined);
+    useQueryMock.mockReturnValue({ data: null, isPending: false, error: null });
+
+    const { container } = render(
+      <EvidenceCaptureContent
+        visitId="visit_1"
+        initialPatientContext={{
+          patientId: 'patient_1',
+          patientName: '田中 一郎',
+          visitRecordId: null,
+        }}
+      />,
+    );
+    const input = container.querySelector('input[type="file"]');
+    expect(input).toBeInstanceOf(HTMLInputElement);
+
+    fireEvent.change(input!, {
+      target: {
+        files: [new File(['photo'], 'visit-photo.jpg', { type: 'image/jpeg' })],
+      },
+    });
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        '組織情報を取得できませんでした。再読み込みしてから撮影してください。',
+      );
+    });
+    expect(saveEvidenceDraftMock).not.toHaveBeenCalled();
+    expect(syncEvidenceDraftsMock).not.toHaveBeenCalled();
+  });
+
   it('routes fallback patient detail fetches through the shared patient API path helper', async () => {
     const patientId = 'pt/1?tab=x#frag';
     useOrgIdMock.mockReturnValue('org_1');

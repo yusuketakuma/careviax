@@ -1,19 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { evidenceDraftsMock, decryptOfflinePayloadMock } = vi.hoisted(() => ({
-  evidenceDraftsMock: {
-    add: vi.fn(),
-    and: vi.fn(),
-    aboveOrEqual: vi.fn(),
-    below: vi.fn(),
-    equals: vi.fn(),
-    toArray: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-    where: vi.fn(),
-  },
-  decryptOfflinePayloadMock: vi.fn(),
-}));
+const { evidenceDraftsMock, decryptOfflinePayloadMock, encryptOfflinePayloadRequiredMock } =
+  vi.hoisted(() => ({
+    evidenceDraftsMock: {
+      add: vi.fn(),
+      and: vi.fn(),
+      aboveOrEqual: vi.fn(),
+      below: vi.fn(),
+      equals: vi.fn(),
+      toArray: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      where: vi.fn(),
+    },
+    decryptOfflinePayloadMock: vi.fn(),
+    encryptOfflinePayloadRequiredMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/stores/offline-db', () => ({
   offlineDb: {
@@ -23,12 +25,14 @@ vi.mock('@/lib/stores/offline-db', () => ({
 
 vi.mock('@/lib/offline/crypto', () => ({
   decryptOfflinePayload: decryptOfflinePayloadMock,
-  encryptOfflinePayloadRequired: vi.fn(),
+  encryptOfflinePayloadRequired: encryptOfflinePayloadRequiredMock,
 }));
 
 import {
   listEvidenceDraftSummaries,
   listEvidenceDraftSummariesForSchedule,
+  resetFailedEvidenceDraftRetries,
+  saveEvidenceDraft,
   setupEvidenceAutoSync,
   syncEvidenceDrafts,
 } from './evidence-drafts';
@@ -43,6 +47,7 @@ function jsonResponse(payload: unknown, status = 200) {
 function createDraft(overrides: Record<string, unknown> = {}) {
   return {
     id: 1,
+    orgId: 'org_1',
     scheduleId: 'schedule_1',
     patientId: 'patient_1',
     category: 'photo',
@@ -73,6 +78,7 @@ describe('offline evidence draft sync', () => {
     evidenceDraftsMock.update.mockReset();
     evidenceDraftsMock.delete.mockReset();
     evidenceDraftsMock.where.mockReset();
+    encryptOfflinePayloadRequiredMock.mockReset();
     evidenceDraftsMock.and.mockReturnValue({ toArray: evidenceDraftsMock.toArray });
     evidenceDraftsMock.aboveOrEqual.mockReturnValue({ and: evidenceDraftsMock.and });
     evidenceDraftsMock.below.mockReturnValue({ and: evidenceDraftsMock.and });
@@ -104,7 +110,7 @@ describe('offline evidence draft sync', () => {
       createDraft({ id: 1, scheduleId: 'schedule_1', fileName: 'a.png' }),
     ]);
 
-    await expect(listEvidenceDraftSummaries()).resolves.toEqual([
+    await expect(listEvidenceDraftSummaries('org_1')).resolves.toEqual([
       {
         id: 1,
         scheduleId: 'schedule_1',
@@ -119,16 +125,67 @@ describe('offline evidence draft sync', () => {
     expect(decryptOfflinePayloadMock).not.toHaveBeenCalled();
   });
 
+  it('persists new drafts with organization scope and encrypted payloads', async () => {
+    const capturedAt = new Date('2026-06-01T01:02:03.000Z');
+    encryptOfflinePayloadRequiredMock.mockResolvedValue('encrypted-data-url');
+
+    await saveEvidenceDraft({
+      orgId: 'org_1',
+      scheduleId: 'schedule_1',
+      patientId: 'patient_1',
+      category: 'residual_photo',
+      fileName: 'evidence.jpg',
+      mimeType: 'image/jpeg',
+      sizeBytes: 123,
+      dataUrl: 'data:image/jpeg;base64,AAAA',
+      capturedAt,
+    });
+
+    expect(encryptOfflinePayloadRequiredMock).toHaveBeenCalledWith(
+      'data:image/jpeg;base64,AAAA',
+      'evidence draft photo payload',
+    );
+    expect(evidenceDraftsMock.add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: 'org_1',
+        scheduleId: 'schedule_1',
+        patientId: 'patient_1',
+        category: 'residual_photo',
+        fileName: 'evidence.jpg',
+        mimeType: 'image/jpeg',
+        sizeBytes: 123,
+        payload: 'encrypted-data-url',
+        capturedAt,
+        synced: false,
+        retryCount: 0,
+      }),
+    );
+  });
+
   it('keeps synced drafts out of summary results after the retryCount index scan', async () => {
     const indexedRows = [
       createDraft({ id: 1, scheduleId: 'schedule_1', fileName: 'pending.png', synced: false }),
       createDraft({ id: 2, scheduleId: 'schedule_2', fileName: 'synced.png', synced: true }),
+      createDraft({
+        id: 3,
+        orgId: 'org_2',
+        scheduleId: 'schedule_3',
+        fileName: 'other-org.png',
+        synced: false,
+      }),
+      createDraft({
+        id: 4,
+        orgId: undefined,
+        scheduleId: 'schedule_4',
+        fileName: 'legacy-no-org.png',
+        synced: false,
+      }),
     ];
     evidenceDraftsMock.and.mockImplementationOnce((predicate: (draft: unknown) => boolean) => ({
       toArray: async () => indexedRows.filter(predicate),
     }));
 
-    await expect(listEvidenceDraftSummaries()).resolves.toEqual([
+    await expect(listEvidenceDraftSummaries('org_1')).resolves.toEqual([
       {
         id: 1,
         scheduleId: 'schedule_1',
@@ -164,12 +221,28 @@ describe('offline evidence draft sync', () => {
         retryCount: -1,
         synced: false,
       }),
+      createDraft({
+        id: 4,
+        orgId: 'org_2',
+        scheduleId: 'schedule_1',
+        fileName: 'other-org.png',
+        retryCount: 0,
+        synced: false,
+      }),
+      createDraft({
+        id: 5,
+        orgId: undefined,
+        scheduleId: 'schedule_1',
+        fileName: 'legacy-no-org.png',
+        retryCount: 0,
+        synced: false,
+      }),
     ];
     evidenceDraftsMock.and.mockImplementationOnce((predicate: (draft: unknown) => boolean) => ({
       toArray: async () => indexedRows.filter(predicate),
     }));
 
-    await expect(listEvidenceDraftSummariesForSchedule('schedule_1')).resolves.toEqual([
+    await expect(listEvidenceDraftSummariesForSchedule('schedule_1', 'org_1')).resolves.toEqual([
       {
         id: 1,
         scheduleId: 'schedule_1',
@@ -189,6 +262,20 @@ describe('offline evidence draft sync', () => {
       createDraft({ id: 1, scheduleId: 'schedule_1', retryCount: 2, synced: false }),
       createDraft({ id: 2, scheduleId: 'schedule_2', retryCount: 3, synced: false }),
       createDraft({ id: 3, scheduleId: 'schedule_3', retryCount: 0, synced: true }),
+      createDraft({
+        id: 4,
+        orgId: 'org_2',
+        scheduleId: 'schedule_4',
+        retryCount: 0,
+        synced: false,
+      }),
+      createDraft({
+        id: 5,
+        orgId: undefined,
+        scheduleId: 'schedule_5',
+        retryCount: 0,
+        synced: false,
+      }),
     ];
     evidenceDraftsMock.and.mockImplementationOnce((predicate: (draft: unknown) => boolean) => ({
       toArray: async () => indexedRows.filter(predicate),
@@ -215,6 +302,64 @@ describe('offline evidence draft sync', () => {
     expect(decryptOfflinePayloadMock).not.toHaveBeenCalled();
     expect(evidenceDraftsMock.update).not.toHaveBeenCalled();
     expect(evidenceDraftsMock.delete).not.toHaveBeenCalled();
+  });
+
+  it('resets retry-exhausted unsynced drafts without decrypting or clearing upload resume metadata', async () => {
+    const indexedRows = [
+      createDraft({
+        id: 1,
+        scheduleId: 'schedule_1',
+        retryCount: 3,
+        synced: false,
+        lastError: '証跡写真の同期に失敗しました',
+        uploadedFileAssetId: 'file_existing',
+        uploadedVisitRecordId: 'visit_record_1',
+      }),
+      createDraft({
+        id: 2,
+        scheduleId: 'schedule_2',
+        retryCount: 4,
+        synced: false,
+        lastError: '写真のアップロードに失敗しました',
+      }),
+      createDraft({ id: 3, scheduleId: 'schedule_3', retryCount: 2, synced: false }),
+      createDraft({ id: 4, scheduleId: 'schedule_4', retryCount: 3, synced: true }),
+      createDraft({
+        id: 5,
+        orgId: 'org_2',
+        scheduleId: 'schedule_5',
+        retryCount: 3,
+        synced: false,
+      }),
+      createDraft({
+        id: 6,
+        orgId: undefined,
+        scheduleId: 'schedule_6',
+        retryCount: 3,
+        synced: false,
+      }),
+    ];
+    evidenceDraftsMock.and.mockImplementationOnce((predicate: (draft: unknown) => boolean) => ({
+      toArray: async () => indexedRows.filter((draft) => draft.retryCount >= 3).filter(predicate),
+    }));
+
+    await expect(resetFailedEvidenceDraftRetries({ orgId: 'org_1' })).resolves.toBe(2);
+
+    expect(evidenceDraftsMock.where).toHaveBeenCalledWith('retryCount');
+    expect(evidenceDraftsMock.aboveOrEqual).toHaveBeenCalledWith(3);
+    expect(evidenceDraftsMock.update).toHaveBeenCalledTimes(2);
+    expect(evidenceDraftsMock.update).toHaveBeenNthCalledWith(1, 1, {
+      retryCount: 0,
+      lastError: undefined,
+    });
+    expect(evidenceDraftsMock.update).toHaveBeenNthCalledWith(2, 2, {
+      retryCount: 0,
+      lastError: undefined,
+    });
+    expect(JSON.stringify(evidenceDraftsMock.update.mock.calls)).not.toContain(
+      'uploadedFileAssetId',
+    );
+    expect(decryptOfflinePayloadMock).not.toHaveBeenCalled();
   });
 
   it('resumes attachment without re-uploading when a completed file asset is stored', async () => {

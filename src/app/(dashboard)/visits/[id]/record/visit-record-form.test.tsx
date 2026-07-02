@@ -528,7 +528,10 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
       expect(refreshSyncCountMock).toHaveBeenCalled();
     });
     await waitFor(() => {
-      expect(listEvidenceDraftSummariesForScheduleMock).toHaveBeenCalledWith('schedule_partial');
+      expect(listEvidenceDraftSummariesForScheduleMock).toHaveBeenCalledWith(
+        'schedule_partial',
+        'org_1',
+      );
     });
     expect(refreshSyncStateMock).not.toHaveBeenCalled();
 

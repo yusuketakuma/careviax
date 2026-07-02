@@ -20,6 +20,7 @@ import {
  */
 
 export type SaveEvidenceDraftInput = {
+  orgId: string;
   scheduleId: string;
   patientId?: string;
   category: string;
@@ -34,6 +35,7 @@ export type SaveEvidenceDraftInput = {
 /** 撮影画像を端末のオフラインドラフトとして保存する(暗号化必須)。 */
 export async function saveEvidenceDraft(input: SaveEvidenceDraftInput): Promise<void> {
   await offlineDb.evidenceDrafts.add({
+    orgId: input.orgId,
     scheduleId: input.scheduleId,
     patientId: input.patientId,
     category: input.category,
@@ -58,11 +60,11 @@ export type EvidenceDraftSummary = {
 };
 
 /** 未同期ドラフトのメタデータ一覧(画像 payload は復号しない)。 */
-export async function listEvidenceDraftSummaries(): Promise<EvidenceDraftSummary[]> {
+export async function listEvidenceDraftSummaries(orgId: string): Promise<EvidenceDraftSummary[]> {
   const drafts = await offlineDb.evidenceDrafts
     .where('retryCount')
     .aboveOrEqual(0)
-    .and((draft) => !draft.synced)
+    .and((draft) => draft.orgId === orgId && !draft.synced)
     .toArray();
   return mapEvidenceDraftSummaries(drafts);
 }
@@ -70,11 +72,12 @@ export async function listEvidenceDraftSummaries(): Promise<EvidenceDraftSummary
 /** 指定訪問の未同期ドラフトのメタデータ一覧(画像 payload は復号しない)。 */
 export async function listEvidenceDraftSummariesForSchedule(
   scheduleId: string,
+  orgId: string,
 ): Promise<EvidenceDraftSummary[]> {
   const drafts = await offlineDb.evidenceDrafts
     .where('scheduleId')
     .equals(scheduleId)
-    .and((draft) => !draft.synced && draft.retryCount >= 0)
+    .and((draft) => draft.orgId === orgId && !draft.synced && draft.retryCount >= 0)
     .toArray();
   return mapEvidenceDraftSummaries(drafts);
 }
@@ -299,7 +302,7 @@ async function syncEvidenceDraftsOnce(config: EvidenceSyncConfig): Promise<Evide
     await offlineDb.evidenceDrafts
       .where('retryCount')
       .below(MAX_EVIDENCE_SYNC_RETRIES)
-      .and((draft) => !draft.synced)
+      .and((draft) => draft.orgId === config.orgId && !draft.synced)
       .toArray(),
   );
   if (drafts.length === 0) return result;
@@ -343,6 +346,24 @@ export async function syncEvidenceDrafts(config: EvidenceSyncConfig): Promise<Ev
   });
   activeEvidenceSyncRuns.set(config.orgId, run);
   return run;
+}
+
+/**
+ * リトライ上限に達した未同期写真を再送対象へ戻す。
+ * アップロード済み file metadata は retry resume に必要なため保持する。
+ */
+export async function resetFailedEvidenceDraftRetries(config: EvidenceSyncConfig): Promise<number> {
+  const failedDrafts = await offlineDb.evidenceDrafts
+    .where('retryCount')
+    .aboveOrEqual(MAX_EVIDENCE_SYNC_RETRIES)
+    .and((draft) => draft.orgId === config.orgId && !draft.synced)
+    .toArray();
+  await Promise.all(
+    failedDrafts.map((draft) =>
+      offlineDb.evidenceDrafts.update(draft.id!, { retryCount: 0, lastError: undefined }),
+    ),
+  );
+  return failedDrafts.length;
 }
 
 /** online 復帰時の自動送信(p0_48「戻ったら自動で送信します」)。teardown を返す。 */

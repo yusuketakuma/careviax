@@ -536,8 +536,9 @@ export function VisitRecordForm({
   });
   // p0_23: この訪問の未同期写真ドラフト(p0_48 撮影分)。橙バナーとモバイル未同期バッジに使う
   const { data: evidenceDraftSummaries } = useQuery({
-    queryKey: ['visit-evidence-drafts', id],
-    queryFn: () => listEvidenceDraftSummariesForSchedule(id),
+    queryKey: ['visit-evidence-drafts', id, orgId],
+    queryFn: () => (orgId ? listEvidenceDraftSummariesForSchedule(id, orgId) : Promise.resolve([])),
+    enabled: !!orgId,
   });
 
   const {

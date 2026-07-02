@@ -6,6 +6,7 @@ import { parseJsonOrNull, readJsonObject } from '@/lib/db/json';
 import { offlineDb, type OfflineSyncQueue } from './offline-db';
 
 const MAX_RETRIES = 3;
+const GENERIC_SYNC_ERROR_MESSAGE = '同期に失敗しました';
 const activeSyncQueueRuns = new Map<string, Promise<{ synced: number; failed: number }>>();
 const autoSyncSubscriptions = new Map<
   string,
@@ -227,6 +228,40 @@ function resolveSyncEndpoints(config: SyncConfig) {
   return { ...DEFAULT_ENDPOINTS, ...config.endpoints };
 }
 
+function safeSyncErrorMessage(): string {
+  return GENERIC_SYNC_ERROR_MESSAGE;
+}
+
+function resolveSyncScopeId(
+  entityType: OfflineSyncQueue['entityType'],
+  payload: Record<string, unknown>,
+): string | undefined {
+  if (entityType === 'visit_record' && typeof payload.schedule_id === 'string') {
+    return payload.schedule_id;
+  }
+  if (entityType === 'residual_medication' && typeof payload.patient_id === 'string') {
+    return payload.patient_id;
+  }
+  return undefined;
+}
+
+function resolveDedupeScopeId(
+  entityType: OfflineSyncQueue['entityType'],
+  payload: Record<string, unknown>,
+): string | undefined {
+  if (entityType === 'visit_record' && typeof payload.schedule_id === 'string') {
+    return payload.schedule_id;
+  }
+  return undefined;
+}
+
+function compareNewestSyncQueueItem(left: OfflineSyncQueue, right: OfflineSyncQueue) {
+  const leftCreatedAt = readDateTime(left.createdAt) ?? 0;
+  const rightCreatedAt = readDateTime(right.createdAt) ?? 0;
+  if (leftCreatedAt !== rightCreatedAt) return rightCreatedAt - leftCreatedAt;
+  return (right.id ?? 0) - (left.id ?? 0);
+}
+
 async function processSyncQueueOnce(config: SyncConfig): Promise<{
   synced: number;
   failed: number;
@@ -307,10 +342,10 @@ async function processSyncQueueOnce(config: SyncConfig): Promise<{
         });
         failed++;
       }
-    } catch (err) {
+    } catch {
       await offlineDb.syncQueue.update(item.id!, {
         retryCount: item.retryCount + 1,
-        lastError: err instanceof Error ? err.message : 'Unknown error',
+        lastError: safeSyncErrorMessage(),
       });
       failed++;
     }
@@ -398,20 +433,46 @@ export async function enqueueForSync(
   entityType: OfflineSyncQueue['entityType'],
   payload: Record<string, unknown>,
 ): Promise<void> {
-  await offlineDb.syncQueue.add({
+  const scopeId = resolveSyncScopeId(entityType, payload);
+  const dedupeScopeId = resolveDedupeScopeId(entityType, payload);
+  const data = {
     entityType,
     payload: await encryptOfflinePayloadRequired(
       JSON.stringify(payload),
       `sync queue ${entityType} payload`,
     ),
-    scope_id:
-      typeof payload.schedule_id === 'string'
-        ? payload.schedule_id
-        : typeof payload.patient_id === 'string'
-          ? payload.patient_id
-          : undefined,
+    scope_id: scopeId,
     createdAt: new Date(),
     retryCount: 0,
+    lastError: undefined,
+    conflict_state: undefined,
+    conflict_payload: undefined,
+  } satisfies OfflineSyncQueue;
+
+  if (!dedupeScopeId) {
+    await offlineDb.syncQueue.add(data);
+    return;
+  }
+
+  await offlineDb.transaction('rw', offlineDb.syncQueue, async () => {
+    const existing = await offlineDb.syncQueue
+      .where('scope_id')
+      .equals(dedupeScopeId)
+      .and((item) => item.entityType === entityType && item.conflict_state !== 'server_conflict')
+      .toArray();
+    const [newest, ...older] = existing.sort(compareNewestSyncQueueItem);
+
+    if (newest?.id) {
+      await offlineDb.syncQueue.update(newest.id, data);
+      await Promise.all(
+        older
+          .filter((item) => item.id !== undefined)
+          .map((item) => offlineDb.syncQueue.delete(item.id!)),
+      );
+      return;
+    }
+
+    await offlineDb.syncQueue.add(data);
   });
 }
 
@@ -590,8 +651,8 @@ export function setupAutoSync(config: SyncConfig): () => void {
   }
 
   const handler = () => {
-    processSyncQueue(config).catch((error) => {
-      console.warn('[offline-sync] automatic sync failed', error);
+    processSyncQueue(config).catch(() => {
+      console.warn('[offline-sync] automatic sync failed', safeSyncErrorMessage());
     });
   };
 

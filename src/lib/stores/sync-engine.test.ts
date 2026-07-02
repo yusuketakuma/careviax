@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dbMocks = vi.hoisted(() => ({
   add: vi.fn(),
+  and: vi.fn(),
   update: vi.fn(),
   delete: vi.fn(),
   below: vi.fn(),
+  equals: vi.fn(),
   get: vi.fn(),
   deleteVisitDrafts: vi.fn(),
   equalsVisitDrafts: vi.fn(),
@@ -69,18 +71,22 @@ describe('sync-engine PHI persistence', () => {
     );
     dbMocks.add.mockResolvedValue(1);
     dbMocks.update.mockResolvedValue(1);
+    dbMocks.delete.mockResolvedValue(undefined);
     dbMocks.below.mockReturnValue({ toArray: dbMocks.toArray });
-    dbMocks.where.mockReturnValue({ below: dbMocks.below });
+    dbMocks.and.mockReturnValue({ toArray: dbMocks.toArray });
+    dbMocks.equals.mockReturnValue({ and: dbMocks.and });
+    dbMocks.where.mockImplementation((index: string) => {
+      if (index === 'retryCount') return { below: dbMocks.below };
+      if (index === 'scope_id') return { equals: dbMocks.equals };
+      throw new Error(`Unexpected syncQueue index: ${index}`);
+    });
     dbMocks.equalsVisitDrafts.mockReturnValue({ delete: dbMocks.deleteVisitDrafts });
     dbMocks.whereVisitDrafts.mockReturnValue({ equals: dbMocks.equalsVisitDrafts });
-    dbMocks.transaction.mockImplementation(
-      async (
-        _mode: string,
-        _syncQueueTable: unknown,
-        _visitDraftsTable: unknown,
-        callback: () => Promise<unknown>,
-      ) => callback(),
-    );
+    dbMocks.transaction.mockImplementation(async (...args: unknown[]) => {
+      const callback = args.at(-1);
+      if (typeof callback !== 'function') throw new Error('Missing transaction callback');
+      return callback();
+    });
     dbMocks.toArray.mockResolvedValue([]);
     dbMocks.get.mockImplementation(async (id: number) => {
       const items = await dbMocks.toArray();
@@ -125,6 +131,223 @@ describe('sync-engine PHI persistence', () => {
     });
 
     expect(dbMocks.add).not.toHaveBeenCalled();
+    expect(dbMocks.transaction).not.toHaveBeenCalled();
+    expect(dbMocks.update).not.toHaveBeenCalled();
+    expect(dbMocks.delete).not.toHaveBeenCalled();
+  });
+
+  it('replaces existing non-conflict scoped queue rows with the latest encrypted payload', async () => {
+    let inTransaction = false;
+    dbMocks.transaction.mockImplementationOnce(async (...args: unknown[]) => {
+      expect(args[0]).toBe('rw');
+      expect(args).toHaveLength(3);
+      const callback = args.at(-1);
+      if (typeof callback !== 'function') throw new Error('Missing transaction callback');
+      inTransaction = true;
+      try {
+        return await callback();
+      } finally {
+        inTransaction = false;
+      }
+    });
+    dbMocks.update.mockImplementationOnce(async () => {
+      expect(inTransaction).toBe(true);
+      return 1;
+    });
+    dbMocks.delete.mockImplementationOnce(async () => {
+      expect(inTransaction).toBe(true);
+      return undefined;
+    });
+    dbMocks.and.mockImplementationOnce((predicate: (item: unknown) => boolean) => ({
+      toArray: async () =>
+        [
+          {
+            id: 31,
+            entityType: 'visit_record',
+            payload: 'encv1:oldest',
+            scope_id: 'schedule-1',
+            createdAt: new Date('2026-04-01T00:00:00.000Z'),
+            retryCount: 2,
+            lastError: 'HTTP 500',
+          },
+          {
+            id: 32,
+            entityType: 'visit_record',
+            payload: 'encv1:newer',
+            scope_id: 'schedule-1',
+            createdAt: new Date('2026-04-01T00:01:00.000Z'),
+            retryCount: 3,
+            lastError: 'HTTP 500',
+          },
+          {
+            id: 33,
+            entityType: 'residual_medication',
+            payload: 'encv1:different-entity',
+            scope_id: 'schedule-1',
+            createdAt: new Date('2026-04-01T00:02:00.000Z'),
+            retryCount: 3,
+            lastError: 'HTTP 500',
+          },
+        ].filter(predicate),
+    }));
+
+    await enqueueForSync('visit_record', {
+      schedule_id: 'schedule-1',
+      soap_subjective: '新しい入力',
+    });
+
+    expect(dbMocks.where).toHaveBeenCalledWith('scope_id');
+    expect(dbMocks.equals).toHaveBeenCalledWith('schedule-1');
+    expect(dbMocks.transaction).toHaveBeenCalledTimes(1);
+    expect(dbMocks.add).not.toHaveBeenCalled();
+    expect(dbMocks.update).toHaveBeenCalledWith(
+      32,
+      expect.objectContaining({
+        entityType: 'visit_record',
+        payload: 'encv1:sync queue visit_record payload:sealed',
+        scope_id: 'schedule-1',
+        retryCount: 0,
+        lastError: undefined,
+        conflict_state: undefined,
+        conflict_payload: undefined,
+      }),
+    );
+    expect(dbMocks.delete).toHaveBeenCalledTimes(1);
+    expect(dbMocks.delete).toHaveBeenCalledWith(31);
+    const payloadCall = cryptoMocks.encryptOfflinePayloadRequired.mock.calls.find(
+      ([, context]) => context === 'sync queue visit_record payload',
+    );
+    expect(payloadCall).toBeDefined();
+    expect(JSON.parse(payloadCall![0] as string)).toMatchObject({
+      schedule_id: 'schedule-1',
+      soap_subjective: '新しい入力',
+    });
+  });
+
+  it('uses id as the deterministic newest tie-breaker for same-timestamp visit drafts', async () => {
+    const sameCreatedAt = new Date('2026-04-01T00:00:00.000Z');
+    dbMocks.and.mockImplementationOnce((predicate: (item: unknown) => boolean) => ({
+      toArray: async () =>
+        [
+          {
+            id: 31,
+            entityType: 'visit_record',
+            payload: 'encv1:older-id',
+            scope_id: 'schedule-1',
+            createdAt: sameCreatedAt,
+            retryCount: 1,
+          },
+          {
+            id: 32,
+            entityType: 'visit_record',
+            payload: 'encv1:newer-id',
+            scope_id: 'schedule-1',
+            createdAt: sameCreatedAt,
+            retryCount: 2,
+          },
+        ].filter(predicate),
+    }));
+
+    await enqueueForSync('visit_record', {
+      schedule_id: 'schedule-1',
+      soap_subjective: '同一ミリ秒の最新入力',
+    });
+
+    expect(dbMocks.update).toHaveBeenCalledWith(
+      32,
+      expect.objectContaining({
+        entityType: 'visit_record',
+        scope_id: 'schedule-1',
+        retryCount: 0,
+        lastError: undefined,
+      }),
+    );
+    expect(dbMocks.delete).toHaveBeenCalledWith(31);
+  });
+
+  it('preserves scoped server conflict rows and adds a fresh pending row beside them', async () => {
+    dbMocks.and.mockImplementationOnce((predicate: (item: unknown) => boolean) => ({
+      toArray: async () =>
+        [
+          {
+            id: 41,
+            entityType: 'visit_record',
+            payload: 'encv1:conflict-local',
+            conflict_payload: 'encv1:conflict-snapshot',
+            scope_id: 'schedule-1',
+            createdAt: new Date('2026-04-01T00:00:00.000Z'),
+            retryCount: 3,
+            lastError: 'HTTP 409 conflict',
+            conflict_state: 'server_conflict',
+          },
+        ].filter(predicate),
+    }));
+
+    await enqueueForSync('visit_record', {
+      schedule_id: 'schedule-1',
+      soap_subjective: '競合とは別の新しい下書き',
+    });
+
+    expect(dbMocks.update).not.toHaveBeenCalled();
+    expect(dbMocks.delete).not.toHaveBeenCalled();
+    expect(dbMocks.add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityType: 'visit_record',
+        payload: 'encv1:sync queue visit_record payload:sealed',
+        scope_id: 'schedule-1',
+        retryCount: 0,
+      }),
+    );
+  });
+
+  it('keeps residual medication enqueue append-only even when patient_id is present', async () => {
+    await enqueueForSync('residual_medication', {
+      patient_id: 'patient-1',
+      drug_name: '薬A',
+      remaining_quantity: 10,
+    });
+    await enqueueForSync('residual_medication', {
+      patient_id: 'patient-1',
+      drug_name: '薬B',
+      remaining_quantity: 3,
+    });
+
+    expect(dbMocks.where).not.toHaveBeenCalledWith('scope_id');
+    expect(dbMocks.transaction).not.toHaveBeenCalled();
+    expect(dbMocks.update).not.toHaveBeenCalled();
+    expect(dbMocks.delete).not.toHaveBeenCalled();
+    expect(dbMocks.add).toHaveBeenCalledTimes(2);
+    expect(dbMocks.add).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        entityType: 'residual_medication',
+        scope_id: 'patient-1',
+        payload: 'encv1:sync queue residual_medication payload:sealed',
+      }),
+    );
+    expect(dbMocks.add).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        entityType: 'residual_medication',
+        scope_id: 'patient-1',
+        payload: 'encv1:sync queue residual_medication payload:sealed',
+      }),
+    );
+  });
+
+  it('keeps append-only behavior when a sync payload has no stable scope id', async () => {
+    await enqueueForSync('residual_medication', {
+      note: 'scope の無い残薬メモ',
+    });
+
+    expect(dbMocks.where).not.toHaveBeenCalledWith('scope_id');
+    expect(dbMocks.transaction).not.toHaveBeenCalled();
+    expect(dbMocks.add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityType: 'residual_medication',
+        scope_id: undefined,
+      }),
+    );
   });
 
   it('marks malformed decrypted sync payloads failed without sending them to the server', async () => {
@@ -189,6 +412,44 @@ describe('sync-engine PHI persistence', () => {
       conflict_state: undefined,
       conflict_payload: undefined,
     });
+  });
+
+  it('stores a generic lastError instead of raw unexpected sync error text', async () => {
+    dbMocks.toArray.mockResolvedValue([
+      {
+        id: 18,
+        entityType: 'visit_record',
+        payload: 'encv1:valid-sync-payload',
+        scope_id: 'schedule-1',
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+        retryCount: 0,
+      },
+    ]);
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:valid-sync-payload') {
+          return JSON.stringify({ schedule_id: 'schedule-1', soap_subjective: '眠気あり' });
+        }
+        return value ?? null;
+      },
+    );
+    vi.mocked(fetch).mockRejectedValue(
+      new Error('network failed patient=患者A db_password=value token=secret'),
+    );
+
+    await expect(processSyncQueue({ orgId: 'org-1', endpoints: {} })).resolves.toEqual({
+      synced: 0,
+      failed: 1,
+    });
+
+    expect(dbMocks.update).toHaveBeenCalledWith(18, {
+      retryCount: 1,
+      lastError: '同期に失敗しました',
+    });
+    const persisted = JSON.stringify(dbMocks.update.mock.calls);
+    expect(persisted).not.toContain('patient=患者A');
+    expect(persisted).not.toContain('db_password=value');
+    expect(persisted).not.toContain('token=secret');
   });
 
   it('single-flights concurrent sync queue processing for the same org and endpoints', async () => {
@@ -310,6 +571,37 @@ describe('sync-engine PHI persistence', () => {
       'online',
       addEventListenerMock.mock.calls[0]![1],
     );
+  });
+
+  it('logs a safe automatic sync failure message without raw error text', async () => {
+    const addEventListenerMock = vi.fn();
+    const removeEventListenerMock = vi.fn();
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.stubGlobal('window', {
+      addEventListener: addEventListenerMock,
+      removeEventListener: removeEventListenerMock,
+    });
+    dbMocks.where.mockImplementation(() => {
+      throw new Error('sync db failed patient=患者A db_password=value token=secret');
+    });
+
+    const unsubscribe = setupAutoSync({ orgId: 'org-safe-log', endpoints: {} });
+    const handler = addEventListenerMock.mock.calls[0]?.[1] as (() => void) | undefined;
+    expect(handler).toBeDefined();
+    handler?.();
+
+    await waitForAsyncAssertion(() => {
+      expect(consoleWarn).toHaveBeenCalledWith(
+        '[offline-sync] automatic sync failed',
+        '同期に失敗しました',
+      );
+    });
+    const logged = JSON.stringify(consoleWarn.mock.calls);
+    expect(logged).not.toContain('patient=患者A');
+    expect(logged).not.toContain('db_password=value');
+    expect(logged).not.toContain('token=secret');
+
+    unsubscribe();
   });
 
   it('deletes the scoped visit draft only when the completed queue item is still current', async () => {

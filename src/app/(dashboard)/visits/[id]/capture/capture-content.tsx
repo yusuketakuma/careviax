@@ -129,9 +129,14 @@ export function EvidenceCaptureContent({
 
   const persistCapturedImage = useCallback(
     async (blob: Blob, mimeType: string) => {
+      if (!orgId) {
+        toast.error('組織情報を取得できませんでした。再読み込みしてから撮影してください。');
+        return;
+      }
       const capturedAt = new Date();
       const dataUrl = await readBlobAsDataUrl(blob);
       await saveEvidenceDraft({
+        orgId,
         scheduleId: visitId,
         patientId: patientContext?.patientId ?? undefined,
         category: selectedCategory,
@@ -145,7 +150,7 @@ export function EvidenceCaptureContent({
       toast.success('端末に保存しました(通信がなくても残ります)');
 
       // オンラインなら即時送信を試みる(訪問記録が未作成の間は未同期のまま保留)
-      if (orgId && typeof navigator !== 'undefined' && navigator.onLine) {
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
         syncEvidenceDrafts({ orgId })
           .then((result) => {
             if (result.synced > 0) toast.success(`写真を${result.synced}枚送信しました`);

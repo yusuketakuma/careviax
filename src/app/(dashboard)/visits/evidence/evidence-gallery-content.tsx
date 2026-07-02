@@ -5,7 +5,11 @@ import { useQuery } from '@tanstack/react-query';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
-import { listEvidenceDraftSummaries } from '@/lib/offline/evidence-drafts';
+import {
+  listEvidenceDraftSummaries,
+  resetFailedEvidenceDraftRetries,
+  syncEvidenceDrafts,
+} from '@/lib/offline/evidence-drafts';
 import { cn } from '@/lib/utils';
 import {
   EVIDENCE_CATEGORIES,
@@ -62,11 +66,28 @@ const SYNC_BADGE_LABELS: Record<EvidenceGalleryItem['syncState'], string> = {
   synced: '同期済み',
 };
 
+type EvidenceSyncResult = Awaited<ReturnType<typeof syncEvidenceDrafts>>;
+
+function mergeEvidenceSyncResults(...results: EvidenceSyncResult[]): EvidenceSyncResult {
+  return results.reduce<EvidenceSyncResult>(
+    (merged, result) => ({
+      synced: merged.synced + result.synced,
+      skipped: merged.skipped + result.skipped,
+      failed: merged.failed + result.failed,
+    }),
+    { synced: 0, skipped: 0, failed: 0 },
+  );
+}
+
 export function EvidenceGalleryContent() {
   const orgId = useOrgId();
   const [selectedCategory, setSelectedCategory] =
     React.useState<EvidenceCategoryId>('residual_photo');
   const [demoItems, setDemoItems] = React.useState<EvidenceGalleryItem[] | null>(null);
+  const [isRetryingOfflineDrafts, setIsRetryingOfflineDrafts] = React.useState(false);
+  const [offlineDraftRetryMessage, setOfflineDraftRetryMessage] = React.useState<string | null>(
+    null,
+  );
 
   const {
     data: serverItems,
@@ -86,8 +107,10 @@ export function EvidenceGalleryContent() {
     isError: offlineDraftsError,
     refetch: refetchOfflineDrafts,
   } = useQuery({
-    queryKey: ['visit-evidence-offline-drafts'],
-    queryFn: async () => buildEvidenceItemsFromOfflineDrafts(await listEvidenceDraftSummaries()),
+    queryKey: ['visit-evidence-offline-drafts', orgId],
+    queryFn: async () =>
+      orgId ? buildEvidenceItemsFromOfflineDrafts(await listEvidenceDraftSummaries(orgId)) : [],
+    enabled: !!orgId,
   });
 
   // 撮影・動作確認用のデモ注入(dev 限定、p0_34 の window フックの作法)。
@@ -119,6 +142,37 @@ export function EvidenceGalleryContent() {
     () => summarizeEvidenceGallery(items, selectedCategory),
     [items, selectedCategory],
   );
+  const canRetryOfflineDrafts = !!orgId && (summary.pendingCount > 0 || offlineDraftsError);
+
+  const retryOfflineDraftSync = React.useCallback(async () => {
+    if (!orgId || isRetryingOfflineDrafts) return;
+    setIsRetryingOfflineDrafts(true);
+    setOfflineDraftRetryMessage(null);
+    try {
+      const resetCount = await resetFailedEvidenceDraftRetries({ orgId });
+      const firstSyncResult = await syncEvidenceDrafts({ orgId });
+      const result =
+        resetCount > 0
+          ? mergeEvidenceSyncResults(firstSyncResult, await syncEvidenceDrafts({ orgId }))
+          : firstSyncResult;
+      await Promise.all([refetchOfflineDrafts(), refetch()]);
+      if (result.failed > 0) {
+        setOfflineDraftRetryMessage(
+          `未同期写真を再試行しました。送信 ${result.synced}件 / 失敗 ${result.failed}件。`,
+        );
+      } else if (result.synced > 0 || resetCount > 0) {
+        setOfflineDraftRetryMessage(`未同期写真を再試行しました。送信 ${result.synced}件。`);
+      } else {
+        setOfflineDraftRetryMessage('再試行が必要な未同期写真はありません。');
+      }
+    } catch {
+      setOfflineDraftRetryMessage(
+        '未同期写真の再試行に失敗しました。通信状態を確認してからもう一度実行してください。',
+      );
+    } finally {
+      setIsRetryingOfflineDrafts(false);
+    }
+  }, [isRetryingOfflineDrafts, orgId, refetch, refetchOfflineDrafts]);
 
   const selectedCategoryLabel =
     EVIDENCE_CATEGORIES.find((category) => category.id === selectedCategory)?.label ?? '証跡';
@@ -143,9 +197,10 @@ export function EvidenceGalleryContent() {
             variant="outline"
             size="sm"
             className="min-h-[44px] border-state-confirm/40 bg-card text-state-confirm hover:bg-state-confirm/15 sm:min-h-9"
-            onClick={() => void refetchOfflineDrafts()}
+            disabled={!orgId || isRetryingOfflineDrafts}
+            onClick={() => void retryOfflineDraftSync()}
           >
-            再試行
+            {isRetryingOfflineDrafts ? '送信中...' : '再試行'}
           </Button>
         </div>
       ) : null}
@@ -182,6 +237,27 @@ export function EvidenceGalleryContent() {
             </div>
           </div>
         </div>
+        {summary.pendingCount > 0 || offlineDraftRetryMessage ? (
+          <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border/60 pt-4">
+            {summary.pendingCount > 0 ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="min-h-11"
+                disabled={!canRetryOfflineDrafts || isRetryingOfflineDrafts}
+                onClick={() => void retryOfflineDraftSync()}
+              >
+                {isRetryingOfflineDrafts ? '送信中...' : '未同期写真を再試行'}
+              </Button>
+            ) : null}
+            {offlineDraftRetryMessage ? (
+              <p role="status" className="text-sm leading-6 text-muted-foreground">
+                {offlineDraftRetryMessage}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       <div className="grid items-start gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">

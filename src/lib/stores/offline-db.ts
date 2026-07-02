@@ -76,6 +76,8 @@ export type OfflinePrescriptionDraft = {
 /** p0_48 モバイル証跡撮影の写真ドラフト(通信がなくても端末に保存→復帰時に自動送信) */
 export type OfflineEvidenceDraft = {
   id?: number;
+  /** Organization scope for offline retry safety; legacy rows may be absent and are fail-closed. */
+  orgId?: string;
   /** 撮影画面を開いた訪問(visit-schedule)ID */
   scheduleId: string;
   patientId?: string;
