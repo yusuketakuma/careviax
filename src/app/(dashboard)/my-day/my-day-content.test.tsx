@@ -343,6 +343,46 @@ describe('MyDayContent', () => {
     }
   });
 
+  it('never recommends a completed visit as the next step when only completed visits remain', () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'my-day-visits') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'visit_done',
+                case_: { patient: { name: '完了太郎' } },
+                visit_type: 'regular',
+                time_window_start: '2026-04-10T09:00:00.000Z',
+                time_window_end: '2026-04-10T10:00:00.000Z',
+                schedule_status: 'completed',
+                preparation: { prepared_at: '2026-04-10T08:00:00.000Z' },
+              },
+            ],
+          },
+          isLoading: false,
+        };
+      }
+      if (queryKey[0] === 'my-day-tasks') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      if (queryKey[0] === 'dashboard') {
+        return { data: emptyCockpit, isLoading: false };
+      }
+      if (queryKey[0] === 'my-day-status-changes') {
+        return { data: [], isLoading: false };
+      }
+      throw new Error(`Unexpected query key: ${String(queryKey[0])}`);
+    });
+
+    render(<MyDayContent />);
+
+    // 完了訪問は Scroll 折りたたみに退避され、「次の訪問」に推薦されない。
+    expect(screen.queryByText(/完了太郎さんの訪問を確認/)).toBeNull();
+    // 未完了の訪問・タスクが無いので落ち着き状態の次の一手にフォールバックする。
+    expect(screen.getByText('今日の確認は落ち着いています')).toBeTruthy();
+  });
+
   it('shows section errors instead of empty states when assigned visits fail to load', () => {
     useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
       if (queryKey[0] === 'my-day-visits') {

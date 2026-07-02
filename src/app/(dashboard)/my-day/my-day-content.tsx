@@ -280,7 +280,9 @@ export function MyDayContent({
   const totalPipeline = pipeline.reduce((s, p) => s + p.count, 0);
   const nextTask = filteredPendingTasks[0] ?? pendingTasks[0] ?? null;
   const nextTaskPresentation = nextTask ? describeOperationalTask(nextTask) : null;
-  const nextVisit = filteredVisits[0] ?? todayVisits[0] ?? null;
+  // フォールバックは activeVisits に限定する。todayVisits は完了訪問を含み、
+  // 完了訪問は Pinned/Scroll の折りたたみへ退避済みなので「次の訪問」に推薦してはならない。
+  const nextVisit = filteredVisits[0] ?? activeVisits[0] ?? null;
   const nextVisitWindowLabel = nextVisit
     ? timeLabel(nextVisit.time_window_start, nextVisit.time_window_end)
     : null;
