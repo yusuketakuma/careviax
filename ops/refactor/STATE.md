@@ -371,7 +371,7 @@ re-audits are complete.
 ## Latest Slice - 2026-07-02 13:33 JST
 
 - Change ID: `RR-FE-20260702-F02-data-table-source-row-index`.
-- Status: implemented and validated, pending commit at time of ledger update.
+- Status: implemented, validated, and committed as `574a91fb`.
 - Files changed:
   - `src/components/ui/data-table.tsx`
   - `src/components/ui/data-table.test.tsx`

@@ -1050,6 +1050,7 @@ User-directed program after the org-header sweep. Method: ultracode 51-screen re
   filter coverage and test hygiene suggestions were applied.
 - gbrain writeback slug:
   `projects/careviax/failures/2026-07-02/data-table-sorted-filtered-row-index`.
-- Next action: commit this DataTable slice and ledgers with explicit paths,
-  notify via agmsg if available, then continue the next highest-value
-  ULTRACODE/refactor item.
+- Commit:
+  `574a91fb` (`fix(data-table): preserve source row identity after sorting`).
+- Next action: notify via agmsg if available, then continue the next
+  highest-value ULTRACODE/refactor item.
