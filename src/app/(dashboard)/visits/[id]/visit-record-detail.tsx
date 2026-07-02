@@ -993,16 +993,17 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       {/* SOAP — 2-column on tablet */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="space-y-4">
+          {/* SOAP 識別色は専用トークン(--soap-*)を使う(SSOT: 生 Tailwind 直書き禁止、soap-step-wizard と統一)。 */}
           <SoapSection
             icon={MessageSquare}
             label="S — 主観情報"
-            colorClass="text-blue-500"
+            colorClass="text-soap-s"
             content={record.soap_subjective}
           />
           <SoapSection
             icon={Eye}
             label="O — 客観情報"
-            colorClass="text-green-500"
+            colorClass="text-soap-o"
             content={record.soap_objective}
           />
         </div>
@@ -1010,13 +1011,13 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
           <SoapSection
             icon={Brain}
             label="A — 薬学的評価"
-            colorClass="text-purple-500"
+            colorClass="text-soap-a"
             content={record.soap_assessment}
           />
           <SoapSection
             icon={ClipboardList}
             label="P — 計画・介入"
-            colorClass="text-orange-500"
+            colorClass="text-soap-p"
             content={record.soap_plan}
           />
         </div>

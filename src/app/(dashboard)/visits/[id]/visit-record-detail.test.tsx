@@ -186,6 +186,19 @@ describe('VisitRecordDetail fetch-error handling (no false-empty workflow)', () 
     expect(screen.queryByText(/データの一部を取得できませんでした/)).toBeNull();
   });
 
+  it('uses soap identity tokens instead of raw Tailwind colors (FEUX-4)', () => {
+    setupQueries();
+    const { container } = render(<VisitRecordDetail recordId="record_1" />);
+
+    // SOAP S/O/A/P は専用トークン(--soap-*)で識別する(SSOT: 生 Tailwind 直書き禁止)。
+    for (const token of ['text-soap-s', 'text-soap-o', 'text-soap-a', 'text-soap-p']) {
+      expect(container.querySelector(`.${token}`)).toBeTruthy();
+    }
+    for (const raw of ['text-blue-500', 'text-green-500', 'text-purple-500', 'text-orange-500']) {
+      expect(container.querySelector(`.${raw}`)).toBeNull();
+    }
+  });
+
   it('surfaces a warning and refetches every failed secondary query on retry', () => {
     const { refetchSpies } = setupQueries({
       careReportsError: true,
