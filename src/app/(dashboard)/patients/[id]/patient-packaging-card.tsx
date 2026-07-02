@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/loading';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -162,7 +163,10 @@ export function PatientPackagingCard({ patientId, orgId }: { patientId: string; 
         ) : null}
 
         {isLoading ? (
-          <div className="h-28 animate-pulse rounded-lg bg-muted" />
+          <div role="status" aria-label="調剤・包装情報を読み込み中">
+            <Skeleton className="h-28 rounded-lg" />
+            <span className="sr-only">調剤・包装情報を読み込み中...</span>
+          </div>
         ) : isError ? (
           <ErrorState
             variant="server"

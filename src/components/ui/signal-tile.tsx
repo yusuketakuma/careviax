@@ -2,6 +2,7 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { StateBadge } from '@/components/ui/state-badge';
 import { STATUS_TOKENS } from '@/lib/constants/status-tokens';
+import { Skeleton } from '@/components/ui/loading';
 
 /**
  * 重大度。呼び出し側が「値 × 閾値」で都度算出して渡す。
@@ -83,11 +84,7 @@ export function SignalTile({
       </div>
       {loading ? (
         <div className="mt-2">
-          <div
-            aria-hidden
-            className="h-7 w-20 animate-pulse rounded bg-muted"
-            data-slot="signal-skeleton"
-          />
+          <Skeleton className="h-7 w-20" data-slot="signal-skeleton" />
           <span role="status" className="sr-only">
             読み込み中
           </span>

@@ -1,9 +1,12 @@
+import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';
 
 // Skeleton for list/table loading states
-export function Skeleton({ className }: { className?: string }) {
+// rest props(data-slot 等)を透過する。aria-hidden は装飾契約として常に固定(上書き不可)。
+export function Skeleton({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
+      {...props}
       className={cn('animate-pulse rounded bg-muted motion-reduce:animate-none', className)}
       aria-hidden="true"
     />

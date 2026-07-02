@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { AlertTriangle, AlertCircle, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/loading';
 
 export type CdsAlert = {
   type: string;
@@ -217,8 +218,8 @@ export function CdsAlertPanel({ alerts, isLoading, isUnavailable, className }: A
     return (
       <div className={cn('space-y-2', className)} role="status" aria-live="polite">
         <span className="sr-only">処方安全アラートを確認中です</span>
-        <div className="h-10 animate-pulse rounded-md bg-muted" />
-        <div className="h-10 animate-pulse rounded-md bg-muted" />
+        <Skeleton className="h-10 rounded-md" />
+        <Skeleton className="h-10 rounded-md" />
       </div>
     );
   }

@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/loading';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -413,7 +414,10 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
       </CardHeader>
       <CardContent className="space-y-4">
         {labsQuery.isLoading ? (
-          <div className="h-32 animate-pulse rounded-lg bg-muted" />
+          <div role="status" aria-label="検査値を読み込み中">
+            <Skeleton className="h-32 rounded-lg" />
+            <span className="sr-only">検査値を読み込み中...</span>
+          </div>
         ) : labsQuery.error instanceof Error ? (
           <p role="status" aria-live="polite" className="text-sm text-destructive">
             {labsQuery.error.message}
