@@ -36,7 +36,9 @@ import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { generateCareReportFromVisit } from '@/lib/reports/generate-from-visit-client';
-import { OUTCOME_LABELS, OUTCOME_VARIANTS } from '@/lib/constants/visit';
+import { OUTCOME_LABELS } from '@/lib/constants/visit';
+import { VISIT_OUTCOME_ROLE } from '@/lib/constants/status-labels';
+import { StateBadge } from '@/components/ui/state-badge';
 import type { VisitGeoLog } from '@/lib/visit-location';
 import {
   VisitReportReadinessPanel,
@@ -197,6 +199,20 @@ function SoapSection({
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * 訪問結果バッジ。raw shadcn variant でなく 6軸ロール(VISIT_OUTCOME_ROLE, SSOT 7.3/§10)で描く。
+ * completed=done / cancelled=blocked / 延期・再訪・課題あり=confirm / 配達のみ=info。
+ * 未知値は中立 Badge にフォールバック(状態色を捏造しない)。
+ */
+function VisitOutcomeBadge({ status }: { status: string }) {
+  const role = VISIT_OUTCOME_ROLE[status];
+  const label = OUTCOME_LABELS[status] ?? status;
+  if (!role || role === 'neutral') {
+    return <Badge variant="outline">{label}</Badge>;
+  }
+  return <StateBadge role={role}>{label}</StateBadge>;
 }
 
 function formatFileSize(sizeBytes: number) {
@@ -949,14 +965,13 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   訪問サマリー
                 </p>
-                <p className="mt-1 text-xl font-bold tracking-tight text-foreground">
+                {/* 最上部の主見出しは見出し要素にする(SSOT 4.5/8.9)。 */}
+                <h2 className="mt-1 text-xl font-bold tracking-tight text-foreground">
                   {visitDateFormatted} 訪問記録
-                </p>
+                </h2>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={OUTCOME_VARIANTS[record.outcome_status] ?? 'outline'}>
-                  {OUTCOME_LABELS[record.outcome_status] ?? record.outcome_status}
-                </Badge>
+                <VisitOutcomeBadge status={record.outcome_status} />
                 {record.schedule ? (
                   <Badge variant="outline">{record.schedule.visit_type}</Badge>
                 ) : null}
@@ -1257,17 +1272,23 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
                       className={`border-b border-border last:border-0 ${i % 2 === 1 ? 'bg-muted/20' : ''}`}
                     >
                       <td className="px-3 py-2">{med.drug_name}</td>
-                      <td className="px-3 py-2 text-right text-muted-foreground">
+                      <td className="px-3 py-2 text-right text-muted-foreground tabular-nums">
                         {med.prescribed_quantity ?? '—'}
                       </td>
-                      <td className="px-3 py-2 text-right">{med.remaining_quantity}</td>
-                      <td className="px-3 py-2 text-right">
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {med.remaining_quantity}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
                         {med.excess_days !== null ? `${med.excess_days}日` : '—'}
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex flex-wrap gap-1">
                           {med.is_prohibited_reduction && (
-                            <Badge variant="destructive" className="text-xs">
+                            /* 臨床ハザード属性は raw destructive でなく tag-hazard トークン(SSOT 7.3)。 */
+                            <Badge
+                              variant="outline"
+                              className="border-tag-hazard/30 bg-tag-hazard/10 text-xs text-tag-hazard"
+                            >
                               減数禁止
                             </Badge>
                           )}

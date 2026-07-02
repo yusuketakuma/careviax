@@ -151,6 +151,7 @@ type QueryStubOptions = {
   headerSummary?: HeaderSummaryStub | null;
   headerSummaryError?: boolean;
   headerSummaryLoading?: boolean;
+  residuals?: Array<Record<string, unknown>>;
   billingBlockers?: Array<{ key: string; reason: string; severity?: 'high' | 'normal' }>;
   record?: typeof RECORD;
 };
@@ -236,7 +237,7 @@ function setupQueries(options: QueryStubOptions = {}) {
     }
     if (key === 'residual-medications') {
       return {
-        data: options.residualsError ? undefined : [],
+        data: options.residualsError ? undefined : (options.residuals ?? []),
         isError: Boolean(options.residualsError),
         refetch: refetchSpies['residual-medications'],
       };
@@ -280,6 +281,35 @@ describe('VisitRecordDetail fetch-error handling (no false-empty workflow)', () 
     expect(banner.textContent).toContain('「なし」とは判断せず');
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(refetchSpies['patient-header-summary']).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders outcome via 6-axis StateBadge and hazard-token 減数禁止 with tabular numerals', () => {
+    setupQueries({
+      residuals: [
+        {
+          id: 'residual_1',
+          drug_name: 'アムロジピン',
+          prescribed_quantity: 28,
+          remaining_quantity: 10,
+          excess_days: 3,
+          is_prohibited_reduction: true,
+          is_reduction_target: false,
+        },
+      ],
+    });
+    render(<VisitRecordDetail recordId="record_1" />);
+
+    // outcome(completed) は raw variant でなく StateBadge role=done で描く(SSOT 7.3/§10)。
+    const outcomeBadge = screen.getByText('完了').closest('[data-role]');
+    expect(outcomeBadge?.getAttribute('data-role')).toBe('done');
+    // 減数禁止は raw destructive でなく tag-hazard トークン。
+    const prohibited = screen.getByText('減数禁止');
+    expect(prohibited.className).toContain('text-tag-hazard');
+    expect(prohibited.className).not.toContain('text-destructive');
+    // 数値列は tabular-nums(SSOT 3.8)。
+    expect(screen.getByText('10').className).toContain('tabular-nums');
+    // 最上部の主見出しは h2(SSOT 4.5)。
+    expect(screen.getByRole('heading', { level: 2, name: /訪問記録$/ })).toBeTruthy();
   });
 
   it('reserves the header area with a labelled skeleton while loading (no false-empty)', () => {
