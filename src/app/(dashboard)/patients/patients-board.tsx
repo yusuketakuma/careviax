@@ -26,9 +26,9 @@ import {
   type NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
 import {
-  getHandlingTagBadgeClass,
-  getHandlingTagLabel,
-} from '@/components/features/workspace/safety-board';
+  SafetyTagBadge,
+  selectVisibleSafetyTags,
+} from '@/components/features/patients/safety-tag-badge';
 import { ProcessProgressDots } from '@/components/features/workspace/process-chips';
 import { readApiJson } from '@/lib/api/client-json';
 import { PROCESS_STEPS_9 } from '@/lib/prescription/cycle-workspace';
@@ -171,14 +171,6 @@ const STATUS_TONE_CLASSES: Record<PatientStatusTone, string> = {
   neutral: 'text-foreground/80',
 };
 
-/** 患者属性タグ(腎機能/嚥下/アレルギー)。要注意の患者属性 → confirm トークン(橙)。 */
-const PATIENT_SAFETY_TAG_CLASS = 'border-state-confirm/45 bg-state-confirm/15 text-foreground';
-const PATIENT_SAFETY_TAGS: Record<string, { label: string; className: string }> = {
-  renal: { label: '腎機能', className: PATIENT_SAFETY_TAG_CLASS },
-  swallowing: { label: '嚥下', className: PATIENT_SAFETY_TAG_CLASS },
-  allergy: { label: 'アレルギー', className: PATIENT_SAFETY_TAG_CLASS },
-};
-
 /**
  * 情報基盤の整備状況コールアウト → ready=done(緑) / needs_confirmation=confirm(橙) / missing=blocked(赤)。
  * 全面塗りは引き算し、状態色は左ボーダー(ACCENT) + ラベル(TEXT)のみに限定する
@@ -202,39 +194,8 @@ const FOUNDATION_STATUS_TEXT: Record<
   missing: 'text-state-blocked',
 };
 
-const SAFETY_TAG_DISPLAY_LIMIT = 3;
-
-/**
- * 重大安全タグ。アレルギー(アナフィラキシー)・麻薬(規制/取扱厳重)は表示上限に関わらず
- * 必ず表示し、+N 折り畳みで隠さない(医療安全: 重大タグの埋没防止)。
- * safety_tags は server 側 SAFETY_TAG_ORDER で麻薬→…→アレルギーの順に並ぶため、
- * 単純な slice(0, LIMIT) だと末尾のアレルギーが折り畳まれ得る。
- */
-const CRITICAL_SAFETY_TAGS = new Set(['allergy', 'narcotic']);
-
-/**
- * 表示する安全タグを選ぶ。重大タグは常に含め、残り枠を非重大タグで埋める。
- * 元の並び順(safety_tags の順)は保持する。
- */
-export function selectVisibleSafetyTags(safetyTags: string[]): {
-  tags: string[];
-  hiddenCount: number;
-} {
-  const criticalCount = safetyTags.filter((tag) => CRITICAL_SAFETY_TAGS.has(tag)).length;
-  const budget = Math.max(SAFETY_TAG_DISPLAY_LIMIT, criticalCount);
-  const visible = new Set<string>();
-  // まず重大タグを全て確保。
-  for (const tag of safetyTags) {
-    if (CRITICAL_SAFETY_TAGS.has(tag)) visible.add(tag);
-  }
-  // 残り枠を非重大タグで埋める。
-  for (const tag of safetyTags) {
-    if (visible.size >= budget) break;
-    visible.add(tag);
-  }
-  const tags = safetyTags.filter((tag) => visible.has(tag));
-  return { tags, hiddenCount: safetyTags.length - tags.length };
-}
+// 安全タグの選定・バッジは共通実装へ集約(FEBRUSH A5)。テスト互換のため再エクスポートする。
+export { selectVisibleSafetyTags } from '@/components/features/patients/safety-tag-badge';
 
 type SummaryTile = {
   key: string;
@@ -291,19 +252,6 @@ export function formatNextVisitLabel(card: PatientBoardCard, now: Date): string 
     date.getDate() === now.getDate();
   const dateLabel = isToday ? '本日' : format(date, 'M/d(EEE)', { locale: ja });
   return card.next_visit_time ? `${dateLabel} ${card.next_visit_time}` : dateLabel;
-}
-
-function SafetyTagBadge({ tag }: { tag: string }) {
-  const patientTag = PATIENT_SAFETY_TAGS[tag];
-  const className = patientTag?.className ?? getHandlingTagBadgeClass(tag);
-  const label = patientTag?.label ?? getHandlingTagLabel(tag);
-  return (
-    <span
-      className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-xs', className)}
-    >
-      {label}
-    </span>
-  );
 }
 
 function buildSummaryTiles(data: PatientBoardResponse, todayKey: string): SummaryTile[] {

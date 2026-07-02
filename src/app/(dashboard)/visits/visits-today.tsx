@@ -13,10 +13,7 @@ import {
   type EvidenceItem,
   type NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
-import {
-  getHandlingTagBadgeClass,
-  getHandlingTagLabel,
-} from '@/components/features/workspace/safety-board';
+import { SafetyTagBadge } from '@/components/features/patients/safety-tag-badge';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
@@ -66,15 +63,6 @@ const NOTE_TONE_CLASSES = {
   warning: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
   info: 'border-tag-info/30 bg-tag-info/10 text-tag-info',
 } as const;
-
-/** 患者属性タグ(アレルギー/嚥下)。取扱タグは SafetyBoard の配色を再利用。 */
-const PATIENT_SAFETY_TAGS: Record<string, { label: string; className: string }> = {
-  allergy: {
-    label: 'アレルギー',
-    className: 'border-tag-hazard/30 bg-tag-hazard/10 text-tag-hazard',
-  },
-  swallowing: { label: '嚥下', className: 'border-tag-hazard/30 bg-tag-hazard/10 text-tag-hazard' },
-};
 
 /** 経過分 → 「30分」「2時間」「1日」(止まっている理由の経過時間)。 */
 const formatAgeLabel = formatElapsedLabel;
@@ -151,20 +139,9 @@ function VisitPrepCardItem({ card }: { card: VisitPreparationCard }) {
 
       {card.safety_tags.length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1">
-          {card.safety_tags.map((tag) => {
-            const patientTag = PATIENT_SAFETY_TAGS[tag];
-            return (
-              <span
-                key={tag}
-                className={cn(
-                  'inline-flex items-center rounded-full border px-2 py-0.5 text-xs',
-                  patientTag?.className ?? getHandlingTagBadgeClass(tag),
-                )}
-              >
-                {patientTag?.label ?? getHandlingTagLabel(tag)}
-              </span>
-            );
-          })}
+          {card.safety_tags.map((tag) => (
+            <SafetyTagBadge key={tag} tag={tag} />
+          ))}
         </div>
       ) : null}
 
