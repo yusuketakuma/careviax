@@ -263,6 +263,61 @@ describe('MyDayContent', () => {
     expect(screen.getAllByText('担当者情報を確認中').length).toBeGreaterThan(0);
   });
 
+  it('folds completed visits into a collapsed scroll zone and keeps the primary list active-only', () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'my-day-visits') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'visit_active',
+                case_: { patient: { name: '山田花子' } },
+                visit_type: 'regular',
+                time_window_start: '2026-04-10T09:00:00.000Z',
+                time_window_end: '2026-04-10T10:00:00.000Z',
+                schedule_status: 'planned',
+                preparation: null,
+              },
+              {
+                id: 'visit_done',
+                case_: { patient: { name: '完了太郎' } },
+                visit_type: 'regular',
+                time_window_start: '2026-04-10T08:00:00.000Z',
+                time_window_end: '2026-04-10T08:30:00.000Z',
+                schedule_status: 'completed',
+                preparation: { prepared_at: '2026-04-10T07:00:00.000Z' },
+              },
+            ],
+          },
+          isLoading: false,
+          isError: false,
+        };
+      }
+      if (queryKey[0] === 'my-day-tasks') {
+        return { data: { data: [] }, isLoading: false, isError: false };
+      }
+      if (queryKey[0] === 'dashboard') {
+        return { data: emptyCockpit, isLoading: false, isError: false };
+      }
+      if (queryKey[0] === 'my-day-status-changes') {
+        return { data: [], isLoading: false, isError: false };
+      }
+      throw new Error(`Unexpected query key: ${String(queryKey[0])}`);
+    });
+
+    render(<MyDayContent />);
+
+    // Pinned zone: 対象日が可視化される。
+    expect(screen.getByText(/^本日 /)).toBeTruthy();
+    // 完了訪問は折りたたみへ格納され、Primary の行リストには出ない。
+    expect(screen.getByText('完了した訪問 1件')).toBeTruthy();
+    const fold = screen.getByText('完了した訪問 1件').closest('details');
+    expect(fold?.open).toBeFalsy();
+    expect(screen.getByText('完了太郎').closest('details')).toBe(fold);
+    // 未完了訪問は通常リスト(details 外)に出る。
+    expect(screen.getByText('山田花子').closest('details')).toBeNull();
+  });
+
   it('shows section errors instead of empty states when assigned visits fail to load', () => {
     useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
       if (queryKey[0] === 'my-day-visits') {

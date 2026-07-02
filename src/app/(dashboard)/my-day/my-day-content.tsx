@@ -35,6 +35,8 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { hasPermission } from '@/lib/auth/permission-matrix';
+import { format } from 'date-fns';
+import { ja } from 'date-fns/locale';
 import { japanDateKey } from '@/lib/utils/date-boundary';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { STATUS_ICON_CONFIG } from '@/lib/patient/status-icon';
@@ -165,6 +167,11 @@ export function MyDayContent({
   const viewerRole = useAuthStore((s) => s.currentUser.role);
   const isUserPending = !!orgId && !userId;
   const today = useMemo(() => japanDateKey(), []);
+  // Pinned zone の対象日表示(JST基準、SSOT 2.8 Japan date basis)。
+  const todayLabel = useMemo(
+    () => format(new Date(`${today}T00:00:00+09:00`), 'M月d日(EEE)', { locale: ja }),
+    [today],
+  );
   const canViewStatusChanges = viewerRole ? hasPermission(viewerRole, 'canAdmin') : false;
 
   // My visits today
@@ -237,6 +244,9 @@ export function MyDayContent({
   });
 
   const todayVisits = visitsQuery.data?.data ?? [];
+  // 完了訪問は Scroll zone の折りたたみへ(SSOT 4.1: Primary を汚染しない)。
+  const completedVisits = todayVisits.filter((v) => v.schedule_status === 'completed');
+  const activeVisits = todayVisits.filter((v) => v.schedule_status !== 'completed');
   const pendingTasks = (tasksQuery.data?.data ?? []).filter(
     (t) => t.status === 'pending' || t.status === 'in_progress',
   );
@@ -244,8 +254,8 @@ export function MyDayContent({
   const urgentActions = (actionsQuery.data ? buildCockpitActions(actionsQuery.data) : []).filter(
     (a) => a.priority === 'urgent' || a.priority === 'high',
   );
-  const unpreparedVisits = todayVisits.filter((v) => !v.preparation?.prepared_at);
-  const filteredVisits = todayVisits.filter((visit) => {
+  const unpreparedVisits = activeVisits.filter((v) => !v.preparation?.prepared_at);
+  const filteredVisits = activeVisits.filter((visit) => {
     if (initialVisitFilter === 'unprepared') return !visit.preparation?.prepared_at;
     if (initialVisitFilter === 'in_progress') {
       return visit.schedule_status === 'departed' || visit.schedule_status === 'in_progress';
@@ -361,72 +371,81 @@ export function MyDayContent({
           </AlertDescription>
         </Alert>
       ) : null}
+      {/* Pinned zone: 対象日 + 件数ストリップ(SSOT 4.1 ワークリスト骨格)。スクロールしても消さない。 */}
+      <div className="sticky top-0 z-20">
+        <div className="border-b border-border/70 bg-background/95 px-1 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <h2 className="text-sm font-semibold text-foreground">本日 {todayLabel}</h2>
+            <p className="text-xs text-muted-foreground">担当分の件数サマリー</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <StatCard
+              label="訪問"
+              className="min-w-0"
+              value={
+                visitsQuery.isError ? (
+                  '—'
+                ) : visitsQuery.isLoading || isUserPending ? (
+                  <Skeleton as="span" className="h-7 w-10" />
+                ) : (
+                  todayVisits.length
+                )
+              }
+            />
+            <StatCard
+              label="タスク"
+              className="min-w-0"
+              value={
+                tasksQuery.isError ? (
+                  '—'
+                ) : tasksQuery.isLoading || isUserPending ? (
+                  <Skeleton as="span" className="h-7 w-10" />
+                ) : (
+                  pendingTasks.length
+                )
+              }
+            />
+            <StatCard
+              label="パイプライン"
+              className="min-w-0"
+              value={
+                actionsQuery.isError ? (
+                  '—'
+                ) : actionsQuery.isLoading ? (
+                  <Skeleton as="span" className="h-7 w-10" />
+                ) : (
+                  totalPipeline
+                )
+              }
+            />
+            <StatCard
+              label="緊急"
+              className="min-w-0"
+              role={
+                !actionsQuery.isError && !actionsQuery.isLoading && urgentActions.length > 0
+                  ? 'blocked'
+                  : undefined
+              }
+              value={
+                actionsQuery.isError ? (
+                  '—'
+                ) : actionsQuery.isLoading ? (
+                  <Skeleton as="span" className="h-7 w-10" />
+                ) : (
+                  urgentActions.length
+                )
+              }
+            />
+          </div>
+        </div>
+      </div>
       <PageSection
         title="今日の概要"
-        description="次にすること、訪問、タスク、パイプライン、緊急件数を最初に把握します。"
+        description="次にすることを最初に把握します。"
         className={MY_DAY_SECTION_CLASS_NAME}
         contentClassName="space-y-3"
       >
         <MyDayNextStepPanel {...nextStep} />
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <StatCard
-            label="訪問"
-            className="min-w-0"
-            value={
-              visitsQuery.isError ? (
-                '—'
-              ) : visitsQuery.isLoading || isUserPending ? (
-                <Skeleton as="span" className="h-7 w-10" />
-              ) : (
-                todayVisits.length
-              )
-            }
-          />
-          <StatCard
-            label="タスク"
-            className="min-w-0"
-            value={
-              tasksQuery.isError ? (
-                '—'
-              ) : tasksQuery.isLoading || isUserPending ? (
-                <Skeleton as="span" className="h-7 w-10" />
-              ) : (
-                pendingTasks.length
-              )
-            }
-          />
-          <StatCard
-            label="パイプライン"
-            className="min-w-0"
-            value={
-              actionsQuery.isError ? (
-                '—'
-              ) : actionsQuery.isLoading ? (
-                <Skeleton as="span" className="h-7 w-10" />
-              ) : (
-                totalPipeline
-              )
-            }
-          />
-          <StatCard
-            label="緊急"
-            className="min-w-0"
-            role={
-              !actionsQuery.isError && !actionsQuery.isLoading && urgentActions.length > 0
-                ? 'blocked'
-                : undefined
-            }
-            value={
-              actionsQuery.isError ? (
-                '—'
-              ) : actionsQuery.isLoading ? (
-                <Skeleton as="span" className="h-7 w-10" />
-              ) : (
-                urgentActions.length
-              )
-            }
-          />
-        </div>
       </PageSection>
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.38fr)] xl:items-start">
@@ -606,6 +625,31 @@ export function MyDayContent({
                     );
                   })
                 )}
+                {completedVisits.length > 0 ? (
+                  <details className="rounded-lg border border-border/70">
+                    <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3 text-sm text-muted-foreground [&::-webkit-details-marker]:hidden">
+                      完了した訪問 {completedVisits.length}件
+                      <span className="text-xs">(開いて確認)</span>
+                    </summary>
+                    <div className="space-y-1 px-2 pb-2">
+                      {completedVisits.map((visit) => (
+                        <Link
+                          key={visit.id}
+                          href={`/visits/${visit.id}/record`}
+                          className="flex min-h-11 items-center justify-between rounded-md px-2 text-sm transition-colors hover:bg-muted/50"
+                        >
+                          <span className="min-w-0 truncate">{visit.case_.patient.name}</span>
+                          <span className="ml-2 flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                            {timeLabel(visit.time_window_start, visit.time_window_end)}
+                            <StateBadge role="done" showIcon={false} className="text-xs">
+                              完了
+                            </StateBadge>
+                          </span>
+                        </Link>
+                      ))}
+                    </div>
+                  </details>
+                ) : null}
               </CardContent>
             </Card>
 
@@ -784,7 +828,7 @@ export function MyDayContent({
           </PageSection>
         </div>
 
-        <div className="min-w-0 space-y-4 xl:sticky xl:top-4 xl:pt-20">
+        <div className="min-w-0 space-y-4">
           <PageSection
             title="補助情報"
             description="患者ステータス変更やショートカットを確認し、必要な別画面へ移動する補助グループです。"
