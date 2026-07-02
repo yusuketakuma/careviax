@@ -1,6 +1,67 @@
 # Verification
 
-Snapshot: 2026-07-02 21:39 JST
+Snapshot: 2026-07-02 21:50 JST
+
+## Latest Backend/API Slice Verification
+
+The latest backend/API slice was `backend-flush-metrics-shared-job-handler` at
+2026-07-02 21:50 JST.
+
+- Planning / review:
+  - `.agent-loop/API_REACHABILITY_LEDGER.md` E3-3 identified
+    `/api/admin/flush-metrics` and `/api/jobs/flush-metrics` as same-function
+    endpoints with auth-boundary differences.
+  - The existing admin/jobs routes and tests were inspected before extracting
+    a shared executor.
+  - Claude review was requested before committing and later approved the final
+    route/helper/ledger diff with no follow-up required.
+- Fixed:
+  - Added `src/server/services/flush-metrics-job.ts` as the shared executor for
+    `flushPerformanceMetricsToCloudWatch`.
+  - The shared executor centralizes redacted failure logging and
+    `EXTERNAL_JOB_FAILED` error responses.
+  - Admin and jobs auth boundaries remain route-local and unchanged:
+    admin=`withAuthContext(canAdmin)`, jobs=`requireApiKeyOrAuthContext` with
+    `JOB_API_KEY` or `canAdmin`.
+  - Route-specific success payloads, failure messages, and log event names were
+    preserved.
+  - `.agent-loop/API_REACHABILITY_LEDGER.md` now marks E3-3 resolved.
+- Safety:
+  - No auth widening/narrowing, success response contract, error code, log
+    redaction behavior, schema, migration, DB write, production config,
+    push/deploy, dependency, or destructive operation changed.
+  - `JOB_API_KEY` was referenced by env-var name only; no secret value was
+    persisted.
+- Focused regressions:
+  - `pnpm exec vitest run src/app/api/admin/flush-metrics/route.test.ts src/app/api/jobs/flush-metrics/route.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `5` tests.
+  - Coverage: admin permission contract, jobs API-key-or-admin auth contract,
+    auth failure avoiding side effects, success bodies, sanitized failure
+    bodies, and sanitized log payloads.
+- Scoped checks:
+  - Scoped ESLint for touched TS files: passed.
+  - Scoped Prettier for touched TS files: passed.
+  - Markdown Prettier for `.agent-loop/API_REACHABILITY_LEDGER.md`: passed
+    with `NODE_OPTIONS=--max-old-space-size=8192`.
+  - Scoped `git diff --check` for touched files: passed.
+- Broad gates:
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: skipped because this backend/API refactor had focused route
+    tests and typechecks passing.
+- Coordination:
+  - Claude FE review interrupt was handled before the backend commit: Codex ran
+    `9` related FE test files / `174` tests and sent APPROVE for commits
+    `61552be6`, `db4ebd78`, `f4d2997f`, `2d6c5443`, and `9c490511`.
+  - A later FEUX-8 review request for `0eb608e4` was handled after the backend
+    product commit: focused test `schedule-create-edit-drawer.test.ts` passed
+    `1` file / `20` tests, and Codex sent REQUEST_CHANGES for a
+    reopen-after-discard state reset issue.
+- gbrain:
+  - `projects/careviax/decisions/2026-07-02/flush-metrics-shared-job-handler`
+  - Result: write/readback passed.
+- Commit:
+  - Runtime: `0ff8ea21` (`refactor(api): share flush metrics job handler`).
 
 ## Latest Backend/API Slice Verification
 

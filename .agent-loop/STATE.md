@@ -4,7 +4,59 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
-## Current Codex Resume Note - 2026-07-02 21:39 JST
+## Current Codex Resume Note - 2026-07-02 21:50 JST
+
+- Active mode for this slice: Codex backend/API implementation with Claude
+  coordination through agmsg, real validation, gbrain writeback, explicit-path
+  commits, and review interrupts handled before the next commit. Preserve
+  unrelated dirty files; do not push/deploy/migrate or destructively mutate
+  data.
+- Latest completed product slice:
+  `backend-flush-metrics-shared-job-handler`.
+- Product commit:
+  `0ff8ea21` (`refactor(api): share flush metrics job handler`).
+- Files changed:
+  - `src/server/services/flush-metrics-job.ts`
+  - `src/app/api/admin/flush-metrics/route.ts`
+  - `src/app/api/jobs/flush-metrics/route.ts`
+  - `.agent-loop/API_REACHABILITY_LEDGER.md`
+  - progress-ledger updates in `CODEX_GOAL_PROGRESS.md`,
+    `.codex/ralph-state.md`, `ops/refactor/VERIFICATION.md`, and this file
+- Fixed:
+  - `/api/admin/flush-metrics` and `/api/jobs/flush-metrics` now share
+    `runFlushMetricsJob` for the CloudWatch flush side effect, redacted failure
+    logging, and `EXTERNAL_JOB_FAILED` envelope.
+  - Admin and jobs auth boundaries remain route-local and unchanged:
+    admin=`withAuthContext(canAdmin)`, jobs=`requireApiKeyOrAuthContext` with
+    `JOB_API_KEY` or `canAdmin`.
+  - Route-specific success body, failure message, and log event name remain
+    route-owned inputs.
+  - `.agent-loop/API_REACHABILITY_LEDGER.md` marks E3-3 resolved.
+- Validation:
+  - Focused flush-metrics tests passed `2` files / `5` tests.
+  - Scoped ESLint, scoped Prettier, Markdown Prettier for the API reachability
+    ledger, and scoped `git diff --check` passed.
+  - `pnpm typecheck` and `pnpm typecheck:no-unused` passed.
+  - Full `pnpm build` was skipped because this was a backend/API refactor with
+    focused route tests and typechecks already passing.
+- Review:
+  - Codex sent a `PATCH_REVIEW_REQUEST` before commit and a commit FYI after
+    `0ff8ea21`.
+  - Claude's verdict approved the flush-metrics route/helper/ledger diff and
+    confirmed no follow-up was required.
+  - Claude's separate FE review request was handled before the backend commit:
+    Codex approved five FE commits after running `9` related test files / `174`
+    tests.
+  - A later FEUX-8 review request for `0eb608e4` was handled after the backend
+    product commit; Codex sent REQUEST_CHANGES for a reopen-after-discard state
+    reset issue after focused tests passed `1` file / `20` tests.
+- gbrain writeback slug:
+  `projects/careviax/decisions/2026-07-02/flush-metrics-shared-job-handler`.
+- Next action: commit this ledger slice with explicit paths, notify via agmsg,
+  then check for any Claude flush-metrics verdict before selecting the next
+  backend/API candidate.
+
+## Previous Codex Resume Note - 2026-07-02 21:39 JST
 
 - Active mode for this slice: Codex backend/API implementation with Claude
   coordination through agmsg, real validation, gbrain writeback, and

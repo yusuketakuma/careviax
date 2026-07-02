@@ -89,6 +89,59 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Next backend/API candidate: evaluate and consolidate the two
     flush-metrics endpoints that differ primarily by auth boundary.
 
+### Backend: Flush-Metrics Shared Job Handler - 2026-07-02 21:50 JST
+
+- Scope:
+  - Implemented E3-3 from `.agent-loop/API_REACHABILITY_LEDGER.md`.
+  - Consolidated duplicate execution/error handling between
+    `/api/admin/flush-metrics` and `/api/jobs/flush-metrics`.
+  - Commit: `0ff8ea21` (`refactor(api): share flush metrics job handler`).
+  - gbrain writeback:
+    `projects/careviax/decisions/2026-07-02/flush-metrics-shared-job-handler`.
+- Fixed:
+  - Added `src/server/services/flush-metrics-job.ts` as the canonical executor
+    for `flushPerformanceMetricsToCloudWatch`.
+  - Both routes now share redacted failure logging and the
+    `EXTERNAL_JOB_FAILED` envelope.
+  - Route-specific auth boundaries remain route-local:
+    admin=`withAuthContext(canAdmin)`, jobs=`requireApiKeyOrAuthContext` with
+    `JOB_API_KEY` or `canAdmin`.
+  - Route-specific success bodies, failure messages, and log event names were
+    preserved.
+  - `.agent-loop/API_REACHABILITY_LEDGER.md` now marks E3-3 resolved.
+- Safety:
+  - No auth permission narrowing/widening, rate-limit key, response success
+    body, error code, redaction behavior, schema, migration, DB write, external
+    send beyond the existing CloudWatch flush call, production config,
+    push/deploy, dependency, or destructive operation changed.
+  - `JOB_API_KEY` is referenced only by env-var name in code/memory/ledger, not
+    persisted as a secret value.
+- Validation:
+  - Focused flush-metrics route tests passed `2` files / `5` tests:
+    `pnpm exec vitest run src/app/api/admin/flush-metrics/route.test.ts src/app/api/jobs/flush-metrics/route.test.ts --reporter=dot --testTimeout=60000`.
+  - Scoped ESLint, scoped Prettier, Markdown Prettier for
+    `.agent-loop/API_REACHABILITY_LEDGER.md`, and scoped `git diff --check`
+    passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - gbrain write/readback passed.
+- Coordination:
+  - Codex sent a `PATCH_REVIEW_REQUEST` before commit and a commit FYI after
+    `0ff8ea21`.
+  - Claude's verdict approved the route/helper/ledger diff and confirmed no
+    follow-up was required.
+  - Claude's separate FE review interrupt was handled before the backend
+    commit: Codex approved commits
+    `61552be6`/`db4ebd78`/`f4d2997f`/`2d6c5443`/`9c490511` after running `9`
+    related FE test files / `174` tests.
+  - A later FEUX-8 review request for `0eb608e4` was handled after the backend
+    product commit; Codex sent REQUEST_CHANGES for a reopen-after-discard state
+    reset issue after focused tests passed `1` file / `20` tests.
+- Remaining:
+  - Full `pnpm build` was skipped because focused route tests plus
+    `pnpm typecheck` and `pnpm typecheck:no-unused` passed for this backend/API
+    refactor.
+
 ### Performance: Inventory Forecast Latest Intake Lines - 2026-07-02 19:34 JST
 
 - Scope:
