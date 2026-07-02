@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { SessionProvider, useSession } from 'next-auth/react';
 import type { Session } from 'next-auth';
 import { QueryProvider } from '@/components/providers/query-provider';
+import { OfflineSyncBridge } from '@/components/providers/offline-sync-bridge';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { clearOfflineEncryptionKey, initOfflineEncryptionKey } from '@/lib/offline/crypto';
 
@@ -67,6 +68,7 @@ export function AppProvider({ children, session, initialOrgId, initialSiteId }: 
   return (
     <SessionProvider session={session}>
       <SessionStateBridge />
+      <OfflineSyncBridge />
       <QueryProvider>{children}</QueryProvider>
     </SessionProvider>
   );
