@@ -311,4 +311,27 @@ describe('RealtimePage', () => {
     fireEvent.click(retryButtons[retryButtons.length - 1]);
     expect(refetch).toHaveBeenCalled();
   });
+
+  it('does not false-zero the top operational-signal workflow KPIs when the workflow query fails (N10)', () => {
+    const refetch = vi.fn();
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      const [scope] = queryKey;
+      if (scope === 'admin-realtime-notifications') {
+        return { data: NOTIFICATIONS_DATA, connected: true };
+      }
+      // ワークフロー取得失敗 → 上部「今すぐ見る運用シグナル」の workflow 由来 KPI も 0 表示しない。
+      return { data: undefined, isError: true, refetch, connected: false };
+    });
+
+    render(<RealtimePage />);
+
+    // 高優先ワークベンチ / 変更承認待ち / 未処理例外 の3枚が取得失敗表示になり false-zero を出さない。
+    // 旧コードでは上部が 0 表示のままで「取得に失敗しました」は 0 件 → teeth。
+    expect(screen.getAllByText('取得に失敗しました').length).toBeGreaterThanOrEqual(3);
+
+    // 至急通知(通知ストリーム由来)はワークフロー失敗に巻き込まれず live のまま。
+    const urgentCard = screen.getByText('至急通知').closest('div');
+    expect(urgentCard?.textContent).toContain('1');
+    expect(urgentCard?.textContent).not.toContain('—');
+  });
 });

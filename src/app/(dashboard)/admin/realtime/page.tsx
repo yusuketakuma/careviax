@@ -136,6 +136,10 @@ export default function RealtimePage() {
   const priorityWorkbenchItems = workbenchItems.filter(
     (item) => item.priority === 'urgent' || item.priority === 'high',
   );
+  // 上部「今すぐ見る運用シグナル」の workflow 由来 KPI も、下部「ルート・例外 KPI」(line 222) と
+  // 同様に取得失敗を 0 (false-zero) 表示しない。0 表示だと承認待ち/未処理例外が「なし」に化けて
+  // 偽 all-clear になるため、取得失敗時は '—' + 取得失敗表示にする(再読み込みは直下の ErrorState)。
+  const workflowUnavailable = workflowQuery.isError;
 
   const routeHealth = [
     {
@@ -198,23 +202,29 @@ export default function RealtimePage() {
           <div className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card px-4 py-3">
             <p className="text-sm font-medium text-state-confirm">高優先ワークベンチ</p>
             <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
-              {priorityWorkbenchItems.length}
+              {workflowUnavailable ? '—' : priorityWorkbenchItems.length}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">全項目 {workbenchItems.length} 件</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {workflowUnavailable ? '取得に失敗しました' : `全項目 ${workbenchItems.length} 件`}
+            </p>
           </div>
           <div className="rounded-lg border border-border/70 bg-background px-4 py-3">
             <p className="text-sm font-medium text-muted-foreground">変更承認待ち</p>
             <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
-              {workflow?.route_control.pending_override_requests ?? 0}
+              {workflowUnavailable ? '—' : (workflow?.route_control.pending_override_requests ?? 0)}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">専用リスケで処理</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {workflowUnavailable ? '取得に失敗しました' : '専用リスケで処理'}
+            </p>
           </div>
           <div className="rounded-lg border border-border/70 bg-background px-4 py-3">
             <p className="text-sm font-medium text-muted-foreground">未処理例外</p>
             <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
-              {workflow?.workflow_exceptions.open ?? 0}
+              {workflowUnavailable ? '—' : (workflow?.workflow_exceptions.open ?? 0)}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">ワークフロー例外</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {workflowUnavailable ? '取得に失敗しました' : 'ワークフロー例外'}
+            </p>
           </div>
         </div>
       </section>
