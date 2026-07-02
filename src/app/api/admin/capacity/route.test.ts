@@ -49,8 +49,8 @@ const routeGET = (req: NextRequest) => GET(req, emptyRouteContext);
 // ローカル 2026-06-13 10:00(TZ に依存しないようローカルコンストラクタで固定)
 const fixedNow = new Date(2026, 5, 13, 10, 0, 0);
 
-function localTime(hours: number, minutes: number): Date {
-  return new Date(2026, 5, 13, hours, minutes, 0);
+function timeOfDay(hours: number, minutes: number): Date {
+  return new Date(Date.UTC(2026, 5, 13, hours, minutes, 0));
 }
 
 describe('/api/admin/capacity', () => {
@@ -95,30 +95,30 @@ describe('/api/admin/capacity', () => {
       {
         schedule_status: 'planned',
         pharmacist_id: 'user_yamada',
-        time_window_start: localTime(14, 0),
-        time_window_end: localTime(15, 0),
+        time_window_start: timeOfDay(14, 0),
+        time_window_end: timeOfDay(15, 0),
         facility_batch_id: null,
       },
       {
         schedule_status: 'planned',
         pharmacist_id: 'user_sato',
-        time_window_start: localTime(14, 30),
-        time_window_end: localTime(15, 30),
+        time_window_start: timeOfDay(14, 30),
+        time_window_end: timeOfDay(15, 30),
         facility_batch_id: null,
       },
       // 施設一括(同一バッチ 2 行 = 1 訪問単位)
       {
         schedule_status: 'planned',
         pharmacist_id: 'user_yamada',
-        time_window_start: localTime(15, 30),
-        time_window_end: localTime(16, 30),
+        time_window_start: timeOfDay(15, 30),
+        time_window_end: timeOfDay(16, 30),
         facility_batch_id: 'batch_gh',
       },
       {
         schedule_status: 'planned',
         pharmacist_id: 'user_yamada',
-        time_window_start: localTime(15, 30),
-        time_window_end: localTime(16, 30),
+        time_window_start: timeOfDay(15, 30),
+        time_window_end: timeOfDay(16, 30),
         facility_batch_id: 'batch_gh',
       },
     ]);
@@ -205,7 +205,10 @@ describe('/api/admin/capacity', () => {
       where: {
         org_id: 'org_1',
         status: 'completed',
-        updated_at: { gte: new Date(2026, 5, 13, 0, 0, 0) },
+        updated_at: {
+          gte: new Date('2026-06-12T15:00:00.000Z'),
+          lt: new Date('2026-06-13T15:00:00.000Z'),
+        },
       },
     });
     // 当日シフトは @db.Date 境界で照会していること
@@ -254,5 +257,49 @@ describe('/api/admin/capacity', () => {
         attention_items: [],
       },
     });
+  });
+
+  it('DateTime の本日完了件数は JST 業務日レンジで数え、@db.Date レンジと混同しない', async () => {
+    vi.setSystemTime(new Date('2026-06-11T15:30:00.000Z')); // JST 2026-06-12 00:30
+    cycleGroupByMock.mockResolvedValue([]);
+    visitScheduleFindManyMock.mockResolvedValue([]);
+    dispenseTaskCountMock.mockResolvedValue(0);
+    setPlanFindManyMock.mockResolvedValue([]);
+    membershipFindManyMock.mockResolvedValue([]);
+    shiftFindManyMock.mockResolvedValue([]);
+
+    const response = (await routeGET(new NextRequest('http://localhost/api/admin/capacity')))!;
+
+    expect(response.status).toBe(200);
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          scheduled_date: {
+            gte: new Date('2026-06-12T00:00:00.000Z'),
+            lt: new Date('2026-06-13T00:00:00.000Z'),
+          },
+        }),
+      }),
+    );
+    expect(dispenseTaskCountMock).toHaveBeenNthCalledWith(2, {
+      where: {
+        org_id: 'org_1',
+        status: 'completed',
+        updated_at: {
+          gte: new Date('2026-06-11T15:00:00.000Z'),
+          lt: new Date('2026-06-12T15:00:00.000Z'),
+        },
+      },
+    });
+    expect(shiftFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          date: {
+            gte: new Date('2026-06-12T00:00:00.000Z'),
+            lt: new Date('2026-06-13T00:00:00.000Z'),
+          },
+        }),
+      }),
+    );
   });
 });

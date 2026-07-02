@@ -35851,3 +35851,56 @@ Next loop:
   - The broad ULTRACODE/refactor objective remains open.
   - Browser smoke was skipped because this backend SQL fix changes no DOM,
     navigation, route contract shape, or human workflow shape.
+
+### Admin Capacity Completed-Today JST DateTime Range - 2026-07-02 14:02 JST
+
+- Scope:
+  - ULTRACODE F06
+    `RR-BUG-20260702-F06-admin-capacity-jst-completed-today`.
+  - `src/app/api/admin/capacity/route.ts`
+  - `src/app/api/admin/capacity/route.test.ts`
+- Fixed:
+  - `/api/admin/capacity` now counts `dispenseCompletedTodayCount` with
+    `japanDayInstantRange(now)` for the DateTime `updated_at` predicate.
+  - `VisitSchedule.scheduled_date` and `PharmacistShift.date` stay on
+    `todayUtcRange(now)` because they are `@db.Date` sentinel comparisons.
+  - Added a boundary regression at JST 00:30 proving DateTime instant ranges
+    use `2026-06-11T15:00:00Z..2026-06-12T15:00:00Z` while `@db.Date` ranges
+    keep `2026-06-12T00:00:00Z..2026-06-13T00:00:00Z`.
+  - Repaired the route test's `@db.Time` fixtures to use explicit UTC sentinel
+    clock values, matching the route's existing UTC time-of-day decoding.
+- Safety:
+  - Aligns admin capacity completed-today with the sibling
+    `/api/dashboard/dispensing-stats` KPI.
+  - Preserves org scoping, auth wrapper semantics, route response shape, DB
+    schema, migrations, auth/RLS semantics, external sends, billing, secrets,
+    production config, push/deploy, and destructive-operation boundaries.
+  - Keeps the existing `updated_at` completion proxy; a true `completed_at`
+    timestamp remains a separate approval-gated migration/backfill decision.
+- Performance:
+  - No performance optimization is claimed.
+  - The count remains one bounded org/status DateTime predicate and is now a
+    half-open range.
+- Validation:
+  - Initial focused capacity route suite failed before fixture repair because
+    mocked `@db.Time` values used local constructors while the route decodes UTC
+    clock parts.
+  - Focused capacity route suite passed `1` file / `2` tests.
+  - Capacity + date-boundary suite passed `2` files / `24` tests.
+  - Final capacity + date-boundary + sibling dispensing-stats bundle passed
+    `3` files / `28` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm build`: passed.
+  - gbrain write/readback:
+    `projects/careviax/failures/2026-07-02/admin-capacity-completed-today-server-local-midnight`.
+- Review:
+  - Codex db steward and test architect reported no blockers.
+  - Optional boundary regression was added before final validation.
+- Remaining:
+  - The broad ULTRACODE/refactor objective remains open.
+  - Browser smoke was skipped because this backend KPI query fix changes no DOM,
+    navigation, route contract shape, or human workflow shape.

@@ -2089,3 +2089,44 @@ evidence also exists in root `REFACTOR_REPORT.md`,
   - Codex db steward and test architect reported no blockers.
   - gbrain write/readback:
     `projects/careviax/failures/2026-07-02/patient-status-window-query-outer-order-created-at`.
+
+## 2026-07-02 14:02 JST - Admin Capacity Completed-Today JST DateTime Range
+
+- Change ID:
+  `RR-BUG-20260702-F06-admin-capacity-jst-completed-today`.
+- Category: bug fix / backend KPI date boundary / admin dashboard reliability.
+- Files changed:
+  - `src/app/api/admin/capacity/route.ts`
+  - `src/app/api/admin/capacity/route.test.ts`
+- Summary:
+  - Replaced the admin capacity completed-today `updated_at` predicate based on
+    server-local midnight with `japanDayInstantRange(now)`.
+  - Preserved `todayUtcRange(now)` for `@db.Date` sentinel columns
+    `scheduled_date` and `date`.
+  - Added a JST 00:30 boundary regression proving DateTime instant windows and
+    `@db.Date` sentinel windows are not mixed.
+  - Changed mocked `@db.Time` route-test fixtures to explicit UTC sentinel
+    values to match the route's time-of-day decoding.
+- Safety:
+  - Aligns the admin capacity completed-today KPI with
+    `/api/dashboard/dispensing-stats`.
+  - Preserves org scoping, auth wrapper semantics, route response shape, DB
+    schema, migrations, auth/RLS semantics, external sends, billing, secrets,
+    production config, push/deploy, and destructive-operation boundaries.
+- Performance:
+  - No performance optimization is claimed.
+  - The count query remains a single bounded org/status DateTime predicate and
+    is now a half-open range.
+- Validation:
+  - Initial focused capacity suite exposed and then resolved the local-time
+    `@db.Time` fixture drift.
+  - Focused route suite passed `1` file / `2` tests.
+  - Capacity + date-boundary suite passed `2` files / `24` tests.
+  - Final capacity + date-boundary + sibling dispensing-stats bundle passed
+    `3` files / `28` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, and `pnpm build` passed.
+  - Codex db steward and test architect reported no blockers.
+  - gbrain write/readback:
+    `projects/careviax/failures/2026-07-02/admin-capacity-completed-today-server-local-midnight`.

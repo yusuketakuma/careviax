@@ -2251,3 +2251,56 @@ The latest backend raw SQL reliability slice was
 - Skipped:
   - Browser/E2E smoke was skipped because this backend SQL fix changes no DOM
     layout, navigation, route contract shape, or human workflow shape.
+
+## Admin Capacity Completed-Today JST DateTime Range Verification
+
+The latest backend KPI date-boundary slice was
+`RR-BUG-20260702-F06-admin-capacity-jst-completed-today` at 2026-07-02 14:02
+JST.
+
+- Planning / review:
+  - ULTRACODE F06 identified `dispenseCompletedTodayCount` as using
+    server-local midnight and a gte-only `updated_at` filter.
+  - Codex db steward found no blockers and confirmed `DispenseTask.updated_at`
+    is a DateTime instant while `VisitSchedule.scheduled_date` and
+    `PharmacistShift.date` are `@db.Date` sentinels.
+  - Codex test architect found no blockers and requested boundary coverage; it
+    was added before final validation.
+- Focused regressions:
+  - `pnpm exec vitest run src/app/api/admin/capacity/route.test.ts --reporter=dot --testTimeout=60000`
+  - Initial result: failed before fixture repair because the mocked `@db.Time`
+    values used local constructors while the route decodes UTC clock parts.
+  - Final result: passed, `1` file / `2` tests.
+  - `pnpm exec vitest run src/app/api/admin/capacity/route.test.ts src/lib/utils/date-boundary.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `24` tests.
+  - `pnpm exec vitest run src/app/api/admin/capacity/route.test.ts src/lib/utils/date-boundary.test.ts src/app/api/dashboard/dispensing-stats/route.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `3` files / `28` tests.
+  - Coverage: at JST 00:30 the completed-task DateTime range is
+    `2026-06-11T15:00:00.000Z` inclusive to `2026-06-12T15:00:00.000Z`
+    exclusive, while `@db.Date` schedule and shift ranges remain
+    `2026-06-12T00:00:00.000Z` inclusive to `2026-06-13T00:00:00.000Z`
+    exclusive.
+- Scoped checks:
+  - `pnpm exec eslint src/app/api/admin/capacity/route.ts src/app/api/admin/capacity/route.test.ts`
+  - Result: passed.
+  - `pnpm exec prettier --check src/app/api/admin/capacity/route.ts src/app/api/admin/capacity/route.test.ts`
+  - Result: passed.
+  - `git diff --check -- src/app/api/admin/capacity/route.ts src/app/api/admin/capacity/route.test.ts`
+  - Result: passed.
+- Full gates:
+  - `pnpm typecheck`
+  - Result: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  - Result: passed.
+  - `pnpm lint`
+  - Result: passed.
+  - `pnpm format:check`
+  - Result: passed.
+  - `pnpm build`
+  - Result: passed.
+- gbrain:
+  - `projects/careviax/failures/2026-07-02/admin-capacity-completed-today-server-local-midnight`
+  - Result: write/readback passed.
+- Skipped:
+  - Browser/E2E smoke was skipped because this backend KPI query fix changes no
+    DOM layout, navigation, route contract shape, or human workflow shape.

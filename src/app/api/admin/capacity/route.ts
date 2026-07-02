@@ -3,7 +3,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { success, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
-import { todayUtcRange } from '@/lib/utils/date-boundary';
+import { japanDayInstantRange, todayUtcRange } from '@/lib/utils/date-boundary';
 import {
   buildAttentionItems,
   buildDispenseSetSummary,
@@ -29,9 +29,7 @@ const authenticatedGET = withAuthContext(
     const now = new Date();
     // scheduled_date / shift date(@db.Date)比較用: ローカル日付の UTC 深夜レンジ
     const todayRange = todayUtcRange(now);
-    // updated_at(DateTime, 実時刻)比較用: 従来どおりローカル深夜
-    const localTodayStart = new Date(now);
-    localTodayStart.setHours(0, 0, 0, 0);
+    const todayInstantRange = japanDayInstantRange(now);
 
     const [
       cycleCounts,
@@ -65,7 +63,7 @@ const authenticatedGET = withAuthContext(
         where: { org_id: ctx.orgId, status: { in: ['pending', 'in_progress'] } },
       }),
       prisma.dispenseTask.count({
-        where: { org_id: ctx.orgId, status: 'completed', updated_at: { gte: localTodayStart } },
+        where: { org_id: ctx.orgId, status: 'completed', updated_at: todayInstantRange },
       }),
       prisma.setPlan.findMany({
         where: { org_id: ctx.orgId },

@@ -414,3 +414,32 @@ re-audits are complete.
   - DB steward and test architect reported no blockers.
 - Memory:
   - `projects/careviax/failures/2026-07-02/patient-status-window-query-outer-order-created-at`
+
+## Latest Slice - 2026-07-02 14:02 JST
+
+- Change ID:
+  `RR-BUG-20260702-F06-admin-capacity-jst-completed-today`.
+- Status: implemented and validated, pending commit at time of ledger update.
+- Files changed:
+  - `src/app/api/admin/capacity/route.ts`
+  - `src/app/api/admin/capacity/route.test.ts`
+- Summary:
+  - `/api/admin/capacity` now counts completed dispense tasks for today with
+    `japanDayInstantRange(now)` against the DateTime `updated_at` column.
+  - `VisitSchedule.scheduled_date` and `PharmacistShift.date` remain on
+    `todayUtcRange(now)` because they are `@db.Date` sentinel comparisons.
+  - Added a JST midnight boundary regression covering the DateTime range and
+    the separate `@db.Date` ranges.
+  - Repaired the route test's `@db.Time` fixtures to use explicit UTC sentinel
+    values.
+- Validation:
+  - Focused capacity route suite passed `1` file / `2` tests.
+  - Capacity + date-boundary suite passed `2` files / `24` tests.
+  - Final capacity + date-boundary + sibling dispensing-stats bundle passed
+    `3` files / `28` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, and `pnpm build` passed.
+  - DB steward and test architect reported no blockers.
+- Memory:
+  - `projects/careviax/failures/2026-07-02/admin-capacity-completed-today-server-local-midnight`
