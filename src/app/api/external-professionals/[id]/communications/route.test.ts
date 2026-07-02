@@ -4,12 +4,16 @@ import { NextRequest } from 'next/server';
 const {
   externalProfessionalFindFirstMock,
   careTeamLinkFindManyMock,
+  communicationRequestCountMock,
   communicationRequestFindManyMock,
+  communicationEventCountMock,
   communicationEventFindManyMock,
 } = vi.hoisted(() => ({
   externalProfessionalFindFirstMock: vi.fn(),
   careTeamLinkFindManyMock: vi.fn(),
+  communicationRequestCountMock: vi.fn(),
   communicationRequestFindManyMock: vi.fn(),
+  communicationEventCountMock: vi.fn(),
   communicationEventFindManyMock: vi.fn(),
 }));
 
@@ -33,9 +37,11 @@ vi.mock('@/lib/db/client', () => ({
       findMany: careTeamLinkFindManyMock,
     },
     communicationRequest: {
+      count: communicationRequestCountMock,
       findMany: communicationRequestFindManyMock,
     },
     communicationEvent: {
+      count: communicationEventCountMock,
       findMany: communicationEventFindManyMock,
     },
   },
@@ -65,6 +71,7 @@ describe('/api/external-professionals/[id]/communications', () => {
         case_: { patient_id: 'patient_1' },
       },
     ]);
+    communicationRequestCountMock.mockResolvedValue(1);
     communicationRequestFindManyMock.mockResolvedValue([
       {
         id: 'req_1',
@@ -79,6 +86,7 @@ describe('/api/external-professionals/[id]/communications', () => {
         requested_at: new Date('2026-03-01'),
       },
     ]);
+    communicationEventCountMock.mockResolvedValue(0);
     communicationEventFindManyMock.mockResolvedValue([]);
   });
 

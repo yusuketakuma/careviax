@@ -1,10 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  externalProfessionalFindFirstMock,
-  withOrgContextMock,
-} = vi.hoisted(() => ({
+const { externalProfessionalFindFirstMock, withOrgContextMock } = vi.hoisted(() => ({
   externalProfessionalFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
@@ -12,7 +9,11 @@ const {
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => unknown) => {
     return (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
-      handler(req, { orgId: 'org_1', userId: 'user_1', ipAddress: '127.0.0.1', userAgent: 'vitest' }, routeContext);
+      handler(
+        req,
+        { orgId: 'org_1', userId: 'user_1', ipAddress: '127.0.0.1', userAgent: 'vitest' },
+        routeContext,
+      );
   },
 }));
 
@@ -73,10 +74,7 @@ describe('/api/external-professionals/[id]', () => {
 
   describe('GET', () => {
     it('returns 200 with professional detail', async () => {
-      const response = (await GET(
-        createRequest(),
-        { params: Promise.resolve({ id: 'ep_1' }) },
-      ))!;
+      const response = (await GET(createRequest(), { params: Promise.resolve({ id: 'ep_1' }) }))!;
 
       expect(response.status).toBe(200);
       const body = await response.json();
@@ -86,10 +84,9 @@ describe('/api/external-professionals/[id]', () => {
     it('returns 404 when not found', async () => {
       externalProfessionalFindFirstMock.mockResolvedValue(null);
 
-      const response = (await GET(
-        createRequest(),
-        { params: Promise.resolve({ id: 'nonexistent' }) },
-      ))!;
+      const response = (await GET(createRequest(), {
+        params: Promise.resolve({ id: 'nonexistent' }),
+      }))!;
 
       expect(response.status).toBe(404);
     });
@@ -97,10 +94,14 @@ describe('/api/external-professionals/[id]', () => {
 
   describe('DELETE', () => {
     it('returns 200 when deleting', async () => {
-      const response = (await DELETE(
-        createRequest(),
-        { params: Promise.resolve({ id: 'ep_1' }) },
-      ))!;
+      externalProfessionalFindFirstMock.mockResolvedValueOnce({
+        id: 'ep_1',
+        _count: { care_team_links: 0 },
+      });
+
+      const response = (await DELETE(createRequest(), {
+        params: Promise.resolve({ id: 'ep_1' }),
+      }))!;
 
       expect(response.status).toBe(200);
     });

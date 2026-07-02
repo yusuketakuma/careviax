@@ -71,7 +71,9 @@ describe('PrescriptionIntakeForm previous prescription safety contract', () => {
   });
 
   it('uses the minimal patient match view for typeahead identity lookup', () => {
-    expect(SOURCE).toContain("new URLSearchParams({ view: 'match', limit: '10' })");
+    expect(SOURCE).toContain("view: 'match'");
+    expect(SOURCE).toContain("archive_status: 'active'");
+    expect(SOURCE).toContain("limit: '10'");
     expect(SOURCE).toContain('type PatientOption');
     expect(SOURCE).toContain('birth_date?: string | null');
   });

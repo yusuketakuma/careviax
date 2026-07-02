@@ -93,6 +93,7 @@ type TestState = {
     report_type: string;
     status: string;
     pdf_url: string;
+    content?: unknown;
     updated_at: Date;
   }>;
   deliveryRecords: Array<{
@@ -271,6 +272,9 @@ vi.mock('@/lib/db/client', () => ({
           ],
         },
       ]),
+    },
+    contactParty: {
+      findMany: vi.fn().mockResolvedValue([]),
     },
     pharmacistShift: {
       findFirst: pharmacistShiftFindFirstMock,
@@ -821,7 +825,18 @@ function buildTx(state: TestState) {
       findMany: vi.fn(async () => state.dispenseResults),
     },
     drugMaster: {
-      findMany: vi.fn(async () => []),
+      findMany: vi.fn(async (args?: { where?: { is_narcotic?: boolean } }) =>
+        args?.where?.is_narcotic
+          ? []
+          : [
+              {
+                id: 'drug_amlodipine',
+                yj_code: '111',
+                receipt_code: null,
+                hot_code: null,
+              },
+            ],
+      ),
     },
     pharmacyOperatingHours: {
       findMany: vi.fn(async () => []),
@@ -894,6 +909,8 @@ function buildTx(state: TestState) {
       updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         state.visitSchedule = {
           ...state.visitSchedule,
+          schedule_status:
+            (data.schedule_status as string | undefined) ?? state.visitSchedule.schedule_status,
           carry_items:
             (data.carry_items as Array<Record<string, unknown>> | undefined) ??
             state.visitSchedule.carry_items,
@@ -1044,12 +1061,22 @@ function buildTx(state: TestState) {
           return record;
         },
       ),
+      updateMany: vi.fn(
+        async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+          const record = state.deliveryRecords.find((item) => item.id === where.id);
+          if (!record) return { count: 0 };
+          Object.assign(record, data);
+          return { count: 1 };
+        },
+      ),
     },
     careReport: {
       findFirst: vi.fn(async ({ where }: { where: { id: string } }) => {
         const report = state.careReports.find((item) => item.id === where.id);
         return report
           ? {
+              status: report.status,
+              updated_at: report.updated_at,
               content: {
                 source_provenance: {
                   visit_record_version: state.visitRecord?.version ?? 1,
@@ -1070,6 +1097,22 @@ function buildTx(state: TestState) {
               : report,
           );
           return state.careReports.find((report) => report.id === where.id);
+        },
+      ),
+      updateMany: vi.fn(
+        async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+          const report = state.careReports.find((item) => item.id === where.id);
+          if (!report) return { count: 0 };
+          state.careReports = state.careReports.map((item) =>
+            item.id === where.id
+              ? {
+                  ...item,
+                  status: (data.status as string | undefined) ?? item.status,
+                  content: data.content ?? item.content,
+                }
+              : item,
+          );
+          return { count: 1 };
         },
       ),
       findMany: vi.fn(async ({ where }: { where: { visit_record_id: string } }) =>

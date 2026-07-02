@@ -1,13 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { authMock, membershipFindFirstMock, facilityFindManyMock, residenceGroupByMock } =
-  vi.hoisted(() => ({
-    authMock: vi.fn(),
-    membershipFindFirstMock: vi.fn(),
-    facilityFindManyMock: vi.fn(),
-    residenceGroupByMock: vi.fn(),
-  }));
+const {
+  authMock,
+  membershipFindFirstMock,
+  facilityCountMock,
+  facilityFindManyMock,
+  residenceGroupByMock,
+} = vi.hoisted(() => ({
+  authMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
+  facilityCountMock: vi.fn(),
+  facilityFindManyMock: vi.fn(),
+  residenceGroupByMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -19,6 +25,7 @@ vi.mock('@/lib/db/client', () => ({
       findFirst: membershipFindFirstMock,
     },
     facility: {
+      count: facilityCountMock,
       findMany: facilityFindManyMock,
     },
     residence: {
@@ -47,6 +54,7 @@ describe('/api/facilities', () => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    facilityCountMock.mockResolvedValue(1);
     facilityFindManyMock.mockResolvedValue([
       {
         id: 'fac_1',
@@ -122,6 +130,15 @@ describe('/api/facilities', () => {
         },
       ],
       hasMore: false,
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'facilities',
+      filters_applied: {
+        q: 'テスト',
+      },
+      limit: 8,
     });
     expect(body.data[0]).not.toHaveProperty('contacts');
     expect(body.data[0]).not.toHaveProperty('phone');

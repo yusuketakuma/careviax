@@ -383,6 +383,20 @@ describe('Workflow: prescription intake to care report', () => {
           findFirst: vi.fn().mockResolvedValue(null),
           create: dispenseTaskCreateMock,
         },
+        drugMaster: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'drug_amlodipine',
+              yj_code: '2149001',
+              receipt_code: null,
+              hot_code: null,
+            },
+          ]),
+        },
+        workflowException: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockResolvedValue({}),
+        },
         cycleTransitionLog: {
           create: vi.fn().mockResolvedValue({}),
         },
@@ -451,34 +465,40 @@ describe('Workflow: prescription intake to care report', () => {
   /* ---------------------------------------------------------------------- */
 
   it('step 2: dispense task appears in queue for the cycle', async () => {
-    prismaDispenseTaskFindManyMock.mockResolvedValue([
-      {
-        id: IDS.dispenseTask,
-        priority: 'normal',
-        due_date: null,
-        created_at: new Date('2026-03-29T00:00:00.000Z'),
-        status: 'pending',
-        results: [],
-        cycle: {
-          id: IDS.cycle,
-          patient_id: IDS.patient,
-          overall_status: 'dispensing',
-          case_: {
-            patient: {
-              residences: [{ building_id: 'facility_1', address: '施設A' }],
-            },
-          },
-          inquiries: [],
-          prescription_intakes: [
+    withOrgContextMock.mockImplementation(async (_orgId: string, callback: TxCallback) =>
+      callback({
+        dispenseTask: {
+          findMany: vi.fn().mockResolvedValue([
             {
-              id: IDS.intake,
-              source_type: 'paper',
-              prescribed_date: new Date('2026-03-28T00:00:00.000Z'),
+              id: IDS.dispenseTask,
+              priority: 'normal',
+              due_date: null,
+              created_at: new Date('2026-03-29T00:00:00.000Z'),
+              status: 'pending',
+              results: [],
+              cycle: {
+                id: IDS.cycle,
+                patient_id: IDS.patient,
+                overall_status: 'dispensing',
+                case_: {
+                  patient: {
+                    residences: [{ building_id: 'facility_1', address: '施設A' }],
+                  },
+                },
+                inquiries: [],
+                prescription_intakes: [
+                  {
+                    id: IDS.intake,
+                    source_type: 'paper',
+                    prescribed_date: new Date('2026-03-28T00:00:00.000Z'),
+                  },
+                ],
+              },
             },
-          ],
+          ]),
         },
-      },
-    ]);
+      }),
+    );
 
     const response = (await getDispenseQueue(
       createGetRequest('http://localhost/api/dispense-queue'),
@@ -749,7 +769,8 @@ describe('Workflow: prescription intake to care report', () => {
           findFirst: vi.fn().mockResolvedValue({
             id: IDS.schedule,
             case_id: IDS.case,
-            schedule_status: 'scheduled',
+            version: 1,
+            schedule_status: 'ready',
             recurrence_rule: null,
             cycle_id: IDS.cycle,
             visit_type: 'regular',
@@ -760,7 +781,7 @@ describe('Workflow: prescription intake to care report', () => {
             medication_end_date: null,
             visit_deadline_date: null,
           }),
-          update: vi.fn().mockResolvedValue({}),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         },
         careCase: {
           findFirst: vi.fn().mockResolvedValue({
