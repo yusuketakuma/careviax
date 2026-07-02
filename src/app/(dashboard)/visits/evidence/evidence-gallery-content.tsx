@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { listEvidenceDraftSummaries } from '@/lib/offline/evidence-drafts';
 import { cn } from '@/lib/utils';
@@ -80,7 +81,11 @@ export function EvidenceGalleryContent() {
   });
 
   // p0_48 のモバイル撮影で端末保存された未同期ドラフト(IndexedDB)
-  const { data: offlineDraftItems } = useQuery({
+  const {
+    data: offlineDraftItems,
+    isError: offlineDraftsError,
+    refetch: refetchOfflineDrafts,
+  } = useQuery({
     queryKey: ['visit-evidence-offline-drafts'],
     queryFn: async () => buildEvidenceItemsFromOfflineDrafts(await listEvidenceDraftSummaries()),
   });
@@ -121,6 +126,29 @@ export function EvidenceGalleryContent() {
   return (
     <div data-testid="evidence-gallery-page">
       <h1 className="sr-only">画像・証跡</h1>
+
+      {offlineDraftsError ? (
+        // 端末内(IndexedDB)の未同期下書き取得失敗を空マージで隠すと、未同期件数と一部の写真が
+        // 「無い」ように見える false-empty になる。取得失敗を明示し再試行導線を出す。
+        <div
+          role="status"
+          aria-live="polite"
+          className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm"
+        >
+          <p className="min-w-0 flex-1 leading-6">
+            端末内の未同期下書きを読み込めませんでした。未同期の件数や一部の写真が表示されていない可能性があります。
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-h-[44px] border-state-confirm/40 bg-card text-state-confirm hover:bg-state-confirm/15 sm:min-h-9"
+            onClick={() => void refetchOfflineDrafts()}
+          >
+            再試行
+          </Button>
+        </div>
+      ) : null}
 
       <section
         aria-label="証跡サマリー"
