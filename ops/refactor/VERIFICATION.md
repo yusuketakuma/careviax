@@ -3216,3 +3216,46 @@ The latest UI accessibility slice is `ui-keyboard-only-roving-navigation` at
 - Skipped:
   - Authenticated browser traversal was not run in this slice; keyboard DOM
     behavior is covered by focused component tests and full production build.
+
+## PCA Pump Patch Update Claim Verification
+
+The latest backend/API slice is `pca-pump-patch-update-claim` at 2026-07-03
+01:19 JST.
+
+- Scope:
+  - Fixed stale check-then-write behavior in `PATCH /api/pca-pumps/[id]`
+    before PCA pump maintenance-event and audit side effects.
+  - Product commit: `34211256`
+    (`fix(api): guard pca pump patch updates`).
+- Focused regressions:
+  - `pnpm exec vitest run 'src/app/api/pca-pumps/[id]/route.test.ts' --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `11` tests.
+  - Coverage: guarded `updateMany` uses observed `status` and `updated_at`,
+    rejects stale claims as `409 WORKFLOW_CONFLICT`, and does not refetch the
+    pump, create maintenance events, or write audit logs after a failed claim.
+  - `pnpm exec vitest run 'src/app/api/pca-pumps/[id]/route.test.ts' 'src/app/api/pca-pumps/route.test.ts' 'src/app/api/pca-pump-rentals/route.test.ts' 'src/app/api/pca-pump-rentals/[id]/route.test.ts' src/lib/validations/pca-pump-rental.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `5` files / `66` tests.
+- Scoped checks:
+  - `pnpm exec eslint --max-warnings=0 'src/app/api/pca-pump-rentals/[id]/route.ts' 'src/app/api/pca-pump-rentals/route.ts' 'src/app/api/pca-pumps/[id]/route.ts' 'src/app/api/pca-pumps/[id]/route.test.ts' 'src/app/api/pca-pumps/route.ts' src/lib/validations/pca-pump-rental.ts`
+  - Result: passed.
+  - `pnpm exec prettier --check 'src/app/api/pca-pump-rentals/[id]/route.ts' 'src/app/api/pca-pump-rentals/route.ts' 'src/app/api/pca-pumps/[id]/route.ts' 'src/app/api/pca-pumps/[id]/route.test.ts' 'src/app/api/pca-pumps/route.ts' src/lib/validations/pca-pump-rental.ts`
+  - Result: passed after formatting the three route files.
+  - `git diff --check`
+  - Result: passed.
+- Full gates:
+  - `pnpm typecheck`
+  - Result: passed.
+  - `pnpm typecheck:no-unused`
+  - Result: passed.
+  - `pnpm build`
+  - Result: passed.
+- Review:
+  - Read-only Codex review of the focused uncommitted diff reported no P1/P2
+    findings.
+- gbrain:
+  - `projects/careviax/decisions/2026-07-03/pca-pump-patch-update-claim`
+  - Result: write/readback passed.
+- Skipped:
+  - Browser/E2E smoke was skipped because this backend route/concurrency fix
+    changes no DOM layout, navigation, route contract shape, or human workflow
+    shape. No DB migration or data mutation was performed.

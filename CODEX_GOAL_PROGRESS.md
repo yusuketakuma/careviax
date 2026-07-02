@@ -42,6 +42,56 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### Backend: PCA Pump Patch Update Claim - 2026-07-03 01:19 JST
+
+- Scope:
+  - Continued backend/API implementation after the keyboard-only UI slice.
+  - Fixed N32: `PATCH /api/pca-pumps/[id]` now fails closed when the pump row
+    or relevant rental invariants change between preflight validation and the
+    write that precedes maintenance/audit side effects.
+  - Commit: `34211256`
+    (`fix(api): guard pca pump patch updates`).
+  - gbrain writeback:
+    `projects/careviax/decisions/2026-07-03/pca-pump-patch-update-claim`.
+- Fixed:
+  - The route now selects `updated_at` with the existing pump snapshot.
+  - Replaced id-only `pcaPump.update` with guarded `updateMany` using `id`,
+    `org_id`, observed `status`, observed `updated_at`, and relation filters
+    that reject newly open rentals or pending return inspections.
+  - `count !== 1` returns `409 WORKFLOW_CONFLICT` before pump refetch,
+    maintenance-event creation, or audit logging.
+  - Successful claims refetch the pump inside the transaction, preserving the
+    existing serialized success response.
+  - PCA rental status arrays are now shared through
+    `pcaPumpRentalStatuses` / `pcaPumpOpenRentalStatuses` instead of
+    route-local duplicates.
+- Safety:
+  - Preserved existing `canAdmin`, org scoping, validation errors,
+    pending-return/open-rental business rules, schema, migration, production
+    config, external send, destructive DB posture, push, and deploy
+    boundaries.
+  - Reduces duplicate or stale PCA maintenance/audit side effects under
+    concurrent editor or rental transitions.
+- Validation:
+  - Focused pump PATCH route suite passed `1` file / `11` tests:
+    `pnpm exec vitest run 'src/app/api/pca-pumps/[id]/route.test.ts' --reporter=dot --testTimeout=60000`.
+  - Related PCA pump/rental/validation bundle passed `5` files / `66` tests:
+    `pnpm exec vitest run 'src/app/api/pca-pumps/[id]/route.test.ts' 'src/app/api/pca-pumps/route.test.ts' 'src/app/api/pca-pump-rentals/route.test.ts' 'src/app/api/pca-pump-rentals/[id]/route.test.ts' src/lib/validations/pca-pump-rental.test.ts --reporter=dot --testTimeout=60000`.
+  - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: passed.
+  - gbrain write/readback passed.
+- Review / coordination:
+  - agmsg inbox had only Claude ACK for the prior visit-header review and a
+    non-blocking process note; no new backend review gate was opened.
+  - Read-only Codex review of the focused uncommitted diff reported no P1/P2
+    findings.
+- Remaining:
+  - Existing unrelated schedule file changes are preserved and were not staged.
+  - Continue backend/API candidate selection after committing this ledger
+    slice.
+
 ### UI Accessibility: Keyboard-only Roving Navigation - 2026-07-03 00:50 JST
 
 - Scope:

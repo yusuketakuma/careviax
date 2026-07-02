@@ -1945,3 +1945,39 @@ continuity`).
   `src/app/(dashboard)/my-day/my-day-content.tsx` slice2 WIP was not staged.
 - Next action: commit this ledger slice with explicit owned paths, notify via
   agmsg, then continue after checking for new Claude review requests.
+
+### Resume point - 2026-07-03 01:19 JST
+
+- Active broad backend/refactor objective remains open. Latest validated
+  backend/API slice: `pca-pump-patch-update-claim`.
+- Product commit:
+  `34211256` (`fix(api): guard pca pump patch updates`).
+- Changed owned runtime/test files:
+  `src/app/api/pca-pumps/[id]/route.ts`,
+  `src/app/api/pca-pumps/[id]/route.test.ts`,
+  `src/app/api/pca-pumps/route.ts`,
+  `src/app/api/pca-pump-rentals/route.ts`,
+  `src/app/api/pca-pump-rentals/[id]/route.ts`, and
+  `src/lib/validations/pca-pump-rental.ts`.
+- Fixed PCA pump PATCH behavior:
+  `PATCH /api/pca-pumps/[id]` now uses an optimistic `updateMany` claim with
+  `id`, `org_id`, observed `status`, observed `updated_at`, and relation
+  filters for newly disallowed open rentals or pending return inspections
+  before maintenance-event/audit side effects run. A stale claim returns
+  `409 WORKFLOW_CONFLICT` before refetch or side effects.
+- Duplicate cleanup:
+  PCA rental status sets are shared as `pcaPumpRentalStatuses` and
+  `pcaPumpOpenRentalStatuses` from `src/lib/validations/pca-pump-rental.ts`.
+- Validation passed:
+  focused pump PATCH suite `1` file / `11` tests, related PCA
+  pump/rental/validation suite `5` files / `66` tests, scoped
+  ESLint/Prettier/diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`,
+  `pnpm build`, read-only Codex review with no P1/P2 findings, and gbrain
+  write/readback.
+- gbrain writeback slug:
+  `projects/careviax/decisions/2026-07-03/pca-pump-patch-update-claim`.
+- Preserved worktree state:
+  existing unrelated schedule changes remain dirty and were not staged.
+- Next action:
+  commit this progress-ledger slice with explicit owned paths, notify via
+  agmsg, then continue to the next backend/API candidate after checking status.
