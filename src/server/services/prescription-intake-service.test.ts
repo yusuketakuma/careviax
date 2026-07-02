@@ -1833,6 +1833,54 @@ describe('createPrescriptionIntake', () => {
     expect(result.profileSyncResult).toEqual({ created: 0, updated: 1, discontinued: 0 });
   });
 
+  it('matches an unresolved medication profile by name when an incoming code does not resolve', async () => {
+    prismaMock.prescriptionIntake.findFirst.mockResolvedValue(null);
+    prismaMock.medicationProfile.findMany.mockResolvedValue([
+      {
+        id: 'profile_unresolved_code',
+        drug_master_id: null,
+        drug_name: '未解決コード薬',
+        dose: '1錠',
+        frequency: '1日1回朝食後',
+        source: 'prescription',
+      },
+    ]);
+    prismaMock.drugMaster.findMany.mockResolvedValue([]);
+
+    const result = await runPrescriptionIntakePostCreateHooks({
+      cycleId: 'cycle_1',
+      intakeId: 'intake_1',
+      patientId: 'patient_1',
+      orgId: 'org_1',
+      lines: [
+        {
+          drug_name: '未解決コード薬',
+          drug_code: '2149001',
+          dose: '2錠',
+          frequency: '1日1回朝食後',
+        },
+      ],
+      prescriberName: '処方医A',
+      sourceType: 'qr_scan',
+    });
+
+    expect(prismaMock.medicationProfile.createMany).not.toHaveBeenCalled();
+    expect(prismaMock.medicationProfile.updateMany).toHaveBeenCalledTimes(1);
+    expect(prismaMock.medicationProfile.updateMany).toHaveBeenCalledWith({
+      where: { id: 'profile_unresolved_code', org_id: 'org_1' },
+      data: expect.objectContaining({
+        dose: '2錠',
+        frequency: '1日1回朝食後',
+        prescriber: '処方医A',
+        end_date: null,
+        source: 'qr_scan',
+      }),
+    });
+    const updateArg = prismaMock.medicationProfile.updateMany.mock.calls[0]?.[0];
+    expect(updateArg?.data).not.toHaveProperty('drug_master_id');
+    expect(result.profileSyncResult).toEqual({ created: 0, updated: 1, discontinued: 0 });
+  });
+
   it('detects medication changes against the previous same-case intake across cycle boundaries', async () => {
     prismaMock.prescriptionIntake.findFirst
       .mockResolvedValueOnce({

@@ -633,26 +633,33 @@ async function resolveCreateIntakeLineDrugIdentities(
         .filter((id): id is string => Boolean(id)),
     ),
   );
+  const sourceCodeFilter: Prisma.DrugMasterWhereInput | null =
+    sourceCodes.length > 0
+      ? {
+          OR: [
+            { yj_code: { in: sourceCodes } },
+            { receipt_code: { in: sourceCodes } },
+            { hot_code: { in: sourceCodes } },
+          ],
+        }
+      : null;
   const masterFilters: Prisma.DrugMasterWhereInput[] = [];
-  if (sourceCodes.length > 0) {
-    masterFilters.push({
-      OR: [
-        { yj_code: { in: sourceCodes } },
-        { receipt_code: { in: sourceCodes } },
-        { hot_code: { in: sourceCodes } },
-      ],
-    });
+  if (sourceCodeFilter) {
+    masterFilters.push(sourceCodeFilter);
   }
   if (explicitDrugMasterIds.length > 0) {
     masterFilters.push({ id: { in: explicitDrugMasterIds } });
   }
 
+  const masterWhere: Prisma.DrugMasterWhereInput =
+    sourceCodeFilter && explicitDrugMasterIds.length === 0
+      ? sourceCodeFilter
+      : { OR: masterFilters };
+
   const masters =
     masterFilters.length > 0
       ? await tx.drugMaster.findMany({
-          where: {
-            OR: masterFilters,
-          },
+          where: masterWhere,
           select: {
             id: true,
             yj_code: true,
@@ -1595,6 +1602,10 @@ function incomingLineKeys(
   if (normalizedDrugCode) {
     keys.push(`code:${normalizedDrugCode}`);
     if (resolvedDrugMasterId) keys.push(`legacy-code:${normalizedDrugCode}`);
+  }
+  if (normalizedDrugCode && !resolvedDrugMasterId) {
+    const drugName = line.drug_name.trim();
+    if (drugName) keys.push(`name:${drugName}`);
   }
   if (keys.length > 0) return keys;
 
