@@ -931,3 +931,17 @@ PLAN は Claude 起案 → Codex REQUEST_CHANGES(HIGH×3/MED×4/LOW×1) → rev2
 
 実装順（Codex 推奨・合意）: **S1 → R1 → S2(migration 承認) → S3 → S5 → S6**、UI 系（S4/R3）は S3 後、R2/R4 は随時。
 残未決（PLAN §11）: Q1 短縮/臨時営業を初版に含めるか / Q2 未設定拠点フォールバック（S1/R1 は §1 既定 open 厳守）/ Q3 祝日データ運用 / Q5 UI 統合（§13.2 推奨）/ Q6 責務分離（R4 で確定）/ Q9 カレンダー編集スコープ / Q10 スライド UI（Drawer 推奨）。
+
+### RUN-20260702-FEBRUSH 進捗（D4 ダッシュボード、2026-07-02 12:31Z 時点）
+
+計画=docs/frontend-brushup-plan.md（Codex APPROVE_WITH_NOTES 済・notes 反映済）。SSOT v2=565615d4+27c7c1f5（APPROVE）。
+
+| track | 状態                                                                                                                                                                                                                                                            |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A     | A2 reduced-motion ✅ed99e744 / A5 SafetyTagBadge ✅1f9de4d9 / A8 ErrorState契約 ✅7377aa53（全てCodex APPROVE）。A3/A7=部品既存→C waveへ。A1 ESLintガード=Codex queued / A4 Expiry移行・A6 LoadingRegion昇格=Codex queued                                       |
+| B     | B6 order-\* ✅da777ade / B9 tabular-nums ✅36051828（APPROVE）。B2 StatCard=Codex進行中(5/13: reports/external/capacity/billing/operations-insights済、+schedule-metric-card/signal-tile追加)。B1/B3/B5/B7=Codex queued。B4/B8 大型=未着手。B10=FEUX-5含みCodex |
+| C     | 未着手（C1患者ホットパス→…→C-WB調剤ワークベンチ[解禁済]）。login order-\*はC4承認待ち                                                                                                                                                                           |
+| D     | D4=本表。D1/D2 スクショ/axe=Codex queued                                                                                                                                                                                                                        |
+| E     | E1 ✅台帳56c181ca / E3-2 facilities ✅解決0a278757。E2 wire=C wave相乗り待ち、retire?/hard-stop?=ユーザー承認待ち                                                                                                                                               |
+
+offline lifecycle epic ✅（EPIC-A+CE14/N25+orgIdガード）。FEUX-1 ✅。redis-adapter follow-up ✅03d8f2ff。
