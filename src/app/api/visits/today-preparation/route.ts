@@ -15,6 +15,7 @@ import {
 } from '@/lib/patient/care-team-contact';
 import { getHomeVisitIntake, specialProcedureLabels } from '@/lib/patient/home-visit-intake';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { sortPatientSafetyTags } from '@/lib/patient/safety-tags';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { buildVisitRecordHref } from '@/lib/visits/navigation';
 import { timeDateToString } from '@/lib/visits/time-of-day';
@@ -44,17 +45,6 @@ const ACTIVE_SCHEDULE_STATUSES = [
   'in_progress',
 ] as const;
 
-/** 危険タグの表示順(麻薬 → 冷所 → 一包化 → アレルギー → 嚥下)。 */
-const SAFETY_TAG_ORDER = [
-  'narcotic',
-  'cold_storage',
-  'unit_dose',
-  'half_tablet',
-  'crush_prohibited',
-  'infection_isolation',
-  'allergy',
-  'swallowing',
-];
 const PROCEDURE_SAFETY_TAG_PREFIX = 'procedure:';
 const KNOWN_SPECIAL_PROCEDURE_KEYS = new Set(Object.keys(specialProcedureLabels));
 
@@ -175,11 +165,9 @@ function collectHomeVisitIntakeSafetyTags(schedule: ScheduleQueryRow): string[] 
 }
 
 function sortSafetyTags(tags: Set<string>): string[] {
-  const orderedTags = SAFETY_TAG_ORDER.filter((tag) => tags.has(tag));
-  const procedureTags = [...tags]
-    .filter((tag) => tag.startsWith(PROCEDURE_SAFETY_TAG_PREFIX))
-    .sort((left, right) => left.localeCompare(right, 'ja'));
-  return [...orderedTags, ...procedureTags];
+  return sortPatientSafetyTags(tags, {
+    extraSortedPrefixes: [PROCEDURE_SAFETY_TAG_PREFIX],
+  });
 }
 
 function collectSafetyTags(schedule: ScheduleQueryRow): Set<string> {

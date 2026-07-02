@@ -81,13 +81,13 @@ const {
   });
 
   const createDbProxy = () => {
-    const cache = new Map<PropertyKey, ReturnType<typeof createModel>>();
+    const cache = new Map<PropertyKey, unknown>();
     return new Proxy(
       {},
       {
         get: (_target, prop: PropertyKey) => {
           if (!cache.has(prop)) {
-            cache.set(prop, createModel());
+            cache.set(prop, prop === '$queryRaw' ? vi.fn().mockResolvedValue([]) : createModel());
           }
           return cache.get(prop);
         },
@@ -95,7 +95,9 @@ const {
     );
   };
 
-  type DbProxy = Record<string, ReturnType<typeof createModel>>;
+  type DbProxy = Record<string, ReturnType<typeof createModel>> & {
+    $queryRaw: ReturnType<typeof vi.fn>;
+  };
 
   return {
     authMock: vi.fn(),
@@ -1222,6 +1224,18 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     name: 'patients/[id]/header-summary GET',
     setupSuccess: () => {
       getPatientHeaderSummaryMock.mockResolvedValueOnce({
+        patient_id: 'patient_1',
+        name: '患者 太郎',
+        name_kana: 'カンジャ タロウ',
+        birth_date: '1940-01-01T00:00:00.000Z',
+        gender: 'male',
+        gender_label: '男性',
+        care_level: 'care_3',
+        care_level_label: '要介護 3',
+        home_status_label: null,
+        residence_label: '施設 / 201号室',
+        primary_diagnosis: '2型糖尿病',
+        intervention_start_date: '2026-01-01T00:00:00.000Z',
         primary_pharmacist_name: '薬剤師 花子',
         backup_pharmacist_name: '薬剤師 太郎',
         primary_staff_name: '事務 ひかり',
@@ -1229,6 +1243,16 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
         first_visit_date: '2026-01-05T09:00:00.000Z',
         last_prescribed_date: '2026-06-01T00:00:00.000Z',
         next_prescription_expected_date: null,
+        safety: {
+          allergy: 'セフェム系(2019)',
+          renal: 'eGFR 38(6/1)',
+          handling_tags: ['narcotic', 'cold_storage', 'unit_dose'],
+          swallowing: '錠剤OK・大きい錠は半割',
+          cautions: ['ふらつき(6/5〜経過観察)'],
+          safety_tags: ['narcotic', 'cold_storage', 'unit_dose', 'renal', 'swallowing', 'allergy'],
+          visible_safety_tags: ['narcotic', 'cold_storage', 'allergy'],
+          hidden_safety_tag_count: 3,
+        },
       });
     },
     handler: () =>

@@ -1,20 +1,29 @@
 import type { Prisma } from '@prisma/client';
+import { format } from 'date-fns';
 import { hasPermission } from '@/lib/auth/permissions';
 import { prisma } from '@/lib/db/client';
 import type { ScopedTxRunner } from '@/lib/db/rls';
+import { careLevelLabels } from '@/lib/patient/home-visit-intake';
 import {
   getPatientPrivacyFlags,
   maskAddressDetail,
   maskInsuranceNumber,
   maskPhoneNumber,
 } from '@/lib/patient/privacy';
+import { selectVisibleSafetyTags, sortPatientSafetyTags } from '@/lib/patient/safety-tags';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
 import { findPatientOverviewBase } from '@/server/services/patient-state-snapshot';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { getPatientRiskSummary } from '@/server/services/patient-risk';
 import { getPatientVisitBrief } from '@/server/services/visit-brief';
 import { getPatientHomeCareFeatureSummary } from '@/server/services/home-care-ops';
-import { compactPreviewValues } from '@/server/services/patient-detail-helpers';
+import {
+  buildAllergyLabel,
+  buildCautionLabels,
+  compactPreviewValues,
+  sortHandlingTags,
+  type WorkspaceConditionInput,
+} from '@/server/services/patient-detail-helpers';
 import { buildPatientWorkspace } from '@/server/services/patient-detail-workspace';
 import {
   buildPatientFoundationData,
@@ -102,6 +111,18 @@ function maskFoundationForExternalViewer(foundation: PatientFoundationData): Pat
 type DetailArgs = PatientDetailScopeArgs;
 
 export type PatientHeaderSummary = {
+  patient_id: string;
+  name: string;
+  name_kana: string | null;
+  birth_date: string;
+  gender: string;
+  gender_label: string;
+  care_level: string | null;
+  care_level_label: string | null;
+  home_status_label: string | null;
+  residence_label: string | null;
+  primary_diagnosis: string | null;
+  intervention_start_date: string | null;
   primary_pharmacist_name: string | null;
   backup_pharmacist_name: string | null;
   primary_staff_name: string | null;
@@ -109,6 +130,16 @@ export type PatientHeaderSummary = {
   first_visit_date: string | null;
   last_prescribed_date: string | null;
   next_prescription_expected_date: string | null;
+  safety: {
+    allergy: string | null;
+    renal: string | null;
+    handling_tags: string[];
+    swallowing: string | null;
+    cautions: string[];
+    safety_tags: string[];
+    visible_safety_tags: string[];
+    hidden_safety_tag_count: number;
+  };
 };
 
 /**
@@ -134,6 +165,10 @@ type PatientTimelinePartialFailure = {
   message: string;
 };
 
+type PatientHeaderConditionInput = WorkspaceConditionInput & {
+  is_primary: boolean;
+};
+
 function describePatientTimelineTaskError(error: unknown) {
   if (error instanceof Error) {
     return error.name;
@@ -156,6 +191,31 @@ function toPatientTimelinePartialFailure(
     source: failure.key,
     message: '一部のタイムライン情報を取得できませんでした',
   };
+}
+
+function formatPatientHeaderGenderLabel(gender: string) {
+  if (gender === 'male') return '男性';
+  if (gender === 'female') return '女性';
+  return 'その他';
+}
+
+function formatPatientHeaderResidenceLabel(
+  residences: Array<{ facility_id: string | null; unit_name: string | null }>,
+) {
+  const primaryResidence = residences[0] ?? null;
+  if (!primaryResidence) return null;
+  const residenceType = primaryResidence.facility_id ? '施設' : '自宅';
+  return primaryResidence.unit_name
+    ? `${residenceType} / ${primaryResidence.unit_name}`
+    : residenceType;
+}
+
+function selectPatientHeaderPrimaryDiagnosis(conditions: PatientHeaderConditionInput[]) {
+  return (
+    conditions.find((condition) => condition.is_primary && condition.is_active)?.name ??
+    conditions.find((condition) => condition.is_active)?.name ??
+    null
+  );
 }
 
 export async function getPatientOverview(db: DbClient, args: DetailArgs) {
@@ -343,10 +403,40 @@ export async function getPatientHeaderSummary(
   const patient = await db.patient.findFirst({
     where: buildPatientDetailWhere(args),
     select: {
+      id: true,
+      name: true,
+      name_kana: true,
+      birth_date: true,
+      gender: true,
+      allergy_info: true,
       primary_pharmacist_id: true,
       backup_pharmacist_id: true,
       primary_staff_id: true,
       backup_staff_id: true,
+      residences: {
+        orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+        select: {
+          facility_id: true,
+          unit_name: true,
+        },
+      },
+      scheduling_preference: {
+        select: {
+          swallowing_route: true,
+          care_level: true,
+        },
+      },
+      conditions: {
+        orderBy: [{ is_primary: 'desc' }, { noted_at: 'desc' }, { created_at: 'desc' }],
+        select: {
+          condition_type: true,
+          name: true,
+          is_primary: true,
+          is_active: true,
+          noted_at: true,
+          notes: true,
+        },
+      },
       cases: {
         where: {
           org_id: args.orgId,
@@ -355,6 +445,7 @@ export async function getPatientHeaderSummary(
         orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
         select: {
           id: true,
+          start_date: true,
         },
       },
     },
@@ -370,7 +461,7 @@ export async function getPatientHeaderSummary(
   ].filter((value): value is string => Boolean(value));
   const uniqueAssignedUserIds = [...new Set(assignedUserIds)];
 
-  const [assignedNameMap, firstVisit, lastPrescription] = await Promise.all([
+  const [assignedNameMap, firstVisit, lastPrescription, egfrObservation] = await Promise.all([
     uniqueAssignedUserIds.length > 0
       ? batchResolveNames(db as typeof prisma, args.orgId, uniqueAssignedUserIds)
       : Promise.resolve(new Map<string, string>()),
@@ -396,11 +487,68 @@ export async function getPatientHeaderSummary(
             },
           },
           orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
-          select: { prescribed_date: true },
+          select: {
+            prescribed_date: true,
+            lines: {
+              orderBy: { line_number: 'asc' },
+              select: {
+                packaging_instruction_tags: true,
+                dispensing_method: true,
+              },
+            },
+          },
         }),
+    db.patientLabObservation.findFirst({
+      where: {
+        org_id: args.orgId,
+        patient_id: args.patientId,
+        analyte_code: 'egfr',
+      },
+      orderBy: { measured_at: 'desc' },
+      select: {
+        value_numeric: true,
+        value_text: true,
+        measured_at: true,
+      },
+    }),
   ]);
+  const allergy = buildAllergyLabel(patient.allergy_info);
+  const swallowing = patient.scheduling_preference?.swallowing_route?.trim() || null;
+  const handlingTags = sortHandlingTags([
+    ...(lastPrescription?.lines ?? []).flatMap(
+      (line) => line.packaging_instruction_tags as string[],
+    ),
+    ...((lastPrescription?.lines ?? []).some((line) => line.dispensing_method === 'unit_dose')
+      ? ['unit_dose']
+      : []),
+  ]);
+  const egfrValue = egfrObservation?.value_numeric ?? egfrObservation?.value_text ?? null;
+  const renal =
+    egfrObservation && egfrValue != null
+      ? `eGFR ${egfrValue}(${format(egfrObservation.measured_at, 'M/d')})`
+      : null;
+  const safetyTagSet = new Set<string>(handlingTags);
+  if (renal) safetyTagSet.add('renal');
+  if (swallowing) safetyTagSet.add('swallowing');
+  if (allergy) safetyTagSet.add('allergy');
+  const safetyTags = sortPatientSafetyTags(safetyTagSet);
+  const visibleSafetyTags = selectVisibleSafetyTags(safetyTags);
+  const latestCase = patient.cases[0] ?? null;
+  const careLevel = patient.scheduling_preference?.care_level ?? null;
 
   return {
+    patient_id: patient.id,
+    name: patient.name,
+    name_kana: patient.name_kana,
+    birth_date: patient.birth_date.toISOString(),
+    gender: patient.gender,
+    gender_label: formatPatientHeaderGenderLabel(patient.gender),
+    care_level: careLevel,
+    care_level_label: careLevel ? (careLevelLabels[careLevel] ?? careLevel) : null,
+    home_status_label: null,
+    residence_label: formatPatientHeaderResidenceLabel(patient.residences),
+    primary_diagnosis: selectPatientHeaderPrimaryDiagnosis(patient.conditions),
+    intervention_start_date: latestCase?.start_date?.toISOString() ?? null,
     primary_pharmacist_name: patient.primary_pharmacist_id
       ? (assignedNameMap.get(patient.primary_pharmacist_id) ?? null)
       : null,
@@ -416,6 +564,16 @@ export async function getPatientHeaderSummary(
     first_visit_date: firstVisit?.visit_date.toISOString() ?? null,
     last_prescribed_date: lastPrescription?.prescribed_date.toISOString() ?? null,
     next_prescription_expected_date: null,
+    safety: {
+      allergy,
+      renal,
+      handling_tags: handlingTags,
+      swallowing,
+      cautions: buildCautionLabels(patient.conditions),
+      safety_tags: safetyTags,
+      visible_safety_tags: visibleSafetyTags.tags,
+      hidden_safety_tag_count: visibleSafetyTags.hiddenCount,
+    },
   };
 }
 

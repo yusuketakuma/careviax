@@ -10,6 +10,7 @@ import { japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import { getProcessStepKeyForStatus } from '@/lib/prescription/cycle-workspace';
 import { careLevelLabels } from '@/lib/patient/home-visit-intake';
+import { sortPatientSafetyTags } from '@/lib/patient/safety-tags';
 import {
   buildCareTeamReliabilitySummary,
   buildPatientContactReadiness,
@@ -76,18 +77,6 @@ const ACTIVE_SCHEDULE_STATUSES = [
   'departed',
   'in_progress',
 ] as const;
-
-/** 危険タグの表示順(麻薬 → 冷所 → 一包化 → 注意系 → 患者属性)。 */
-const SAFETY_TAG_ORDER = [
-  'narcotic',
-  'cold_storage',
-  'unit_dose',
-  'half_tablet',
-  'crush_prohibited',
-  'renal',
-  'swallowing',
-  'allergy',
-];
 
 /** 「対応が必要な順」のソート優先度。 */
 const ATTENTION_PRIORITY: Record<PatientAttentionKey, number> = {
@@ -320,7 +309,7 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
   if (patient.lab_observations.length > 0) tagSet.add('renal');
   if (patient.scheduling_preference?.swallowing_route?.trim()) tagSet.add('swallowing');
   if (hasAllergyInfo(patient.allergy_info)) tagSet.add('allergy');
-  const safetyTags = SAFETY_TAG_ORDER.filter((tag) => tagSet.has(tag));
+  const safetyTags = sortPatientSafetyTags(tagSet);
 
   const hospitalized =
     cycle?.exception_status === 'hospitalized' || openException?.exception_type === 'hospitalized';

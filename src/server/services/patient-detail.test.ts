@@ -92,7 +92,10 @@ function buildDb<T extends Record<string, unknown> = Record<string, never>>(over
       // buildPatientWorkspace(06_card 集約): 進行中サイクルなし → workspace は null
       findFirst: vi.fn().mockResolvedValue(null),
     },
-    patientLabObservation: { findMany: vi.fn().mockResolvedValue([]) },
+    patientLabObservation: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
+    },
     patientInsurance: { findMany: vi.fn().mockResolvedValue([]) },
     patientFieldRevision: { findMany: vi.fn().mockResolvedValue([]) },
     jahisSupplementalRecord: { findMany: vi.fn().mockResolvedValue([]) },
@@ -118,16 +121,99 @@ beforeEach(() => {
 });
 
 describe('getPatientHeaderSummary', () => {
+  function headerPatient(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'patient_1',
+      name: '患者 太郎',
+      name_kana: 'カンジャ タロウ',
+      birth_date: new Date('1940-01-01T00:00:00.000Z'),
+      gender: 'male',
+      allergy_info: null,
+      primary_pharmacist_id: null,
+      backup_pharmacist_id: null,
+      primary_staff_id: null,
+      backup_staff_id: null,
+      residences: [],
+      scheduling_preference: null,
+      conditions: [],
+      cases: [],
+      ...overrides,
+    };
+  }
+
+  function expectedHeaderSummary(overrides: Record<string, unknown> = {}) {
+    return {
+      patient_id: 'patient_1',
+      name: '患者 太郎',
+      name_kana: 'カンジャ タロウ',
+      birth_date: '1940-01-01T00:00:00.000Z',
+      gender: 'male',
+      gender_label: '男性',
+      care_level: null,
+      care_level_label: null,
+      home_status_label: null,
+      residence_label: null,
+      primary_diagnosis: null,
+      intervention_start_date: null,
+      primary_pharmacist_name: null,
+      backup_pharmacist_name: null,
+      primary_staff_name: null,
+      backup_staff_name: null,
+      first_visit_date: null,
+      last_prescribed_date: null,
+      next_prescription_expected_date: null,
+      safety: {
+        allergy: null,
+        renal: null,
+        handling_tags: [],
+        swallowing: null,
+        cautions: [],
+        safety_tags: [],
+        visible_safety_tags: [],
+        hidden_safety_tag_count: 0,
+      },
+      ...overrides,
+    };
+  }
+
   it('returns read-only header dates and resolved patient-level care team names within the scoped cases', async () => {
     const db = buildDb();
-    db.patient.findFirst.mockResolvedValue({
-      id: 'patient_1',
-      primary_pharmacist_id: 'pharmacist_1',
-      backup_pharmacist_id: 'pharmacist_2',
-      primary_staff_id: 'staff_1',
-      backup_staff_id: 'staff_2',
-      cases: [{ id: 'case_1' }, { id: 'case_2' }],
-    });
+    db.patient.findFirst.mockResolvedValue(
+      headerPatient({
+        primary_pharmacist_id: 'pharmacist_1',
+        backup_pharmacist_id: 'pharmacist_2',
+        primary_staff_id: 'staff_1',
+        backup_staff_id: 'staff_2',
+        residences: [{ facility_id: 'facility_1', unit_name: '201号室' }],
+        scheduling_preference: {
+          care_level: 'care_3',
+          swallowing_route: '錠剤OK・大きい錠は半割',
+        },
+        conditions: [
+          {
+            condition_type: 'disease',
+            name: '2型糖尿病',
+            is_primary: true,
+            is_active: true,
+            noted_at: new Date('2026-05-01T00:00:00.000Z'),
+            notes: null,
+          },
+          {
+            condition_type: 'problem',
+            name: 'ふらつき',
+            is_primary: false,
+            is_active: true,
+            noted_at: new Date('2026-06-05T00:00:00.000Z'),
+            notes: '経過観察',
+          },
+        ],
+        allergy_info: [{ drug_name: 'セフェム系', noted_year: 2019 }],
+        cases: [
+          { id: 'case_1', start_date: new Date('2026-01-01T00:00:00.000Z') },
+          { id: 'case_2', start_date: null },
+        ],
+      }),
+    );
     db.user.findMany.mockResolvedValue([
       { id: 'pharmacist_1', name: '薬剤師 花子' },
       { id: 'pharmacist_2', name: '薬剤師 太郎' },
@@ -139,6 +225,17 @@ describe('getPatientHeaderSummary', () => {
     });
     db.prescriptionIntake.findFirst.mockResolvedValue({
       prescribed_date: new Date('2026-06-01T00:00:00.000Z'),
+      lines: [
+        {
+          packaging_instruction_tags: ['cold_storage', 'narcotic'],
+          dispensing_method: 'unit_dose',
+        },
+      ],
+    });
+    db.patientLabObservation.findFirst.mockResolvedValue({
+      value_numeric: 38,
+      value_text: null,
+      measured_at: new Date('2026-06-01T00:00:00.000Z'),
     });
 
     const result = await getPatientHeaderSummary(
@@ -151,15 +248,31 @@ describe('getPatientHeaderSummary', () => {
       },
     );
 
-    expect(result).toEqual({
-      primary_pharmacist_name: '薬剤師 花子',
-      backup_pharmacist_name: '薬剤師 太郎',
-      primary_staff_name: '事務 ひかり',
-      backup_staff_name: '事務 まこと',
-      first_visit_date: '2026-01-05T09:00:00.000Z',
-      last_prescribed_date: '2026-06-01T00:00:00.000Z',
-      next_prescription_expected_date: null,
-    });
+    expect(result).toEqual(
+      expectedHeaderSummary({
+        residence_label: '施設 / 201号室',
+        care_level: 'care_3',
+        care_level_label: '要介護 3',
+        primary_diagnosis: '2型糖尿病',
+        intervention_start_date: '2026-01-01T00:00:00.000Z',
+        primary_pharmacist_name: '薬剤師 花子',
+        backup_pharmacist_name: '薬剤師 太郎',
+        primary_staff_name: '事務 ひかり',
+        backup_staff_name: '事務 まこと',
+        first_visit_date: '2026-01-05T09:00:00.000Z',
+        last_prescribed_date: '2026-06-01T00:00:00.000Z',
+        safety: {
+          allergy: 'セフェム系(2019)',
+          renal: 'eGFR 38(6/1)',
+          handling_tags: ['narcotic', 'cold_storage', 'unit_dose'],
+          swallowing: '錠剤OK・大きい錠は半割',
+          cautions: ['ふらつき(6/5〜経過観察)'],
+          safety_tags: ['narcotic', 'cold_storage', 'unit_dose', 'renal', 'swallowing', 'allergy'],
+          visible_safety_tags: ['narcotic', 'cold_storage', 'allergy'],
+          hidden_safety_tag_count: 3,
+        },
+      }),
+    );
     expect(db.patient.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -167,10 +280,40 @@ describe('getPatientHeaderSummary', () => {
           org_id: 'org_1',
         }),
         select: expect.objectContaining({
+          id: true,
+          name: true,
+          name_kana: true,
+          birth_date: true,
+          gender: true,
+          allergy_info: true,
           primary_pharmacist_id: true,
           backup_pharmacist_id: true,
           primary_staff_id: true,
           backup_staff_id: true,
+          residences: {
+            orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+            select: {
+              facility_id: true,
+              unit_name: true,
+            },
+          },
+          scheduling_preference: {
+            select: {
+              swallowing_route: true,
+              care_level: true,
+            },
+          },
+          conditions: {
+            orderBy: [{ is_primary: 'desc' }, { noted_at: 'desc' }, { created_at: 'desc' }],
+            select: {
+              condition_type: true,
+              name: true,
+              is_primary: true,
+              is_active: true,
+              noted_at: true,
+              notes: true,
+            },
+          },
           cases: expect.objectContaining({
             where: expect.objectContaining({
               org_id: 'org_1',
@@ -178,6 +321,7 @@ describe('getPatientHeaderSummary', () => {
             orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
             select: {
               id: true,
+              start_date: true,
             },
           }),
         }),
@@ -208,7 +352,29 @@ describe('getPatientHeaderSummary', () => {
         },
       },
       orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
-      select: { prescribed_date: true },
+      select: {
+        prescribed_date: true,
+        lines: {
+          orderBy: { line_number: 'asc' },
+          select: {
+            packaging_instruction_tags: true,
+            dispensing_method: true,
+          },
+        },
+      },
+    });
+    expect(db.patientLabObservation.findFirst).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        analyte_code: 'egfr',
+      },
+      orderBy: { measured_at: 'desc' },
+      select: {
+        value_numeric: true,
+        value_text: true,
+        measured_at: true,
+      },
     });
   });
 
@@ -231,14 +397,15 @@ describe('getPatientHeaderSummary', () => {
 
   it('deduplicates assigned user lookups and leaves missing assigned names null', async () => {
     const db = buildDb();
-    db.patient.findFirst.mockResolvedValue({
-      id: 'patient_1',
-      primary_pharmacist_id: 'shared_user',
-      backup_pharmacist_id: 'shared_user',
-      primary_staff_id: 'missing_staff',
-      backup_staff_id: null,
-      cases: [{ id: 'case_1' }],
-    });
+    db.patient.findFirst.mockResolvedValue(
+      headerPatient({
+        primary_pharmacist_id: 'shared_user',
+        backup_pharmacist_id: 'shared_user',
+        primary_staff_id: 'missing_staff',
+        backup_staff_id: null,
+        cases: [{ id: 'case_1', start_date: null }],
+      }),
+    );
     db.user.findMany.mockResolvedValue([{ id: 'shared_user', name: '薬剤師 花子' }]);
     db.visitRecord.findFirst.mockResolvedValue(null);
     db.prescriptionIntake.findFirst.mockResolvedValue(null);
@@ -250,15 +417,14 @@ describe('getPatientHeaderSummary', () => {
         role: 'pharmacist',
         userId: 'user_1',
       }),
-    ).resolves.toEqual({
-      primary_pharmacist_name: '薬剤師 花子',
-      backup_pharmacist_name: '薬剤師 花子',
-      primary_staff_name: null,
-      backup_staff_name: null,
-      first_visit_date: null,
-      last_prescribed_date: null,
-      next_prescription_expected_date: null,
-    });
+    ).resolves.toEqual(
+      expectedHeaderSummary({
+        primary_pharmacist_name: '薬剤師 花子',
+        backup_pharmacist_name: '薬剤師 花子',
+        primary_staff_name: null,
+        backup_staff_name: null,
+      }),
+    );
     expect(db.user.findMany).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -270,14 +436,15 @@ describe('getPatientHeaderSummary', () => {
 
   it('keeps optional header fields null when no scoped source data exists', async () => {
     const db = buildDb();
-    db.patient.findFirst.mockResolvedValue({
-      id: 'patient_1',
-      primary_pharmacist_id: null,
-      backup_pharmacist_id: null,
-      primary_staff_id: null,
-      backup_staff_id: null,
-      cases: [],
-    });
+    db.patient.findFirst.mockResolvedValue(
+      headerPatient({
+        primary_pharmacist_id: null,
+        backup_pharmacist_id: null,
+        primary_staff_id: null,
+        backup_staff_id: null,
+        cases: [],
+      }),
+    );
 
     await expect(
       getPatientHeaderSummary(db as unknown as Parameters<typeof getPatientHeaderSummary>[0], {
@@ -286,37 +453,45 @@ describe('getPatientHeaderSummary', () => {
         role: 'pharmacist',
         userId: 'user_1',
       }),
-    ).resolves.toEqual({
-      primary_pharmacist_name: null,
-      backup_pharmacist_name: null,
-      primary_staff_name: null,
-      backup_staff_name: null,
-      first_visit_date: null,
-      last_prescribed_date: null,
-      next_prescription_expected_date: null,
-    });
+    ).resolves.toEqual(expectedHeaderSummary());
     expect(db.visitRecord.findFirst).not.toHaveBeenCalled();
     expect(db.prescriptionIntake.findFirst).not.toHaveBeenCalled();
     expect(db.user.findMany).not.toHaveBeenCalled();
+    expect(db.patientLabObservation.findFirst).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        analyte_code: 'egfr',
+      },
+      orderBy: { measured_at: 'desc' },
+      select: {
+        value_numeric: true,
+        value_text: true,
+        measured_at: true,
+      },
+    });
   });
 
   it('does not fall back to case-level assignments when patient-level care team fields are empty', async () => {
     const db = buildDb();
-    db.patient.findFirst.mockResolvedValue({
-      id: 'patient_1',
-      primary_pharmacist_id: null,
-      backup_pharmacist_id: null,
-      primary_staff_id: null,
-      backup_staff_id: null,
-      cases: [
-        {
-          id: 'case_latest',
-        },
-        {
-          id: 'case_old',
-        },
-      ],
-    });
+    db.patient.findFirst.mockResolvedValue(
+      headerPatient({
+        primary_pharmacist_id: null,
+        backup_pharmacist_id: null,
+        primary_staff_id: null,
+        backup_staff_id: null,
+        cases: [
+          {
+            id: 'case_latest',
+            start_date: null,
+          },
+          {
+            id: 'case_old',
+            start_date: null,
+          },
+        ],
+      }),
+    );
     db.visitRecord.findFirst.mockResolvedValue(null);
     db.prescriptionIntake.findFirst.mockResolvedValue(null);
 
@@ -327,15 +502,7 @@ describe('getPatientHeaderSummary', () => {
         role: 'pharmacist',
         userId: 'user_1',
       }),
-    ).resolves.toEqual({
-      primary_pharmacist_name: null,
-      backup_pharmacist_name: null,
-      primary_staff_name: null,
-      backup_staff_name: null,
-      first_visit_date: null,
-      last_prescribed_date: null,
-      next_prescription_expected_date: null,
-    });
+    ).resolves.toEqual(expectedHeaderSummary());
     expect(db.user.findMany).not.toHaveBeenCalled();
   });
 });
