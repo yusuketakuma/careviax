@@ -827,7 +827,7 @@ function ConsultStatusList({
 }) {
   return (
     <section
-      className="order-3 rounded-lg border border-border/70 bg-card p-4 lg:order-none"
+      className="rounded-lg border border-border/70 bg-card p-4 lg:col-start-1 lg:row-start-1"
       aria-labelledby="handoff-consult-list-heading"
       data-testid="handoff-consult-list"
     >
@@ -946,7 +946,7 @@ function ConsultResolutionPanel({
 
   return (
     <section
-      className="order-1 rounded-lg border border-border/70 bg-card p-4 lg:order-none"
+      className="rounded-lg border border-border/70 bg-card p-4 lg:col-start-3 lg:row-start-1"
       aria-labelledby="handoff-consult-resolution-heading"
       data-testid="handoff-consult-resolution"
     >
@@ -1175,16 +1175,20 @@ function ConsultWorkspace({
           未対応の相談はありません。上から薬剤師に相談を送れます。
         </p>
       ) : (
+        // DOM 順 = モバイル視覚順(対応→詳細→一覧)。lg は col-start で従来配置(一覧|詳細|対応)を維持
+        // (SSOT 4.4: order-* による DOM/視覚順の入替を排除)。
         <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)_minmax(240px,300px)]">
-          <ConsultStatusList
-            counts={counts}
-            selectedStatus={selectedStatus}
-            onSelectStatus={(status) => {
-              setSelectedStatus(status);
-              setSelectedId(null);
-            }}
-          />
-          <div className="order-2 min-w-0 space-y-3 lg:order-none">
+          {canResolveConsult ? (
+            <ConsultResolutionPanel item={selectedItem} orgId={orgId} onResolved={onResolved} />
+          ) : (
+            <aside
+              className="rounded-md border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground lg:col-start-3 lg:row-start-1"
+              data-testid="handoff-consult-resolution-readonly"
+            >
+              相談への対応は薬剤師が行います。事務は起票・確認のみです。
+            </aside>
+          )}
+          <div className="min-w-0 space-y-3 lg:col-start-2 lg:row-start-1">
             {visibleItems.length > 1 ? (
               <div className="flex flex-wrap gap-2" data-testid="handoff-consult-picker">
                 {visibleItems.map((item) => (
@@ -1207,16 +1211,14 @@ function ConsultWorkspace({
             ) : null}
             <ConsultDetail item={selectedItem} />
           </div>
-          {canResolveConsult ? (
-            <ConsultResolutionPanel item={selectedItem} orgId={orgId} onResolved={onResolved} />
-          ) : (
-            <aside
-              className="rounded-md border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground"
-              data-testid="handoff-consult-resolution-readonly"
-            >
-              相談への対応は薬剤師が行います。事務は起票・確認のみです。
-            </aside>
-          )}
+          <ConsultStatusList
+            counts={counts}
+            selectedStatus={selectedStatus}
+            onSelectStatus={(status) => {
+              setSelectedStatus(status);
+              setSelectedId(null);
+            }}
+          />
         </div>
       )}
     </section>

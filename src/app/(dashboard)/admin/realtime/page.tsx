@@ -277,68 +277,7 @@ export default function RealtimePage() {
       )}
 
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <Card className="order-2 xl:order-2">
-          <CardHeader>
-            <CardTitle className="text-base">最新通知</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {notificationsQuery.isLoading ? (
-              <p className="text-sm text-muted-foreground">通知を読み込んでいます...</p>
-            ) : notificationsQuery.isError ? (
-              // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
-              <ErrorState
-                variant="server"
-                size="inline"
-                action={{ label: '再読み込み', onClick: () => void notificationsQuery.refetch() }}
-              />
-            ) : liveNotifications.length === 0 ? (
-              <p className="text-sm text-muted-foreground">未読通知はありません</p>
-            ) : (
-              liveNotifications.map((notification) => {
-                const config = TYPE_CONFIG[notification.type] ?? TYPE_CONFIG.system;
-                const Icon = config.icon;
-                return (
-                  <div
-                    key={notification.id}
-                    className="space-y-2 rounded-lg border border-border/70 bg-muted/20 px-4 py-3"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-full border border-border bg-background p-2">
-                          <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-                        </span>
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <StateBadge role={config.role}>{config.label}</StateBadge>
-                            {!notification.is_read ? <Badge variant="secondary">未読</Badge> : null}
-                          </div>
-                          <p className="mt-1 font-medium text-foreground">{notification.title}</p>
-                        </div>
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(parseISO(notification.created_at), {
-                          addSuffix: true,
-                          locale: ja,
-                        })}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{notification.message}</p>
-                    {notification.link ? (
-                      <Link
-                        href={notification.link}
-                        className="inline-flex min-h-11 items-center rounded-md border border-border px-3 text-sm font-medium text-primary hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        詳細を開く
-                      </Link>
-                    ) : null}
-                  </div>
-                );
-              })
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="order-1 xl:order-1">
+        <Card>
           <CardHeader>
             <CardTitle className="text-base">ライブワークベンチ</CardTitle>
           </CardHeader>
@@ -406,6 +345,67 @@ export default function RealtimePage() {
                   </div>
                 </div>
               ))
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">最新通知</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {notificationsQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">通知を読み込んでいます...</p>
+            ) : notificationsQuery.isError ? (
+              // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
+              <ErrorState
+                variant="server"
+                size="inline"
+                action={{ label: '再読み込み', onClick: () => void notificationsQuery.refetch() }}
+              />
+            ) : liveNotifications.length === 0 ? (
+              <p className="text-sm text-muted-foreground">未読通知はありません</p>
+            ) : (
+              liveNotifications.map((notification) => {
+                const config = TYPE_CONFIG[notification.type] ?? TYPE_CONFIG.system;
+                const Icon = config.icon;
+                return (
+                  <div
+                    key={notification.id}
+                    className="space-y-2 rounded-lg border border-border/70 bg-muted/20 px-4 py-3"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full border border-border bg-background p-2">
+                          <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+                        </span>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StateBadge role={config.role}>{config.label}</StateBadge>
+                            {!notification.is_read ? <Badge variant="secondary">未読</Badge> : null}
+                          </div>
+                          <p className="mt-1 font-medium text-foreground">{notification.title}</p>
+                        </div>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(parseISO(notification.created_at), {
+                          addSuffix: true,
+                          locale: ja,
+                        })}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{notification.message}</p>
+                    {notification.link ? (
+                      <Link
+                        href={notification.link}
+                        className="inline-flex min-h-11 items-center rounded-md border border-border px-3 text-sm font-medium text-primary hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        詳細を開く
+                      </Link>
+                    ) : null}
+                  </div>
+                );
+              })
             )}
           </CardContent>
         </Card>
