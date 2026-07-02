@@ -1,6 +1,6 @@
 # Refactor State
 
-Snapshot: 2026-07-02 14:31 JST
+Snapshot: 2026-07-02 15:12 JST
 
 ## Phase
 
@@ -13,31 +13,41 @@ Snapshot: 2026-07-02 14:31 JST
 
 ## Last Change ID
 
-- `RR-BUG-20260702-F09-medication-profile-unresolved-code-name-fallback`
+- `RR-BUG-20260702-F20-community-activities-date-range-validation`
 
 ## Build State
 
 - Last full production build evidence:
-  `pnpm build` passed after the medication-profile unresolved-code continuity
-  fix.
+  `pnpm build` passed after the community-activities F20 date-range validation
+  and validation-followup fixture drift repairs.
 - Last full cheap gate bundle evidence:
-  - `pnpm typecheck`: passed after the medication-profile unresolved-code
-    continuity fix.
-  - `pnpm typecheck:no-unused`: passed after the medication-profile
-    unresolved-code continuity fix.
-  - `pnpm lint`: passed after the medication-profile unresolved-code continuity
-    fix.
-  - `pnpm format:check`: failed only on unrelated existing dirty
-    `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`; scoped
-    Prettier passed for touched files.
-  - Scoped Prettier and diff-check passed for the prescription-intake service
-    files before this state update; final ledger formatting/diff checks are
-    pending until this state update lands.
+  - `pnpm test -- --reporter=dot --testTimeout=60000`: passed `1265` files /
+    `12583` tests with existing skips.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm date-slices:check`: passed.
+  - `pnpm build`: passed.
 
 ## Current Worktree
 
 - The worktree is intentionally dirty from verified small slices. Preserve all
   existing dirty files unless explicitly owning a new slice.
+- Latest backend/API validation slice changed:
+  `src/app/api/community-activities/route.ts`,
+  `src/app/api/community-activities/route.test.ts`,
+  `src/server/jobs/drug-master.ts`, `tools/date-slice-allowlist.json`,
+  `src/app/api/__tests__/workflow-full-cycle.test.ts`,
+  `src/app/api/__tests__/workflow-prescription-to-report.test.ts`,
+  `src/app/(dashboard)/prescriptions/new/prescription-intake-form.contract.test.ts`,
+  `src/app/api/facilities/route.test.ts`, and external-professional route
+  tests under `src/app/api/external-professionals/[id]/`. It validates
+  community activity `from`/`to` date keys, rejects reversed ranges, applies JST
+  day boundaries, replaces drug-master direct ISO date slicing with
+  `formatUtcDateKey(now)`, removes the stale date-slice allowlist entry, and
+  aligns full-suite API/workflow fixtures with current route contracts. Full
+  tests and all static/build gates passed.
 - Latest backend medication-identity slice changed only
   `src/server/services/prescription-intake-service.ts` and
   `src/server/services/prescription-intake-service.test.ts`. It prevents

@@ -1,11 +1,65 @@
 # Refactor Log
 
-Snapshot: 2026-07-02 05:05 JST
+Snapshot: 2026-07-02 15:12 JST
 
 This log is the compact resume log for `ops/refactor`. Detailed per-slice
 evidence also exists in root `REFACTOR_REPORT.md`,
 `REFACTOR_EXECUTION_PLAN.md`, `CODEX_GOAL_PROGRESS.md`, and
 `.codex/ralph-state.md`.
+
+## 2026-07-02 15:12 JST - Community Activities Date Range Validation
+
+- Change ID:
+  `RR-BUG-20260702-F20-community-activities-date-range-validation`.
+- Category: bug fix / API input validation / Japan date boundary correctness /
+  validation gate repair.
+- Files changed:
+  - `src/app/api/community-activities/route.ts`
+  - `src/app/api/community-activities/route.test.ts`
+  - `src/server/jobs/drug-master.ts`
+  - `tools/date-slice-allowlist.json`
+  - `src/app/api/__tests__/workflow-full-cycle.test.ts`
+  - `src/app/api/__tests__/workflow-prescription-to-report.test.ts`
+  - `src/app/(dashboard)/prescriptions/new/prescription-intake-form.contract.test.ts`
+  - `src/app/api/facilities/route.test.ts`
+  - `src/app/api/external-professionals/[id]/route.test.ts`
+  - `src/app/api/external-professionals/[id]/patients/route.test.ts`
+  - `src/app/api/external-professionals/[id]/communications/route.test.ts`
+- Summary:
+  - Validated community activity `from` and `to` query params with shared
+    date-key parsing.
+  - Rejected invalid and reversed date ranges before DB access.
+  - Switched filtering to JST business-day ranges with `gte` for the start day
+    and exclusive `lt` for the end day.
+  - Replaced direct drug-master job ISO date slicing with
+    `formatUtcDateKey(now)` and removed the stale allowlist entry.
+  - Updated full-suite workflow/API fixtures to current bounded metadata,
+    archive, conflict, and `updateMany` contracts instead of weakening routes.
+- Safety:
+  - Reduces invalid external date input and Japan-day boundary risk.
+  - Preserves linked external-professional delete conflict behavior.
+  - No auth, RLS, permission, DB schema, migration, external send, billing,
+    production config, dependency, push/deploy, or destructive-operation
+    behavior changed.
+- Performance:
+  - No performance optimization is claimed.
+  - The drug-master job computes the UTC dedupe date once.
+- Validation:
+  - Focused community activity tests passed `1` file / `7` tests.
+  - Related community activity bundle passed `2` files / `10` tests.
+  - Date helper backstop passed `1` file / `21` tests.
+  - Drug-master job tests passed `1` file / `4` tests.
+  - Workflow prescription-to-report passed `1` file / `7` tests.
+  - Workflow full-cycle passed `1` file / `2` tests.
+  - Facilities/external-professionals/prescription contract bundle passed `5`
+    files / `20` tests.
+  - Full `pnpm test` passed `1265` files / `12583` tests with existing skips.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, `pnpm date-slices:check`, and `pnpm build` passed.
+  - gbrain write/readback:
+    `projects/careviax/failures/2026-07-02/community-activities-date-range-jst-validation`,
+    `projects/careviax/failures/2026-07-02/date-slice-allowlist-drug-master-drift`,
+    `projects/careviax/failures/2026-07-02/api-route-test-fixture-count-metadata-drift`.
 
 ## 2026-07-02 14:31 JST - Medication Profile Unresolved-Code Continuity
 

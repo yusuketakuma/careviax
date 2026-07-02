@@ -4,6 +4,58 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
+## Current Codex Resume Note - 2026-07-02 15:12 JST
+
+- Active mode for this slice: Codex-only execution plus real validation.
+  Preserve unrelated dirty files; do not push/deploy/migrate/destructively
+  mutate data.
+- Latest completed slice:
+  `RR-BUG-20260702-F20-community-activities-date-range-validation` plus
+  validation-followup date-slice and API fixture drift repair.
+- Files changed:
+  - `src/app/api/community-activities/route.ts`
+  - `src/app/api/community-activities/route.test.ts`
+  - `src/server/jobs/drug-master.ts`
+  - `tools/date-slice-allowlist.json`
+  - `src/app/api/__tests__/workflow-full-cycle.test.ts`
+  - `src/app/api/__tests__/workflow-prescription-to-report.test.ts`
+  - `src/app/(dashboard)/prescriptions/new/prescription-intake-form.contract.test.ts`
+  - `src/app/api/facilities/route.test.ts`
+  - `src/app/api/external-professionals/[id]/route.test.ts`
+  - `src/app/api/external-professionals/[id]/patients/route.test.ts`
+  - `src/app/api/external-professionals/[id]/communications/route.test.ts`
+  - progress-ledger working-tree updates in `ops/refactor/*`,
+    `CODEX_GOAL_PROGRESS.md`, `.codex/ralph-state.md`, and this file
+- Fixed:
+  - Community activity `from`/`to` query params now validate as real date keys,
+    reject reversed ranges, and filter by JST business-day boundaries.
+  - Drug-master freshness dedupe now uses `formatUtcDateKey(now)` and no longer
+    needs a direct ISO slice allowlist entry.
+  - Full-suite API/workflow fixtures now match current route contracts for
+    bounded count metadata, external-professional delete conflict safety,
+    archive fields, communication history counts, visit schedule status/version,
+    care-report `updateMany`, and active-patient prescription matching.
+- Validation:
+  - Focused and related community activity tests passed.
+  - Drug-master job and date-slice checks passed.
+  - Workflow and route-contract regression bundles passed.
+  - Full `pnpm test` passed `1265` files / `12583` tests with existing skips.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, `pnpm date-slices:check`, and `pnpm build` passed.
+  - gbrain memory ids:
+    `projects/careviax/failures/2026-07-02/community-activities-date-range-jst-validation`,
+    `projects/careviax/failures/2026-07-02/date-slice-allowlist-drug-master-drift`,
+    `projects/careviax/failures/2026-07-02/api-route-test-fixture-count-metadata-drift`.
+- Remaining:
+  - Broad repo-wide objective remains open; no DB schema, migration, auth/RLS,
+    external-send, billing, push/deploy, dependency, or destructive-operation
+    behavior was changed.
+  - Browser/E2E smoke was skipped because this is API validation plus test
+    contract drift repair and changes no user-facing DOM or navigation.
+- Next action:
+  - Commit this validated slice with explicit owned paths, notify via agmsg if
+    available, then continue the next highest-value repo-quality finding.
+
 ## Current Codex Resume Note - 2026-07-02 12:06 JST
 
 - Active mode for this slice: Codex-only execution with Codex subagent

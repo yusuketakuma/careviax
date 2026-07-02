@@ -42,6 +42,63 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### Community Activities Date Range Validation - 2026-07-02 15:12 JST
+
+- Scope:
+  - Executed ULTRACODE F20 for `/api/community-activities` date filters.
+  - Grouped validation-followup repairs required to keep the full test and
+    date-slice gates green.
+- Fixed:
+  - `GET /api/community-activities` now validates `from` and `to` with shared
+    date-key validation before querying.
+  - Invalid date keys return 400 with field errors instead of becoming broad or
+    nonsensical searches.
+  - Reversed ranges are rejected with 400.
+  - Date filtering now uses Japan business-day boundaries via
+    `japanDayInstantRangeFromDateKey()`: inclusive `gte` for `from`, exclusive
+    `lt` for `to`.
+  - `src/server/jobs/drug-master.ts` now uses `formatUtcDateKey(now)` for the
+    UTC notification dedupe date, and the stale date-slice allowlist entry was
+    removed.
+  - Full-suite fixture drift was corrected for prescription workflow tests,
+    facilities bounded-search metadata, external-professional linked-delete
+    safety, linked-patient archive/count metadata, communication history
+    counts, and the prescription-intake active-patient contract.
+- Safety:
+  - Reduces invalid external input and Japan-date boundary risk for community
+    activity searches.
+  - Preserves linked external-professional delete conflict behavior.
+  - No auth, RLS, permission, DB schema, migration, external send, billing,
+    production config, dependency, push/deploy, or destructive-operation
+    behavior changed.
+- Validation:
+  - Focused community activity route tests passed `1` file / `7` tests.
+  - Related community activity bundle passed `2` files / `10` tests.
+  - Date helper backstop passed `1` file / `21` tests.
+  - Drug-master job tests passed `1` file / `4` tests.
+  - Workflow prescription-to-report passed `1` file / `7` tests.
+  - Workflow full-cycle passed `1` file / `2` tests.
+  - Facilities/external-professionals/prescription contract bundle passed `5`
+    files / `20` tests.
+  - Full `pnpm test -- --reporter=dot --testTimeout=60000` passed `1265`
+    files with `1` skipped and `12583` tests with `2` skipped.
+  - `pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`:
+    passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm date-slices:check`: passed.
+  - `pnpm build`: passed.
+  - gbrain write/readback:
+    `projects/careviax/failures/2026-07-02/community-activities-date-range-jst-validation`,
+    `projects/careviax/failures/2026-07-02/date-slice-allowlist-drug-master-drift`,
+    and
+    `projects/careviax/failures/2026-07-02/api-route-test-fixture-count-metadata-drift`.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser/E2E smoke was skipped because this slice changes API validation and
+    test fixtures, with no DOM/navigation workflow change.
+
 ### Medication Profile Unresolved-Code Continuity - 2026-07-02 14:31 JST
 
 - Scope:

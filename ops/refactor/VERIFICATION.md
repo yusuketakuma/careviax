@@ -1,10 +1,70 @@
 # Verification
 
-Snapshot: 2026-07-02 14:31 JST
+Snapshot: 2026-07-02 15:12 JST
 
 ## Latest Full Code Slice Verification
 
-The latest backend medication-identity slice was
+The latest backend/API validation slice was
+`RR-BUG-20260702-F20-community-activities-date-range-validation` at
+2026-07-02 15:12 JST.
+
+- Planning / review:
+  - ULTRACODE F20 identified community activity date filters as accepting
+    unvalidated strings and using non-JST day boundaries.
+  - Next.js route-handler and Next 15 upgrade docs were inspected before
+    writing route code.
+  - Full-suite failures after the API fix were traced to stale fixtures rather
+    than route regressions: missing `count()` mocks, outdated metadata
+    assertions, legacy visit schedule state, care-report `update` vs
+    `updateMany`, and linked-delete success expectations.
+- Focused regressions:
+  - `pnpm exec vitest run src/app/api/community-activities/route.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `7` tests.
+  - `pnpm exec vitest run src/app/api/community-activities/route.test.ts 'src/app/api/community-activities/[id]/route.test.ts' --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `10` tests.
+  - Coverage: inclusive JST `from`/`to` business-day conversion, invalid date
+    400 without query, reversed range 400 without query, and existing id-route
+    behavior.
+- Related regressions:
+  - `pnpm exec vitest run src/lib/utils/date-boundary.test.ts src/lib/validations/date-key.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `21` tests.
+  - `pnpm exec vitest run src/server/jobs/drug-master.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `4` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/workflow-prescription-to-report.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `7` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/workflow-full-cycle.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `2` tests.
+  - `pnpm exec vitest run src/app/api/facilities/route.test.ts 'src/app/api/external-professionals/[id]/route.test.ts' 'src/app/api/external-professionals/[id]/patients/route.test.ts' 'src/app/api/external-professionals/[id]/communications/route.test.ts' 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.contract.test.ts' --reporter=dot --testTimeout=60000`
+  - Result: passed, `5` files / `20` tests.
+- Full gates:
+  - `pnpm test -- --reporter=dot --testTimeout=60000`
+  - Result: passed, `1265` files passed / `1` skipped; `12583` tests passed /
+    `2` skipped.
+  - `pnpm typecheck`
+  - Result: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  - Result: passed.
+  - `pnpm lint`
+  - Result: passed.
+  - `pnpm format:check`
+  - Result: passed.
+  - `pnpm date-slices:check`
+  - Result: passed.
+  - `pnpm build`
+  - Result: passed.
+- gbrain:
+  - `projects/careviax/failures/2026-07-02/community-activities-date-range-jst-validation`
+  - `projects/careviax/failures/2026-07-02/date-slice-allowlist-drug-master-drift`
+  - `projects/careviax/failures/2026-07-02/api-route-test-fixture-count-metadata-drift`
+  - Result: write/readback passed.
+- Skipped:
+  - Browser/E2E smoke was skipped because this slice changes API validation and
+    test fixtures, not user-facing DOM, navigation, DB mutation, external-send,
+    or billing workflow.
+
+## Prior Full Code Slice Verification
+
+The previous backend medication-identity slice was
 `RR-BUG-20260702-F09-medication-profile-unresolved-code-name-fallback` at
 2026-07-02 14:31 JST.
 
