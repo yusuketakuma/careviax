@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { ErrorState } from './error-state';
 
@@ -30,6 +30,36 @@ describe('ErrorState', () => {
     rerender(<ErrorState title="パネルエラー" headingLevel={3} />);
 
     expect(screen.getByRole('heading', { level: 3, name: 'パネルエラー' })).toBeTruthy();
+  });
+
+  it('composes the cause + next-action copy contract (SSOT 6.3)', () => {
+    render(
+      <ErrorState
+        title="取得失敗"
+        cause="保険情報を取得できませんでした。"
+        nextAction="通信状態を確認して再試行してください。"
+      />,
+    );
+
+    // 原因と次の行動が1本の本文として結合される。
+    expect(
+      screen.getByText('保険情報を取得できませんでした。 通信状態を確認して再試行してください。'),
+    ).toBeTruthy();
+  });
+
+  it('renders a retry action from the onRetry shorthand and defers to explicit action', () => {
+    const onRetry = vi.fn();
+    const { rerender } = render(<ErrorState title="取得失敗" onRetry={onRetry} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+
+    // action 明示時は onRetry を無視する(二重導線を作らない)。
+    rerender(
+      <ErrorState title="取得失敗" onRetry={onRetry} action={{ label: '一覧へ戻る', href: '/' }} />,
+    );
+    expect(screen.queryByRole('button', { name: '再試行' })).toBeNull();
+    expect(screen.getByRole('link', { name: '一覧へ戻る' })).toBeTruthy();
   });
 
   it('uses the shared button styling for link actions', () => {
