@@ -318,6 +318,31 @@ describe('MyDayContent', () => {
     expect(screen.getByText('山田花子').closest('details')).toBeNull();
   });
 
+  it('pins the JST business date even when the runtime timezone is behind Japan (SSOT 2.8)', () => {
+    // date-fns format はランタイムローカル TZ で解釈するため、UTC instant を渡すと
+    // Asia/Tokyo より遅れた TZ では前日化する。文字列成分からの構築で TZ 非依存にしたことを固定する。
+    const originalTz = process.env.TZ;
+    process.env.TZ = 'Pacific/Honolulu'; // UTC-10、JST より 19h 遅れ
+    try {
+      vi.useFakeTimers();
+      // JST 2026-07-04 02:00 は Honolulu ではまだ 2026-07-03。業務日(JST)は 7/4(土)。
+      vi.setSystemTime(new Date('2026-07-04T02:00:00+09:00'));
+      // 前提確認: ランタイム TZ が実際に JST より遅れている(UTC instant のローカル日付が前日)。
+      // これが 4 になる環境では TZ 差を再現できていないためテスト自体が壊れる(偽ガード検知)。
+      expect(new Date('2026-07-04T00:00:00+09:00').getDate()).toBe(3);
+
+      render(<MyDayContent />);
+
+      // ラベルは JST 業務日(7/4 土)を示し、ローカル TZ による前日化(7/3 金)を起こさない。
+      expect(screen.getByText('本日 7月4日(土)')).toBeTruthy();
+      expect(screen.queryByText(/7月3日/)).toBeNull();
+    } finally {
+      if (originalTz === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTz;
+      vi.useRealTimers();
+    }
+  });
+
   it('shows section errors instead of empty states when assigned visits fail to load', () => {
     useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
       if (queryKey[0] === 'my-day-visits') {

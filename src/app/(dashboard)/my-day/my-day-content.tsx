@@ -168,10 +168,14 @@ export function MyDayContent({
   const isUserPending = !!orgId && !userId;
   const today = useMemo(() => japanDateKey(), []);
   // Pinned zone の対象日表示(JST基準、SSOT 2.8 Japan date basis)。
-  const todayLabel = useMemo(
-    () => format(new Date(`${today}T00:00:00+09:00`), 'M月d日(EEE)', { locale: ja }),
-    [today],
-  );
+  // today は japanDateKey() の JST 'YYYY-MM-DD'。date-fns format はランタイムローカルTZで
+  // 解釈するため、UTC instant(...+09:00) を渡すと Asia/Tokyo 以外の環境で前日にずれる。
+  // カレンダー日の各成分から new Date(y,m-1,d)(ローカル構築)を作り、format もローカルで
+  // 相殺させることで TZ 非依存にする(曜日はカレンダー日で不変)。
+  const todayLabel = useMemo(() => {
+    const [y, m, d] = today.split('-').map(Number);
+    return format(new Date(y, m - 1, d), 'M月d日(EEE)', { locale: ja });
+  }, [today]);
   const canViewStatusChanges = viewerRole ? hasPermission(viewerRole, 'canAdmin') : false;
 
   // My visits today
