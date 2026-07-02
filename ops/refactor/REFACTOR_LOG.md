@@ -1908,3 +1908,45 @@ evidence also exists in root `REFACTOR_REPORT.md`,
   - `pnpm format:check` failed on unrelated untracked
     `ops/refactor/ultracode-crossreview-codex-workflow.mjs`; scoped Prettier for
     the changed drawer files passed.
+
+## 2026-07-02 12:36 JST - Offline Base64 Chunking And Evidence Payload Integrity
+
+- Change ID: `RR-PERF-20260702-F04-offline-base64-chunking`.
+- Category: performance fix / duplicate helper consolidation / offline evidence
+  integrity.
+- Files changed:
+  - `src/lib/utils/base64.ts`
+  - `src/lib/utils/base64.test.ts`
+  - `src/lib/offline/crypto.ts`
+  - `src/lib/offline/crypto.test.ts`
+  - `src/phos/api/offlineEvidenceQueue.ts`
+  - `src/phos/api/offlineEvidenceQueue.test.ts`
+  - `src/phos/contracts/phos_contracts.ts`
+- Summary:
+  - Added shared chunked base64 helpers with bounded `0x8000`
+    `String.fromCharCode(...subarray)` calls.
+  - Replaced `crypto.ts` per-byte encrypted payload encoding with the shared
+    helper.
+  - Removed the local PH-OS offline evidence queue base64 duplicate by using
+    the same helper for encode/decode.
+  - Added local replay integrity validation before external presign/upload:
+    decode base64, require decoded length to match `size_bytes`, and require
+    SHA-256 to match.
+  - Addressed privacy and strict review findings: corrupt ciphertext,
+    JSON-valid invalid base64, size mismatch, and SHA mismatch now remain
+    visible as pending evidence with `EVIDENCE_PAYLOAD_UNREADABLE`, increment
+    retry metadata, and never call presign/upload.
+  - Replaced PHI-shaped test fixture strings in touched tests with synthetic
+    sentinels.
+- Safety:
+  - Preserves encrypted payload prefix and AES-GCM storage behavior.
+  - Preserves Dexie schema/version, quota limits, replay batch size, retry max,
+    idempotency keys, upload URL safety checks, visit-completion server guard,
+    auth/RLS, API route contracts, and external-send boundaries.
+- Validation:
+  - Focused offline/PH-OS bundle passed `6` files / `86` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and
+    `pnpm build` passed.
+  - `pnpm format:check` failed only on unrelated existing `ops/refactor/*`
+    formatting issues; scoped Prettier passed for all changed files.

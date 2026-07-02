@@ -2010,3 +2010,54 @@ error-envelope handling at 2026-07-02 12:06 JST.
   - Browser/E2E smoke was skipped because this toast/error-envelope fix is
     covered by component DOM assertions, API route contract tests, scoped static
     checks, and production build, and it changes no layout or navigation.
+
+## Offline Base64 Chunking And Evidence Payload Integrity Verification
+
+The latest performance/privacy slice was
+`RR-PERF-20260702-F04-offline-base64-chunking` at 2026-07-02 12:36 JST.
+
+- Planning / review:
+  - ULTRACODE F04 identified `src/lib/offline/crypto.ts` per-byte base64
+    construction on the offline evidence encryption hot path.
+  - Codex performance auditor confirmed chunking is behavior-preserving and
+    avoids one callback/string append per encrypted byte.
+  - Codex test architect required large encrypted PHI round-trip and
+    chunk-boundary evidence replay byte-identity coverage; both were added.
+  - Codex privacy compliance reviewer identified unreadable encrypted evidence
+    payloads being silently hidden; this was fixed.
+  - Codex strict reviewer identified a P1 middle-corruption path where
+    JSON-valid but byte-invalid evidence could reach presign before decode/size
+    validation; this was fixed and re-reviewed with no blockers.
+- Focused regressions:
+  - `pnpm exec vitest run src/lib/utils/base64.test.ts src/lib/offline/crypto.test.ts src/phos/api/offlineEvidenceQueue.test.ts src/phos/ui/visit/VisitMode.test.tsx src/phos/ui/visit/VisitModePageClient.test.tsx src/phos/ui/board/BoardClient.test.tsx --reporter=dot --testTimeout=60000`
+  - Result: passed, `6` files / `86` tests.
+  - Coverage: helper byte identity and chunk call bounds, large encrypted
+    offline PHI round-trip, encrypted evidence queue storage, corrupt
+    ciphertext, JSON-valid invalid base64, decoded-size mismatch, SHA mismatch,
+    no-presign/no-fetch unreadable replay behavior, chunk-boundary evidence
+    replay byte identity, visit and board pending evidence integration.
+- Scoped checks:
+  - Scoped ESLint for changed files plus relevant PH-OS visit/board tests:
+    passed.
+  - Scoped Prettier for changed files: passed.
+  - Scoped `git diff --check`: passed.
+- Full gates:
+  - `pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`:
+    passed.
+  - `pnpm lint`: passed.
+  - `pnpm build`: passed.
+  - `pnpm format:check`: failed on unrelated existing `ops/refactor/*`
+    formatting issues. All changed files passed scoped Prettier.
+- gbrain:
+  - `gbrain put projects/careviax/decisions/2026-07-02/offline-base64-helper-consolidation`
+    -> created/updated.
+  - `gbrain put projects/careviax/failures/2026-07-02/offline-evidence-unreadable-payload-hidden`
+    -> created/updated.
+- Skipped:
+  - Browser/E2E smoke was skipped because the slice changes local byte
+    conversion and offline queue behavior covered by unit/integration tests plus
+    production build.
+  - Real S3/Dynamo replay was skipped because external sends remain
+    approval-gated and the no-send corrupt-payload behavior is asserted with
+    mocked client/fetch.

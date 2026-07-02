@@ -398,6 +398,7 @@ export type EvidencePendingView = {
   offline_op_class: OfflineOpClass;
   created_at: string;
   retry_count: number;
+  last_error?: string;
 };
 
 export type WaitingReplyView = {

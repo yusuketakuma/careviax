@@ -42,6 +42,67 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### Offline Base64 Chunking And Evidence Payload Integrity - 2026-07-02 12:36 JST
+
+- Scope:
+  - Executed `RR-PERF-20260702-F04-offline-base64-chunking` from the
+    ULTRACODE findings.
+  - Grouped the nearby PH-OS offline evidence duplicate base64 helper cleanup
+    and the review-found unreadable encrypted evidence payload integrity fix.
+- Fixed:
+  - Added canonical `src/lib/utils/base64.ts` helpers that encode bytes in
+    bounded `0x8000` chunks instead of building one character per byte.
+  - Switched offline PHI encryption and PH-OS offline evidence queue
+    encode/decode paths to the shared helper.
+  - Replay now locally decodes evidence bytes, checks `size_bytes`, and verifies
+    SHA-256 before presign/upload.
+  - Corrupt ciphertext, invalid base64, decoded-size mismatch, and SHA mismatch
+    remain visible as pending evidence with sanitized
+    `EVIDENCE_PAYLOAD_UNREADABLE`, increment retry metadata, and never call
+    presign or fetch.
+  - PHI-shaped test fixtures in the touched tests were replaced with synthetic
+    sentinels.
+- Safety:
+  - Prevents corrupt/tampered local encrypted evidence from silently
+    disappearing or crossing the external-send boundary.
+  - No DB schema, Dexie version, quota limit, retry max, idempotency key,
+    visit-completion server guard, auth/RLS, route contract, billing, migration,
+    production config, dependency, push/deploy, or destructive-operation
+    behavior was changed.
+- Performance:
+  - The encrypted offline payload encoder now avoids one callback/string append
+    per byte and uses bounded chunk conversion.
+  - This reduces the F04 hot-path cost for large offline evidence and other
+    offline encrypted PHI payloads. Broader full-Blob/double-base64 memory
+    pressure remains a separate design item.
+- Validation:
+  - Focused offline/PH-OS regressions passed:
+    `pnpm exec vitest run src/lib/utils/base64.test.ts src/lib/offline/crypto.test.ts src/phos/api/offlineEvidenceQueue.test.ts src/phos/ui/visit/VisitMode.test.tsx src/phos/ui/visit/VisitModePageClient.test.tsx src/phos/ui/board/BoardClient.test.tsx --reporter=dot --testTimeout=60000`
+    -> `6` files / `86` tests.
+  - Scoped ESLint, Prettier, and diff-check passed for all changed files.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm build`: passed.
+  - `pnpm format:check`: failed only on unrelated existing
+    `ops/refactor/ULTRACODE_CROSSREVIEW_CLAUDE_ON_CODEX.md`,
+    `ops/refactor/ULTRACODE_EXPANSION_MASTER_TARGETS.md`,
+    `ops/refactor/ultracode-crossreview-codex-workflow.mjs`, and
+    `ops/refactor/ultracode-refactor-scan-workflow.mjs`; scoped Prettier for
+    the changed files passed.
+  - Codex implementation planner, performance auditor, test architect, privacy
+    compliance reviewer, medical safety reviewer, and strict reviewer were
+    used. Strict review's P1 presign-before-byte-validation finding was fixed
+    and re-reviewed with no blockers.
+  - gbrain writeback:
+    `projects/careviax/decisions/2026-07-02/offline-base64-helper-consolidation`
+    and
+    `projects/careviax/failures/2026-07-02/offline-evidence-unreadable-payload-hidden`.
+- Remaining:
+  - Broad repo-wide objective remains open. Browser/E2E and real S3/Dynamo
+    replay were skipped because this slice is covered by unit/integration PH-OS
+    queue tests plus production build and does not require real external sends.
+
 ### Schedule Drawer Error Envelope Handling - 2026-07-02 12:06 JST
 
 - Scope:

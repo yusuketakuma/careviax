@@ -52,7 +52,7 @@ describe('offline PHI encryption guard', () => {
   });
 
   it('fails closed instead of returning plaintext when encryption is unavailable', async () => {
-    const plaintextPhi = '患者名 山田太郎 SOAP S: 強い眠気あり';
+    const plaintextPhi = 'OFFLINE_ENCRYPTION_SENTINEL::SOAP_DRAFT::SYMPTOM_SLEEPINESS';
 
     await expect(
       encryptOfflinePayloadRequired(plaintextPhi, 'SOAP draft structuredSoap'),
@@ -69,7 +69,7 @@ describe('offline PHI encryption guard', () => {
 
   it('does not initialize encryption without an authenticated user identity', async () => {
     installBrowserCryptoEnvironment();
-    const plaintextPhi = '患者名 山田太郎 SOAP S: 強い眠気あり';
+    const plaintextPhi = 'OFFLINE_ENCRYPTION_SENTINEL::SOAP_DRAFT::SYMPTOM_SLEEPINESS';
 
     await initOfflineEncryptionKey('');
 
@@ -83,7 +83,7 @@ describe('offline PHI encryption guard', () => {
   it('encrypts and decrypts PHI with the initialized key without repeated IndexedDB key reads', async () => {
     const { localStorageMock } = installBrowserCryptoEnvironment();
     const openSpy = vi.spyOn(indexedDB, 'open');
-    const plaintextPhi = '患者名 山田太郎 SOAP S: 強い眠気あり';
+    const plaintextPhi = 'OFFLINE_ENCRYPTION_SENTINEL::SOAP_DRAFT::SYMPTOM_SLEEPINESS';
 
     await initOfflineEncryptionKey('user-1');
     const openCallsAfterInit = openSpy.mock.calls.length;
@@ -100,5 +100,24 @@ describe('offline PHI encryption guard', () => {
     expect(openSpy.mock.calls.length).toBe(openCallsAfterInit);
     expect(localStorageMock.setItem).not.toHaveBeenCalled();
     expect(JSON.stringify(localStorageMock.setItem.mock.calls)).not.toContain('user-1');
+  });
+
+  it('encrypts and decrypts large offline PHI across base64 chunk boundaries', async () => {
+    installBrowserCryptoEnvironment();
+    await initOfflineEncryptionKey('user-large-payload');
+    const largePrefix = Array.from({ length: 0x8000 * 4 + 257 }, (_, index) =>
+      String.fromCharCode(32 + (index % 95)),
+    ).join('');
+    const plaintextPhi = `${largePrefix}\nOFFLINE_ENCRYPTION_SENTINEL::SOAP_DRAFT::SYMPTOM_SLEEPINESS`;
+
+    const encrypted = await encryptOfflinePayloadRequired(
+      plaintextPhi,
+      'large SOAP draft structuredSoap',
+    );
+    const decrypted = await decryptOfflinePayload(encrypted);
+
+    expect(isEncryptedOfflinePayload(encrypted)).toBe(true);
+    expect(encrypted).not.toContain('OFFLINE_ENCRYPTION_SENTINEL');
+    expect(decrypted).toBe(plaintextPhi);
   });
 });

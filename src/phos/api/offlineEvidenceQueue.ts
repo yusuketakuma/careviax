@@ -2,6 +2,7 @@
 
 import Dexie, { type Table } from 'dexie';
 import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
+import { arrayBufferToBase64, base64ToArrayBuffer } from '@/lib/utils/base64';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 import {
   VisitStep,
@@ -13,7 +14,8 @@ import type { PhosApiClient } from './types';
 import { createPhosRequestAbort } from './request-timeout';
 
 const MAX_RETRIES = 3;
-const BASE64_CHUNK_SIZE = 0x8000;
+const UNREADABLE_EVIDENCE_PAYLOAD_ERROR = 'EVIDENCE_PAYLOAD_UNREADABLE';
+const UNREADABLE_EVIDENCE_LABEL = '未同期証跡（復旧が必要）';
 const DEFAULT_EVIDENCE_UPLOAD_TIMEOUT_MS = 30_000;
 const MAX_EVIDENCE_UPLOAD_TIMEOUT_MS = 120_000;
 export const PHOS_OFFLINE_EVIDENCE_REPLAY_BATCH_SIZE = 10;
@@ -61,6 +63,15 @@ type EncryptedEvidencePayload = {
   size_bytes: number;
 };
 
+type QueuedEvidencePayloadReadResult =
+  | { status: 'available'; payload: EncryptedEvidencePayload }
+  | { status: 'legacy-deleted' }
+  | { status: 'unreadable' };
+
+type ReplayEvidencePayload =
+  | { status: 'available'; payload: EncryptedEvidencePayload; file_bytes: ArrayBuffer }
+  | { status: 'unreadable' };
+
 class PhosOfflineEvidenceDb extends Dexie {
   pendingEvidence!: Table<PhosOfflineEvidenceRecord, number>;
 
@@ -106,24 +117,6 @@ async function assertOfflineEvidenceQuota(input: PhosOfflineEvidenceInput): Prom
   }
 }
 
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  const chunks: string[] = [];
-  for (let offset = 0; offset < bytes.length; offset += BASE64_CHUNK_SIZE) {
-    chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + BASE64_CHUNK_SIZE)));
-  }
-  return btoa(chunks.join(''));
-}
-
-function base64ToArrayBuffer(value: string): ArrayBuffer {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes.buffer;
-}
-
 function isEncryptedEvidencePayload(value: unknown): value is EncryptedEvidencePayload {
   return (
     !!value &&
@@ -136,6 +129,43 @@ function isEncryptedEvidencePayload(value: unknown): value is EncryptedEvidenceP
     typeof (value as EncryptedEvidencePayload).file_bytes_base64 === 'string' &&
     typeof (value as EncryptedEvidencePayload).size_bytes === 'number'
   );
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function sha256Hex(bytes: ArrayBuffer): Promise<string | null> {
+  const cryptoApi =
+    typeof window !== 'undefined' && window.crypto?.subtle ? window.crypto : globalThis.crypto;
+  if (!cryptoApi?.subtle) return null;
+  const digest = await cryptoApi.subtle.digest('SHA-256', bytes);
+  return bytesToHex(new Uint8Array(digest));
+}
+
+async function prepareReplayEvidencePayload(
+  payload: EncryptedEvidencePayload,
+): Promise<ReplayEvidencePayload> {
+  if (
+    !Number.isSafeInteger(payload.size_bytes) ||
+    payload.size_bytes <= 0 ||
+    !/^[a-f0-9]{64}$/i.test(payload.sha256)
+  ) {
+    return { status: 'unreadable' };
+  }
+
+  let fileBytes: ArrayBuffer;
+  try {
+    fileBytes = base64ToArrayBuffer(payload.file_bytes_base64);
+  } catch {
+    return { status: 'unreadable' };
+  }
+
+  if (fileBytes.byteLength !== payload.size_bytes) return { status: 'unreadable' };
+  const digest = await sha256Hex(fileBytes);
+  if (!digest || digest !== payload.sha256.toLowerCase()) return { status: 'unreadable' };
+
+  return { status: 'available', payload, file_bytes: fileBytes };
 }
 
 async function encryptEvidencePayload(input: {
@@ -164,15 +194,17 @@ async function deleteLegacyPlaintextRecord(record: PhosOfflineEvidenceRecord): P
 
 async function readQueuedEvidencePayload(
   record: PhosOfflineEvidenceRecord,
-): Promise<EncryptedEvidencePayload | null> {
-  if (await deleteLegacyPlaintextRecord(record)) return null;
+): Promise<QueuedEvidencePayloadReadResult> {
+  if (await deleteLegacyPlaintextRecord(record)) return { status: 'legacy-deleted' };
   const decrypted = await decryptOfflinePayload(record.payload);
-  if (!decrypted) return null;
+  if (!decrypted) return { status: 'unreadable' };
   try {
     const parsed = JSON.parse(decrypted) as unknown;
-    return isEncryptedEvidencePayload(parsed) ? parsed : null;
+    return isEncryptedEvidencePayload(parsed)
+      ? { status: 'available', payload: parsed }
+      : { status: 'unreadable' };
   } catch {
-    return null;
+    return { status: 'unreadable' };
   }
 }
 
@@ -270,17 +302,41 @@ export async function listPhosPendingEvidence(packet_id: string): Promise<Eviden
     .toArray();
   const views: EvidencePendingView[] = [];
   for (const record of records) {
-    const payload = await readQueuedEvidencePayload(record);
-    if (!payload) continue;
+    const readResult = await readQueuedEvidencePayload(record);
+    if (readResult.status === 'legacy-deleted') continue;
+    if (
+      readResult.status === 'unreadable' ||
+      record.last_error === UNREADABLE_EVIDENCE_PAYLOAD_ERROR
+    ) {
+      views.push({
+        evidence_key: record.evidence_key,
+        label: UNREADABLE_EVIDENCE_LABEL,
+        offline_op_class: record.offline_op_class,
+        created_at: record.created_at,
+        retry_count: record.retry_count,
+        last_error: record.last_error ?? UNREADABLE_EVIDENCE_PAYLOAD_ERROR,
+      });
+      continue;
+    }
+    const { payload } = readResult;
     views.push({
       evidence_key: record.evidence_key,
       label: payload.label,
       offline_op_class: record.offline_op_class,
       created_at: record.created_at,
       retry_count: record.retry_count,
+      ...(record.last_error ? { last_error: record.last_error } : {}),
     });
   }
   return views;
+}
+
+async function markUnreadableEvidencePayload(record: PhosOfflineEvidenceRecord): Promise<void> {
+  if (record.id === undefined) return;
+  await phosOfflineEvidenceDb.pendingEvidence.update(record.id, {
+    retry_count: record.retry_count + 1,
+    last_error: UNREADABLE_EVIDENCE_PAYLOAD_ERROR,
+  });
 }
 
 async function readNextOfflineEvidenceReplayBatch(
@@ -313,8 +369,20 @@ async function retryPhosOfflineEvidenceUploadsOnce(input: {
     for (const record of records) {
       if (record.id === undefined || record.retry_count >= MAX_RETRIES) continue;
       try {
-        const payload = await readQueuedEvidencePayload(record);
-        if (!payload) continue;
+        const readResult = await readQueuedEvidencePayload(record);
+        if (readResult.status === 'legacy-deleted') continue;
+        if (readResult.status === 'unreadable') {
+          failed++;
+          await markUnreadableEvidencePayload(record);
+          continue;
+        }
+        const replayPayload = await prepareReplayEvidencePayload(readResult.payload);
+        if (replayPayload.status === 'unreadable') {
+          failed++;
+          await markUnreadableEvidencePayload(record);
+          continue;
+        }
+        const { payload } = replayPayload;
         const presigned = await input.client.presignEvidenceUpload({
           idempotency_key: `evidence_${record.packet_id}_${record.evidence_key}`,
           card_id: record.card_id,
@@ -329,7 +397,7 @@ async function retryPhosOfflineEvidenceUploadsOnce(input: {
           upload_url: presigned.upload_url,
           method: presigned.method,
           headers: presigned.headers,
-          body: new Blob([base64ToArrayBuffer(payload.file_bytes_base64)], {
+          body: new Blob([replayPayload.file_bytes], {
             type: payload.mime_type,
           }),
           signal: input.signal,

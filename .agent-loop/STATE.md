@@ -818,6 +818,38 @@ User-directed program after the org-header sweep. Method: ultracode 51-screen re
   external sends, billing semantics, production config, and destructive
   operations proposal-only unless explicitly approved.
 
+### Resume point - 2026-07-02 12:36 JST
+
+- Active broad refactor/bug-fix objective remains open. Latest validated slice:
+  `RR-PERF-20260702-F04-offline-base64-chunking`.
+- Changed owned runtime files:
+  `src/lib/utils/base64.ts`, `src/lib/offline/crypto.ts`,
+  `src/phos/api/offlineEvidenceQueue.ts`, and
+  `src/phos/contracts/phos_contracts.ts`.
+- Changed owned tests:
+  `src/lib/utils/base64.test.ts`, `src/lib/offline/crypto.test.ts`, and
+  `src/phos/api/offlineEvidenceQueue.test.ts`.
+- Fixed:
+  encrypted offline payload base64 encoding now uses a canonical chunked helper;
+  PH-OS evidence queue uses the same helper; replay validates decoded bytes,
+  size, and SHA-256 before presign/upload; unreadable evidence remains visible
+  with sanitized `EVIDENCE_PAYLOAD_UNREADABLE`.
+- Validation passed:
+  focused offline/PH-OS suite `6` files / `86` tests, scoped
+  ESLint/Prettier/diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`,
+  `pnpm lint`, and `pnpm build`.
+- Validation exception:
+  `pnpm format:check` failed only on unrelated existing `ops/refactor/*`
+  formatting issues; changed files passed scoped Prettier.
+- gbrain writeback slugs:
+  `projects/careviax/decisions/2026-07-02/offline-base64-helper-consolidation`
+  and
+  `projects/careviax/failures/2026-07-02/offline-evidence-unreadable-payload-hidden`.
+- Next action:
+  commit this coherent slice with explicit paths, send coordination FYI if the
+  local messenger is available, then continue the next highest-value ULTRACODE
+  item after rechecking dirty ownership.
+
 ### Resume point - 2026-07-02 06:06 JST
 
 - Active broad refactor/bug-fix objective remains open. Latest validated slice:

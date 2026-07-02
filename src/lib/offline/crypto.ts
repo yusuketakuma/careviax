@@ -1,3 +1,5 @@
+import { base64ToBytes, bytesToBase64 } from '@/lib/utils/base64';
+
 const OFFLINE_ENCRYPTION_PREFIX = 'encv1:';
 const AES_GCM_IV_LENGTH = 12;
 
@@ -33,23 +35,6 @@ export function isOfflineEncryptionUnavailableError(
 function getOfflineCryptoApi() {
   if (typeof window === 'undefined') return null;
   return window.crypto?.subtle ? window.crypto : null;
-}
-
-function bytesToBase64(bytes: Uint8Array) {
-  let binary = '';
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-  return btoa(binary);
-}
-
-function base64ToBytes(value: string) {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
 }
 
 function openKeyDatabase(): Promise<IDBDatabase> {

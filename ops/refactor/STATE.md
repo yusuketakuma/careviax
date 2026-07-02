@@ -312,3 +312,35 @@ Snapshot: 2026-07-02 12:06 JST
 The full objective remains open until code map, findings, plan, log,
 verification evidence, remaining issues, and at least two zero-actionable
 re-audits are complete.
+
+## Latest Slice - 2026-07-02 12:36 JST
+
+- Change ID: `RR-PERF-20260702-F04-offline-base64-chunking`.
+- Status: implemented and validated, pending commit at time of ledger update.
+- Files changed:
+  - `src/lib/utils/base64.ts`
+  - `src/lib/utils/base64.test.ts`
+  - `src/lib/offline/crypto.ts`
+  - `src/lib/offline/crypto.test.ts`
+  - `src/phos/api/offlineEvidenceQueue.ts`
+  - `src/phos/api/offlineEvidenceQueue.test.ts`
+  - `src/phos/contracts/phos_contracts.ts`
+- Summary:
+  - Consolidated offline byte/base64 conversion into `src/lib/utils/base64.ts`.
+  - Replaced encrypted offline payload byte-by-byte encoding with bounded
+    chunked conversion.
+  - Migrated PH-OS offline evidence queue encode/decode to the same helper.
+  - Added local integrity checks before evidence replay presign/upload:
+    decoded bytes must match `size_bytes` and SHA-256.
+  - Kept unreadable encrypted evidence payloads visible and retry-tracked with
+    fixed `EVIDENCE_PAYLOAD_UNREADABLE`, without presign/upload.
+- Validation:
+  - Focused offline/PH-OS regression bundle passed `6` files / `86` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and
+    `pnpm build` passed.
+  - `pnpm format:check` failed only on unrelated existing `ops/refactor/*`
+    formatting issues.
+- Memory:
+  - `projects/careviax/decisions/2026-07-02/offline-base64-helper-consolidation`
+  - `projects/careviax/failures/2026-07-02/offline-evidence-unreadable-payload-hidden`
