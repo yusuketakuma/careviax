@@ -1,6 +1,6 @@
 'use client';
 
-import type { ElementType, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { StatCard } from '@/components/ui/stat-card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { SELF_REPORT_STATUS_LABELS } from '@/lib/constants/status-labels';
 import { PageSection } from '@/components/layout/page-section';
@@ -394,26 +395,41 @@ export function ExternalViewerContent({
         description="有効な共有、未解消の自己申告、地域フォローを先に把握する導入グループです。"
         contentClassName="grid grid-cols-3 gap-2 sm:gap-4"
       >
-        <SummaryCard
-          title="有効な共有"
-          value={grants.length}
-          description="OTP共有と外部連携導線"
-          icon={HeartHandshake}
-          isError={grantsQuery.isError}
+        <StatCard
+          label="有効な共有"
+          value={grantsQuery.isError ? '—' : grants.length.toLocaleString('ja-JP')}
+          hint={grantsQuery.isError ? '取得に失敗しました' : 'OTP共有と外部連携導線'}
+          hintClassName="hidden sm:block"
+          icon={<HeartHandshake className="size-4" aria-hidden="true" />}
+          iconClassName="hidden sm:inline-flex"
+          role={grantsQuery.isError ? 'blocked' : undefined}
+          className="min-w-0"
         />
-        <SummaryCard
-          title="自己申告"
-          value={activeSelfReports.length}
-          description="未解消の患者・家族申告"
-          icon={MessageSquareWarning}
-          isError={selfReportsQuery.isError}
+        <StatCard
+          label="自己申告"
+          value={selfReportsQuery.isError ? '—' : activeSelfReports.length.toLocaleString('ja-JP')}
+          hint={selfReportsQuery.isError ? '取得に失敗しました' : '未解消の患者・家族申告'}
+          hintClassName="hidden sm:block"
+          icon={<MessageSquareWarning className="size-4" aria-hidden="true" />}
+          iconClassName="hidden sm:inline-flex"
+          role={
+            selfReportsQuery.isError
+              ? 'blocked'
+              : activeSelfReports.length > 0
+                ? 'confirm'
+                : undefined
+          }
+          className="min-w-0"
         />
-        <SummaryCard
-          title="地域フォロー"
-          value={followUps.length}
-          description="紹介元・地域活動の要対応"
-          icon={Users}
-          isError={activitiesQuery.isError}
+        <StatCard
+          label="地域フォロー"
+          value={activitiesQuery.isError ? '—' : followUps.length.toLocaleString('ja-JP')}
+          hint={activitiesQuery.isError ? '取得に失敗しました' : '紹介元・地域活動の要対応'}
+          hintClassName="hidden sm:block"
+          icon={<Users className="size-4" aria-hidden="true" />}
+          iconClassName="hidden sm:inline-flex"
+          role={activitiesQuery.isError ? 'blocked' : followUps.length > 0 ? 'confirm' : undefined}
+          className="min-w-0"
         />
       </PageSection>
 
@@ -492,44 +508,6 @@ function ExternalPanelCard({
         <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">{children}</CardContent>
-    </Card>
-  );
-}
-
-function SummaryCard({
-  title,
-  value,
-  description,
-  icon: Icon,
-  isError = false,
-}: {
-  title: string;
-  value: number;
-  description: string;
-  icon: ElementType;
-  isError?: boolean;
-}) {
-  return (
-    <Card size="sm" className="min-w-0">
-      <CardContent className="flex min-w-0 items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-xs font-medium leading-5 text-muted-foreground sm:text-sm">{title}</p>
-          <p
-            className={cn(
-              'mt-1 text-2xl font-bold tabular-nums sm:text-3xl',
-              isError ? 'text-muted-foreground' : 'text-foreground',
-            )}
-          >
-            {isError ? '—' : value}
-          </p>
-          <p className="mt-1 hidden text-xs text-muted-foreground sm:block">
-            {isError ? '取得に失敗しました' : description}
-          </p>
-        </div>
-        <div className="hidden rounded-full border border-border bg-background p-2 sm:block">
-          <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-        </div>
-      </CardContent>
     </Card>
   );
 }

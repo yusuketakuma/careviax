@@ -47,6 +47,9 @@ describe('ExternalViewerContent', () => {
     expect(screen.getByTestId('external-context-banner')).toBeTruthy();
     expect(screen.getByText('ホームから自己申告キューにフォーカスして開いています。')).toBeTruthy();
     expect(screen.getByRole('heading', { name: '外部連携サマリー' })).toBeTruthy();
+    expect(screen.getByText('有効な共有')).toBeTruthy();
+    expect(screen.getByText('自己申告')).toBeTruthy();
+    expect(screen.getByText('地域フォロー')).toBeTruthy();
     expect(screen.getByRole('heading', { name: '共有とフォロー' })).toBeTruthy();
   });
 
@@ -230,6 +233,7 @@ describe('ExternalViewerContent', () => {
     // サマリーは誤った 0 ではなく「—」と取得失敗の注記を出す。
     expect(screen.getByText('—')).toBeTruthy();
     expect(screen.getByText('取得に失敗しました')).toBeTruthy();
+    expect(screen.queryByText('OTP共有と外部連携導線')).toBeNull();
   });
 
   it('keeps independent panels working when only one query fails', () => {

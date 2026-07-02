@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/loading';
+import { StatCard } from '@/components/ui/stat-card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
@@ -194,42 +195,66 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
                 ))
               ) : (
                 <>
-                  <SummaryCard
+                  <StatCard
                     label="今月の送達成功率"
-                    value={analytics ? `${analytics.summary.current_month_success_rate}%` : '—'}
-                    detail={
+                    value={
+                      analytics
+                        ? analytics.summary.current_month_success_rate.toLocaleString('ja-JP')
+                        : '—'
+                    }
+                    unit={analytics ? '%' : undefined}
+                    hint={
                       analytics
                         ? `${analytics.summary.current_month} / ${analytics.summary.current_month_attempted_count}件`
                         : '送達データを集計中'
                     }
                   />
-                  <SummaryCard
+                  <StatCard
                     label="今月の確認率"
-                    value={analytics ? `${analytics.summary.current_month_confirmed_rate}%` : '—'}
-                    detail={
+                    value={
+                      analytics
+                        ? analytics.summary.current_month_confirmed_rate.toLocaleString('ja-JP')
+                        : '—'
+                    }
+                    unit={analytics ? '%' : undefined}
+                    hint={
                       analytics
                         ? `失敗 ${analytics.summary.current_month_failed_count}件`
                         : '確認データを集計中'
                     }
                   />
-                  <SummaryCard
+                  <StatCard
                     label="返信待ち超過"
-                    value={analytics ? `${analytics.summary.overdue_waiting_count}件` : '—'}
-                    detail={
+                    value={
+                      analytics
+                        ? analytics.summary.overdue_waiting_count.toLocaleString('ja-JP')
+                        : '—'
+                    }
+                    unit={analytics ? '件' : undefined}
+                    role={
+                      analytics && analytics.summary.overdue_waiting_count > 0
+                        ? 'confirm'
+                        : undefined
+                    }
+                    hint={
                       analytics
                         ? `${analytics.summary.overdue_threshold_days}日以上の response_waiting`
                         : '閾値に応じて集計'
                     }
                   />
-                  <SummaryCard
+                  <StatCard
                     label="主要チャネル"
                     value={
-                      analytics?.channel_breakdown[0]
-                        ? (CHANNEL_LABELS[analytics.channel_breakdown[0].channel] ??
-                          analytics.channel_breakdown[0].channel)
-                        : '—'
+                      analytics?.channel_breakdown[0] ? (
+                        <span className="text-base leading-snug break-words">
+                          {CHANNEL_LABELS[analytics.channel_breakdown[0].channel] ??
+                            analytics.channel_breakdown[0].channel}
+                        </span>
+                      ) : (
+                        '—'
+                      )
                     }
-                    detail={
+                    hint={
                       analytics?.channel_breakdown[0]
                         ? `${analytics.channel_breakdown[0].success_rate}% / ${analytics.channel_breakdown[0].total_count}件`
                         : 'チャネル別分析'
@@ -410,18 +435,6 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-function SummaryCard({ label, value, detail }: { label: string; value: string; detail: string }) {
-  // KPI は意味グループ(strip)として calm に: 重い Card 感(影/大角丸/ring)を避け、
-  // border + 控えめ角丸 + 影なし。数値は tabular-nums で桁を揃える。
-  return (
-    <div className="rounded-lg border border-border/70 bg-card px-4 py-3 shadow-none">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{value}</p>
-      <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>
     </div>
   );
 }

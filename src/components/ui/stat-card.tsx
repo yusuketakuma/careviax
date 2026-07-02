@@ -18,6 +18,10 @@ export type StatCardProps = {
   role?: StatusRole;
   /** アイコン（指標名の左に小さく添える）。 */
   icon?: React.ReactNode;
+  /** アイコン wrapper の追加 className。レスポンシブ表示制御が必要な画面で使う。 */
+  iconClassName?: string;
+  /** 補足 wrapper の追加 className。レスポンシブ表示制御が必要な画面で使う。 */
+  hintClassName?: string;
   /**
    * フィルタチップとして使うとき。指定するとボタンとして描画し aria-pressed を付ける。
    * 監査の「選択中キューが視覚的に判別できない」是正用。
@@ -41,6 +45,8 @@ export function StatCard({
   hint,
   role,
   icon,
+  iconClassName,
+  hintClassName,
   onSelect,
   active = false,
   className,
@@ -53,7 +59,7 @@ export function StatCard({
     <>
       <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
         {icon ? (
-          <span aria-hidden className="text-muted-foreground/80">
+          <span aria-hidden className={cn('text-muted-foreground/80', iconClassName)}>
             {icon}
           </span>
         ) : null}
@@ -71,7 +77,9 @@ export function StatCard({
         </span>
         {unit ? <span className="text-xs text-muted-foreground">{unit}</span> : null}
       </div>
-      {hint ? <div className="mt-1 text-xs text-muted-foreground">{hint}</div> : null}
+      {hint ? (
+        <div className={cn('mt-1 text-xs text-muted-foreground', hintClassName)}>{hint}</div>
+      ) : null}
     </>
   );
 

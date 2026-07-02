@@ -43,6 +43,27 @@ describe('StatCard', () => {
     );
   });
 
+  it('can apply responsive classes to icon and hint wrappers', () => {
+    const { container } = render(
+      <StatCard
+        label="外部連携"
+        value={3}
+        icon={<span data-testid="summary-icon" />}
+        iconClassName="hidden sm:inline-flex"
+        hint="取得に失敗しました"
+        hintClassName="hidden sm:block"
+      />,
+    );
+
+    const iconWrapper = screen.getByTestId('summary-icon').parentElement;
+    const hintWrapper = screen.getByText('取得に失敗しました');
+    expect(iconWrapper?.className).toContain('hidden');
+    expect(iconWrapper?.className).toContain('sm:inline-flex');
+    expect(hintWrapper.className).toContain('hidden');
+    expect(hintWrapper.className).toContain('sm:block');
+    expect(container.firstElementChild?.textContent).toContain('外部連携');
+  });
+
   it('renders as a filter chip with aria-pressed when onSelect is provided', () => {
     const onSelect = vi.fn();
     render(<StatCard label="疑義" value={5} onSelect={onSelect} active />);

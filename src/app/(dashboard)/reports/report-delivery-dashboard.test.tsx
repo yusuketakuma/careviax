@@ -196,7 +196,13 @@ describe('ReportDeliveryDashboard', () => {
         '一覧で対象報告を確認したあとに、送達傾向や返信待ちの滞留をまとめて見返すセクションです。',
       ),
     ).toBeTruthy();
-    expect(screen.getByText('67%')).toBeTruthy();
+    expect(screen.getByText('今月の送達成功率')).toBeTruthy();
+    expect(screen.getByText('今月の確認率')).toBeTruthy();
+    expect(screen.getByText('返信待ち超過')).toBeTruthy();
+    expect(screen.getByText('主要チャネル')).toBeTruthy();
+    expect(screen.getByText('67')).toBeTruthy();
+    expect(screen.getByText('33')).toBeTruthy();
+    expect(screen.getAllByText('%').length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText('2026-04').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('田中医師').length).toBeGreaterThanOrEqual(1);
     // 小集計は意味的な軽量テーブル: 各集計が region として存在し列見出し・代表セルが見える。
@@ -265,11 +271,14 @@ describe('ReportDeliveryDashboard', () => {
       isError: false,
     });
 
-    render(<ReportDeliveryDashboard />);
+    const { container } = render(<ReportDeliveryDashboard />);
 
     const reminderButton = screen.getByRole('button', { name: 'リマインドタスク起票' });
     const reminderReason = screen.getByText('送達分析を読み込んでいます。');
 
+    expect(container.querySelectorAll('.animate-pulse')).toHaveLength(4);
+    expect(screen.queryByText('—')).toBeNull();
+    expect(screen.queryByText('今月の送達成功率')).toBeNull();
     expect(reminderButton).toHaveProperty('disabled', true);
     expect(reminderButton.getAttribute('aria-describedby')).toBe(reminderReason.id);
     expect(reminderReason.textContent).not.toMatch(/patient_|report_|山田|田中|患者A/);
