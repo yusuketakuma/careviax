@@ -707,7 +707,9 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
                   <Label htmlFor="expiry">有効期限</Label>
                   <Select value={expiryHours} onValueChange={(v) => setExpiryHours(v ?? '72')}>
                     <SelectTrigger id="expiry">
-                      <SelectValue />
+                      <SelectValue>
+                        {EXPIRY_OPTIONS.find((opt) => opt.value === expiryHours)?.label}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {EXPIRY_OPTIONS.map((opt) => (

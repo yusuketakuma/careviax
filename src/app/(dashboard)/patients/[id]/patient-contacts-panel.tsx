@@ -224,7 +224,7 @@ export function PatientContactsPanel({
                   }
                 >
                   <SelectTrigger aria-label={`連絡先${index + 1}件目の関係`}>
-                    <SelectValue />
+                    <SelectValue>{relationLabel[contact.relation]}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {Object.entries(relationLabel).map(([value, label]) => (

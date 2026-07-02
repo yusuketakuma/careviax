@@ -1653,7 +1653,18 @@ export function ConferencesContent({
                 }
               >
                 <SelectTrigger id="conf-type" className="w-full">
-                  <SelectValue />
+                  <SelectValue>
+                    {
+                      {
+                        regular: '定例会議',
+                        pre_discharge: '退院前カンファ',
+                        service_manager: '担当者会議',
+                        care_team: '多職種カンファ',
+                        death_conference: 'デスカンファ',
+                        emergency: '緊急カンファ',
+                      }[noteType]
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="regular">定例会議</SelectItem>
@@ -2173,7 +2184,13 @@ export function ConferencesContent({
                 onValueChange={(value) => setReportTypeDraft(value ?? reportTypeDraft)}
               >
                 <SelectTrigger id="conference-report-type">
-                  <SelectValue />
+                  <SelectValue>
+                    {reportDialogNote
+                      ? reportTypeOptions(reportDialogNote).find(
+                          (item) => item.value === reportTypeDraft,
+                        )?.label
+                      : null}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {reportDialogNote

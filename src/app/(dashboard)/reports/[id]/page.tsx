@@ -1670,7 +1670,9 @@ export default function ReportDetailPage() {
                     aria-label="送付チャネル"
                     className="min-h-[44px] sm:h-8 sm:min-h-0"
                   >
-                    <SelectValue />
+                    <SelectValue>
+                      {CHANNEL_LABELS[effectiveSendForm.channel] ?? effectiveSendForm.channel}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {CARE_REPORT_SEND_CHANNELS.map((key) => (

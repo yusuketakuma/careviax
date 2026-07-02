@@ -103,7 +103,10 @@ function SettingRow({
             onValueChange={(value) => onChange(item.key, value ?? item.value)}
           >
             <SelectTrigger id={`setting-${item.key}`} className="h-8 text-sm">
-              <SelectValue />
+              <SelectValue>
+                {(item.options ?? []).find((option) => option.value === item.value)?.label ??
+                  item.value}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {(item.options ?? []).map((option) => (

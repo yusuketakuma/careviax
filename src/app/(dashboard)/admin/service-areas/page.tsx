@@ -281,7 +281,7 @@ export default function ServiceAreasPage() {
                   id="service-area-type"
                   className="min-h-[44px] w-full sm:min-h-[44px]"
                 >
-                  <SelectValue />
+                  <SelectValue>{form.area_type}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="radius">radius</SelectItem>

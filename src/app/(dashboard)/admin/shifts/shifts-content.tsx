@@ -1131,7 +1131,9 @@ export function ShiftsContent() {
                         }
                       >
                         <SelectTrigger id="shift-status" className="w-full">
-                          <SelectValue />
+                          <SelectValue>
+                            {selectedShift.available ? '出勤可' : '出勤不可'}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="available">出勤可</SelectItem>
@@ -1484,7 +1486,13 @@ export function ShiftsContent() {
                     }
                   >
                     <SelectTrigger id="template-weekday" className="w-full">
-                      <SelectValue />
+                      <SelectValue>
+                        {
+                          WEEKDAY_OPTIONS.find(
+                            (option) => option.value === effectiveTemplateForm.weekday,
+                          )?.label
+                        }
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {WEEKDAY_OPTIONS.map((option) => (
@@ -1717,7 +1725,15 @@ export function ShiftsContent() {
                     }
                   >
                     <SelectTrigger id="holiday-type" className="w-full">
-                      <SelectValue />
+                      <SelectValue>
+                        {
+                          {
+                            public_holiday: '祝日',
+                            site_closure: '店舗休業',
+                            org_event: '組織行事',
+                          }[holidayForm.holiday_type]
+                        }
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="public_holiday">祝日</SelectItem>
@@ -1743,7 +1759,9 @@ export function ShiftsContent() {
                     }
                   >
                     <SelectTrigger id="holiday-scope" className="w-full">
-                      <SelectValue />
+                      <SelectValue>
+                        {holidayForm.site_scope === 'org' ? '組織全体' : '店舗単位'}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="org">組織全体</SelectItem>
@@ -1810,7 +1828,9 @@ export function ShiftsContent() {
                   }
                 >
                   <SelectTrigger id="holiday-closed" className="w-full">
-                    <SelectValue />
+                    <SelectValue>
+                      {holidayForm.is_closed === 'true' ? '休業扱い' : 'メモのみ'}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="true">休業扱い</SelectItem>
@@ -1991,7 +2011,18 @@ export function ShiftsContent() {
                   }
                 >
                   <SelectTrigger id="pharmacist-role" className="w-full">
-                    <SelectValue />
+                    <SelectValue>
+                      {
+                        {
+                          admin: '管理者',
+                          pharmacist: '薬剤師',
+                          pharmacist_trainee: '研修薬剤師',
+                          clerk: '事務スタッフ',
+                          driver: '配送担当',
+                          external_viewer: '外部連携者',
+                        }[pharmacistForm.role]
+                      }
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="admin">管理者</SelectItem>
@@ -2188,7 +2219,13 @@ export function ShiftsContent() {
                   }
                 >
                   <SelectTrigger id="holiday-edit-type" className="w-full">
-                    <SelectValue />
+                    <SelectValue>
+                      {
+                        { public_holiday: '祝日', site_closure: '店舗休業', org_event: '組織行事' }[
+                          holidayEditForm.holiday_type
+                        ]
+                      }
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="public_holiday">祝日</SelectItem>
@@ -2214,7 +2251,9 @@ export function ShiftsContent() {
                   }
                 >
                   <SelectTrigger id="holiday-edit-scope" className="w-full">
-                    <SelectValue />
+                    <SelectValue>
+                      {holidayEditForm.site_scope === 'org' ? '組織全体' : '店舗単位'}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="org">組織全体</SelectItem>
@@ -2282,7 +2321,9 @@ export function ShiftsContent() {
                 }
               >
                 <SelectTrigger id="holiday-edit-closed" className="w-full">
-                  <SelectValue />
+                  <SelectValue>
+                    {holidayEditForm.is_closed === 'true' ? '休業扱い' : 'メモのみ'}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="true">休業扱い</SelectItem>

@@ -1249,7 +1249,7 @@ export function ScheduleWeeklyOptimizer({
                 }}
               >
                 <SelectTrigger id="weekly-visit-type" className="w-[10rem]">
-                  <SelectValue />
+                  <SelectValue>{VISIT_TYPE_LABELS[plannerSettings.visit_type]}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {(Object.keys(VISIT_TYPE_LABELS) as VisitType[]).map((visitType) => (
@@ -1273,7 +1273,7 @@ export function ScheduleWeeklyOptimizer({
                 }}
               >
                 <SelectTrigger id="weekly-priority" className="w-[9rem]">
-                  <SelectValue />
+                  <SelectValue>{PRIORITY_LABELS[plannerSettings.priority]}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {(Object.keys(PRIORITY_LABELS) as VisitPriority[]).map((priority) => (
@@ -1297,7 +1297,13 @@ export function ScheduleWeeklyOptimizer({
                 }}
               >
                 <SelectTrigger id="weekly-travel-mode" className="w-[10rem]">
-                  <SelectValue />
+                  <SelectValue>
+                    {plannerSettings.travel_mode === 'DRIVE'
+                      ? '車'
+                      : plannerSettings.travel_mode === 'BICYCLE'
+                        ? '自転車'
+                        : '徒歩'}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="DRIVE">車</SelectItem>

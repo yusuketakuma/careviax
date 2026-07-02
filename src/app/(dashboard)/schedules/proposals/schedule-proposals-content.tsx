@@ -3132,7 +3132,13 @@ export function ScheduleProposalsContent({
                         }
                       >
                         <SelectTrigger id="proposal-contact-method">
-                          <SelectValue />
+                          <SelectValue>
+                            {contactForm.contact_method === 'phone'
+                              ? '電話'
+                              : contactForm.contact_method === 'fax'
+                                ? 'FAX'
+                                : 'メール'}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="phone">電話</SelectItem>
@@ -3153,7 +3159,17 @@ export function ScheduleProposalsContent({
                         }
                       >
                         <SelectTrigger id="proposal-contact-outcome">
-                          <SelectValue />
+                          <SelectValue>
+                            {
+                              {
+                                attempted: '架電済み',
+                                confirmed: '確認済み',
+                                unreachable: '不在 / 不通',
+                                declined: '辞退',
+                                change_requested: '変更希望',
+                              }[contactForm.outcome]
+                            }
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="attempted">架電済み</SelectItem>
@@ -3301,7 +3317,7 @@ export function ScheduleProposalsContent({
                         }
                       >
                         <SelectTrigger id="reproposal-priority">
-                          <SelectValue />
+                          <SelectValue>{PRIORITY_LABELS[reproposalForm.priority]}</SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           {(Object.keys(PRIORITY_LABELS) as Proposal['priority'][]).map(
