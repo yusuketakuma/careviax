@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { StatCard } from '@/components/ui/stat-card';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -57,14 +58,8 @@ function BarChart({
   );
 }
 
-function MetricCard({ label, value, caption }: { label: string; value: string; caption: string }) {
-  return (
-    <div className="rounded-md border border-border/70 bg-background px-4 py-3">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="mt-1 text-xl font-bold tracking-tight text-foreground">{value}</p>
-      <p className="mt-1 text-xs leading-5 text-muted-foreground">{caption}</p>
-    </div>
-  );
+function WrappedMetricValue({ value }: { value: string }) {
+  return <span className="text-base leading-snug break-words">{value}</span>;
 }
 
 export function OperationsInsightsContent() {
@@ -82,46 +77,6 @@ export function OperationsInsightsContent() {
     },
     enabled: !!orgId,
   });
-
-  if (!orgId || insightsQuery.isLoading) {
-    return (
-      <div className="grid gap-4 xl:grid-cols-2" role="status" aria-label="運用分析読み込み中">
-        <Skeleton className="h-72 w-full rounded-lg" />
-        <Skeleton className="h-72 w-full rounded-lg" />
-        <Skeleton className="h-48 w-full rounded-lg xl:col-span-2" />
-      </div>
-    );
-  }
-
-  if (insightsQuery.isError || !insightsQuery.data) {
-    return (
-      <div className="rounded-lg border border-border/70 bg-card p-4">
-        <ErrorState
-          variant="server"
-          title="運用分析を表示できません"
-          description="集計の取得に失敗しました。再試行してください。"
-          action={{ label: '再試行', onClick: () => void insightsQuery.refetch() }}
-        />
-      </div>
-    );
-  }
-
-  const insights = insightsQuery.data;
-  const summary = summarizeOperationsInsights({
-    monthlyVisits: insights.monthly_visits,
-    processes: insights.processes,
-  });
-  const deltaText =
-    summary.previousMonthDelta === null
-      ? '比較なし'
-      : summary.previousMonthDelta >= 0
-        ? `+${summary.previousMonthDelta}件`
-        : `${summary.previousMonthDelta}件`;
-  const slowestText = summary.slowestProcess
-    ? `${summary.slowestProcess.label} ${formatOperationDuration(
-        summary.slowestProcess.averageMinutes,
-      )}`
-    : '実績なし';
 
   return (
     <PageScaffold variant="bare" testId="operations-insights-page">
@@ -152,23 +107,80 @@ export function OperationsInsightsContent() {
           </div>
         }
       />
+
+      {!orgId || insightsQuery.isLoading ? (
+        <div className="grid gap-4 xl:grid-cols-2" role="status" aria-label="運用分析読み込み中">
+          <Skeleton className="h-72 w-full rounded-lg" />
+          <Skeleton className="h-72 w-full rounded-lg" />
+          <Skeleton className="h-48 w-full rounded-lg xl:col-span-2" />
+        </div>
+      ) : insightsQuery.isError || !insightsQuery.data ? (
+        <div className="rounded-lg border border-border/70 bg-card p-4">
+          <ErrorState
+            variant="server"
+            title="運用分析を表示できません"
+            description="集計の取得に失敗しました。再試行してください。"
+            action={{ label: '再試行', onClick: () => void insightsQuery.refetch() }}
+          />
+        </div>
+      ) : (
+        <OperationsInsightsLoaded insights={insightsQuery.data} />
+      )}
+    </PageScaffold>
+  );
+}
+
+function OperationsInsightsLoaded({ insights }: { insights: OperationsInsights }) {
+  const summary = summarizeOperationsInsights({
+    monthlyVisits: insights.monthly_visits,
+    processes: insights.processes,
+  });
+  const deltaValue =
+    summary.previousMonthDelta === null
+      ? '比較なし'
+      : summary.previousMonthDelta >= 0
+        ? `+${summary.previousMonthDelta}`
+        : `${summary.previousMonthDelta}`;
+  const deltaUnit = summary.previousMonthDelta === null ? undefined : '件';
+  const slowestText = summary.slowestProcess
+    ? `${summary.slowestProcess.label} ${formatOperationDuration(
+        summary.slowestProcess.averageMinutes,
+      )}`
+    : '実績なし';
+
+  return (
+    <>
       <section className="rounded-lg border border-border/70 bg-card p-4">
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard
+        <div
+          className="mt-4 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4"
+          data-testid="operations-insights-kpis"
+        >
+          <StatCard
             label={`${summary.currentMonthLabel}の訪問`}
-            value={`${summary.currentMonthVisits}件`}
-            caption="完了・再訪・配送のみを含む"
+            value={summary.currentMonthVisits.toLocaleString('ja-JP')}
+            unit="件"
+            hint="完了・再訪・配送のみを含む"
+            className="h-full bg-background px-4 py-3 ring-0"
           />
-          <MetricCard label="前月差" value={deltaText} caption="前月実績がある月だけ比較" />
-          <MetricCard
+          <StatCard
+            label="前月差"
+            value={deltaValue}
+            unit={deltaUnit}
+            hint="前月実績がある月だけ比較"
+            className="h-full bg-background px-4 py-3 ring-0"
+          />
+          <StatCard
             label="最も時間がかかる工程"
-            value={slowestText}
-            caption="直近30日の平均所要時間"
+            labelClassName="whitespace-normal leading-snug"
+            value={<WrappedMetricValue value={slowestText} />}
+            hint="直近30日の平均所要時間"
+            className="h-full bg-background px-4 py-3 ring-0"
           />
-          <MetricCard
+          <StatCard
             label="次に見るところ"
-            value={summary.nextFocus}
-            caption={`${summary.activeProcessCount}工程に直近実績あり`}
+            value={<WrappedMetricValue value={summary.nextFocus} />}
+            hint={`${summary.activeProcessCount}工程に直近実績あり`}
+            className="h-full bg-background px-4 py-3 ring-0"
           />
         </div>
 
@@ -227,6 +239,6 @@ export function OperationsInsightsContent() {
           </p>
         </section>
       </div>
-    </PageScaffold>
+    </>
   );
 }
