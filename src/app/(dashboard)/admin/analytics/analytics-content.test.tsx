@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -458,5 +458,28 @@ describe('AnalyticsContent', () => {
     expect(screen.queryByText('算定コードの実績はありません。')).toBeNull();
     expect(screen.queryByText('地域別集計はありません。')).toBeNull();
     expect(screen.queryByText('地域資源データはありません。')).toBeNull();
+    expect(screen.queryByText('---- -- の請求候補')).toBeNull();
+    expect(screen.queryByText('締め済み 0 件')).toBeNull();
+    expect(within(screen.getByTestId('analytics-kpis')).queryByText('0%')).toBeNull();
+  });
+
+  it('announces loading regions while keeping skeleton shapes decorative', () => {
+    // never-resolving fetch keeps both queries in the loading state
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+
+    const { container } = renderContent();
+
+    expect(screen.getByRole('status', { name: '請求分析の指標を読み込み中' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: '締め阻害要因を読み込み中' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: '主要算定コードを読み込み中' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: '地域別サマリーを読み込み中' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: '拠点別の対応体制を読み込み中' })).toBeTruthy();
+
+    for (const skeleton of container.querySelectorAll('.animate-pulse')) {
+      expect(skeleton.getAttribute('aria-hidden')).toBe('true');
+    }
   });
 });

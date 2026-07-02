@@ -3,13 +3,14 @@
 import type { ColumnDef } from '@tanstack/react-table';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useMemo, useState, type ElementType } from 'react';
+import { useMemo, useState, type ElementType, type ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, ShieldCheck, MapPinned } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
+import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 
@@ -81,6 +82,23 @@ type ResourceFilter =
   | 'missing_geo';
 
 type MonthlyTrendRow = AnalyticsResponse['monthly_trend'][number];
+
+function LoadingRegion({
+  label,
+  className,
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div role="status" aria-label={label} className={className}>
+      {children}
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}
 
 const monthlyTrendColumns: ColumnDef<MonthlyTrendRow>[] = [
   {
@@ -262,9 +280,12 @@ export function AnalyticsContent() {
           )}
           <div
             aria-busy={isLoading}
+            aria-label={isLoading ? '請求分析の指標を読み込み中' : undefined}
             className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4"
             data-testid="analytics-kpis"
+            role={isLoading ? 'status' : undefined}
           >
+            {isLoading ? <span className="sr-only">請求分析の指標を読み込み中</span> : null}
             <MetricCard
               icon={FileSpreadsheet}
               label="今月候補"
@@ -325,7 +346,9 @@ export function AnalyticsContent() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {isLoading ? (
-                    <div className="h-12 animate-pulse rounded bg-muted" />
+                    <LoadingRegion label="締め阻害要因を読み込み中">
+                      <Skeleton className="h-12" />
+                    </LoadingRegion>
                   ) : (analytics?.blocker_reasons.length ?? 0) === 0 ? (
                     <p className="text-sm text-muted-foreground">算定不可の主因はありません。</p>
                   ) : (
@@ -348,7 +371,9 @@ export function AnalyticsContent() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {isLoading ? (
-                    <div className="h-12 animate-pulse rounded bg-muted" />
+                    <LoadingRegion label="主要算定コードを読み込み中">
+                      <Skeleton className="h-12" />
+                    </LoadingRegion>
                   ) : (analytics?.top_codes.length ?? 0) === 0 ? (
                     <p className="text-sm text-muted-foreground">算定コードの実績はありません。</p>
                   ) : (
@@ -442,7 +467,9 @@ export function AnalyticsContent() {
                 <div className="grid gap-2">
                   <p className="text-xs font-medium text-muted-foreground">地域別サマリー</p>
                   {resourceMapLoading ? (
-                    <div className="h-12 animate-pulse rounded bg-muted" />
+                    <LoadingRegion label="地域別サマリーを読み込み中">
+                      <Skeleton className="h-12" />
+                    </LoadingRegion>
                   ) : areaSummary.length === 0 ? (
                     <p className="text-sm text-muted-foreground">地域別集計はありません。</p>
                   ) : (
@@ -494,7 +521,9 @@ export function AnalyticsContent() {
                   ))}
                 </div>
                 {resourceMapLoading ? (
-                  <div className="h-12 animate-pulse rounded bg-muted" />
+                  <LoadingRegion label="拠点別の対応体制を読み込み中">
+                    <Skeleton className="h-12" />
+                  </LoadingRegion>
                 ) : filteredSites.length === 0 ? (
                   <p className="text-sm text-muted-foreground">地域資源データはありません。</p>
                 ) : (
@@ -568,7 +597,7 @@ function MetricCard({
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="h-8 w-16 animate-pulse rounded bg-muted" />
+          <Skeleton className="h-8 w-16" />
         ) : (
           <>
             <p className="text-3xl font-bold tabular-nums">{value}</p>
