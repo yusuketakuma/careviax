@@ -10,7 +10,6 @@
 ### 1.1 SSOT 宣言と文書体系
 
 - **規範（SSOT）は本書のみ**。旧 `docs/uiux-design-system.md`（実装規範）と旧 `docs/state-color-migration-map.md`（状態色 family×value×role 確定表）は 2026-07-02 に本書へ統合済みで、両ファイルは後方互換のためのリダイレクトスタブである。新しい規範は必ず本書に追記し、別ファイルへ分割しない。
-- **land 条件（スタブ更新）**: 旧 `docs/uiux-design-system.md` のスタブは「実装規範（Design System）」章見出しを参照しているが、本改版で当該内容は 3〜7 章へ分散した。本改版の land 時にスタブの参照先を「本書全体（3〜7章）」等の実在する表現へ更新すること（`docs/state-color-migration-map.md` 側は「状態色 family×value×role 確定表」見出しが「10.」に現存するため変更不要）。
 - **実装の正本（コード側）**: 状態色ロールは `src/lib/constants/status-labels.ts` の `*_ROLE` 定数、トークン実体は `src/app/globals.css`。本書の確定表と食い違う場合は差分理由を明記のうえ両方を直す。
 - **非規範の作業文書**（監査・計画・リサーチ。ルールの根拠・進捗管理であり、判断の正本ではない）: `docs/uiux-audit.md` / `docs/uiux-improvement-plan.md` / `docs/color-token-remediation-plan.md`（是正フェーズ台帳）/ `docs/design-fidelity-mapping.md`・`docs/design-gap-analysis*.md`（デザイン画像対応表）/ `docs/research/medical-uiux-research-2026-06-26.md`（エビデンス集）/ `.agent-loop/UI_AUDIT_MATRIX.md`・`PLACEMENT_*.md`（ループ監査台帳）。これらと本書が衝突する場合は本書が優先。
 

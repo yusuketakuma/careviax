@@ -1,6 +1,7 @@
 # UI/UX Design System（統合済み）
 
-> **MOVED (2026-07-02):** 本書の実装規範は `docs/ui-ux-design-guidelines.md` の
-> 「## 実装規範（Design System）」章へ全量統合された。デザインの規範 SSOT は
+> **MOVED (2026-07-02):** 本書の実装規範は `docs/ui-ux-design-guidelines.md` へ全量統合された
+> （v2 改版で 3〜7 章 = デザイントークン / 情報アーキテクチャ / 操作性 / 状態設計 /
+> コンポーネント規範へ分散配置。単一の章ではなく本書全体が後継）。デザインの規範 SSOT は
 > `docs/ui-ux-design-guidelines.md` のみである。本ファイルは旧参照の互換のために
 > 残すポインタであり、規範を追記しないこと。
