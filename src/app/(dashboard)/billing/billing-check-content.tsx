@@ -7,6 +7,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { Button } from '@/components/ui/button';
+import { StatCard } from '@/components/ui/stat-card';
 import { FilterChipBar } from '@/components/features/workspace/filter-chip-bar';
 import {
   WorkspaceActionRail,
@@ -51,57 +52,6 @@ const MONTH_OPTIONS: Array<{ value: BillingCheckMonth; label: string }> = [
 /** 経過時間ラベル(「1日」「30分」)。 */
 export const formatAgeLabel = formatElapsedLabel;
 
-// ---------------------------------------------------------------------------
-// 上部 KPI ストリップ
-// ---------------------------------------------------------------------------
-
-function KpiCard({
-  label,
-  value,
-  unit,
-  valueClassName,
-  bar,
-  testId,
-}: {
-  label: string;
-  value: number;
-  unit: string;
-  valueClassName?: string;
-  bar: { className: string; percent: number } | null;
-  testId: string;
-}) {
-  return (
-    <article className="rounded-lg border border-border/70 bg-card p-3 sm:p-4" data-testid={testId}>
-      <div className="flex items-start justify-between gap-3 sm:block">
-        <p className="max-w-40 text-xs font-semibold leading-5 text-foreground sm:max-w-none sm:text-sm">
-          {label}
-        </p>
-        <p className="flex shrink-0 items-baseline gap-1 sm:mt-1">
-          <span
-            className={cn(
-              'text-2xl font-bold leading-7 tabular-nums sm:text-[28px] sm:leading-9',
-              valueClassName,
-            )}
-          >
-            {value}
-          </span>
-          <span className="max-w-28 text-xs leading-4 text-muted-foreground sm:max-w-none sm:text-sm">
-            {unit}
-          </span>
-        </p>
-      </div>
-      <div aria-hidden="true" className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted sm:mt-3">
-        {bar ? (
-          <div
-            className={cn('h-full rounded-full', bar.className)}
-            style={{ width: `${Math.min(Math.max(bar.percent, 0), 100)}%` }}
-          />
-        ) : null}
-      </div>
-    </article>
-  );
-}
-
 function KpiStrip({ data }: { data: BillingCheckResponse }) {
   const checkedTotal = data.passed_count + data.review_count;
   const passedPercent = checkedTotal > 0 ? (data.passed_count / checkedTotal) * 100 : 0;
@@ -110,31 +60,42 @@ function KpiStrip({ data }: { data: BillingCheckResponse }) {
 
   return (
     <div className="grid gap-2 sm:grid-cols-3 sm:gap-3" data-testid="billing-check-kpi-strip">
-      <KpiCard
-        label={`${data.month_short_label} 自動チェック`}
-        value={data.passed_count}
-        unit="件 合格"
-        bar={{ className: 'bg-state-done', percent: passedPercent }}
-        testId="billing-check-kpi-passed"
-      />
-      <KpiCard
-        label="疑義(人の確認待ち)"
-        value={data.review_count}
-        unit="件"
-        valueClassName="text-state-confirm"
-        bar={
-          data.review_count > 0 ? { className: 'bg-state-confirm', percent: reviewPercent } : null
-        }
-        testId="billing-check-kpi-review"
-      />
-      <KpiCard
-        label="本日訪問の算定候補"
-        value={data.today_pending_count}
-        unit="件(訪問完了後に確定)"
-        valueClassName="text-primary"
-        bar={null}
-        testId="billing-check-kpi-today"
-      />
+      <div data-testid="billing-check-kpi-passed">
+        <StatCard
+          label={`${data.month_short_label} 自動チェック`}
+          labelClassName="text-foreground"
+          value={data.passed_count}
+          unit="件 合格"
+          progress={{ className: 'bg-state-done', percent: passedPercent }}
+          className="h-full sm:p-4"
+        />
+      </div>
+      <div data-testid="billing-check-kpi-review">
+        <StatCard
+          label="疑義(人の確認待ち)"
+          labelClassName="text-foreground"
+          value={data.review_count}
+          unit="件"
+          valueClassName={data.review_count > 0 ? 'text-state-confirm' : undefined}
+          progress={
+            data.review_count > 0
+              ? { className: 'bg-state-confirm', percent: reviewPercent }
+              : { percent: 0 }
+          }
+          className="h-full sm:p-4"
+        />
+      </div>
+      <div data-testid="billing-check-kpi-today">
+        <StatCard
+          label="本日訪問の算定候補"
+          labelClassName="text-foreground"
+          value={data.today_pending_count}
+          unit="件(訪問完了後に確定)"
+          valueClassName="text-primary"
+          progress={{ percent: 0 }}
+          className="h-full sm:p-4"
+        />
+      </div>
     </div>
   );
 }

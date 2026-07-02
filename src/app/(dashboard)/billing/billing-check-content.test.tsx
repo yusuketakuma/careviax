@@ -106,6 +106,18 @@ function buildFixture(): BillingCheckResponse {
   };
 }
 
+function findProgressFill(root: HTMLElement, className: string): HTMLElement | undefined {
+  return Array.from(root.querySelectorAll<HTMLElement>('div')).find((element) =>
+    element.className.includes(className),
+  );
+}
+
+function getPositiveProgressWidths(root: HTMLElement): number[] {
+  return Array.from(root.querySelectorAll<HTMLElement>('div[style]'))
+    .map((element) => Number.parseFloat(element.style.width || '0'))
+    .filter((width) => width > 0);
+}
+
 describe('BillingCheckContent', () => {
   beforeEach(() => {
     useUIStore.setState({ workspaceRailOpen: true });
@@ -169,17 +181,52 @@ describe('BillingCheckContent', () => {
   it('renders the 3 KPI cards (passed / review / today)', () => {
     render(<BillingCheckContent />);
 
+    const strip = screen.getByTestId('billing-check-kpi-strip');
+    expect(within(strip).queryAllByRole('button')).toHaveLength(0);
+
     const passed = screen.getByTestId('billing-check-kpi-passed');
     expect(within(passed).getByText('6月分 自動チェック')).toBeTruthy();
     expect(within(passed).getByText('128')).toBeTruthy();
     expect(within(passed).getByText('件 合格')).toBeTruthy();
+    const passedFill = findProgressFill(passed, 'bg-state-done');
+    expect(passedFill).toBeTruthy();
+    expect(Number.parseFloat(passedFill?.style.width ?? '')).toBeCloseTo((128 / 131) * 100, 3);
 
     const review = screen.getByTestId('billing-check-kpi-review');
     expect(within(review).getByText('疑義(人の確認待ち)')).toBeTruthy();
+    expect(within(review).getByText('3').className).toContain('text-state-confirm');
+    expect(within(review).getByText('件')).toBeTruthy();
+    const reviewFill = findProgressFill(review, 'bg-state-confirm');
+    expect(reviewFill).toBeTruthy();
+    expect(Number.parseFloat(reviewFill?.style.width ?? '')).toBeCloseTo((3 / 131) * 100, 3);
 
     const today = screen.getByTestId('billing-check-kpi-today');
     expect(within(today).getByText('本日訪問の算定候補')).toBeTruthy();
+    expect(within(today).getByText('3')).toBeTruthy();
     expect(within(today).getByText('件(訪問完了後に確定)')).toBeTruthy();
+    expect(getPositiveProgressWidths(today)).toEqual([]);
+    expect(today.querySelector('.bg-state-done')).toBeNull();
+    expect(today.querySelector('.bg-state-confirm')).toBeNull();
+  });
+
+  it('keeps a visible minimum progress fill for low-count review work', () => {
+    const fixture = buildFixture();
+    fixture.passed_count = 1000;
+    fixture.review_count = 1;
+    fixture.review_rows = [fixture.review_rows[0]];
+    useQueryMock.mockReturnValue({
+      data: fixture,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchMock,
+    });
+
+    render(<BillingCheckContent />);
+
+    const review = screen.getByTestId('billing-check-kpi-review');
+    expect(within(review).getByText('1')).toBeTruthy();
+    expect(findProgressFill(review, 'bg-state-confirm')?.style.width).toBe('2%');
   });
 
   it('renders 疑義 rows with evidence pills and return-path actions', () => {
@@ -270,6 +317,10 @@ describe('BillingCheckContent', () => {
 
     render(<BillingCheckContent />);
 
+    const review = screen.getByTestId('billing-check-kpi-review');
+    expect(within(review).getByText('0').className).not.toContain('text-state-confirm');
+    const reviewFill = findProgressFill(review, 'bg-state-confirm');
+    expect(reviewFill ? Number.parseFloat(reviewFill.style.width || '0') : 0).toBe(0);
     expect(screen.getByText('疑義はありません — 自動チェックをすべて通過しています')).toBeTruthy();
   });
 
