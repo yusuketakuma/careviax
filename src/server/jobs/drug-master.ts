@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db/client';
+import { formatUtcDateKey } from '@/lib/date-key';
 import {
   importGenericNameMappings,
   importMhlwGenericFlags,
@@ -172,6 +173,7 @@ export async function checkDrugMasterFreshness() {
     // Only check free sources that don't require registration/licensing
     const sources = FREE_SOURCES;
     const now = new Date();
+    const dedupeDate = formatUtcDateKey(now);
     let alertCount = 0;
 
     for (const source of sources) {
@@ -192,7 +194,6 @@ export async function checkDrugMasterFreshness() {
           ? `${label}の最終取込から${daysSinceLastImport}日が経過しています（閾値: ${threshold}日）。自動更新の実行状況を確認してください`
           : `${label}の取込実績がありません。初回取込を実行してください`;
 
-        const dedupeDate = now.toISOString().slice(0, 10);
         await notifyAdmins({
           title: '医薬品マスター更新遅延',
           message,
@@ -216,7 +217,6 @@ export async function checkDrugMasterFreshness() {
     const packageCoverageThreshold = resolvePackageCoverageAlertThresholdPercent();
 
     if (drugMasterCount > 0 && packageCoveragePercent < packageCoverageThreshold) {
-      const dedupeDate = now.toISOString().slice(0, 10);
       await notifyAdmins({
         title: '医薬品包装マスター不足',
         message: `包装GTIN/JANマスターの紐づき率が${packageCoveragePercent}%です（${packageLinkedDrugMasterCount}/${drugMasterCount}件、閾値: ${packageCoverageThreshold}%）。HOTまたはDrugPackage取込の実行状況を確認してください`,

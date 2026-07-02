@@ -16,13 +16,6 @@
       "expectedCount": 1
     },
     {
-      "path": "src/server/jobs/drug-master.ts",
-      "needle": "now.toISOString().slice(0, 10)",
-      "classification": "utc_job_dedupe_key",
-      "reason": "Drug-master freshness job dedupe currently uses UTC process date; revisit if local operator-day dedupe is required.",
-      "expectedCount": 1
-    },
-    {
       "path": "src/server/services/billing-evidence/batch.ts",
       "needle": "monthStart.toISOString().slice(0, 10)",
       "classification": "utc_canonical_month_key",
