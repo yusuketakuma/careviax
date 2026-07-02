@@ -2204,3 +2204,50 @@ The latest shared frontend component slice was
   - Browser/E2E smoke was skipped because this shared component behavior is
     covered by jsdom DOM regressions plus production build, and no navigation,
     API route contract, DB, mutation, or external-send behavior changed.
+
+## Patient Status Window Query Order Verification
+
+The latest backend raw SQL reliability slice was
+`RR-BUG-20260702-F01-patient-status-window-query-order` at 2026-07-02 13:47 JST.
+
+- Planning / review:
+  - ULTRACODE F01 identified the daily patient-status tracker raw SQL as
+    ordering by `created_at` in an outer scope where the subquery exposed only
+    `target_id`, `changes`, and `rn`.
+  - Codex db steward found no blockers and confirmed `ORDER BY target_id, rn`
+    uses projected columns and preserves newest-first per-patient ordering.
+  - Codex test architect found no blockers and requested optional `AS rn`
+    assertion hardening; it was added before final validation.
+- Focused regression:
+  - `pnpm exec vitest run src/server/services/patient-status-tracker.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `7` tests.
+  - Coverage: inner `ROW_NUMBER()` still orders by `created_at DESC`; `AS rn`
+    alias exists; `rn <= 5` remains; outer query orders by `target_id, rn`; old
+    outer `ORDER BY target_id, created_at DESC` is absent.
+- Scoped checks:
+  - `pnpm exec eslint src/server/services/patient-status-tracker.ts src/server/services/patient-status-tracker.test.ts`
+  - Result: passed.
+  - `pnpm exec prettier --check src/server/services/patient-status-tracker.ts src/server/services/patient-status-tracker.test.ts`
+  - Result: passed.
+  - `git diff --check -- src/server/services/patient-status-tracker.ts src/server/services/patient-status-tracker.test.ts`
+  - Result: passed.
+- Full gates:
+  - `pnpm typecheck`
+  - Result: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`
+  - Result: passed on immediate rerun. First run saw a transient unrelated
+    dirty `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`
+    unused-import state; inspection showed the import currently used, and the
+    rerun passed.
+  - `pnpm lint`
+  - Result: passed.
+  - `pnpm format:check`
+  - Result: passed.
+  - `pnpm build`
+  - Result: passed.
+- gbrain:
+  - `projects/careviax/failures/2026-07-02/patient-status-window-query-outer-order-created-at`
+  - Result: write/readback passed.
+- Skipped:
+  - Browser/E2E smoke was skipped because this backend SQL fix changes no DOM
+    layout, navigation, route contract shape, or human workflow shape.

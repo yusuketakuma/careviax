@@ -35808,3 +35808,46 @@ Next loop:
   - Browser smoke was skipped because this shared component patch is covered by
     DOM component regressions for pointer/keyboard/highlight behavior and
     production build, and changes no navigation or backend contract.
+
+### Patient Status Window Query Order - 2026-07-02 13:47 JST
+
+- Scope:
+  - ULTRACODE F01
+    `RR-BUG-20260702-F01-patient-status-window-query-order`.
+  - `src/server/services/patient-status-tracker.ts`
+  - `src/server/services/patient-status-tracker.test.ts`
+- Fixed:
+  - The patient-status tracker raw SQL no longer orders the outer query by
+    non-projected `created_at`.
+  - Outer ordering now uses projected `rn`, while `rn` is still defined by
+    `ROW_NUMBER() OVER (PARTITION BY target_id ORDER BY created_at DESC)`.
+  - Existing malformed-latest-audit fallback behavior remains intact because
+    rows are still grouped by target and newest-first within each target.
+- Safety:
+  - Prevents daily `patient_status_tracking` from failing with a PostgreSQL
+    missing-column error once patient risk summaries exist.
+  - Preserves org scoping, `$queryRaw` bind-parameter safety, audit log writes,
+    notification creation, DB schema, migrations, auth/RLS semantics, external
+    sends, billing, secrets, push/deploy, and destructive-operation boundaries.
+- Performance:
+  - No performance optimization is claimed.
+  - The per-patient top-5 window query remains bounded; no new query fan-out,
+    dependency, polling, broad scan, or unbounded loop was added.
+- Validation:
+  - Focused patient-status tracker suite passed: `1` file / `7` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed after immediate rerun; the first run saw
+    a transient unrelated dirty `pca-pumps` unused-import state that was no
+    longer present on inspection.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm build`: passed.
+  - Codex db steward and test architect reported no blockers; optional `AS rn`
+    alias coverage was added before final validation.
+  - gbrain write/readback:
+    `projects/careviax/failures/2026-07-02/patient-status-window-query-outer-order-created-at`.
+- Remaining:
+  - The broad ULTRACODE/refactor objective remains open.
+  - Browser smoke was skipped because this backend SQL fix changes no DOM,
+    navigation, route contract shape, or human workflow shape.

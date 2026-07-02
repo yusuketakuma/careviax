@@ -1054,3 +1054,29 @@ User-directed program after the org-header sweep. Method: ultracode 51-screen re
   `574a91fb` (`fix(data-table): preserve source row identity after sorting`).
 - Next action: notify via agmsg if available, then continue the next
   highest-value ULTRACODE/refactor item.
+
+### Resume point - 2026-07-02 13:47 JST
+
+- Active broad ULTRACODE/refactor objective remains open. Latest validated
+  slice:
+  `RR-BUG-20260702-F01-patient-status-window-query-order`.
+- Changed owned runtime files:
+  `src/server/services/patient-status-tracker.ts` and
+  `src/server/services/patient-status-tracker.test.ts`.
+- Fixed patient-status tracking daily job SQL:
+  the raw SQL now orders the outer ranked audit-log query by projected `rn`,
+  not non-projected `created_at`. The inner window still orders by
+  `created_at DESC`, preserving newest-first status history per patient and the
+  malformed-latest-log fallback behavior.
+- Validation passed:
+  focused patient-status tracker suite `1` file / `7` tests, scoped
+  ESLint/Prettier/diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`,
+  `pnpm lint`, `pnpm format:check`, and `pnpm build`.
+- Review:
+  Codex db steward and test architect reported no blockers; optional `AS rn`
+  alias coverage was added before final validation.
+- gbrain writeback slug:
+  `projects/careviax/failures/2026-07-02/patient-status-window-query-outer-order-created-at`.
+- Next action: commit this F01 slice and ledgers with explicit paths, notify via
+  agmsg if available, then continue the next highest-value ULTRACODE/refactor
+  item.

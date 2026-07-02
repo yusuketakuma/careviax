@@ -391,3 +391,26 @@ re-audits are complete.
   - Frontend reviewer and test architect reported no blockers.
 - Memory:
   - `projects/careviax/failures/2026-07-02/data-table-sorted-filtered-row-index`
+
+## Latest Slice - 2026-07-02 13:47 JST
+
+- Change ID: `RR-BUG-20260702-F01-patient-status-window-query-order`.
+- Status: implemented and validated, pending commit at time of ledger update.
+- Files changed:
+  - `src/server/services/patient-status-tracker.ts`
+  - `src/server/services/patient-status-tracker.test.ts`
+- Summary:
+  - The patient-status tracker raw SQL now orders the outer ranked audit-log
+    query by projected `rn`, not non-projected `created_at`.
+  - The inner window still orders by `created_at DESC`, preserving newest-first
+    status history per patient.
+  - Added regression coverage for `AS rn`, `rn <= 5`, the fixed outer order, and
+    the absence of the old missing-column order.
+- Validation:
+  - Focused patient-status tracker suite passed `1` file / `7` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, and `pnpm build` passed.
+  - DB steward and test architect reported no blockers.
+- Memory:
+  - `projects/careviax/failures/2026-07-02/patient-status-window-query-outer-order-created-at`

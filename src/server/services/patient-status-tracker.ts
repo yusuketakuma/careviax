@@ -234,7 +234,7 @@ export async function trackPatientStatusChanges(
         AND target_id = ANY(${patientIds}::text[])
     ) ranked
     WHERE rn <= 5
-    ORDER BY target_id, created_at DESC
+    ORDER BY target_id, rn
   `;
 
   const previousStatusMap = new Map<string, PatientStatusIcon>();

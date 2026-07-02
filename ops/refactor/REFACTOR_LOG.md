@@ -2056,3 +2056,36 @@ evidence also exists in root `REFACTOR_REPORT.md`,
     `pnpm format:check`, and `pnpm build` passed.
   - Codex frontend reviewer and test architect reported no blockers; their
     optional hardening suggestions were applied before final validation.
+
+## 2026-07-02 13:47 JST - Patient Status Window Query Order
+
+- Change ID: `RR-BUG-20260702-F01-patient-status-window-query-order`.
+- Category: bug fix / backend raw SQL / daily job reliability.
+- Files changed:
+  - `src/server/services/patient-status-tracker.ts`
+  - `src/server/services/patient-status-tracker.test.ts`
+- Summary:
+  - Replaced the outer raw SQL `ORDER BY target_id, created_at DESC` with
+    `ORDER BY target_id, rn`.
+  - Kept `rn` defined by the `created_at DESC` window order, preserving
+    newest-first rows within each patient.
+  - Added SQL-shape regression coverage for the `AS rn` alias, `rn <= 5`, the
+    new outer order, and the absence of the old missing-column outer order.
+- Safety:
+  - Prevents the daily patient-status tracking job from crashing on PostgreSQL
+    due to an outer-scope missing-column reference.
+  - Preserves org scoping, `$queryRaw` bind parameters, audit writes,
+    notification writes, DB schema, migrations, auth/RLS semantics, external
+    sends, billing, secrets, push/deploy, and destructive-operation boundaries.
+- Performance:
+  - No performance optimization is claimed.
+  - The existing bounded per-patient top-5 window query remains unchanged except
+    for the outer sort key.
+- Validation:
+  - Focused patient-status tracker suite passed `1` file / `7` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, and `pnpm build` passed.
+  - Codex db steward and test architect reported no blockers.
+  - gbrain write/readback:
+    `projects/careviax/failures/2026-07-02/patient-status-window-query-outer-order-created-at`.

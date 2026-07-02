@@ -250,7 +250,12 @@ describe('trackPatientStatusChanges', () => {
     expect(querySql).toContain(
       'ROW_NUMBER() OVER (PARTITION BY target_id ORDER BY created_at DESC)',
     );
+    expect(querySql).toMatch(
+      /ROW_NUMBER\(\)\s+OVER\s+\(PARTITION BY target_id ORDER BY created_at DESC\)\s+AS\s+rn/i,
+    );
     expect(querySql).toMatch(/rn\s*<=\s*5\b/);
+    expect(querySql).toContain('ORDER BY target_id, rn');
+    expect(querySql).not.toMatch(/ORDER BY\s+target_id,\s*created_at\s+DESC/i);
     expect(querySql).toContain("action = 'patient_status_change'");
     expect(querySql).toContain('org_id = ');
     // bind 変数(injection 不可): org_id と patientIds 配列。生の patient id がそのまま bind される。
