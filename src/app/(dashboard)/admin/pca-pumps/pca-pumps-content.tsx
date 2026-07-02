@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageSection } from '@/components/layout/page-section';
 import { DataTable } from '@/components/ui/data-table';
+import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatYen } from '@/lib/ui/currency-format';
@@ -531,18 +532,37 @@ export function PcaPumpsContent() {
     () => new Set(returnInspectionRentals.map((rental) => rental.pump.id)),
     [returnInspectionRentals],
   );
+  // 返却検品待ちの取得が失敗/未完了の間は、どのポンプが検品未完了か確定できない。
+  // 空Set扱いで再貸出・整備完了を通すと未検品のオピオイドポンプが再貸出され得るため、
+  // 検品状況が不明な間は安全側（fail-close）で再貸出/整備操作をブロックする。
+  const returnInspectionUnknown =
+    returnInspectionRentalsQuery.isError || returnInspectionRentalsQuery.isLoading;
 
   const availablePumps = useMemo(
     () =>
-      pumps.filter(
-        (pump) =>
-          (pump.status === 'available' || pump.id === rentalForm.pump_id) &&
-          !pendingInspectionPumpIds.has(pump.id),
-      ),
-    [pumps, pendingInspectionPumpIds, rentalForm.pump_id],
+      returnInspectionUnknown
+        ? []
+        : pumps.filter(
+            (pump) =>
+              (pump.status === 'available' || pump.id === rentalForm.pump_id) &&
+              !pendingInspectionPumpIds.has(pump.id),
+          ),
+    [returnInspectionUnknown, pumps, pendingInspectionPumpIds, rentalForm.pump_id],
   );
   const rentalFormErrors = getRentalFormErrors(rentalForm);
-  const rentalSaveBlocker = getRentalSaveBlocker(rentalFormErrors);
+  const rentalFieldBlocker = getRentalSaveBlocker(rentalFormErrors);
+  // 返却検品状況が不明(取得失敗/確認中)・未完了のポンプは availablePumps から除外される。
+  // 行の「貸出」ボタン等で pump_id が pre-fill されても select の option 一覧に依存せず、
+  // submission 時点で availablePumps メンバーシップを検査して未検品オピオイドポンプの再貸出を fail-close で遮断する。
+  const rentalPumpUnavailable =
+    rentalForm.pump_id !== '' && !availablePumps.some((pump) => pump.id === rentalForm.pump_id);
+  const rentalSaveBlocker =
+    rentalFieldBlocker ??
+    (returnInspectionUnknown
+      ? '返却検品状況を確認できないため貸出登録できません。'
+      : rentalPumpUnavailable
+        ? '選択したポンプは返却検品が未完了のため貸出できません。'
+        : null);
   const returnInspectionSaveBlocker = getReturnInspectionSaveBlocker(inspectionForm);
 
   async function invalidateAll() {
@@ -825,7 +845,18 @@ export function PcaPumpsContent() {
             size="sm"
             variant="outline"
             onClick={() => openRental(row.original)}
-            disabled={row.original.status !== 'available'}
+            disabled={
+              row.original.status !== 'available' ||
+              returnInspectionUnknown ||
+              pendingInspectionPumpIds.has(row.original.id)
+            }
+            title={
+              returnInspectionUnknown
+                ? '返却検品状況を確認できないため操作できません'
+                : pendingInspectionPumpIds.has(row.original.id)
+                  ? '返却検品が未完了のため貸出できません'
+                  : undefined
+            }
           >
             貸出
           </Button>
@@ -845,12 +876,15 @@ export function PcaPumpsContent() {
             disabled={
               row.original.status === 'rented' ||
               updatePumpStatusMutation.isPending ||
+              returnInspectionUnknown ||
               pendingInspectionPumpIds.has(row.original.id)
             }
             title={
-              pendingInspectionPumpIds.has(row.original.id)
-                ? '返却検品が未完了のため利用可能にできません'
-                : undefined
+              returnInspectionUnknown
+                ? '返却検品状況を確認できないため操作できません'
+                : pendingInspectionPumpIds.has(row.original.id)
+                  ? '返却検品が未完了のため利用可能にできません'
+                  : undefined
             }
           >
             {row.original.status === 'maintenance' ? '整備完了' : 'メンテ'}
@@ -944,7 +978,13 @@ export function PcaPumpsContent() {
           title="返却検品待ち"
           description="返却済みで、付属品・清拭・動作確認が未完了のPCAポンプを先に確認します。"
           actions={
-            returnInspectionRentals.length > 0 ? (
+            returnInspectionRentalsQuery.isError ? (
+              <Badge variant="destructive">取得失敗</Badge>
+            ) : returnInspectionRentalsQuery.isLoading ? (
+              <Badge variant="outline" className="text-muted-foreground">
+                確認中
+              </Badge>
+            ) : returnInspectionRentals.length > 0 ? (
               <StateBadge role="confirm">検品待ち {returnInspectionRentals.length}件</StateBadge>
             ) : (
               <Badge variant="outline" className="text-muted-foreground">
@@ -954,7 +994,21 @@ export function PcaPumpsContent() {
           }
           contentClassName="space-y-4"
         >
-          {returnInspectionRentals.length === 0 ? (
+          {returnInspectionRentalsQuery.isError ? (
+            <ErrorState
+              variant="server"
+              size="inline"
+              headingLevel={3}
+              title="返却検品待ちを取得できませんでした"
+              description="検品未完了のPCAポンプを確認できていません。0件ではなく取得エラーです。安全のため、確認できるまで再貸出・整備操作をブロックしています。再読み込みしてください。"
+              action={{
+                label: '再読み込み',
+                onClick: () => void returnInspectionRentalsQuery.refetch(),
+              }}
+            />
+          ) : returnInspectionRentalsQuery.isLoading ? (
+            <p className="text-sm text-muted-foreground">返却検品待ちを確認しています…</p>
+          ) : returnInspectionRentals.length === 0 ? (
             <p className="text-sm text-muted-foreground">返却検品待ちはありません。</p>
           ) : (
             <div className="divide-y divide-border/70 rounded-md border border-border/70 bg-card">

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
@@ -260,29 +260,41 @@ vi.mock('@tanstack/react-query', () => ({
 vi.mock('@/components/ui/data-table', () => ({
   DataTable: ({
     data,
+    columns,
     errorMessage,
     onRetry,
   }: {
     data: Array<{ id: string; asset_code?: string; pump?: { asset_code: string } }>;
+    columns?: Array<{
+      id?: string;
+      cell?: (ctx: { row: { original: unknown; index: number } }) => ReactNode;
+    }>;
     errorMessage?: string;
     onRetry?: () => void;
-  }) => (
-    <div data-testid="data-table">
-      {errorMessage ? (
-        <div role="alert">
-          <p>{errorMessage}</p>
-          {onRetry ? (
-            <button type="button" onClick={onRetry}>
-              再読み込み
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-      {data.map((row) => (
-        <div key={row.id}>{row.asset_code ?? row.pump?.asset_code}</div>
-      ))}
-    </div>
-  ),
+  }) => {
+    // 行アクション(貸出/メンテ)のゲートを検証できるよう actions 列の cell を実描画する。
+    const actionsColumn = columns?.find((column) => column.id === 'actions');
+    return (
+      <div data-testid="data-table">
+        {errorMessage ? (
+          <div role="alert">
+            <p>{errorMessage}</p>
+            {onRetry ? (
+              <button type="button" onClick={onRetry}>
+                再読み込み
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        {data.map((row, index) => (
+          <div key={row.id} data-testid={`data-row-${row.id}`}>
+            {row.asset_code ?? row.pump?.asset_code}
+            {actionsColumn?.cell ? actionsColumn.cell({ row: { original: row, index } }) : null}
+          </div>
+        ))}
+      </div>
+    );
+  },
 }));
 
 vi.mock('@/components/ui/select', async () => {
@@ -620,6 +632,69 @@ describe('PcaPumpsContent', () => {
     expect(badge.closest('[data-role]')).toBeNull();
     expect(badge.className).not.toContain('state-confirm');
     expect(screen.getByText('返却検品待ちはありません。')).toBeTruthy();
+  });
+
+  it('surfaces a retryable error instead of a false "0件/なし" when the return-inspection query fails', () => {
+    queryErrorKeysMock.add('pca-pump-rentals:return-inspection-pending');
+    render(<PcaPumpsContent />);
+
+    expect(screen.getByText('返却検品待ちを取得できませんでした')).toBeTruthy();
+    expect(screen.getByText('取得失敗')).toBeTruthy();
+    // Fetch failure must not masquerade as "no pumps awaiting inspection".
+    expect(screen.queryByText('返却検品待ちはありません。')).toBeNull();
+    expect(screen.queryByText('検品待ち 0件')).toBeNull();
+
+    const retry = screen.getByRole('button', { name: '再読み込み' });
+    fireEvent.click(retry);
+    expect(queryRefetchMock).toHaveBeenCalled();
+  });
+
+  it('fails closed on re-rental when the return-inspection status cannot be loaded', () => {
+    // Baseline: with inspection status loaded, the available pump is selectable
+    // in the rental sheet.
+    const { unmount } = render(<PcaPumpsContent />);
+    fireEvent.click(screen.getByRole('button', { name: '貸出登録' }));
+    const baselineOptions = Array.from(
+      (screen.getByLabelText('PCAポンプ') as HTMLSelectElement).querySelectorAll('option'),
+    ).map((option) => option.value);
+    expect(baselineOptions).toContain('pump_available');
+    unmount();
+
+    // On inspection-query failure the pending-inspection set is unknown; treating it
+    // as empty would let an un-inspected opioid pump be re-rented. The pump must
+    // therefore drop out of the rental options (fail-closed) rather than stay selectable.
+    queryErrorKeysMock.add('pca-pump-rentals:return-inspection-pending');
+    render(<PcaPumpsContent />);
+    fireEvent.click(screen.getByRole('button', { name: '貸出登録' }));
+    const guardedOptions = Array.from(
+      (screen.getByLabelText('PCAポンプ') as HTMLSelectElement).querySelectorAll('option'),
+    ).map((option) => option.value);
+    expect(guardedOptions).not.toContain('pump_available');
+  });
+
+  it('disables the per-row 貸出 button when the return-inspection status cannot be loaded', () => {
+    // Baseline: inspection status loaded → the available pump's row 貸出 button is enabled.
+    const { unmount } = render(<PcaPumpsContent />);
+    const baselineButton = within(screen.getByTestId('data-row-pump_available')).getByRole(
+      'button',
+      { name: '貸出' },
+    ) as HTMLButtonElement;
+    expect(baselineButton.disabled).toBe(false);
+    unmount();
+
+    // On inspection-query failure the pending set is unknown. The row 貸出 button pre-fills
+    // rentalForm.pump_id via openRental, bypassing the select option-list fail-close, so it
+    // must itself be disabled — otherwise an un-inspected opioid pump could be re-rented.
+    queryErrorKeysMock.add('pca-pump-rentals:return-inspection-pending');
+    render(<PcaPumpsContent />);
+    const guardedButton = within(screen.getByTestId('data-row-pump_available')).getByRole(
+      'button',
+      { name: '貸出' },
+    ) as HTMLButtonElement;
+    expect(guardedButton.disabled).toBe(true);
+    expect(guardedButton.getAttribute('title')).toBe(
+      '返却検品状況を確認できないため操作できません',
+    );
   });
 
   it('maps rental/pump status to the shared state-color roles (overdue=confirm, cancelled=blocked)', () => {
