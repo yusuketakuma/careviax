@@ -42,6 +42,57 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### Backend: Cockpit Audit Queue Counted List - 2026-07-02 22:42 JST
+
+- Scope:
+  - Continued backend/API implementation with Claude coordination through
+    agmsg.
+  - Fixed `/api/dashboard/cockpit` counted-list semantics for the audit queue
+    used by dashboard/My Day callers.
+  - Commit: `4e2a19cb` (`fix(api): return exact cockpit audit queue counts`).
+  - gbrain writeback:
+    `projects/careviax/decisions/2026-07-02/cockpit-audit-queue-counted-list`.
+- Fixed:
+  - `audit_pending_count` now comes from an exact org/scope/latest-audit
+    `COUNT(*)` query instead of the capped `dispenseTask.findMany({ take: 30 })`
+    visible fetch window.
+  - The API now returns `audit_queue_total_count`,
+    `audit_queue_visible_count`, and `audit_queue_hidden_count` so UI callers
+    can distinguish total backlog from returned visible rows without exposing
+    hidden PHI.
+  - The visible queue still uses the existing fetch/sort/slice behavior, while
+    latest-audit order now has deterministic `audited_at`, `created_at`, `id`
+    tie-breakers that match the count query.
+- Safety:
+  - Preserved existing auth, no-store/internal-error handling, explicit
+    `org_id` scoping, assignment case scoping, visible row response shape,
+    schema, migrations, production config, push/deploy, external sends, and
+    destructive DB posture.
+  - Hidden-row metadata returns counts only, not patient names, notes, or queue
+    details.
+- Validation:
+  - Focused cockpit route suite passed `1` file / `14` tests:
+    `pnpm exec vitest run src/app/api/dashboard/cockpit/route.test.ts --reporter=dot --testTimeout=60000`.
+  - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: passed.
+- Review / coordination:
+  - Claude approved the backend counted-list diff before commit.
+  - Codex also handled C1 my-day review interrupts: `e3ba9fbc` first received
+    REQUEST_CHANGES for invalid `StatCard`/`Skeleton` DOM nesting, then
+    `e26b82cc` was approved after focused tests.
+  - C1 my-day slice2 `7819e347` later received REQUEST_CHANGES for
+    client-timezone date-label drift and completed-visit next-step fallback.
+  - Codex did not stage Claude's current uncommitted
+    `src/app/(dashboard)/my-day/my-day-content.tsx` WIP.
+- Remaining:
+  - Claude is expected to wire the new audit queue count metadata into My Day
+    slice2 as needed.
+  - Future cockpit RLS/request-context refactors should execute the raw count
+    through the transaction client (`tx.$queryRaw`) under the same request auth
+    context.
+
 ### Backend: QR Draft Line Reader Consolidation - 2026-07-02 22:17 JST
 
 - Scope:

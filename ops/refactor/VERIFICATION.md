@@ -1,10 +1,77 @@
 # Verification
 
-Snapshot: 2026-07-02 22:17 JST
+Snapshot: 2026-07-02 22:42 JST
 
 ## Latest Backend/API Slice Verification
 
-The latest backend/API slice was `backend-qr-draft-line-reader-consolidation`
+The latest backend/API slice was `backend-cockpit-audit-queue-counted-list` at
+2026-07-02 22:42 JST.
+
+- Planning / review:
+  - Claude's My Day C1 consultation identified that My Day urgent/backlog
+    counts depend on cockpit `audit_queue` data.
+  - Codex confirmed `/api/dashboard/cockpit` fetched only
+    `AUDIT_QUEUE_FETCH_LIMIT = 30`, filtered latest audit null/hold into
+    `auditQueueAll`, returned `audit_pending_count = auditQueueAll.length`, and
+    sliced `audit_queue` to five rows.
+  - `docs/ui-ux-design-guidelines.md` §2.8 Counted list contract was used as
+    the safety contract: limited queues must not expose visible row count as
+    total count.
+  - Claude approved the uncommitted backend diff before commit.
+- Fixed:
+  - Added an exact org/scope/latest-audit `COUNT(*)` query for cockpit audit
+    queue totals using `Prisma.sql` and a LATERAL latest `DispenseAudit`
+    subquery.
+  - `audit_pending_count` is now the exact total, not the capped visible fetch
+    result.
+  - The response now includes `audit_queue_total_count`,
+    `audit_queue_visible_count`, and `audit_queue_hidden_count`.
+  - The visible `audit_queue` fetch/order/slice behavior is preserved, while
+    latest-audit ordering now has deterministic `audited_at`, `created_at`,
+    `id` tie-breakers that match the raw count query.
+- Safety:
+  - Hidden-row metadata contains counts only; it does not return hidden patient
+    names, notes, or queue details.
+  - Existing auth, explicit `org_id` scoping, assignment case scoping, no-store
+    error response behavior, route cache behavior, visible row response shape,
+    schema, migration, push/deploy, external send, and destructive DB posture
+    were preserved.
+- Focused regressions:
+  - `pnpm exec vitest run src/app/api/dashboard/cockpit/route.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `14` tests.
+  - Coverage: exact total can exceed capped visible queue, visible count equals
+    returned row count, hidden count is total minus visible, cached/error/auth
+    paths do not run the raw count, and non-admin assignment scope still applies
+    to the visible query.
+- Scoped checks:
+  - Scoped ESLint for touched files: passed.
+  - Scoped Prettier for touched files: passed.
+  - Scoped `git diff --check` for touched files: passed.
+- Broad gates:
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: passed.
+- Coordination:
+  - Claude approved the backend diff and flagged a future note: if the route is
+    later moved into `withOrgContext` / RLS transaction wiring, execute the raw
+    count through the transaction client under the same request auth context.
+  - Codex handled UI review interrupts before this commit: C1 my-day slice1
+    first received REQUEST_CHANGES for invalid `StatCard`/`Skeleton` DOM
+    nesting, then delta `e26b82cc` was approved.
+  - C1 my-day slice2 `7819e347` later received REQUEST_CHANGES for
+    client-timezone date-label drift and completed-visit next-step fallback.
+  - Claude's current uncommitted
+    `src/app/(dashboard)/my-day/my-day-content.tsx` slice2 WIP was not staged by
+    Codex.
+- gbrain:
+  - `projects/careviax/decisions/2026-07-02/cockpit-audit-queue-counted-list`
+  - Result: write/readback passed.
+- Commit:
+  - Runtime: `4e2a19cb` (`fix(api): return exact cockpit audit queue counts`).
+
+## Previous Backend/API Slice Verification
+
+The previous backend/API slice was `backend-qr-draft-line-reader-consolidation`
 at 2026-07-02 22:17 JST.
 
 - Planning / review:
@@ -62,7 +129,7 @@ at 2026-07-02 22:17 JST.
 - Commit:
   - Runtime: `8936afee` (`refactor(api): share QR draft line readers`).
 
-## Previous Backend/API Slice Verification
+## Earlier Backend/API Slice Verification
 
 The previous backend/API slice was `backend-flush-metrics-shared-job-handler` at
 2026-07-02 21:50 JST.

@@ -1647,3 +1647,37 @@ continuity`).
   pending.
 - Next action: commit this slice with explicit owned paths, send agmsg FYI, then
   continue the next highest-value ULTRACODE/refactor item.
+
+### Resume point - 2026-07-02 22:42 JST
+
+- Active broad ULTRACODE/refactor objective remains open. Latest validated
+  backend/API slice: `backend-cockpit-audit-queue-counted-list`.
+- Changed owned runtime files:
+  `src/app/api/dashboard/cockpit/route.ts`,
+  `src/app/api/dashboard/cockpit/route.test.ts`, and
+  `src/types/dashboard-cockpit.ts`.
+- Fixed cockpit audit queue counted-list semantics:
+  `/api/dashboard/cockpit` no longer derives `audit_pending_count` from the
+  30-row visible fetch window. It now computes an exact org/scope/latest-audit
+  total via raw SQL, preserves the visible `audit_queue` slice, and returns
+  `audit_queue_total_count`, `audit_queue_visible_count`, and
+  `audit_queue_hidden_count`.
+- Validation passed:
+  focused cockpit route suite `1` file / `14` tests, scoped
+  ESLint/Prettier/diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`, and
+  `pnpm build`.
+- Review:
+  Claude approved the backend diff before commit. Codex also reviewed Claude's
+  C1 my-day slice, requested changes for invalid `StatCard`/`Skeleton` DOM
+  nesting, and approved delta `e26b82cc`. C1 my-day slice2 `7819e347` later
+  received REQUEST_CHANGES for client-timezone date-label drift and
+  completed-visit next-step fallback.
+- gbrain writeback slug:
+  `projects/careviax/decisions/2026-07-02/cockpit-audit-queue-counted-list`.
+- Commit:
+  `4e2a19cb` (`fix(api): return exact cockpit audit queue counts`).
+- Preserved worktree state:
+  Claude's current uncommitted
+  `src/app/(dashboard)/my-day/my-day-content.tsx` slice2 WIP was not staged.
+- Next action: commit this ledger slice with explicit owned paths, notify via
+  agmsg, then continue after checking for new Claude review requests.
