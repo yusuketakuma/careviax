@@ -4,6 +4,274 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
+## Current Codex Resume Note - 2026-07-02 11:29 JST
+
+- Active mode for this slice: Codex-only execution with Codex subagent review
+  (`code_mapper`, `implementation_planner`, `frontend_reviewer`,
+  `medical_safety_reviewer`) and real validation. Preserve unrelated dirty
+  files; do not push/deploy/migrate/destructively mutate data.
+- Latest completed slice:
+  `RR-FE-20260702-C-drug-master-formulary-error-states` plus clipboard
+  fail-closed hardening in the same drug-master surface.
+- Files changed:
+  - `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`
+  - `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+  - `.agent-loop/LOCKS.md`
+  - progress-ledger working-tree updates in `ops/refactor/*`,
+    `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`
+- Fixed:
+  - Drug-master formulary subquery failures now render retryable `ErrorState`
+    branches and `取得失敗` labels instead of false zero/empty states.
+  - Review completion is disabled when the review-due query is failing, even if
+    React Query still exposes stale row data.
+  - Drug detail stock-config fetch failure no longer falls through to
+    `未登録`, `採用品に登録`, or `変更申請` actions.
+  - CSV preview candidate YJ-code clipboard copy now reports success only after
+    `navigator.clipboard.writeText` resolves and uses fixed non-raw error text
+    on unavailable/rejected clipboard access.
+- Validation:
+  - Focused reviewed regressions passed `1` file / `10` selected tests.
+  - Full drug-master content component suite passed `1` file / `77` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, and `pnpm build` passed.
+- Remaining:
+  - Broad repo-wide objective remains open; no DB/API/auth/RLS/migration,
+    external-send, billing, push/deploy, or destructive-operation behavior was
+    changed.
+  - Browser/E2E smoke was skipped because this slice is covered by component DOM
+    regressions plus a full production build and does not change navigation or
+    route contracts.
+- Next action:
+  - After this validated slice is committed, continue the next highest-value
+    ULTRACODE/refactor finding with fresh file inspection and focused tests.
+
+## Current Codex Resume Note - 2026-07-02 07:33 JST
+
+- Active mode for this slice: Claude judgment / Codex execution via agmsg.
+  Codex may also autonomously find and implement verified candidates when the
+  prioritized queue is not blocked. Preserve unrelated dirty files; do not
+  push/deploy/migrate/destructively mutate data.
+- Latest completed slice:
+  `RR-FE-20260702-B-safety-banner-silent-loss`.
+- Files changed:
+  - `src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx`
+  - `src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx`
+  - `.agent-loop/LOCKS.md`
+  - progress-ledger working-tree updates in `ops/refactor/*`,
+    `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`
+- Fixed:
+  - Patient safety-check pinned banner no longer disappears silently when
+    patient summary fetch fails.
+  - The pinned region renders inline `ErrorState` with retry while leaving the
+    main safety workflow visible when medication issues load successfully.
+- Validation:
+  - Red focused regression failed before the fix because patient safety error
+    text was absent.
+  - Focused patient summary failure test passed.
+  - Full safety-check content test file passed `1` file / `17` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and
+    `pnpm build` passed.
+  - Claude checker independently reviewed the diff, ran the full safety-check
+    content test file, and returned `APPROVED`.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Claude noted loading-state banner absence as pre-existing and non-blocking.
+- Next action:
+  - Start `RR-FE-20260702-C-drug-master-formulary-error-states`, then continue
+    queued high-priority frontend false-empty fixes and Codex autonomous
+    candidate discovery.
+
+## Current Codex Resume Note - 2026-07-02 07:21 JST
+
+- Active mode for this slice: Claude judgment / Codex execution via agmsg.
+  Codex may also autonomously find and implement verified candidates when the
+  prioritized queue is not blocked. Preserve unrelated dirty files; do not
+  push/deploy/migrate/destructively mutate data.
+- Latest completed slice:
+  `RR-FE-20260702-A-allergy-false-negative`.
+- Files changed:
+  - `src/app/(dashboard)/patients/[id]/medications/medications-content.tsx`
+  - `src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx`
+  - `.agent-loop/LOCKS.md`
+  - `ops/refactor/BUG_FINDINGS.md`
+  - `ops/refactor/INCONSISTENCY_FINDINGS.md`
+  - `ops/refactor/REFACTOR_LOG.md`
+  - `ops/refactor/VERIFICATION.md`
+  - `ops/refactor/STATE.md`
+  - `CODEX_GOAL_PROGRESS.md`
+  - `.codex/ralph-state.md`
+  - `.agent-loop/STATE.md`
+- Fixed:
+  - Patient medications allergy section no longer collapses patient summary
+    allergy fetch failure into `登録なし`.
+  - When `allergyInfo` is absent and `patientSummaryQuery.isError` is true, the
+    allergy section renders inline `ErrorState` with retry.
+  - Fetched allergy success rendering remains unchanged.
+- Validation:
+  - Red focused regression failed before the fix because allergy error text was
+    absent.
+  - Focused patient summary failure/success tests passed.
+  - Full medications content test file passed `1` file / `23` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and
+    `pnpm build` passed.
+  - Claude checker independently reviewed the diff, ran the full medications
+    content test file, and returned `APPROVED`.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Non-blocking residual recorded in `ops/refactor/INCONSISTENCY_FINDINGS.md`:
+    future explicit `allergyInfo: null` callers need a contract decision.
+- Next action:
+  - Start `RR-FE-20260702-B-safety-banner-silent-loss`, then continue the
+    queued high-priority frontend false-empty fixes and Codex autonomous
+    candidate discovery.
+
+## Current Codex Resume Note - 2026-07-02 05:05 JST
+
+- Active mode for this slice: Codex-only backend/service bug-fix loop. Preserve
+  unrelated dirty files; do not push/deploy/migrate/destructively mutate data.
+- Latest completed slice:
+  `RR-BUG-20260702-0505-shared-import-safe-error-log`.
+- Files changed:
+  - `src/server/services/drug-master-import/shared.ts`
+  - `src/server/services/drug-master-import/shared.test.ts`
+  - `ops/refactor/STATE.md`
+  - `ops/refactor/BUG_FINDINGS.md`
+  - `ops/refactor/REFACTOR_LOG.md`
+  - `ops/refactor/VERIFICATION.md`
+  - `REFACTOR_REPORT.md`
+  - `REFACTOR_EXECUTION_PLAN.md`
+  - `CODEX_GOAL_PROGRESS.md`
+  - `.codex/ralph-state.md`
+  - `.agent-loop/STATE.md`
+- Fixed:
+  - `withImportLog()` no longer persists raw caught importer exception messages
+    in `drugMasterImportLog.error_log` for shared MHLW/PMDA/HOT/manual
+    drug-master imports. It persists fixed
+    `医薬品マスタ取込に失敗しました`.
+  - If recording the failed import log itself fails, the service emits safe
+    structured warning metadata and still rethrows the original importer error.
+- Validation:
+  - Red focused regression failed before the fix because persisted `error_log`
+    contained secret-like / PHI-like importer failure text.
+  - Focused shared/logger tests passed `2` files / `33` tests.
+  - Shared/MHLW/PMDA/HOT/manual service plus logger tests passed `6` files /
+    `83` tests.
+  - Import log/status and MHLW/PMDA/HOT/manual route tests passed `7` files /
+    `94` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, `git diff --check`, and `pnpm build` passed.
+  - gbrain FailurePattern write/readback passed:
+    `projects/careviax/failures/2026-07-02/shared-import-log-raw-error-log`.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was skipped because this service diagnostics fix changes no
+    DOM layout, navigation, route contract shape, or workflow shape.
+- Next action:
+  - Continue bug-hunt / duplicate-helper / query inefficiency inventory with
+    focused evidence before editing. Keep DB schema, auth/RLS semantics,
+    external sends, migrations, and destructive operations proposal-only unless
+    explicitly approved.
+
+## Current Codex Resume Note - 2026-07-02 04:50 JST
+
+- Active mode for this slice: Codex-only backend/service bug-fix loop. Preserve
+  unrelated dirty files; do not push/deploy/migrate/destructively mutate data.
+- Latest completed slice:
+  `RR-BUG-20260702-0448-ssk-import-safe-error-log`.
+- Files changed:
+  - `src/server/services/drug-master-import/ssk.ts`
+  - `src/server/services/drug-master-import/ssk.test.ts`
+  - `ops/refactor/STATE.md`
+  - `ops/refactor/BUG_FINDINGS.md`
+  - `ops/refactor/REFACTOR_LOG.md`
+  - `ops/refactor/VERIFICATION.md`
+  - `REFACTOR_REPORT.md`
+  - `REFACTOR_EXECUTION_PLAN.md`
+  - `CODEX_GOAL_PROGRESS.md`
+  - `.codex/ralph-state.md`
+  - `.agent-loop/STATE.md`
+- Fixed:
+  - `importSskDrugMaster()` no longer persists raw caught import/upsert
+    exception messages in `drugMasterImportLog.error_log`. It persists fixed
+    `SSK取込に失敗しました` while preserving running log creation, failed status
+    update, original exception rethrow, route behavior, and job wrapper
+    behavior.
+- Validation:
+  - Red focused regression failed before the fix because persisted `error_log`
+    contained secret-like / PHI-like SSK import failure text.
+  - Focused safe-log regression passed.
+  - Full SSK import test file passed `1` file / `9` tests.
+  - SSK import route plus drug-master job tests passed `2` files / `12` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, `git diff --check`, and `pnpm build` passed.
+  - gbrain FailurePattern write/readback passed:
+    `projects/careviax/failures/2026-07-02/ssk-import-raw-error-log`.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was skipped because this service diagnostics fix changes no
+    DOM layout, navigation, route contract shape, or workflow shape.
+- Next action:
+  - Continue bug-hunt / duplicate-helper / query inefficiency inventory with
+    focused evidence before editing. Keep DB schema, auth/RLS semantics,
+    external sends, migrations, and destructive operations proposal-only unless
+    explicitly approved.
+  - Candidate note: broader `drug-master-import/shared.ts` diagnostics remain a
+    possible follow-up, but `shared.ts/.test.ts` already have existing dirty
+    work and must be inspected before any claim.
+
+## Current Codex Resume Note - 2026-07-02 04:36 JST
+
+- Active mode for this slice: Codex-only backend/service bug-fix loop. Preserve
+  unrelated dirty files; do not push/deploy/migrate/destructively mutate data.
+- Latest completed slice:
+  `RR-BUG-20260702-0436-file-storage-safe-cleanup-errors`.
+- Files changed:
+  - `src/server/services/file-storage.ts`
+  - `src/server/services/file-storage.test.ts`
+  - `ops/refactor/STATE.md`
+  - `ops/refactor/BUG_FINDINGS.md`
+  - `ops/refactor/REFACTOR_LOG.md`
+  - `ops/refactor/VERIFICATION.md`
+  - `REFACTOR_REPORT.md`
+  - `REFACTOR_EXECUTION_PLAN.md`
+  - `CODEX_GOAL_PROGRESS.md`
+  - `.codex/ralph-state.md`
+  - `.agent-loop/STATE.md`
+- Fixed:
+  - `cleanupExpiredGeneratedFiles().errors[]` no longer returns raw caught
+    deletion exception messages. It returns fixed
+    `保持期限切れファイルの削除に失敗しました` entries while preserving failure
+    counts, processed/scanned counts, cleanup pagination, deletion attempts, and
+    the existing safe partial-failure warning.
+- Validation:
+  - Red focused regression failed before the fix because returned cleanup
+    `errors[]` contained secret-like / PHI-like deletion failure text.
+  - Focused safe-cleanup regression passed.
+  - Full file-storage test file passed `1` file / `72` tests.
+  - File-storage plus related PDF bulk-export service/route tests passed `3`
+    files / `101` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, and `git diff --check` passed.
+  - gbrain FailurePattern write/readback passed:
+    `projects/careviax/failures/2026-07-02/file-storage-raw-cleanup-errors`.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was skipped because this service diagnostics fix changes no
+    DOM layout, navigation, route contract shape, or workflow shape.
+  - `pnpm build` was not rerun for this narrow backend-service slice; latest
+    full build evidence remains the preceding visit-planner slice.
+- Next action:
+  - Continue bug-hunt / duplicate-helper / query inefficiency inventory with
+    focused evidence before editing. Keep DB schema, auth/RLS semantics,
+    external sends, migrations, and destructive operations proposal-only unless
+    explicitly approved.
+
 ## Current runtime override - 2026-06-28 JST (rev9: FE/BE split + mutual review restored)
 
 The user re-scoped the cooperation model (2026-06-28). **rev9 supersedes rev8's
@@ -158,6 +426,28 @@ next_action: >
 - PerformanceFinding: projects/careviax/performance-findings/2026-06-22/prescription-intake-guardrail-before-cycle-create (RUN-20260622-001 read-only root cause; blocked POST creates cycles before guardrail failure)
 - ReviewFinding: projects/careviax/reviews/2026-06-22/admin-select-test-contract-payload-and-hit-target (F-20260622-001-slice1; Base UI Select migration tests must assert responsive hit target classes and submitted payload serialization. Written to gbrain file-plane after `gbrain put` failed with embedding dimension mismatch.)
 - FixPattern: projects/careviax/fix-patterns/2026-06-22/serial-no-unused-after-next-build (RUN-20260622-001 loop validation; run `typecheck:no-unused` serially after Next.js build to avoid transient `.next/types` TS6053 false negatives.)
+- FailurePattern: projects/careviax/failures/2026-07-02/visit-schedule-planner-raw-evaluation-diagnostics (RR-BUG-20260702-0429; visit proposal evaluation_error diagnostics now use fixed detail instead of raw upstream exception text)
+- FailurePattern: projects/careviax/failures/2026-07-02/offline-sync-raw-diagnostics (RR-BUG-20260702-0417; offline sync unexpected queue failures now persist/log fixed safe diagnostics instead of raw exception text)
+- FailurePattern: projects/careviax/failures/2026-07-02/realtime-shared-stream-raw-listener-diagnostics (RR-BUG-20260702-0405; shared realtime stream listener failures now log fixed safe diagnostics instead of raw event/status listener exception text)
+- FailurePattern: projects/careviax/failures/2026-07-02/cloudwatch-metrics-raw-failure-log (RR-BUG-20260702-0356; CloudWatch metrics helper now logs a fixed safe metric emission failure diagnostic instead of raw provider/runtime text)
+- FailurePattern: projects/careviax/failures/2026-07-02/job-runner-raw-failure-diagnostics (RR-BUG-20260702-0345; job runner retry/final failure rows, admin notifications, and cleanup diagnostics now use fixed safe messages instead of raw caught failure text)
+- FailurePattern: projects/careviax/failures/2026-07-02/outbound-webhook-raw-delivery-result (2026-07-02; outbound webhook delivery results returned raw registered URL query secrets and raw dispatch exception text before fixed-message/redacted-result hardening.)
+- FailurePattern: projects/careviax/failures/2026-07-01/redis-realtime-unsubscribe-resubscribe-race (RR-BUG-20260701-2349; Redis pubsub unsubscribe/resubscribe race + failed subscribe state rollback)
+- FailurePattern: projects/careviax/failures/2026-07-02/background-job-empty-catch-observability-gap (RR-BUG-20260702-0000; background job empty catch replaced with safe logger warning)
+- FailurePattern: projects/careviax/failures/2026-07-02/notification-realtime-broadcast-empty-catch (RR-BUG-20260702-0015; realtime notification empty catch replaced with safe logger warning)
+- FailurePattern: projects/careviax/failures/2026-07-02/voice-memo-manual-transcript-false-save (RR-BUG-20260702-0031; boolean false local-save result now warns instead of looking successful)
+- FailurePattern: projects/careviax/failures/2026-07-02/presence-realtime-broadcast-empty-catch (RR-BUG-20260702-0049; presence realtime empty catch replaced with safe logger warning)
+- FailurePattern: projects/careviax/failures/2026-07-02/external-access-rollback-empty-catch (RR-BUG-20260702-0104; external-access rollback revocation failure after fallback audit failure now emits a safe logger warning)
+- FailurePattern: projects/careviax/failures/2026-07-02/patient-mcs-failure-state-empty-catch (RR-BUG-20260702-0123; patient MCS failed-state persistence failure now emits a safe warning and identity conflict errors persist fixed PHI-minimized text)
+- FailurePattern: projects/careviax/failures/2026-07-02/visit-schedule-proposal-pharmacist-enrichment-empty-catch (RR-BUG-20260702-0138; optional visit proposal pharmacist enrichment failure now emits a safe warning while preserving the null-enrichment fallback)
+- FailurePattern: projects/careviax/failures/2026-07-02/presence-heartbeat-client-silent-failure (RR-BUG-20260702-0155; best-effort client presence heartbeat delivery failures now emit a throttled safe warning)
+- FailurePattern: projects/careviax/failures/2026-07-02/room-token-client-transient-silent-failure (RR-BUG-20260702-0210; collaboration room-token transient failures now emit throttled safe warnings while preserving retry/access-denied classification)
+- FailurePattern: projects/careviax/failures/2026-07-02/phos-fee-rules-rollback-silent-failure (RR-BUG-20260702-0226; PH-OS fee-rules Aurora rollback failures now emit a structured warning while preserving original query error propagation)
+- FailurePattern: projects/careviax/failures/2026-07-02/drug-master-import-stream-cancel-silent-failure (RR-BUG-20260702-0237; external drug-master import response-stream cancel failures now emit a safe warning while preserving the original read/byte-limit error)
+- FailurePattern: projects/careviax/failures/2026-07-02/backup-monitor-rds-import-false-green (RR-BUG-20260702-0250; configured RDS backup monitor SDK import failures now return error/overall error instead of skipped/overall ok with a fixed safe message)
+- FailurePattern: projects/careviax/failures/2026-07-02/health-backup-monitor-raw-error-response (RR-BUG-20260702-0300; /api/health backup monitor catch now returns a fixed safe message instead of raw exception text)
+- FailurePattern: projects/careviax/failures/2026-07-02/backup-monitor-aws-check-raw-error-message (RR-BUG-20260702-0310; backup monitor AWS check errors now return/log fixed safe messages instead of raw provider exception text)
+- FailurePattern: projects/careviax/failures/2026-07-02/health-check-db-s3-raw-error-message (RR-BUG-20260702-0318; generic DB/S3 health-check failures now return fixed safe messages instead of raw database/AWS exception text)
 - FixPattern: projects/careviax/fix-patterns/2026-06-22/agloop-shell-backticks-strip-tokens (RUN-20260622-001 agmsg transport hygiene; avoid shell backticks in AGLOOP bodies built through shell variables because command substitution can strip tokens.)
 - FixPattern: projects/careviax/fix-patterns/2026-06-23/href-helper-convergence-test-teeth (F-040〜F-048 claude-maker; raw entity href→共有ヘルパ収束の test teeth=actual-backed spy+sentinel return-value委譲+per-callsite mock.calls厳密+hostile encode+dot-segment fail-fast。API URLはencodeURIComponent('.')no-op正規化をlocal helperで遮断。)
 - CandidateLesson: projects/careviax/lessons/role-agnostic-load-balancing (LOOP_POLICY §23; maker/checkロール非依存・相互チェックのみ不変・2軸負荷均等化。codex=supervisor pattern採用でドレインラグ低減。href収束で gap 22:11→22:14。)
@@ -424,3 +714,144 @@ User-directed program after the org-header sweep. Method: ultracode 51-screen re
 **§15 sign-off**: BLOCKED.md `mainui-workbench-real-data-default` / `mainui-workbench-operator-identity` を **RESOLVED 注記**（人間承認 via AskUserQuestion + maker/checker + objective gate + 非モック監査証跡を Slice 4 teeth で実証）。
 
 **残 follow-up（非ブロッカー、別スライス）**: (1) set/seta 左ペインの取得失敗が empty 表示（calendar 経路の error 判別未配線、Slice 1 UI/UX P2）。(2) calBarMeta の実 set者/監査者名結線（現状 honest '—'、Slice 3 follow-up）。(3) AuditLog actor / CycleTransitionLog.actor_id / セル単位帰属の追加 teeth（Slice 4 P2）。(4) 左ペイン密度 14/12/11px の cosmetic。(5) 委譲事故の教訓: frontend-implementer は stale base の auto-worktree で作業し未完→破棄、精密 §15 作業は claude 直実装が安全（subagent は read-only review 限定）。
+
+### Resume point - 2026-07-02 05:52 JST
+
+- Active broad refactor/bug-fix objective remains open. Latest validated slice:
+  `RR-BUG-20260702-0552-rate-limit-safe-failure-log`.
+- Changed owned runtime files:
+  `src/lib/api/rate-limit.ts` and `src/lib/api/rate-limit.test.ts`.
+- Fixed rate-limit raw failure diagnostics and catalog drift:
+  DynamoDB rate-limit store failures now log only safe event/operation/error
+  name metadata, while preserving production fail-closed behavior and
+  non-production memory fallback. The route template catalog now includes
+  `/api/visit-schedules/:id/conflict-reconfirmation`.
+- Validation passed:
+  focused red-then-green rate-limit safe-log regression, full rate-limit suite
+  `1` file / `33` tests, scoped ESLint/Prettier/diff-check,
+  `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+  `pnpm format:check`, and `pnpm build`.
+- gbrain writeback slug:
+  `projects/careviax/failures/2026-07-02/rate-limit-raw-dynamodb-failure-log`.
+- Next action: continue current bug-hunt / duplicate-helper / query
+  inefficiency inventory; keep DB schema, migrations, RLS/auth semantics,
+  external sends, billing semantics, production config, and destructive
+  operations proposal-only unless explicitly approved.
+
+### Resume point - 2026-07-02 06:06 JST
+
+- Active broad refactor/bug-fix objective remains open. Latest validated slice:
+  `RR-BUG-20260702-0606-secrets-safe-fallback-log`.
+- Changed owned runtime files:
+  `src/lib/config/secrets.ts` and `src/lib/config/secrets.test.ts`.
+- Fixed Secrets Manager fallback raw diagnostics:
+  `getSecrets()` now logs only safe event/operation/error-name metadata when a
+  configured Secrets Manager fetch fails and the helper falls back to
+  environment values. `bootstrapSecretsIntoEnv()` uses the same safe metadata
+  warning pattern for unexpected bootstrap failures.
+- Validation passed:
+  focused red-then-green secrets fallback safe-log regression, full secrets
+  config suite `1` file / `6` tests, scoped ESLint/Prettier/diff-check,
+  `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+  `pnpm format:check`, and `pnpm build`.
+- gbrain writeback slug:
+  `projects/careviax/failures/2026-07-02/secrets-manager-raw-fallback-log`.
+- Next action: continue current bug-hunt / duplicate-helper / query
+  inefficiency inventory; keep DB schema, migrations, RLS/auth semantics,
+  external sends, billing semantics, production config, and destructive
+  operations proposal-only unless explicitly approved.
+
+### Resume point - 2026-07-02 06:12 JST
+
+- Active broad refactor/bug-fix objective remains open. Latest validated slice:
+  `RR-BUG-20260702-0612-phos-lambda-safe-observability-log`.
+- Changed owned runtime files:
+  `src/phos/backend/lambda-handler.ts`,
+  `src/phos/backend/lambda-handler.test.ts`,
+  `src/phos/backend/lambda-observability.ts`, and
+  `src/phos/backend/lambda-observability.test.ts`.
+- Fixed PHOS Lambda raw observability diagnostics:
+  observability flush and security-event persistence failures now log safe
+  `error_name` metadata instead of raw provider/runtime exception messages.
+- Validation passed:
+  focused red-then-green PHOS Lambda safe-log regressions, full PHOS Lambda
+  handler/observability suites `2` files / `24` tests, scoped
+  ESLint/Prettier/diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`,
+  `pnpm lint`, `pnpm format:check`, and `pnpm build`.
+- gbrain writeback slug:
+  `projects/careviax/failures/2026-07-02/phos-lambda-raw-observability-log`.
+- Next action: continue current bug-hunt / duplicate-helper / query
+  inefficiency inventory; keep DB schema, migrations, RLS/auth semantics,
+  external sends, billing semantics, production config, and destructive
+  operations proposal-only unless explicitly approved.
+
+### Resume point - 2026-07-02 06:23 JST
+
+- Active broad refactor/bug-fix objective remains open. Latest validated slice:
+  `RR-BUG-20260702-0623-phos-evidence-cleanup-safe-principal-log`.
+- Changed owned runtime files:
+  `src/phos/backend/evidence-upload-verification.ts` and
+  `src/phos/backend/evidence-upload-verification.test.ts`.
+- Fixed PHOS evidence cleanup raw principal diagnostics:
+  default S3 evidence cleanup failure logs now emit hash-only tenant/user
+  identifiers, and cleanup reporter failure logs reuse the same hash-only
+  context. Custom `on_cleanup_failure` callback payloads remain unchanged.
+- Validation passed:
+  focused red-then-green evidence cleanup safe-principal-log regression, full
+  evidence verifier plus structured logger tests `2` files / `14` tests,
+  scoped ESLint/Prettier/diff-check, `pnpm typecheck`,
+  `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and
+  `pnpm build`.
+- gbrain writeback slug:
+  `projects/careviax/failures/2026-07-02/phos-evidence-cleanup-raw-principal-log`.
+- Next action: continue current bug-hunt / duplicate-helper / query
+  inefficiency inventory; keep DB schema, migrations, RLS/auth semantics,
+  external sends, billing semantics, production config, and destructive
+  operations proposal-only unless explicitly approved.
+
+### Resume point - 2026-07-02 06:30 JST
+
+- Active broad refactor/bug-fix objective remains open. Latest validated slice:
+  `RR-BUG-20260702-0630-security-event-safe-failure-log`.
+- Changed owned runtime files:
+  `src/lib/auth/security-events.ts` and
+  `src/lib/auth/security-events.test.ts`.
+- Fixed security-event audit persistence fallback diagnostics:
+  fire-and-forget AuditLog write failures now log through the shared safe logger
+  object overload instead of legacy raw console arguments containing request
+  paths and caught error objects.
+- Validation passed:
+  focused red-then-green security-event safe-failure-log regression, related
+  security-events/logger/auth/RLS tests `5` files / `44` tests with `1`
+  skipped, scoped ESLint/Prettier/diff-check, `pnpm typecheck`,
+  `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and
+  `pnpm build`.
+- gbrain writeback slug:
+  `projects/careviax/failures/2026-07-02/security-event-audit-log-raw-failure-log`.
+- Next action: continue current bug-hunt / duplicate-helper / query
+  inefficiency inventory; keep DB schema, migrations, RLS/auth semantics,
+  external sends, billing semantics, production config, and destructive
+  operations proposal-only unless explicitly approved.
+
+### Resume point - 2026-07-02 06:37 JST
+
+- Active broad refactor/bug-fix objective remains open. Latest validated slice:
+  `RR-BUG-20260702-0637-me-profile-mfa-safe-failure-log`.
+- Changed owned runtime files:
+  `src/app/api/me/profile/route.ts` and
+  `src/app/api/me/profile/route.test.ts`.
+- Fixed `/api/me/profile` Cognito MFA fallback diagnostics:
+  optional MFA state lookup failures now log through the shared safe logger
+  object overload instead of legacy raw `console.warn` errors, while preserving
+  successful profile response behavior and `mfaEnabled: false` fallback.
+- Validation passed:
+  focused red-then-green profile MFA safe-failure-log regression, full profile
+  route plus logger tests `2` files / `18` tests, scoped
+  ESLint/Prettier/diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`,
+  `pnpm lint`, `pnpm format:check`, and `pnpm build`.
+- gbrain writeback slug:
+  `projects/careviax/failures/2026-07-02/me-profile-mfa-raw-failure-log`.
+- Next action: continue current bug-hunt / duplicate-helper / query
+  inefficiency inventory; keep DB schema, migrations, RLS/auth semantics,
+  external sends, billing semantics, production config, and destructive
+  operations proposal-only unless explicitly approved.

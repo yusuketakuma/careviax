@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { ReactNode } from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
@@ -36,9 +36,14 @@ const {
   detailDataMock,
   stockConfigDataMock,
   candidatesDataMock,
+  genericRecommendationsDataMock,
+  ingredientGroupDataMock,
   importLogsDataMock,
   queryErrorKeys,
+  staleQueryDataByKey,
   refetchSpies,
+  toastSuccessMock,
+  toastErrorMock,
 } = vi.hoisted(() => ({
   useOrgIdMock: vi.fn(),
   pendingRequestsMock: vi.fn(),
@@ -60,11 +65,16 @@ const {
   detailDataMock: { current: null as unknown },
   stockConfigDataMock: { current: null as unknown },
   candidatesDataMock: { current: [] as unknown[] },
+  genericRecommendationsDataMock: { current: [] as unknown[] },
+  ingredientGroupDataMock: { current: null as unknown },
   importLogsDataMock: { current: [] as unknown[] },
   // Tests can mark query keys as failed to exercise the fetch-error affordances
   // (import logs / master status / site picker) without affecting success-path tests.
   queryErrorKeys: new Set<string>(),
+  staleQueryDataByKey: new Map<string, unknown>(),
   refetchSpies: new Map<string, ReturnType<typeof vi.fn>>(),
+  toastSuccessMock: vi.fn(),
+  toastErrorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -104,6 +114,14 @@ vi.mock('@/lib/pharmacy-drug-stocks/api-paths', async (importActual) => {
   };
 });
 
+vi.mock('sonner', () => ({
+  toast: {
+    success: toastSuccessMock,
+    error: toastErrorMock,
+    warning: vi.fn(),
+  },
+}));
+
 vi.mock('@tanstack/react-query', () => ({
   useMutation: (options?: MutationOptions) => ({
     mutate: (...args: unknown[]) => {
@@ -118,13 +136,20 @@ vi.mock('@tanstack/react-query', () => ({
     capturedQueryKeys.push(queryKey as ReadonlyArray<unknown>);
     capturedQueryOptions.push(options);
     const key = queryKey[0];
-    if (queryErrorKeys.has(String(key))) {
-      let refetch = refetchSpies.get(String(key));
+    const shortKey = String(key);
+    const fullKey = queryKey.map((part) => String(part ?? '')).join('|');
+    const failedKey = queryErrorKeys.has(fullKey)
+      ? fullKey
+      : queryErrorKeys.has(shortKey)
+        ? shortKey
+        : null;
+    if (failedKey) {
+      let refetch = refetchSpies.get(failedKey);
       if (!refetch) {
         refetch = vi.fn();
-        refetchSpies.set(String(key), refetch);
+        refetchSpies.set(failedKey, refetch);
       }
-      return { data: undefined, isLoading: false, isError: true, refetch };
+      return { data: staleQueryDataByKey.get(failedKey), isLoading: false, isError: true, refetch };
     }
     if (key === 'drug-masters') {
       return { data: { data: [], totalCount: 0, hasMore: false }, isLoading: false };
@@ -381,6 +406,16 @@ vi.mock('@tanstack/react-query', () => ({
     }
     if (key === 'preferred-generic-candidates') {
       return { data: { data: candidatesDataMock.current }, isLoading: false };
+    }
+    if (key === 'generic-recommendations') {
+      return {
+        data: { recommendations: genericRecommendationsDataMock.current },
+        isLoading: false,
+        isError: false,
+      };
+    }
+    if (key === 'ingredient-group') {
+      return { data: ingredientGroupDataMock.current, isLoading: false, isError: false };
     }
     return { data: null, isLoading: false, isError: false };
   },
@@ -655,6 +690,8 @@ describe('DrugMasterContent', () => {
     detailDataMock.current = null;
     stockConfigDataMock.current = null;
     candidatesDataMock.current = [];
+    genericRecommendationsDataMock.current = [];
+    ingredientGroupDataMock.current = null;
     importLogsDataMock.current = [];
   });
 
@@ -1197,7 +1234,13 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
     detailDataMock.current = null;
     stockConfigDataMock.current = null;
     candidatesDataMock.current = [];
+    genericRecommendationsDataMock.current = [];
+    ingredientGroupDataMock.current = null;
     importLogsDataMock.current = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: undefined,
+    });
   });
 
   // These builders produce the RAW server JSON for a dry-run (no request-context fields). The
@@ -1279,6 +1322,55 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
       })),
     },
   });
+
+  const makeBulkServerResponseWithCandidate = () => ({
+    importedCount: 0,
+    unmatchedRows: [] as Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>,
+    invalidRows: [] as Array<{ rowNumber: number; reason: string }>,
+    preview: {
+      summary: {
+        totalRows: 1,
+        processableRows: 1,
+        createCount: 0,
+        updateCount: 0,
+        deactivateCount: 0,
+        noChangeCount: 0,
+        unmatchedCount: 1,
+        invalidCount: 0,
+      },
+      rows: [
+        {
+          rowNumber: 1,
+          status: 'unmatched' as const,
+          yj_code: '444444444444',
+          drug_name: 'CSV未照合薬',
+          candidates: [
+            {
+              id: 'candidate_1',
+              yj_code: '555555555555',
+              drug_name: '候補薬A',
+              generic_name: 'ロキソプロフェン',
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  async function renderBulkPreviewCandidateCopyButton() {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByLabelText('CSV一括登録'), {
+      target: { value: '444444444444,CSV未照合薬,1,,,' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^差分確認$/ }));
+    const stamped = await runCapturedDryRun(makeBulkServerResponseWithCandidate());
+    act(() => {
+      lastMutationOptions.current?.onSuccess?.(stamped);
+    });
+
+    return screen.getByRole('button', { name: '候補薬AのYJコードをコピー' });
+  }
 
   // Stub global.fetch to return the given server JSON, execute the REAL captured mutationFn so the
   // production request-context stamping runs against the live controls/request body, then return
@@ -1958,6 +2050,55 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
     expect(screen.queryByRole('button', { name: /件を表示/ })).toBeNull();
   });
 
+  it('copies a bulk-preview candidate YJ code only after clipboard write succeeds', async () => {
+    const copyButton = await renderBulkPreviewCandidateCopyButton();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(toastSuccessMock).toHaveBeenCalledWith('YJコードをコピーしました');
+    });
+    expect(writeText).toHaveBeenCalledWith('555555555555');
+    expect(toastErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('does not show a false success toast when Clipboard API is unavailable', async () => {
+    const copyButton = await renderBulkPreviewCandidateCopyButton();
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: undefined,
+    });
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith('クリップボードにコピーできませんでした');
+    });
+    expect(toastSuccessMock).not.toHaveBeenCalledWith('YJコードをコピーしました');
+  });
+
+  it('does not expose raw clipboard rejection text when candidate YJ copy fails', async () => {
+    const copyButton = await renderBulkPreviewCandidateCopyButton();
+    const writeText = vi.fn().mockRejectedValue(new Error('raw browser permission detail'));
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith('クリップボードにコピーできませんでした');
+    });
+    expect(toastErrorMock).not.toHaveBeenCalledWith('raw browser permission detail');
+    expect(toastSuccessMock).not.toHaveBeenCalledWith('YJコードをコピーしました');
+  });
+
   // REQUIRED 3 — explicit clear sentinels for #2/#3 exist as real options with value '__none__'.
   it('exposes explicit clear sentinels for copy-source and template (#2/#3)', () => {
     render(<DrugMasterContent variant="formulary" />);
@@ -2059,6 +2200,8 @@ describe('DrugMasterContent filter select migration (slice4b)', () => {
     detailDataMock.current = null;
     stockConfigDataMock.current = null;
     candidatesDataMock.current = [];
+    genericRecommendationsDataMock.current = [];
+    ingredientGroupDataMock.current = null;
     importLogsDataMock.current = [];
   });
 
@@ -2333,6 +2476,8 @@ describe('DrugMasterContent preferred-generic select migration (slice4c)', () =>
     candidatesDataMock.current = [
       { id: 'gen_1', drug_name: 'ジェネリックA', yj_code: '1234567890' },
     ];
+    genericRecommendationsDataMock.current = [];
+    ingredientGroupDataMock.current = null;
     importLogsDataMock.current = [];
   });
 
@@ -2430,6 +2575,92 @@ describe('parseReorderPointInput', () => {
 });
 
 describe('DrugMasterContent supporting-query fetch-error handling', () => {
+  const reviewDueQueryKey = 'pharmacy-drug-stocks|org_1|site_1|review-due';
+  const missingReorderQueryKey = 'pharmacy-drug-stocks|org_1|site_1|missing-reorder';
+
+  function queuePendingFormularyRequest(drugMasterId = 'drug_generic') {
+    pendingRequestsMock.mockReturnValue([
+      {
+        id: 'request_1',
+        site_id: 'site_1',
+        drug_master_id: drugMasterId,
+        status: 'pending',
+        action_type: 'adopt',
+        requested_payload: { is_stocked: true },
+        reason: '新規採用候補',
+        created_at: '2026-05-27T00:00:00.000Z',
+      },
+    ]);
+  }
+
+  function buildGenericDetail() {
+    return {
+      id: 'drug_generic',
+      yj_code: '111111111111',
+      receipt_code: null,
+      jan_code: null,
+      drug_name: '先発薬A',
+      drug_name_kana: null,
+      generic_name: 'ロキソプロフェン',
+      drug_price: 17.1,
+      unit: '錠',
+      dosage_form: null,
+      therapeutic_category: null,
+      manufacturer: null,
+      is_generic: false,
+      is_narcotic: false,
+      is_psychotropic: false,
+      is_high_risk: false,
+      outpatient_injection_eligible: false,
+      outpatient_injection_note: null,
+      is_lasa_risk: false,
+      tall_man_name: null,
+      lasa_group_key: null,
+      max_administration_days: null,
+      stock_config: null,
+      hot_code: null,
+      transitional_expiry_date: null,
+      package_inserts: [],
+      interactions_as_a: [],
+      interactions_as_b: [],
+    };
+  }
+
+  function buildReviewDueStock() {
+    return {
+      id: 'stock_review_due',
+      site_id: 'site_1',
+      drug_master_id: 'drug_review_due',
+      is_stocked: true,
+      stock_qty: null,
+      reorder_point: null,
+      preferred_generic_id: null,
+      adoption_source: null,
+      adoption_note: null,
+      last_reviewed_at: '2025-01-01T00:00:00.000Z',
+      reviewed_by_id: null,
+      follow_up_status: null,
+      follow_up_reason: null,
+      follow_up_due_date: null,
+      follow_up_resolved_at: null,
+      updated_at: '2026-05-27T00:00:00.000Z',
+      preferred_generic: null,
+      drug_master: {
+        id: 'drug_review_due',
+        drug_name: 'レビュー対象薬',
+        yj_code: '444444444444',
+        drug_price: 12.3,
+        unit: '錠',
+        is_generic: false,
+        is_narcotic: false,
+        is_psychotropic: false,
+        is_high_risk: false,
+        is_lasa_risk: false,
+        transitional_expiry_date: null,
+      },
+    };
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
     useOrgIdMock.mockReturnValue('org_1');
@@ -2437,14 +2668,18 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     detailDataMock.current = null;
     stockConfigDataMock.current = null;
     candidatesDataMock.current = [];
+    genericRecommendationsDataMock.current = [];
+    ingredientGroupDataMock.current = null;
     importLogsDataMock.current = [];
     capturedQueryOptions.length = 0;
     queryErrorKeys.clear();
+    staleQueryDataByKey.clear();
     refetchSpies.clear();
   });
 
   afterEach(() => {
     queryErrorKeys.clear();
+    staleQueryDataByKey.clear();
     refetchSpies.clear();
   });
 
@@ -2482,5 +2717,159 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: '再読み込み' })[0]);
     expect(refetchSpies.get('pharmacy-sites')).toHaveBeenCalled();
+  });
+
+  it('shows retryable errors instead of false-empty formulary operation panels when subqueries fail', () => {
+    queryErrorKeys.add(reviewDueQueryKey);
+    queryErrorKeys.add(missingReorderQueryKey);
+    queryErrorKeys.add('pharmacy-drug-stocks-impact');
+    queryErrorKeys.add('pharmacy-drug-stock-usage-mismatch');
+    queryErrorKeys.add('pharmacy-drug-stock-requests');
+
+    render(<DrugMasterContent variant="formulary" />);
+
+    expect(screen.getByText('レビュー期限超過を読み込めませんでした')).toBeTruthy();
+    expect(screen.getByText('在庫下限未設定を読み込めませんでした')).toBeTruthy();
+    expect(screen.getByText('採用品変更申請を読み込めませんでした')).toBeTruthy();
+    expect(screen.getByText('処方・採用品不一致を読み込めませんでした')).toBeTruthy();
+    expect(screen.getByText('採用薬影響レビューを読み込めませんでした')).toBeTruthy();
+    expect(screen.queryByText('未承認の変更申請はありません。')).toBeNull();
+    expect(screen.queryByText('頻出している未採用品はありません。')).toBeNull();
+    expect(screen.queryByText('直近QR処方で未使用の採用品はありません。')).toBeNull();
+    expect(screen.queryByText('対象の採用薬はありません。')).toBeNull();
+    expect(screen.queryByText('未承認 0件')).toBeNull();
+
+    screen.getAllByRole('button', { name: '再読み込み' }).forEach((button) => {
+      fireEvent.click(button);
+    });
+    expect(refetchSpies.get(reviewDueQueryKey)).toHaveBeenCalled();
+    expect(refetchSpies.get(missingReorderQueryKey)).toHaveBeenCalled();
+    expect(refetchSpies.get('pharmacy-drug-stocks-impact')).toHaveBeenCalled();
+    expect(refetchSpies.get('pharmacy-drug-stock-usage-mismatch')).toHaveBeenCalled();
+    expect(refetchSpies.get('pharmacy-drug-stock-requests')).toHaveBeenCalled();
+  });
+
+  it('keeps review completion disabled when the review-due query fails with stale data', () => {
+    queryErrorKeys.add(reviewDueQueryKey);
+    staleQueryDataByKey.set(reviewDueQueryKey, { data: [buildReviewDueStock()] });
+
+    render(<DrugMasterContent variant="formulary" />);
+
+    expect(screen.getByText('レビュー期限超過を読み込めませんでした')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'レビュー済み' })).toHaveProperty('disabled', true);
+  });
+
+  it('shows retryable errors instead of silently dropping detail generic panels when subqueries fail', () => {
+    queuePendingFormularyRequest();
+    detailDataMock.current = buildGenericDetail();
+    queryErrorKeys.add('generic-recommendations');
+    queryErrorKeys.add('ingredient-group');
+
+    render(<DrugMasterContent variant="formulary" />);
+    fireEvent.click(screen.getByText('採用追加'));
+
+    expect(screen.getByText('推奨後発品を読み込めませんでした')).toBeTruthy();
+    expect(screen.getByText('同一成分グループを読み込めませんでした')).toBeTruthy();
+
+    screen.getAllByRole('button', { name: '再読み込み' }).forEach((button) => {
+      fireEvent.click(button);
+    });
+    expect(refetchSpies.get('generic-recommendations')).toHaveBeenCalled();
+    expect(refetchSpies.get('ingredient-group')).toHaveBeenCalled();
+  });
+
+  it('shows stock-config fetch errors instead of unregistered adoption actions', () => {
+    queuePendingFormularyRequest();
+    detailDataMock.current = buildGenericDetail();
+    queryErrorKeys.add('pharmacy-drug-stock');
+
+    render(<DrugMasterContent variant="formulary" />);
+    fireEvent.click(screen.getByText('採用追加'));
+
+    expect(screen.getByText('採用品設定を読み込めませんでした')).toBeTruthy();
+    expect(screen.queryByText('未登録')).toBeNull();
+    expect(screen.queryByText('この薬を採用品として登録できます。')).toBeNull();
+    expect(screen.queryByRole('button', { name: '採用品に登録' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '変更申請' })).toBeNull();
+
+    fireEvent.click(screen.getAllByRole('button', { name: '再読み込み' })[0]);
+    expect(refetchSpies.get('pharmacy-drug-stock')).toHaveBeenCalled();
+  });
+
+  it('keeps the generic recommendation and ingredient-group success panels visible', () => {
+    queuePendingFormularyRequest();
+    detailDataMock.current = buildGenericDetail();
+    genericRecommendationsDataMock.current = [
+      {
+        id: 'gen_1',
+        yj_code: '222222222222',
+        drug_name: 'ロキソプロフェンGE錠',
+        generic_name: 'ロキソプロフェン',
+        drug_price: 9.8,
+        unit: '錠',
+        manufacturer: null,
+        is_generic: true,
+        transitional_expiry_date: null,
+        price_delta: -7.3,
+        price_delta_percent: -42.7,
+        site_stock: {
+          drug_master_id: 'gen_1',
+          is_stocked: false,
+          preferred_generic_id: null,
+          reorder_point: null,
+        },
+      },
+    ];
+    ingredientGroupDataMock.current = {
+      site: { id: 'site_1', name: '本店' },
+      target: {
+        id: 'drug_generic',
+        yj_code: '111111111111',
+        drug_name: '先発薬A',
+        generic_name: 'ロキソプロフェン',
+        drug_price: 17.1,
+        unit: '錠',
+        is_generic: false,
+      },
+      generic_name: 'ロキソプロフェン',
+      summary: {
+        member_count: 2,
+        brand_count: 1,
+        generic_count: 1,
+        stocked_count: 1,
+        unstocked_count: 1,
+        lowest_price: 9.8,
+        highest_price: 17.1,
+      },
+      members: [
+        {
+          id: 'gen_1',
+          yj_code: '222222222222',
+          drug_name: 'ロキソプロフェンGE錠',
+          generic_name: 'ロキソプロフェン',
+          drug_price: 9.8,
+          unit: '錠',
+          manufacturer: null,
+          is_generic: true,
+          transitional_expiry_date: null,
+          site_stock: {
+            drug_master_id: 'gen_1',
+            is_stocked: false,
+            preferred_generic_id: null,
+            reorder_point: null,
+            follow_up_status: null,
+          },
+        },
+      ],
+    };
+
+    render(<DrugMasterContent variant="formulary" />);
+    fireEvent.click(screen.getByText('採用追加'));
+
+    expect(screen.getByText('薬価順の推奨候補')).toBeTruthy();
+    expect(screen.getAllByText('ロキソプロフェンGE錠').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('同一成分グループ')).toBeTruthy();
+    expect(screen.queryByText('推奨後発品を読み込めませんでした')).toBeNull();
+    expect(screen.queryByText('同一成分グループを読み込めませんでした')).toBeNull();
   });
 });

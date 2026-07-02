@@ -30,6 +30,3752 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - The goal tool still reports the earlier master-management objective text, so operationally this loop should follow the latest user message as the effective scope while preserving all existing master-management work.
 - Next after the SSK preview slice: inventory patient information management gaps and implement the highest-risk concrete fix with real validation.
 
+### Latest Operating Override - 2026-07-02 07:22 JST
+
+- Claude/Fable5 is currently providing judgment, prioritization, and review
+  verdicts through agmsg; Codex performs all execution, tests, gates, ledger
+  updates, and commits.
+- The user additionally allowed Codex to autonomously identify and implement
+  candidates on the Codex side. Use the same evidence standard: inspect current
+  files, LOCK exact paths when shared coordination applies, implement a bounded
+  fix, validate with focused and available broad gates, update ledgers, commit
+  coherent slices, and never push/deploy/migrate/destructively mutate data
+  without explicit approval.
+
+### Drug Master Formulary Error And Clipboard Failure States - 2026-07-02 11:29 JST
+
+- Scope:
+  - Continued `RR-FE-20260702-C-drug-master-formulary-error-states` with
+    Codex subagent review findings from `frontend_reviewer` and
+    `medical_safety_reviewer`.
+  - Focused only on the drug-master/formulary admin surface and colocated tests.
+- Fixed:
+  - Review-due and missing-reorder failures, impact failures, usage-mismatch
+    failures, pending-request failures, generic recommendation failures, and
+    ingredient-group failures now surface retryable error states instead of
+    false zero/empty UI.
+  - The `レビュー済み` action is disabled when review-due fetch is failing, even
+    if stale review rows are still present in query data.
+  - Detail-panel stock-config fetch failure now renders
+    `採用品設定を読み込めませんでした` and suppresses `未登録`,
+    `採用品に登録`, `変更申請`, preferred-generic save, follow-up, and reorder
+    actions that require trustworthy stock-config state.
+  - CSV preview candidate YJ-code copy now calls clipboard through a helper,
+    shows success only after `writeText` resolves, and reports fixed
+    `クリップボードにコピーできませんでした` on unavailable/rejected clipboard
+    access without exposing raw browser error text.
+- Safety:
+  - Prevents medical-safety false-empty / false-safe states in the formulary
+    workflow where missing query data could otherwise be interpreted as no
+    review needed or unregistered stock.
+  - No API, DB, auth/RLS, route contract, org header, mutation payload shape,
+    migration, external send, billing, production config, push/deploy,
+    dependency, or destructive-operation behavior was changed.
+- Performance:
+  - No performance change is claimed. The fix adds frontend conditional
+    branches, a small clipboard helper, and targeted test mock controls only.
+- Validation:
+  - Focused reviewed regressions passed:
+    `pnpm vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --testNamePattern 'clipboard|review completion|stock-config fetch|supporting-query fetch-error' --reporter=dot --testTimeout=60000`
+    -> `1` file / `10` selected tests.
+  - Full component suite passed:
+    `pnpm vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=60000`
+    -> `1` file / `77` tests.
+  - Scoped ESLint, Prettier, and diff-check passed for the changed component
+    and test.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open. Browser/E2E smoke was skipped
+    because this slice is covered by component DOM regressions plus full
+    production build and changes no navigation or route contract.
+
+### Patient Medication Allergy Fetch Failure Surface - 2026-07-02 07:21 JST
+
+- Scope:
+  - Executed Claude `PATCH_INSTRUCTION` batch-1 Slice A
+    `RR-FE-20260702-A-allergy-false-negative`.
+  - Focused only on the patient medication screen allergy section and its
+    colocated tests.
+- Fixed:
+  - `MedicationsContent` now checks `patientSummaryQuery.isError` when
+    `allergyInfo` is not supplied by props.
+  - On patient summary allergy fetch failure, the allergy section renders inline
+    `ErrorState` with retry instead of `登録なし`.
+  - Successful fetched `allergy_info` rendering remains unchanged.
+- Safety:
+  - Prevents a high-harm allergy false-negative / false-empty state in the
+    medications safety panel.
+  - No API, DB, auth/RLS, route contract, org-header, mutation, query-key,
+    external-send, migration, push/deploy, or destructive-operation behavior was
+    changed.
+  - Non-blocking residual recorded: future explicit `allergyInfo: null` callers
+    could bypass the undefined-only guard; no production caller exists today.
+- Performance:
+  - No performance change is claimed. The fix adds one render-time boolean and
+    one conditional inline error branch only.
+- Validation:
+  - Initial focused regression failed before the fix because the allergy error
+    text was absent.
+  - Focused patient summary failure/success tests passed after the fix.
+  - Full medications component suite passed `1` file / `23` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm build`: passed.
+  - Claude checker independently ran the medications test file and returned
+    `APPROVED`.
+- Remaining:
+  - Start Slice B: `RR-FE-20260702-B-safety-banner-silent-loss`.
+  - Continue autonomous Codex candidate discovery when the Claude-prioritized
+    queue is not blocking immediate execution.
+
+### Patient Safety Banner Fetch Failure Surface - 2026-07-02 07:33 JST
+
+- Scope:
+  - Executed Claude `PATCH_INSTRUCTION` batch-1 Slice B
+    `RR-FE-20260702-B-safety-banner-silent-loss`.
+  - Focused only on the patient safety-check screen pinned banner region and
+    its colocated tests.
+- Fixed:
+  - `SafetyCheckContent` now checks `patientQuery.isError` before rendering the
+    pinned `PatientHeader`.
+  - On patient safety summary fetch failure, the pinned region renders inline
+    `ErrorState` with retry instead of silently disappearing.
+  - Existing medication issue error handling and the documented CDS fail-open
+    behavior remain unchanged.
+- Safety:
+  - Prevents operators from continuing a safety-check workflow without knowing
+    allergy/high-risk banner data failed to load.
+  - No API, DB, auth/RLS, route contract, org-header, mutation, query-key,
+    external-send, migration, push/deploy, or destructive-operation behavior was
+    changed.
+- Validation:
+  - Initial focused regression failed before the fix because patient safety
+    error text was absent.
+  - Focused patient summary failure test passed after the fix.
+  - Full safety-check component suite passed `1` file / `17` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm build`: passed.
+  - Claude checker independently ran the safety-check test file and returned
+    `APPROVED`.
+- Remaining:
+  - Start Slice C: `RR-FE-20260702-C-drug-master-formulary-error-states`.
+  - Continue autonomous Codex candidate discovery when the Claude-prioritized
+    queue is not blocking immediate execution.
+
+### Shared Import Safe Error Log Fix - 2026-07-02 05:05 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be performed.
+  - Focused only on shared MHLW/PMDA/HOT/manual drug-master import failure-log
+    diagnostics.
+- Fixed:
+  - `withImportLog()` no longer persists raw caught importer exception text in
+    `drugMasterImportLog.error_log`.
+  - Failed import logs now persist fixed `医薬品マスタ取込に失敗しました`.
+  - If recording the failed import log itself fails, the service emits only safe
+    structured warning metadata and still rethrows the original importer error.
+- Safety:
+  - The regressions prove failed import log persistence excludes secret-like /
+    PHI-like sentinels and preserves original exception propagation.
+  - MHLW/PMDA/HOT/manual import success logging, source URL/hash metadata,
+    record counts, import route/status/log API contracts, DB schema/migrations,
+    RLS, auth/authz, audit semantics, secrets, push/deploy, external sends, and
+    destructive-operation boundaries remain unchanged.
+- Performance:
+  - No new request, DB query, dependency, polling interval, background job, broad
+    scan, render fan-out, or unbounded loop was added.
+  - The extra warning branch runs only if failed import-log recording rejects.
+- Validation:
+  - Initial focused test failed before the fix because persisted `error_log`
+    contained raw secret-like / PHI-like importer failure text.
+  - `pnpm vitest run src/server/services/drug-master-import/shared.test.ts --testNamePattern "safe failure message" --reporter=dot --testTimeout=60000`:
+    passed after the fix.
+  - `pnpm vitest run src/server/services/drug-master-import/shared.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`:
+    passed, `2` files / `33` tests.
+  - `pnpm vitest run src/server/services/drug-master-import/shared.test.ts src/server/services/drug-master-import/mhlw.test.ts src/server/services/drug-master-import/pmda.test.ts src/server/services/drug-master-import/hot.test.ts src/server/services/drug-master-import/manual.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`:
+    passed, `6` files / `83` tests.
+  - `pnpm vitest run src/app/api/drug-master-import-logs/route.test.ts src/app/api/drug-master-imports/status/route.test.ts src/app/api/drug-master-imports/mhlw-price/route.test.ts src/app/api/drug-master-imports/mhlw-generic/route.test.ts src/app/api/drug-master-imports/hot/route.test.ts src/app/api/drug-master-imports/manual-clinical/route.test.ts src/app/api/drug-master-imports/pmda/route.test.ts --reporter=dot --testTimeout=60000`:
+    passed, `7` files / `94` tests.
+  - Scoped ESLint, Prettier, and diff-check for changed files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/shared-import-log-raw-error-log`:
+    passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this service diagnostics fix changes no DOM
+    layout, navigation, route contract shape, or workflow shape.
+
+### PDF Bulk Export Safe Failure Diagnostics - 2026-07-02 05:20 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be performed.
+  - Focused on medication-history PDF bulk-export terminal failure diagnostics,
+    drain responses, and secondary cleanup/notification failure logging.
+- Fixed:
+  - `runMedicationHistoryBulkExportJob()` no longer persists unexpected raw
+    caught `Error.message` text in `integrationJob.error_log`.
+  - Failure notifications for unexpected terminal export errors now use fixed
+    `薬歴 PDF ZIP の生成に失敗しました` text instead of raw provider/audit/storage
+    diagnostics.
+  - `drainMedicationHistoryBulkExportQueue()` no longer returns raw caught
+    messages, and `POST /api/jobs/medication-history-bulk-export-drain` now
+    exposes `errorCount` without raw `errors[]`.
+  - PDF bulk-export cleanup, lock-loss, and notification best-effort failures
+    now use shared safe structured logger metadata instead of
+    `console.error(..., Error)`.
+- Safety:
+  - Expected `MedicationHistoryBulkExportError` workflow messages remain
+    actionable for validation and size-limit failures.
+  - Original exceptions still propagate for control flow.
+  - The regressions prove secret-like / PHI-like / storage URL sentinels do not
+    reach persisted failed job logs, notifications, drain results, or drain API
+    responses.
+  - DB schema/migrations, RLS, auth/authz, audit semantics, external sends,
+    billing, production config/secrets, push/deploy, and destructive operations
+    remain unchanged.
+- Performance:
+  - No new request, DB query, dependency, polling interval, background job, broad
+    scan, render fan-out, or unbounded loop was added.
+  - Added helper logic and logger calls run only on failure paths.
+- Validation:
+  - Initial focused regressions failed before the fix because raw sentinel text
+    reached failure diagnostics or because the drain API did not expose
+    `errorCount`.
+  - `pnpm vitest run src/server/services/pdf-bulk-export.test.ts src/app/api/jobs/route.test.ts 'src/app/api/jobs/[jobType]/route.test.ts' src/app/api/patients/medications/bulk-export/route.test.ts --reporter=dot --testTimeout=60000`:
+    passed, `4` files / `60` tests.
+  - Scoped ESLint, Prettier, and diff-check for changed/adjacent files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this server/API diagnostics fix changes no
+    DOM layout, navigation, or human workflow shape. The intentional drain route
+    contract change is covered by focused API tests.
+
+### Daily Job Safe Error Results - 2026-07-02 05:38 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be performed.
+  - Focused on daily job returned `errors[]` diagnostics from the aggregate
+    daily runner and the direct visit-demand generation job.
+- Fixed:
+  - `runDailyOperations()` no longer returns rejected subtask raw
+    `Error.message` text.
+  - Fulfilled daily subtask `errors[]` entries are sanitized again at the daily
+    aggregate boundary before returning the completed job result.
+  - `generateVisitDemands()` no longer returns raw planner / persistence
+    exception messages for unexpected failures.
+  - The existing visit workflow-gate operational task path remains unchanged.
+- Safety:
+  - Job output still preserves one safe error entry per failed subtask/result
+    entry so partial failures remain visible.
+  - Regressions prove secret-like / PHI-like sentinels do not appear in returned
+    job result JSON.
+  - DB schema/migrations, RLS, auth/authz, audit semantics, external sends,
+    billing, production config/secrets, push/deploy, and destructive operations
+    remain unchanged.
+- Performance:
+  - No new request, DB query, dependency, polling interval, background job, broad
+    scan, render fan-out, or unbounded loop was added.
+  - Added string mapping runs only for daily job failure result entries.
+- Validation:
+  - Initial focused regressions failed before the fix because raw sentinel text
+    reached daily job `errors[]`.
+  - `pnpm vitest run src/server/jobs/daily.test.ts --testNamePattern "safe error" --reporter=dot --testTimeout=60000`:
+    passed after the fix, `1` file / `2` selected tests.
+  - `pnpm vitest run src/server/jobs/daily.test.ts --reporter=dot --testTimeout=60000`:
+    passed, `1` file / `41` tests.
+  - Scoped ESLint, Prettier, and diff-check for changed files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this server job result fix changes no DOM
+    layout, navigation, or human workflow shape.
+
+### Rate Limit Safe Failure Log And Route Catalog Sync - 2026-07-02 05:52 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be performed.
+  - Focused on the Edge proxy rate-limit boundary and its DynamoDB-backed
+    distributed store failure handling.
+- Fixed:
+  - `DynamoRateLimitStore.increment()` no longer logs raw caught `Error`
+    objects when DynamoDB credentials, requests, or responses fail.
+  - Safe rate-limit failure logs now contain fixed event/operation metadata and
+    `error_name` only.
+  - `API_ROUTE_TEMPLATES` now includes the live
+    `/api/visit-schedules/:id/conflict-reconfirmation` endpoint.
+- Safety:
+  - Production remains fail-closed when the distributed rate-limit store is
+    unavailable.
+  - Non-production still falls back to in-memory rate limiting.
+  - Proxy response shape, quota values, auth/authz semantics, route handlers,
+    DB schema/migrations, RLS, audit semantics, external sends, billing,
+    production config/secrets, push/deploy, and destructive operations remain
+    unchanged.
+- Performance:
+  - No performance improvement is claimed.
+  - Added metadata construction runs only on rate-limit store failure paths.
+- Validation:
+  - Initial focused regression failed before the fix because a raw
+    PHI/secret-like sentinel remained in the captured `console.error` call.
+  - `pnpm vitest run src/lib/api/rate-limit.test.ts --testNamePattern "raw DynamoDB failure details|controlled cause" --reporter=dot --testTimeout=60000`:
+    passed after the fix, `1` file / `3` selected tests.
+  - `pnpm vitest run src/lib/api/rate-limit.test.ts --reporter=dot --testTimeout=60000`:
+    passed after adding the missing route catalog entry, `1` file / `33`
+    tests.
+  - Scoped ESLint, Prettier, and diff-check for changed files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this proxy/rate-limit behavior fix
+    changes no DOM layout, navigation, or human workflow shape.
+
+### Secrets Manager Fallback Safe Log - 2026-07-02 06:06 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be performed.
+  - Focused on `src/lib/config/secrets.ts` fallback diagnostics only.
+- Fixed:
+  - `getSecrets()` no longer logs raw caught Secrets Manager/provider exception
+    text or the configured secret id when it falls back to environment values.
+  - Safe fallback logs now contain fixed event/operation metadata and a generic
+    safe `error_name` only.
+  - `bootstrapSecretsIntoEnv()` now uses the same safe diagnostic pattern for
+    unexpected bootstrap failures.
+- Safety:
+  - Secrets Manager remains consulted when configured.
+  - `getSecrets()` still falls back to `process.env` on fetch/parse/provider
+    failures.
+  - Existing environment values remain authoritative and are not overwritten by
+    bootstrap.
+  - Auth/RLS semantics, DB schema/migrations, route/API contracts, external
+    sends, billing, production config, push/deploy, secret values, and
+    destructive operations remain unchanged.
+- Performance:
+  - No performance improvement is claimed.
+  - Added metadata construction runs only on failure paths.
+- Validation:
+  - Initial focused regression failed before the fix because raw provider,
+    configured secret-id, token-like, and PHI-like sentinels remained in the
+    captured `console.warn` call.
+  - `pnpm exec vitest run src/lib/config/secrets.test.ts --testNamePattern "without logging raw Secrets Manager failure details" --reporter=dot --testTimeout=60000`:
+    passed after the fix, `1` file / `1` selected test.
+  - `pnpm exec vitest run src/lib/config/secrets.test.ts --reporter=dot --testTimeout=60000`:
+    passed, `1` file / `6` tests.
+  - Scoped ESLint, Prettier, and diff-check for changed files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/secrets-manager-raw-fallback-log`:
+    passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this config/logging fix changes no DOM
+    layout, navigation, route contract shape, or human workflow shape.
+
+### SSK Import Safe Error Log Fix - 2026-07-02 04:50 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be performed.
+  - Focused only on SSK drug-master import failure-log diagnostics.
+- Fixed:
+  - `importSskDrugMaster()` no longer persists raw caught import/upsert exception
+    text in `drugMasterImportLog.error_log`.
+  - The function still creates the running import log, marks failure, and
+    rethrows the original exception to the caller.
+- Safety:
+  - The regression proves failed import log persistence excludes secret-like /
+    PHI-like sentinels.
+  - Source ZIP/hash handling, successful import logging, DB upsert behavior,
+    route behavior, job wrapper behavior, DB schema/migrations, RLS, auth/authz,
+    audit semantics, secrets, push/deploy, and destructive-operation boundaries
+    remain unchanged.
+- Performance:
+  - No new request, DB query, dependency, polling interval, background job, broad
+    scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial focused test failed before the fix because persisted `error_log`
+    contained raw secret-like / PHI-like SSK import failure text.
+  - `pnpm vitest run src/server/services/drug-master-import/ssk.test.ts --testNamePattern "safe failure message" --reporter=dot --testTimeout=60000`:
+    passed.
+  - `pnpm vitest run src/server/services/drug-master-import/ssk.test.ts --reporter=dot --testTimeout=60000`:
+    passed, `1` file / `9` tests.
+  - `pnpm vitest run src/app/api/drug-master-imports/ssk/route.test.ts src/server/jobs/drug-master.test.ts --reporter=dot --testTimeout=60000`:
+    passed, `2` files / `12` tests.
+  - `pnpm exec eslint src/server/services/drug-master-import/ssk.ts src/server/services/drug-master-import/ssk.test.ts`:
+    passed.
+  - `pnpm exec prettier --check src/server/services/drug-master-import/ssk.ts src/server/services/drug-master-import/ssk.test.ts`:
+    passed.
+  - `git diff --check -- src/server/services/drug-master-import/ssk.ts src/server/services/drug-master-import/ssk.test.ts`:
+    passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/ssk-import-raw-error-log`:
+    passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this service diagnostics fix changes no DOM
+    layout, navigation, route contract shape, or workflow shape.
+
+### File Storage Safe Cleanup Errors Fix - 2026-07-02 04:36 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be performed.
+  - Focused only on expired generated-file cleanup result diagnostics.
+- Fixed:
+  - `cleanupExpiredGeneratedFiles()` no longer returns raw caught deletion
+    exception text in `errors[]`.
+  - The helper still preserves one `errors[]` entry per failed deletion, plus
+    processed/scanned counts and the existing safe structured partial-failure
+    warning.
+- Safety:
+  - The regression proves returned cleanup errors exclude secret-like / PHI-like
+    sentinels.
+  - Cleanup pagination, deletion attempts, job wrapper shape, DB
+    schema/migrations, RLS, auth/authz, audit semantics, secrets, push/deploy,
+    and destructive-operation boundaries remain unchanged.
+- Performance:
+  - No new request, DB query, dependency, polling interval, background job, broad
+    scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial focused test failed before the fix because returned cleanup
+    `errors[]` contained raw secret-like / PHI-like deletion failure text.
+  - `pnpm vitest run src/server/services/file-storage.test.ts --testNamePattern "sanitized partial failures" --reporter=dot --testTimeout=60000`:
+    passed.
+  - `pnpm vitest run src/server/services/file-storage.test.ts --reporter=dot --testTimeout=60000`:
+    passed, `1` file / `72` tests.
+  - `pnpm vitest run src/server/services/file-storage.test.ts src/server/services/pdf-bulk-export.test.ts src/app/api/patients/medications/bulk-export/route.test.ts --reporter=dot --testTimeout=60000`:
+    passed, `3` files / `101` tests.
+  - `pnpm exec eslint src/server/services/file-storage.ts src/server/services/file-storage.test.ts`:
+    passed.
+  - `pnpm exec prettier --check src/server/services/file-storage.ts src/server/services/file-storage.test.ts`:
+    passed.
+  - `git diff --check -- src/server/services/file-storage.ts src/server/services/file-storage.test.ts`:
+    passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/file-storage-raw-cleanup-errors`:
+    passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this server service diagnostics fix
+    changes no DOM layout, navigation, route contract shape, or workflow shape.
+  - `pnpm build` was not rerun for this narrow backend-service slice; the latest
+    full build evidence remains the preceding visit planner slice.
+
+### Visit Planner Safe Evaluation Diagnostics Fix - 2026-07-02 04:29 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be performed.
+  - Focused only on visit schedule proposal candidate evaluation diagnostics.
+- Fixed:
+  - Candidate evaluation failures no longer append raw upstream
+    `Error.message` text to `diagnostics.rejected[].detail`.
+  - The planner still emits `reason_code: evaluation_error`,
+    `reason_label: 評価エラー`, and fixed
+    `評価中にエラーが発生しました`.
+- Safety:
+  - The regression proves rejected diagnostics exclude secret-like / PHI-like
+    sentinels.
+  - Candidate scoring, travel-limit rejection classification, route ordering,
+    proposal result shape, DB schema/migrations, RLS, auth/authz, audit
+    semantics, secrets, push/deploy, and destructive-operation boundaries remain
+    unchanged.
+- Performance:
+  - No new request, DB query, dependency, polling interval, background job, broad
+    scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial focused test failed before the fix because rejected diagnostics
+    contained raw secret-like / PHI-like evaluation failure text.
+  - `pnpm vitest run src/server/services/visit-schedule-planner.test.ts --testNamePattern "evaluation_error" --reporter=dot --testTimeout=60000`:
+    passed.
+  - `pnpm vitest run src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=60000`:
+    passed, `1` file / `45` tests.
+  - `pnpm vitest run src/server/services/visit-schedule-planner.test.ts src/app/api/visit-schedule-proposals/route.test.ts 'src/app/api/visit-schedule-proposals/[id]/route.test.ts' --reporter=dot --testTimeout=60000`:
+    passed, `3` files / `209` tests.
+  - `pnpm exec eslint src/server/services/visit-schedule-planner.ts src/server/services/visit-schedule-planner.test.ts`:
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check src/server/services/visit-schedule-planner.ts src/server/services/visit-schedule-planner.test.ts`:
+    passed.
+  - `git diff --check -- src/server/services/visit-schedule-planner.ts src/server/services/visit-schedule-planner.test.ts`:
+    passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/visit-schedule-planner-raw-evaluation-diagnostics`:
+    passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this service diagnostics fix changes no DOM
+    layout, navigation, route contract shape, or workflow shape.
+
+### Offline Sync Safe Diagnostics Fix - 2026-07-02 04:17 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be performed.
+  - Focused only on offline sync queue unexpected-failure diagnostics.
+- Fixed:
+  - `processSyncQueueOnce()` no longer copies raw caught exception text into
+    plaintext `syncQueue.lastError`.
+  - `setupAutoSync()` no longer logs the raw caught automatic sync error object.
+  - Both paths now use fixed `同期に失敗しました` diagnostics while preserving
+    existing malformed payload, HTTP status, conflict, retry, queue single-flight,
+    and conflict-resolution behavior.
+- Safety:
+  - The regressions prove persisted update payloads and console warnings exclude
+    secret-like / PHI-like sentinels.
+  - Offline queue payload encryption, conflict snapshot encryption, UI display
+    model pass-through, DB schema/migrations, RLS, auth/authz, audit semantics,
+    secrets, push/deploy, and destructive-operation boundaries remain unchanged.
+- Performance:
+  - No new request, DB query, dependency, polling interval, background job, broad
+    scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial focused test failed before the fix because persisted/logged
+    diagnostics contained raw secret-like / PHI-like text.
+  - `pnpm vitest run src/lib/stores/sync-engine.test.ts --testNamePattern "generic lastError|safe automatic sync failure" --reporter=dot --testTimeout=30000`:
+    passed.
+  - `pnpm vitest run src/lib/stores/sync-engine.test.ts --reporter=dot --testTimeout=30000`:
+    passed, `1` file / `18` tests.
+  - `pnpm vitest run src/app/'(dashboard)'/offline-sync/offline-sync.shared.test.ts src/lib/stores/offline-store.test.ts --reporter=dot --testTimeout=30000`:
+    passed, `2` files / `15` tests.
+  - `pnpm exec eslint src/lib/stores/sync-engine.ts src/lib/stores/sync-engine.test.ts`:
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check src/lib/stores/sync-engine.ts src/lib/stores/sync-engine.test.ts`:
+    passed.
+  - `git diff --check -- src/lib/stores/sync-engine.ts src/lib/stores/sync-engine.test.ts`:
+    passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/offline-sync-raw-diagnostics`:
+    passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this client utility diagnostics fix changes
+    no DOM layout, navigation, route contract shape, or workflow shape.
+
+### Realtime Listener Safe Diagnostics Fix - 2026-07-02 04:05 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be
+    performed.
+  - Focused only on shared realtime stream listener failure diagnostics.
+- Fixed:
+  - `logRealtimeListenerError()` no longer copies raw event/status listener
+    failure messages into browser console diagnostics.
+  - The shared stream still isolates listener exceptions and continues delivery
+    to other listeners without reconnecting.
+- Safety:
+  - The regression proves console diagnostics exclude secret-like / PHI-like
+    sentinels.
+  - SSE URL construction, presence target serialization, reconnect behavior,
+    listener isolation, route behavior, DB schema/migrations, RLS, auth/authz,
+    audit semantics, secrets, push/deploy, and destructive-operation boundaries
+    remain unchanged.
+- Performance:
+  - No new request, DB query, dependency, polling interval, background job,
+    broad scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial focused test failed before the fix because console diagnostics
+    contained raw secret-like / PHI-like listener failure text.
+  - `pnpm vitest run src/lib/realtime/shared-event-stream.test.ts --testNamePattern "isolates listener exceptions"`:
+    passed.
+  - `pnpm vitest run src/lib/realtime/shared-event-stream.test.ts`: passed,
+    `1` file / `4` tests.
+  - `pnpm vitest run src/lib/realtime/shared-event-stream.test.ts src/lib/hooks/use-realtime-events.test.ts src/lib/hooks/use-realtime-query.test.ts src/lib/hooks/use-realtime-invalidation.test.ts --reporter=dot --testTimeout=30000`:
+    passed, `3` files / `14` tests.
+  - `pnpm exec eslint src/lib/realtime/shared-event-stream.ts src/lib/realtime/shared-event-stream.test.ts`:
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check src/lib/realtime/shared-event-stream.ts src/lib/realtime/shared-event-stream.test.ts`:
+    passed.
+  - `git diff --check -- src/lib/realtime/shared-event-stream.ts src/lib/realtime/shared-event-stream.test.ts`:
+    passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/realtime-shared-stream-raw-listener-diagnostics`:
+    passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this shared client utility diagnostics fix
+    changes no DOM layout, navigation, route contract shape, or workflow shape.
+
+### CloudWatch Safe Metric Failure Log Fix - 2026-07-02 03:56 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be
+    performed.
+  - Focused only on CloudWatch metrics helper failure diagnostics.
+- Fixed:
+  - `putMetrics()` no longer copies raw CloudWatch/AWS/runtime failure messages
+    into `console.error`.
+  - The helper now logs fixed `CloudWatch metric emission failed` diagnostics
+    while preserving best-effort metric emission and caller-safe swallowing
+    behavior.
+- Safety:
+  - The regression proves console diagnostics exclude secret-like provider
+    failure text.
+  - Metric batch sizing, AWS regional client caching, timeout wrapper use,
+    flush route behavior, DB schema/migrations, RLS, auth/authz, audit
+    semantics, secrets, push/deploy, and destructive-operation boundaries
+    remain unchanged.
+- Performance:
+  - No new request, DB query, dependency, polling interval, background job,
+    broad scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial focused test failed before the fix because console diagnostics
+    contained raw secret-like provider failure text.
+  - `pnpm vitest run src/lib/aws/cloudwatch.test.ts --testNamePattern "swallows CloudWatch send errors"`:
+    passed.
+  - `pnpm vitest run src/lib/aws/cloudwatch.test.ts`: passed, `1` file / `3`
+    tests.
+  - `pnpm vitest run src/lib/aws/cloudwatch.test.ts src/app/api/jobs/flush-metrics/route.test.ts src/app/api/admin/flush-metrics/route.test.ts --reporter=dot --testTimeout=30000`:
+    passed, `3` files / `8` tests.
+  - `pnpm exec eslint src/lib/aws/cloudwatch.ts src/lib/aws/cloudwatch.test.ts`:
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check src/lib/aws/cloudwatch.ts src/lib/aws/cloudwatch.test.ts`:
+    passed.
+  - `git diff --check -- src/lib/aws/cloudwatch.ts src/lib/aws/cloudwatch.test.ts`:
+    passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/cloudwatch-metrics-raw-failure-log`:
+    passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this backend utility diagnostics fix
+    changes no DOM layout, navigation, route contract shape, or workflow shape.
+
+### Job Runner Safe Failure Diagnostics Fix - 2026-07-02 03:45 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be
+    performed.
+  - Focused only on job runner retry/final failure diagnostics, admin failure
+    notifications, and cleanup-failure console diagnostics.
+- Fixed:
+  - `runJobOnce()` no longer copies raw caught job failure messages into retry
+    or final failed `integrationJob.error_log`.
+  - Admin job-failure notifications now include a fixed Japanese
+    execution-failure message instead of raw exception text.
+  - Cleanup-failure console diagnostics no longer include raw cleanup or
+    original failure messages.
+  - The original error is still thrown after retries so existing route-level
+    masking remains authoritative.
+- Safety:
+  - The regressions prove update payloads, admin notification payloads, and
+    cleanup logs exclude secret-like / PHI-like sentinels.
+  - Job creation, retry count, final failure status, locking, duplicate
+    detection, membership lookup, DB schema/migrations, RLS, auth/authz, audit
+    semantics, external sends, secrets, push/deploy, and destructive-operation
+    boundaries remain unchanged.
+- Performance:
+  - No new request, DB query, dependency, polling interval, background job,
+    broad scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial focused test failed before the fix because runner update payloads
+    and cleanup diagnostics contained raw secret-like / PHI-like text.
+  - `pnpm vitest run src/server/jobs/runner.test.ts --testNamePattern "fixed job failure|cleanup status update"`:
+    passed.
+  - `pnpm vitest run src/server/jobs/runner.test.ts`: passed, `1` file / `7`
+    tests.
+  - `pnpm vitest run src/server/jobs/runner.test.ts 'src/app/api/jobs/[jobType]/route.test.ts' src/app/api/jobs/route.test.ts --reporter=dot --testTimeout=30000`:
+    passed, `3` files / `38` tests.
+  - `pnpm exec eslint src/server/jobs/runner.ts src/server/jobs/runner.test.ts`:
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check src/server/jobs/runner.ts src/server/jobs/runner.test.ts`:
+    passed after targeted formatting.
+  - `git diff --check -- src/server/jobs/runner.ts src/server/jobs/runner.test.ts`:
+    passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/job-runner-raw-failure-diagnostics`:
+    passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this backend runner diagnostics fix
+    changes no DOM layout, navigation, route contract shape, or workflow shape.
+
+### Outbound Webhook Safe Result Fix - 2026-07-02 03:26 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be
+    performed.
+  - Focused only on outbound webhook returned delivery URL safety and dispatch
+    failure result safety.
+- Fixed:
+  - `WebhookDeliveryResult.url` now returns the redacted display URL instead of
+    the raw registered webhook URL with query strings or fragments.
+  - Dispatch exceptions now return and persist the fixed safe message
+    `Webhook delivery failed` instead of raw fetch/runtime exception text.
+- Safety:
+  - The regressions prove returned delivery results and persisted update
+    arguments exclude secret-like sentinels.
+  - Actual HTTP dispatch still uses the registered raw URL, preserving partner
+    endpoint behavior.
+  - Unsafe-destination blocking, redirect non-following, encrypted webhook
+    secret signing, concurrency limits, retry claiming, and malformed persisted
+    payload blocking remain unchanged.
+  - DB schema/migrations, RLS, auth/authz, audit semantics, external send
+    decision semantics, secrets, push/deploy, and destructive-operation
+    boundaries remain unchanged.
+- Performance:
+  - No new request, DB query, dependency, polling interval, background job,
+    broad scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial focused test failed before the fix because result URLs included
+    query secrets and dispatch failures returned raw exception text.
+  - `pnpm vitest run src/server/services/outbound-webhook.test.ts --testNamePattern "redacted delivery URLs|fixed delivery failure messages"`:
+    passed.
+  - `pnpm vitest run src/server/services/outbound-webhook.test.ts`: passed,
+    `1` file / `21` tests.
+  - `pnpm vitest run src/server/services/outbound-webhook.test.ts 'src/app/api/jobs/[jobType]/route.test.ts' --reporter=dot --testTimeout=30000`:
+    passed, `2` files / `49` tests.
+  - `pnpm exec eslint src/server/services/outbound-webhook.ts src/server/services/outbound-webhook.test.ts`:
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check src/server/services/outbound-webhook.ts src/server/services/outbound-webhook.test.ts`:
+    passed.
+  - `git diff --check -- src/server/services/outbound-webhook.ts src/server/services/outbound-webhook.test.ts`:
+    passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/outbound-webhook-raw-delivery-result`:
+    passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this backend service result-safety fix
+    changes no DOM layout, navigation, route contract shape, or workflow shape.
+
+### Health-Check DB/S3 Safe Error Fix - 2026-07-02 03:18 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be
+    performed.
+  - Focused only on generic backend health-check DB/S3 failure result safety.
+- Fixed:
+  - `checkDatabase()` and `checkS3()` no longer return raw database/AWS/runtime
+    exception messages in `CheckResult.message`.
+  - Both checks now return fixed safe messages while preserving `status:
+'down'`.
+- Safety:
+  - The regressions prove result JSON excludes secret-like sentinels.
+  - Successful DB/S3 checks, S3 unconfigured skip behavior, S3 client reuse, and
+    aggregate health status behavior remain unchanged.
+  - DB schema/migrations, RLS, auth/authz, audit semantics, AWS request
+    semantics, external sends, secrets, push/deploy, and destructive-operation
+    boundaries remain unchanged.
+- Performance:
+  - No new request, DB query, dependency, polling interval, background job,
+    broad scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial focused test failed before the fix because both DB and S3 checks
+    returned raw failure text.
+  - `pnpm vitest run src/server/services/health-check.test.ts --testNamePattern "safe fixed"`: passed.
+  - `pnpm vitest run src/server/services/health-check.test.ts`: passed,
+    `1` file / `7` tests.
+  - `pnpm exec eslint src/server/services/health-check.ts src/server/services/health-check.test.ts`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check src/server/services/health-check.ts src/server/services/health-check.test.ts`: passed.
+  - `git diff --check -- src/server/services/health-check.ts src/server/services/health-check.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/health-check-db-s3-raw-error-message`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this backend service response-safety fix
+    changes no DOM layout, navigation, route contract shape, or workflow shape.
+
+### Backup Monitor AWS Check Safe Error Fix - 2026-07-02 03:10 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be
+    performed.
+  - Focused only on backup-monitor service-level AWS check error result/log
+    safety.
+- Fixed:
+  - RDS snapshot, S3 versioning, audit archive lifecycle, and Cognito Advanced
+    Security check failures no longer return raw provider/runtime error
+    messages in `BackupCheckResult.message`.
+  - The same catches now log a new fixed-message `Error` instead of the raw
+    provider error object.
+  - The dedicated configured RDS SDK import failure message remains fixed and
+    safe through an internal safe-error marker.
+- Safety:
+  - The regression proves result messages and logger error arguments exclude
+    secret-like sentinels.
+  - Configured check failures still return `status: 'error'`, and aggregate
+    backup monitor health remains non-ok.
+  - Success, warning, and unconfigured skip behavior remain unchanged.
+  - DB schema/migrations, RLS, auth/authz, audit semantics, AWS request
+    semantics, external sends, secrets, push/deploy, and destructive-operation
+    boundaries remain unchanged.
+- Performance:
+  - No new request, DB query, dependency, polling interval, background job,
+    broad scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial focused test failed before the fix because RDS returned the raw AWS
+    failure message.
+  - `pnpm vitest run src/server/services/backup-monitor.test.ts --testNamePattern "safe fixed messages"`: passed.
+  - `pnpm vitest run src/server/services/backup-monitor.test.ts`: passed,
+    `1` file / `8` tests.
+  - `pnpm vitest run src/server/services/backup-monitor.test.ts src/app/api/health/route.test.ts --reporter=dot --testTimeout=30000`: passed,
+    `2` files / `13` tests.
+  - `pnpm exec eslint src/server/services/backup-monitor.ts src/server/services/backup-monitor.test.ts`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check src/server/services/backup-monitor.ts src/server/services/backup-monitor.test.ts`: passed after formatting.
+  - `git diff --check -- src/server/services/backup-monitor.ts src/server/services/backup-monitor.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/backup-monitor-aws-check-raw-error-message`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this backend service response-safety fix
+    changes no DOM layout, navigation, route contract shape, or workflow shape.
+
+### Health Backup Monitor Raw Error Response Fix - 2026-07-02 03:00 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be
+    performed.
+  - Focused only on `/api/health` route-level backup monitor rejection
+    handling.
+  - Read the local Next.js Route Handler and `NextResponse` docs before editing
+    the app route.
+- Fixed:
+  - Authenticated admin health responses no longer expose raw
+    `runBackupMonitorChecks()` exception messages in `checks.backups.message`.
+  - The route now preserves `status: 'degraded'` and
+    `checks.backups.status: 'error'` while returning the fixed safe message
+    `backup monitor failed`.
+- Safety:
+  - The regression proves a backup-monitor exception containing a secret-like
+    sentinel is not present in the route JSON.
+  - Public unauthenticated liveness remains cheap and unchanged.
+  - DB readiness behavior, admin detail gating, backup monitor invocation
+    timing, response status code behavior, DB schema/migrations, auth/RLS
+    semantics, audit semantics, external sends, secrets, push/deploy, and
+    destructive-operation boundaries remain unchanged.
+- Performance:
+  - No new request, DB query, dependency, polling interval, background job,
+    broad scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial focused test failed before the fix because the route returned the
+    raw backup monitor exception message.
+  - `pnpm vitest run src/app/api/health/route.test.ts --testNamePattern "raw backup monitor errors"`: passed.
+  - `pnpm vitest run src/app/api/health/route.test.ts src/server/services/backup-monitor.test.ts --reporter=dot --testTimeout=30000`: passed,
+    `2` files / `12` tests.
+  - `pnpm exec eslint src/app/api/health/route.ts src/app/api/health/route.test.ts`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check src/app/api/health/route.ts src/app/api/health/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/health/route.ts src/app/api/health/route.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/health-backup-monitor-raw-error-response`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this API response-safety fix changes no
+    DOM layout, navigation, route contract shape, or workflow shape.
+
+### Backup Monitor RDS Import Failure Fix - 2026-07-02 02:50 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be
+    performed.
+  - Focused only on configured RDS backup-monitor dependency-load failure
+    semantics.
+- Fixed:
+  - `loadRdsModule()` no longer converts dynamic
+    `@aws-sdk/client-rds` import failure to cached `null`.
+  - When `RDS_DB_INSTANCE_ID` is configured but the RDS SDK cannot be loaded,
+    `checkRdsSnapshot()` now returns `status: 'error'` with a fixed safe
+    message instead of `status: 'skipped'`.
+  - `runBackupMonitorChecks()` now aggregates that configured RDS monitor
+    failure as `overall: 'error'`, preventing false-green backup health.
+- Safety:
+  - The unconfigured local environment still returns
+    `RDS_DB_INSTANCE_ID not configured` as `skipped`.
+  - The regression proves the returned/logged import failure message does not
+    include the raw token-like sentinel or the original import error object.
+  - DB schema/migrations, RLS, auth/authz, audit semantics, AWS requests,
+    external sends, secrets, push/deploy, and destructive-operation boundaries
+    remain unchanged.
+- Performance:
+  - No new request, DB query, dependency, polling interval, background job,
+    broad scan, render fan-out, or unbounded loop was added.
+  - Clearing the failed RDS module promise allows later checks to retry instead
+    of permanently caching a failed import as skipped.
+- Validation:
+  - Initial focused test failed before the fix because configured RDS monitor
+    import failure returned `status: 'skipped'` /
+    `@aws-sdk/client-rds not installed`.
+  - `pnpm vitest run src/server/services/backup-monitor.test.ts --testNamePattern "configured RDS monitoring cannot load"`: passed.
+  - `pnpm vitest run src/server/services/backup-monitor.test.ts`: passed,
+    `1` file / `7` tests.
+  - `pnpm vitest run src/server/services/backup-monitor.test.ts src/app/api/health/route.test.ts --reporter=dot --testTimeout=30000`: passed,
+    `2` files / `12` tests.
+  - `pnpm exec eslint src/server/services/backup-monitor.ts src/server/services/backup-monitor.test.ts`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check src/server/services/backup-monitor.ts src/server/services/backup-monitor.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/backup-monitor-rds-import-false-green`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this backend monitoring semantics fix
+    changes no DOM layout, navigation, route contract, or workflow shape.
+
+### Drug-Master Import Stream-Cancel Warning Fix - 2026-07-02 02:37 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be
+    performed.
+  - Focused only on external drug-master import response-stream cleanup
+    observability.
+- Fixed:
+  - `readResponseBytes()` no longer silently swallows failed
+    `reader.cancel()` cleanup after body-read errors or streamed byte-limit
+    violations.
+  - The shared import helper now emits a safe structured warning when cleanup
+    cancellation itself fails.
+  - Existing caller behavior remains unchanged: the original read error,
+    timeout error, or byte-limit error is still the thrown failure.
+- Safety:
+  - Warning context uses fixed event/operation/code metadata, file purpose, and
+    normalized import source only.
+  - The regression proves warning output excludes source URLs and raw cancel
+    error text.
+  - URL validation, private/reserved IP rejection, redirect limits, timeout
+    handling, content-length and streamed byte limits, import route behavior,
+    DB schema/migrations, auth/RLS semantics, audit semantics, billing,
+    external sends, secrets, push/deploy, and destructive-operation boundaries
+    remain unchanged.
+- Performance:
+  - Adds one warning only when stream cleanup cancellation fails after an
+    existing read or byte-limit failure.
+  - No new request, DB query, dependency, polling interval, background job,
+    broad scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial focused test failed before the fix on zero `logger.warn` calls.
+  - `pnpm vitest run src/server/services/drug-master-import/shared.test.ts --testNamePattern "logs a safe warning when oversized stream cancellation fails"`: passed.
+  - `pnpm vitest run src/server/services/drug-master-import/shared.test.ts`: passed, `1` file / `20` tests.
+  - `pnpm vitest run src/server/services/drug-master-import/shared.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `31` tests.
+  - `pnpm exec eslint src/server/services/drug-master-import/shared.ts src/server/services/drug-master-import/shared.test.ts`: passed.
+  - `pnpm prettier --check src/server/services/drug-master-import/shared.ts src/server/services/drug-master-import/shared.test.ts`: passed.
+  - `git diff --check -- src/server/services/drug-master-import/shared.ts src/server/services/drug-master-import/shared.test.ts`: passed.
+  - `pnpm typecheck`: initially failed on the second `readResponseBytes()` call
+    in `fetchText()` missing the new `source` argument; after fixing that call
+    site, passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/drug-master-import-stream-cancel-silent-failure`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this backend cleanup observability fix
+    changes no DOM layout, navigation, route contract, or workflow shape.
+
+### PH-OS Fee-Rules Rollback Warning Fix - 2026-07-02 02:26 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be
+    performed.
+  - Focused only on PH-OS Aurora fee-rule search rollback failure
+    observability.
+- Fixed:
+  - `AuroraFeeRulesRepository.searchFeeRules()` no longer swallows rollback
+    failures with an empty catch when the primary query already failed.
+  - The repository now emits a PH-OS structured `WARNING` event for rollback
+    cleanup failure.
+  - Existing behavior remains unchanged for the caller: the original query
+    error is rethrown, and the connection is still released.
+- Safety:
+  - Warning context uses fixed message, route key, error code, operation name,
+    request id, and correlation id only.
+  - The regression proves warning output excludes raw rollback error text,
+    database URLs, tenant ids, and user ids.
+  - SQL, tenant predicate behavior, transaction setup, cursor/result shape,
+    auth/RLS semantics, DB schema/migrations, audit semantics, billing,
+    external sends, secrets, push/deploy, and destructive-operation boundaries
+    remain unchanged.
+- Performance:
+  - Adds one structured warning only when rollback fails after a primary query
+    failure.
+  - No new request, DB query, dependency, polling interval, background job,
+    broad scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial focused test failed before the fix on zero structured warning calls.
+  - `pnpm vitest run src/phos/backend/aurora-fee-rules-repository.test.ts --testNamePattern "logs a structured warning when rollback fails"`: passed.
+  - `pnpm vitest run src/phos/backend/aurora-fee-rules-repository.test.ts`: passed, `1` file / `16` tests.
+  - `pnpm exec eslint src/phos/backend/aurora-fee-rules-repository.ts src/phos/backend/aurora-fee-rules-repository.test.ts`: passed.
+  - `pnpm prettier --check src/phos/backend/aurora-fee-rules-repository.ts src/phos/backend/aurora-fee-rules-repository.test.ts`: passed.
+  - `git diff --check -- src/phos/backend/aurora-fee-rules-repository.ts src/phos/backend/aurora-fee-rules-repository.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/phos-fee-rules-rollback-silent-failure`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this backend observability fix changes no
+    DOM layout, navigation, route contract, or workflow shape.
+
+### Room Token Client Warning Fix - 2026-07-02 02:10 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be
+    performed.
+  - Focused on collaboration room-token acquisition and renewal from the client
+    to `/api/collaboration/room-token`.
+- Fixed:
+  - Rejected room-token fetches now emit a throttled shared safe structured
+    warning instead of being silently classified as `transient-error`.
+  - 429/5xx responses, malformed token payloads, and expired token payloads now
+    emit the same safe warning before preserving `transient-error`.
+  - Existing caller behavior remains unchanged: transient failures still
+    resolve to `transient-error`, and denied responses still resolve to
+    `access-denied`.
+- Safety:
+  - Warning context uses only fixed event/route/method/operation metadata,
+    entity type, status when available, and fixed failure code.
+  - The regression proves warning context excludes entity id, patient name, and
+    room-token sentinels.
+  - Endpoint path, method, headers, request body, retry behavior, provider
+    lifecycle, UI behavior, auth/RLS semantics, DB schema/migrations, audit
+    semantics, billing, external sends, secrets, push/deploy, and
+    destructive-operation boundaries remain unchanged.
+- Performance:
+  - Adds one throttled logger warning per entity type/failure-code/status class
+    only when room-token fetch or payload validation fails.
+  - No new request, DB query, dependency, polling interval, background job,
+    broad scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial focused test failed before the fix on zero `logger.warn` calls.
+  - `pnpm exec vitest run src/lib/collaboration/room-token-client.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `7` tests.
+  - `pnpm exec vitest run src/lib/collaboration/room-token-client.test.ts src/lib/hooks/use-collaborative-form.test.tsx src/lib/collaboration/yjs-provider.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `4` files / `49` tests.
+  - `pnpm exec eslint src/lib/collaboration/room-token-client.ts src/lib/collaboration/room-token-client.test.ts`: passed.
+  - `pnpm exec prettier --check src/lib/collaboration/room-token-client.ts src/lib/collaboration/room-token-client.test.ts`: passed.
+  - `git diff --check -- src/lib/collaboration/room-token-client.ts src/lib/collaboration/room-token-client.test.ts`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/room-token-client-transient-silent-failure`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this client observability fix changes no
+    DOM layout, navigation, route contract, or workflow shape.
+
+### Presence Heartbeat Client Warning Fix - 2026-07-02 01:55 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be
+    performed.
+  - Focused on best-effort collaboration presence heartbeat delivery from the
+    client to `/api/presence`.
+- Fixed:
+  - Rejected heartbeat fetches now emit a throttled shared safe structured
+    warning instead of being swallowed by `.catch(() => undefined)`.
+  - Non-ok `/api/presence` responses now emit the same safe warning instead of
+    resolving silently.
+  - Existing best-effort behavior remains unchanged: network failure resolves
+    `undefined`, and non-ok responses resolve the original `Response`.
+- Safety:
+  - Warning context uses only fixed event/route/method/operation metadata,
+    entity type, and HTTP status when available.
+  - The regression proves warning context excludes entity id, patient name,
+    phone, and token sentinels.
+  - Endpoint path, method, request body, caller behavior, UI behavior,
+    auth/RLS semantics, DB schema/migrations, audit semantics, billing,
+    external sends, secrets, push/deploy, and destructive-operation boundaries
+    remain unchanged.
+- Performance:
+  - Adds one throttled logger warning only when heartbeat delivery fails.
+  - No new request, DB query, dependency, polling interval, background job,
+    broad scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial focused test failed before the fix on zero `logger.warn` calls.
+  - `pnpm exec vitest run src/lib/hooks/use-presence-heartbeat.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `6` tests.
+  - `pnpm exec vitest run src/lib/hooks/use-presence-heartbeat.test.ts src/lib/collaboration/presence.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `24` tests.
+  - `pnpm exec eslint src/lib/collaboration/presence-api-client.ts src/lib/hooks/use-presence-heartbeat.test.ts`: passed.
+  - `pnpm exec prettier --check src/lib/collaboration/presence-api-client.ts src/lib/hooks/use-presence-heartbeat.test.ts`: passed.
+  - `git diff --check -- src/lib/collaboration/presence-api-client.ts src/lib/hooks/use-presence-heartbeat.test.ts`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/presence-heartbeat-client-silent-failure`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this client observability fix changes no
+    DOM layout, navigation, route contract, or workflow shape.
+
+### Visit Proposal Pharmacist Enrichment Warning Fix - 2026-07-02 01:38 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be
+    performed.
+  - Focused on optional proposed-pharmacist enrichment in
+    `GET /api/visit-schedule-proposals/[id]`.
+- Fixed:
+  - Pharmacist enrichment query rejection now emits a shared safe structured
+    warning instead of being swallowed by `.catch(() => [])`.
+  - Existing successful no-store detail response, related proposal shape,
+    route preview behavior, auth behavior, and `proposed_pharmacist: null`
+    fallback remain unchanged.
+  - Added a regression test that failed before the fix because `logger.warn`
+    had zero calls for a rejected pharmacist enrichment query.
+- Safety:
+  - Warning context uses only fixed event/route/method/operation metadata,
+    org id, proposal id, entity type, count, and sanitized error metadata.
+  - The regression proves warning context excludes patient name, phone, token,
+    and pharmacist-name sentinels.
+  - DB schema/migrations, RLS, auth/authz semantics, audit semantics, billing,
+    external sends, secrets, push/deploy, and destructive-operation boundaries
+    remain unchanged.
+- Performance:
+  - Adds one logger warning only when optional pharmacist enrichment fails.
+  - No new request, DB query count, dependency, polling, background job, broad
+    scan, render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial focused route test failed before the fix on zero `logger.warn`
+    calls.
+  - `pnpm exec vitest run 'src/app/api/visit-schedule-proposals/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `1` file / `75` tests.
+  - `pnpm exec vitest run 'src/app/api/visit-schedule-proposals/[id]/route.test.ts' src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `86` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "visit-schedule-proposals/\\[id\\] GET|visit-schedule-proposals GET" --reporter=dot --testTimeout=60000`: passed, `6` tests / `369` skipped.
+  - `pnpm exec eslint 'src/app/api/visit-schedule-proposals/[id]/route.ts' 'src/app/api/visit-schedule-proposals/[id]/route.test.ts'`: passed.
+  - `pnpm exec prettier --check 'src/app/api/visit-schedule-proposals/[id]/route.ts' 'src/app/api/visit-schedule-proposals/[id]/route.test.ts'`: passed.
+  - `git diff --check -- 'src/app/api/visit-schedule-proposals/[id]/route.ts' 'src/app/api/visit-schedule-proposals/[id]/route.test.ts'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/visit-schedule-proposal-pharmacist-enrichment-empty-catch`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this server route observability fix
+    changes no DOM layout, navigation, route contract, or workflow shape.
+
+### Patient MCS Failure Observability Fix - 2026-07-02 01:23 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be
+    performed.
+  - Focused on patient MCS sync failure handling after a primary sync error
+    and before the failed state is persisted to `patientMcsLink`.
+- Fixed:
+  - Failed-state `patientMcsLink.upsert` rejection now emits a shared safe
+    structured warning instead of being swallowed by `.catch(() => undefined)`.
+  - The original `PatientMcsSyncError` remains the thrown error if recording
+    failed state also fails.
+  - MCS identity conflict failures now use fixed operator-safe text before
+    persistence in `last_sync_error`, preventing local/remote patient-name text
+    from being stored and later returned by the authorized overview payload.
+  - Added regression tests that failed before the fixes: one for missing
+    `logger.warn` on secondary persistence failure and one for
+    patient-name-bearing conflict text in the thrown/persisted path.
+- Safety:
+  - Warning context uses only fixed event/operation, org id, actor id, entity
+    type, and sanitized error metadata.
+  - Existing patient lookup, URL normalization, scrape flow, success
+    persistence, summary persistence, route status mapping, response envelope,
+    no-store headers, auth/RLS behavior, DB schema/migrations, external sends,
+    secrets, push/deploy, and destructive-operation boundaries remain
+    unchanged.
+- Performance:
+  - Adds one logger warning only when failed-state persistence itself fails.
+  - No new request, DB query, dependency, polling, background job, broad scan,
+    render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial focused service test failed before the warning fix on zero
+    `logger.warn` calls.
+  - Initial identity-conflict regression failed before the fixed conflict
+    message because the thrown/persisted message contained patient-name text.
+  - `pnpm exec vitest run src/server/services/patient-mcs.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `23` tests.
+  - `pnpm exec vitest run src/server/services/patient-mcs.test.ts 'src/app/api/patients/[id]/mcs/route.test.ts' 'src/app/api/patients/[id]/mcs-sync/route.test.ts' src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `4` files / `57` tests.
+  - `pnpm exec eslint src/server/services/patient-mcs.ts src/server/services/patient-mcs.test.ts`: passed.
+  - `pnpm exec prettier --check src/server/services/patient-mcs.ts src/server/services/patient-mcs.test.ts`: initially failed on test formatting, then passed after targeted `prettier --write`.
+  - `git diff --check -- src/server/services/patient-mcs.ts src/server/services/patient-mcs.test.ts`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/patient-mcs-failure-state-empty-catch`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this service failure-handling/privacy fix
+    changes no DOM layout, navigation, or workflow shape.
+
+### External Access Rollback Warning Fix - 2026-07-02 01:04 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be performed.
+  - Focused on the external-access cleanup path after SMS fallback audit
+    persistence failure.
+- Fixed:
+  - Failed grant revocation after fallback audit persistence failure now emits
+    a shared safe structured warning instead of being silently swallowed by
+    `.catch(() => undefined)`.
+  - Existing fail-closed no-store `500` response, rollback attempt, grant
+    creation/audit flow, OTP/JWT response redaction, auth, consent, and patient
+    access behavior remain unchanged.
+  - Added a regression test that failed before the fix because `logger.warn`
+    had zero calls for a rollback revocation failure.
+- Safety:
+  - Warning context uses only event, route, method, operation, org id, actor id,
+    entity type, and grant id.
+  - The route response and warning context are tested to exclude raw phone
+    contact, token/JWT text, and OTP-shaped values.
+- Performance:
+  - Adds one logger warning only when the cleanup rollback itself fails.
+  - No new request, DB query, dependency, polling, background job, broad scan,
+    render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial focused route test failed before the fix on zero `logger.warn`
+    calls for a rollback revocation failure.
+  - `pnpm exec vitest run src/app/api/external-access/route.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `35` tests.
+  - `pnpm exec vitest run src/app/api/external-access/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `46` tests.
+  - `pnpm exec eslint src/app/api/external-access/route.ts src/app/api/external-access/route.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/external-access/route.ts src/app/api/external-access/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/external-access/route.ts src/app/api/external-access/route.test.ts`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/external-access-rollback-empty-catch`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this server route observability fix
+    changes no visible DOM layout, navigation, route contract, or interaction
+    state.
+
+### Voice Memo Manual Save Warning Fix - 2026-07-02 00:31 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be performed.
+  - Focused on the voice memo manual transcript path after the offline helper
+    already defined a boolean success contract.
+- Fixed:
+  - `saveVoiceMemoManualTranscript()` resolving `false` now triggers the
+    existing local-save warning instead of looking fully successful.
+  - Immediate transcript reflection and the visit-record append workflow remain
+    unchanged.
+  - Added a regression test that failed before the fix because `toast.warning`
+    had zero calls for a `false` local-save result.
+- Safety:
+  - Existing manual transcript normalization, visible transcript reflection,
+    offline encrypted draft storage contract, visit-record PATCH behavior,
+    route/API behavior, DB schema/migrations, auth/RLS, external sends,
+    secrets, push/deploy, and destructive-operation boundaries remain
+    unchanged.
+- Performance:
+  - Adds one boolean-result branch after the existing local save attempt.
+  - No new request, DB query, dependency, polling, background job, broad scan,
+    render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial focused component test failed before the fix on zero
+    `toast.warning` calls for a `false` local-save result.
+  - `pnpm exec vitest run 'src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.test.tsx' src/lib/offline/voice-memo-drafts.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `11` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.tsx' 'src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.test.tsx'`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.tsx' 'src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.test.tsx'`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.tsx' 'src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.test.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+  - `gbrain put/get projects/careviax/failures/2026-07-02/voice-memo-manual-transcript-false-save`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this toast-only state fix changes no DOM
+    layout, navigation, route contract, or business workflow shape.
+
+### Notification Realtime Warning Fix - 2026-07-02 00:15 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be performed.
+  - Focused on best-effort realtime broadcast after persisted notification row
+    creation.
+- Fixed:
+  - Replaced an empty catch in `broadcastPersistedNotifications` with shared
+    safe logger warning metadata.
+  - Preserved persisted notification row creation, returned notification
+    payloads, realtime best-effort semantics, and external delivery scheduling.
+  - Added regression coverage for rejected realtime broadcast: dispatch still
+    returns persisted notifications and logs only safe structured context
+    without raw PHI/secret-bearing text.
+- Safety:
+  - Existing notification persistence, recipient resolution, SMS/LINE/Web Push
+    scheduling, auth/RLS/DB behavior, response/payload shapes, migrations,
+    external-send semantics, secrets, push/deploy, and destructive-operation
+    boundaries remain unchanged.
+- Performance:
+  - Adds one logger warning only on realtime broadcast failure.
+  - No new request, DB query, dependency, polling, background job, broad scan,
+    render fan-out, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/server/services/notifications.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `15` tests.
+  - `pnpm exec vitest run src/server/services/notifications.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `26` tests.
+  - `pnpm exec eslint src/server/services/notifications.ts src/server/services/notifications.test.ts`: passed.
+  - `pnpm exec prettier --check src/server/services/notifications.ts src/server/services/notifications.test.ts`: passed.
+  - `git diff --check -- src/server/services/notifications.ts src/server/services/notifications.test.ts`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this is server service error-handling only
+    and changes no visible DOM layout, copy, or interaction state.
+
+### Bulk Export Drain Warning Fix - 2026-07-02 00:00 JST
+
+- Scope:
+  - Continued the latest objective requirement that bug fixes must be performed.
+  - Focused on `/api/patients/medications/bulk-export` immediate background
+    drain failure handling.
+- Fixed:
+  - Replaced an empty catch around
+    `drainMedicationHistoryBulkExportQueue({ orgId })` with shared safe logger
+    warning metadata.
+  - Preserved queue registration success response behavior: `202 Accepted`,
+    sensitive no-store headers, job id/queue metadata, and later job-endpoint
+    recovery semantics.
+  - Added regression coverage for rejected immediate drain: the route still
+    returns no-store `202`, calls the drain, and logs only safe structured
+    context without raw PHI/secret-bearing text.
+- Safety:
+  - Existing canVisit auth, request validation, patient-id dedupe, service
+    queue registration, MedicationHistoryBulkExportError handling, response
+    shape, DB schema/migrations, external sends, secrets, push/deploy, and
+    destructive-operation boundaries remain unchanged.
+- Performance:
+  - Adds one logger warning only on immediate background drain failure.
+  - No new request, DB query, dependency, polling, background job, broad scan,
+    render fan-out, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/app/api/patients/medications/bulk-export/route.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `8` tests.
+  - `pnpm exec vitest run src/app/api/patients/medications/bulk-export/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `19` tests.
+  - `pnpm exec eslint src/app/api/patients/medications/bulk-export/route.ts src/app/api/patients/medications/bulk-export/route.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/patients/medications/bulk-export/route.ts src/app/api/patients/medications/bulk-export/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/patients/medications/bulk-export/route.ts src/app/api/patients/medications/bulk-export/route.test.ts`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this is server route error-handling only
+    and changes no visible DOM layout, copy, or interaction state.
+
+### Redis Realtime Subscribe Race Fix - 2026-07-01 23:49 JST
+
+- Scope:
+  - Followed the latest "bug fixes must be done" objective and selected a
+    confirmed server-side realtime correctness bug.
+  - Focused only on `src/server/adapters/realtime/redis-adapter.ts` and its
+    regression tests.
+- Fixed:
+  - Added per-channel pending unsubscribe tracking so a new listener added while
+    Redis `unsubscribe()` is pending does not get stranded after the older
+    unsubscribe completes.
+  - Reconciled the race by resubscribing when listeners exist after the pending
+    unsubscribe settles.
+  - Centralized Redis subscribe state updates so failed `subscribe()` calls roll
+    back local subscribed state and later listeners retry the real Redis call.
+  - Added mocked Redis regression coverage for the unsubscribe/resubscribe race
+    and failed-subscribe rollback.
+- Safety:
+  - Preserved Redis URL handling, publish behavior, JSON message parsing,
+    listener callback contract, listener-failure isolation, in-memory adapter
+    selection, auth/RLS/DB behavior, mutations, external sends, migrations,
+    secrets, deployment, and destructive-operation boundaries.
+- Performance:
+  - Adds only bounded per-channel pending promise tracking during unsubscribe
+    windows.
+  - No new request, DB query, dependency, polling, background job, broad scan,
+    render fan-out, or unbounded loop was added.
+- Validation:
+  - `pnpm exec vitest run src/server/adapters/realtime/redis-adapter.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `4` tests.
+  - `pnpm exec vitest run src/server/adapters/realtime/redis-adapter.test.ts src/server/services/org-realtime-policy.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `8` tests.
+  - `pnpm exec eslint src/server/adapters/realtime/redis-adapter.ts src/server/adapters/realtime/redis-adapter.test.ts`: passed.
+  - `pnpm exec prettier --check src/server/adapters/realtime/redis-adapter.ts src/server/adapters/realtime/redis-adapter.test.ts`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this is a server adapter fix with no
+    visible DOM layout, copy, or interaction state change.
+
+### Dispense-Tasks Strict Query Helper - 2026-07-01 23:32 JST
+
+- Scope:
+  - Continued strict optional query-param helper convergence with
+    `/api/dispense-tasks`.
+  - Focused only on `status`, `cycle_id`, and `assigned_to` GET filter parsing
+    duplication.
+- Fixed:
+  - Replaced route-local `readStrictOptionalDispenseTaskFilter` with
+    `readStrictOptionalSearchParam`.
+  - Removed the now-unneeded `DispenseTaskQueryName` alias.
+  - Expanded route regressions for duplicate, blank, padded, and overlong
+    filter rejection before DB access.
+- Safety:
+  - Preserved existing validation messages for duplicate params, blank values,
+    padded values, overlong values, and unsupported status values.
+  - Preserved dispense-tasks GET auth, permission checks, assignment access
+    scoping, cursor pagination, no-store wrapping, DB query shape, response
+    shape, and POST behavior.
+- Performance:
+  - No performance improvement is claimed. This is duplicate helper removal and
+    typed query parsing consolidation only.
+- Validation:
+  - `pnpm exec vitest run src/lib/api/search-params.test.ts src/app/api/dispense-tasks/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `29` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "dispense-tasks GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - Scoped Prettier/ESLint/diff-check for helper and dispense-tasks files:
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this is a server query-validation helper
+    refactor with no visible DOM layout, copy, or interaction state change.
+
+### Medication-Cycles Strict Query Helper - 2026-07-01 23:18 JST
+
+- Scope:
+  - Continued strict optional query-param helper convergence with
+    `/api/medication-cycles`.
+  - Focused only on `status`, `case_id`, and `patient_id` GET filter parsing
+    duplication.
+- Fixed:
+  - Replaced route-local `readStrictOptionalMedicationCycleFilter` with
+    `readStrictOptionalSearchParam`.
+  - Removed the now-unneeded `MedicationCycleQueryName` alias.
+  - Added a medication-cycles route regression for overlong `status` rejection
+    before DB access.
+- Safety:
+  - Preserved existing validation messages for duplicate params, blank values,
+    padded values, overlong values, and unsupported status values.
+  - Preserved medication-cycles GET auth, assignment access scoping,
+    pagination, no-store wrapping, DB query shape, response shape, and POST
+    behavior.
+- Performance:
+  - No performance improvement is claimed. This is duplicate helper removal and
+    typed query parsing consolidation only.
+- Validation:
+  - `pnpm exec vitest run src/lib/api/search-params.test.ts src/app/api/medication-cycles/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `29` tests. Rerun after formatting also passed.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "medication-cycles GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped. Rerun after formatting also passed.
+  - Scoped Prettier/ESLint/diff-check for helper and medication-cycles files:
+    passed after formatting the route test table.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this is a server query-validation helper
+    refactor with no visible DOM layout, copy, or interaction state change.
+
+### Residual / First-Visit Strict Query Helper - 2026-07-01 23:07 JST
+
+- Scope:
+  - Continued strict optional query-param helper convergence with
+    `/api/residual-medications` and `/api/first-visit-documents`.
+  - Focused only on GET filter parsing duplication.
+- Fixed:
+  - Replaced residual route-local `readStrictOptionalIdFilter` with
+    `readStrictOptionalSearchParam`.
+  - Replaced first-visit route-local `readOptionalFirstVisitDocumentFilter`
+    with `readStrictOptionalSearchParam`.
+  - Added residual route regressions for overlong `patient_id` and
+    `visit_record_id` rejection before DB access.
+- Safety:
+  - Preserved existing validation messages for duplicate params, blank values,
+    padded values, and overlong values.
+  - Preserved residual and first-visit GET auth, assignment/scope checks,
+    no-store wrapping, DB query shape, response shape, and POST behavior.
+- Performance:
+  - No performance improvement is claimed. This is duplicate helper removal and
+    typed query parsing consolidation only.
+- Validation:
+  - `pnpm exec vitest run src/lib/api/search-params.test.ts src/app/api/residual-medications/route.test.ts src/app/api/first-visit-documents/route.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `53` tests. Rerun after formatting also passed.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "(residual-medications|first-visit-documents) GET" --reporter=dot --testTimeout=60000`: passed, `6` tests / `369` skipped. Rerun after formatting also passed.
+  - Scoped Prettier/ESLint/diff-check for helper and route files: passed after
+    formatting the residual route test table.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this is a server query-validation helper
+    refactor with no visible DOM layout, copy, or interaction state change.
+
+### Medication-Issues Strict Query Helper - 2026-07-01 22:56 JST
+
+- Scope:
+  - Continued strict optional query-param helper convergence with
+    `/api/medication-issues`.
+  - Focused on `patient_id`, `case_id`, and `status` GET filter parsing
+    duplication only.
+- Fixed:
+  - Replaced route-local `readStrictOptionalMedicationIssueFilter` with
+    `readStrictOptionalSearchParam`.
+  - Added a medication-issues route regression for overlong `patient_id`
+    rejection before scope resolution.
+- Safety:
+  - Preserved existing validation messages for duplicate params, blank values,
+    padded values, overlong values, and unsupported status values.
+  - Preserved medication-issues GET auth, assignment access scoping, no-store
+    wrapping, DB query shape, response shape, and POST behavior.
+- Performance:
+  - No performance improvement is claimed. This is duplicate helper removal and
+    typed query parsing consolidation only.
+- Validation:
+  - `pnpm exec vitest run src/lib/api/search-params.test.ts src/app/api/medication-issues/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `25` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "medication-issues GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - Scoped Prettier/ESLint/diff-check for helper and medication-issues files:
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this is a server query-validation helper
+    refactor with no visible DOM layout, copy, or interaction state change.
+  - Continue query-param helper convergence only where exact route semantics
+    can be proven under focused tests.
+
+### Interventions Strict Query Helper - 2026-07-01 22:47 JST
+
+- Scope:
+  - Continued the query-param helper re-audit with `/api/interventions`.
+  - Focused on strict optional `patient_id` / `issue_id` GET filter parsing
+    duplication only.
+- Fixed:
+  - Added `readStrictOptionalSearchParam` to `src/lib/api/search-params.ts`
+    for duplicate, blank, padded, and max-length rejection with
+    field-specific messages.
+  - Added helper unit coverage for missing, valid, duplicate, blank, padded,
+    and overlong values.
+  - Replaced route-local `readStrictOptionalInterventionFilter` in
+    interventions with the shared helper.
+- Safety:
+  - Preserved existing validation messages for duplicate params, blank values,
+    padded values, and overlong filters.
+  - Preserved interventions GET auth, assignment access scoping, no-store
+    wrapping, DB query shape, response shape, and POST behavior.
+- Performance:
+  - No performance improvement is claimed. This is duplicate helper removal and
+    typed query parsing consolidation only.
+- Validation:
+  - `pnpm exec vitest run src/lib/api/search-params.test.ts src/app/api/interventions/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `20` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "interventions GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - Scoped Prettier/ESLint checks for helper and interventions files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this is a server query-validation helper
+    refactor with no visible DOM layout, copy, or interaction state change.
+  - Continue query-param helper convergence only where exact route semantics
+    can be proven under focused tests.
+
+### Dashboard Medication-Deadlines Query Helper - 2026-07-01 22:37 JST
+
+- Scope:
+  - Started the post-logger duplicate-helper re-audit with the
+    `/api/dashboard/medication-deadlines` query parser.
+  - Focused on strict single-param / exact integer parsing duplication only.
+- Fixed:
+  - Added `src/lib/api/search-params.ts` for duplicate-detecting single
+    search-param reads and non-trimming exact integer parsing.
+  - Added `src/lib/api/search-params.test.ts` covering missing, empty,
+    padded, duplicate, malformed, out-of-range, and unsafe integer values.
+  - Replaced route-local `parseSingleSearchParam` /
+    `parseExactIntegerParam` in medication-deadlines with the shared helper.
+- Safety:
+  - Preserved existing validation messages for duplicate params, blank values,
+    padded integer rejection, q trim rejection, q max length, and range errors.
+  - Preserved dashboard auth, request auth context, org/RLS context, deadline
+    classification, no-store wrapping, fixed internal error response, and
+    response shape.
+- Performance:
+  - No performance improvement is claimed. This is duplicate helper removal and
+    typed query parsing consolidation only.
+- Validation:
+  - `pnpm exec vitest run src/lib/api/search-params.test.ts src/app/api/dashboard/medication-deadlines/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `24` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t 'dashboard/medication-deadlines GET' --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - Scoped Prettier/ESLint/diff-check for helper and medication-deadlines
+    files: passed.
+  - Initial `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` failed on
+    union narrowing after shared helper introduction; fixed by storing parsed
+    values only from `ok` branches.
+  - Final `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide objective remains open.
+  - Browser smoke was not run because this is a server query-validation helper
+    refactor with no visible DOM layout, copy, or interaction state change.
+  - Continue query-param helper convergence only where exact route semantics
+    can be proven under focused tests.
+
+### Dashboard Routes Structured Logger Convergence - 2026-07-01 22:22 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/dashboard/workflow`, `/api/dashboard/cockpit`, and
+    `/api/dashboard/medication-deadlines`.
+  - Focused on GET unexpected-error logging, direct route tests, protected GET
+    matrix coverage, and workflow route snapshot contract sync.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`
+    from the three dashboard routes.
+  - Replaced string-overload dashboard GET logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+  - Updated the workflow route snapshot after focused validation exposed a
+    stale `action_href` contract relative to the current
+    workflow-dashboard section builders.
+- Safety:
+  - Preserved dashboard route auth, request auth context, query parsing,
+    assignment scoping, cache behavior, RLS/org context, sensitive no-store
+    wrapping, `unstable_rethrow`, and fixed `INTERNAL_ERROR` responses.
+  - Preserved dashboard response shapes; only route logging call shape and one
+    stale test snapshot changed.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, cache rule, auth predicate, response DTO, or unbounded
+    loop.
+- Validation:
+  - Initial focused dashboard/logger suite failed only on a stale workflow
+    route snapshot; no logger expectation failed.
+  - `pnpm exec vitest run src/app/api/dashboard/workflow/route.test.ts --reporter=dot --testTimeout=60000 -u`: passed, `1` file / `20` tests; `1` snapshot updated.
+  - `pnpm exec vitest run src/app/api/dashboard/workflow/route.test.ts src/app/api/dashboard/cockpit/route.test.ts src/app/api/dashboard/medication-deadlines/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `4` files / `65` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t 'dashboard/(cockpit|workflow|medication-deadlines) GET' --reporter=dot --testTimeout=60000`: passed, `9` tests / `366` skipped.
+  - `pnpm exec vitest run src/server/services/workflow-dashboard-sections.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `12` tests.
+  - Route-local sanitizer grep now returns only the canonical shared logger
+    implementation.
+  - Scoped Prettier check for changed dashboard route/test files: passed. A
+    direct check including `.snap` failed because Prettier could not infer a
+    parser for `.snap`; the snapshot was verified by Vitest and diff-check.
+  - Scoped ESLint for changed dashboard route/test files: passed.
+  - Scoped `git diff --check` for changed dashboard route/test/snapshot files:
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging/test
+    contract only, with no visible DOM layout, copy, or interaction state
+    change.
+  - Route-local `SAFE_ERROR_NAMES` / `safeErrorName` inventory is exhausted
+    outside the shared logger contract; next step is a fresh evidence-backed
+    re-audit for the next small candidate.
+
+### Patient Prescriptions Structured Logger Convergence - 2026-07-01 22:09 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/patients/[id]/prescriptions` and
+    `/api/patients/[id]/prescriptions/e-prescription`.
+  - Focused only on GET/POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`
+    from both patient prescription routes.
+  - Replaced string-overload prescription GET logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Replaced string-overload e-prescription POST logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved prescription GET auth, route-param validation, case filter
+    validation, patient/case access scope, pagination/cursor behavior, diff
+    review construction, sensitive no-store wrapping, `unstable_rethrow`, and
+    fixed `INTERNAL_ERROR` response.
+  - Preserved e-prescription POST auth, request body validation, writable
+    patient guard, adapter error handling, acceptable-status checks,
+    idempotency behavior, medication-cycle matching, intake creation,
+    sensitive no-store wrapping, `unstable_rethrow`, and fixed
+    `INTERNAL_ERROR` response.
+  - Shared protected GET matrix entry still passes for the prescriptions route.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, validation rule change, patient/case predicate change,
+    adapter behavior change, intake transaction change, response DTO change, or
+    unbounded loop.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/patients/[id]/prescriptions/route.test.ts' 'src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts' src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `53` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "patients/\\[id\\]/prescriptions GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload patient prescription logging: expected only shared logger
+    contract lines and route-test assertions proving route contexts have no
+    `error_name`.
+  - Scoped Prettier check for changed patient prescription files: passed.
+  - Scoped ESLint for changed patient prescription files: passed.
+  - Scoped `git diff --check` for changed patient prescription files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+  - Remaining route-local logger convergence candidates are dashboard
+    workflow/cockpit/medication-deadlines routes.
+
+### Visit-Records Structured Logger Convergence - 2026-07-01 21:59 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on `/api/visit-records`.
+  - Focused on GET/POST unexpected-error logging, patient-state snapshot
+    failure logging, background handoff extraction warning logging, and shared
+    logger warning raw-error support.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload visit-records GET/POST logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Replaced patient-state snapshot failure string-overload logging with
+    `logger.error({ event, route, operation }, snapshotError)`.
+  - Added shared logger `warn({ ... }, err)` support and moved background
+    handoff extraction warnings to `logger.warn({ event, route, operation, targetId }, cause)`.
+  - Updated route tests to assert minimal route-supplied context, absence of
+    route-local `error_name`, and delegation of raw `Error` redaction to shared
+    logger tests.
+- Safety:
+  - Preserved visit-record GET auth, strict query parsing, pagination/cursor
+    behavior, patient history/attachment selection, RLS request context,
+    sensitive no-store wrapping, `unstable_rethrow`, and fixed
+    `INTERNAL_ERROR` response.
+  - Preserved visit-record POST auth, request auth context, body validation,
+    schedule/care-case/patient scope checks, transaction behavior, patient
+    snapshot best-effort behavior, derived-data sync, operational task/billing
+    evidence side effects, background handoff extraction dispatch, sensitive
+    no-store wrapping, `unstable_rethrow`, and fixed `INTERNAL_ERROR`
+    response.
+  - Shared protected GET and POST matrix entries still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, query/body validation rule, transaction/mutation change,
+    snapshot algorithm change, handoff extraction behavior change, response DTO
+    change, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-records/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `91` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "visit-records GET" --reporter=dot --testTimeout=60000`: passed, `6` tests / `369` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "visit-records POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `visit_records` logging: expected only shared logger
+    contract lines and route-test assertions proving route contexts have no
+    `error_name`.
+  - Scoped Prettier check for changed visit-records/shared logger files:
+    passed.
+  - Scoped ESLint for changed visit-records/shared logger files: passed.
+  - Scoped `git diff --check` for changed visit-records/shared logger files:
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+  - Remaining route-local logger convergence candidates include patient
+    prescription and dashboard workflow/cockpit/deadline routes.
+
+### Visit-Billing-Candidates Summary Structured Logger Convergence - 2026-07-01 21:44 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/visit-billing-candidates/summary`.
+  - Focused only on GET unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload visit-billing-candidates summary logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated the sanitized 500 test to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canManageBilling` auth, request auth context, billing-month
+    validation, optional search-param validation, RLS `withOrgContext`
+    request context, partner visit record count queries, candidate query
+    shape, summary arithmetic, sensitive no-store wrapping,
+    `unstable_rethrow`, and fixed `INTERNAL_ERROR` response.
+  - No shared protected GET matrix entry exists for this route; direct route
+    tests cover auth failure, validation failure, no-store behavior, and fixed
+    sanitized 500 fallback.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, billing-month parsing change, filter validation change,
+    count/query shape change, arithmetic change, response DTO change, or
+    unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-billing-candidates/summary/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `18` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `visit_billing_candidates_summary` logging: expected only
+    shared logger contract lines and the route-test assertion proving route
+    context has no `error_name`.
+  - Scoped Prettier check for changed visit-billing-candidates summary files:
+    passed.
+  - Scoped ESLint for changed visit-billing-candidates summary files: passed.
+  - Scoped `git diff --check` for changed visit-billing-candidates summary
+    files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+  - Remaining route-local logger convergence candidates include visit-records,
+    patient prescription, and dashboard workflow/cockpit/deadline routes.
+
+### Care-Reports Structured Logger Convergence - 2026-07-01 21:34 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on `/api/care-reports`.
+  - Focused only on GET/POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload care-reports logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated the sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved report auth, `runWithRequestAuthContext`, query/body validation,
+    access filtering, pagination/cursor behavior, delivery summary behavior,
+    source validation, duplicate conflict handling, RLS request context,
+    sensitive no-store wrapping, `unstable_rethrow`, and fixed
+    `INTERNAL_ERROR` responses.
+  - Shared protected GET and POST matrix entries still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, access predicate change, source validation change,
+    transaction/mutation change, delivery summary change, response DTO change,
+    or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/care-reports/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `72` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "care-reports GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "care-reports POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `care_reports` logging: expected only shared logger
+    contract lines and route-test assertions proving route contexts have no
+    `error_name`.
+  - Scoped Prettier check for changed care-reports files: passed.
+  - Scoped ESLint for changed care-reports files: passed.
+  - Scoped `git diff --check` for changed care-reports files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+  - Remaining route-local logger convergence candidates include visit, patient
+    prescription, and dashboard workflow/cockpit/deadline routes.
+
+### Dispense-Results Structured Logger Convergence - 2026-07-01 21:26 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/dispense-results`.
+  - Focused only on POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload dispense-results logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated the sanitized 500 test to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved auth context, `runWithRequestAuthContext`, JSON body validation,
+    safety checklist enforcement, RLS `withOrgContext`, medication-cycle
+    assignment scope, transaction behavior, CDS checks, barcode verification,
+    cycle transition handling, operational task creation, workflow/webhook
+    notifications, sensitive no-store wrapping, `unstable_rethrow`, and fixed
+    `INTERNAL_ERROR` response.
+  - Shared protected POST matrix entry still passes.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, validation rule change, assignment predicate change,
+    transaction/mutation change, CDS invocation change, notification change,
+    response DTO change, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/dispense-results/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `50` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "dispense-results POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `dispense_results` logging: expected only shared logger
+    contract lines and route-test assertions proving route contexts have no
+    `error_name`.
+  - Scoped Prettier check for changed dispense-results files: passed.
+  - Scoped ESLint for changed dispense-results files: passed.
+  - Scoped `git diff --check` for changed dispense-results files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+  - Remaining route-local logger convergence candidates include care-report,
+    visit, patient prescription, and dashboard workflow/cockpit/deadline
+    routes.
+
+### Dispense-Audits Structured Logger Convergence - 2026-07-01 21:12 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/dispense-audits`.
+  - Focused only on GET/POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload dispense-audits logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated the sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canAuditDispense` auth, `runWithRequestAuthContext`, assignment
+    filtering, RLS `withOrgContext` request context, queue query shape,
+    annotate/sort behavior, mutation transaction behavior, cycle transition,
+    notification dispatch, workflow dashboard invalidation, sensitive no-store
+    wrapping, `unstable_rethrow`, and fixed `INTERNAL_ERROR` responses.
+  - Shared protected GET and POST matrix entries still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, assignment predicate change, transaction/mutation change,
+    cycle transition change, notification change, response DTO change, or
+    unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/dispense-audits/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `37` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "dispense-audits GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "dispense-audits POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `dispense_audits` logging: expected only shared logger
+    contract lines and route-test assertions proving route contexts have no
+    `error_name`.
+  - Scoped Prettier check for changed dispense-audits files: passed after
+    formatting the route file.
+  - Scoped ESLint for changed dispense-audits files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+  - Remaining route-local logger convergence candidates include
+    dispense-results, care-report, visit, patient prescription, and dashboard
+    workflow/cockpit/deadline routes.
+
+### Set-Audits Structured Logger Convergence - 2026-07-01 20:58 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on `/api/set-audits`.
+  - Focused only on GET/POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload set-audits logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated the sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canAuditSet` auth, `runWithRequestAuthContext`, assignment
+    filtering, RLS `withOrgContext` request context, queue query include/select
+    shape, checklist validation, carry-packet evidence validation, outside-med
+    evidence classification, mutation transaction behavior, reject/cell audit
+    state handling, cycle transition, workflow dashboard invalidation,
+    sensitive no-store wrapping, `unstable_rethrow`, and fixed
+    `INTERNAL_ERROR` responses.
+  - Shared protected GET and POST matrix entries still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, assignment predicate change, transaction/mutation change,
+    evidence validation change, cycle transition change, workflow notification
+    change, response DTO change, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/set-audits/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `50` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "set-audits GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "set-audits POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `set_audits` logging: expected only shared logger contract
+    lines and route-test assertions proving route contexts have no
+    `error_name`.
+  - Scoped Prettier check for changed set-audits files: passed after formatting
+    the route file.
+  - Scoped ESLint for changed set-audits files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+  - Remaining route-local logger convergence candidates include dispense
+    audit/result, care-report, visit, patient prescription, and dashboard
+    workflow/cockpit/deadline routes.
+
+### Set-Plans Generate-Batches Structured Logger Convergence - 2026-07-01 20:49 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/set-plans/[id]/generate-batches`.
+  - Focused only on POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`,
+    including the local custom `SetBatchGenerateRetryLimitError` allowlist
+    entry.
+  - Replaced string-overload set-plan generate-batches logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated the sanitized 500 test to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canSet` auth, `runWithRequestAuthContext`, assignment where
+    filtering, RLS `withOrgContext` request context, optional body parsing,
+    force/`expected_updated_at` validation, serializable transaction retry and
+    retry-limit conflict response, audit-ready status guards, existing batch
+    reuse/stale input checks, plan packaging snapshot update, force delete and
+    regeneration before-snapshots, audited dispense result usage, controlled
+    handling tag resolution, set-batch createMany payload, change-log creation,
+    workflow dashboard invalidation, sensitive no-store wrapping,
+    `unstable_rethrow`, and fixed `INTERNAL_ERROR` responses.
+  - Shared protected POST matrix entry still passes.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, assignment predicate change, transaction retry change,
+    stale-input algorithm change, batch generation payload change, history
+    snapshot change, workflow notification change, response DTO change, or
+    unbounded loop.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/set-plans/[id]/generate-batches/route.test.ts' src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `37` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "set-plans/\\[id\\]/generate-batches POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `set_plan_generate` logging: expected only shared logger
+    contract lines and route-test assertions proving route contexts have no
+    `error_name`.
+  - Scoped Prettier check for changed set-plans generate-batches files:
+    passed.
+  - Scoped ESLint for changed set-plans generate-batches files: passed.
+  - Scoped `git diff --check` for set-plans generate-batches files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+  - Remaining route-local logger convergence candidates include set-audits,
+    dispense audit/result, care-report, visit, patient prescription, and
+    dashboard workflow/cockpit/deadline routes.
+
+### Set-Plans Detail Structured Logger Convergence - 2026-07-01 20:40 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on `/api/set-plans/[id]`.
+  - Focused only on GET/PATCH unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload set-plans detail logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated the sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canSet` auth, `runWithRequestAuthContext`, assignment where
+    filtering, RLS `withOrgContext` request context, detail select shape,
+    stale-line calculation, non-object/malformed body handling, freshness token
+    validation, target period validation, packaging method/profile summary
+    resolution, optimistic update claim/conflict behavior, workflow dashboard
+    invalidation, sensitive no-store wrapping, `unstable_rethrow`, and fixed
+    `INTERNAL_ERROR` responses.
+  - Shared protected GET and PATCH matrix entries still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, assignment predicate change, detail select shape change,
+    stale-line algorithm change, transaction/update shape change, packaging
+    summary change, workflow notification change, response DTO change, or
+    unbounded loop.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/set-plans/[id]/route.test.ts' src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `27` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "set-plans/\\[id\\] GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-patch-delete-routes.test.ts -t "set-plans/\\[id\\] PATCH" --reporter=dot --testTimeout=60000`: passed, `3` tests / `74` skipped.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `set_plans_detail` logging: expected only shared logger
+    contract lines and route-test assertions proving route contexts have no
+    `error_name`.
+  - Scoped Prettier check for changed set-plans detail files: passed.
+  - Scoped ESLint for changed set-plans detail files: passed.
+  - Scoped `git diff --check` for set-plans detail files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+  - Remaining route-local logger convergence candidates include set-audits,
+    set-plans generate-batches, dispense audit/result, care-report, visit,
+    patient prescription, and dashboard workflow/cockpit/deadline routes.
+
+### Set-Plans Collection Structured Logger Convergence - 2026-07-01 20:32 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on `/api/set-plans`.
+  - Focused only on GET/POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload set-plans collection logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated the sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canSet` auth, `runWithRequestAuthContext`, assignment where
+    filtering, RLS `withOrgContext` request context, list query validation,
+    list order/select shape, non-object/malformed body handling, create
+    validation, existing-plan replay, concurrent duplicate create convergence,
+    packaging method/profile summary resolution, cycle transition rollback and
+    conflict handling, workflow dashboard invalidation, sensitive no-store
+    wrapping, `unstable_rethrow`, and fixed `INTERNAL_ERROR` responses.
+  - Shared protected GET and POST matrix entries still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, assignment predicate change, transaction/create shape
+    change, status transition change, packaging summary change, workflow
+    notification change, response DTO change, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/set-plans/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `33` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "set-plans GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "set-plans POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `set_plans` logging: expected only shared logger contract
+    lines and route-test assertions proving route contexts have no
+    `error_name`.
+  - Scoped Prettier check for changed set-plans collection files: passed after
+    formatting the route file.
+  - Scoped ESLint for changed set-plans collection files: passed.
+  - Scoped `git diff --check` for set-plans collection files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+  - Remaining route-local logger convergence candidates include set-audits,
+    set-plans detail/generate-batches, dispense audit/result, care-report,
+    visit, patient prescription, and dashboard workflow/cockpit/deadline
+    routes.
+
+### Set-Batches Collection Structured Logger Convergence - 2026-07-01 20:22 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on `/api/set-batches`.
+  - Focused only on GET/POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload set-batches collection logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated the sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canSet` auth, `runWithRequestAuthContext`, assignment where
+    filtering, RLS `withOrgContext` request context, list ordering/include
+    shape, malformed body handling, create validation, serializable retry
+    behavior, set-plan optimistic claim, duplicate and quantity checks,
+    packaging settings/tag resolution, set-batch history snapshots/change
+    logs, workflow dashboard invalidation, sensitive no-store wrapping,
+    `unstable_rethrow`, and fixed `INTERNAL_ERROR` responses.
+  - Shared protected GET and POST matrix entries still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, assignment predicate change, transaction/update/create
+    shape change, retry policy change, packaging resolution change, history
+    snapshot change, workflow notification change, response DTO change, or
+    unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/set-batches/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `30` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "set-batches GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "set-batches POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `set_batches` logging: expected only shared logger
+    contract lines and route-test assertions proving route contexts have no
+    `error_name`.
+  - Scoped Prettier check for changed set-batches collection files: passed.
+  - Scoped ESLint for changed set-batches collection files: passed.
+  - Scoped `git diff --check` for set-batches collection files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+  - Remaining route-local logger convergence candidates include set-audits,
+    set-plans collection/detail/generate-batches, dispense audit/result,
+    care-report, visit, patient prescription, and dashboard
+    workflow/cockpit/deadline routes.
+
+### Set-Batches Detail Structured Logger Convergence - 2026-07-01 20:15 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/set-batches/[id]`.
+  - Focused only on GET/PATCH/DELETE unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload set-batches detail logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated the sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canSet` auth, `runWithRequestAuthContext`, assignment where
+    filtering, RLS `withOrgContext` request context, read include shape,
+    malformed body handling, update validation, optimistic lock predicates,
+    immutable cycle-status conflicts, set-batch history snapshots/change logs,
+    workflow dashboard invalidation, delete version validation, sensitive
+    no-store wrapping, `unstable_rethrow`, and fixed `INTERNAL_ERROR`
+    responses.
+  - Shared protected GET and PATCH/DELETE matrix entries still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, assignment predicate change, update/delete predicate
+    change, history snapshot change, workflow notification change, response DTO
+    change, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/set-batches/[id]/route.test.ts' src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `25` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "set-batches/\\[id\\] GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-patch-delete-routes.test.ts -t "set-batches/\\[id\\]" --reporter=dot --testTimeout=60000`: passed, `6` tests / `71` skipped.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `set_batches_detail` logging: expected only shared logger
+    contract lines and route-test assertions proving route contexts have no
+    `error_name`.
+  - Scoped Prettier check for changed set-batches detail files: passed.
+  - Scoped ESLint for changed set-batches detail files: passed.
+  - Scoped `git diff --check` for set-batches detail files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+  - Remaining route-local logger convergence candidates include remaining set
+    routes, dispense audit/result, care-report, visit, patient prescription,
+    and dashboard workflow/cockpit/deadline routes.
+
+### Pharmacy Stock Bulk Structured Logger Convergence - 2026-07-01 20:02 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/pharmacy-drug-stocks/bulk`.
+  - Focused only on POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload pharmacy stock bulk logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated the sanitized 500 test to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canAdmin` auth, non-object/malformed JSON handling, 1000-row
+    cap, row-level validation, pharmacy site lookup, drug-master matching,
+    preferred generic validation, duplicate-row handling, dry-run preview,
+    stock upsert, summary audit writes, RLS `withOrgContext` request
+    context/timeouts, sensitive no-store wrapping, `unstable_rethrow`, and
+    fixed `INTERNAL_ERROR` responses.
+  - No shared protected POST matrix entry exists for this route; direct route
+    tests cover auth failure, malformed/invalid input, no-store behavior,
+    dry-run no-mutation behavior, apply/audit behavior, and sanitized 500
+    fallback.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, parser behavior change, resolver change, validation
+    change, transaction/update shape change, audit payload change, response DTO
+    change, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/pharmacy-drug-stocks/bulk/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `28` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `pharmacy_drug_stocks_bulk` logging: expected only shared
+    logger contract lines and a route-test assertion proving route context has
+    no `error_name`.
+  - Scoped Prettier check for changed pharmacy stock bulk files: passed.
+  - Scoped ESLint for changed pharmacy stock bulk files: passed.
+  - Scoped `git diff --check` for pharmacy stock bulk files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+  - Remaining route-local logger convergence candidates include set,
+    dispense audit/result, care-report, visit, patient prescription, and
+    dashboard workflow/cockpit/deadline routes.
+
+### Pharmacy Stock Usage-Mismatch Structured Logger Convergence - 2026-07-01 19:57 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/pharmacy-drug-stocks/usage-mismatch`.
+  - Focused only on GET unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload pharmacy stock usage-mismatch logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated the sanitized 500 test to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canAdmin` auth, query bounds, pharmacy site lookup, QR draft
+    reads, stocked drug reads, drug-master matching, ambiguous-code metadata,
+    mismatch aggregation, list truncation/count metadata, RLS `withOrgContext`
+    request context/timeouts, sensitive no-store wrapping, `unstable_rethrow`,
+    and fixed `INTERNAL_ERROR` responses.
+  - No shared protected GET matrix entry exists for this route; direct route
+    tests cover auth failure, query validation, no-store behavior, and
+    sanitized 500 fallback.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, query predicate change, resolver change, aggregation
+    change, sorting/truncation change, response DTO change, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/pharmacy-drug-stocks/usage-mismatch/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `23` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `pharmacy_drug_stocks_usage_mismatch` logging: expected
+    only shared logger contract lines and a route-test assertion proving route
+    context has no `error_name`.
+  - Scoped Prettier check for changed pharmacy stock usage-mismatch files:
+    passed.
+  - Scoped ESLint for changed pharmacy stock usage-mismatch files: passed.
+  - Scoped `git diff --check` for pharmacy stock usage-mismatch files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+  - Remaining route-local logger convergence candidates include set,
+    dispense audit/result, care-report, visit, patient prescription, dashboard
+    workflow/cockpit/deadline routes.
+
+### Medication-Cycle History Structured Logger Convergence - 2026-07-01 19:48 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/medication-cycles/[id]/history`.
+  - Focused only on GET unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload medication-cycle history logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated the sanitized 500 test to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved auth audit path templating, `canViewDashboard` auth, request auth
+    context, ID normalization, org/case assignment scope, cycle lookup,
+    transition log query, actor-name hydration, route performance wrapping,
+    sensitive no-store wrapping, `unstable_rethrow`, and fixed
+    `INTERNAL_ERROR` responses.
+  - No shared protected GET matrix entry exists for this route; direct route
+    tests cover auth failure, no-store behavior, blank ID rejection, not-found,
+    and sanitized 500 fallback.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, auth audit path change, assignment predicate change,
+    ordering change, actor hydration change, response DTO change, or unbounded
+    loop.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/medication-cycles/[id]/history/route.test.ts' src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `16` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `medication_cycle_history` logging: expected only shared
+    logger contract lines and a route-test assertion proving route context has
+    no `error_name`.
+  - Scoped Prettier check for changed medication-cycle history files: passed.
+  - Scoped ESLint for changed medication-cycle history files: passed.
+  - Scoped `git diff --check` for medication-cycle history files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+  - Remaining route-local logger convergence candidates include set,
+    dispense audit/result, care-report, visit, patient prescription, dashboard
+    workflow/cockpit/deadline, and pharmacy stock routes.
+
+### CDS Check Structured Logger Convergence - 2026-07-01 19:41 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on `/api/cds/check`.
+  - Focused only on POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload CDS logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated the sanitized 500 test to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canVisit` auth, request auth context, JSON body validation,
+    medication-cycle org ownership lookup, patient scope derivation from the
+    cycle, CDS checker invocation, route performance wrapping, sensitive
+    no-store wrapping, `unstable_rethrow`, and fixed `INTERNAL_ERROR`
+    responses.
+  - Protected POST matrix still passes.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, validation change, checker argument change, request auth
+    context change, response DTO change, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/cds/check/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `14` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "cds/check POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `cds_check` logging: expected only shared logger contract
+    lines and a route-test assertion proving route context has no
+    `error_name`.
+  - Scoped Prettier check for changed CDS check files: passed.
+  - Scoped ESLint for changed CDS check files: passed.
+  - Scoped `git diff --check` for CDS check files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+  - Remaining route-local logger convergence candidates include set,
+    dispense audit/result, care-report, visit, patient prescription,
+    dashboard workflow/cockpit/deadline, pharmacy stock, and medication-cycle
+    history routes.
+
+### Tracing Reports Detail Structured Logger Convergence - 2026-07-01 19:28 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on detail
+    `/api/tracing-reports/[id]`.
+  - Focused only on PATCH/DELETE unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload lifecycle logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Added direct PATCH auth failure coverage and PATCH/DELETE sanitized 500
+    tests that assert minimal route-supplied context, absence of route-local
+    `error_name`, and delegation of raw `Error` redaction to shared logger
+    tests.
+- Safety:
+  - Preserved `canAuthorReport` auth, ID normalization, sensitive no-store
+    wrapping, `unstable_rethrow`, access filtering,
+    `TracingReportPatchRollback` conflict behavior, optimistic update/delete
+    predicates, communication request status synchronization, communication
+    event creation, audit log writes, default channel handling, PDF path
+    encoding, RLS `withOrgContext` request context, response DTOs, and fixed
+    `INTERNAL_ERROR` responses.
+  - Shared protected PATCH/DELETE matrix does not currently register this
+    detail route; direct route tests now cover PATCH and DELETE auth failures,
+    no-store behavior, sanitized 500 fallback, and no side effects before
+    failing operations.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, access predicate change, transaction shape change,
+    optimistic claim predicate change, audit payload change, communication
+    side-effect change, response DTO change, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/tracing-reports/[id]/route.test.ts' src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `34` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `tracing_report_lifecycle` logging: expected only shared
+    logger contract lines and route-test assertions proving route contexts have
+    no `error_name`.
+  - Scoped Prettier check for changed tracing-reports detail files: passed.
+  - Scoped ESLint for changed tracing-reports detail files: passed.
+  - Scoped `git diff --check` for tracing-reports detail files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+  - Remaining route-local logger convergence candidates include set,
+    dispense audit/result, care-report, visit, patient prescription, dashboard
+    workflow/cockpit/deadline, pharmacy stock, CDS, and medication-cycle
+    history routes.
+
+### Tracing Reports Collection Structured Logger Convergence - 2026-07-01 19:19 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on collection
+    `/api/tracing-reports`.
+  - Focused only on GET/POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload helper logging with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated sanitized GET/POST 500 tests to assert minimal route-supplied
+    context, absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canReport` and `canAuthorReport` auth, request auth context,
+    sensitive no-store wrapping, `unstable_rethrow`, assignment access where,
+    pagination, patient-name hydration, request body validation, medication
+    issue attachment checks, `withOrgContext` request context, response DTOs,
+    and fixed `INTERNAL_ERROR` responses.
+  - Protected GET and POST matrix cases still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, access predicate change, pagination change, request body
+    validation change, response DTO change, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/tracing-reports/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `27` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "tracing-reports GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "tracing-reports POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `tracing_reports` logging: expected only shared logger
+    contract lines and route-test assertions proving route contexts have no
+    `error_name`.
+  - Scoped Prettier check for changed tracing-reports collection files: passed
+    after formatting route file.
+  - Scoped ESLint for changed tracing-reports collection files: passed.
+  - Scoped `git diff --check` for tracing-reports collection files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Follow-up `src/app/api/tracing-reports/[id]/route.ts` detail convergence
+    was completed in the 2026-07-01 19:28 JST slice above.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+
+### Staff Workload Structured Logger Convergence - 2026-07-01 19:12 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/staff-workload`.
+  - Focused only on GET unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload logs with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canVisit` auth, request auth context, date validation,
+    sensitive no-store wrapping, `unstable_rethrow`, RLS `withOrgContext`
+    request context, raw SQL task preview query, visit/dispense/task query
+    shapes, role-label mapping, sorting, response DTOs, and fixed
+    `INTERNAL_ERROR` response.
+  - Direct route tests still cover auth failure, invalid date filters,
+    duplicate date rejection, no-store wrapping, sanitized 500, and response
+    contract. Protected GET matrix still passes.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, raw SQL query change, RLS request-context change, date
+    parsing change, response DTO change, sorting change, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/staff-workload/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `18` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "staff-workload GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `staff_workload` logging: expected only shared logger
+    contract lines and a route-test assertion proving route context has no
+    `error_name`.
+  - Scoped Prettier check for changed staff-workload files: passed after
+    formatting route file.
+  - Scoped ESLint for changed staff-workload files: passed.
+  - Scoped `git diff --check` for staff-workload files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+
+### Billing Evidence Structured Logger Convergence - 2026-07-01 19:02 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence across
+    `/api/billing-evidence/analytics`, `/api/billing-evidence/stats`, and
+    `/api/billing-evidence/check`.
+  - Focused only on GET unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` / `safeErrorName()`
+    helpers.
+  - Replaced string-overload logs with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canReport` auth, request auth context, sensitive no-store
+    wrapping, `unstable_rethrow`, billing month calculations, RLS
+    `withOrgContext` timeout use in check, all Prisma read query shapes,
+    patient href encoding, today ops rail composition, KPI/analytics response
+    DTOs, and fixed `INTERNAL_ERROR` response.
+  - Direct route tests still cover auth failure, no-store, invalid query,
+    sanitized 500, and response contracts. Protected GET matrix currently has
+    no billing-evidence analytics/stats/check entries.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, RLS timeout change, billing month calculation change,
+    query predicate change, Promise.all structure change, response DTO change,
+    or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/billing-evidence/analytics/route.test.ts src/app/api/billing-evidence/stats/route.test.ts src/app/api/billing-evidence/check/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `4` files / `24` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `billing_evidence_*` logging: expected only shared logger
+    contract lines and test assertions proving route contexts have no
+    `error_name`.
+  - Scoped Prettier check for changed billing-evidence files: passed after
+    formatting route files.
+  - Scoped ESLint for changed billing-evidence files: passed.
+  - Scoped `git diff --check` for billing-evidence files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+
+### Ops Refactor Artifact Sync - 2026-07-01 18:51 JST
+
+- Scope:
+  - Created the objective-required `ops/refactor` state files so the current
+    broad refactor loop can be resumed from repository artifacts:
+    `STATE.md`, `CODE_MAP.md`, `BUG_FINDINGS.md`,
+    `INCONSISTENCY_FINDINGS.md`, `DEAD_CODE_FINDINGS.md`,
+    `PERF_FINDINGS.md`, `REFACTOR_PLAN.md`, `REFACTOR_LOG.md`, and
+    `VERIFICATION.md`.
+- Fixed:
+  - Closed the artifact gap where root `REFACTOR_*` files existed but
+    `ops/refactor/*` was missing despite the active objective requiring it.
+  - Recorded the current confirmed logger-sanitizer drift pattern, completed
+    verified slices, remaining route-local `safeErrorName` candidates, and
+    next implementation queue.
+- Safety:
+  - Documentation/state only. No runtime code, API contract, DB schema, RLS,
+    auth/authz, audit, billing, medical workflow, external send, or UI behavior
+    changed.
+- Performance:
+  - No runtime performance change. The performance findings explicitly avoid
+    claiming speedups for the logger convergence slices and preserve the
+    measurement requirement for future performance work.
+- Validation:
+  - `pnpm exec prettier --check ops/refactor/*.md`: passed.
+  - `pnpm exec prettier --check ops/refactor/*.md CODEX_GOAL_PROGRESS.md REFACTOR_REPORT.md REFACTOR_EXECUTION_PLAN.md`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check -- ops/refactor/*.md`: passed.
+  - `git diff --check -- ops/refactor/*.md CODEX_GOAL_PROGRESS.md REFACTOR_REPORT.md REFACTOR_EXECUTION_PLAN.md .codex/ralph-state.md`: passed.
+- Remaining:
+  - Continue the broad objective with the next small logger convergence
+    candidate, likely billing-evidence, staff-workload, set, care-report, or
+    visit routes.
+
+### Comments Structured Logger Convergence - 2026-07-01 18:47 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on `/api/comments`.
+  - Focused only on GET/POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload logs with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canViewDashboard` auth, request auth context, collaboration
+    entity validation, per-entity access filtering, comment ordering,
+    author-name hydration, mention normalization/deduplication, membership
+    recipient validation, entity link generation, notification dispatch,
+    realtime broadcast, no-store wrapping, and fixed `INTERNAL_ERROR`
+    response.
+  - Sanitized 500 tests prove the body and route-supplied logger contexts
+    exclude raw patient/comment sentinels, unsafe custom error names, and
+    route-local `error_name`.
+  - Protected GET/POST matrix cases still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, notification dispatch change, realtime broadcast change,
+    response DTO change, mention validation change, ordering change, or
+    unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/comments/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `35` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `comments` logging: expected only test assertions proving
+    route contexts have no `error_name`.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "comments GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "comments POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - Scoped Prettier check for changed comments files: passed.
+  - Scoped ESLint for changed comments files: passed.
+  - Scoped `git diff --check` for comments files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+
+### Communication Request Responses Structured Logger Convergence - 2026-07-01 18:40 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/communication-requests/[id]/responses`.
+  - Focused only on GET/POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload logs with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canReport` auth, request auth context, route-param validation,
+    patient/case access filtering, care-report view/write permission gates,
+    response listing order, optimistic update conflict behavior, idempotent
+    response upsert, audit entry redaction, no-store wrapping, and fixed
+    `INTERNAL_ERROR` response.
+  - Sanitized 500 tests prove the body and route-supplied logger contexts
+    exclude raw patient/response-content sentinels, unsafe custom error names,
+    and route-local `error_name`.
+  - Protected GET/POST matrix cases still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, audit write change, transaction change, response DTO
+    change, ordering change, idempotency change, conflict behavior change, or
+    unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts 'src/app/api/communication-requests/[id]/responses/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `2` files / `34` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `communication_request_responses` logging: expected only
+    test assertions proving route contexts have no `error_name`.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "communication-requests/\\[id\\]/responses GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "communication-requests/\\[id\\]/responses POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - Scoped Prettier check for changed communication-response files: passed.
+  - Scoped ESLint for changed communication-response files: passed.
+  - Scoped `git diff --check` for communication-response files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+
+### Consent Records Structured Logger Convergence - 2026-07-01 18:33 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/consent-records`.
+  - Focused only on GET/POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload logs with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canVisit` auth, request auth context, pagination parsing,
+    consent-type validation, patient/case assignment filtering, document
+    URL/file validation, template selection, duplicate-active-consent guard,
+    RLS org context, audit fail-closed behavior, no-store wrapping, and fixed
+    `INTERNAL_ERROR` response.
+  - Sanitized 500 tests prove the body and route-supplied logger contexts
+    exclude raw consent document URL sentinels, unsafe custom error names, and
+    route-local `error_name`.
+  - Protected GET/POST matrix cases still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, audit write change, transaction change, response DTO
+    change, document URL normalization change, pagination change, or unbounded
+    loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/consent-records/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `23` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `consent_records` logging: expected only test assertions
+    proving route contexts have no `error_name`.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "consent-records GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "consent-records POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - Scoped Prettier check for changed consent-record files: passed.
+  - Scoped ESLint for changed consent-record files: passed.
+  - Scoped `git diff --check` for consent-record files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+
+### Drug Master Imports Structured Logger Convergence - 2026-07-01 18:27 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence across
+    `/api/drug-master-imports/mhlw-price`,
+    `/api/drug-master-imports/mhlw-generic`,
+    `/api/drug-master-imports/hot`, `/api/drug-master-imports/ssk`,
+    `/api/drug-master-imports/pmda`, and
+    `/api/drug-master-imports/manual-clinical`.
+  - Focused only on unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload logs with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canAdmin` auth, request auth context, JSON/body validation,
+    allowed import source URL policies, dry-run preview branches, import
+    service dispatch, manual clinical RLS org context, projected import-log
+    metadata, no-store wrapping, and fixed `INTERNAL_ERROR` response.
+  - Sanitized 500 tests prove the body and route-supplied logger contexts
+    exclude raw import/preview error sentinels, unsafe custom error names, and
+    route-local `error_name`.
+  - Protected route matrix search found no existing drug-master-import matrix
+    entries; existing route tests cover admin auth/no-store and sanitized 500
+    behavior.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, import parser change, service call change, transaction
+    change, response DTO change, source URL policy change, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/app/api/drug-master-imports/mhlw-price/route.test.ts src/app/api/drug-master-imports/mhlw-generic/route.test.ts src/app/api/drug-master-imports/hot/route.test.ts src/app/api/drug-master-imports/ssk/route.test.ts src/app/api/drug-master-imports/pmda/route.test.ts src/app/api/drug-master-imports/manual-clinical/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `7` files / `86` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `drug_master_imports` logging: expected only test
+    assertions proving route contexts have no `error_name`.
+  - Protected route matrix search for drug-master-import routes: no existing
+    matrix entry.
+  - Scoped Prettier check for changed drug-master-import files: passed.
+  - Scoped ESLint for changed drug-master-import files: passed.
+  - Scoped `git diff --check` for drug-master-import files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+
+### Drug Masters Structured Logger Convergence - 2026-07-01 18:16 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence across
+    `/api/drug-masters`, `/api/drug-masters/[id]`,
+    `/api/drug-masters/batch`,
+    `/api/drug-masters/[id]/generic-recommendations`,
+    `/api/drug-masters/[id]/ingredient-group`, and
+    `/api/drug-masters/[id]/package-insert`.
+  - Focused only on unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced string-overload logs with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved auth requirements, request auth context, parameter/query/body
+    validation, RLS org context, site validation, drug lookup/search/batch
+    logic, stock overlay logic, generic recommendation math, ingredient group
+    summary, package insert formatting, no-store wrapping, and fixed
+    `INTERNAL_ERROR` response.
+  - Sanitized 500 tests prove the body and route-supplied logger contexts
+    exclude raw drug-master error sentinels, unsafe custom error names, and
+    route-local `error_name`.
+  - Protected route matrix search found no existing drug-master matrix entries;
+    existing route tests cover auth/no-store and sanitized 500 behavior.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, query predicate, sort behavior,
+    response DTO change, package-insert formatting change, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/drug-masters/route.test.ts 'src/app/api/drug-masters/[id]/route.test.ts' src/app/api/drug-masters/batch/route.test.ts 'src/app/api/drug-masters/[id]/generic-recommendations/route.test.ts' 'src/app/api/drug-masters/[id]/ingredient-group/route.test.ts' 'src/app/api/drug-masters/[id]/package-insert/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `7` files / `62` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `drug_masters` logging: expected only test assertions
+    proving route contexts have no `error_name`.
+  - Protected route matrix search for drug-master routes: no existing matrix
+    entry.
+  - Scoped Prettier check for changed drug-master/logger files: passed.
+  - Scoped ESLint for changed drug-master files: passed.
+  - Scoped `git diff --check` for drug-master files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+
+### Dispense Task Verify Barcode Structured Logger Convergence - 2026-07-01 18:06 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/dispense-tasks/[id]/verify-barcode`.
+  - Focused only on POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced the POST string-overload log with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated the sanitized 500 test to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canDispense` auth, request auth context, route-param
+    validation, JSON/body validation, assignment-scope task lookup, task-cycle
+    prescription-line lookup, barcode parsing/verification behavior, no-store
+    wrapping, and fixed `INTERNAL_ERROR` response.
+  - Sanitized 500 test proves the body and route-supplied logger context
+    exclude raw patient, SQL/stack, GTIN, unsafe custom error-name sentinels,
+    and route-local `error_name`.
+  - Protected route matrix search found no existing matrix entry for this
+    route; existing route tests cover auth/permission and no-store behavior.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, query predicate, response DTO
+    change, barcode parsing change, assignment-scope behavior change, or
+    unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts 'src/app/api/dispense-tasks/[id]/verify-barcode/route.test.ts' src/lib/dispensing/dispense-barcode-verification.test.ts --reporter=dot --testTimeout=60000`: passed, `3` files / `22` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `dispense_task_verify_barcode` logging: expected only the
+    test assertion proving route context has no `error_name`.
+  - Protected route matrix search for verify-barcode: no existing matrix entry.
+  - Scoped Prettier check for changed verify-barcode/logger/barcode files:
+    passed.
+  - Scoped ESLint for changed verify-barcode/barcode files: passed.
+  - Scoped `git diff --check` for verify-barcode files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+
+### First Visit Documents Print Batch Structured Logger Convergence - 2026-07-01 17:59 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/first-visit-documents/print-batch`.
+  - Focused only on POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced the POST string-overload log with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated the sanitized 500 test to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canVisit` auth, request auth context, JSON/body validation,
+    selected-document lookup, patient/case assignment filtering,
+    print-readiness checks, generated print-batch ID behavior, save-copy URL
+    update behavior, optimistic concurrency conflict handling, audit-log field
+    shape, no-store wrapping, and fixed `INTERNAL_ERROR` response.
+  - Sanitized 500 test proves the body and route-supplied logger context
+    exclude raw first-visit print-batch error sentinels, patient-name
+    sentinels, unsafe custom error names, and route-local `error_name`.
+  - Protected POST matrix cases still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, query predicate, transaction
+    branch, response DTO change, audit write change, print-readiness behavior
+    change, copy URL behavior change, optimistic-lock behavior change, or
+    unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/first-visit-documents/print-batch/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `16` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload print-batch `first_visit_documents_print_batch_post`
+    logging: expected only the test assertion proving route context has no
+    `error_name`.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "first-visit-documents/print-batch POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - Scoped Prettier check for changed first-visit-documents print-batch/logger
+    files: passed.
+  - Scoped ESLint for changed first-visit-documents print-batch files: passed.
+  - Scoped `git diff --check` for first-visit-documents print-batch files:
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+
+### First Visit Documents Detail Structured Logger Convergence - 2026-07-01 17:52 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on the detail
+    `/api/first-visit-documents/[id]` route.
+  - Focused only on PATCH unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced the PATCH string-overload log with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated the sanitized 500 test to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canVisit` auth, request auth context, route-param validation,
+    JSON/body validation, document URL validation, patient/case assignment
+    filtering, writable-patient guard, print-readiness checks, optimistic
+    concurrency conflict handling, audit-log field shape, no-store wrapping,
+    and fixed `INTERNAL_ERROR` response.
+  - Sanitized 500 test proves the body and route-supplied logger context
+    exclude raw first-visit document patch error sentinels, patient-name
+    sentinels, unsafe custom error names, and route-local `error_name`.
+  - Protected PATCH matrix cases still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, query predicate, transaction
+    branch, response DTO change, audit write change, print-readiness behavior
+    change, optimistic-lock behavior change, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts 'src/app/api/first-visit-documents/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `2` files / `29` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload detail `first_visit_documents_id_patch` logging: expected
+    only the test assertion proving route context has no `error_name`.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-patch-delete-routes.test.ts -t "first-visit-documents/\\[id\\] PATCH" --reporter=dot --testTimeout=60000`: passed, `6` tests / `71` skipped.
+  - Scoped Prettier check for changed first-visit-documents detail/logger
+    files: passed.
+  - Scoped ESLint for changed first-visit-documents detail files: passed.
+  - Scoped `git diff --check` for first-visit-documents detail files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+
+### First Visit Documents Structured Logger Convergence - 2026-07-01 17:44 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on the collection
+    `/api/first-visit-documents` route.
+  - Focused only on GET/POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced GET/POST string-overload logs with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canVisit` auth, request auth context, patient/case assignment
+    filtering, strict query validation, patient write guard, emergency-contact
+    fallback/validation, template lookup, document URL validation, audit-log
+    field shape, no-store wrapping, and fixed `INTERNAL_ERROR` response.
+  - Sanitized 500 tests prove the body and route-supplied logger context
+    exclude raw first-visit document error sentinels, patient-name sentinels,
+    unsafe custom error names, and route-local `error_name`.
+  - Protected GET/POST matrix cases still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, query predicate, transaction
+    branch, response DTO change, audit write change, contact/template fallback
+    change, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/first-visit-documents/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `36` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload collection `first_visit_documents` logging: expected no
+    matches.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "first-visit-documents GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "first-visit-documents POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - Scoped Prettier check for changed first-visit-documents/logger files:
+    passed.
+  - Scoped ESLint for changed first-visit-documents files: passed.
+  - Scoped `git diff --check` for first-visit-documents files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+
+### Residual Medications Structured Logger Convergence - 2026-07-01 17:36 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/residual-medications`.
+  - Focused only on GET/POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced GET/POST string-overload logs with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canVisit` auth, request auth context, visit-record assignment
+    filtering, strict `visit_record_id` / `patient_id` query validation,
+    bounded `limit` validation, inaccessible visit-record empty-list/404
+    behavior, DrugMaster identity validation, residual create calculations,
+    no-store wrapping, and fixed `INTERNAL_ERROR` response.
+  - Sanitized 500 tests prove the body and route-supplied logger context
+    exclude raw residual medication error sentinels, unsafe custom error
+    names, and route-local `error_name`.
+  - Protected GET/POST matrix cases still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, query predicate, transaction
+    branch, response DTO change, limit behavior change, residual calculation
+    change, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/residual-medications/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `30` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `residual_medications` logging: expected no matches.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "residual-medications GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "residual-medications POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - Scoped Prettier check for changed residual-medications/logger files:
+    passed.
+  - Scoped ESLint for changed residual-medications files: passed.
+  - Scoped `git diff --check` for residual-medications files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+
+### Medication Profiles Structured Logger Convergence - 2026-07-01 17:28 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/medication-profiles`.
+  - Focused only on GET/POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced GET/POST string-overload logs with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canVisit` auth, request auth context, patient assignment access
+    filtering, strict `patient_id` / `is_current` query validation,
+    inaccessible-patient empty-list behavior, inaccessible create 404
+    behavior, DrugMaster id validation, blank DrugMaster normalization, date
+    normalization, `withOrgContext` create behavior, no-store wrapping, and
+    fixed `INTERNAL_ERROR` response.
+  - Sanitized 500 tests prove the body and route-supplied logger context
+    exclude raw medication profile error sentinels, unsafe custom error names,
+    and route-local `error_name`.
+  - Protected GET/POST matrix cases still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, query predicate, transaction
+    branch, response DTO change, pagination change, date conversion change, or
+    unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/medication-profiles/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `29` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `medication_profiles` logging: expected no matches.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "medication-profiles GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "medication-profiles POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - Scoped Prettier check for changed medication-profiles/logger files:
+    passed.
+  - Scoped ESLint for changed medication-profiles files: passed.
+  - Scoped `git diff --check` for medication-profiles files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+
+### Medication Issues Structured Logger Convergence - 2026-07-01 17:21 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/medication-issues`.
+  - Focused only on GET/POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced GET/POST string-overload logs with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canVisit` auth, request auth context, patient/case assignment
+    filtering, strict query validation, status validation, org reference
+    validation, inaccessible-patient empty-list behavior, inaccessible create
+    404 behavior, `withOrgContext` create behavior, no-store wrapping, and
+    fixed `INTERNAL_ERROR` response.
+  - Sanitized 500 tests prove the body and route-supplied logger context
+    exclude raw medication issue error sentinels, unsafe custom error names,
+    and route-local `error_name`.
+  - Protected GET/POST matrix cases still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, query predicate, transaction
+    branch, response DTO change, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/medication-issues/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `29` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `medication_issues` logging: expected no matches.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "medication-issues GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "medication-issues POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - Scoped Prettier check for changed medication-issues/logger files: passed
+    after formatting the route file.
+  - Scoped ESLint for changed medication-issues files: passed.
+  - Scoped `git diff --check` for medication-issues files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+
+### Inquiry Records Structured Logger Convergence - 2026-07-01 17:12 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/inquiry-records` GET/POST and `/api/inquiry-records/[id]` PATCH.
+  - Focused only on unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()` from
+    both inquiry record route files.
+  - Replaced GET/POST/PATCH string-overload logs with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canVisit` auth, request auth context, patient/cycle assignment
+    filtering, status/limit parsing, blank filter validation, non-object and
+    malformed body validation, inquiry create side effects, PATCH conflict
+    handling, guarded prescription-line update behavior, task resolution,
+    communication request closing, audit-log field shape, no-store wrapping,
+    and fixed `INTERNAL_ERROR` response.
+  - Sanitized 500 tests prove the body and route-supplied logger context
+    exclude raw inquiry error sentinels, unsafe custom error names, and
+    route-local `error_name`.
+  - Protected GET/POST/PATCH matrix cases still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, query predicate, transaction
+    branch, audit write, operational-task behavior, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/inquiry-records/route.test.ts 'src/app/api/inquiry-records/[id]/route.test.ts' --reporter=dot --testTimeout=60000`: passed, `3` files / `44` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `inquiry` logging: expected no matches.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "inquiry-records GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "inquiry-records POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-patch-delete-routes.test.ts -t "inquiry-records/\\[id\\] PATCH" --reporter=dot --testTimeout=60000`: passed, `6` tests / `71` skipped.
+  - Scoped Prettier check for changed inquiry/logger files: passed.
+  - Scoped ESLint for changed inquiry files: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+
+### Patient Self Reports Structured Logger Convergence - 2026-07-01 17:04 JST
+
+- Scope:
+  - Continued route-local logger sanitizer convergence on
+    `/api/patient-self-reports`.
+  - Focused only on GET/POST unexpected-error logging and tests.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced GET/POST string-overload logs with
+    `logger.error({ event, route, method, status }, err)`.
+  - Updated sanitized 500 tests to assert minimal route-supplied context,
+    absence of route-local `error_name`, and delegation of raw `Error`
+    redaction to shared logger tests.
+- Safety:
+  - Preserved `canReport` auth for GET/POST, request auth context,
+    assignment-scope filtering, explicit empty filter validation, self-report
+    status schema validation, non-object/malformed body validation,
+    unassigned-patient 404, `withOrgContext`, audit-log minimized changes,
+    clerk masking, response serialization, no-store wrapping, and fixed
+    `INTERNAL_ERROR` response.
+  - Sanitized 500 tests prove the body and route-supplied logger context
+    exclude raw self-report error sentinels, unsafe custom error names, and
+    route-local `error_name`.
+  - Protected GET/POST matrix cases still pass.
+- Performance:
+  - Logging call-shape and duplicated helper removal only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, query predicate, response DTO
+    change, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/patient-self-reports/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `26` tests.
+  - Route-local sanitizer grep for `SAFE_ERROR_NAMES`, `safeErrorName`, and
+    string-overload `patient_self_reports` logging: expected no matches.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "patient-self-reports GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "patient-self-reports POST" --reporter=dot --testTimeout=60000`: passed, `3` tests / `142` skipped.
+  - `pnpm exec prettier --check src/app/api/patient-self-reports/route.ts src/app/api/patient-self-reports/route.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`: passed.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/patient-self-reports/route.ts src/app/api/patient-self-reports/route.test.ts`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+
+### Shared Logger String Overload Error Redaction Hardening - 2026-07-01 16:55 JST
+
+- Scope:
+  - Closed the Low follow-up from monthly-stats privacy review where the legacy
+    `logger.error(string, error, ctx)` runtime path could emit raw
+    `Error.message`, `stack`, or raw `String(error)` values.
+  - Focused only on shared logger behavior and tests.
+- Fixed:
+  - Tightened the typed string overload so the second argument can only be
+    omitted or `undefined`, preserving existing
+    `logger.error('event', undefined, ctx)` call sites while blocking new typed
+    raw-error usage.
+  - Reused `buildSafeErrorMeta()` for string-overload runtime bypasses, so raw
+    errors produce only safe `error_name` / type metadata.
+  - Replaced production `captureException(error)` on the string overload with
+    `captureMessage(message, { extra: sanitizedMeta })`.
+  - Added a runtime-bypass regression test proving patient name, phone,
+    medication, raw error message, stack, and raw-value sentinels do not reach
+    console/Sentry payloads.
+- Safety:
+  - TypeScript AST inventory found `125` `logger.error` call sites and `0`
+    string/template overload calls with a non-`undefined` second argument
+    before and after the change.
+  - Existing safe object overload behavior remains the route-level raw-error
+    path for PHI-bearing code.
+  - The attempted privacy subagent review did not return before timeout and was
+    not used as a completion gate; validation relies on local AST inventory,
+    tests, typecheck, lint, format, and build evidence.
+- Performance:
+  - Logging metadata construction only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad runtime scan, or unbounded loop.
+- Validation:
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `10` tests.
+  - TypeScript AST inventory command: passed, `125` `logger.error` calls and
+    `0` string/template overload calls with a non-`undefined` second argument.
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/dashboard/overdue/route.test.ts src/app/api/dashboard/dispensing-stats/route.test.ts src/app/api/dashboard/clerk-support/route.test.ts src/app/api/dashboard/monthly-stats/route.test.ts --reporter=dot --testTimeout=60000`: passed, `5` files / `34` tests.
+  - `pnpm exec prettier --check src/lib/utils/logger.ts src/lib/utils/logger.test.ts src/app/api/dashboard/monthly-stats/route.ts src/app/api/dashboard/monthly-stats/route.test.ts`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - Generic string-overload `ctx` metadata remains less strict than the safe
+    object overload; PHI-bearing raw-error logs should continue to use
+    `logger.error({ event, ... }, err)`.
+  - Browser smoke was not run because this slice changes shared server logging
+    behavior and tests only, with no visible DOM layout, copy, or interaction
+    state change.
+
+### Dashboard Monthly Stats Structured Logger Convergence - 2026-07-01 16:19 JST
+
+- Scope:
+  - Continued safe structured logger convergence on the dashboard
+    monthly-stats route.
+  - Focused on `/api/dashboard/monthly-stats` GET unexpected-error logs and the
+    shared structured logger `error_name` policy.
+- Fixed:
+  - Removed duplicated route-local `SAFE_ERROR_NAMES` and `safeErrorName()`.
+  - Replaced the string overload call with
+    `logger.error({ event, route, method, status }, err)` for the GET
+    unexpected-error catch block.
+  - Updated the sanitized 500 route test to assert minimal route-supplied
+    context, explicit absence of route-local `error_name`, auth short-circuit
+    non-logging, and delegation of raw `Error` redaction to shared logger tests.
+  - Tightened the shared PHI-safe structured logger to allow only built-in
+    JavaScript error names and collapse custom domain error class names to
+    `Error`.
+  - Added a custom `PatientInsuranceEligibilityError` emitted-payload test
+    proving custom class names and patient sentinels do not reach console/Sentry
+    payloads.
+- Safety:
+  - Preserved response bodies/statuses, no-store wrapping, `canViewDashboard`
+    auth, `runWithRequestAuthContext`, duplicate/blank/padded/out-of-range
+    month validation, JST omitted-month default, monthly `visitRecord.groupBy`,
+    patient hydration query, selected fields, patient-stat status/limit logic,
+    sort order, and fixed internal-error behavior.
+  - The sanitized 500 test proves the body and route-supplied logger context
+    exclude patient, insurance, SQL, stack, unsafe error-name, and
+    route-local `error_name` sentinels.
+  - Privacy re-review confirmed the prior custom-error-name finding is resolved
+    and found no remaining Medium/High issue in this diff.
+  - Medical safety review found no actionable patient-safety or operational
+    behavior regression.
+- Performance:
+  - Logging call-shape, duplicated helper removal, and fixed-size shared
+    logger allowlist tightening only.
+  - Adds no DB query, dependency, network call, polling, background job,
+    external request, render work, broad scan, sorting change, or unbounded
+    loop.
+- Validation:
+  - Baseline `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/dashboard/monthly-stats/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `18` tests.
+  - Final `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/dashboard/monthly-stats/route.test.ts --reporter=dot --testTimeout=60000`: passed, `2` files / `19` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "dashboard/monthly-stats GET" --reporter=dot --testTimeout=60000`: passed, `3` tests / `372` skipped.
+  - `pnpm exec vitest run src/lib/utils/logger.test.ts src/app/api/dashboard/overdue/route.test.ts src/app/api/dashboard/dispensing-stats/route.test.ts src/app/api/dashboard/clerk-support/route.test.ts src/app/api/dashboard/monthly-stats/route.test.ts --reporter=dot --testTimeout=60000`: passed, `5` files / `33` tests.
+  - Scoped Prettier check for changed files: passed.
+  - Scoped ESLint for changed files: passed.
+  - Scoped diff-check for changed files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - Broad repo-wide maintainability/type-safety/testability objective remains
+    open.
+  - The shared logger raw-error string-overload follow-up was addressed by the
+    later Shared Logger String Overload Error Redaction Hardening slice.
+  - Browser smoke was not run because this slice changes server logging
+    behavior and tests only, with no visible DOM layout, copy, or
+    interaction-state change.
+
 ### Incident Reports Structured Logger Convergence - 2026-07-01 15:20 JST
 
 - Scope:
@@ -31430,6 +35176,54 @@ Next loop:
   - The broad repository refactor objective remains open.
   - Next implementation work should start from `REFACTOR_EXECUTION_PLAN.md` safe candidates, with P0 areas staying proposal-only unless explicitly approved.
 
+### Presence Realtime Warning Fix - 2026-07-02 00:49 JST
+
+- Scope:
+  - Continued the active broad behavior-preserving refactor / bug-fix loop.
+  - Focused only on `/api/presence` realtime broadcast failure handling.
+- Fixed:
+  - `POST /api/presence` no longer swallows rejected best-effort realtime
+    broadcasts with `.catch(() => undefined)`.
+  - The route now emits a shared safe logger warning with event, route, method,
+    operation, org id, and entity type only.
+  - Local presence store update, successful heartbeat response, entity access
+    checks, channel naming, and realtime payload shape remain unchanged.
+- Safety:
+  - Regression coverage proves raw error text, active field, and display name
+    are not placed in the structured warning context.
+  - No DB schema/migration/RLS, auth/authz semantics, audit semantics,
+    external-send behavior, billing, production config, secrets, push/deploy,
+    dependency, or destructive-operation boundary was changed.
+- Performance:
+  - Adds one warning call only on realtime broadcast failure.
+  - No new request, DB query, dependency, polling, background job, broad scan,
+    render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial red regression:
+    `pnpm exec vitest run src/app/api/presence/route.test.ts --reporter=dot --testTimeout=60000`
+    failed before the fix because `logger.warn` had zero calls.
+  - `pnpm exec vitest run src/app/api/presence/route.test.ts --reporter=dot --testTimeout=60000`:
+    passed, `1` file / `12` tests.
+  - `pnpm exec vitest run src/app/api/presence/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`:
+    passed, `2` files / `23` tests.
+  - `pnpm exec eslint src/app/api/presence/route.ts src/app/api/presence/route.test.ts`:
+    passed.
+  - `pnpm exec prettier --check src/app/api/presence/route.ts src/app/api/presence/route.test.ts`:
+    passed.
+  - `git diff --check -- src/app/api/presence/route.ts src/app/api/presence/route.test.ts`:
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`:
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm build`: passed.
+- Remaining:
+  - The broad repository refactor objective remains open.
+  - Browser smoke was skipped because this server route observability fix
+    changes no visible DOM layout, copy, navigation, or interaction state.
+
 ### Nav Badge API Path And Header Helper - 2026-07-01 11:33 JST
 
 - Scope:
@@ -31486,3 +35280,221 @@ Next loop:
 - Remaining:
   - The broad repository refactor objective remains open.
   - Nav badge service parity/date-boundary/RLS request-context questions remain separate behavior candidates and were not mixed into this response-header slice.
+
+### PHOS Lambda Observability Safe Log - 2026-07-02 06:12 JST
+
+- Scope:
+  - Focused only on PHOS Lambda observability flush and security-event
+    persistence failure diagnostics.
+- Fixed:
+  - `flushObservability()` no longer logs raw provider/runtime error messages
+    when observability flush fails.
+  - `createLambdaObservabilitySink().recordSecurityEvent()` no longer logs raw
+    DynamoDB/runtime error messages when security-event persistence fails.
+  - Both failure paths now emit safe `error_name` metadata, while retaining
+    request/correlation and existing hashed principal context.
+- Safety:
+  - Regression coverage proves raw PHI-like and token-like sentinel text is not
+    placed in the structured Lambda failure logs.
+  - No request/response behavior, timeout behavior, route contract, DB schema,
+    migration, auth/RLS semantics, external-send behavior, billing, production
+    config, secrets, push/deploy, dependency, or destructive-operation boundary
+    was changed.
+- Performance:
+  - Failure-path metadata construction only.
+  - No new request, DB query, dependency, polling, background job, broad scan,
+    render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial red regression:
+    `pnpm exec vitest run src/phos/backend/lambda-handler.test.ts src/phos/backend/lambda-observability.test.ts --testNamePattern "flush failures|persistence failures" --reporter=dot --testTimeout=60000`
+    failed before the fix because the old raw-message log contract did not
+    expose `error_name`.
+  - Focused regression after fix:
+    `pnpm exec vitest run src/phos/backend/lambda-handler.test.ts src/phos/backend/lambda-observability.test.ts --testNamePattern "flush failures|persistence failures" --reporter=dot --testTimeout=60000`:
+    passed, `2` files / `2` selected tests.
+  - Full PHOS Lambda backend regression:
+    `pnpm exec vitest run src/phos/backend/lambda-handler.test.ts src/phos/backend/lambda-observability.test.ts --reporter=dot --testTimeout=60000`:
+    passed, `2` files / `24` tests.
+  - Scoped ESLint/Prettier/diff-check: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm build`: passed.
+  - gbrain write/readback:
+    `projects/careviax/failures/2026-07-02/phos-lambda-raw-observability-log`.
+- Remaining:
+  - The broad repository refactor objective remains open.
+  - Browser smoke was skipped because this backend logging fix changes no DOM
+    layout, navigation, route contract, or human workflow shape.
+
+### PHOS Evidence Cleanup Safe Principal Log - 2026-07-02 06:23 JST
+
+- Scope:
+  - Focused only on default PHOS S3 evidence cleanup failure diagnostics.
+- Fixed:
+  - `reportCleanupFailure()` no longer writes raw `tenant_id` / `user_id`
+    fields to default console JSON when mismatched object cleanup fails.
+  - Cleanup reporter failure logs reuse the same hash-only principal context.
+  - Custom `on_cleanup_failure` callback payloads remain unchanged.
+- Safety:
+  - Regression coverage proves raw tenant/user sentinel text is not placed in
+    default cleanup fallback logs.
+  - No S3 verification, mismatch detection, cleanup attempt behavior, custom
+    callback payload, route contract, DB schema, migration, auth/RLS semantics,
+    external-send behavior, billing, production config, secrets, push/deploy,
+    dependency, or destructive-operation boundary was changed.
+- Performance:
+  - Failure-path hash metadata construction only.
+  - No new request, DB query, dependency, polling, background job, broad scan,
+    render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial red regression:
+    `pnpm exec vitest run src/phos/backend/evidence-upload-verification.test.ts --testNamePattern "hashed tenant/user" --reporter=dot --testTimeout=60000`
+    failed before the fix because fallback logs lacked hashed principal fields.
+  - Focused regression after fix:
+    `pnpm exec vitest run src/phos/backend/evidence-upload-verification.test.ts --testNamePattern "hashed tenant/user" --reporter=dot --testTimeout=60000`:
+    passed, `1` file / `1` selected test.
+  - Full related regression:
+    `pnpm exec vitest run src/phos/backend/evidence-upload-verification.test.ts src/phos/backend/structured-logger.test.ts --reporter=dot --testTimeout=60000`:
+    passed, `2` files / `14` tests.
+  - Scoped ESLint/Prettier/diff-check: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm build`: passed.
+  - gbrain write/readback:
+    `projects/careviax/failures/2026-07-02/phos-evidence-cleanup-raw-principal-log`.
+- Remaining:
+  - The broad repository refactor objective remains open.
+  - Browser smoke was skipped because this backend logging fix changes no DOM
+    layout, navigation, route contract, or human workflow shape.
+
+### Security Event Audit Failure Safe Log - 2026-07-02 06:30 JST
+
+- Scope:
+  - Focused only on auth/RLS security-event AuditLog persistence fallback
+    diagnostics.
+- Fixed:
+  - `logSecurityEvent()` no longer logs raw request paths or raw caught error
+    objects when asynchronous AuditLog persistence fails.
+  - The fallback now uses shared safe `logger.warn` metadata with event type,
+    method, entity type, and `error_name`.
+  - AuditLog persistence payloads, deduplication, and fire-and-forget behavior
+    remain unchanged.
+- Safety:
+  - Regression coverage proves raw path/query and raw error-message sentinel
+    text is not placed in fallback logs.
+  - No auth/RLS semantics, AuditLog write payload, DB schema, migration,
+    route contract, external-send behavior, billing, production config, secrets,
+    push/deploy, dependency, or destructive-operation boundary was changed.
+- Performance:
+  - Failure-path safe metadata construction only.
+  - No new request, DB query, dependency, polling, background job, broad scan,
+    render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial red regression:
+    `pnpm exec vitest run src/lib/auth/security-events.test.ts --reporter=dot --testTimeout=60000`
+    failed before the fix because the fallback used legacy non-JSON console
+    output.
+  - Focused regression after fix:
+    `pnpm exec vitest run src/lib/auth/security-events.test.ts --reporter=dot --testTimeout=60000`:
+    passed, `1` file / `1` test.
+  - Related regression:
+    `pnpm exec vitest run src/lib/auth/security-events.test.ts src/lib/utils/logger.test.ts src/lib/auth/__tests__/context.test.ts src/lib/db/rls.test.ts src/lib/db/__tests__/rls.test.ts --reporter=dot --testTimeout=60000`:
+    passed, `5` files / `44` tests, `1` skipped.
+  - Scoped ESLint/Prettier/diff-check: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm build`: passed.
+  - gbrain write/readback:
+    `projects/careviax/failures/2026-07-02/security-event-audit-log-raw-failure-log`.
+- Remaining:
+  - The broad repository refactor objective remains open.
+  - Browser smoke was skipped because this backend logging fix changes no DOM
+    layout, navigation, route contract, or human workflow shape.
+
+### Me Profile MFA Failure Safe Log - 2026-07-02 06:37 JST
+
+- Scope:
+  - Focused only on `/api/me/profile` optional Cognito MFA state lookup failure
+    diagnostics.
+- Fixed:
+  - The profile GET route no longer logs raw Cognito/provider error objects
+    when MFA state enrichment fails.
+  - The fallback now uses shared safe `logger.warn` metadata with route, method,
+    operation, and `error_name`.
+  - Successful profile response behavior and `mfaEnabled: false` fallback remain
+    unchanged.
+- Safety:
+  - Regression coverage proves raw Cognito/provider sentinel text is not placed
+    in fallback logs.
+  - No auth semantics, profile response shape, profile PATCH behavior, DB
+    schema, migration, RLS behavior, external-send behavior, billing,
+    production config, secrets, push/deploy, dependency, or destructive-operation
+    boundary was changed.
+- Performance:
+  - Failure-path safe metadata construction only.
+  - No new request, DB query, dependency, polling, background job, broad scan,
+    render fan-out, or unbounded loop was added.
+- Validation:
+  - Initial red regression:
+    `pnpm exec vitest run src/app/api/me/profile/route.test.ts --testNamePattern "MFA state resolution failures" --reporter=dot --testTimeout=60000`
+    failed before the fix because the fallback used legacy raw `console.warn`.
+  - Focused regression after fix:
+    `pnpm exec vitest run src/app/api/me/profile/route.test.ts --testNamePattern "MFA state resolution failures" --reporter=dot --testTimeout=60000`:
+    passed, `1` file / `1` selected test.
+  - Full related regression:
+    `pnpm exec vitest run src/app/api/me/profile/route.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`:
+    passed, `2` files / `18` tests.
+  - Scoped ESLint/Prettier/diff-check: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm build`: passed.
+  - gbrain write/readback:
+    `projects/careviax/failures/2026-07-02/me-profile-mfa-raw-failure-log`.
+- Remaining:
+  - The broad repository refactor objective remains open.
+  - Browser smoke was skipped because this backend route logging fix changes no
+    DOM layout, navigation, route contract, or human workflow shape.
+
+### Drug Master Formulary Error States - 2026-07-02 07:58 JST
+
+- Scope:
+  - Batch-2 Slice C
+    `RR-FE-20260702-C-drug-master-formulary-error-states`.
+  - `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`
+  - `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+- Fixed:
+  - Formulary review-due and missing-reorder query failures now show
+    retryable ErrorState and KPI `取得失敗` labels instead of false zeroes.
+  - Impact, usage-mismatch, and pending-request panel failures now show
+    retryable ErrorState and avoid empty-state text.
+  - Generic recommendation and ingredient-group detail-panel failures now stay
+    visible with retry instead of silently disappearing.
+  - Success-path generic recommendation and ingredient-group panels remain
+    visible.
+- Safety:
+  - No API, DB, auth, RLS, route contract, external send, billing, production
+    config, secret, dependency, push/deploy, or destructive-operation boundary
+    changed.
+  - This is a frontend false-empty prevention patch aligned with PH-OS UI SSOT.
+- Validation:
+  - Initial focused regression failed before the fix because the new error
+    states were absent.
+  - Focused C regressions passed: `3` selected tests.
+  - Full drug-master content component suite passed: `1` file / `72` tests.
+  - Scoped ESLint/Prettier/diff-check passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm build`: passed.
+  - Claude checker independently verified the patch and returned `APPROVED`.
+- Remaining:
+  - Slice D clipboard failure handling is next and uses the same drug-master
+    file lock; release is deferred until D is committed.
