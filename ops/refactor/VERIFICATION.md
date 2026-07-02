@@ -1,10 +1,64 @@
 # Verification
 
-Snapshot: 2026-07-03 00:05 JST
+Snapshot: 2026-07-03 00:31 JST
 
 ## Latest Backend/API Slice Verification
 
 The latest backend/API slice was
+`backend-pca-rental-return-update-claim` at 2026-07-03 00:31 JST.
+
+- Planning / review:
+  - Codex selected N27 from the confirmed concurrency/check-then-act backend
+    findings after verifying `PATCH /api/pca-pump-rentals/[id]` read rental
+    status in one request context and later updated by id only before
+    return-inspection side effects.
+  - Claude acknowledged the backend lock, reviewed the diff before commit, and
+    approved the optimistic claim approach.
+- Fixed:
+  - `PATCH /api/pca-pump-rentals/[id]` now selects `updated_at` with the
+    existing rental snapshot and writes through `pcaPumpRental.updateMany`.
+  - The write predicate reasserts `id`, `org_id`, the previously observed
+    `status`, and the previously observed `updated_at`.
+  - `count !== 1` returns `409 WORKFLOW_CONFLICT` before relation refetch,
+    accessory sync, maintenance-event creation, audit logging, or pump status
+    updates.
+  - After a successful claim, the route refetches the rental with existing
+    response relations inside the transaction and preserves the serialized
+    success response shape.
+  - Added a regression for the stale update path proving return-inspection side
+    effects do not run when the guarded claim fails.
+- Safety:
+  - Existing auth, `canAdmin`, org scoping, validation errors, open-rental
+    conflict behavior, schema, migration, push/deploy, external send, and
+    destructive DB posture were preserved.
+  - The fix reduces duplicate return-inspection maintenance/audit rows for PCA
+    pump returns under double-submit or concurrent-editor races.
+- Focused regressions:
+  - `pnpm exec vitest run 'src/app/api/pca-pump-rentals/[id]/route.test.ts' --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `13` tests.
+- Scoped checks:
+  - Scoped ESLint for touched files: passed.
+  - Scoped Prettier for touched files: passed.
+  - Scoped `git diff --check` for touched files: passed.
+- Broad gates:
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: passed on the current tree before commit.
+- Coordination:
+  - Codex handled Claude review interrupts for visits FE commits `2ac2d740`,
+    `51f1c4ac`, and `f576fd75` before committing N27.
+  - Claude approved N27 before commit after independently checking the
+    optimistic compare-and-set boundary and rerunning the focused test.
+- gbrain:
+  - `projects/careviax/decisions/2026-07-02/pca-rental-return-update-claim`
+  - Result: write/readback passed.
+- Commit:
+  - Runtime: `2faab457`
+    (`fix(api): guard pca rental return updates`).
+
+## Previous Backend/API Slice Verification
+
+The previous backend/API slice was
 `backend-patient-header-summary-safety-contract` at 2026-07-03 00:05 JST.
 
 - Planning / review:

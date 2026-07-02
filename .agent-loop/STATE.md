@@ -4,7 +4,48 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
-## Current Codex Resume Note - 2026-07-03 00:05 JST
+## Current Codex Resume Note - 2026-07-03 00:31 JST
+
+- Active mode for this slice: Codex backend/API implementation with Claude
+  coordination through agmsg, real validation, gbrain writeback,
+  explicit-path commits, and review interrupts handled before the next commit.
+  Preserve unrelated dirty files; do not push/deploy/migrate or destructively
+  mutate data.
+- Latest completed product slice:
+  `backend-pca-rental-return-update-claim`.
+- Product commit:
+  `2faab457` (`fix(api): guard pca rental return updates`).
+- Files changed:
+  - `src/app/api/pca-pump-rentals/[id]/route.ts`
+  - `src/app/api/pca-pump-rentals/[id]/route.test.ts`
+  - progress-ledger updates in `CODEX_GOAL_PROGRESS.md`,
+    `.codex/ralph-state.md`, `ops/refactor/VERIFICATION.md`, and this file
+- Fixed:
+  - `PATCH /api/pca-pump-rentals/[id]` no longer updates the rental by id only
+    before return-inspection side effects.
+  - The route now uses `updateMany` with `id`, `org_id`, observed `status`, and
+    observed `updated_at` as an optimistic claim.
+  - A failed claim returns `409 WORKFLOW_CONFLICT` before relation refetch,
+    accessory sync, maintenance-event creation, audit logging, or pump status
+    mutation.
+  - Successful claims refetch the rental with the existing response relations
+    inside the transaction, preserving the serialized success contract.
+- Validation:
+  - Focused PCA rental PATCH route test passed `1` file / `13` tests.
+  - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm build` passed.
+- Review:
+  - Codex sent a backend `PATCH_REVIEW_REQUEST` before commit.
+  - Claude approved the N27 diff after independent optimistic-claim review and
+    focused test rerun.
+  - Codex also approved Claude visits FE commits `2ac2d740`, `51f1c4ac`, and
+    `f576fd75` while keeping the backend slice owner-separated.
+- gbrain writeback slug:
+  `projects/careviax/decisions/2026-07-02/pca-rental-return-update-claim`.
+- Next action: commit this ledger slice with explicit paths, notify via agmsg,
+  then check inbox and select the next non-overlapping backend/API candidate.
+
+## Previous Codex Resume Note - 2026-07-03 00:05 JST
 
 - Active mode for this slice: Codex backend/API implementation with Claude
   coordination through agmsg, real validation, gbrain writeback, explicit-path

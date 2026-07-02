@@ -42,6 +42,52 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### Backend: PCA Rental Return Update Claim - 2026-07-03 00:31 JST
+
+- Scope:
+  - Continued backend/API implementation with Claude coordination through
+    agmsg.
+  - Fixed N27: the check-then-act race in
+    `PATCH /api/pca-pump-rentals/[id]` where a stale read could double-run
+    return-inspection side effects.
+  - Commit: `2faab457`
+    (`fix(api): guard pca rental return updates`).
+  - gbrain writeback:
+    `projects/careviax/decisions/2026-07-02/pca-rental-return-update-claim`.
+- Fixed:
+  - The route now selects `updated_at` with the existing rental snapshot.
+  - Replaced id-only `pcaPumpRental.update` with guarded `updateMany` using
+    `id`, `org_id`, observed `status`, and observed `updated_at`.
+  - `count !== 1` returns `409 WORKFLOW_CONFLICT` before accessory sync,
+    maintenance-event creation, audit logging, pump status mutation, or
+    response refetch.
+  - Successful claims refetch the rental with the existing response relations
+    inside the transaction, preserving the response serialization contract.
+  - Added a stale-claim regression that proves return-inspection side effects
+    do not run when the guarded update matches zero rows.
+- Safety:
+  - Preserved existing `canAdmin`, org scoping, validation errors,
+    open-rental conflict handling, schema, migration, production config,
+    external send, destructive DB posture, push, and deploy boundaries.
+  - Reduces duplicate PCA return-inspection maintenance/audit rows under
+    double-submit or concurrent editor races.
+- Validation:
+  - Focused route suite passed `1` file / `13` tests:
+    `pnpm exec vitest run 'src/app/api/pca-pump-rentals/[id]/route.test.ts' --reporter=dot --testTimeout=60000`.
+  - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: passed on the current tree before commit.
+  - gbrain write/readback passed.
+- Review / coordination:
+  - Claude acknowledged the backend lock, reviewed the N27 diff, independently
+    reran the focused test, and approved before commit.
+  - Codex handled Claude visits FE review interrupts for `2ac2d740`,
+    `51f1c4ac`, and `f576fd75` before committing this backend slice.
+- Remaining:
+  - Continue backend/API candidate selection after committing this ledger slice
+    and checking agmsg inbox/current dirty state.
+
 ### Backend: Patient Header Summary Safety Contract - 2026-07-03 00:05 JST
 
 - Scope:
