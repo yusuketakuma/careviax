@@ -3,6 +3,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import {
   loadLatestVoiceMemoDraft,
@@ -44,7 +45,7 @@ function renderContent() {
 
 beforeEach(() => {
   vi.mocked(loadLatestVoiceMemoDraft).mockResolvedValue(null);
-  vi.mocked(saveVoiceMemoManualTranscript).mockResolvedValue(false);
+  vi.mocked(saveVoiceMemoManualTranscript).mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -132,6 +133,30 @@ describe('VoiceMemoContent', () => {
       '夕食後は家族の声かけで飲めている。',
     );
     expect(screen.getByTestId('voice-memo-append-button')).toBeTruthy();
+  });
+
+  it('warns when a manual transcript is reflected but cannot be persisted locally', async () => {
+    vi.mocked(saveVoiceMemoManualTranscript).mockResolvedValueOnce(false);
+    renderContent();
+
+    const textarea = await screen.findByTestId('voice-memo-manual-transcript');
+    fireEvent.change(textarea, {
+      target: {
+        value: '夕食後は家族の声かけで飲めている。',
+      },
+    });
+    fireEvent.click(screen.getByTestId('voice-memo-manual-apply-button'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('voice-memo-transcript-text').textContent).toBe(
+        '夕食後は家族の声かけで飲めている。',
+      );
+    });
+    await waitFor(() => {
+      expect(toast.warning).toHaveBeenCalledWith(
+        '手入力メモの端末保存に失敗しました。このページを離れる前に記録へ反映してください',
+      );
+    });
   });
 
   it('disables append after a transcript has been written to the visit record', async () => {

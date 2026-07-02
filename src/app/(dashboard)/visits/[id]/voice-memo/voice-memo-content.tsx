@@ -294,16 +294,23 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
       toast.error('手入力メモを入力してください');
       return;
     }
+    const warnManualTranscriptSaveFailure = () => {
+      toast.warning(
+        '手入力メモの端末保存に失敗しました。このページを離れる前に記録へ反映してください',
+      );
+    };
     setManualTranscript(normalized);
     setTranscript(normalized);
     setTranscribeRequested(false);
     setAppendedRecordId(null);
     toast.success('手入力メモを文字起こしとして反映しました');
-    void saveVoiceMemoManualTranscript(visitId, normalized).catch(() => {
-      toast.warning(
-        '手入力メモの端末保存に失敗しました。このページを離れる前に記録へ反映してください',
-      );
-    });
+    void saveVoiceMemoManualTranscript(visitId, normalized)
+      .then((saved) => {
+        if (!saved) {
+          warnManualTranscriptSaveFailure();
+        }
+      })
+      .catch(warnManualTranscriptSaveFailure);
   }
 
   // p1_03 と同じ二段解決(訪問予定 → 紐づく記録 / 直接訪問記録 ID)で
