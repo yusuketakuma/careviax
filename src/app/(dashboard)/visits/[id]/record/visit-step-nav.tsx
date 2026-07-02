@@ -400,19 +400,22 @@ export function VisitStepActionBar({
           前へ
         </Button>
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          {/* 次へ はスクロール補助(Secondary)。塗りの主操作は 訪問完了 1つに絞る(SSOT 5.1)。 */}
           <Button
             type="button"
+            variant="outline"
             className="min-h-11 sm:min-w-32"
             disabled={!nextStep}
             onClick={() => nextStep && scrollToVisitStep(nextStep)}
           >
             次へ
           </Button>
+          {/* 完了アクションも Primary(--primary)。done 緑は状態表示専用で主操作に使わない(SSOT 5.1)。 */}
           <LoadingButton
             type="submit"
             loading={submitPending}
             loadingLabel="保存中..."
-            className="min-h-11 bg-state-done text-white hover:bg-state-done/90 sm:min-w-32"
+            className="min-h-11 sm:min-w-32"
           >
             訪問完了
           </LoadingButton>
@@ -443,7 +446,7 @@ export function VisitStepActionBar({
             type="submit"
             loading={submitPending}
             loadingLabel="保存中..."
-            className="min-h-12 flex-1 bg-state-done text-white hover:bg-state-done/90"
+            className="min-h-12 flex-1"
           >
             訪問完了
           </LoadingButton>

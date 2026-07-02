@@ -405,6 +405,24 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
   });
 
+  it('keeps 訪問完了 as the single primary submit with no green fill (SSOT 5.1)', async () => {
+    renderVisitRecordForm();
+
+    // md+ 固定バーと mobile ウィザードの双方(jsdom は media query 非適用で両方 DOM に載る)。
+    const completeButtons = await screen.findAllByRole('button', { name: '訪問完了' });
+    expect(completeButtons.length).toBeGreaterThan(0);
+    for (const button of completeButtons) {
+      // 完了アクションも Primary(--primary)。done 緑の主操作塗りは禁止。
+      expect(button.className).not.toContain('bg-state-done');
+      expect(button.getAttribute('type')).toBe('submit');
+    }
+    // inline の重複 submit(旧 ActionRail の「保存」)は存在しない(主操作導線の一本化)。
+    expect(screen.queryByRole('button', { name: '保存' })).toBeNull();
+    // md+ の「次へ」はスクロール補助(outline)へ降格され、塗りの主操作は訪問完了のみ。
+    const nextButtons = screen.getAllByRole('button', { name: '次へ' });
+    expect(nextButtons.some((button) => !button.className.includes('bg-primary'))).toBe(true);
+  });
+
   it('defaults the visit date to the JST business date on a device timezone behind Japan (SSOT 2.8)', async () => {
     // 既定訪問日は端末ローカル TZ ではなく JST 業務日を正本にする。format(new Date(),...) だと
     // Asia/Tokyo より遅れた TZ では前日の既定日になってしまう回帰を固定する。
@@ -465,7 +483,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     expect(alert.getAttribute('aria-live')).toBe('assertive');
     expect(alert.textContent).toContain('訪問予定を読み込めませんでした');
     expect(alert.textContent).toContain('訪問予定と患者情報を確認できないため');
-    expect(screen.queryByRole('button', { name: '保存' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '訪問完了' })).toBeNull();
     expect(document.querySelector('form')).toBeNull();
     expect(screen.queryByTestId('medication-management-section')).toBeNull();
     expect(screen.queryByText('訪問時チェック')).toBeNull();
@@ -605,7 +623,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
       );
     });
 
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    fireEvent.click(screen.getByRole('button', { name: '訪問完了' }));
 
     await waitFor(() => {
       expect(document.body.textContent).toContain(
@@ -641,7 +659,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
       );
     });
 
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    fireEvent.click(screen.getByRole('button', { name: '訪問完了' }));
 
     await waitFor(() => {
       expect(screen.getByText('持参物一部未確定の確認が必要です')).toBeTruthy();

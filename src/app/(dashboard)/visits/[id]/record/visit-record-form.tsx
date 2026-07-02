@@ -79,7 +79,6 @@ import {
   resolveMobilePendingSyncCount,
   resolveMobileVisitStepHeading,
 } from './visit-mode-mobile.shared';
-import { ActionRail } from '@/components/ui/action-rail';
 import { ResidualMedicationForm } from '@/components/features/visits/residual-medication-form';
 import { SoapVoiceFieldToggle } from '@/components/features/visits/soap-voice-field-toggle';
 import { VoiceSoapAssist } from '@/components/features/visits/voice-soap-assist';
@@ -105,7 +104,6 @@ import {
   type VisitAttachmentDraft,
 } from '@/components/features/visits/visit-attachments-field';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
-import { LoadingButton } from '@/components/ui/loading-button';
 import { CdsAlertPanel, type CdsAlert } from '@/components/features/cds/alert-panel';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import type { StructuredSoap } from '@/types/structured-soap';
@@ -2463,18 +2461,9 @@ export function VisitRecordForm({
                     内容を確認し、下の「訪問完了」で記録を保存します。
                   </p>
                 </div>
-                <ActionRail className="pt-2 max-md:hidden">
-                  <Button type="button" variant="outline" onClick={() => router.back()}>
-                    キャンセル
-                  </Button>
-                  <LoadingButton
-                    type="submit"
-                    loading={createRecord.isPending}
-                    loadingLabel="保存中..."
-                  >
-                    保存
-                  </LoadingButton>
-                </ActionRail>
+                {/* md+ の submit 導線は下部固定バーの「訪問完了」に一本化する
+                    (SSOT 5.1: 同一の主操作導線を1画面に二重に置かない)。
+                    戻る導線はページ上部の WorkflowPageIntro が正本(SSOT 4.4)。 */}
               </div>
             </VisitRecordWorkflowSection>
 
