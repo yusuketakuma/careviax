@@ -4,7 +4,53 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
-## Current Codex Resume Note - 2026-07-02 18:07 JST
+## Current Codex Resume Note - 2026-07-02 18:34 JST
+
+- Active mode for this slice: Codex execution with agmsg context, Codex
+  subagent planning/review, real validation, browser metrics, gbrain writeback,
+  and explicit-path commits. Preserve unrelated dirty files; do not
+  push/deploy/migrate or destructively mutate data.
+- Latest completed product slice:
+  `FEUX-2-billing-statcard-kpi-consolidation`.
+- Product commit:
+  `f7dbac15` (`refactor(ui): consolidate billing KPI stat cards`).
+- Files changed:
+  - `src/app/(dashboard)/billing/billing-check-content.tsx`
+  - `src/app/(dashboard)/billing/billing-check-content.test.tsx`
+  - progress-ledger updates in `CODEX_GOAL_PROGRESS.md`,
+    `.codex/ralph-state.md`, and this file
+- Fixed:
+  - `/billing` KPI cards now use shared `StatCard` instead of a local
+    `KpiCard` duplicate.
+  - Existing billing KPI labels, values, units, progress math, source order,
+    and non-interactive card behavior are preserved.
+  - Low-count review work keeps the existing 2% minimum progress fill.
+  - `review_count === 0` no longer keeps `text-state-confirm` on the zero
+    value, avoiding a false confirm/warning signal.
+  - Consumer tests now lock labels, units, progress widths, non-interactive
+    cards, low-count review visibility, zero-review neutral value, and today
+    candidate no-positive-progress behavior.
+- Validation:
+  - Focused billing/StatCard bundle passed `2` files / `21` tests.
+  - Scoped ESLint, Prettier, diff-check, and duplicate search passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm format:check`, and `pnpm build` passed.
+  - Browser metrics for `/billing` at `375x812`, `640x900`, and `1280x900`
+    passed with a mocked billing-check payload: no horizontal overflow, KPI
+    labels/values/units visible, KPI buttons `0`, today KPI had no positive
+    progress width, and no console/page/http errors.
+- Review:
+  - Codex implementation-planner approved the billing-only two-file slice.
+  - Codex test-architect required consumer regression coverage; added.
+  - Codex frontend reviewer found one Medium false-signal issue for zero
+    review count; fixed and revalidated.
+  - Codex strict reviewer found no blockers or non-blockers.
+- gbrain writeback slug:
+  `projects/careviax/decisions/2026-07-02/billing-statcard-kpi-consolidation`.
+- Next action: commit this ledger slice with explicit paths, notify via agmsg,
+  then continue FEUX-2 on the next small screen group.
+
+## Previous Codex Resume Note - 2026-07-02 18:07 JST
 
 - Active mode for this slice: Codex execution with agmsg context, Codex
   subagent planning/review, real validation, browser metrics, gbrain writeback,

@@ -42,6 +42,60 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### FEUX-2 Billing StatCard Slice - 2026-07-02 18:34 JST
+
+- Scope:
+  - Continued FEUX-2 by migrating `/billing` KPI cards from a local `KpiCard`
+    implementation to shared `StatCard`.
+  - Commit: `f7dbac15` (`refactor(ui): consolidate billing KPI stat cards`).
+  - gbrain writeback:
+    `projects/careviax/decisions/2026-07-02/billing-statcard-kpi-consolidation`.
+- Fixed:
+  - Removed the billing-only local `KpiCard` duplicate while preserving the
+    existing `KpiStrip` source order, values, labels, units, and grid layout.
+  - Kept billing KPI cards non-interactive; `StatCard` `onSelect` is not used.
+  - Preserved passed/review progress math, including the 2% minimum visible
+    fill for low-count review work.
+  - Preserved neutral zero progress rails for null-bar cards and fixed the
+    reviewer's false-signal finding: `review_count === 0` no longer keeps
+    `text-state-confirm` on the zero value.
+  - Strengthened billing consumer tests for labels, units, progress widths,
+    non-interactive cards, low-count review visibility, zero-review neutral
+    value, and today-candidate no-positive-progress behavior.
+- Safety:
+  - No billing API, React Query key, org header, auth/RLS, DB, migration,
+    action rail, review table, loading/error, external send, production config,
+    push/deploy, or destructive-operation behavior changed.
+  - Browser smoke used local auth with a mocked `/api/billing-evidence/check`
+    payload and did not mutate the E2E database.
+- Validation:
+  - Focused billing/StatCard bundle passed `2` files / `21` tests.
+  - Scoped ESLint, Prettier, diff-check, and duplicate search passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm build`: passed.
+  - Browser check passed for `/billing` at `375x812`, `640x900`, and
+    `1280x900` with fixed billing-check payload: no horizontal overflow, KPI
+    labels/values/units visible, KPI buttons `0`, today KPI had no positive
+    progress width, and no console/page/http errors. Screenshots:
+    `/tmp/careviax-billing-kpi-mobile-375x812.png`,
+    `/tmp/careviax-billing-kpi-tablet-640x900.png`, and
+    `/tmp/careviax-billing-kpi-desktop-1280x900.png`.
+- Review:
+  - Codex implementation-planner approved the billing-only two-file slice.
+  - Codex test-architect required consumer regression coverage; added.
+  - Codex frontend reviewer found one Medium false-signal issue for zero
+    review count; fixed and revalidated.
+  - Codex strict reviewer found no blockers or non-blockers.
+- Remaining:
+  - Continue FEUX-2 in small screen groups for remaining
+    `MetricCard`/`KpiCard`/`SummaryCard` duplicates in workflow, admin
+    analytics, admin metrics, performance, staff, business holidays, and
+    operations insights.
+  - FEUX-1b naked loading skeleton sweep remains after the FEUX-2 pass.
+
 ### FEUX-2/F32 Admin Capacity StatCard + SetPlan Scope - 2026-07-02 18:07 JST
 
 - Scope:
