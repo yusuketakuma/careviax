@@ -399,7 +399,8 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
 
     renderVisitRecordForm();
 
-    const visitTimeLabels = await screen.findAllByText(/4\/9 09:00/);
+    // 臨床画面の一次日付は和式表記(SSOT 7.8: MM/DD 単独禁止)。
+    const visitTimeLabels = await screen.findAllByText(/4月9日 09:00/);
     expect(visitTimeLabels.length).toBeGreaterThan(0);
     expect(await screen.findByText('訪問準備情報を読み込めませんでした')).toBeTruthy();
     expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();

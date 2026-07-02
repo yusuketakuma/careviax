@@ -1534,7 +1534,7 @@ export function VisitRecordForm({
   }
 
   const visitDateTimeLabel = schedule?.scheduled_date
-    ? `${format(parseISO(schedule.scheduled_date), 'M/d')}${
+    ? `${format(parseISO(schedule.scheduled_date), 'M月d日')}${
         schedule.time_window_start
           ? ` ${timeIsoToString(schedule.time_window_start) ?? '時間未定'}`
           : ''
@@ -1774,9 +1774,10 @@ export function VisitRecordForm({
                               ? '現在地を再取得'
                               : '開始位置を記録'}
                       </Button>
+                      {/* 44px タッチターゲット(SSOT 8.2)+トークンサイズ(text-xs)。 */}
                       <a
                         href="/settings"
-                        className="inline-flex h-7 items-center rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                        className="inline-flex min-h-[44px] items-center rounded-[min(var(--radius-md),12px)] px-2.5 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
                       >
                         設定で無効化
                       </a>
@@ -1824,10 +1825,9 @@ export function VisitRecordForm({
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="visit_date">
-                    訪問日{' '}
-                    <span className="text-destructive" aria-label="必須">
-                      *
-                    </span>
+                    訪問日
+                    {/* 必須はテキスト表記で統一(SSOT 5.4: アスタリスク単独は不可)。 */}
+                    <span className="ml-1 text-xs font-normal text-muted-foreground">（必須）</span>
                   </Label>
                   <Input
                     id="visit_date"
@@ -1844,10 +1844,8 @@ export function VisitRecordForm({
 
                 <div className="space-y-1.5">
                   <Label htmlFor="outcome_status">
-                    訪問結果{' '}
-                    <span className="text-destructive" aria-label="必須">
-                      *
-                    </span>
+                    訪問結果
+                    <span className="ml-1 text-xs font-normal text-muted-foreground">（必須）</span>
                   </Label>
                   <Select
                     value={outcomeStatus}
