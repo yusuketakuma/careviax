@@ -229,3 +229,62 @@ describe('CalendarView false-empty', () => {
     expect(screen.getByText('保険未確認')).toBeTruthy();
   });
 });
+
+describe('CalendarView status badge', () => {
+  beforeEach(() => {
+    realtimeQueryMock.mockReset();
+    refetchMock.mockReset();
+    orgIdMock.mockReturnValue('org_1');
+    vi.unstubAllGlobals();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ ok: true, json: async () => ({ data: {} }) } as Response)),
+    );
+  });
+
+  function renderWithStatus(status: string) {
+    realtimeQueryMock.mockReturnValue({
+      data: [
+        {
+          id: 'sch_status',
+          scheduled_date: currentDateKey(),
+          schedule_status: status,
+          visit_type: 'regular',
+          pharmacist_id: 'ph_1',
+          case_id: 'case_1',
+          cycle_id: null,
+          case_: { patient: { id: 'p1', name: '患者 太郎' } },
+        },
+      ],
+      isLoading: false,
+      isError: false,
+      refetch: refetchMock,
+      connected: true,
+    });
+    renderCalendar();
+  }
+
+  it('renders no_show as 不在 with the blocked (red) role — matching the board, not neutral gray', () => {
+    renderWithStatus('no_show');
+    const badge = screen.getByText('不在');
+    expect(badge.className).toContain('text-state-blocked');
+    // teeth: 停止状態(不在)を良性の readonly 灰に化けさせない。
+    expect(badge.className).not.toContain('text-state-readonly');
+    // teeth: 生 enum 文字列を利用者に露出しない(§11)。
+    expect(document.body.textContent).not.toContain('no_show');
+  });
+
+  it('renders rescheduled as 再調整 with the confirm (orange) role', () => {
+    renderWithStatus('rescheduled');
+    const badge = screen.getByText('再調整');
+    expect(badge.className).toContain('text-state-confirm');
+    expect(document.body.textContent).not.toContain('rescheduled');
+  });
+
+  it('shows 状態未設定 — never the raw enum — for an unknown status value', () => {
+    renderWithStatus('totally_unknown');
+    expect(screen.getByText('状態未設定')).toBeTruthy();
+    // teeth: 想定外の enum 外値でも生文字列を出さない。
+    expect(document.body.textContent).not.toContain('totally_unknown');
+  });
+});

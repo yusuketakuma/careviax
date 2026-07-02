@@ -2,15 +2,10 @@ import { timeIsoToMinutes } from '@/lib/visits/time-of-day';
 import type { PatientOperationalSummary } from '@/lib/patient/operational-summary';
 import { fetchVisitSchedulesWindow } from './visit-schedule-fetch.helpers';
 
-export type ScheduleStatus =
-  | 'planned'
-  | 'in_preparation'
-  | 'ready'
-  | 'departed'
-  | 'in_progress'
-  | 'completed'
-  | 'cancelled'
-  | 'postponed';
+// 状態 enum は canonical な validations/visit-schedule を単一ソースとする(型 drift 防止)。
+// ローカル再定義は rescheduled / no_show が欠落し、実行時にそれらが来ると
+// カレンダーで生 enum 露出＋灰色化していたため、正本へ寄せた。
+export type { ScheduleStatus } from '@/lib/validations/visit-schedule';
 
 export type CalendarVisitSchedule = {
   id: string;

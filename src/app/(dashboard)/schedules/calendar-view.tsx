@@ -36,8 +36,10 @@ import {
 
 // ---- Constants ------------------------------------------------------------
 
-// 状態色は 6 軸セマンティックトークンに統一(SCHEDULE_STATUS_ROLE 写像)。
-// 進行中の線形フロー=info(青)、completed=done(緑)、cancelled=blocked(赤)、postponed=confirm(橙)。
+// 状態色は 6 軸セマンティックトークンに統一(SCHEDULE_STATUS_ROLE 写像、板の
+// SCHEDULE_STATUS_CLASSES と同一ロール割当)。進行中の線形フロー=info(青)、completed=done(緑)、
+// cancelled・no_show=blocked(赤)、postponed・rescheduled=confirm(橙)。
+// ScheduleStatus は canonical(10 状態)なので、状態追加時はこの Record が全キーを型強制される。
 // カレンダーセルは高密度のため StateBadge ではなくトークン class を当てた compact span を維持する。
 const STATUS_CONFIG: Record<ScheduleStatus, { label: string; className: string }> = {
   planned: { label: '予定', className: 'bg-tag-info/10 text-tag-info' },
@@ -48,6 +50,8 @@ const STATUS_CONFIG: Record<ScheduleStatus, { label: string; className: string }
   completed: { label: '完了', className: 'bg-state-done/10 text-state-done' },
   cancelled: { label: 'キャンセル', className: 'bg-state-blocked/10 text-state-blocked' },
   postponed: { label: '延期', className: 'bg-state-confirm/10 text-state-confirm' },
+  rescheduled: { label: '再調整', className: 'bg-state-confirm/10 text-state-confirm' },
+  no_show: { label: '不在', className: 'bg-state-blocked/10 text-state-blocked' },
 };
 
 const WEEKDAY_LABELS = ['月', '火', '水', '木', '金', '土', '日'];
@@ -87,7 +91,8 @@ function ScheduleBadge({ schedule }: { schedule: CalendarVisitSchedule }) {
   const rawStatus = schedule.schedule_status;
   const config = isScheduleStatus(rawStatus)
     ? STATUS_CONFIG[rawStatus]
-    : { label: rawStatus, className: 'bg-state-readonly/10 text-state-readonly' };
+    : // enum 外の想定外値でも生 enum 文字列を利用者に見せない(§11)。中立灰で「状態未設定」表示。
+      { label: '状態未設定', className: 'bg-state-readonly/10 text-state-readonly' };
   const timeLabel = formatCalendarTimeRange(schedule);
   return (
     <span
