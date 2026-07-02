@@ -7,6 +7,38 @@ evidence also exists in root `REFACTOR_REPORT.md`,
 `REFACTOR_EXECUTION_PLAN.md`, `CODEX_GOAL_PROGRESS.md`, and
 `.codex/ralph-state.md`.
 
+## 2026-07-02 13:21 JST - Visit Record Schedule Error Fail-Closed
+
+- Change ID: `RR-FE-20260702-F11-visit-record-schedule-error-fail-closed`.
+- Category: bug fix / medical-safety frontend false-safe prevention / CDS
+  visibility.
+- Files changed:
+  - `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`
+  - `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`
+- Summary:
+  - Schedule query failure or missing schedule data now returns a page-level
+    `ErrorState` with assertive live region and retry before the form renders.
+  - The failure state hides the visit record form, save action,
+    medication-management section, CDS card/no-alert path, and carry-item
+    acknowledgement UI.
+  - Visit-preparation context is not fetched until `schedule.id` is known.
+  - Loaded-schedule/CDS-fetch failure remains visible by passing
+    `isUnavailable` into `CdsAlertPanel`.
+- Safety:
+  - Prevents missing schedule identity from silently suppressing CDS safety
+    alerts and carry-item partial/blocked warnings during visit recording.
+  - No API, DB, auth/RLS, route contract, migration, external send, billing,
+    production config, dependency, push/deploy, or destructive-operation
+    behavior changed.
+- Validation:
+  - Focused visit form / CDS / ErrorState / visit-record API backstop bundle
+    passed `4` files / `102` tests.
+  - Scoped ESLint and Prettier passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`,
+    `pnpm build`, and `pnpm format:check` passed.
+  - Frontend, medical-safety, test-architect, and strict reviewers reported no
+    blockers after requested test/query gating improvements were added.
+
 ## 2026-07-02 13:08 JST - Patient Share Management Plan Error State
 
 - Change ID:

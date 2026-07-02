@@ -1,6 +1,6 @@
 # Refactor State
 
-Snapshot: 2026-07-02 13:08 JST
+Snapshot: 2026-07-02 13:21 JST
 
 ## Phase
 
@@ -13,32 +13,36 @@ Snapshot: 2026-07-02 13:08 JST
 
 ## Last Change ID
 
-- `RR-FE-20260702-F05-F10-F12-patient-share-management-plan-error-state`
+- `RR-FE-20260702-F11-visit-record-schedule-error-fail-closed`
 
 ## Build State
 
 - Last full production build evidence:
-  `pnpm build` passed after the patient-share management-plan error-state fix.
+  `pnpm build` passed after the visit-record schedule fail-closed fix.
 - Last full cheap gate bundle evidence:
-  - `pnpm typecheck`: passed after the patient-share management-plan
-    error-state fix.
-  - `pnpm typecheck:no-unused`: passed after the schedule drawer error-envelope
-    fix and again after the patient-share management-plan error-state fix.
-  - `pnpm lint`: passed after the patient-share management-plan error-state
+  - `pnpm typecheck`: passed after the visit-record schedule fail-closed fix.
+  - `pnpm typecheck:no-unused`: passed after the visit-record schedule
+    fail-closed fix.
+  - `pnpm lint`: passed after the visit-record schedule fail-closed fix.
+  - `pnpm format:check`: passed after the visit-record schedule fail-closed
     fix.
-  - `pnpm format:check`: failed on unrelated untracked
-    `ops/refactor/ultracode-crossreview-codex-workflow.mjs` and unrelated
-    `ops/refactor/ultracode-refactor-scan-workflow.mjs`; scoped Prettier
-    passed for the changed patient-share files and the incidental data-table
-    test typing fix.
-  - Scoped Prettier passed for the patient-share component/test before this
-    state update; final ledger formatting/diff checks are pending until this
-    state update lands.
+  - Scoped Prettier passed for the visit-record form/test before this state
+    update; final ledger formatting/diff checks are pending until this state
+    update lands.
 
 ## Current Worktree
 
 - The worktree is intentionally dirty from verified small slices. Preserve all
   existing dirty files unless explicitly owning a new slice.
+- Latest visit-record frontend medical-safety slice changed only:
+  `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx` and
+  `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`. It
+  prevents schedule fetch failure or missing schedule data from rendering the
+  editable visit record form, save action, medication-management section, CDS
+  false no-alert state, or carry-item acknowledgement. Visit-preparation fetch
+  now waits for `schedule.id`, and loaded-schedule/CDS failure remains visible
+  via `isUnavailable`. Codex frontend, medical-safety, test-architect, and
+  strict reviewers checked the slice; focused and broad local gates passed.
 - Latest patient-share frontend safety slice changed only the patient card
   workspace management-plan selector:
   `src/app/(dashboard)/patients/[id]/card-workspace.tsx` and

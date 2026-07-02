@@ -997,3 +997,28 @@ User-directed program after the org-header sweep. Method: ultracode 51-screen re
 - Next action: commit the patient-share slice and ledgers with explicit paths,
   leave unrelated dirty files unstaged, send coordination FYI if messenger is
   available, then continue the next highest-value ULTRACODE/refactor item.
+
+### Resume point - 2026-07-02 13:21 JST
+
+- Active broad ULTRACODE/refactor objective remains open. Latest validated
+  slice:
+  `RR-FE-20260702-F11-visit-record-schedule-error-fail-closed`.
+- Changed owned runtime files:
+  `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx` and
+  `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`.
+- Fixed visit-record schedule false-safe behavior:
+  schedule fetch failure or missing schedule data now shows page-level
+  assertive ErrorState with retry, and does not render the editable visit form,
+  save action, medication-management section, CDS false no-alert state, or
+  carry-item acknowledgement. Visit-preparation fetch waits for `schedule.id`;
+  loaded-schedule/CDS failure remains visible via `isUnavailable`.
+- Validation passed:
+  focused visit form / CDS / ErrorState / visit-record API backstop bundle
+  `4` files / `102` tests, scoped ESLint/Prettier, `pnpm typecheck`,
+  `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm build`, and
+  `pnpm format:check`.
+- gbrain writeback slug:
+  `projects/careviax/failures/2026-07-02/visit-record-schedule-fetch-false-safe`.
+- Next action: commit this F11 slice and ledgers with explicit paths, notify
+  via agmsg if messenger is available, then continue the next highest-value
+  ULTRACODE/refactor item.

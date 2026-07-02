@@ -1,8 +1,52 @@
 # Verification
 
-Snapshot: 2026-07-02 13:08 JST
+Snapshot: 2026-07-02 13:21 JST
 
 ## Latest Full Code Slice Verification
+
+The latest runtime code slice was
+`RR-FE-20260702-F11-visit-record-schedule-error-fail-closed` at
+2026-07-02 13:21 JST.
+
+- Planning / review:
+  - ULTRACODE F11 identified schedule fetch failure in `VisitRecordForm` as a
+    false-safe path that suppresses CDS alerts and carry-item warnings.
+  - Codex frontend and medical-safety reviewers both recommended full-form
+    fail-closed behavior rather than an inline warning because schedule is the
+    primary visit/patient/cycle identity.
+  - Codex test architect required direct assertions that medication-management,
+    CDS/no-alert state, carry acknowledgement, and secondary preparation fetches
+    are absent when schedule fails.
+  - Codex strict reviewer reported no blockers after the final implementation.
+- Focused regressions:
+  - `pnpm exec vitest run 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' src/components/features/cds/alert-panel.test.tsx src/components/ui/error-state.test.tsx src/app/api/visit-records/route.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `4` files / `102` tests.
+  - Coverage: schedule failure assertive alert, retry, no form/save, no
+    medication-management section, no CDS false no-alert state, no carry
+    acknowledgement, no CDS/preparation secondary fetches before schedule
+    identity, loaded-schedule/CDS failure parent `isUnavailable` wiring, and
+    existing server-side carry-item backstops.
+- Scoped checks:
+  - Scoped ESLint for visit-record form/test plus related CDS/ErrorState tests:
+    passed.
+  - Scoped Prettier for the same files: passed.
+- Full gates:
+  - `pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused --pretty false`:
+    passed.
+  - `pnpm lint`: passed.
+  - `pnpm build`: passed.
+  - `pnpm format:check`: passed.
+- gbrain:
+  - `gbrain put projects/careviax/failures/2026-07-02/visit-record-schedule-fetch-false-safe`
+    -> created/updated.
+- Skipped:
+  - Browser/E2E smoke was skipped because this targeted form-state change is
+    covered by jsdom assertions, related CDS/ErrorState/server backstop tests,
+    and production build, and changes no navigation, API route contract, DB, or
+    external-send behavior.
+
+## Prior Full Code Slice Verification
 
 The latest runtime code slice was
 `RR-FE-20260702-F05-F10-F12-patient-share-management-plan-error-state` at

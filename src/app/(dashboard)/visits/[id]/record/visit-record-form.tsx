@@ -46,6 +46,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
+import { ErrorState } from '@/components/ui/error-state';
 import {
   Select,
   SelectContent,
@@ -492,7 +493,12 @@ export function VisitRecordForm({
   const syncCountRefreshFailureNotifiedRef = useRef(false);
 
   // Fetch schedule details
-  const { data: schedule, isLoading: scheduleLoading } = useQuery<ScheduleDetail>({
+  const {
+    data: schedule,
+    isLoading: scheduleLoading,
+    isError: scheduleError,
+    refetch: refetchSchedule,
+  } = useQuery<ScheduleDetail>({
     queryKey: ['schedule', id, orgId],
     queryFn: async () => {
       const res = await fetch(`/api/visit-schedules/${id}`, {
@@ -548,7 +554,7 @@ export function VisitRecordForm({
       if (!res.ok) throw new Error('訪問準備情報の取得に失敗しました');
       return res.json();
     },
-    enabled: !!orgId && !!id,
+    enabled: !!orgId && !!schedule?.id,
   });
 
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -1509,6 +1515,19 @@ export function VisitRecordForm({
       <div className="flex items-center justify-center py-12">
         <p className="text-sm text-muted-foreground">読み込み中...</p>
       </div>
+    );
+  }
+
+  if (scheduleError || !schedule) {
+    return (
+      <ErrorState
+        variant="server"
+        size="page"
+        live="assertive"
+        title="訪問予定を読み込めませんでした"
+        description="訪問予定と患者情報を確認できないため、訪問記録を入力できません。再読み込みしてください。"
+        action={{ label: '再読み込み', onClick: () => void refetchSchedule() }}
+      />
     );
   }
 

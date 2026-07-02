@@ -42,6 +42,51 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### Visit Record Schedule Error Fail-Closed - 2026-07-02 13:21 JST
+
+- Scope:
+  - Executed ULTRACODE F11 for the visit record form.
+  - Focused on schedule fetch failure, CDS visibility, carry-item warning
+    visibility, and colocated component tests.
+- Fixed:
+  - Schedule query failures, and malformed success paths with no schedule data,
+    now render a page-level `ErrorState` with assertive live region and
+    schedule retry instead of rendering the editable visit record form.
+  - The failure state hides the form, save action, medication-management
+    section, CDS no-alert state, and carry-item acknowledgement UI.
+  - `/api/cds/check` does not run until schedule cycle identity is available.
+  - Visit-preparation context does not fetch until `schedule.id` is known,
+    avoiding secondary fetches under unverified visit identity.
+  - The loaded-schedule/CDS-failure path is still visible: the parent keeps the
+    CDS card visible and passes `isUnavailable` to `CdsAlertPanel`.
+- Safety:
+  - Prevents a visit schedule outage from suppressing medication-safety alerts,
+    patient/cycle context, and carry-item partial/blocked warnings while
+    allowing a pharmacist to proceed in the form.
+  - No API route, DB, auth/RLS, migration, external send, billing, production
+    config, dependency, push/deploy, or destructive-operation behavior changed.
+- Validation:
+  - Focused safety bundle passed:
+    `pnpm exec vitest run 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' src/components/features/cds/alert-panel.test.tsx src/components/ui/error-state.test.tsx src/app/api/visit-records/route.test.ts --reporter=dot --testTimeout=60000`
+    -> `4` files / `102` tests.
+  - Scoped ESLint and Prettier passed for touched form/test files and related
+    CDS/ErrorState tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm build`: passed.
+  - `pnpm format:check`: passed.
+  - Codex `frontend_reviewer`, `medical_safety_reviewer`, `test_architect`,
+    and `reviewer-strict` were used. All completion-blocking findings were
+    addressed; strict re-review reported no blockers.
+  - gbrain writeback:
+    `projects/careviax/failures/2026-07-02/visit-record-schedule-fetch-false-safe`.
+- Remaining:
+  - Broad repo-wide objective remains open. Browser/E2E smoke was skipped
+    because this targeted form-state change is covered by jsdom assertions,
+    related CDS/ErrorState/server backstop tests, full gates, and production
+    build, and changes no navigation/API/DB/external-send behavior.
+
 ### Patient Share Management Plan Error State - 2026-07-02 13:08 JST
 
 - Scope:

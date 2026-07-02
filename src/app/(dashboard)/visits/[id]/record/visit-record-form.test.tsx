@@ -26,6 +26,7 @@ const {
   toastSuccessMock,
   toastInfoMock,
   fetchUrls,
+  cdsAlertPanelCalls,
 } = vi.hoisted(() => ({
   routerBackMock: vi.fn(),
   routerPushMock: vi.fn(),
@@ -44,6 +45,7 @@ const {
   toastSuccessMock: vi.fn(),
   toastInfoMock: vi.fn(),
   fetchUrls: [] as string[],
+  cdsAlertPanelCalls: [] as Array<{ isUnavailable?: boolean; isLoading?: boolean }>,
 }));
 
 vi.mock('next/navigation', () => ({
@@ -203,7 +205,13 @@ vi.mock('@/components/features/visits/visit-attachments-field', () => ({
 }));
 
 vi.mock('@/components/features/cds/alert-panel', () => ({
-  CdsAlertPanel: () => null,
+  CdsAlertPanel: (props: { isUnavailable?: boolean; isLoading?: boolean }) => {
+    cdsAlertPanelCalls.push({
+      isUnavailable: props.isUnavailable,
+      isLoading: props.isLoading,
+    });
+    return props.isUnavailable ? <div data-testid="cds-alerts-unavailable" /> : null;
+  },
 }));
 
 vi.mock('./visit-completion-readiness-warning', () => ({
@@ -242,6 +250,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     refreshSyncStateMock.mockResolvedValue(undefined);
     refreshSyncCountMock.mockResolvedValue(undefined);
     listEvidenceDraftSummariesForScheduleMock.mockResolvedValue([]);
+    cdsAlertPanelCalls.length = 0;
     visitRecordPostBodies.length = 0;
     fetchUrls.length = 0;
 
@@ -394,6 +403,119 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     expect(visitTimeLabels.length).toBeGreaterThan(0);
     expect(await screen.findByText('訪問準備情報を読み込めませんでした')).toBeTruthy();
     expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
+  });
+
+  it('blocks the visit form with a retryable error when the schedule cannot be loaded', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      fetchUrls.push(url);
+      if (url === '/api/visit-schedules/schedule_partial') {
+        return new Response(JSON.stringify({ message: 'schedule failed' }), { status: 500 });
+      }
+      if (url === '/api/visit-preparations/schedule_partial') {
+        return new Response(
+          JSON.stringify({
+            data: {
+              pack: {
+                care_team: [],
+                billing_blockers: [],
+                conference_context: [],
+                medication_period: null,
+                prescription_changes: null,
+                previous_visit: null,
+                facility_parallel_context: null,
+                intake_context: null,
+              },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderVisitRecordForm();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.getAttribute('aria-live')).toBe('assertive');
+    expect(alert.textContent).toContain('訪問予定を読み込めませんでした');
+    expect(alert.textContent).toContain('訪問予定と患者情報を確認できないため');
+    expect(screen.queryByRole('button', { name: '保存' })).toBeNull();
+    expect(document.querySelector('form')).toBeNull();
+    expect(screen.queryByTestId('medication-management-section')).toBeNull();
+    expect(screen.queryByText('訪問時チェック')).toBeNull();
+    expect(
+      screen.queryByRole('checkbox', {
+        name: '未確定の持参物を確認し、代替手配または現地対応方針を確認しました。',
+      }),
+    ).toBeNull();
+    expect(fetchUrls.some((url) => url === '/api/cds/check')).toBe(false);
+    expect(fetchUrls).not.toContain('/api/visit-preparations/schedule_partial');
+    expect(visitRecordPostBodies).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+
+    await waitFor(() => {
+      expect(
+        fetchUrls.filter((url) => url === '/api/visit-schedules/schedule_partial'),
+      ).toHaveLength(2);
+    });
+  });
+
+  it('passes an unavailable CDS state when schedule is loaded but safety alerts fail', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        fetchUrls.push(url);
+        if (url === '/api/visit-schedules/schedule_partial') {
+          return new Response(
+            JSON.stringify({
+              id: 'schedule_partial',
+              patient_id: 'patient_1',
+              cycle_id: 'cycle_1',
+              scheduled_date: '2026-04-09',
+              time_window_start: '1970-01-01T09:00:00.000Z',
+              schedule_status: 'ready',
+              visit_type: 'regular',
+              carry_items_status: 'ready',
+              recurrence_rule: null,
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/visit-preparations/schedule_partial') {
+          return new Response(
+            JSON.stringify({
+              data: {
+                pack: {
+                  care_team: [],
+                  billing_blockers: [],
+                  conference_context: [],
+                  medication_period: null,
+                  prescription_changes: null,
+                  previous_visit: null,
+                  facility_parallel_context: null,
+                  intake_context: null,
+                },
+              },
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/cds/check') {
+          return new Response(JSON.stringify({ message: 'cds failed' }), { status: 500 });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+
+    renderVisitRecordForm();
+
+    expect(await screen.findByTestId('cds-alerts-unavailable')).toBeTruthy();
+    expect(screen.getByText('訪問時チェック')).toBeTruthy();
+    expect(cdsAlertPanelCalls.some((call) => call.isUnavailable === true)).toBe(true);
   });
 
   it('syncs offline state on mount and when network status changes', async () => {
@@ -612,6 +734,7 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
     refreshSyncStateMock.mockResolvedValue(undefined);
     refreshSyncCountMock.mockResolvedValue(undefined);
     listEvidenceDraftSummariesForScheduleMock.mockResolvedValue([]);
+    cdsAlertPanelCalls.length = 0;
     visitRecordPostBodies.length = 0;
     patientPatchBodies.length = 0;
     patientPatchUrls.length = 0;
