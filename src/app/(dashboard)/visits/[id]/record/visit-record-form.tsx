@@ -2049,8 +2049,7 @@ export function VisitRecordForm({
                     <CardHeader className="pb-2">
                       <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
                         <span className="inline-flex items-center gap-2">
-                          <Brain className="size-4 text-soap-a" aria-hidden="true" />A —
-                          薬学的評価
+                          <Brain className="size-4 text-soap-a" aria-hidden="true" />A — 薬学的評価
                         </span>
                         <SoapVoiceFieldToggle
                           field="soap_assessment"
