@@ -42,6 +42,53 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### Backend: Case Transition Stale-State Guard - 2026-07-02 21:39 JST
+
+- Scope:
+  - Switched from the frontend FEUX queue to backend implementation per latest
+    user direction, while coordinating with Claude through agmsg.
+  - Implemented the ULTRACODE stale-state candidate for
+    `PATCH /api/cases/[id]/transition`.
+  - Commit: `d2265d6a` (`fix(api): guard case status transitions`).
+  - gbrain writeback:
+    `projects/careviax/decisions/2026-07-02/case-transition-stale-status-guard`.
+- Fixed:
+  - The route no longer relies on a preflight status read followed by
+    `update({ where: { id } })`.
+  - The transactional write now uses `updateMany` with `id`, `org_id`, expected
+    `status`, and the existing assignment predicate, so stale clients or
+    concurrent assignment/status changes fail closed.
+  - `count !== 1` returns `WORKFLOW_CONFLICT` / `409` with the repository's
+    existing conflict envelope.
+  - The route re-reads the updated case before returning success and only
+    creates the `first_visit_document_delivery` task after the guarded status
+    update succeeds.
+- Safety:
+  - Preserved `canVisit`, `org_id` scoping, assignment filtering, transition
+    allowlist validation, warning text, success envelope, and task dedupe key.
+  - No schema, migration, DB write outside tests, PHI logging/export, external
+    send, production config, push/deploy, dependency, or destructive operation
+    changed.
+- Validation:
+  - Focused transition test passed `1` file / `8` tests:
+    `pnpm exec vitest run src/app/api/cases/[id]/transition/route.test.ts --reporter=dot --testTimeout=60000`.
+  - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - gbrain write/readback passed.
+- Coordination:
+  - Claude reported no backend/API locks and locked only frontend
+    `card-workspace` paths.
+  - Codex sent a `PATCH_REVIEW_REQUEST` before commit and a commit FYI after
+    `d2265d6a`.
+  - Claude's verdict approved the route/test diff and noted no follow-up was
+    needed.
+- Remaining:
+  - Full `pnpm build` was skipped for this backend-only slice because the
+    shared worktree had non-owned frontend WIP during the commit window.
+  - Next backend/API candidate: evaluate and consolidate the two
+    flush-metrics endpoints that differ primarily by auth boundary.
+
 ### Performance: Inventory Forecast Latest Intake Lines - 2026-07-02 19:34 JST
 
 - Scope:

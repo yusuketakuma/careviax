@@ -4,7 +4,56 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
-## Current Codex Resume Note - 2026-07-02 19:34 JST
+## Current Codex Resume Note - 2026-07-02 21:39 JST
+
+- Active mode for this slice: Codex backend/API implementation with Claude
+  coordination through agmsg, real validation, gbrain writeback, and
+  explicit-path commits. Preserve unrelated dirty files; do not
+  push/deploy/migrate or destructively mutate data.
+- Latest completed product slice:
+  `backend-case-transition-stale-status-guard`.
+- Product commit:
+  `d2265d6a` (`fix(api): guard case status transitions`).
+- Files changed:
+  - `src/app/api/cases/[id]/transition/route.ts`
+  - `src/app/api/cases/[id]/transition/route.test.ts`
+  - progress-ledger updates in `CODEX_GOAL_PROGRESS.md`,
+    `.codex/ralph-state.md`, `ops/refactor/VERIFICATION.md`, and this file
+- Fixed:
+  - `PATCH /api/cases/[id]/transition` no longer performs a preflight status
+    check followed by an unconditional `update({ where: { id } })`.
+  - The transactional write now reasserts `id`, `org_id`, expected `status`,
+    and the assignment predicate in `updateMany`.
+  - A stale write returns `409 WORKFLOW_CONFLICT` before any first-visit
+    document task side effect is created.
+  - The route re-reads the updated case before returning the existing success
+    envelope.
+- Safety:
+  - Preserved `canVisit`, org scoping, assignment filtering, transition
+    allowlist validation, warning text, success response shape, and task
+    dedupe key.
+  - No schema, migration, DB write outside tests, external send, production
+    config, push/deploy, dependency, or destructive operation changed.
+- Validation:
+  - Focused transition route test passed `1` file / `8` tests.
+  - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+  - `pnpm typecheck` and `pnpm typecheck:no-unused` passed.
+  - Full `pnpm build` was skipped because non-owned frontend WIP appeared in
+    the shared worktree during this backend slice.
+- Review:
+  - Claude reported no backend/API locks and locked only frontend
+    `card-workspace` paths.
+  - Codex sent a `PATCH_REVIEW_REQUEST` before commit and a commit FYI after
+    `d2265d6a`.
+  - Claude's verdict approved the cases transition route/test diff and said no
+    follow-up was needed.
+- gbrain writeback slug:
+  `projects/careviax/decisions/2026-07-02/case-transition-stale-status-guard`.
+- Next action: commit this ledger slice with explicit paths, notify via agmsg,
+  then evaluate the next backend/API candidate, likely flush-metrics endpoint
+  consolidation.
+
+## Previous Codex Resume Note - 2026-07-02 19:34 JST
 
 - Active mode for this slice: Codex execution focused on performance issues,
   real validation, and explicit-path commits. Preserve unrelated dirty files;

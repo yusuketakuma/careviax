@@ -1,6 +1,53 @@
 # Verification
 
-Snapshot: 2026-07-02 16:34 JST
+Snapshot: 2026-07-02 21:39 JST
+
+## Latest Backend/API Slice Verification
+
+The latest backend/API slice was
+`backend-case-transition-stale-status-guard` at 2026-07-02 21:39 JST.
+
+- Planning / review:
+  - ULTRACODE findings identified `PATCH /api/cases/[id]/transition` as a
+    check-then-act status transition risk.
+  - Next.js route-handler docs were inspected before writing route code.
+  - Existing conflict response helpers and conditional `updateMany` patterns
+    were inspected before choosing the route-local shape.
+  - Claude reported no backend/API locks and approved the final route/test diff
+    through agmsg.
+- Fixed:
+  - The route now reasserts `id`, `org_id`, expected `status`, and the
+    assignment predicate in the transactional `careCase.updateMany` call.
+  - A stale status/assignment write returns `409 WORKFLOW_CONFLICT`.
+  - The updated case is read back before success, preserving the route's
+    response shape.
+  - The first-visit-document operational task is only created after the guarded
+    case status update succeeds.
+- Safety:
+  - Preserved `canVisit`, org scoping, assignment filtering, transition
+    allowlist validation, warning text, success envelope, and task dedupe key.
+  - No schema, migration, DB write outside tests, external send, production
+    config, push/deploy, dependency, or destructive operation changed.
+- Focused regressions:
+  - `pnpm exec vitest run src/app/api/cases/[id]/transition/route.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `8` tests.
+  - Coverage: successful guarded transition, warning/task creation after
+    guarded update, stale transition `409`, mismatched preflight status
+    rejection, malformed payloads, blank IDs, and unassigned case rejection.
+- Scoped checks:
+  - Scoped ESLint for touched files: passed.
+  - Scoped Prettier for touched files: passed.
+  - Scoped `git diff --check` for touched files: passed.
+- Broad gates:
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: skipped because non-owned frontend WIP appeared in the shared
+    worktree during this backend-only slice.
+- gbrain:
+  - `projects/careviax/decisions/2026-07-02/case-transition-stale-status-guard`
+  - Result: write/readback passed.
+- Commit:
+  - Runtime: `d2265d6a` (`fix(api): guard case status transitions`).
 
 ## Latest Performance Slice Verification
 
