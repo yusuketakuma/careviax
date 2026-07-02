@@ -8,7 +8,7 @@ const {
   visitBillingCandidateFindManyMock,
   visitBillingCandidateFindUniqueMock,
   visitBillingCandidateCreateMock,
-  visitBillingCandidateUpdateMock,
+  visitBillingCandidateUpdateManyMock,
   pharmacyVisitRequestUpdateManyMock,
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
@@ -18,7 +18,7 @@ const {
   visitBillingCandidateFindManyMock: vi.fn(),
   visitBillingCandidateFindUniqueMock: vi.fn(),
   visitBillingCandidateCreateMock: vi.fn(),
-  visitBillingCandidateUpdateMock: vi.fn(),
+  visitBillingCandidateUpdateManyMock: vi.fn(),
   pharmacyVisitRequestUpdateManyMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
 }));
@@ -226,11 +226,7 @@ describe('/api/visit-billing-candidates POST', () => {
       billing_status: 'candidate',
       is_billable: true,
     });
-    visitBillingCandidateUpdateMock.mockResolvedValue({
-      id: 'visit_billing_candidate_1',
-      billing_status: 'candidate',
-      is_billable: true,
-    });
+    visitBillingCandidateUpdateManyMock.mockResolvedValue({ count: 1 });
     pharmacyVisitRequestUpdateManyMock.mockResolvedValue({ count: 1 });
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -245,7 +241,7 @@ describe('/api/visit-billing-candidates POST', () => {
           findMany: visitBillingCandidateFindManyMock,
           findUnique: visitBillingCandidateFindUniqueMock,
           create: visitBillingCandidateCreateMock,
-          update: visitBillingCandidateUpdateMock,
+          updateMany: visitBillingCandidateUpdateManyMock,
         },
         pharmacyVisitRequest: {
           updateMany: pharmacyVisitRequestUpdateManyMock,
@@ -319,7 +315,7 @@ describe('/api/visit-billing-candidates POST', () => {
         }),
       }),
     });
-    expect(visitBillingCandidateUpdateMock).not.toHaveBeenCalled();
+    expect(visitBillingCandidateUpdateManyMock).not.toHaveBeenCalled();
     expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalledWith({
       where: {
         id: 'visit_request_1',
@@ -484,7 +480,7 @@ describe('/api/visit-billing-candidates POST', () => {
     expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitBillingCandidateCreateMock).not.toHaveBeenCalled();
-    expect(visitBillingCandidateUpdateMock).not.toHaveBeenCalled();
+    expect(visitBillingCandidateUpdateManyMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
@@ -497,7 +493,7 @@ describe('/api/visit-billing-candidates POST', () => {
     expect(visitBillingCandidateFindManyMock).not.toHaveBeenCalled();
     expect(visitBillingCandidateFindUniqueMock).not.toHaveBeenCalled();
     expect(visitBillingCandidateCreateMock).not.toHaveBeenCalled();
-    expect(visitBillingCandidateUpdateMock).not.toHaveBeenCalled();
+    expect(visitBillingCandidateUpdateManyMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       scanned_confirmed_records: 0,
       generated_candidates: 0,
@@ -524,7 +520,7 @@ describe('/api/visit-billing-candidates POST', () => {
 
     expect(response.status).toBe(200);
     expect(visitBillingCandidateCreateMock).not.toHaveBeenCalled();
-    expect(visitBillingCandidateUpdateMock).not.toHaveBeenCalled();
+    expect(visitBillingCandidateUpdateManyMock).not.toHaveBeenCalled();
     expect(visitBillingCandidateFindUniqueMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
@@ -542,6 +538,50 @@ describe('/api/visit-billing-candidates POST', () => {
     });
   });
 
+  it('skips candidates that become locked after the preflight read', async () => {
+    visitBillingCandidateFindManyMock.mockResolvedValue([
+      {
+        id: 'visit_billing_candidate_raced',
+        partner_visit_record_id: 'partner_visit_record_1',
+        billing_status: 'candidate',
+        invoice_items: [],
+      },
+    ]);
+    visitBillingCandidateUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await POST(createRequest({ billing_month: '2026-06-01' }));
+
+    expect(response.status).toBe(200);
+    expect(visitBillingCandidateCreateMock).not.toHaveBeenCalled();
+    expect(visitBillingCandidateUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'visit_billing_candidate_raced',
+        org_id: 'org_1',
+        billing_status: { in: ['candidate', 'excluded'] },
+        invoice_items: { none: {} },
+      },
+      data: expect.objectContaining({
+        billing_month: new Date('2026-06-01T00:00:00.000Z'),
+        billing_status: 'candidate',
+        is_billable: true,
+      }),
+    });
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        changes: expect.objectContaining({
+          skipped_locked_count: 1,
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      generated_candidates: 1,
+      skipped_locked_count: 1,
+      candidate_ids: ['visit_billing_candidate_raced'],
+    });
+  });
+
   it('reuses a concurrently created candidate when create hits the unique constraint', async () => {
     visitBillingCandidateFindUniqueMock.mockResolvedValueOnce({
       id: 'visit_billing_candidate_concurrent',
@@ -549,11 +589,6 @@ describe('/api/visit-billing-candidates POST', () => {
       invoice_items: [],
     });
     visitBillingCandidateCreateMock.mockRejectedValueOnce({ code: 'P2002' });
-    visitBillingCandidateUpdateMock.mockResolvedValueOnce({
-      id: 'visit_billing_candidate_concurrent',
-      billing_status: 'candidate',
-      is_billable: true,
-    });
 
     const response = await POST(createRequest({ billing_month: '2026-06-01' }));
 
@@ -585,8 +620,13 @@ describe('/api/visit-billing-candidates POST', () => {
         },
       },
     });
-    expect(visitBillingCandidateUpdateMock).toHaveBeenCalledWith({
-      where: { id_org_id: { id: 'visit_billing_candidate_concurrent', org_id: 'org_1' } },
+    expect(visitBillingCandidateUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'visit_billing_candidate_concurrent',
+        org_id: 'org_1',
+        billing_status: { in: ['candidate', 'excluded'] },
+        invoice_items: { none: {} },
+      },
       data: expect.objectContaining({
         billing_month: new Date('2026-06-01T00:00:00.000Z'),
         billing_status: 'candidate',

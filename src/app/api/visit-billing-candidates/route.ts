@@ -29,6 +29,10 @@ const visitBillingStatusValues: readonly VisitBillingStatus[] = [
   'invoiced',
   'voided',
 ];
+const regeneratableVisitBillingStatuses = [
+  'candidate',
+  'excluded',
+] as const satisfies readonly VisitBillingStatus[];
 
 function optionalSearchParam(value: string | null) {
   const trimmed = value?.trim() ?? '';
@@ -129,6 +133,15 @@ function canUpdateExistingCandidate(candidate: {
     (candidate.billing_status === 'candidate' || candidate.billing_status === 'excluded') &&
     (candidate.invoice_items?.length ?? 0) === 0
   );
+}
+
+function regeneratableVisitBillingCandidateWhere(args: { id: string; orgId: string }) {
+  return {
+    id: args.id,
+    org_id: args.orgId,
+    billing_status: { in: [...regeneratableVisitBillingStatuses] },
+    invoice_items: { none: {} },
+  };
 }
 
 const authenticatedGET = withAuthContext(
@@ -375,18 +388,26 @@ const authenticatedPOST = withAuthContext(
             exclusion_reason: blockers.length > 0 ? blockers.join(',') : null,
             amount_snapshot: toPrismaJsonInput(amountSnapshot),
           };
+          const updateRegeneratableCandidate = async (candidateId: string) => {
+            const updateResult = await tx.visitBillingCandidate.updateMany({
+              where: regeneratableVisitBillingCandidateWhere({
+                id: candidateId,
+                orgId: ctx.orgId,
+              }),
+              data: candidateData,
+            });
+            return updateResult.count === 1;
+          };
           const existingCandidate = existingCandidatesByRecordId.get(record.id);
 
           let candidate;
           if (existingCandidate) {
             const canUpdate = canUpdateExistingCandidate(existingCandidate);
-            candidate = canUpdate
-              ? await tx.visitBillingCandidate.update({
-                  where: { id_org_id: { id: existingCandidate.id, org_id: ctx.orgId } },
-                  data: candidateData,
-                })
-              : existingCandidate;
-            if (!canUpdate) skippedLockedCount += 1;
+            const updated = canUpdate
+              ? await updateRegeneratableCandidate(existingCandidate.id)
+              : false;
+            candidate = existingCandidate;
+            if (!canUpdate || !updated) skippedLockedCount += 1;
           } else {
             try {
               candidate = await tx.visitBillingCandidate.create({
@@ -416,13 +437,11 @@ const authenticatedPOST = withAuthContext(
               });
               if (!concurrentCandidate) throw error;
               const canUpdate = canUpdateExistingCandidate(concurrentCandidate);
-              candidate = canUpdate
-                ? await tx.visitBillingCandidate.update({
-                    where: { id_org_id: { id: concurrentCandidate.id, org_id: ctx.orgId } },
-                    data: candidateData,
-                  })
-                : concurrentCandidate;
-              if (!canUpdate) skippedLockedCount += 1;
+              const updated = canUpdate
+                ? await updateRegeneratableCandidate(concurrentCandidate.id)
+                : false;
+              candidate = concurrentCandidate;
+              if (!canUpdate || !updated) skippedLockedCount += 1;
             }
           }
           candidates.push(candidate);
