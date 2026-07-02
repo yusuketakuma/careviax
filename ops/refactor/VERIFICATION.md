@@ -2,6 +2,57 @@
 
 Snapshot: 2026-07-02 16:34 JST
 
+## Latest Performance Slice Verification
+
+The latest performance-focused slice was
+`RR-PERF-20260702-CE11-inventory-forecast-latest-intake-lines` at
+2026-07-02 19:34 JST.
+
+- Planning / review:
+  - ULTRACODE CE11 identified `/api/admin/inventory-forecast` as loading
+    historical `PrescriptionIntake.lines` for all next-week visit cases even
+    though downstream forecasting consumes only the latest intake per patient.
+  - Next.js route-handler docs were inspected before writing route code.
+  - Prisma schema confirmed `PrescriptionIntake` reaches `patient_id` through
+    `MedicationCycle`, so the low-risk fix is a two-stage read: lightweight
+    candidate rows first, then line rows only for latest candidate IDs.
+- Performance effect:
+  - The route now avoids loading historical prescription line payloads and
+    avoids resolving drug codes from non-latest intakes.
+  - Complexity for heavy line payload and drug-code resolution changes from
+    all historical intake lines for matching cases to latest intake lines per
+    scheduled patient. Lightweight intake header candidates are still scanned.
+- Safety:
+  - Response envelope, week range, visit ordering, no-store handling,
+    `canAdmin`, org scoping, facility name lookup, stock lookup, and
+    `buildInventoryForecast` output semantics were preserved.
+  - No schema, migration, DB write, cache infrastructure, external send,
+    production config, push/deploy, or destructive operation changed.
+- Focused regressions:
+  - `pnpm exec vitest run src/app/api/admin/inventory-forecast/route.test.ts src/lib/analytics/inventory-forecast.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `36` tests.
+  - Coverage: first intake query selects candidates without `lines`, second
+    intake query filters by latest IDs, old historical line codes do not reach
+    DrugMaster resolution, existing receipt/HOT/unresolved/no-stock behavior is
+    preserved, and pure latest-intake tie-break behavior remains covered.
+- Scoped checks:
+  - Scoped ESLint for touched files: passed.
+  - Scoped Prettier for touched files: passed.
+  - Scoped `git diff --check` for touched files: passed.
+- Broad gates:
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: passed.
+- gbrain:
+  - `projects/careviax/decisions/2026-07-02/inventory-forecast-latest-intake-lines`
+  - Result: write/readback passed.
+- Commit:
+  - Runtime: `0038e279` (`fix(api): reduce inventory forecast intake
+overfetch`).
+- Skipped:
+  - Browser benchmark was skipped because this slice changes backend query
+    payload shape only, not UI rendering or route response contract.
+
 ## Latest Full Code Slice Verification
 
 The latest offline lifecycle slice was

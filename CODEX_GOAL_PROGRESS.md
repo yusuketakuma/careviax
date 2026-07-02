@@ -42,6 +42,52 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### Performance: Inventory Forecast Latest Intake Lines - 2026-07-02 19:34 JST
+
+- Scope:
+  - Focused on performance issues per latest user request.
+  - Implemented ULTRACODE CE11 for `/api/admin/inventory-forecast`: avoid
+    loading historical prescription line payloads when only the latest intake
+    per patient is consumed by forecasting.
+  - Commit: `0038e279` (`fix(api): reduce inventory forecast intake overfetch`).
+  - gbrain writeback:
+    `projects/careviax/decisions/2026-07-02/inventory-forecast-latest-intake-lines`.
+- Fixed:
+  - The route now performs a lightweight candidate query for matching
+    next-week visit cases (`id`, `prescribed_date`, `created_at`,
+    `cycle.patient_id`) and reuses the existing latest-intake selector to pick
+    latest IDs.
+  - The heavy `lines` relation is fetched only for selected latest intake IDs,
+    and DrugMaster code resolution is built only from those latest lines.
+  - `selectLatestIntakeByPatient` was made generic over intake identity fields
+    so route candidate selection and analytics forecasting share the same
+    ordering semantics without requiring line payloads.
+- Performance effect:
+  - Heavy prescription line transfer and downstream code-normalization work now
+    scale with latest intake lines per scheduled patient instead of all
+    historical intake lines for matching cases.
+  - The first-stage intake header scan remains; no DB index, migration, cache,
+    or raw SQL change is claimed.
+- Safety:
+  - Preserved `canAdmin`, `org_id` scoping, no-store response handling, week
+    range, visit/facility/stock query behavior, response shape, and existing
+    latest-intake tie-break behavior.
+  - No schema, migration, DB write, external send, production config,
+    push/deploy, dependency, or destructive operation changed.
+- Validation:
+  - Focused forecast bundle passed `2` files / `36` tests:
+    `pnpm exec vitest run src/app/api/admin/inventory-forecast/route.test.ts src/lib/analytics/inventory-forecast.test.ts --reporter=dot --testTimeout=60000`.
+  - Scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm build`: passed.
+- Remaining:
+  - Browser benchmark was intentionally skipped because no UI/render path or
+    route response contract changed.
+  - A future, separately approved optimization could replace the lightweight
+    header scan with DB-level latest-per-patient SQL/index work if production
+    profiling shows the candidate scan itself is the bottleneck.
+
 ### FEUX-2 Billing StatCard Slice - 2026-07-02 18:34 JST
 
 - Scope:

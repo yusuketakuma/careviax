@@ -4,7 +4,50 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
-## Current Codex Resume Note - 2026-07-02 18:34 JST
+## Current Codex Resume Note - 2026-07-02 19:34 JST
+
+- Active mode for this slice: Codex execution focused on performance issues,
+  real validation, and explicit-path commits. Preserve unrelated dirty files;
+  do not push/deploy/migrate or destructively mutate data.
+- Latest completed product slice:
+  `RR-PERF-20260702-CE11-inventory-forecast-latest-intake-lines`.
+- Product commit:
+  `0038e279` (`fix(api): reduce inventory forecast intake overfetch`).
+- Files changed:
+  - `src/app/api/admin/inventory-forecast/route.ts`
+  - `src/app/api/admin/inventory-forecast/route.test.ts`
+  - `src/lib/analytics/inventory-forecast.ts`
+  - progress-ledger updates in `CODEX_GOAL_PROGRESS.md`,
+    `.codex/ralph-state.md`, `ops/refactor/VERIFICATION.md`, and this file
+- Fixed:
+  - `/api/admin/inventory-forecast` no longer loads historical
+    `PrescriptionIntake.lines` payloads for all matching next-week visit cases
+    before selecting the latest intake per patient.
+  - The route now reads lightweight intake candidates first, reuses the shared
+    latest-intake ordering semantics, then fetches line payloads only for the
+    selected latest intake IDs.
+  - DrugMaster code resolution now sees only codes from latest intake lines,
+    not superseded historical intake lines.
+- Performance:
+  - Heavy line transfer and code-normalization work now scale with latest
+    intake lines per scheduled patient instead of all historical intake lines
+    for matching cases.
+  - The lightweight intake header candidate scan remains; no raw SQL, index,
+    migration, cache, or schema change is claimed.
+- Validation:
+  - Focused forecast bundle passed `2` files / `36` tests.
+  - Scoped ESLint, Prettier, and diff-check passed.
+  - `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm build` passed.
+- Review:
+  - Next route-handler docs and Prisma prescription schema were inspected.
+  - No browser benchmark was run because the changed path is backend query
+    payload only and does not alter UI rendering or route response contract.
+- gbrain writeback slug:
+  `projects/careviax/decisions/2026-07-02/inventory-forecast-latest-intake-lines`.
+- Next action: commit the ledger slice with explicit paths, send agmsg FYI,
+  then continue performance-focused candidate selection.
+
+## Previous Codex Resume Note - 2026-07-02 18:34 JST
 
 - Active mode for this slice: Codex execution with agmsg context, Codex
   subagent planning/review, real validation, browser metrics, gbrain writeback,
