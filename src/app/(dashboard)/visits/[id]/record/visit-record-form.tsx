@@ -1986,7 +1986,7 @@ export function VisitRecordForm({
                     <CardHeader className="pb-2">
                       <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
                         <span className="inline-flex items-center gap-2">
-                          <MessageSquare className="size-4 text-blue-500" aria-hidden="true" />S —
+                          <MessageSquare className="size-4 text-soap-s" aria-hidden="true" />S —
                           主観情報（患者の訴え）
                         </span>
                         <SoapVoiceFieldToggle
@@ -2016,7 +2016,7 @@ export function VisitRecordForm({
                     <CardHeader className="pb-2">
                       <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
                         <span className="inline-flex items-center gap-2">
-                          <Eye className="size-4 text-green-500" aria-hidden="true" />O —
+                          <Eye className="size-4 text-soap-o" aria-hidden="true" />O —
                           客観情報（観察・計測）
                         </span>
                         <SoapVoiceFieldToggle
@@ -2049,7 +2049,7 @@ export function VisitRecordForm({
                     <CardHeader className="pb-2">
                       <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
                         <span className="inline-flex items-center gap-2">
-                          <Brain className="size-4 text-purple-500" aria-hidden="true" />A —
+                          <Brain className="size-4 text-soap-a" aria-hidden="true" />A —
                           薬学的評価
                         </span>
                         <SoapVoiceFieldToggle
@@ -2079,7 +2079,7 @@ export function VisitRecordForm({
                     <CardHeader className="pb-2">
                       <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
                         <span className="inline-flex items-center gap-2">
-                          <ClipboardList className="size-4 text-orange-500" aria-hidden="true" />P —
+                          <ClipboardList className="size-4 text-soap-p" aria-hidden="true" />P —
                           計画・介入
                         </span>
                         <SoapVoiceFieldToggle
