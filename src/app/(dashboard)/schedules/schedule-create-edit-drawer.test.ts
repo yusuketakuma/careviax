@@ -111,6 +111,44 @@ describe('schedule create/edit drawer unsaved-changes guard (FEUX-8)', () => {
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   });
 
+  it('does not resurrect discarded input when reopening the same drawer', async () => {
+    requestNavigationConfirmationMock.mockResolvedValue(true);
+    const onOpenChange = vi.fn();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const cases: CaseOption[] = [];
+    const pharmacists: Pharmacist[] = [];
+    const drawerProps = (open: boolean) =>
+      createElement(
+        QueryClientProvider,
+        { client: queryClient },
+        createElement(ScheduleCreateEditDrawer, {
+          open,
+          onOpenChange,
+          orgId: 'org_1',
+          cases,
+          pharmacists,
+          defaultDate: '2026-06-30',
+        }),
+      );
+    const { rerender } = render(drawerProps(true));
+
+    fireEvent.change(screen.getByLabelText('候補日'), { target: { value: '2026-07-01' } });
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+
+    // 親が open=false → open=true で同じ対象を再オープン(マウント維持の一般的パターン)。
+    rerender(drawerProps(false));
+    rerender(drawerProps(true));
+
+    // 破棄確定した入力は復活せず、初期値(defaultDate)に戻る。
+    expect((screen.getByLabelText('候補日') as HTMLInputElement).value).toBe('2026-06-30');
+    // かつ dirty 扱いにならない(ガードが誤作動しない)。
+    const lastGuardCall = useUnsavedChangesGuardMock.mock.calls.at(-1)?.[0];
+    expect(lastGuardCall?.enabled).toBe(false);
+  });
+
   it('closes cleanly without confirmation when nothing changed', () => {
     const onOpenChange = vi.fn();
     renderCreateEditDrawer({ onOpenChange });

@@ -230,7 +230,9 @@ export function ScheduleCreateEditDrawer({
   const formSessionKey = `${open ? '1' : '0'}:${editingProposal?.id ?? 'new'}`;
   const [lastFormSessionKey, setLastFormSessionKey] = useState(formSessionKey);
   const [baselineForm, setBaselineForm] = useState(form);
-  if (open && formSessionKey !== lastFormSessionKey) {
+  // close(open=false)遷移でもリセットする: 破棄確定で閉じた後に同じ対象を再オープンしたとき、
+  // 破棄済みの入力が復活しないようにする(Codex review 指摘)。
+  if (formSessionKey !== lastFormSessionKey) {
     setLastFormSessionKey(formSessionKey);
     const nextForm = buildScheduleCreateEditDrawerForm({
       defaultDate,
