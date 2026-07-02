@@ -59,8 +59,14 @@ export type EvidenceDraftSummary = {
   capturedAt: string;
 };
 
+function hasOrgId(orgId: unknown): orgId is string {
+  return typeof orgId === 'string' && orgId.trim().length > 0;
+}
+
 /** 未同期ドラフトのメタデータ一覧(画像 payload は復号しない)。 */
 export async function listEvidenceDraftSummaries(orgId: string): Promise<EvidenceDraftSummary[]> {
+  if (!hasOrgId(orgId)) return [];
+
   const drafts = await offlineDb.evidenceDrafts
     .where('retryCount')
     .aboveOrEqual(0)
@@ -74,6 +80,8 @@ export async function listEvidenceDraftSummariesForSchedule(
   scheduleId: string,
   orgId: string,
 ): Promise<EvidenceDraftSummary[]> {
+  if (!hasOrgId(orgId)) return [];
+
   const drafts = await offlineDb.evidenceDrafts
     .where('scheduleId')
     .equals(scheduleId)
@@ -122,6 +130,10 @@ export type EvidenceSyncResult = {
   skipped: number;
   failed: number;
 };
+
+function emptyEvidenceSyncResult(): EvidenceSyncResult {
+  return { synced: 0, skipped: 0, failed: 0 };
+}
 
 function evidenceSyncFetchTimeoutMs() {
   return normalizePositiveTimeoutMs(process.env.NEXT_PUBLIC_EVIDENCE_SYNC_FETCH_TIMEOUT_MS, {
@@ -295,7 +307,8 @@ async function uploadEvidenceDraft(
  * 端末上は「未同期」のまま残す。成功したドラフトは削除する。
  */
 async function syncEvidenceDraftsOnce(config: EvidenceSyncConfig): Promise<EvidenceSyncResult> {
-  const result: EvidenceSyncResult = { synced: 0, skipped: 0, failed: 0 };
+  const result = emptyEvidenceSyncResult();
+  if (!hasOrgId(config.orgId)) return result;
   if (typeof window !== 'undefined' && !window.navigator.onLine) return result;
 
   const drafts = pickSyncableEvidenceDrafts(
@@ -339,6 +352,8 @@ async function syncEvidenceDraftsOnce(config: EvidenceSyncConfig): Promise<Evide
 }
 
 export async function syncEvidenceDrafts(config: EvidenceSyncConfig): Promise<EvidenceSyncResult> {
+  if (!hasOrgId(config?.orgId)) return emptyEvidenceSyncResult();
+
   const activeRun = activeEvidenceSyncRuns.get(config.orgId);
   if (activeRun) return activeRun;
   const run = syncEvidenceDraftsOnce(config).finally(() => {
@@ -353,6 +368,8 @@ export async function syncEvidenceDrafts(config: EvidenceSyncConfig): Promise<Ev
  * アップロード済み file metadata は retry resume に必要なため保持する。
  */
 export async function resetFailedEvidenceDraftRetries(config: EvidenceSyncConfig): Promise<number> {
+  if (!hasOrgId(config?.orgId)) return 0;
+
   const failedDrafts = await offlineDb.evidenceDrafts
     .where('retryCount')
     .aboveOrEqual(MAX_EVIDENCE_SYNC_RETRIES)

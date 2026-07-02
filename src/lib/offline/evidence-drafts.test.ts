@@ -257,6 +257,43 @@ describe('offline evidence draft sync', () => {
     expect(decryptOfflinePayloadMock).not.toHaveBeenCalled();
   });
 
+  it('fails closed at evidence-draft library boundaries when orgId is blank', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('unexpected fetch'));
+
+    await expect(listEvidenceDraftSummaries('   ')).resolves.toEqual([]);
+    await expect(listEvidenceDraftSummaries(undefined as never)).resolves.toEqual([]);
+    await expect(listEvidenceDraftSummariesForSchedule('schedule_1', '')).resolves.toEqual([]);
+    await expect(
+      listEvidenceDraftSummariesForSchedule('schedule_1', undefined as never),
+    ).resolves.toEqual([]);
+    await expect(syncEvidenceDrafts({ orgId: '' })).resolves.toEqual({
+      synced: 0,
+      skipped: 0,
+      failed: 0,
+    });
+    await expect(syncEvidenceDrafts({ orgId: undefined as never })).resolves.toEqual({
+      synced: 0,
+      skipped: 0,
+      failed: 0,
+    });
+    await expect(syncEvidenceDrafts(null as never)).resolves.toEqual({
+      synced: 0,
+      skipped: 0,
+      failed: 0,
+    });
+    await expect(resetFailedEvidenceDraftRetries({ orgId: '   ' })).resolves.toBe(0);
+    await expect(resetFailedEvidenceDraftRetries({ orgId: undefined as never })).resolves.toBe(0);
+    await expect(resetFailedEvidenceDraftRetries(null as never)).resolves.toBe(0);
+
+    expect(evidenceDraftsMock.where).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(decryptOfflinePayloadMock).not.toHaveBeenCalled();
+    expect(evidenceDraftsMock.update).not.toHaveBeenCalled();
+    expect(evidenceDraftsMock.delete).not.toHaveBeenCalled();
+  });
+
   it('does not process retry-exhausted drafts returned by a defensive DB query', async () => {
     const indexedRows = [
       createDraft({ id: 1, scheduleId: 'schedule_1', retryCount: 2, synced: false }),
