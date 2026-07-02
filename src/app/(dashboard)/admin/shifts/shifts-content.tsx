@@ -1222,14 +1222,18 @@ export function ShiftsContent() {
         <Card size="sm">
           <CardContent>
             <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">シフト候補</p>
-            <p className="mt-2 text-2xl font-semibold text-foreground">{shiftPharmacists.length}</p>
+            <p className="mt-2 text-2xl font-semibold text-foreground tabular-nums">
+              {shiftPharmacists.length}
+            </p>
             <p className="mt-1 text-xs text-muted-foreground">訪問・調剤の担当候補</p>
           </CardContent>
         </Card>
         <Card size="sm">
           <CardContent>
             <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">休日設定</p>
-            <p className="mt-2 text-2xl font-semibold text-foreground">{holidays.length}</p>
+            <p className="mt-2 text-2xl font-semibold text-foreground tabular-nums">
+              {holidays.length}
+            </p>
             <p className="mt-1 text-xs text-muted-foreground">当月の祝日・休業日</p>
           </CardContent>
         </Card>

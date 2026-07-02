@@ -453,7 +453,7 @@ export function JobsDashboardContent() {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
-            <p className="text-xl font-semibold sm:text-2xl">
+            <p className="text-xl font-semibold tabular-nums sm:text-2xl">
               {jobCountsUnavailable ? '—' : (data?.data.length ?? '—')}
             </p>
           </CardContent>
@@ -463,7 +463,7 @@ export function JobsDashboardContent() {
             <CardTitle className="text-sm font-medium text-muted-foreground">実行中</CardTitle>
           </CardHeader>
           <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
-            <p className="text-xl font-semibold text-tag-info sm:text-2xl">
+            <p className="text-xl font-semibold text-tag-info tabular-nums sm:text-2xl">
               {jobCountsUnavailable ? '—' : runningCount}
             </p>
           </CardContent>
@@ -474,7 +474,7 @@ export function JobsDashboardContent() {
           </CardHeader>
           <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
             <p
-              className={`text-xl font-semibold sm:text-2xl ${failedCount > 0 ? 'text-destructive' : ''}`}
+              className={`text-xl font-semibold tabular-nums sm:text-2xl ${failedCount > 0 ? 'text-destructive' : ''}`}
             >
               {jobCountsUnavailable ? '—' : failedCount}
             </p>
@@ -486,7 +486,7 @@ export function JobsDashboardContent() {
           </CardHeader>
           <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
             <p
-              className={`text-xl font-semibold sm:text-2xl ${partialWarningCount > 0 ? 'text-state-confirm' : ''}`}
+              className={`text-xl font-semibold tabular-nums sm:text-2xl ${partialWarningCount > 0 ? 'text-state-confirm' : ''}`}
             >
               {jobCountsUnavailable ? '—' : partialWarningCount}
             </p>
