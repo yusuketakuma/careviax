@@ -562,18 +562,22 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     },
     enabled: !!orgId && !!recordId,
   });
-  const { data: visitPreparationSnapshot, isLoading: visitPreparationLoading } =
-    useQuery<VisitPreparationSnapshot>({
-      queryKey: ['visit-preparation-care-team', record?.schedule?.id, orgId],
-      queryFn: async () => {
-        const res = await fetch(`/api/visit-preparations/${record?.schedule?.id}`, {
-          headers: { 'x-org-id': orgId },
-        });
-        if (!res.ok) throw new Error('訪問準備情報の取得に失敗しました');
-        return res.json();
-      },
-      enabled: !!orgId && !!record?.schedule?.id,
-    });
+  const {
+    data: visitPreparationSnapshot,
+    isLoading: visitPreparationLoading,
+    isError: visitPreparationError,
+    refetch: refetchVisitPreparation,
+  } = useQuery<VisitPreparationSnapshot>({
+    queryKey: ['visit-preparation-care-team', record?.schedule?.id, orgId],
+    queryFn: async () => {
+      const res = await fetch(`/api/visit-preparations/${record?.schedule?.id}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('訪問準備情報の取得に失敗しました');
+      return res.json();
+    },
+    enabled: !!orgId && !!record?.schedule?.id,
+  });
 
   if (isBootstrappingOrg || isLoading) {
     return (
@@ -620,6 +624,11 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
   const requiredHomeVisit2026Items = homeVisit2026ReadinessItems.filter((item) => item.required);
   const completedHomeVisit2026Count = requiredHomeVisit2026Items.filter((item) => item.done).length;
   const missingHomeVisit2026Items = requiredHomeVisit2026Items.filter((item) => !item.done);
+  // 訪問準備情報(visitPreparationPack)の取得に失敗すると billing_blockers が空配列に化け、
+  // 本来 required かつ未完了の請求根拠ブロッカーが消えて readiness が偽完了しうる。
+  // 医療安全上、取得失敗時は「訪問薬剤管理の確認」を完了と判定しない(fail-close)。
+  const medicationManagementComplete =
+    !visitPreparationError && completedHomeVisit2026Count === requiredHomeVisit2026Items.length;
   const careReports = careReportsResponse?.data ?? [];
   const billingCandidates = billingCandidatesResponse?.data ?? [];
   const billingCandidatesLoading = Boolean(
@@ -627,7 +636,8 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
   );
   // 報告書/請求候補/残薬のいずれかが取得失敗の場合、それらから導出する件数・下書き有無・
   // 残薬準備状況は不正確になりうる。ワークフロー欄で「取得失敗」を明示し再読み込みを促す。
-  const workflowDataError = careReportsError || billingCandidatesError || residualsError;
+  const workflowDataError =
+    careReportsError || billingCandidatesError || residualsError || visitPreparationError;
   const soapComplete = Boolean(
     record.soap_subjective?.trim() &&
     record.soap_objective?.trim() &&
@@ -672,14 +682,15 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     {
       key: 'medication_management',
       label: '訪問薬剤管理の確認',
-      description:
-        missingHomeVisit2026Items.length === 0
+      description: visitPreparationError
+        ? '訪問準備情報を取得できなかったため確認が完了していません。再読み込みしてください。'
+        : missingHomeVisit2026Items.length === 0
           ? '服薬状況、残薬、副作用、連携、該当時の加算根拠が揃っています。'
           : `不足: ${missingHomeVisit2026Items
               .slice(0, 4)
               .map((item) => item.label)
               .join(' / ')}`,
-      done: completedHomeVisit2026Count === requiredHomeVisit2026Items.length,
+      done: medicationManagementComplete,
       required: true,
     },
   ];
@@ -689,7 +700,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     patientId: record.patient_id,
     soapComplete,
     collaborationMentioned,
-    medicationManagementComplete: completedHomeVisit2026Count === requiredHomeVisit2026Items.length,
+    medicationManagementComplete,
     missingMedicationManagementLabels: missingHomeVisit2026Items.map((item) => item.label),
     billingBlockerCount: visitPreparationPack?.billing_blockers.length ?? 0,
     billingBlockers: visitPreparationPack?.billing_blockers ?? [],
@@ -928,7 +939,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
           className="flex flex-wrap items-center gap-3 rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm"
         >
           <p className="min-w-0 flex-1 leading-6">
-            報告書・請求候補・残薬データの一部を取得できませんでした。表示中の件数や下書きの有無、残薬の準備状況が不正確な可能性があります。
+            報告書・請求候補・残薬・訪問準備情報の一部を取得できませんでした。表示中の件数や下書きの有無、残薬・請求根拠の準備状況が不正確な可能性があります。
           </p>
           <Button
             type="button"
@@ -939,6 +950,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
               void refetchCareReports();
               void refetchBillingCandidates();
               void refetchResiduals();
+              void refetchVisitPreparation();
             }}
           >
             再読み込み
@@ -951,7 +963,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
         renderActionButton={renderWorkflowActionButton}
       />
 
-      {!visitPreparationLoading ? (
+      {!visitPreparationLoading && !visitPreparationError ? (
         <PatientCareTeamSourcePanel contacts={patientCareTeamContacts} compact />
       ) : null}
 
