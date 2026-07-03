@@ -5,15 +5,21 @@ import type { ReactElement, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
-const { pushMock, refetchCasesMock, useMutationMock, useOrgIdMock, useQueryMock } = vi.hoisted(
-  () => ({
-    pushMock: vi.fn(),
-    refetchCasesMock: vi.fn(),
-    useMutationMock: vi.fn(),
-    useOrgIdMock: vi.fn(),
-    useQueryMock: vi.fn(),
-  }),
-);
+const {
+  pushMock,
+  refetchCasesMock,
+  refetchDraftMock,
+  useMutationMock,
+  useOrgIdMock,
+  useQueryMock,
+} = vi.hoisted(() => ({
+  pushMock: vi.fn(),
+  refetchCasesMock: vi.fn(),
+  refetchDraftMock: vi.fn(),
+  useMutationMock: vi.fn(),
+  useOrgIdMock: vi.fn(),
+  useQueryMock: vi.fn(),
+}));
 
 vi.mock('@tanstack/react-query', () => ({
   useMutation: useMutationMock,
@@ -168,7 +174,7 @@ beforeEach(() => {
   useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
     switch (queryKey[0]) {
       case 'qr-scan-draft':
-        return { data: draft, isLoading: false, isError: false, refetch: vi.fn() };
+        return { data: draft, isLoading: false, isError: false, refetch: refetchDraftMock };
       case 'patient-cases':
         return {
           data: casesQueryResult.data,
@@ -187,6 +193,33 @@ afterEach(() => {
 });
 
 describe('QrDraftReviewPage case lookup error handling', () => {
+  it('surfaces a retryable error instead of a false missing-draft state', () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      switch (queryKey[0]) {
+        case 'qr-scan-draft':
+          return { data: undefined, isLoading: false, isError: true, refetch: refetchDraftMock };
+        case 'patient-cases':
+          return {
+            data: undefined,
+            isLoading: false,
+            isError: false,
+            refetch: refetchCasesMock,
+          };
+        default:
+          return { data: undefined, isLoading: false, isError: false, refetch: vi.fn() };
+      }
+    });
+
+    render(<QrDraftReviewPage />);
+
+    expect(screen.getByText('QRスキャン下書きを読み込めませんでした')).toBeTruthy();
+    expect(screen.queryByText('QRスキャン下書きが見つかりません')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+
+    expect(refetchDraftMock).toHaveBeenCalledTimes(1);
+  });
+
   it('surfaces a retryable error instead of a false empty case selector', () => {
     render(<QrDraftReviewPage />);
 

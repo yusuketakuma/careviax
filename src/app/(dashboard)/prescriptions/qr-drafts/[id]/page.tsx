@@ -311,7 +311,12 @@ export default function QrDraftReviewPage() {
   });
 
   // Fetch draft
-  const { data: draft, isLoading } = useQuery({
+  const {
+    data: draft,
+    isLoading,
+    isError: isDraftError,
+    refetch: refetchDraft,
+  } = useQuery({
     queryKey: ['qr-scan-draft', id, orgId],
     queryFn: async () => {
       const res = await fetch(`/api/qr-scan-drafts/${id}`, {
@@ -477,6 +482,20 @@ export default function QrDraftReviewPage() {
   };
 
   if (!orgId || isLoading) return <Loading />;
+  if (isDraftError) {
+    return (
+      <div className="p-6">
+        <ErrorState
+          variant="server"
+          size="inline"
+          headingLevel={1}
+          title="QRスキャン下書きを読み込めませんでした"
+          description="下書きの取得に失敗しました。通信状態を確認して再読み込みしてください。"
+          action={{ label: '再読み込み', onClick: () => void refetchDraft() }}
+        />
+      </div>
+    );
+  }
   if (!draft) {
     return (
       <div className="p-6 text-sm text-muted-foreground">QRスキャン下書きが見つかりません</div>

@@ -144,6 +144,38 @@ describe('ConflictResolutionContent', () => {
     });
   });
 
+  it('surfaces pharmacist lookup failures instead of a false no-conflict state', () => {
+    const refetchPharmacistsMock = vi.fn();
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: [],
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      if (queryKey[0] === 'pharmacists') {
+        return {
+          data: undefined,
+          isLoading: false,
+          isError: true,
+          refetch: refetchPharmacistsMock,
+        };
+      }
+      return { data: undefined, isLoading: false };
+    });
+
+    render(<ConflictResolutionContent initialDate="2026-04-09" />);
+
+    expect(screen.getByText('薬剤師一覧を取得できませんでした')).toBeTruthy();
+    expect(screen.queryByText('2026-04-09 の予定に重なりはありません')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+
+    expect(refetchPharmacistsMock).toHaveBeenCalledTimes(1);
+  });
+
   it('persists Plan A adoption through the visit schedule reorder API', async () => {
     render(<ConflictResolutionContent initialDate="2026-04-09" />);
 

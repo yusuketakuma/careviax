@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -102,5 +102,31 @@ describe('PatientVisitBriefSection', () => {
     expect(screen.getByTestId('visit-brief-card').dataset.patientId).toBe('patient_1?x=1#frag');
 
     vi.unstubAllGlobals();
+  });
+
+  it('surfaces a retryable error instead of silently hiding the visit brief section', () => {
+    const refetchVisitBriefMock = vi.fn();
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      refetch: refetchVisitBriefMock,
+    });
+
+    render(
+      <PatientVisitBriefSection
+        patientId="patient_1"
+        title="訪問前要約"
+        description="確認事項"
+        compact
+      />,
+    );
+
+    expect(screen.getByText('訪問前要約を読み込めませんでした')).toBeTruthy();
+    expect(screen.queryByTestId('visit-brief-card')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+
+    expect(refetchVisitBriefMock).toHaveBeenCalledTimes(1);
   });
 });

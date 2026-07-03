@@ -711,6 +711,47 @@ describe('ConferencesContent', () => {
     expect(notesRefetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('shows an error state with retry instead of a false empty calendar when calendar notes fail to load', () => {
+    const calendarRefetchMock = vi.fn();
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn?: () => Promise<unknown> }) => {
+        const { queryKey } = config;
+        queryConfigs.push(config);
+        if (queryKey[0] === 'conference-notes') {
+          return { data: { data: [] }, isLoading: false };
+        }
+        if (queryKey[0] === 'conference-notes-calendar') {
+          return {
+            data: undefined,
+            isLoading: false,
+            isError: true,
+            refetch: calendarRefetchMock,
+          };
+        }
+        if (queryKey[0] === 'community-activities') {
+          return { data: { data: [] }, isLoading: false };
+        }
+        if (queryKey[0] === 'conference-external-professionals') {
+          return { data: { data: [] }, isLoading: false };
+        }
+        if (queryKey[0] === 'conference-prescriber-institution-suggestion') {
+          return { data: { data: null }, isLoading: false };
+        }
+        return { data: undefined, isLoading: false };
+      },
+    );
+
+    render(<ConferencesContent initialFocus="notes" initialViewMode="calendar" />);
+
+    expect(screen.getByText('カレンダーを取得できませんでした')).toBeTruthy();
+    expect(screen.queryByText('月')).toBeNull();
+    expect(screen.getByText('—')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+
+    expect(calendarRefetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('shows an error state with retry instead of a false empty state when community activities fail to load', () => {
     const activitiesRefetchMock = vi.fn();
     useQueryMock.mockImplementation(

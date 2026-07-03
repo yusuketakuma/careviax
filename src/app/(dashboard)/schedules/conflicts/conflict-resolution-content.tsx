@@ -422,6 +422,23 @@ export function ConflictResolutionContent({ initialDate }: { initialDate?: strin
     );
   }
 
+  if (pharmacistsQuery.isError) {
+    return (
+      <div className="space-y-4 rounded-xl border border-border/70 bg-card p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-base font-bold text-foreground">予定の重なりを直す</h1>
+          {dateNavigator}
+        </div>
+        <ErrorState
+          variant="server"
+          title="薬剤師一覧を取得できませんでした"
+          description="薬剤師名と代替担当候補を確認できないため、重なり判定を表示できません。通信状態を確認して再試行してください。"
+          action={{ label: '再試行', onClick: () => void pharmacistsQuery.refetch() }}
+        />
+      </div>
+    );
+  }
+
   if (!viewModel.hasConflict) {
     return (
       <div

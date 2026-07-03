@@ -1236,7 +1236,11 @@ export function ConferencesContent({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm text-muted-foreground">
-              {noteViewMode === 'calendar' ? `${calendarNotes.length}件` : `${notes.length}件`}
+              {noteViewMode === 'calendar'
+                ? conferenceCalendarQuery.isError
+                  ? '—'
+                  : `${calendarNotes.length}件`
+                : `${notes.length}件`}
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:items-end">
@@ -1372,71 +1376,82 @@ export function ConferencesContent({
               </div>
             </div>
 
-            <div className="overflow-hidden rounded-lg border border-border">
-              <div className="grid grid-cols-7 border-b bg-muted/50">
-                {['月', '火', '水', '木', '金', '土', '日'].map((label) => (
-                  <div
-                    key={label}
-                    className="py-2 text-center text-xs font-medium text-muted-foreground"
-                  >
-                    {label}
-                  </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-7">
-                {calendarDays.map((day) => {
-                  const key = format(day, 'yyyy-MM-dd');
-                  const dayNotes = calendarNotesByDate.get(key) ?? [];
-                  const isSelected =
-                    selectedCalendarDate !== null && isSameDay(selectedCalendarDate, day);
-                  const visibleNotes = dayNotes.slice(0, 2);
-                  const overflowCount = dayNotes.length - visibleNotes.length;
-
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() =>
-                        setSelectedCalendarDate((current) =>
-                          current && isSameDay(current, day) ? null : day,
-                        )
-                      }
-                      className={`min-h-[110px] border-b border-r p-2 text-left align-top last:border-r-0 ${
-                        isSameMonth(day, calendarMonth) ? 'bg-background' : 'bg-muted/20'
-                      } ${isSelected ? 'ring-2 ring-inset ring-primary' : ''}`}
+            {conferenceCalendarQuery.isError ? (
+              <ErrorState
+                variant="server"
+                size="inline"
+                headingLevel={3}
+                title="カレンダーを取得できませんでした"
+                description="カンファレンス記録のカレンダー表示を取得できませんでした。通信状態を確認して再試行してください。"
+                action={{ label: '再試行', onClick: () => void conferenceCalendarQuery.refetch() }}
+              />
+            ) : (
+              <div className="overflow-hidden rounded-lg border border-border">
+                <div className="grid grid-cols-7 border-b bg-muted/50">
+                  {['月', '火', '水', '木', '金', '土', '日'].map((label) => (
+                    <div
+                      key={label}
+                      className="py-2 text-center text-xs font-medium text-muted-foreground"
                     >
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-xs font-medium text-muted-foreground">
-                          {format(day, 'd')}
-                        </span>
-                        {dayNotes.length > 0 ? (
-                          <Badge variant="outline" className="px-1.5 py-0 text-xs">
-                            {dayNotes.length}件
-                          </Badge>
-                        ) : null}
-                      </div>
-                      <div className="space-y-1">
-                        {visibleNotes.map((note) => (
-                          <div
-                            key={note.id}
-                            className="truncate rounded bg-tag-info/10 px-1.5 py-1 text-xs text-tag-info"
-                          >
-                            {format(parseISO(note.conference_date), 'HH:mm')} {note.title}
-                          </div>
-                        ))}
-                        {overflowCount > 0 ? (
-                          <div className="text-xs text-muted-foreground">
-                            ほか {overflowCount} 件
-                          </div>
-                        ) : null}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+                      {label}
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7">
+                  {calendarDays.map((day) => {
+                    const key = format(day, 'yyyy-MM-dd');
+                    const dayNotes = calendarNotesByDate.get(key) ?? [];
+                    const isSelected =
+                      selectedCalendarDate !== null && isSameDay(selectedCalendarDate, day);
+                    const visibleNotes = dayNotes.slice(0, 2);
+                    const overflowCount = dayNotes.length - visibleNotes.length;
 
-            {selectedCalendarDate ? (
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() =>
+                          setSelectedCalendarDate((current) =>
+                            current && isSameDay(current, day) ? null : day,
+                          )
+                        }
+                        className={`min-h-[110px] border-b border-r p-2 text-left align-top last:border-r-0 ${
+                          isSameMonth(day, calendarMonth) ? 'bg-background' : 'bg-muted/20'
+                        } ${isSelected ? 'ring-2 ring-inset ring-primary' : ''}`}
+                      >
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="text-xs font-medium text-muted-foreground">
+                            {format(day, 'd')}
+                          </span>
+                          {dayNotes.length > 0 ? (
+                            <Badge variant="outline" className="px-1.5 py-0 text-xs">
+                              {dayNotes.length}件
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <div className="space-y-1">
+                          {visibleNotes.map((note) => (
+                            <div
+                              key={note.id}
+                              className="truncate rounded bg-tag-info/10 px-1.5 py-1 text-xs text-tag-info"
+                            >
+                              {format(parseISO(note.conference_date), 'HH:mm')} {note.title}
+                            </div>
+                          ))}
+                          {overflowCount > 0 ? (
+                            <div className="text-xs text-muted-foreground">
+                              ほか {overflowCount} 件
+                            </div>
+                          ) : null}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {!conferenceCalendarQuery.isError && selectedCalendarDate ? (
               <div className="space-y-3 rounded-lg border border-border p-4">
                 <div className="flex items-center justify-between">
                   <div>
