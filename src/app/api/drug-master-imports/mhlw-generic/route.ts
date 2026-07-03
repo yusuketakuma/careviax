@@ -20,6 +20,7 @@ import {
   importSourceUrlValidationMessage,
   isAllowedImportSourceUrl,
 } from '@/server/services/drug-master-import/shared';
+import { invalidateDrugMasterSearchCache } from '@/server/services/drug-master-search-cache';
 import { projectDrugMasterImportLogMetadata } from '../import-log-response';
 
 const requestSchema = z.object({
@@ -109,6 +110,7 @@ async function authenticatedPOST(req: NextRequest) {
 
     return importResult;
   });
+  invalidateDrugMasterSearchCache();
 
   return success(
     {

@@ -12,6 +12,11 @@ import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validati
 import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
+import { serverCache } from '@/lib/utils/server-cache';
+import {
+  buildDrugMasterSearchCacheKey,
+  DRUG_MASTER_SEARCH_CACHE_TTL_MS,
+} from '@/server/services/drug-master-search-cache';
 
 const ROUTE = '/api/drug-masters';
 
@@ -122,45 +127,124 @@ async function authenticatedGET(req: NextRequest) {
           if (!site) return notFound('対象の薬局拠点が見つかりません');
         }
 
-        const [drugs, totalCount] = await Promise.all([
-          tx.drugMaster.findMany({
-            where,
-            orderBy:
-              parsed.data.sort === 'drug_name'
-                ? [primarySort ?? { drug_name_kana: 'asc' }, { drug_name_kana: 'asc' }]
-                : [primarySort ?? { drug_name_kana: 'asc' }, { drug_name: 'asc' }],
-            skip: offset,
-            take: limit + 1,
-            select: {
-              id: true,
-              yj_code: true,
-              receipt_code: true,
-              jan_code: true,
-              drug_name: true,
-              drug_name_kana: true,
-              generic_name: true,
-              drug_price: true,
-              unit: true,
-              dosage_form: true,
-              therapeutic_category: true,
-              manufacturer: true,
-              is_generic: true,
-              is_narcotic: true,
-              is_psychotropic: true,
-              is_high_risk: true,
-              outpatient_injection_eligible: true,
-              outpatient_injection_note: true,
-              is_lasa_risk: true,
-              tall_man_name: true,
-              lasa_group_key: true,
-              max_administration_days: true,
-            },
-          }),
-          includeTotal ? tx.drugMaster.count({ where }) : Promise.resolve(null),
-        ]);
+        const orderBy: Prisma.DrugMasterOrderByWithRelationInput[] =
+          parsed.data.sort === 'drug_name'
+            ? [primarySort ?? { drug_name_kana: 'asc' }, { drug_name_kana: 'asc' }]
+            : [primarySort ?? { drug_name_kana: 'asc' }, { drug_name: 'asc' }];
 
-        const hasMore = drugs.length > limit;
-        const data = hasMore ? drugs.slice(0, limit) : drugs;
+        // DrugMaster / GenericDrugMapping はグローバルマスタ（org_id なし）。
+        // stockedOnly && siteId のときだけ where に org 依存条件が入るため、その場合はキャッシュしない。
+        const canCacheSearch = !(stockedOnly && siteId);
+        const searchCacheKey = canCacheSearch
+          ? buildDrugMasterSearchCacheKey({
+              q,
+              category,
+              generic: genericOnly,
+              narcotic: narcoticOnly,
+              highRisk: highRiskOnly,
+              lasa: lasaOnly,
+              sort: parsed.data.sort,
+              order: parsed.data.order,
+              offset,
+              limit,
+              includeTotal,
+            })
+          : null;
+
+        const fetchSearchResult = async () => {
+          const [drugs, totalCount] = await Promise.all([
+            tx.drugMaster.findMany({
+              where,
+              orderBy,
+              skip: offset,
+              take: limit + 1,
+              select: {
+                id: true,
+                yj_code: true,
+                receipt_code: true,
+                jan_code: true,
+                drug_name: true,
+                drug_name_kana: true,
+                generic_name: true,
+                drug_price: true,
+                unit: true,
+                dosage_form: true,
+                therapeutic_category: true,
+                manufacturer: true,
+                is_generic: true,
+                is_narcotic: true,
+                is_psychotropic: true,
+                is_high_risk: true,
+                outpatient_injection_eligible: true,
+                outpatient_injection_note: true,
+                is_lasa_risk: true,
+                tall_man_name: true,
+                lasa_group_key: true,
+                max_administration_days: true,
+              },
+            }),
+            includeTotal ? tx.drugMaster.count({ where }) : Promise.resolve(null),
+          ]);
+
+          const hasMore = drugs.length > limit;
+          const data = hasMore ? drugs.slice(0, limit) : drugs;
+          const genericNames = [
+            ...new Set(
+              data
+                .map((drug) => drug.generic_name?.trim())
+                .filter((value): value is string => Boolean(value)),
+            ),
+          ];
+          const genericMappings =
+            genericNames.length > 0
+              ? await tx.genericDrugMapping.findMany({
+                  where: {
+                    generic_name: {
+                      in: genericNames,
+                    },
+                  },
+                  select: {
+                    generic_name: true,
+                    price_comparison: true,
+                  },
+                })
+              : [];
+          const priceComparisonByGenericName = new Map(
+            genericMappings.map((mapping) => [
+              mapping.generic_name,
+              mapping.price_comparison as Prisma.JsonObject | null,
+            ]),
+          );
+
+          return {
+            data: data.map((drug) => ({
+              ...drug,
+              generic_price_comparison:
+                drug.generic_name != null
+                  ? (priceComparisonByGenericName.get(drug.generic_name) ?? null)
+                  : null,
+            })),
+            hasMore,
+            totalCount,
+          };
+        };
+
+        type DrugMasterSearchResult = Awaited<ReturnType<typeof fetchSearchResult>>;
+
+        let searchResult: DrugMasterSearchResult;
+        if (searchCacheKey) {
+          const cached = serverCache.get<DrugMasterSearchResult>(searchCacheKey);
+          if (cached) {
+            searchResult = cached;
+          } else {
+            searchResult = await fetchSearchResult();
+            serverCache.set(searchCacheKey, searchResult, DRUG_MASTER_SEARCH_CACHE_TTL_MS);
+          }
+        } else {
+          searchResult = await fetchSearchResult();
+        }
+
+        const { data, hasMore, totalCount } = searchResult;
         const stocks =
           siteId && data.length > 0
             ? await tx.pharmacyDrugStock.findMany({
@@ -198,42 +282,11 @@ async function authenticatedGET(req: NextRequest) {
               })
             : [];
         const stockByDrugMasterId = new Map(stocks.map((stock) => [stock.drug_master_id, stock]));
-        const genericNames = [
-          ...new Set(
-            data
-              .map((drug) => drug.generic_name?.trim())
-              .filter((value): value is string => Boolean(value)),
-          ),
-        ];
-        const genericMappings =
-          genericNames.length > 0
-            ? await tx.genericDrugMapping.findMany({
-                where: {
-                  generic_name: {
-                    in: genericNames,
-                  },
-                },
-                select: {
-                  generic_name: true,
-                  price_comparison: true,
-                },
-              })
-            : [];
-        const priceComparisonByGenericName = new Map(
-          genericMappings.map((mapping) => [
-            mapping.generic_name,
-            mapping.price_comparison as Prisma.JsonObject | null,
-          ]),
-        );
 
         return success({
           data: data.map((drug) => ({
             ...drug,
             stock_config: stockByDrugMasterId.get(drug.id) ?? null,
-            generic_price_comparison:
-              drug.generic_name != null
-                ? (priceComparisonByGenericName.get(drug.generic_name) ?? null)
-                : null,
           })),
           hasMore,
           ...(includeTotal ? { totalCount: totalCount ?? 0 } : {}),

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { serverCache } from '@/lib/utils/server-cache';
+import { invalidateDrugMasterSearchCache } from '@/server/services/drug-master-search-cache';
 
 const {
   authMock,
@@ -108,6 +110,7 @@ function buildDrugMasterHit(overrides: Record<string, unknown> = {}) {
 describe('/api/drug-masters GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    serverCache.clear();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist', site_id: null });
     drugMasterFindManyMock.mockResolvedValue([buildDrugMasterHit()]);
@@ -357,6 +360,60 @@ describe('/api/drug-masters GET', () => {
       nextCursor: '1',
     });
     expect(payload).not.toHaveProperty('totalCount');
+  });
+
+  it('caches the org-independent search result across repeated identical queries', async () => {
+    const first = await GET(
+      createRequest('http://localhost/api/drug-masters?q=%E3%82%A2%E3%83%A0&limit=5'),
+    );
+    if (!first) throw new Error('response is required');
+    expect(first.status).toBe(200);
+    expect(drugMasterFindManyMock).toHaveBeenCalledTimes(1);
+    expect(drugMasterCountMock).toHaveBeenCalledTimes(1);
+    expect(genericDrugMappingFindManyMock).toHaveBeenCalledTimes(1);
+
+    const second = await GET(
+      createRequest('http://localhost/api/drug-masters?q=%E3%82%A2%E3%83%A0&limit=5'),
+    );
+    if (!second) throw new Error('response is required');
+    expect(second.status).toBe(200);
+    // 2回目は DB を再度叩かずキャッシュから返す（DrugMaster はグローバルマスタ）。
+    expect(drugMasterFindManyMock).toHaveBeenCalledTimes(1);
+    expect(drugMasterCountMock).toHaveBeenCalledTimes(1);
+    expect(genericDrugMappingFindManyMock).toHaveBeenCalledTimes(1);
+
+    await expect(second.json()).resolves.toMatchObject(await first.json());
+  });
+
+  it('bypasses the cache for org-scoped stocked-only searches', async () => {
+    pharmacyDrugStockFindManyMock.mockResolvedValue([]);
+
+    await GET(
+      createRequest('http://localhost/api/drug-masters?site_id=site_1&stocked=true&limit=5'),
+    );
+    await GET(
+      createRequest('http://localhost/api/drug-masters?site_id=site_1&stocked=true&limit=5'),
+    );
+
+    expect(drugMasterFindManyMock).toHaveBeenCalledTimes(2);
+    expect(drugMasterCountMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('invalidates the search cache after a drug-master import completes', async () => {
+    const first = await GET(
+      createRequest('http://localhost/api/drug-masters?q=%E3%82%A2%E3%83%A0&limit=5'),
+    );
+    if (!first) throw new Error('response is required');
+    expect(drugMasterFindManyMock).toHaveBeenCalledTimes(1);
+
+    invalidateDrugMasterSearchCache();
+
+    const second = await GET(
+      createRequest('http://localhost/api/drug-masters?q=%E3%82%A2%E3%83%A0&limit=5'),
+    );
+    if (!second) throw new Error('response is required');
+    // 取込完了後はキャッシュが無効化され、再度 DB を読む。
+    expect(drugMasterFindManyMock).toHaveBeenCalledTimes(2);
   });
 
   it('returns no-store 401 before drug lookups when unauthenticated', async () => {
