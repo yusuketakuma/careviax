@@ -8,6 +8,7 @@ import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { logger } from '@/lib/utils/logger';
 import { addUtcDays, japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { billingMonthForJapanTimestamp } from './billing-evidence/core';
+import { resolveBillingRulesForDate } from './billing-rules';
 
 type ReportType =
   | 'physician_report'
@@ -126,22 +127,39 @@ const CONFERENCE_BILLING_CONFIG = {
   pre_discharge: {
     billing_code: 'B011-6',
     billing_name: '退院時共同指導料（薬局）',
+    // points は billing-rules/revisions(ssot_key)の amount を SSOT として解決する。
+    // ここの値はレジストリ未収載時のフォールバックのみ。
+    ssot_key: 'medical.discharge_joint_guidance',
     points: 600,
     ssot_ref: '調剤報酬点数表 B011-6 退院時共同指導料',
   },
   service_manager: {
     billing_code: 'MED_INFO_PROVISION_2_HA',
     billing_name: '服薬情報等提供料2 ハ',
+    ssot_key: 'medical.information_provision.2_care_manager',
     points: 20,
     ssot_ref: '調剤報酬点数表 区分15の5 服薬情報等提供料2 ハ',
   },
   death_conference: {
     billing_code: 'C013',
     billing_name: 'ターミナルケア管理料（在宅ターミナルケア加算）',
+    ssot_key: 'medical.addition.terminal_care',
     points: 2500,
     ssot_ref: '調剤報酬点数表 C013 在宅患者訪問薬剤管理指導料 ターミナルケア加算',
   },
 } as const;
+
+/**
+ * 指定billing月に有効な医療保険レジストリの ssot_key → amount(点数) マップを返す。
+ * 会議由来の請求候補も点数は billing-rules/revisions を唯一の値ソースとする。
+ */
+function resolveMedicalAmountByKey(billingMonth: Date): Map<string, number> {
+  return new Map(
+    resolveBillingRulesForDate({ payerBasis: 'medical', asOfDate: billingMonth }).map(
+      (rule) => [rule.ssot_key, rule.amount] as const,
+    ),
+  );
+}
 
 type SupportedBillingNoteType = keyof typeof CONFERENCE_BILLING_CONFIG;
 
@@ -552,6 +570,8 @@ export class ConferenceSyncService {
     // otherwise falls back to the current month.
     const referenceDate = note.conference_date ? new Date(note.conference_date) : new Date();
     const billingMonth = billingMonthForJapanTimestamp(referenceDate);
+    const points =
+      resolveMedicalAmountByKey(billingMonth).get(billingConfig.ssot_key) ?? billingConfig.points;
 
     const participants = parseParticipants(note.participants);
     const sections = parseStructuredSections(note.structured_content);
@@ -596,7 +616,7 @@ export class ConferenceSyncService {
     const calculationBreakdown: Prisma.InputJsonValue = {
       billing_code: billingConfig.billing_code,
       billing_name: billingConfig.billing_name,
-      points: billingConfig.points,
+      points,
       payer_basis: 'medical',
       claimable_hint: evidenceDetails.claimableHint,
       missing_conditions: evidenceDetails.missingConditions,
@@ -618,7 +638,7 @@ export class ConferenceSyncService {
         billing_month: billingMonth,
         billing_code: billingConfig.billing_code,
         billing_name: billingConfig.billing_name,
-        points: billingConfig.points,
+        points,
         quantity: 1,
         status: 'candidate',
         source_snapshot: sourceSnapshot,
@@ -629,7 +649,7 @@ export class ConferenceSyncService {
         billing_month: billingMonth,
         billing_code: billingConfig.billing_code,
         billing_name: billingConfig.billing_name,
-        points: billingConfig.points,
+        points,
         quantity: 1,
         source_snapshot: sourceSnapshot,
         calculation_breakdown: calculationBreakdown,

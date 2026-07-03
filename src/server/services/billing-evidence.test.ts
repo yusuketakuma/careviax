@@ -16,11 +16,17 @@ const {
   resolveOperationalTasksMock: vi.fn(),
 }));
 
-vi.mock('./billing-rules', () => ({
-  ensureHomeCareBillingSsot: ensureHomeCareBillingSsotMock,
-  buildBillingCandidateSpecs: buildBillingCandidateSpecsMock,
-  HOME_CARE_BILLING_RULESET_VERSION: 'home-care-ssot-registry-v2',
-}));
+// resolveBillingRulesForDate は静的レジストリ上の純粋関数のため実物を保持する
+// (information-provision / duplicate-interaction が点数解決に使用する)。
+vi.mock('./billing-rules', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./billing-rules')>();
+  return {
+    ...actual,
+    ensureHomeCareBillingSsot: ensureHomeCareBillingSsotMock,
+    buildBillingCandidateSpecs: buildBillingCandidateSpecsMock,
+    HOME_CARE_BILLING_RULESET_VERSION: 'home-care-ssot-registry-v2',
+  };
+});
 
 vi.mock('./management-plans', () => ({
   findActiveVisitConsent: findActiveVisitConsentMock,

@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { normalizeJsonInput } from '@/lib/db/json';
-import { HOME_CARE_BILLING_RULESET_VERSION } from '../billing-rules';
+import { HOME_CARE_BILLING_RULESET_VERSION, resolveBillingRulesForDate } from '../billing-rules';
 import type { AdditionalBillingRuleDefinition } from './core';
 import {
   startOfMonth,
@@ -118,6 +118,19 @@ export const HOME_ADVERSE_EVENT_RULES_2026: Record<
 
 const MEDICAL_2026_EFFECTIVE = new Date('2026-06-01');
 
+/**
+ * 指定billing月に有効な医療保険レジストリの ssot_key → amount(点数) マップを返す。
+ * 点数は billing-rules/revisions を SSOT とし、改定切替はレジストリの effectiveFrom/To に委譲する。
+ * 各 fee type → ssot_key の構造マッピング(2024⇔2026で別区分)は下記ルール表が担う。
+ */
+function resolveBillingAmountByKey(billingMonth: Date): Map<string, number> {
+  return new Map(
+    resolveBillingRulesForDate({ payerBasis: 'medical', asOfDate: billingMonth }).map(
+      (rule) => [rule.ssot_key, rule.amount] as const,
+    ),
+  );
+}
+
 export function resolveHomeDuplicateRules(
   billingMonth: Date,
 ): Record<HomeDuplicateInteractionFeeType, AdditionalBillingRuleDefinition> {
@@ -193,6 +206,7 @@ export async function generateHomeDuplicateInteractionCandidates(
 ) {
   const monthStart = startOfMonth(args.billingMonth);
   const monthRange = japanMonthRangeForBillingMonth(monthStart);
+  const amountByKey = resolveBillingAmountByKey(args.billingMonth);
   const inquiries = await tx.inquiryRecord.findMany({
     where: {
       org_id: args.orgId,
@@ -233,6 +247,7 @@ export async function generateHomeDuplicateInteractionCandidates(
     });
     const rules = resolveHomeDuplicateRules(args.billingMonth);
     const rule = rules[feeType];
+    const points = amountByKey.get(rule.ssotKey) ?? rule.points;
     const dedupeKey = `${monthLabel(monthStart)}:home-dup:${inquiry.id}:${feeType}`;
     const existing = args.existingByKey.get(dedupeKey);
     const existingWorkflow = readBillingCandidateWorkflowState(existing?.source_snapshot);
@@ -294,7 +309,7 @@ export async function generateHomeDuplicateInteractionCandidates(
         billing_month: monthStart,
         billing_code: rule.code,
         billing_name: rule.name,
-        points: rule.points,
+        points,
         quantity: 1,
         calculation_breakdown: calculationBreakdown,
         source_snapshot: sourceSnapshot,
@@ -312,7 +327,7 @@ export async function generateHomeDuplicateInteractionCandidates(
         billing_target_name: null,
         rule_id: args.ruleIdByKey.get(rule.ssotKey) ?? null,
         billing_name: rule.name,
-        points: rule.points,
+        points,
         quantity: 1,
         calculation_breakdown: calculationBreakdown,
         source_snapshot: sourceSnapshot,

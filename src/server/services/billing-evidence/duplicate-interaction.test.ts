@@ -186,6 +186,30 @@ describe('generateHomeDuplicateInteractionCandidates', () => {
     expect(upsertArg.create.exclusion_reason).toBe(expectedMessage);
   });
 
+  it('persists points resolved from the billing-rules registry per revision (regression: no hardcoded drift)', async () => {
+    // 2026-06 billing 月 → 2026改定: 1_i = 薬学的有害事象等防止加算 ロ (50点)
+    const { tx: tx2026, upsert: upsert2026 } = buildTx([inquiry({ result: 'changed' })]);
+    await generateHomeDuplicateInteractionCandidates(tx2026, {
+      orgId: 'org_1',
+      billingMonth: new Date('2026-06-01T00:00:00.000Z'),
+      ruleIdByKey: new Map<string, string>(),
+      existingByKey: new Map<string, RegeneratedBillingCandidateRecord>(),
+    });
+    const create2026 = upsert2026.mock.calls[0][0].create as { points: number };
+    expect(create2026.points).toBe(50);
+
+    // 2024改定期(2024-07) → 1_i = 在宅患者重複投薬・相互作用等防止管理料1 イ (40点)
+    const { tx: tx2024, upsert: upsert2024 } = buildTx([inquiry({ result: 'changed' })]);
+    await generateHomeDuplicateInteractionCandidates(tx2024, {
+      orgId: 'org_1',
+      billingMonth: new Date('2024-07-01T00:00:00.000Z'),
+      ruleIdByKey: new Map<string, string>(),
+      existingByKey: new Map<string, RegeneratedBillingCandidateRecord>(),
+    });
+    const create2024 = upsert2024.mock.calls[0][0].create as { points: number };
+    expect(create2024.points).toBe(40);
+  });
+
   it('skips an inquiry whose cycle has no patient_id', async () => {
     const { tx, upsert, findManyMock } = buildTx([
       inquiry({ id: 'inq_no_patient', cycle: { patient_id: null } }),

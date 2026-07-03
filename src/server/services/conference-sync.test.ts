@@ -76,6 +76,52 @@ describe('ConferenceSyncService', () => {
     );
   });
 
+  it('resolves conference billing points from the billing-rules registry (regression: no hardcoded drift)', async () => {
+    internals.buildBillingEvidenceDetails = vi.fn(async () => ({
+      claimableHint: true,
+      missingConditions: [],
+      evidenceNotes: [],
+    }));
+
+    // note_type → 現行レジストリ点数 (2026-03 billing 月 = MEDICAL_2024 有効期間)
+    const cases: Array<{ noteType: string; expectedPoints: number }> = [
+      { noteType: 'pre_discharge', expectedPoints: 600 },
+      { noteType: 'service_manager', expectedPoints: 20 },
+      { noteType: 'death_conference', expectedPoints: 2500 },
+    ];
+
+    for (const { noteType, expectedPoints } of cases) {
+      const upsertMock = vi.fn().mockResolvedValue({ id: 'candidate_1' });
+      const tx = { billingCandidate: { upsert: upsertMock } };
+
+      await internals.registerBillingCandidate(
+        tx,
+        'org_1',
+        {
+          id: 'note_1',
+          case_id: 'case_1',
+          patient_id: 'patient_1',
+          note_type: noteType,
+          title: 'カンファレンス',
+          conference_date: new Date('2026-02-28T15:30:00.000Z'),
+          participants: [],
+          structured_content: { sections: [] },
+          metadata: {},
+          action_items: [],
+        },
+        'patient_1',
+      );
+
+      const upsertArg = upsertMock.mock.calls[0][0] as {
+        create: { points: number; calculation_breakdown: { points: number } };
+        update: { points: number };
+      };
+      expect(upsertArg.create.points).toBe(expectedPoints);
+      expect(upsertArg.update.points).toBe(expectedPoints);
+      expect(upsertArg.create.calculation_breakdown.points).toBe(expectedPoints);
+    }
+  });
+
   it('normalizes generated report draft content in bulk create path', async () => {
     const createManyMock = vi.fn().mockResolvedValue({ count: 1 });
     const findManyMock = vi
