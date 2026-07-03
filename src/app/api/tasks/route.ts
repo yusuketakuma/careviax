@@ -9,6 +9,7 @@ import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { internalError, success, validationError } from '@/lib/api/response';
+import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { canCompleteTaskInline } from '@/lib/tasks/inline-completion';
 import { createTaskSchema, taskPriorityValues, taskStatusValues } from '@/lib/validations/task';
@@ -40,46 +41,6 @@ const taskListSelect = {
   created_at: true,
 } satisfies Prisma.TaskSelect;
 type TaskListRow = Prisma.TaskGetPayload<{ select: typeof taskListSelect }>;
-
-type TaskQueryName =
-  | 'task_type'
-  | 'task_types'
-  | 'status'
-  | 'priority'
-  | 'assigned_to'
-  | 'related_entity_type'
-  | 'related_entity_id';
-
-function readStrictOptionalTaskFilter(
-  searchParams: URLSearchParams,
-  name: Exclude<TaskQueryName, 'task_types'>,
-  messages: { blank: string; invalid: string; maxLength?: number },
-) {
-  const values = searchParams.getAll(name);
-  if (values.length === 0) return { ok: true as const, value: undefined };
-  if (values.length > 1) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [`${name} は1つだけ指定してください`] },
-    };
-  }
-
-  const value = values[0];
-  if (value.trim().length === 0) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [messages.blank] },
-    };
-  }
-  if (value !== value.trim() || value.length > (messages.maxLength ?? 100)) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [messages.invalid] },
-    };
-  }
-
-  return { ok: true as const, value };
-}
 
 function readOptionalTaskTypesFilter(searchParams: URLSearchParams) {
   const values = searchParams.getAll('task_types');
@@ -157,7 +118,7 @@ function toTaskListItem(task: TaskListRow, assignedToName: string | null) {
 }
 
 function parseTaskListFilters(searchParams: URLSearchParams) {
-  const taskTypeResult = readStrictOptionalTaskFilter(searchParams, 'task_type', {
+  const taskTypeResult = readStrictOptionalSearchParam(searchParams, 'task_type', {
     blank: 'タスク種別を指定してください',
     invalid: 'タスク種別の形式が不正です',
   });
@@ -193,7 +154,7 @@ function parseTaskListFilters(searchParams: URLSearchParams) {
     };
   }
 
-  const statusResult = readStrictOptionalTaskFilter(searchParams, 'status', {
+  const statusResult = readStrictOptionalSearchParam(searchParams, 'status', {
     blank: 'ステータスを指定してください',
     invalid: '対応していないステータスです',
   });
@@ -217,7 +178,7 @@ function parseTaskListFilters(searchParams: URLSearchParams) {
     };
   }
 
-  const priorityResult = readStrictOptionalTaskFilter(searchParams, 'priority', {
+  const priorityResult = readStrictOptionalSearchParam(searchParams, 'priority', {
     blank: '優先度を指定してください',
     invalid: '対応していない優先度です',
   });
@@ -238,7 +199,7 @@ function parseTaskListFilters(searchParams: URLSearchParams) {
     };
   }
 
-  const assignedToResult = readStrictOptionalTaskFilter(searchParams, 'assigned_to', {
+  const assignedToResult = readStrictOptionalSearchParam(searchParams, 'assigned_to', {
     blank: '担当者IDを指定してください',
     invalid: '担当者IDの形式が不正です',
   });
@@ -249,7 +210,7 @@ function parseTaskListFilters(searchParams: URLSearchParams) {
     };
   }
 
-  const relatedEntityTypeResult = readStrictOptionalTaskFilter(
+  const relatedEntityTypeResult = readStrictOptionalSearchParam(
     searchParams,
     'related_entity_type',
     {
@@ -264,11 +225,15 @@ function parseTaskListFilters(searchParams: URLSearchParams) {
     };
   }
 
-  const relatedEntityIdResult = readStrictOptionalTaskFilter(searchParams, 'related_entity_id', {
-    blank: '関連リソースIDを指定してください',
-    invalid: '関連リソースIDの形式が不正です',
-    maxLength: 191,
-  });
+  const relatedEntityIdResult = readStrictOptionalSearchParam(
+    searchParams,
+    'related_entity_id',
+    {
+      blank: '関連リソースIDを指定してください',
+      invalid: '関連リソースIDの形式が不正です',
+    },
+    { maxLength: 191 },
+  );
   if (!relatedEntityIdResult.ok) {
     return {
       ok: false as const,

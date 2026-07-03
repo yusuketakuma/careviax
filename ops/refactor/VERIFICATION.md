@@ -3380,3 +3380,38 @@ The latest query-param helper convergence slice is
     no response shape, DOM, DB query meaning, auth/RLS behavior, external send,
     migration, production config, or visible UI. The affected validation
     branches are covered by focused route and helper tests.
+
+## Tasks Query Helper Verification
+
+The latest query-param helper convergence slice is
+`RR-QP-20260703-B-tasks-query-helper` at 2026-07-03 19:42 JST.
+
+- Scope:
+  - `/api/tasks` optional single-value filters: `task_type`, `status`,
+    `priority`, `assigned_to`, `related_entity_type`, and `related_entity_id`.
+  - No helper implementation change was needed; the route now delegates to
+    `readStrictOptionalSearchParam`.
+  - `task_types` remains route-local because it is a CSV list parser.
+- Baseline before edit:
+  - `./node_modules/.bin/vitest run src/app/api/tasks/route.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `32` tests.
+- Focused regressions after edit:
+  - `./node_modules/.bin/vitest run src/app/api/tasks/route.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `46` tests.
+  - `./node_modules/.bin/vitest run src/lib/api/search-params.test.ts src/app/api/tasks/route.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `51` tests.
+  - Coverage: shared helper duplicate/blank/padded/max-length semantics,
+    omitted optional task filters remaining absent from Prisma `where`, and
+    malformed task filters rejecting before assignment-scope/DB work.
+- Scoped checks:
+  - `./node_modules/.bin/eslint --max-warnings=0 src/app/api/tasks/route.ts src/app/api/tasks/route.test.ts src/lib/api/search-params.ts src/lib/api/search-params.test.ts`
+  - Result: passed.
+  - `./node_modules/.bin/prettier --check src/app/api/tasks/route.ts src/app/api/tasks/route.test.ts src/lib/api/search-params.ts src/lib/api/search-params.test.ts`
+  - Result: passed.
+  - `git diff --check -- src/app/api/tasks/route.ts src/app/api/tasks/route.test.ts src/lib/api/search-params.ts src/lib/api/search-params.test.ts`
+  - Result: passed.
+- Skipped:
+  - Full typecheck/build/browser smoke were skipped because this slice changes
+    no response shape, DOM, DB query meaning, auth/RLS behavior, external send,
+    migration, production config, or visible UI. The affected validation
+    branches are covered by focused route and helper tests.

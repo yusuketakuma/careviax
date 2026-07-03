@@ -99,11 +99,13 @@ Snapshot: 2026-07-02 02:10 JST
   max-length checks, and field-specific messages.
   `dashboard/medication-deadlines`, `/api/interventions`,
   `/api/medication-issues`, `/api/residual-medications`, and
-  `/api/first-visit-documents`, `/api/medication-cycles`, and
-  `/api/dispense-tasks`, `/api/medication-profiles`, and
-  `/api/communication-events` now use `src/lib/api/search-params.ts`; continue
-  only where exact omitted, blank, padded, too-long, duplicate, and
-  field-message semantics match and focused tests lock the response.
+  `/api/first-visit-documents`, `/api/medication-cycles`,
+  `/api/dispense-tasks`, `/api/medication-profiles`,
+  `/api/communication-events`, and `/api/tasks` now use
+  `src/lib/api/search-params.ts`; continue only where exact omitted, blank,
+  padded, too-long, duplicate, and field-message semantics match and focused
+  tests lock the response. Remaining verified candidate from the current grep:
+  `/api/billing-candidates`.
 - Response helper/no-store convergence remains a periodic scan target, but no
   new unverified candidate is being edited in this artifact-sync slice.
 - API path/header helper convergence should continue only where exact URL shape

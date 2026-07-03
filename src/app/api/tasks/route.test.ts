@@ -150,6 +150,38 @@ describe('/api/tasks', () => {
     expect(findManyInput.select).not.toHaveProperty('dedupe_key');
   });
 
+  it('omits optional task filters from the Prisma where clause when not provided', async () => {
+    const response = await GET(createRequest('http://localhost/api/tasks'));
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(taskFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            { assigned_to: 'user_1' },
+            {
+              related_entity_type: 'patient',
+              related_entity_id: { in: ['patient_1'] },
+            },
+            {
+              related_entity_type: 'case',
+              related_entity_id: { in: ['case_1'] },
+            },
+          ],
+        }),
+      }),
+    );
+    const where = taskFindManyMock.mock.calls[0]?.[0]?.where;
+    expect(where).not.toHaveProperty('task_type');
+    expect(where).not.toHaveProperty('status');
+    expect(where).not.toHaveProperty('priority');
+    expect(where).not.toHaveProperty('assigned_to');
+    expect(where).not.toHaveProperty('related_entity_type');
+    expect(where).not.toHaveProperty('related_entity_id');
+  });
+
   it('filters open tasks by multiple task types without weakening assignment scope', async () => {
     const response = await GET(
       createRequest(
@@ -213,6 +245,16 @@ describe('/api/tasks', () => {
       { task_type: ['task_type は1つだけ指定してください'] },
     ],
     [
+      'blank task_type',
+      'http://localhost/api/tasks?task_type=%20%20',
+      { task_type: ['タスク種別を指定してください'] },
+    ],
+    [
+      'padded task_type',
+      'http://localhost/api/tasks?task_type=%20visit_preparation',
+      { task_type: ['タスク種別の形式が不正です'] },
+    ],
+    [
       'blank task_types',
       'http://localhost/api/tasks?task_types=',
       { task_types: ['task_types には1件以上の種別を指定してください'] },
@@ -223,14 +265,69 @@ describe('/api/tasks', () => {
       { status: ['ステータスを指定してください'] },
     ],
     [
+      'padded status',
+      'http://localhost/api/tasks?status=pending%20',
+      { status: ['対応していないステータスです'] },
+    ],
+    [
+      'duplicate priority',
+      'http://localhost/api/tasks?priority=urgent&priority=normal',
+      { priority: ['priority は1つだけ指定してください'] },
+    ],
+    [
+      'blank priority',
+      'http://localhost/api/tasks?priority=%20%20',
+      { priority: ['優先度を指定してください'] },
+    ],
+    [
+      'padded priority',
+      'http://localhost/api/tasks?priority=%20urgent',
+      { priority: ['対応していない優先度です'] },
+    ],
+    [
+      'duplicate assigned_to',
+      'http://localhost/api/tasks?assigned_to=user_1&assigned_to=user_2',
+      { assigned_to: ['assigned_to は1つだけ指定してください'] },
+    ],
+    [
+      'blank assigned_to',
+      'http://localhost/api/tasks?assigned_to=%20%20',
+      { assigned_to: ['担当者IDを指定してください'] },
+    ],
+    [
       'padded assigned_to',
       'http://localhost/api/tasks?assigned_to=%20user_1',
       { assigned_to: ['担当者IDの形式が不正です'] },
     ],
     [
+      'duplicate related_entity_type',
+      'http://localhost/api/tasks?related_entity_type=patient&related_entity_type=case',
+      { related_entity_type: ['related_entity_type は1つだけ指定してください'] },
+    ],
+    [
       'blank related_entity_type',
       'http://localhost/api/tasks?related_entity_type=',
       { related_entity_type: ['関連リソース種別を指定してください'] },
+    ],
+    [
+      'padded related_entity_type',
+      'http://localhost/api/tasks?related_entity_type=patient%20',
+      { related_entity_type: ['関連リソース種別の形式が不正です'] },
+    ],
+    [
+      'duplicate related_entity_id',
+      'http://localhost/api/tasks?related_entity_id=patient_1&related_entity_id=patient_2',
+      { related_entity_id: ['related_entity_id は1つだけ指定してください'] },
+    ],
+    [
+      'blank related_entity_id',
+      'http://localhost/api/tasks?related_entity_id=%20%20',
+      { related_entity_id: ['関連リソースIDを指定してください'] },
+    ],
+    [
+      'padded related_entity_id',
+      'http://localhost/api/tasks?related_entity_id=%20patient_1',
+      { related_entity_id: ['関連リソースIDの形式が不正です'] },
     ],
     [
       'too long related_entity_id',

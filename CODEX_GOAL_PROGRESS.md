@@ -37119,3 +37119,38 @@ Next loop:
   - Scoped ESLint, scoped Prettier check, and scoped diff-check passed.
 - Remaining:
   - Send completion report to Claude and await opus verdict / Claude commit.
+
+## Tasks Query Helper Convergence - 2026-07-03 19:42 JST
+
+- Scope:
+  - `src/app/api/tasks/route.ts`
+  - `src/app/api/tasks/route.test.ts`
+  - `ops/refactor` progress records
+- Status:
+  - Implemented after Claude ACKed path lock
+    `RR-QP-20260703-B`.
+  - Focused validation green; awaiting opus verdict and Claude commit.
+- Fixed:
+  - `/api/tasks` optional single-value filters now delegate to the shared
+    `readStrictOptionalSearchParam`.
+  - Removed the route-local duplicate `readStrictOptionalTaskFilter`.
+  - Kept `task_types` route-local because it has CSV list parsing, dedupe, and
+    count-limit semantics.
+  - Tests now explicitly prove omitted optional filters stay absent from Prisma
+    `where`, while duplicate, blank, padded, and too-long malformed filters
+    preserve no-store validation responses before assignment-scope/DB work.
+- Safety:
+  - No API response envelope, pagination, status code, auth/RLS, assignment
+    scope, DB schema, migration, audit, billing, external send, UI, production
+    config, push/deploy, or destructive operation behavior changed.
+- Validation:
+  - Baseline focused tasks route test passed `1` file / `32` tests.
+  - Post-edit focused tasks route test passed `1` file / `46` tests.
+  - Post-edit tasks route plus shared helper tests passed `2` files / `51`
+    tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check passed.
+- Remaining:
+  - Send completion report to Claude and await opus verdict / Claude commit.
+  - `/api/billing-candidates` remains the only current route-local strict
+    optional helper candidate from the scoped grep; handle separately because
+    it is billing-domain sensitive.

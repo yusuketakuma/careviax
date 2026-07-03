@@ -1,28 +1,33 @@
 # Refactor State
 
-Snapshot: 2026-07-03 19:18 JST
+Snapshot: 2026-07-03 19:42 JST
 
 ## Phase
 
 - Current phase: Codex execution with Codex subagent review plus continued
   behavior-preserving refactor loop.
 - Current theme: behavior-preserving bug/refactor slices, currently prioritizing
-  safe logging convergence and verified fail-soft behavior.
+  safe logging convergence and exact strict query-param helper convergence.
 - Status: active. The broad repo-wide objective is not complete.
 
 ## Last Change ID
 
-- `RR-BUG-20260703-RT1-shared-event-stream-safe-log`
+- `RR-QP-20260703-B-tasks-query-helper`
 
 ## Build State
 
 - Last full production build evidence:
-  `pnpm build` passed after the offline lifecycle CE14/N25 sync queue and
-  evidence retry slice.
+  Claude full gate after BE-1/BE-3/RT1/RR-QP-A/b33c71b8 passed on
+  2026-07-03: test `13017` passed (`1302` files), lint `0` errors, colors,
+  format, typecheck, typecheck:no-unused, and build all green.
 - Current narrow slice evidence:
-  - Focused shared-event-stream suite passed `1` file / `4` tests.
-  - `pnpm typecheck`: passed.
+  - Baseline tasks route suite passed `1` file / `32` tests.
+  - Focused tasks route suite passed `1` file / `46` tests.
+  - Tasks route plus shared search-param helper suite passed `2` files / `51`
+    tests.
   - Scoped ESLint, scoped Prettier check, and scoped diff-check passed.
+  - Full build/typecheck were not run for this narrow helper-convergence slice;
+    the immediately preceding Claude full gate was green.
   - `pnpm build` was not run for this narrow logger-convergence slice.
 - Previous narrow slice evidence:
   - Focused patient-detail suite passed `1` file / `70` tests.
@@ -40,19 +45,18 @@ Snapshot: 2026-07-03 19:18 JST
 
 ## Current Worktree
 
-- The worktree is intentionally dirty from verified small slices. Preserve all
-  existing dirty files unless explicitly owning a new slice.
-- Latest separate-track slice changed only
-  `src/lib/realtime/shared-event-stream.ts` and
-  `src/lib/realtime/shared-event-stream.test.ts`. It replaces shared realtime
-  listener/status callback `console.error` logging with the shared safe logger
-  while preserving listener isolation, status emission, connection sharing, and
-  reconnect behavior. Focused realtime tests, typecheck, scoped ESLint, scoped
-  Prettier, and diff-check passed. Full build was not run for this narrow
-  slice.
-- Current uncommitted/untracked Claude-assigned docs-only BE-3 artifact:
-  `docs/design/care-report-finalize-lock-design.md`. This file is awaiting
-  opus/Claude review and commit; do not drop it while continuing RT1 review.
+- The worktree has an owned separate-track query-helper slice awaiting
+  Claude/opus verdict and Claude commit. Preserve unrelated dirty files if any
+  appear.
+- Latest separate-track slice changed only `src/app/api/tasks/route.ts`,
+  `src/app/api/tasks/route.test.ts`, and progress ledgers. It removes the
+  route-local duplicate `readStrictOptionalTaskFilter` and delegates exact
+  optional single-value filters to `readStrictOptionalSearchParam`, while
+  keeping `task_types` CSV parsing route-local. Omitted filters stay absent
+  from Prisma `where`; duplicate, blank, padded, and too-long malformed
+  filters still reject before assignment-scope/DB work. Focused tasks/helper
+  tests, scoped ESLint, scoped Prettier, and diff-check passed. Full
+  build/typecheck were not run for this narrow slice.
 - Latest safe-logger slice changed only
   `src/server/services/patient-detail.ts` and
   `src/server/services/patient-detail.test.ts`. It replaces patient timeline

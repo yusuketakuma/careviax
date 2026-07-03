@@ -2489,3 +2489,66 @@ continuity`).
   - Await opus verdict / Claude commit.
   - Continue strict optional query-param convergence only where omitted,
     empty, padded, too-long, and duplicate semantics match exactly.
+
+## 2026-07-03 19:42 JST - Tasks Query Helper Convergence
+
+- Change ID: `RR-QP-20260703-B-tasks-query-helper`.
+- Category: inconsistency / duplicate helper removal / API validation
+  behavior-preserving refactor.
+- Target:
+  - `/api/tasks` optional single-value filters: `task_type`, `status`,
+    `priority`, `assigned_to`, `related_entity_type`, and `related_entity_id`.
+- Purpose:
+  - Remove the route-local duplicate strict optional query-param reader where
+    behavior exactly matches `readStrictOptionalSearchParam`.
+- Implementation:
+  - Imported `readStrictOptionalSearchParam` in the tasks route.
+  - Removed `readStrictOptionalTaskFilter`.
+  - Kept `task_types` parsing route-local because it is a CSV list parser with
+    route-specific dedupe/count semantics.
+  - Kept `related_entity_id` at its existing `191` max length by passing the
+    shared helper option.
+  - Added omitted-filter regression coverage so missing optional filters stay
+    absent from Prisma `where`.
+  - Expanded malformed-filter coverage for duplicate, blank, padded, and
+    too-long cases before assignment-scope/DB work.
+- Files changed:
+  - `src/app/api/tasks/route.ts`
+  - `src/app/api/tasks/route.test.ts`
+- Deleted code:
+  - One route-local strict optional string query reader.
+- Shared helper:
+  - `readStrictOptionalSearchParam` from `src/lib/api/search-params.ts`.
+- Behavior change:
+  - None intended.
+  - Existing no-store validation response shape and task assignment-scope
+    filtering are preserved.
+- FE/BE alignment impact:
+  - No API path, method, response envelope, status code, pagination, auth/RLS,
+    assignment scope, or DB schema behavior changed.
+- UI layout impact:
+  - None.
+- Performance impact:
+  - No runtime performance claim. The change removes duplicated parsing code
+    only.
+- Validation:
+  - Baseline before edit:
+    `./node_modules/.bin/vitest run src/app/api/tasks/route.test.ts --reporter=dot --testTimeout=60000`
+    passed `1` file / `32` tests.
+  - Post-edit focused suite:
+    `./node_modules/.bin/vitest run src/app/api/tasks/route.test.ts --reporter=dot --testTimeout=60000`
+    passed `1` file / `46` tests.
+  - Post-edit helper + route suite:
+    `./node_modules/.bin/vitest run src/lib/api/search-params.test.ts src/app/api/tasks/route.test.ts --reporter=dot --testTimeout=60000`
+    passed `2` files / `51` tests.
+  - `./node_modules/.bin/eslint --max-warnings=0 src/app/api/tasks/route.ts src/app/api/tasks/route.test.ts src/lib/api/search-params.ts src/lib/api/search-params.test.ts`
+    passed.
+  - `./node_modules/.bin/prettier --check src/app/api/tasks/route.ts src/app/api/tasks/route.test.ts src/lib/api/search-params.ts src/lib/api/search-params.test.ts`
+    passed.
+  - `git diff --check -- src/app/api/tasks/route.ts src/app/api/tasks/route.test.ts src/lib/api/search-params.ts src/lib/api/search-params.test.ts`
+    passed.
+- Remaining:
+  - Send completion report to Claude and await opus verdict / Claude commit.
+  - `/api/billing-candidates` remains the only current route-local strict
+    optional helper candidate from the scoped grep, but it is billing-domain
+    sensitive and should be handled as its own slice.
