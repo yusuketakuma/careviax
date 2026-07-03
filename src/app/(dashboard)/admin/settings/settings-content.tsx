@@ -22,6 +22,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import {
+  getSettingRangeError,
   SCOPE_LABELS,
   type SettingScope,
   type SettingValueItem,
@@ -85,6 +86,9 @@ function SettingRow({
   item: SettingValueItem;
   onChange: (key: string, value: string) => void;
 }) {
+  const rangeError = getSettingRangeError(item, item.value);
+  const errorId = rangeError ? `setting-${item.key}-error` : undefined;
+
   return (
     <div className="flex items-start gap-4 border-b border-border py-3 last:border-0">
       <div className="min-w-0 flex-1">
@@ -117,13 +121,24 @@ function SettingRow({
             </SelectContent>
           </Select>
         ) : (
-          <Input
-            id={`setting-${item.key}`}
-            type={item.type === 'number' ? 'number' : 'text'}
-            value={item.value}
-            onChange={(event) => onChange(item.key, event.target.value)}
-            className="h-8 text-sm"
-          />
+          <>
+            <Input
+              id={`setting-${item.key}`}
+              type={item.type === 'number' ? 'number' : 'text'}
+              value={item.value}
+              min={item.type === 'number' ? item.min : undefined}
+              max={item.type === 'number' ? item.max : undefined}
+              onChange={(event) => onChange(item.key, event.target.value)}
+              className="h-8 text-sm"
+              aria-invalid={!!rangeError}
+              aria-describedby={errorId}
+            />
+            {rangeError ? (
+              <p id={errorId} className="mt-1 text-xs text-destructive">
+                {rangeError}
+              </p>
+            ) : null}
+          </>
         )}
       </div>
     </div>
@@ -197,6 +212,13 @@ function ScopePanel({
     return original !== current;
   }, [displayedItems, editorMode, fetchedItems, jsonDraft, serializedFetchedItems]);
 
+  // フォーム編集モードでコンプライアンス上のレンジ(min/max)を外れている項目がある間は保存を止める。
+  // JSON編集モードは保存を試みた時点でパース後の値を検証する(下記 mutationFn)。
+  const hasFormRangeError = useMemo(() => {
+    if (editorMode !== 'form') return false;
+    return displayedItems.some((item) => getSettingRangeError(item, item.value) !== null);
+  }, [displayedItems, editorMode]);
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       let itemsForSave = displayedItems;
@@ -214,6 +236,14 @@ function ScopePanel({
                 ? ''
                 : String(parsed[item.key]),
         }));
+      }
+
+      // JSON編集モードはフォームの行内エラー表示を経由しないため、送信直前にレンジを検証する。
+      const rangeError = itemsForSave
+        .map((item) => getSettingRangeError(item, item.value))
+        .find((message): message is string => message != null);
+      if (rangeError) {
+        throw new Error(rangeError);
       }
 
       const response = await fetch('/api/settings', {
@@ -301,7 +331,7 @@ function ScopePanel({
           <Button
             size="sm"
             onClick={() => saveMutation.mutate()}
-            disabled={!isDirty || saveMutation.isPending}
+            disabled={!isDirty || saveMutation.isPending || hasFormRangeError}
           >
             <Save className="mr-1.5 size-3.5" aria-hidden="true" />
             {saveMutation.isPending ? '保存中...' : '保存'}

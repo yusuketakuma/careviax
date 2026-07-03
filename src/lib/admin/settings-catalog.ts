@@ -15,6 +15,10 @@ export type SettingCatalogItem = {
   type: SettingFieldType;
   options?: SettingOption[];
   storage: 'setting' | 'organization' | 'site';
+  /** type: 'number' のみ有効。コンプライアンス上の下限（3省2GL等）。 */
+  min?: number;
+  /** type: 'number' のみ有効。コンプライアンス上の上限（3省2GL等）。 */
+  max?: number;
 };
 
 export const SETTING_CATALOG: Record<SettingScope, SettingCatalogItem[]> = {
@@ -22,10 +26,12 @@ export const SETTING_CATALOG: Record<SettingScope, SettingCatalogItem[]> = {
     {
       key: 'session_timeout_minutes',
       label: 'セッションタイムアウト',
-      description: '分単位（3省2GL準拠: 最大30分）',
+      description: '分単位（3省2GL準拠: 5〜30分）',
       defaultValue: '30',
       type: 'number',
       storage: 'setting',
+      min: 5,
+      max: 30,
     },
     {
       key: 'mfa_required',
@@ -42,17 +48,22 @@ export const SETTING_CATALOG: Record<SettingScope, SettingCatalogItem[]> = {
     {
       key: 'audit_log_retention_days',
       label: '監査ログ保持期間',
-      description: '日数（最低365日）',
+      description: '日数（3省2GL準拠: 365〜3650日）',
       defaultValue: '365',
       type: 'number',
       storage: 'setting',
+      min: 365,
+      max: 3650,
     },
     {
       key: 'password_min_length',
       label: 'パスワード最小文字数',
+      description: '文字数（3省2GL準拠: 12〜128文字）',
       defaultValue: '12',
       type: 'number',
       storage: 'setting',
+      min: 12,
+      max: 128,
     },
   ],
   organization: [
@@ -181,6 +192,8 @@ export type SettingValueItem = {
   value: string;
   type: SettingFieldType;
   options?: SettingOption[];
+  min?: number;
+  max?: number;
 };
 
 export function stringifySettingValue(value: unknown, fallbackValue: string) {
@@ -201,4 +214,30 @@ export function parseSettingInputValue(
     return value === 'true';
   }
   return value;
+}
+
+/**
+ * コンプライアンス上の min/max レンジを持つ数値設定を検証する。
+ * server(API保存時の拒否)・client(入力中のインライン表示)の両方から共用する SSOT。
+ * type !== 'number' または min/max 未定義の項目は常に null（対象外）を返す。
+ * 既存値の読み取り（GET）はこの関数を通さないため、レンジ外の保存済み値も表示は許容される。
+ */
+export function getSettingRangeError(
+  item: Pick<SettingCatalogItem, 'type' | 'min' | 'max' | 'label'>,
+  rawValue: string,
+): string | null {
+  if (item.type !== 'number') return null;
+  if (item.min === undefined && item.max === undefined) return null;
+
+  const parsed = Number(rawValue);
+  if (rawValue.trim() === '' || !Number.isFinite(parsed)) {
+    return `${item.label}は数値で入力してください`;
+  }
+  if (item.min !== undefined && parsed < item.min) {
+    return `${item.label}は${item.min}以上で入力してください`;
+  }
+  if (item.max !== undefined && parsed > item.max) {
+    return `${item.label}は${item.max}以下で入力してください`;
+  }
+  return null;
 }

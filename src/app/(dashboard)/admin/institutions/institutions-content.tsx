@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { hasPermission } from '@/lib/auth/permission-matrix';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
@@ -29,6 +30,7 @@ import {
   buildPrescriberInstitutionApiPath,
   buildPrescriberInstitutionsApiPath,
 } from '@/lib/prescriber-institutions/api-paths';
+import { useAuthStore } from '@/lib/stores/auth-store';
 import { formatDateLabel } from '@/lib/ui/date-format';
 
 /** 最終処方日が「古い(要確認)」とみなす日数。これを超えると鮮度バッジを confirm 表示する。 */
@@ -123,6 +125,9 @@ const EMPTY_FORM: FormState = {
 export function InstitutionsContent() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
+  const viewerRole = useAuthStore((s) => s.currentUser.role);
+  // 新規登録/編集/削除は API 側で canAdmin 必須(常時 403 になるため非管理者には出さない)。
+  const canManageInstitutions = viewerRole ? hasPermission(viewerRole, 'canAdmin') : false;
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebouncedValue(query, 300);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -218,7 +223,7 @@ export function InstitutionsContent() {
     },
   });
 
-  const columns: ColumnDef<Institution>[] = [
+  const baseColumns: ColumnDef<Institution>[] = [
     {
       accessorKey: 'name',
       header: '医療機関名',
@@ -265,32 +270,40 @@ export function InstitutionsContent() {
         );
       },
     },
-    {
-      id: 'actions',
-      header: '操作',
-      cell: ({ row }) => (
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            className="!h-11 !min-h-[44px]"
-            aria-label={`${row.original.name} を編集`}
-            onClick={() => openEdit(row.original)}
-          >
-            編集
-          </Button>
-          <Button
-            variant="outline"
-            className="!h-11 !min-h-[44px]"
-            aria-label={`${row.original.name} を削除`}
-            onClick={() => setDeleteTarget(row.original)}
-            disabled={deleteMutation.isPending}
-          >
-            削除
-          </Button>
-        </div>
-      ),
-    },
   ];
+
+  // 編集/削除は canAdmin 必須の API に紐づく。非管理者に常時 403 になる操作ボタンを
+  // 見せない(disable+tooltipではなく列自体を出さない=hide)。
+  const columns: ColumnDef<Institution>[] = canManageInstitutions
+    ? [
+        ...baseColumns,
+        {
+          id: 'actions',
+          header: '操作',
+          cell: ({ row }) => (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                className="!h-11 !min-h-[44px]"
+                aria-label={`${row.original.name} を編集`}
+                onClick={() => openEdit(row.original)}
+              >
+                編集
+              </Button>
+              <Button
+                variant="outline"
+                className="!h-11 !min-h-[44px]"
+                aria-label={`${row.original.name} を削除`}
+                onClick={() => setDeleteTarget(row.original)}
+                disabled={deleteMutation.isPending}
+              >
+                削除
+              </Button>
+            </div>
+          ),
+        },
+      ]
+    : baseColumns;
 
   return (
     <>
@@ -314,9 +327,11 @@ export function InstitutionsContent() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>医療機関一覧</CardTitle>
-          <Button className="!h-11 !min-h-[44px]" onClick={openCreate}>
-            新規登録
-          </Button>
+          {canManageInstitutions ? (
+            <Button className="!h-11 !min-h-[44px]" onClick={openCreate}>
+              新規登録
+            </Button>
+          ) : null}
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="max-w-sm">

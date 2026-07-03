@@ -83,7 +83,7 @@ function buildBulkExportRun(
     job_type: 'medication-history-bulk-export',
     status: 'completed',
     output,
-    error_log: null,
+    error_summary: null,
     retry_count: 0,
     max_retries: 3,
     started_at: null,
@@ -114,7 +114,7 @@ describe('JobsDashboardContent', () => {
               job_type: 'medication-history-bulk-export-drain',
               status: 'completed',
               output: null,
-              error_log: null,
+              error_summary: null,
               retry_count: 0,
               max_retries: 3,
               started_at: '2026-05-21T00:59:00.000Z',
@@ -130,7 +130,7 @@ describe('JobsDashboardContent', () => {
                 patientCount: 1,
                 failedCount: 1,
               },
-              error_log: null,
+              error_summary: null,
               retry_count: 0,
               max_retries: 3,
               started_at: '2026-05-21T01:00:00.000Z',
@@ -204,6 +204,53 @@ describe('JobsDashboardContent', () => {
         }),
       ),
     ).toBeNull();
+  });
+
+  it('renders a structured error summary instead of raw error_log text and points to CloudWatch for details', () => {
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      data: {
+        data: [
+          {
+            job_type: 'daily-billing-evidence',
+            schedule_hint: '毎朝',
+            endpoint: '/api/jobs/daily-billing-evidence',
+            latest_run: {
+              id: 'run_failed',
+              job_type: 'daily-billing-evidence',
+              status: 'failed',
+              output: null,
+              // The API never sends raw error_log content; this fixture asserts
+              // the UI renders only the structured, pre-redacted summary.
+              error_summary: {
+                error_name: 'リトライ上限到達',
+                occurred_at: '2026-05-21T00:59:30.000Z',
+                message: 'エラーが記録されています',
+              },
+              retry_count: 3,
+              max_retries: 3,
+              started_at: '2026-05-21T00:59:00.000Z',
+              completed_at: '2026-05-21T00:59:30.000Z',
+              created_at: '2026-05-21T00:59:00.000Z',
+            },
+          },
+        ],
+      },
+    });
+
+    render(<JobsDashboardContent />);
+
+    expect(screen.getAllByText('リトライ上限到達').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('エラーが記録されています').length).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getByText(
+        '詳細な生ログが必要な場合は CloudWatch を参照してください（本画面には表示されません）。',
+      ),
+    ).toBeTruthy();
+
+    const bodyText = document.body.textContent ?? '';
+    expect(bodyText).not.toContain('password');
+    expect(bodyText).not.toContain('token=');
   });
 
   it('names rerun actions by job type and sends the row endpoint', () => {

@@ -155,12 +155,29 @@ type LatestRun = {
   created_at: Date;
 };
 
+// Fixed, pre-redacted message shown for any job run with a non-null error_log.
+// The stored error_log itself is ALWAYS a sanitized constant (see
+// src/server/jobs/runner.ts, drug-master-import/*, pdf-bulk-export.ts) —
+// but this UI-facing summary intentionally ignores its content entirely and
+// substitutes this fixed string, so a future regression that writes an
+// unsanitized error_log can never surface raw text (token/password/patient
+// name) on this screen.
+const JOB_ERROR_REDACTED_MESSAGE = 'エラーが記録されています';
+const JOB_ERROR_NAME_RETRIES_EXHAUSTED = 'リトライ上限到達';
+const JOB_ERROR_NAME_EXECUTION_FAILED = '実行エラー';
+
+type JobErrorSummaryDto = {
+  error_name: string;
+  occurred_at: string | null;
+  message: string;
+};
+
 type JobRunDto = {
   id: string;
   job_type: string;
   status: string;
   output: Record<string, number> | null;
-  error_log: string | null;
+  error_summary: JobErrorSummaryDto | null;
   retry_count: number;
   max_retries: number;
   started_at: Date | null;
@@ -201,6 +218,25 @@ function sanitizeOutput(job: LatestRun): Record<string, number> | null {
   };
 }
 
+function toJobErrorSummary(job: LatestRun): JobErrorSummaryDto | null {
+  if (!job.error_log) return null;
+
+  // Classified purely from safe, already-selected fields (status/retry counts) —
+  // never from the error_log text itself.
+  const errorName =
+    job.status === 'failed' && job.retry_count >= job.max_retries
+      ? JOB_ERROR_NAME_RETRIES_EXHAUSTED
+      : JOB_ERROR_NAME_EXECUTION_FAILED;
+
+  const occurredAt = job.completed_at ?? job.started_at ?? job.created_at;
+
+  return {
+    error_name: errorName,
+    occurred_at: occurredAt ? occurredAt.toISOString() : null,
+    message: JOB_ERROR_REDACTED_MESSAGE,
+  };
+}
+
 function toJobRunDto(job: LatestRun | null): JobRunDto | null {
   if (!job) return null;
   return {
@@ -208,7 +244,7 @@ function toJobRunDto(job: LatestRun | null): JobRunDto | null {
     job_type: job.job_type,
     status: job.status,
     output: sanitizeOutput(job),
-    error_log: job.error_log ? 'エラーが記録されています' : null,
+    error_summary: toJobErrorSummary(job),
     retry_count: job.retry_count,
     max_retries: job.max_retries,
     started_at: job.started_at,
@@ -216,6 +252,13 @@ function toJobRunDto(job: LatestRun | null): JobRunDto | null {
     created_at: job.created_at,
   };
 }
+
+// Bounded window over the most recent IntegrationJob rows across all job types.
+// This is a "counted list": each definition's latest_run is only found if it
+// falls inside this window, so infrequent job types can legitimately show
+// "未実行" even after having run outside the window. Explicit and named so a
+// future edit cannot silently widen/remove the bound.
+const RECENT_JOB_RUN_WINDOW = 50;
 
 export async function GET(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
@@ -242,7 +285,7 @@ export async function GET(req: NextRequest) {
       created_at: true,
     },
     orderBy: { created_at: 'desc' },
-    take: 50,
+    take: RECENT_JOB_RUN_WINDOW,
   });
 
   return success({

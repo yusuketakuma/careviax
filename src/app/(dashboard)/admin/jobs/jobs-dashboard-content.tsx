@@ -24,12 +24,22 @@ import { formatDateTimeLabel } from '@/lib/ui/date-format';
 
 // --- Types ---
 
+// Structured, pre-redacted error summary. `message` is always the fixed,
+// already-sanitized wording returned by the API — never the raw error_log
+// text — so this screen can never render token/password/patient-name
+// content even if a future bug writes an unsanitized error_log.
+type JobErrorSummary = {
+  error_name: string;
+  occurred_at: string | null;
+  message: string;
+};
+
 type IntegrationJobRun = {
   id: string;
   job_type: string;
   status: string;
   output: unknown;
-  error_log: string | null;
+  error_summary: JobErrorSummary | null;
   retry_count: number;
   max_retries: number;
   started_at: string | null;
@@ -270,7 +280,7 @@ export function JobsDashboardContent() {
         cell: ({ row }) => {
           const run = row.original.latest_run;
           const summary = getJobBulkExportRunSummary(row.original);
-          const err = run?.error_log;
+          const errorSummary = run?.error_summary;
           if (summary) {
             return (
               <span
@@ -281,10 +291,11 @@ export function JobsDashboardContent() {
               </span>
             );
           }
-          if (!err) return <span className="text-xs text-muted-foreground">—</span>;
+          if (!errorSummary) return <span className="text-xs text-muted-foreground">—</span>;
+          const tooltip = `${errorSummary.error_name} / リトライ ${run?.retry_count}/${run?.max_retries}回`;
           return (
-            <span className="max-w-[200px] truncate text-xs text-destructive" title={err}>
-              {err}
+            <span className="max-w-[200px] truncate text-xs text-destructive" title={tooltip}>
+              {errorSummary.error_name}
             </span>
           );
         },
@@ -318,8 +329,9 @@ export function JobsDashboardContent() {
 
   function renderExpandedRow(row: Row<JobDefinitionEntry>) {
     const run = row.original.latest_run;
+    const errorSummary = run?.error_summary;
     const bulkExportSummary = getJobBulkExportRunSummary(row.original);
-    if (!run?.error_log && !bulkExportSummary) return null;
+    if (!errorSummary && !bulkExportSummary) return null;
     return (
       <div className="space-y-3 bg-destructive/10 px-4 py-3">
         {bulkExportSummary && (
@@ -333,12 +345,27 @@ export function JobsDashboardContent() {
             </p>
           </div>
         )}
-        {run?.error_log && (
-          <div>
-            <p className="mb-1 text-xs font-semibold text-destructive">エラーログ</p>
-            <pre className="overflow-x-auto whitespace-pre-wrap break-all text-xs text-destructive">
-              {run.error_log}
-            </pre>
+        {errorSummary && run && (
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-destructive">エラー概要</p>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-xs text-destructive">
+              <dt className="text-muted-foreground">種別</dt>
+              <dd>{errorSummary.error_name}</dd>
+              <dt className="text-muted-foreground">ジョブ</dt>
+              <dd className="font-mono">{run.job_type}</dd>
+              <dt className="text-muted-foreground">発生時刻</dt>
+              <dd className="tabular-nums">
+                {formatDateTimeLabel(errorSummary.occurred_at, { pattern: 'MM/dd HH:mm' })}
+              </dd>
+              <dt className="text-muted-foreground">リトライ</dt>
+              <dd className="tabular-nums">
+                {run.retry_count}/{run.max_retries}
+              </dd>
+            </dl>
+            <p className="text-xs text-destructive">{errorSummary.message}</p>
+            <p className="text-xs text-muted-foreground">
+              詳細な生ログが必要な場合は CloudWatch を参照してください（本画面には表示されません）。
+            </p>
           </div>
         )}
       </div>
@@ -384,10 +411,13 @@ export function JobsDashboardContent() {
               const cfg = STATUS_CONFIG[status];
               const summary = getJobBulkExportRunSummary(entry);
               const reason = getAttentionReason(entry);
+              const errorSummary = entry.latest_run?.error_summary;
               const detail =
                 reason === 'partial' && summary
                   ? formatBulkExportSummary(summary)
-                  : entry.latest_run?.error_log || entry.schedule_hint;
+                  : errorSummary
+                    ? `${errorSummary.error_name} / ${errorSummary.message}`
+                    : entry.schedule_hint;
 
               return (
                 <article

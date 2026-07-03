@@ -4,6 +4,7 @@ import { isMemberRole } from '@/lib/auth/member-roles';
 import { readJsonObject } from '@/lib/db/json';
 import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
 import { logger } from '@/lib/utils/logger';
+import { OS_BRIDGE_LANDING_URL } from '@/lib/notifications/os-bridge-redaction';
 import { getRealtimeAdapter } from '@/server/adapters/realtime';
 import { LineNotificationAdapter } from '@/server/adapters/line';
 import { SmsNotificationAdapter } from '@/server/adapters/sms';
@@ -377,10 +378,14 @@ export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificat
       select: { endpoint: true, p256dh: true, auth: true },
     });
 
+    // OS 層(ブラウザ Notification API / プッシュ基盤 = FCM/Mozilla/Apple)へは
+    // 患者ディープリンク(例 /patients/<patient_id>/...)を渡さない。raw な link は
+    // 患者 ID を含み PHI に相当するため、クライアント OS ブリッジと同じ汎用ランディング
+    // (/notifications) のみを送り、詳細はアプリ内で開かせる。
     const pushPayload = JSON.stringify({
       title: externalNotification.title,
       body: externalNotification.message,
-      link: input.link ?? null,
+      link: OS_BRIDGE_LANDING_URL,
     });
 
     scheduleNotificationDeliveries(

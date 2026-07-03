@@ -687,16 +687,21 @@ describe('dispatchNotificationEvent', () => {
         body: string;
         link: string | null;
       };
+      // OS/プッシュ層へは患者ディープリンク(患者 ID = PHI)を渡さず、汎用ランディング
+      // /notifications のみを送る。title/body も種別非依存の汎用文言。
       expect(pushBody).toEqual({
         title: 'PH-OS通知',
         body: 'アプリで詳細を確認してください',
-        link: '/patients/patient_1',
+        link: '/notifications',
       });
       const payloadJson = JSON.stringify(pushBody);
       expect(payloadJson).not.toContain('田中');
       expect(payloadJson).not.toContain('一郎');
       expect(payloadJson).not.toContain('モルヒネ');
       expect(payloadJson).not.toContain('肺がん');
+      // 患者 ID を含む生ディープリンクがプッシュ基盤へ漏れないことを明示的に検証する。
+      expect(payloadJson).not.toContain('patient_1');
+      expect(payloadJson).not.toContain('/patients/');
     } finally {
       if (originalPublicKey === undefined) {
         delete process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;

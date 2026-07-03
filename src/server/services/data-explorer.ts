@@ -6,11 +6,114 @@ import {
   type CoverageCategory,
 } from '@/lib/admin/data-explorer-catalog';
 import { redactAuditLogChangesForResponse } from '@/lib/audit-logs/redaction';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
+import type { RequestAuthContext } from '@/lib/auth/request-context';
+
+/**
+ * data-explorer mutation を行うアクターのコンテキスト。監査ログ (createAuditLogEntry)
+ * に必要な最小フィールドのみを受け取る。PHI は含めない。
+ */
+export type DataExplorerActorContext = Pick<
+  RequestAuthContext,
+  'orgId' | 'userId' | 'actorPharmacyId' | 'actorSiteId' | 'ipAddress' | 'userAgent'
+>;
+
+/** read-only モデルへの PATCH/DELETE を弾いたときに throw するエラーメッセージ (route で 403 にマップ)。 */
+export const DATA_EXPLORER_READ_ONLY_MODEL_ERROR = 'Data explorer model is read-only';
+/** hard delete を弾いたときに throw するエラーメッセージ (route で 403 にマップ)。 */
+export const DATA_EXPLORER_DELETE_FORBIDDEN_ERROR = 'Data explorer model cannot be deleted';
+/** 更新・soft-delete 時に記録する監査アクション。 */
+export const DATA_EXPLORER_UPDATE_AUDIT_ACTION = 'data_explorer.record_updated';
+export const DATA_EXPLORER_SOFT_DELETE_AUDIT_ACTION = 'data_explorer.record_soft_deleted';
 
 const READ_ONLY_FIELDS = new Set(['id', 'org_id', 'created_at', 'updated_at']);
 const READ_ONLY_RELATION_ID_PATTERN = /(?:^|_)id$/;
 const READ_ONLY_MODEL_PATTERNS = [/AuditLog$/, /History$/, /Job$/, /Log$/] as const;
+
+/**
+ * モデル単位で編集・削除を全面禁止する read-only モデル。
+ *
+ * 根拠 (Compliance by Design / Audit by Default):
+ * 医療記録・調剤/監査証跡・患者臨床データ・同意/交付の法的記録・請求根拠は、
+ * それぞれ専用ワークフロー (+ 個別の監査ログ) を通じてのみ変更されるべきであり、
+ * 汎用のデータ探索 UI から直接改変することは 3省2ガイドライン準拠に反する。
+ * したがって data-explorer からは field レベルではなくモデルレベルで read-only 化する
+ * (PATCH/DELETE は 403)。マスタ/設定系のみ編集可のまま残す。
+ * 個別モデルの編集解除が必要になった場合はここから外し、専用の検証を伴って判断する。
+ */
+const READ_ONLY_MODELS: ReadonlySet<string> = new Set([
+  // 処方・調剤記録 (法定記録・監査証跡)
+  'PrescriptionIntake',
+  'PrescriptionLine',
+  'DispenseTask',
+  'DispenseResult',
+  'DispenseAudit',
+  'DispensingDecision',
+  'SetPlan',
+  'SetBatch',
+  'SetAudit',
+  'MedicationCycle',
+  'CycleTransitionLog',
+  'CycleHold',
+  'MedicationProfile',
+  'ResidualMedication',
+  'MedicationIssue',
+  'InquiryRecord',
+  'Intervention',
+  'WorkflowException',
+  // 訪問・薬学管理記録
+  'VisitRecord',
+  'VisitPreparation',
+  'ManagementPlan',
+  // 報告書・多職種連携記録 (対外提出物・送達証跡)
+  'CareReport',
+  'CareReportSendRequest',
+  'ConferenceNote',
+  'TracingReport',
+  'PatientSelfReport',
+  'CommunicationEvent',
+  'CommunicationRequest',
+  'CommunicationResponse',
+  // 患者臨床データ (要配慮個人情報)
+  'Patient',
+  'PatientCondition',
+  'PatientLabObservation',
+  'PatientMedicalProcedure',
+  'PatientNarcoticUse',
+  'PatientFieldRevision',
+  // 医療安全・インシデント記録
+  'IncidentReport',
+  // 同意・情報連携の法的証跡
+  'ConsentRecord',
+  'PatientShareCase',
+  'PatientShareConsent',
+  'PatientShareCorrectionRequest',
+  'ClaimCooperationNote',
+  // 交付・ファイル証跡 (S3 Object Lock 対象を含む)
+  'DeliveryRecord',
+  'FileAsset',
+  'JahisSupplementalRecord',
+  'VisitHandoffExtraction',
+  // 請求根拠・請求候補・契約 (会計監査対象)
+  'BillingEvidence',
+  'BillingCandidate',
+  'VisitBillingCandidate',
+  'PharmacyInvoice',
+  'PharmacyInvoiceItem',
+  'PharmacyContract',
+  'PharmacyContractVersion',
+  'PharmacyContractFeeRule',
+  'ContractDocument',
+]);
+
+/**
+ * soft-delete 用の列名候補。編集可能モデルがこれらの列を持つ場合のみ soft-delete を許可する。
+ * 現状、編集可能モデルでこの列を持つものは存在しない (Patient は archived_at を持つが read-only)。
+ * そのため DELETE は全モデルで 403 になる。将来、編集可能かつ soft-delete 列を持つモデルを
+ * 追加した場合はここで自動的に soft-delete + 監査ログ経路に載る。hard delete は一切行わない。
+ */
+const SOFT_DELETE_COLUMN_CANDIDATES = ['archived_at', 'deleted_at', 'voided_at'] as const;
 const NON_EDITABLE_MODEL_FIELDS: Record<string, ReadonlySet<string>> = {
   BillingCandidate: new Set([
     'billing_domain',
@@ -203,7 +306,27 @@ function isDeniedField(modelName: string, fieldName: string) {
 }
 
 function isReadOnlyModel(modelName: string) {
+  if (READ_ONLY_MODELS.has(modelName)) return true;
   return READ_ONLY_MODEL_PATTERNS.some((pattern) => pattern.test(modelName));
+}
+
+/**
+ * モデル単位で mutation を許可してよいか。read-only モデル・global (参照マスタ) スコープは
+ * PATCH/DELETE を一切許可しない。呼び出し側で 403 にマップする。
+ */
+function assertModelIsMutable(meta: TableMeta) {
+  if (meta.scope === 'global' || isReadOnlyModel(meta.modelName)) {
+    throw new Error(DATA_EXPLORER_READ_ONLY_MODEL_ERROR);
+  }
+}
+
+/**
+ * 編集可能モデルが持つ soft-delete 列を返す。持たなければ null。
+ * hard delete を避けるための soft-delete 対象列の解決に使う。
+ */
+function resolveSoftDeleteColumn(meta: TableMeta): string | null {
+  const fieldNames = new Set(meta.fields.map((field) => field.name));
+  return SOFT_DELETE_COLUMN_CANDIDATES.find((column) => fieldNames.has(column)) ?? null;
 }
 
 function isNonEditableModelField(modelName: string, fieldName: string) {
@@ -519,12 +642,13 @@ export async function listDataExplorerRows(
 }
 
 export async function updateDataExplorerRow(
-  orgId: string,
+  actor: DataExplorerActorContext,
   tableName: string,
   rowId: string,
   patch: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const meta = getTableMeta(tableName);
+  assertModelIsMutable(meta);
   const editableKeys = Object.keys(patch).filter((key) => meta.editableFieldNames.has(key));
 
   if (editableKeys.length === 0) {
@@ -535,7 +659,7 @@ export async function updateDataExplorerRow(
   const quotedColumns = editableKeys.map((column) => quoteIdentifier(column)).join(', ');
   const conditions = [`t.${quoteIdentifier('id')} = $2`];
   const params: unknown[] = [JSON.stringify(sanitizedPatch), rowId];
-  addScopeCondition(conditions, params, meta, orgId);
+  addScopeCondition(conditions, params, meta, actor.orgId);
   const updateQuery = `
     UPDATE ${quoteIdentifier(meta.tableName)} AS t
     SET (${quotedColumns}) = (
@@ -550,11 +674,75 @@ export async function updateDataExplorerRow(
     RETURNING ${buildRowJsonExpression(meta)} AS row
   `;
 
-  const rows = await withOrgContext(orgId, (tx) =>
-    tx.$queryRawUnsafe<JsonRow[]>(updateQuery, ...params),
-  );
+  const row = await withOrgContext(actor.orgId, async (tx) => {
+    const rows = await tx.$queryRawUnsafe<JsonRow[]>(updateQuery, ...params);
+    const updated = rows[0]?.row;
+    if (!updated) {
+      return null;
+    }
+    // 監査ログ: 誰が・いつ・どのモデル/行の・どの列を変更したかのみ記録する。
+    // 変更値そのものは PHI を含み得るため logged value には残さない (updated_fields のみ)。
+    await createAuditLogEntry(tx, actor, {
+      action: DATA_EXPLORER_UPDATE_AUDIT_ACTION,
+      targetType: meta.modelName,
+      targetId: rowId,
+      changes: { table: meta.tableName, updated_fields: editableKeys },
+    });
+    return updated;
+  });
 
-  const row = rows[0]?.row;
+  if (!row) {
+    throw new Error('Row not found');
+  }
+
+  return sanitizeRow(meta, row);
+}
+
+/**
+ * data-explorer からの削除。hard delete は一切行わない (Audit by Default / 破壊的操作の防止)。
+ * - read-only モデル・global スコープ: 403 (DATA_EXPLORER_READ_ONLY_MODEL_ERROR)
+ * - soft-delete 列を持たない編集可能モデル: 403 (DATA_EXPLORER_DELETE_FORBIDDEN_ERROR)
+ * - soft-delete 列を持つ編集可能モデル: 当該列に NOW() をセットする soft-delete + 監査ログ
+ */
+export async function deleteDataExplorerRow(
+  actor: DataExplorerActorContext,
+  tableName: string,
+  rowId: string,
+): Promise<Record<string, unknown>> {
+  const meta = getTableMeta(tableName);
+  assertModelIsMutable(meta);
+
+  const softDeleteColumn = resolveSoftDeleteColumn(meta);
+  if (!softDeleteColumn) {
+    throw new Error(DATA_EXPLORER_DELETE_FORBIDDEN_ERROR);
+  }
+
+  const conditions = [`t.${quoteIdentifier('id')} = $1`];
+  const params: unknown[] = [rowId];
+  addScopeCondition(conditions, params, meta, actor.orgId);
+  const softDeleteQuery = `
+    UPDATE ${quoteIdentifier(meta.tableName)} AS t
+    SET ${quoteIdentifier(softDeleteColumn)} = NOW()
+    ${meta.hasUpdatedAt ? ', "updated_at" = NOW()' : ''}
+    WHERE ${conditions.join(' AND ')} AND t.${quoteIdentifier(softDeleteColumn)} IS NULL
+    RETURNING ${buildRowJsonExpression(meta)} AS row
+  `;
+
+  const row = await withOrgContext(actor.orgId, async (tx) => {
+    const rows = await tx.$queryRawUnsafe<JsonRow[]>(softDeleteQuery, ...params);
+    const softDeleted = rows[0]?.row;
+    if (!softDeleted) {
+      return null;
+    }
+    await createAuditLogEntry(tx, actor, {
+      action: DATA_EXPLORER_SOFT_DELETE_AUDIT_ACTION,
+      targetType: meta.modelName,
+      targetId: rowId,
+      changes: { table: meta.tableName, soft_delete_column: softDeleteColumn },
+    });
+    return softDeleted;
+  });
+
   if (!row) {
     throw new Error('Row not found');
   }

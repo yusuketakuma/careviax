@@ -51,5 +51,6 @@ export const updateIncidentReportSchema = z
 
 export type IncidentRelatedProcess = z.infer<typeof incidentRelatedProcessSchema>;
 export type IncidentStatus = z.infer<typeof incidentStatusSchema>;
+export type IncidentSeverity = z.infer<typeof incidentSeveritySchema>;
 export type CreateIncidentReportInput = z.infer<typeof createIncidentReportSchema>;
 export type UpdateIncidentReportInput = z.infer<typeof updateIncidentReportSchema>;

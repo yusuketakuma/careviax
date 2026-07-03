@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { MemberRole } from '@prisma/client';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -15,6 +16,22 @@ setupDomTestEnv();
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
+
+type MockAuthState = {
+  currentUser: { role: MemberRole | null };
+};
+
+const useAuthStoreMock = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/stores/auth-store', () => ({
+  useAuthStore: useAuthStoreMock,
+}));
+
+/** 既定は admin(編集/削除/新規登録ボタンが見えるロール)。非管理者テストは個別に上書きする。 */
+function mockViewerRole(role: MemberRole | null = 'admin') {
+  useAuthStoreMock.mockImplementation((selector: (state: MockAuthState) => unknown) =>
+    selector({ currentUser: { role } }),
+  );
+}
 
 vi.mock('sonner', () => ({
   toast: {
@@ -163,6 +180,7 @@ function stubFetchWithInstitution(institution = institutionFixture()) {
 describe('InstitutionsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockViewerRole('admin');
     stubFetchWithInstitution();
   });
 
@@ -418,5 +436,44 @@ describe('InstitutionsContent', () => {
     expect(screen.queryByRole('button', { name: '電話番号をコピー' })).toBeNull();
     // FAX は値ありなのでコピーボタンは残る。
     expect(screen.getByRole('button', { name: 'FAXをコピー' })).toBeTruthy();
+  });
+
+  describe('role-gated actions (canAdmin)', () => {
+    it('hides 新規登録/編集/削除 for a non-admin role that would always get 403 from the API', async () => {
+      mockViewerRole('pharmacist');
+      renderContent();
+
+      // 一覧行が描画されるまで待つ(名前で判定できる要素が出るまで)。
+      await screen.findByText('在宅内科クリニック');
+      expect(screen.queryByRole('button', { name: '新規登録' })).toBeNull();
+      expect(screen.queryByRole('button', { name: '在宅内科クリニック を編集' })).toBeNull();
+      expect(screen.queryByRole('button', { name: '在宅内科クリニック を削除' })).toBeNull();
+    });
+
+    it('hides admin actions for clerk too', async () => {
+      mockViewerRole('clerk');
+      renderContent();
+
+      await screen.findByText('在宅内科クリニック');
+      expect(screen.queryByRole('button', { name: '新規登録' })).toBeNull();
+      expect(screen.queryByRole('button', { name: '在宅内科クリニック を編集' })).toBeNull();
+    });
+
+    it('shows admin actions for owner as well as admin', async () => {
+      mockViewerRole('owner');
+      renderContent();
+
+      expect(await screen.findByRole('button', { name: '新規登録' })).toBeTruthy();
+      expect(await screen.findByRole('button', { name: '在宅内科クリニック を編集' })).toBeTruthy();
+    });
+
+    it('fails closed (hides admin actions) when role is not yet known', async () => {
+      mockViewerRole(null);
+      renderContent();
+
+      await screen.findByText('在宅内科クリニック');
+      expect(screen.queryByRole('button', { name: '新規登録' })).toBeNull();
+      expect(screen.queryByRole('button', { name: '在宅内科クリニック を編集' })).toBeNull();
+    });
   });
 });

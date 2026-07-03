@@ -42,8 +42,10 @@ import {
   getRevisionMeta,
   normalizeInsuranceConfigForRevision,
 } from '@/lib/constants/site-config-fields';
+import { hasPermission } from '@/lib/auth/permission-matrix';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useAuthStore } from '@/lib/stores/auth-store';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   PHARMACY_SITES_API_PATH,
@@ -160,6 +162,9 @@ function offsetDateKey(value: string, days: number) {
 export function PharmacySitesContent() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
+  const viewerRole = useAuthStore((s) => s.currentUser.role);
+  // 編集/保険設定(GET含む)は API 側で canAdmin 必須(常時 403 になるため非管理者には出さない)。
+  const canManagePharmacySites = viewerRole ? hasPermission(viewerRole, 'canAdmin') : false;
   const [editingSite, setEditingSite] = useState<PharmacySite | null>(null);
   const [siteForm, setSiteForm] = useState<SiteForm | null>(null);
   const [configSiteId, setConfigSiteId] = useState<string | null>(null);
@@ -379,26 +384,28 @@ export function PharmacySitesContent() {
                 <CardTitle className="text-base">{site.name}</CardTitle>
                 <div className="mt-1 text-sm text-muted-foreground">{site.address}</div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  className="h-11 sm:h-11 sm:min-h-[44px]"
-                  size="sm"
-                  variant="outline"
-                  aria-label={`${site.name}の薬局情報を編集`}
-                  onClick={() => openSiteEdit(site)}
-                >
-                  編集
-                </Button>
-                <Button
-                  className="h-11 sm:h-11 sm:min-h-[44px]"
-                  size="sm"
-                  variant="secondary"
-                  aria-label={`${site.name}の保険設定を開く`}
-                  onClick={() => setConfigSiteId(site.id)}
-                >
-                  保険設定
-                </Button>
-              </div>
+              {canManagePharmacySites ? (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    className="h-11 sm:h-11 sm:min-h-[44px]"
+                    size="sm"
+                    variant="outline"
+                    aria-label={`${site.name}の薬局情報を編集`}
+                    onClick={() => openSiteEdit(site)}
+                  >
+                    編集
+                  </Button>
+                  <Button
+                    className="h-11 sm:h-11 sm:min-h-[44px]"
+                    size="sm"
+                    variant="secondary"
+                    aria-label={`${site.name}の保険設定を開く`}
+                    onClick={() => setConfigSiteId(site.id)}
+                  >
+                    保険設定
+                  </Button>
+                </div>
+              ) : null}
             </CardHeader>
             <CardContent>
               <div className="grid gap-3 text-sm md:grid-cols-3">

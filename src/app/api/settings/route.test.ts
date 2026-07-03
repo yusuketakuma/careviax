@@ -212,4 +212,137 @@ describe('/api/settings', () => {
       },
     });
   });
+
+  describe('compliance range enforcement (system numeric settings)', () => {
+    it('rejects session_timeout_minutes above the 3省2GL max (31)', async () => {
+      const response = await PATCH(
+        createRequest('http://localhost/api/settings', 'PATCH', {
+          scope: 'system',
+          values: { session_timeout_minutes: '31' },
+        }),
+        { params: Promise.resolve({}) },
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '入力値が許容範囲外です',
+        details: {
+          session_timeout_minutes: [expect.stringContaining('30')],
+        },
+      });
+      expect(transactionMock).not.toHaveBeenCalled();
+    });
+
+    it('accepts session_timeout_minutes at the max boundary (30)', async () => {
+      settingFindFirstMock.mockResolvedValue(null);
+      settingFindManyMock.mockResolvedValue([{ key: 'session_timeout_minutes', value: 30 }]);
+
+      const response = await PATCH(
+        createRequest('http://localhost/api/settings', 'PATCH', {
+          scope: 'system',
+          values: { session_timeout_minutes: '30' },
+        }),
+        { params: Promise.resolve({}) },
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(200);
+      expect(transactionMock).toHaveBeenCalled();
+    });
+
+    it('rejects session_timeout_minutes below the min boundary (4)', async () => {
+      const response = await PATCH(
+        createRequest('http://localhost/api/settings', 'PATCH', {
+          scope: 'system',
+          values: { session_timeout_minutes: '4' },
+        }),
+        { params: Promise.resolve({}) },
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        details: {
+          session_timeout_minutes: [expect.stringContaining('5')],
+        },
+      });
+      expect(transactionMock).not.toHaveBeenCalled();
+    });
+
+    it('accepts session_timeout_minutes at the min boundary (5)', async () => {
+      settingFindFirstMock.mockResolvedValue(null);
+      settingFindManyMock.mockResolvedValue([{ key: 'session_timeout_minutes', value: 5 }]);
+
+      const response = await PATCH(
+        createRequest('http://localhost/api/settings', 'PATCH', {
+          scope: 'system',
+          values: { session_timeout_minutes: '5' },
+        }),
+        { params: Promise.resolve({}) },
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(200);
+      expect(transactionMock).toHaveBeenCalled();
+    });
+
+    it('rejects audit_log_retention_days below the min boundary (364)', async () => {
+      const response = await PATCH(
+        createRequest('http://localhost/api/settings', 'PATCH', {
+          scope: 'system',
+          values: { audit_log_retention_days: '364' },
+        }),
+        { params: Promise.resolve({}) },
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        details: {
+          audit_log_retention_days: [expect.stringContaining('365')],
+        },
+      });
+      expect(transactionMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects password_min_length below the min boundary (11)', async () => {
+      const response = await PATCH(
+        createRequest('http://localhost/api/settings', 'PATCH', {
+          scope: 'system',
+          values: { password_min_length: '11' },
+        }),
+        { params: Promise.resolve({}) },
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        details: {
+          password_min_length: [expect.stringContaining('12')],
+        },
+      });
+      expect(transactionMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-numeric value for a ranged numeric setting', async () => {
+      const response = await PATCH(
+        createRequest('http://localhost/api/settings', 'PATCH', {
+          scope: 'system',
+          values: { session_timeout_minutes: 'abc' },
+        }),
+        { params: Promise.resolve({}) },
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        details: {
+          session_timeout_minutes: [expect.stringContaining('数値')],
+        },
+      });
+      expect(transactionMock).not.toHaveBeenCalled();
+    });
+  });
 });

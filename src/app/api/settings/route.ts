@@ -6,6 +6,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import {
+  getSettingRangeError,
   parseSettingInputValue,
   SETTING_CATALOG,
   stringifySettingValue,
@@ -108,6 +109,8 @@ function buildSettingItems(
       value: stringifySettingValue(rawValue, item.defaultValue),
       type: item.type,
       options: item.options,
+      min: item.min,
+      max: item.max,
     };
   });
 }
@@ -197,6 +200,20 @@ export const PATCH = withAuthContext(
       return validationError('未定義の設定キーがあります', {
         values: unknownKeys,
       });
+    }
+
+    // コンプライアンス影響のある数値設定（セッションタイムアウト等）は保存時に min/max レンジを強制する。
+    // 既存の保存済み値がレンジ外でも読み取り(GET)は許容し、保存(PATCH)のみ拒否する。
+    const rangeErrors: Record<string, string[]> = {};
+    for (const item of catalogItems) {
+      if (!Object.prototype.hasOwnProperty.call(parsed.data.values, item.key)) continue;
+      const rangeError = getSettingRangeError(item, parsed.data.values[item.key]);
+      if (rangeError) {
+        rangeErrors[item.key] = [rangeError];
+      }
+    }
+    if (Object.keys(rangeErrors).length > 0) {
+      return validationError('入力値が許容範囲外です', rangeErrors);
     }
 
     await prisma.$transaction(async (tx) => {

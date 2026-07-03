@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { MemberRole } from '@prisma/client';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -20,6 +21,22 @@ setupDomTestEnv();
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
+
+type MockAuthState = {
+  currentUser: { role: MemberRole | null };
+};
+
+const useAuthStoreMock = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/stores/auth-store', () => ({
+  useAuthStore: useAuthStoreMock,
+}));
+
+/** 既定は admin(編集/保険設定ボタンが見えるロール)。非管理者テストは個別に上書きする。 */
+function mockViewerRole(role: MemberRole | null = 'admin') {
+  useAuthStoreMock.mockImplementation((selector: (state: MockAuthState) => unknown) =>
+    selector({ currentUser: { role } }),
+  );
+}
 
 vi.mock('sonner', () => ({
   toast: {
@@ -80,6 +97,7 @@ function renderContent() {
 describe('PharmacySitesContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockViewerRole('admin');
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
@@ -474,5 +492,42 @@ describe('PharmacySitesContent', () => {
       ([, init]) => (init as RequestInit | undefined)?.method === 'POST',
     );
     expect(postCalls).toHaveLength(0);
+  });
+
+  describe('role-gated actions (canAdmin)', () => {
+    it('hides 編集/保険設定 for a non-admin role that would always get 403 from the API', async () => {
+      mockViewerRole('pharmacist');
+      renderContent();
+
+      await screen.findByText('本店');
+      expect(screen.queryByRole('button', { name: '本店の薬局情報を編集' })).toBeNull();
+      expect(screen.queryByRole('button', { name: '本店の保険設定を開く' })).toBeNull();
+    });
+
+    it('hides admin actions for clerk too', async () => {
+      mockViewerRole('clerk');
+      renderContent();
+
+      await screen.findByText('本店');
+      expect(screen.queryByRole('button', { name: '本店の薬局情報を編集' })).toBeNull();
+      expect(screen.queryByRole('button', { name: '本店の保険設定を開く' })).toBeNull();
+    });
+
+    it('shows admin actions for owner as well as admin', async () => {
+      mockViewerRole('owner');
+      renderContent();
+
+      expect(await screen.findByRole('button', { name: '本店の薬局情報を編集' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: '本店の保険設定を開く' })).toBeTruthy();
+    });
+
+    it('fails closed (hides admin actions) when role is not yet known', async () => {
+      mockViewerRole(null);
+      renderContent();
+
+      await screen.findByText('本店');
+      expect(screen.queryByRole('button', { name: '本店の薬局情報を編集' })).toBeNull();
+      expect(screen.queryByRole('button', { name: '本店の保険設定を開く' })).toBeNull();
+    });
   });
 });

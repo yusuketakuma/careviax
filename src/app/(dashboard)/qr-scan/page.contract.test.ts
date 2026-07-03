@@ -67,4 +67,20 @@ describe('QRScanPage accessibility status contract', () => {
     expect(SOURCE).toContain('} finally {');
     expect(SOURCE).toContain('URL.revokeObjectURL(url);');
   });
+
+  it('distinguishes a patient-match fetch error from a genuine no-match and suppresses the new-patient CTA (F89)', () => {
+    // 取得失敗を「該当なし」と混同しないための matchError 状態が存在すること。
+    expect(SOURCE).toContain('const [matchError, setMatchError] = useState(false);');
+    // fetch 失敗の catch でエラーフラグを立てる。
+    expect(SOURCE).toMatch(/catch \{[\s\S]*?setMatchError\(true\);/);
+    // 成功パス開始時にフラグをクリアする。
+    expect(SOURCE).toContain('setMatchError(false);');
+    // matched フェーズでは matchError 分岐を先に評価し、取得エラーを明示する。
+    expect(SOURCE).toContain(') : matchError ? (');
+    // 取得エラー時は新規患者登録CTAを出さず、再読み込み導線のみ提示する。
+    expect(SOURCE).toContain('onClick={retryPatientSearch}');
+    expect(SOURCE).toMatch(
+      /\{matchError \? \([\s\S]*?再読み込み[\s\S]*?\) : \([\s\S]*?新規患者登録/,
+    );
+  });
 });

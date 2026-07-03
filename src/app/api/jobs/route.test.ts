@@ -146,10 +146,15 @@ describe('/api/jobs GET', () => {
           patientCount: 1,
           failedCount: 1,
         },
-        error_log: 'エラーが記録されています',
+        error_summary: {
+          error_name: '実行エラー',
+          occurred_at: '2026-03-28T02:00:00.000Z',
+          message: 'エラーが記録されています',
+        },
       }),
     });
     expect(bulkExportEntry?.latest_export_run).not.toHaveProperty('input');
+    expect(bulkExportEntry?.latest_export_run).not.toHaveProperty('error_log');
     expect(bulkExportEntry?.latest_export_run?.output).not.toHaveProperty('errors');
   });
 
@@ -240,7 +245,60 @@ describe('/api/jobs GET', () => {
     expect(bulkExportEntry?.latest_export_run).toMatchObject({
       id: 'export_bad',
       output: null,
-      error_log: 'エラーが記録されています',
+      error_summary: {
+        error_name: '実行エラー',
+        occurred_at: '2026-03-28T02:00:00.000Z',
+        message: 'エラーが記録されています',
+      },
     });
+    expect(bulkExportEntry?.latest_export_run).not.toHaveProperty('error_log');
+  });
+
+  it('never leaks raw error_log content (token/password/patient name) even if unsanitized data is stored', async () => {
+    integrationJobFindManyMock.mockResolvedValue([
+      {
+        id: 'export_leaky',
+        job_type: 'medication-history-bulk-export',
+        status: 'failed',
+        org_id: 'org_1',
+        output: null,
+        // Defense-in-depth fixture: real writers always store a sanitized
+        // constant, but the API-level redaction must not depend on that —
+        // it must substitute a fixed message regardless of error_log content.
+        error_log:
+          'token=sk-live-abc123 password=hunter2 patient_name=山田太郎 stack trace at foo.ts:42',
+        retry_count: 3,
+        max_retries: 3,
+        created_at: new Date('2026-03-28T02:00:00.000Z'),
+      },
+    ]);
+
+    const response = await GET(createRequest());
+    expect(response.status).toBe(200);
+
+    const bodyText = await response.text();
+    expect(bodyText).not.toContain('sk-live-abc123');
+    expect(bodyText).not.toContain('hunter2');
+    expect(bodyText).not.toContain('山田太郎');
+    expect(bodyText).not.toContain('stack trace');
+
+    const payload = JSON.parse(bodyText);
+    const entries = payload.data as Array<{
+      job_type: string;
+      latest_export_run: Record<string, unknown> | null;
+    }>;
+    const bulkExportEntry = entries.find(
+      (entry) => entry.job_type === 'medication-history-bulk-export-drain',
+    );
+
+    expect(bulkExportEntry?.latest_export_run).toMatchObject({
+      id: 'export_leaky',
+      error_summary: {
+        error_name: 'リトライ上限到達',
+        occurred_at: '2026-03-28T02:00:00.000Z',
+        message: 'エラーが記録されています',
+      },
+    });
+    expect(bulkExportEntry?.latest_export_run).not.toHaveProperty('error_log');
   });
 });

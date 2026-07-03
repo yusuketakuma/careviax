@@ -99,6 +99,10 @@ export default function QRScanPage() {
   const [patients, setPatients] = useState<PatientMatch[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<PatientMatch | null>(null);
   const [showPatientDialog, setShowPatientDialog] = useState(false);
+  // 患者照合の取得失敗を「該当なし」と区別するためのフラグ(F89)。
+  // fetch エラーを空一致に潰すと、既存患者がいるのに新規患者登録へ誘導され
+  // 重複患者レコードを生む恐れがあるため、エラー時は新規登録CTAを抑止する。
+  const [matchError, setMatchError] = useState(false);
 
   // API state
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -126,6 +130,7 @@ export default function QRScanPage() {
   const searchPatients = useCallback(
     async (data: JahisQRData) => {
       try {
+        setMatchError(false);
         const q = data.patient.name || '';
         if (!q) {
           setPatients([]);
@@ -166,12 +171,21 @@ export default function QRScanPage() {
           setShowPatientDialog(true);
         }
       } catch {
+        // 取得エラーを「該当なし」と混同しない。matchError を立て、
+        // matched フェーズでは再読み込み導線を示し新規患者登録CTAを抑止する。
         setPatients([]);
+        setMatchError(true);
         setPhase('matched');
       }
     },
     [orgId],
   );
+
+  // ── 患者照合の再試行(取得エラー時) ──
+  const retryPatientSearch = useCallback(() => {
+    if (!mergedQRData) return;
+    void searchPatients(mergedQRData);
+  }, [mergedQRData, searchPatients]);
 
   // ── 全QRスキャン完了時の処理 ──
   const finalizeScan = useCallback(
@@ -383,6 +397,7 @@ export default function QRScanPage() {
     setParseResult(null);
     setPatients([]);
     setSelectedPatient(null);
+    setMatchError(false);
     setSendError(null);
     setCameraError(null);
     // sessionId は維持（同一セッションで続けてスキャンする場合）
@@ -857,6 +872,18 @@ export default function QRScanPage() {
                     </button>
                   ))}
                 </div>
+              ) : matchError ? (
+                <div
+                  className="flex flex-col items-center gap-3 py-4 text-center"
+                  role="alert"
+                  aria-live="assertive"
+                >
+                  <AlertTriangle className="h-8 w-8 text-destructive" aria-hidden="true" />
+                  <p className="text-sm text-destructive">
+                    患者情報の照合に失敗しました。「該当なし」ではなく取得エラーです。
+                    誤った患者での登録を防ぐため、再読み込みしてください。
+                  </p>
+                </div>
               ) : (
                 <div
                   className="flex flex-col items-center gap-3 py-4 text-center"
@@ -877,10 +904,18 @@ export default function QRScanPage() {
                     PCに送信
                   </Button>
                 )}
-                <Button variant="outline" className="flex-1" onClick={goToNewPatient}>
-                  <UserPlus className="mr-1.5 h-4 w-4" />
-                  新規患者登録
-                </Button>
+                {matchError ? (
+                  // 取得エラー時は新規患者登録CTAを抑止し、再読み込みのみ提示する(F89)。
+                  <Button variant="outline" className="flex-1" onClick={retryPatientSearch}>
+                    <RotateCcw className="mr-1.5 h-4 w-4" />
+                    再読み込み
+                  </Button>
+                ) : (
+                  <Button variant="outline" className="flex-1" onClick={goToNewPatient}>
+                    <UserPlus className="mr-1.5 h-4 w-4" />
+                    新規患者登録
+                  </Button>
+                )}
               </ActionRail>
             </PageSection>
           )}

@@ -1,4 +1,9 @@
-import type { IncidentRelatedProcess } from '@/lib/validations/incident-report';
+import type {
+  IncidentRelatedProcess,
+  IncidentSeverity,
+  IncidentStatus,
+} from '@/lib/validations/incident-report';
+import type { StatusRole } from '@/lib/constants/status-tokens';
 
 /**
  * p1_09「ヒヤリハット管理」: API レコード ⇔ 再発防止メモフォームの射影。
@@ -17,6 +22,63 @@ export const INCIDENT_PROCESS_OPTIONS = [
   { value: 'report', label: '報告' },
   { value: 'billing', label: '算定' },
 ] as const satisfies ReadonlyArray<{ value: IncidentRelatedProcess; label: string }>;
+
+/** ステータス語彙(未対応/確認済み/クローズ)。ステータス変更は管理者のみ(サーバ側 canAdmin ガード)。 */
+export const INCIDENT_STATUS_OPTIONS = [
+  { value: 'open', label: '未対応' },
+  { value: 'reviewed', label: '確認済み' },
+  { value: 'closed', label: 'クローズ' },
+] as const satisfies ReadonlyArray<{ value: IncidentStatus; label: string }>;
+
+/** 重大度語彙(ヒヤリハット/レベル1/レベル2以上)。CLAUDE.md の3段階警告色(重大=赤/注意=橙/情報=青)に合わせる。 */
+export const INCIDENT_SEVERITY_OPTIONS = [
+  { value: 'near_miss', label: 'ヒヤリハット' },
+  { value: 'level1', label: 'レベル1（軽度）' },
+  { value: 'level2', label: 'レベル2以上（中等度以上）' },
+] as const satisfies ReadonlyArray<{ value: IncidentSeverity; label: string }>;
+
+function isKnownStatus(value: string): value is IncidentStatus {
+  return INCIDENT_STATUS_OPTIONS.some((option) => option.value === value);
+}
+
+function isKnownSeverity(value: string): value is IncidentSeverity {
+  return INCIDENT_SEVERITY_OPTIONS.some((option) => option.value === value);
+}
+
+/** ステータスの表示ラベル。未知値はそのまま表示する(サイレントに握りつぶさない)。 */
+export function incidentStatusLabel(status: string): string {
+  return INCIDENT_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
+}
+
+/** 重大度の表示ラベル。未知値はそのまま表示する。 */
+export function incidentSeverityLabel(severity: string): string {
+  return INCIDENT_SEVERITY_OPTIONS.find((option) => option.value === severity)?.label ?? severity;
+}
+
+/** ステータス変更 UI から PATCH へ渡す前のガード。語彙外の値は送らない。 */
+export function toIncidentStatusPatchValue(value: string): IncidentStatus | null {
+  return isKnownStatus(value) ? value : null;
+}
+
+/**
+ * ステータス→StateBadge role。未対応(open)/未知値は要対応(confirm)へフェイルする
+ * (誤って完了色に倒れて見落とすのを避ける)。
+ */
+export function incidentStatusBadgeRole(status: string): StatusRole {
+  if (status === 'closed') return 'done';
+  if (status === 'reviewed') return 'waiting';
+  return 'confirm';
+}
+
+/**
+ * 重大度→StateBadge role。レベル2以上(level2)は重大(hazard=赤)、レベル1(level1)は注意(confirm=橙)、
+ * ヒヤリハット/未知値は情報(info)に倒す。
+ */
+export function incidentSeverityBadgeRole(severity: string): StatusRole {
+  if (severity === 'level2') return 'hazard';
+  if (severity === 'level1') return 'confirm';
+  return 'info';
+}
 
 export type IncidentReportListItem = {
   id: string;
@@ -147,4 +209,37 @@ export function hasPreventionMemo(report: IncidentReportListItem): boolean {
 /** 記録カードのサブテキスト(未記入なら「再発防止を記録」) */
 export function incidentCardSubtext(report: IncidentReportListItem): string {
   return hasPreventionMemo(report) ? '再発防止メモあり' : '再発防止を記録';
+}
+
+/** 新規記録フォーム(表題は必須、重大度/発生日は任意) */
+export type IncidentCreateForm = {
+  title: string;
+  severity: string; // '' = 未選択(サーバ既定値に任せる)
+  occurredAt: string; // 'YYYY-MM-DD' または ''
+};
+
+export const EMPTY_INCIDENT_CREATE_FORM: IncidentCreateForm = {
+  title: '',
+  severity: '',
+  occurredAt: '',
+};
+
+export type IncidentCreatePayload = {
+  title: string;
+  severity?: IncidentSeverity;
+  occurred_at: string | null;
+};
+
+/** 新規記録フォーム→POST ペイロード(表題は trim、既知の重大度のみ送る、発生日はUTC日付境界のISO文字列) */
+export function buildIncidentCreatePayload(form: IncidentCreateForm): IncidentCreatePayload {
+  return {
+    title: form.title.trim(),
+    ...(isKnownSeverity(form.severity) ? { severity: form.severity } : {}),
+    occurred_at: form.occurredAt ? `${form.occurredAt}T00:00:00.000Z` : null,
+  };
+}
+
+/** 新規記録フォームの表題バリデーション(空欄は保存不可) */
+export function isIncidentCreateFormValid(form: IncidentCreateForm): boolean {
+  return form.title.trim().length > 0;
 }

@@ -118,6 +118,60 @@ describe('SettingsContent polling policy', () => {
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
+  it('shows an inline range error and disables Save when a compliance numeric setting is out of range', () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'me-profile') {
+        return { data: { data: { id: 'user_1', name: '管理者', defaultSiteId: 'site_1' } } };
+      }
+      if (queryKey[0] === 'pharmacy-sites') {
+        return { data: { data: [{ id: 'site_1', name: '本店' }] } };
+      }
+      if (queryKey[0] === 'admin-settings') {
+        return {
+          data: {
+            data: {
+              scope: queryKey[2],
+              scope_id: queryKey[3] ?? null,
+              items:
+                queryKey[2] === 'system'
+                  ? [
+                      {
+                        key: 'session_timeout_minutes',
+                        label: 'セッションタイムアウト',
+                        description: '分単位（3省2GL準拠: 5〜30分）',
+                        value: '31',
+                        type: 'number',
+                        min: 5,
+                        max: 30,
+                      },
+                    ]
+                  : [],
+            },
+          },
+        };
+      }
+      return { data: { status: 'ok', timestamp: '2026-06-17T00:00:00.000Z', checks: {} } };
+    });
+
+    render(<SettingsContent />);
+
+    expect(screen.getByText('セッションタイムアウトは30以下で入力してください')).toBeTruthy();
+
+    // isDirty=false の初期表示では保存ボタンは元々無効なので、レンジ検証そのものによる無効化を
+    // 別の値へ編集（＝dirty化）した上で確認する。
+    const input = screen.getByLabelText('セッションタイムアウト');
+    fireEvent.change(input, { target: { value: '99' } });
+    expect(screen.getByText('セッションタイムアウトは30以下で入力してください')).toBeTruthy();
+    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
+
+    // レンジ内の値に修正するとエラーが消え、dirty な保存ボタンは再び有効になる。
+    fireEvent.change(input, { target: { value: '20' } });
+    expect(screen.queryByText('セッションタイムアウトは30以下で入力してください')).toBeNull();
+    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+  });
+
   it('surfaces a retryable error instead of an empty store selector when /api/pharmacy-sites fails', () => {
     const refetch = vi.fn();
     mockQueryErrorFor('pharmacy-sites', '店舗一覧の取得に失敗しました', refetch);

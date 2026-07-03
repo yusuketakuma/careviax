@@ -8,6 +8,7 @@ import {
   INCIDENT_REPORTS_API_PATH,
   buildIncidentReportApiPath,
 } from '@/lib/incident-reports/api-paths';
+import { useAuthStore } from '@/lib/stores/auth-store';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { IncidentsContent } from './incidents-content';
 import type { IncidentReportListItem } from './incidents-form';
@@ -21,7 +22,7 @@ function makeReport(overrides: Partial<IncidentReportListItem> = {}): IncidentRe
     immediate_action: null,
     prevention_plan: null,
     related_process: null,
-    severity: 'low',
+    severity: 'near_miss',
     status: 'open',
     occurred_at: '2026-06-20T01:00:00.000Z',
     created_at: '2026-06-20T01:00:00.000Z',
@@ -62,6 +63,93 @@ vi.mock('sonner', () => ({
   },
 }));
 
+// Base UI Select renders a portaled listbox jsdom can't drive; mock it to a native <select>
+// (same approach as drug-master-content.test.tsx / pca-pumps-content.test.tsx) so status-change
+// interaction is testable. Forwards the SelectTrigger's id/data-testid/aria-* so existing
+// getByTestId('incident-related-process') queries keep resolving.
+vi.mock('@/components/ui/select', async () => {
+  const React = await import('react');
+
+  type ItemProps = { value?: string; children?: ReactNode };
+  type TriggerProps = {
+    id?: string;
+    'data-testid'?: string;
+    'aria-label'?: string;
+    'aria-labelledby'?: string;
+    'aria-describedby'?: string;
+    children?: ReactNode;
+  };
+
+  const SelectContent = ({ children }: { children: ReactNode }) => <>{children}</>;
+  const SelectItem = ({ children }: ItemProps) => <>{children}</>;
+  const SelectTrigger = ({ children }: TriggerProps) => <>{children}</>;
+  const SelectValue = ({ placeholder }: { placeholder?: string }) => <>{placeholder ?? null}</>;
+
+  function collectItems(children: ReactNode): ItemProps[] {
+    const items: ItemProps[] = [];
+    React.Children.forEach(children, (child) => {
+      if (!React.isValidElement(child)) return;
+      const props = child.props as ItemProps;
+      if (child.type === SelectItem) items.push({ value: props.value, children: props.children });
+      items.push(...collectItems(props.children));
+    });
+    return items;
+  }
+
+  function findTriggerProps(children: ReactNode): TriggerProps | undefined {
+    let triggerProps: TriggerProps | undefined;
+    React.Children.forEach(children, (child) => {
+      if (!React.isValidElement(child)) return;
+      const props = child.props as TriggerProps;
+      if (child.type === SelectTrigger) triggerProps = props;
+      if (!triggerProps) triggerProps = findTriggerProps(props.children);
+    });
+    return triggerProps;
+  }
+
+  function MockSelect({
+    value,
+    onValueChange,
+    disabled,
+    children,
+  }: {
+    value?: string;
+    onValueChange?: (value: string) => void;
+    disabled?: boolean;
+    children: ReactNode;
+  }) {
+    const triggerProps = findTriggerProps(children);
+    const items = collectItems(children);
+    return (
+      <select
+        id={triggerProps?.id}
+        data-testid={triggerProps?.['data-testid']}
+        aria-label={triggerProps?.['aria-label']}
+        aria-labelledby={triggerProps?.['aria-labelledby']}
+        aria-describedby={triggerProps?.['aria-describedby']}
+        disabled={disabled}
+        value={value}
+        onChange={(event) => onValueChange?.(event.target.value)}
+      >
+        <option value="" />
+        {items.map((item) => (
+          <option key={item.value} value={item.value}>
+            {React.Children.toArray(item.children).join('')}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  return {
+    Select: MockSelect,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+  };
+});
+
 setupDomTestEnv();
 
 function createWrapper() {
@@ -80,6 +168,7 @@ function createWrapper() {
 describe('IncidentsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useAuthStore.getState().resetAuth();
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response(JSON.stringify({ data: [] }), { status: 200 })),
@@ -226,5 +315,90 @@ describe('IncidentsContent', () => {
     expect(screen.getByRole('region', { name: '再発防止メモ' }).className).not.toContain(
       'min-h-[640px]',
     );
+  });
+
+  describe('status/severity display and status change (canAdmin)', () => {
+    it('shows severity and status badges for each record in the list', async () => {
+      stubReports([makeReport({ severity: 'level2', status: 'reviewed' })]);
+      render(<IncidentsContent />, { wrapper: createWrapper() });
+
+      await screen.findByText('取り違えヒヤリ');
+      expect(screen.getAllByText('レベル2以上（中等度以上）').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('確認済み').length).toBeGreaterThan(0);
+    });
+
+    it('renders a read-only status badge (no select) for a non-admin role', async () => {
+      useAuthStore.getState().setCurrentUser({ role: 'pharmacist' });
+      stubReports([makeReport({ status: 'open' })]);
+      render(<IncidentsContent />, { wrapper: createWrapper() });
+
+      await screen.findByText('取り違えヒヤリ');
+      expect(screen.queryByTestId('incident-status-select')).toBeNull();
+      expect(screen.getAllByText('未対応').length).toBeGreaterThan(0);
+    });
+
+    it('shows a status change select for an admin role and PATCHes the new status', async () => {
+      useAuthStore.getState().setCurrentUser({ role: 'admin' });
+      const fetchMock = stubIncidentFetch([makeReport({ id: 'incident_1', status: 'open' })]);
+      render(<IncidentsContent />, { wrapper: createWrapper() });
+
+      await screen.findByText('取り違えヒヤリ');
+      const statusSelect = screen.getByTestId('incident-status-select');
+      expect(statusSelect).toBeTruthy();
+
+      fireEvent.change(statusSelect, { target: { value: 'reviewed' } });
+
+      await waitFor(() => {
+        const patchCall = fetchMock.mock.calls.find(
+          ([, init]) => (init as RequestInit | undefined)?.method === 'PATCH',
+        );
+        expect(patchCall).toBeTruthy();
+        expect(JSON.parse(String((patchCall as [RequestInfo, RequestInit])[1].body))).toEqual({
+          status: 'reviewed',
+        });
+      });
+    });
+  });
+
+  describe('create flow', () => {
+    it('opens the create sheet, requires a title, and POSTs the new record', async () => {
+      const fetchMock = vi.fn(
+        async (_input: RequestInfo | URL, init?: RequestInit) =>
+          new Response(
+            init?.method === 'POST'
+              ? JSON.stringify({
+                  data: makeReport({ id: 'incident_new', title: '新規記録' }),
+                })
+              : JSON.stringify({ data: [] }),
+            { status: init?.method === 'POST' ? 201 : 200 },
+          ),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      render(<IncidentsContent />, { wrapper: createWrapper() });
+
+      await screen.findByText('ヒヤリハット記録はまだありません');
+      fireEvent.click(screen.getByRole('button', { name: '新規記録' }));
+
+      const submit = screen.getByRole('button', { name: '作成する' });
+      expect(submit).toHaveProperty('disabled', true);
+
+      fireEvent.change(screen.getByLabelText('表題'), { target: { value: '新規記録' } });
+      expect(submit).toHaveProperty('disabled', false);
+
+      fireEvent.click(submit);
+
+      await waitFor(() => {
+        const postCall = fetchMock.mock.calls.find(
+          ([input, init]) =>
+            String(input) === INCIDENT_REPORTS_API_PATH &&
+            (init as RequestInit | undefined)?.method === 'POST',
+        );
+        expect(postCall).toBeTruthy();
+        expect(JSON.parse(String((postCall as [RequestInfo, RequestInit])[1].body))).toEqual({
+          title: '新規記録',
+          occurred_at: null,
+        });
+      });
+    });
   });
 });
