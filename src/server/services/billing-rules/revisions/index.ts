@@ -22,7 +22,12 @@ import {
 } from './medical';
 
 // ── 介護保険 (介護報酬改定: 3年ごと) ──
-import { CARE_2024_REVISION as CARE_2024, CARE_RULES_2024 } from './care';
+import {
+  CARE_2024_REVISION as CARE_2024,
+  CARE_RULES_2024,
+  CARE_2027_REVISION as CARE_2027,
+  CARE_RULES_2027,
+} from './care';
 
 // ── 薬局情報の改定別 config 型 ──
 export type { MedicalSiteConfig2024, MedicalSiteConfig2026 } from './medical';
@@ -60,6 +65,7 @@ export {
 export { MEDICAL_2024, MEDICAL_RULES_2024 };
 export { MEDICAL_2026, MEDICAL_RULES_2026 };
 export { CARE_2024, CARE_RULES_2024 };
+export { CARE_2027, CARE_RULES_2027 };
 
 export type RevisionEntry = {
   revision: BillingRevision;
@@ -125,7 +131,8 @@ export const MEDICAL_REVISIONS: RevisionEntry[] = [
  */
 export const CARE_REVISIONS: RevisionEntry[] = [
   { revision: CARE_2024, rules: CARE_RULES_2024 },
-  // { revision: CARE_2027, rules: CARE_RULES_2027 },  // ← 2027年改定時に追加
+  // draft: 官報確定まで resolveRevisionEntryForDate のデフォルト解決には現れない
+  { revision: CARE_2027, rules: CARE_RULES_2027 },
 ];
 
 /** 全改定を統合した配列 (seeder に渡す用) */
