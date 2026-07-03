@@ -1,6 +1,6 @@
 # Code Map
 
-Snapshot: 2026-07-02 02:10 JST
+Snapshot: 2026-07-03 19:30 JST
 
 ## Stack
 
@@ -18,9 +18,18 @@ Snapshot: 2026-07-02 02:10 JST
 - `src/app`: App Router pages, layouts, server components, and API route
   handlers.
 - `src/app/api/**/route.ts`: external API contract surface.
+- `src/app/(legal)`: legal pages and compliance route group (new).
 - `src/lib`: shared auth, API response, RLS/db, audit, billing, dispensing,
   visits, validation, realtime, observability, and utility code.
+- `src/lib/api/versioning.ts`: API versioning/deprecation method matching and
+  helper (W3-integrated).
 - `src/server`: external adapters, jobs, service modules, and mappers.
+- `src/server/services/care-report-source-provenance.ts`: care-report finalize/
+  lock type and projection unification (W3-B4).
+- `src/server/services/drug-master-detail-cache.ts`: drug-master detail caching
+  and optimization service.
+- `src/server/services/billing-evidence/billing-amount-resolver.ts`: shared
+  billing amount resolver extracted from prescription/visit logic (W3-C2).
 - `src/phos`: PH-OS contract/runtime/backend/infra/UI modules.
 - `prisma/schema/**`: split Prisma schema.
 - `tools/scripts/**` and `tools/tests/**`: validation, preflight, E2E,
@@ -77,7 +86,19 @@ Snapshot: 2026-07-02 02:10 JST
 - `src/lib/api/search-params.ts`: strict single query-param, exact integer,
   and strict optional query-param parser helpers for route handlers that must
   reject duplicates, blank values, padded values, overlong filters, or padded
-  integers without changing field messages.
+  integers without changing field messages; recent W3-B4 slices converge this
+  helper across billing-candidates, tasks, and related routes.
+- `src/server/services/care-report-source-provenance.ts`: care-report finalize/
+  lock type definitions and projection unification (W3-B4); contracts report
+  source identity and chain-of-custody metadata without changing API semantics.
+- `src/app/(dashboard)/admin/drug-masters/drug-master-detail-sheet.tsx`:
+  detail sheet component extracted from drug-master-content (W3-E3);
+  ~50KB child component providing modal/drawer UX for drug detail inspection
+  without affecting parent table state or search contracts.
+- `src/server/services/billing-evidence/billing-amount-resolver.ts`: shared
+  billing amount resolution logic extracted from prescription/visit/plan
+  calculations (W3-C2); handles case-insensitive deprecation method matching
+  and unified amount determination without changing API or audit semantics.
 - `src/app/(dashboard)/**`: pharmacy workflow UI and server actions.
 - `src/server/services/**`: domain workflow logic and external adapter seams.
 - `prisma/schema/**`, `prisma/migrations/**`, `prisma/rls-policies.sql`:
@@ -86,17 +107,29 @@ Snapshot: 2026-07-02 02:10 JST
 ## Safe / Caution / Proposal-Only
 
 - Safe small slices:
-  - duplicate helper convergence where canonical behavior is already tested.
-  - exact query-param helper convergence where blank, duplicate, padding,
-    max-length, and field-message semantics are locked by focused route tests.
-  - route-local logger sanitizer removal in favor of shared logger behavior.
+  - query-param helper convergence (W3-B4): billing-candidates, tasks, and
+    related routes now reuse `search-params.ts` helpers where blank, duplicate,
+    padding, max-length, and field-message semantics are locked by focused
+    route tests.
+  - logger sanitizer removal in favor of shared logger behavior; recent slices
+    converge CloudWatch metric failures, duplicate-run notices, runner cleanup,
+    and notification failures to central safe-log contract (2026-07-03).
   - tests that characterize unchanged response, auth, no-store, and redaction
     behavior.
+  - drug-master-detail extraction (W3-E3): moving ~50KB detail-sheet UX to
+    child component is safe; preserves parent table contract, pagination,
+    search, and filter behavior.
 - Caution:
   - response envelope/status/cache changes.
   - async jobs, realtime events, offline sync, idempotency, and retries.
   - date/JST boundaries and `@db.Date` behavior.
+  - billing algorithm changes (amounts, deprecation-method matching, point
+    resolution) require invoice/evidence audit trail validation.
 - Proposal-only by default:
   - DB schema, migrations, RLS policies, auth/authz meaning, audit semantics,
-    external send semantics, billing semantics, medical workflow behavior,
-    production config, secrets, dependency upgrades, and deployment.
+    external send semantics, medical workflow behavior, production config,
+    secrets, dependency upgrades, and deployment.
+  - Billing semantics changes (billing-rules, deprecation registries, algorithm
+    variants) now accessible in standard loop but require focused medical-safety
+    and audit validation; calculated amounts must be verified against UAT
+    evidence trails before merging (billing restriction lifted 2026-06-28).
