@@ -20,6 +20,7 @@ import {
   canAccessCareReportSource,
   getCareReportAccessScope,
 } from '@/server/services/care-report-access';
+import { buildManualCareReportSourceProvenance } from '@/server/services/care-report-source-provenance';
 import { canOutputCareReport } from '@/server/services/care-report-output-policy';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
@@ -409,29 +410,6 @@ async function lockCareReportVisitRecordSource(
   await db.$queryRaw(
     Prisma.sql`SELECT "id" FROM "VisitRecord" WHERE "id" = ${visitRecordId} AND "org_id" = ${orgId} FOR UPDATE`,
   );
-}
-
-async function buildVisitReportSourceProvenance(
-  db: Pick<Prisma.TransactionClient, 'visitRecord'>,
-  args: { orgId: string; visitRecordId?: string },
-) {
-  if (!args.visitRecordId) return null;
-  const visitRecord = await db.visitRecord.findFirst({
-    where: { id: args.visitRecordId, org_id: args.orgId },
-    select: { id: true, version: true, updated_at: true },
-  });
-  if (!visitRecord) return null;
-  if (typeof visitRecord.version !== 'number' || !(visitRecord.updated_at instanceof Date)) {
-    return null;
-  }
-  return {
-    schema_version: 1,
-    visit_record_id: visitRecord.id,
-    visit_record_version: visitRecord.version,
-    visit_record_updated_at: visitRecord.updated_at.toISOString(),
-    generated_at: new Date().toISOString(),
-    source: 'manual_care_report_create',
-  };
 }
 
 async function validateCareReportSource(
@@ -1049,7 +1027,7 @@ async function authenticatedPOST(req: NextRequest) {
           };
         }
 
-        const sourceProvenance = await buildVisitReportSourceProvenance(tx, {
+        const sourceProvenance = await buildManualCareReportSourceProvenance(tx, {
           orgId: ctx.orgId,
           visitRecordId: parsed.data.visit_record_id,
         });

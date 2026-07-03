@@ -17,6 +17,7 @@ import { dateKeySchema } from '@/lib/validations/date-key';
 import { familyNameOf } from '@/lib/utils/person-name';
 import { sanitizeDeliveryFailureReason } from '@/lib/reports/delivery-failure-reasons';
 import { buildReportHref, buildReportSendHref } from '@/lib/reports/navigation';
+import { readReportBillingContext, readReportSourceProvenance } from '@/lib/reports/report-content';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import {
   buildCommunicationRequestsHref,
@@ -341,9 +342,8 @@ function buildReportOpenIssues(args: {
   };
   patientLabel: string;
 }): ReportOpenIssue[] {
-  const content = readJsonObject(args.report.content) ?? {};
-  const sourceProvenance = readJsonObject(content.source_provenance);
-  const billingContext = readJsonObject(content.billing_context);
+  const sourceProvenance = readReportSourceProvenance(args.report.content);
+  const billingContext = readReportBillingContext(args.report.content);
   const issues: ReportOpenIssue[] = [];
   const href = buildReportHref(args.report.id);
 

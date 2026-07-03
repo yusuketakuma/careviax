@@ -5,12 +5,11 @@
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import type { LabAnalyteCode } from '@prisma/client';
+import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import {
-  readJsonObject,
-  readJsonObjectNumber,
-  readJsonObjectString,
-  toPrismaJsonInput,
-} from '@/lib/db/json';
+  buildCareReportBillingContext,
+  buildCareReportVisitSourceProvenance,
+} from './care-report-source-provenance';
 import type { StructuredSoap } from '@/types/structured-soap';
 import { KEY_LAB_ANALYTE_CODES } from '@/lib/patient/lab-analytes';
 import {
@@ -130,10 +129,6 @@ function readReportableStructuredSoap(value: unknown): StructuredSoap | null {
   if (!isStringArray(plan.intervention_checks)) return null;
 
   return value as StructuredSoap;
-}
-
-function toIsoStringOrNull(value: unknown): string | null {
-  return value instanceof Date ? value.toISOString() : null;
 }
 
 function mergeLatestLabObservationsIntoStructuredSoap(
@@ -497,78 +492,15 @@ export async function generateReportsFromVisit(
   }
   const missingTypes = typesToGenerate.filter((type) => !existingByType.has(type));
 
-  const billingContext = billingEvidence
-    ? {
-        billing_evidence_id: billingEvidence.id,
-        payer_basis: billingEvidence.payer_basis,
-        claimable: billingEvidence.claimable,
-        exclusion_reason: billingEvidence.exclusion_reason,
-        report_delivery_ref: billingEvidence.report_delivery_ref,
-        applied_rule_keys: billingEvidence.applied_rule_keys ?? [],
-        recommended_rule_keys: billingEvidence.recommended_rule_keys ?? [],
-        validation_notes: billingEvidence.validation_notes ?? null,
-        updated_at: toIsoStringOrNull(billingEvidence.updated_at),
-        effective_revision_code: readJsonObjectString(
-          billingEvidence.calculation_context,
-          'effective_revision_code',
-        ),
-        site_config_status: readJsonObjectString(
-          billingEvidence.calculation_context,
-          'site_config_status',
-        ),
-        site_config_revision_code: readJsonObjectString(
-          billingEvidence.calculation_context,
-          'site_config_revision_code',
-        ),
-        jahis_supplemental_record_count: readJsonObjectNumber(
-          billingEvidence.calculation_context,
-          'jahis_supplemental_record_count',
-        ),
-        jahis_residual_confirmation_count: readJsonObjectNumber(
-          billingEvidence.calculation_context,
-          'jahis_residual_confirmation_count',
-        ),
-      }
-    : null;
-  const sourceProvenance = {
-    schema_version: 1,
-    visit_record_id: visitRecord.id,
-    visit_record_version: visitRecord.version ?? null,
-    visit_record_updated_at: toIsoStringOrNull(visitRecord.updated_at),
-    schedule_id: visitRecord.schedule_id,
-    patient_id: visitRecord.patient_id,
-    case_id: caseId,
-    medication_cycle_id: medicationCycle?.id ?? null,
-    prescription_intake_ids: Array.from(new Set(prescriptionLines.map((line) => line.intake_id))),
-    prescription_line_ids: prescriptionLines.map((line) => line.id),
-    prescription_lines: prescriptionLines.map((line) => ({
-      prescription_line_id: line.id,
-      prescription_intake_id: line.intake_id,
-      prescribed_date: line.intake.prescribed_date.toISOString(),
-      drug_code: line.drug_code,
-      drug_name: line.drug_name,
-      quantity: line.quantity,
-      unit: line.unit,
-    })),
-    billing_evidence_id: billingEvidence?.id ?? null,
-    billing_evidence_updated_at: toIsoStringOrNull(billingEvidence?.updated_at),
-    latest_lab_observations: latestReportLabs.map((lab) => ({
-      id: lab.id,
-      analyte_code: lab.analyte_code,
-      measured_at: lab.measured_at.toISOString(),
-      abnormal_flag: lab.abnormal_flag,
-    })),
-    patient_insurance_basis: billingEvidence
-      ? {
-          payer_basis: billingEvidence.payer_basis,
-          patient_id: billingEvidence.patient_id,
-          cycle_id: billingEvidence.cycle_id,
-          claimable: billingEvidence.claimable,
-          exclusion_reason: billingEvidence.exclusion_reason,
-        }
-      : null,
-    generated_at: new Date().toISOString(),
-  };
+  const billingContext = buildCareReportBillingContext(billingEvidence);
+  const sourceProvenance = buildCareReportVisitSourceProvenance({
+    visitRecord,
+    caseId,
+    medicationCycle,
+    prescriptionLines,
+    billingEvidence,
+    latestReportLabs,
+  });
 
   // ─── 10. 各 type でテンプレート呼び出し → CareReport 作成 ─────────────────
   const visitRecordInput = { visited_at: visitRecord.visit_date };

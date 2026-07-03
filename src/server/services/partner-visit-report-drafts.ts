@@ -5,7 +5,11 @@ import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
 import { getHomeVisitIntake, type HomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import { formatLabAnalyteLabel } from '@/lib/patient/lab-analytes';
-import type { BaselineContext, PhysicianReportContent } from '@/types/care-report-content';
+import type {
+  BaselineContext,
+  CareReportPartnerVisitSourceProvenance,
+  PhysicianReportContent,
+} from '@/types/care-report-content';
 import { resolvePharmacyVisitRequestTransition } from '@/server/services/pharmacy-partnerships';
 import { japanDateKey } from '@/lib/utils/date-boundary';
 
@@ -371,6 +375,18 @@ function buildPhysicianReportContent(args: {
   ].filter((value): value is string => Boolean(value));
   const intake = getHomeVisitIntake(record.share_case.base_case?.required_visit_support);
 
+  const partnerSourceProvenance = {
+    schema_version: 1,
+    source: 'partner_visit_record',
+    partner_visit_record_id: record.id,
+    partner_visit_record_revision_no: record.revision_no,
+    partner_visit_record_updated_at: record.updated_at.toISOString(),
+    visit_request_id: record.visit_request_id,
+    share_case_id: record.share_case_id,
+    owner_partner_pharmacy_id: record.owner_partner_pharmacy_id,
+    generated_at: new Date().toISOString(),
+  } satisfies CareReportPartnerVisitSourceProvenance;
+
   return {
     patient: {
       name: patient.name,
@@ -422,17 +438,7 @@ function buildPhysicianReportContent(args: {
           recipient_organization: prescriber.institution,
         }
       : undefined,
-    source_provenance: {
-      schema_version: 1,
-      source: 'partner_visit_record',
-      partner_visit_record_id: record.id,
-      partner_visit_record_revision_no: record.revision_no,
-      partner_visit_record_updated_at: record.updated_at.toISOString(),
-      visit_request_id: record.visit_request_id,
-      share_case_id: record.share_case_id,
-      owner_partner_pharmacy_id: record.owner_partner_pharmacy_id,
-      generated_at: new Date().toISOString(),
-    },
+    source_provenance: partnerSourceProvenance,
     partner_visit_summary: {
       partner_pharmacy_name: record.owner_partner_pharmacy.name,
       base_site_name: record.visit_request.partnership.base_site.name,

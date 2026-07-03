@@ -120,3 +120,100 @@ export type AudienceReportContent = {
   warnings: string[];
   baseline_context?: BaselineContext;
 };
+
+// ─── CareReport.content 投影メタ (billing_context / source_provenance) ─────────
+// report-generator / care-reports API / partner-visit-report-drafts が
+// CareReport.content 直下へ埋め込む請求根拠・来歴メタの JSON 形状を型で固定する。
+// 値・キー・順序は既存構築ロジックと 1 対 1 対応（形状を変えない）。
+
+// billingEvidence を content.billing_context へ射影した形状。
+// applied_rule_keys / recommended_rule_keys は BillingEvidence の Json 列由来のため
+// 不透明 JSON として扱う（構築側で `?? []` を通してから格納する）。
+export type CareReportBillingContext = {
+  billing_evidence_id: string;
+  payer_basis: string;
+  claimable: boolean;
+  exclusion_reason: string | null;
+  report_delivery_ref: string | null;
+  applied_rule_keys: unknown;
+  recommended_rule_keys: unknown;
+  validation_notes: string | null;
+  updated_at: string | null;
+  effective_revision_code: string | null;
+  site_config_status: string | null;
+  site_config_revision_code: string | null;
+  jahis_supplemental_record_count: number | null;
+  jahis_residual_confirmation_count: number | null;
+};
+
+// content.source_provenance は生成経路ごとに異なる形状を取る discriminated union。
+// `source` タグで判別する（visit_record 経路は歴史的経緯でタグを省略し得るため optional）。
+
+// report-generator（訪問記録からの完全生成）が埋める完全版来歴。
+export type CareReportVisitRecordSourceProvenance = {
+  schema_version: number;
+  visit_record_id: string;
+  visit_record_version: number | null;
+  visit_record_updated_at: string | null;
+  schedule_id: string;
+  patient_id: string;
+  case_id: string;
+  medication_cycle_id: string | null;
+  prescription_intake_ids: string[];
+  prescription_line_ids: string[];
+  prescription_lines: Array<{
+    prescription_line_id: string;
+    prescription_intake_id: string;
+    prescribed_date: string;
+    drug_code: string | null;
+    drug_name: string;
+    quantity: number | null;
+    unit: string | null;
+  }>;
+  billing_evidence_id: string | null;
+  billing_evidence_updated_at: string | null;
+  latest_lab_observations: Array<{
+    id: string;
+    analyte_code: string;
+    measured_at: string;
+    abnormal_flag: string | null;
+  }>;
+  patient_insurance_basis: {
+    payer_basis: string;
+    patient_id: string | null;
+    cycle_id: string | null;
+    claimable: boolean;
+    exclusion_reason: string | null;
+  } | null;
+  generated_at: string;
+  source?: 'visit_record';
+};
+
+// care-reports API の手動作成経路が埋める簡易版来歴。
+// billing 系フィールドを持たない（手動作成時点では billingEvidence 未確定）。
+export type CareReportManualSourceProvenance = {
+  schema_version: number;
+  visit_record_id: string;
+  visit_record_version: number;
+  visit_record_updated_at: string;
+  generated_at: string;
+  source: 'manual_care_report_create';
+};
+
+// 協力薬局訪問記録からの下書き生成が埋める来歴。独立メンバー（billing 系を持たない）。
+export type CareReportPartnerVisitSourceProvenance = {
+  schema_version: number;
+  source: 'partner_visit_record';
+  partner_visit_record_id: string;
+  partner_visit_record_revision_no: number;
+  partner_visit_record_updated_at: string;
+  visit_request_id: string;
+  share_case_id: string;
+  owner_partner_pharmacy_id: string;
+  generated_at: string;
+};
+
+export type CareReportSourceProvenance =
+  | CareReportVisitRecordSourceProvenance
+  | CareReportManualSourceProvenance
+  | CareReportPartnerVisitSourceProvenance;

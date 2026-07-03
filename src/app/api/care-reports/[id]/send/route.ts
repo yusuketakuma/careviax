@@ -38,6 +38,10 @@ import { sendCareReportEmail } from '@/server/services/report-delivery';
 import { learnContactProfileFromCommunication } from '@/lib/contact-profiles';
 import { transitionCycleStatus } from '@/lib/db/cycle-transition';
 import { inferCareReportTargetRole } from '@/lib/reports/care-report-target-role';
+import {
+  readPartnerVisitSourceRevision,
+  readVisitRecordSourceRevision,
+} from '@/lib/reports/report-content';
 import { audienceKeyFromRecipientRole, SHARE_AUDIENCES } from '@/lib/communications/share-audience';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { getAuthSecret } from '@/lib/auth/secret';
@@ -419,52 +423,6 @@ function readJsonObject(value: Prisma.JsonValue): Record<string, unknown> {
     : {};
 }
 
-function readReportSourceRevision(content: Prisma.JsonValue) {
-  const sourceProvenance = readJsonObject(
-    readJsonObject(content).source_provenance as Prisma.JsonValue,
-  );
-  const visitRecordVersion = sourceProvenance.visit_record_version;
-  const visitRecordUpdatedAt = sourceProvenance.visit_record_updated_at;
-  return {
-    visitRecordVersion: typeof visitRecordVersion === 'number' ? visitRecordVersion : null,
-    visitRecordUpdatedAt:
-      typeof visitRecordUpdatedAt === 'string' && visitRecordUpdatedAt.trim().length > 0
-        ? visitRecordUpdatedAt
-        : null,
-  };
-}
-
-function readPartnerVisitReportSourceRevision(
-  content: Prisma.JsonValue,
-  partnerVisitRecordId: string,
-) {
-  const sourceProvenance = readJsonObject(
-    readJsonObject(content).source_provenance as Prisma.JsonValue,
-  );
-  const sourcePartnerVisitRecordId = sourceProvenance.partner_visit_record_id;
-  const partnerVisitRecordRevisionNo = sourceProvenance.partner_visit_record_revision_no;
-  const partnerVisitRecordUpdatedAt = sourceProvenance.partner_visit_record_updated_at;
-  return {
-    partnerVisitRecordId:
-      typeof sourcePartnerVisitRecordId === 'string' && sourcePartnerVisitRecordId.trim().length > 0
-        ? sourcePartnerVisitRecordId
-        : null,
-    partnerVisitRecordRevisionNo:
-      typeof partnerVisitRecordRevisionNo === 'number' &&
-      Number.isInteger(partnerVisitRecordRevisionNo)
-        ? partnerVisitRecordRevisionNo
-        : null,
-    partnerVisitRecordUpdatedAt:
-      typeof partnerVisitRecordUpdatedAt === 'string' &&
-      partnerVisitRecordUpdatedAt.trim().length > 0
-        ? partnerVisitRecordUpdatedAt
-        : null,
-    matchesReportSource:
-      typeof sourcePartnerVisitRecordId === 'string' &&
-      sourcePartnerVisitRecordId === partnerVisitRecordId,
-  };
-}
-
 type PartnerVisitRecordFreshnessDb = {
   partnerVisitRecord: {
     findFirst: (
@@ -492,7 +450,7 @@ async function validateReportVisitRecordFreshness(args: {
   content: Prisma.JsonValue;
 }) {
   if (!args.visitRecordId) return { ok: true as const };
-  const sourceRevision = readReportSourceRevision(args.content);
+  const sourceRevision = readVisitRecordSourceRevision(args.content);
   if (sourceRevision.visitRecordVersion == null && sourceRevision.visitRecordUpdatedAt == null) {
     return {
       ok: false as const,
@@ -538,10 +496,7 @@ async function validateReportPartnerVisitRecordFreshness(args: {
   db?: PartnerVisitRecordFreshnessDb;
 }): Promise<{ ok: true } | PartnerVisitRecordFreshnessFailure> {
   if (!args.partnerVisitRecordId) return { ok: true as const };
-  const sourceRevision = readPartnerVisitReportSourceRevision(
-    args.content,
-    args.partnerVisitRecordId,
-  );
+  const sourceRevision = readPartnerVisitSourceRevision(args.content, args.partnerVisitRecordId);
   if (!sourceRevision.partnerVisitRecordId || !sourceRevision.partnerVisitRecordUpdatedAt) {
     return {
       ok: false as const,
