@@ -1,0 +1,90 @@
+// =============================================================================
+// Platform operator console — audited break-glass cross-tenant access
+// See: docs/design/platform-operator-console-design.md
+//
+// These are PLATFORM-LEVEL tables: they intentionally have NO org_id and are NOT
+// tenant-scoped, so they carry no RLS tenant_isolation policy. Access is gated at
+// the application layer (requirePlatformOperator). `user_id` / `target_org_id`
+// are app-validated references (kept as plain indexed Strings, not Prisma
+// relations, to keep this schema self-contained). Referential integrity is
+// enforced in code (operator.user must exist at auth; target org must exist at
+// break-glass activation); sessions are time-boxed so orphans expire.
+// =============================================================================
+
+/// Platform operator (system developer/administrator) tiers. Least-privilege:
+/// support = read-only cross-tenant, admin = read + limited write ops,
+/// owner = full + operator management. Distinct from tenant MemberRole.
+enum PlatformOperatorRole {
+  platform_support
+  platform_admin
+  platform_owner
+}
+
+enum PlatformOperatorStatus {
+  active
+  suspended
+}
+
+/// Break-glass access scope. Default read_only; read_write is exceptional and
+/// additionally audited.
+enum BreakGlassScope {
+  read_only
+  read_write
+}
+
+enum BreakGlassStatus {
+  active
+  expired
+  revoked
+}
+
+/// A platform operator identity. Separate from tenant org membership — an
+/// operator is NOT an org member and must never leak into a tenant org's roles.
+model PlatformOperator {
+  id         String                 @id @default(cuid())
+  /// App-validated reference to User.id (the Cognito-authenticated identity used
+  /// to sign in). Unique so a user maps to at most one operator record.
+  user_id    String                 @unique
+  role       PlatformOperatorRole
+  status     PlatformOperatorStatus @default(active)
+  note       String?
+  created_at DateTime               @default(now())
+  updated_at DateTime               @updatedAt
+
+  break_glass_sessions BreakGlassSession[]
+
+  @@index([status])
+}
+
+/// A time-boxed, MFA-gated break-glass session authorizing one operator to
+/// access exactly one target tenant. Every cross-tenant read/write is scoped to
+/// `target_org_id` via RLS (no BYPASSRLS) and audited (action break_glass_*).
+model BreakGlassSession {
+  id               String           @id @default(cuid())
+  operator_id      String
+  /// App-validated reference to Organization.id being accessed.
+  target_org_id    String
+  /// Required human justification captured at activation.
+  reason           String
+  /// Optional support/incident ticket reference.
+  reference_ticket String?
+  scope            BreakGlassScope  @default(read_only)
+  /// When the operator completed step-up MFA re-authentication for this session.
+  mfa_verified_at  DateTime
+  granted_at       DateTime         @default(now())
+  /// Hard expiry; access is denied once now() >= expires_at.
+  expires_at       DateTime
+  revoked_at       DateTime?
+  revoked_by       String?
+  status           BreakGlassStatus @default(active)
+  ip_address       String?
+  user_agent       String?
+  created_at       DateTime         @default(now())
+  updated_at       DateTime         @updatedAt
+
+  operator PlatformOperator @relation(fields: [operator_id], references: [id], onDelete: Cascade)
+
+  @@index([operator_id, status])
+  @@index([target_org_id, granted_at])
+  @@index([status, expires_at])
+}
