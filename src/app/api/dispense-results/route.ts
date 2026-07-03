@@ -83,14 +83,29 @@ const dispenseSafetyChecklistSchema = z.object({
   cds_alerts_reviewed: z.literal(DISPENSE_SAFETY_CHECKLIST_ACK.cds_alerts_reviewed),
 });
 
-const createDispenseResultSchema = z.object({
-  task_id: z.string().min(1),
-  lines: z.array(dispenseResultLineSchema).min(1, '調剤実績を1件以上入力してください'),
-  safety_checklist: dispenseSafetyChecklistSchema.optional(),
-  // 楽観的ロック: ワークベンチ表示時の cycle.version。
-  // 調剤結果は訪問 carry_items まで再投影するため、必ず現在 version と照合する。
-  expected_version: z.number().int().nonnegative(),
-});
+const createDispenseResultSchema = z
+  .object({
+    task_id: z.string().min(1),
+    lines: z.array(dispenseResultLineSchema).min(1, '調剤実績を1件以上入力してください'),
+    safety_checklist: dispenseSafetyChecklistSchema.optional(),
+    // 楽観的ロック: ワークベンチ表示時の cycle.version。
+    // 調剤結果は訪問 carry_items まで再投影するため、必ず現在 version と照合する。
+    expected_version: z.number().int().nonnegative(),
+  })
+  .superRefine((value, ctx) => {
+    const seenLineIds = new Set<string>();
+    for (const line of value.lines) {
+      if (seenLineIds.has(line.line_id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['lines'],
+          message: '同じ line_id を複数指定できません',
+        });
+        return;
+      }
+      seenLineIds.add(line.line_id);
+    }
+  });
 
 type SubmittedDispenseResultLine = z.infer<typeof dispenseResultLineSchema>;
 

@@ -18,25 +18,26 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: `R07` codex 実装済み（opus verdict 待ち）
+- Phase C（実装ループ）: `DR-DUP1` codex 実装済み（opus verdict 待ち）
 
 ## 直近の land（本日・要点）
 
 - Wave 2 完了 / W3-C2/E2/E3 / W3-B4 中核(52ce1f66) / B6 設計ラティファイ(3a39f69e) / v0.2 実証
 - codex lane: BE-1 / RT1 / RR-QP-A/B / JOB1/2 / CW1 / BM1(5be6ebca) / 9d1567ba /
-  PERF-01(981f1a58) / MFA1(f7bf2e97) / F84(c22c7fe3) / CE17(5205fc48) — 全 opus APPROVE
+  PERF-01(981f1a58) / MFA1(f7bf2e97) / F84(c22c7fe3) / CE17(5205fc48) / R07(f3733036)
+  — 全 opus APPROVE
 - claude/opus lane: X01(e02cec50) / CE19(2136c93a) / N18(ad0ff309) / R03(3b31cec1) /
   A1-CRC(eebda8c3) land
 - 全量 gate green: test 13035 passed（2026-07-03 夜、F84/CE19/N18/R03後）
 
 ## 進行中 / 凍結
 
-- codex: `R07` LOCK ACK 済み。`src/lib/dashboard/home-config.ts` と自テストを削除。
-  静的参照/型エラー該当 grep 0件、focused vitest/eslint/tsc grep green。report 後 opus verdict 待ち。
+- codex: `DR-DUP1` LOCK ACK 済み。`POST /api/dispense-results` の `lines[].line_id` 重複を
+  zod validation で 400 拒否。focused route vitest 43/43 green、scoped eslint green。追加検証中。
 - human-gate 記録: MFA1 / X01 とも RESOLVED 済み。
 
 ## 次の一手
 
-1. codex: `R07` 実装結果を agmsg report（self-commit なし）
-2. fable/opus: R07 review → claude commit
-3. codex: PERF-02 read-only recon の duplicate `line_id` safety finding を fable へ共有
+1. codex: `DR-DUP1` の format/typecheck/diff-check を完了
+2. codex: caller recon 証拠込みで agmsg report（self-commit なし）
+3. fable/opus: DR-DUP1 review → claude commit

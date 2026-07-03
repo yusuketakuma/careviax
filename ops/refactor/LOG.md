@@ -63,7 +63,7 @@
   型エラーで blocked（CE17外、該当 lane へ委譲）。
 - 最終: opus APPROVE、claude commit 5205fc48。self-commit なし。
 
-## 2026-07-03 R07 pending verdict
+## 2026-07-03 R07 f3733036
 
 - 分類: dead-code removal / behavior-preserving cleanup
 - 対象: `src/lib/dashboard/home-config.ts` + 自テスト
@@ -72,6 +72,18 @@
 - 挙動変更: なし。runtime import なし、route/config/script/型のみ参照なし。docs の生きた参照なし、archive 参照のみ残置。
 - 検証: export symbol 静的 `rg` 0件。`home-link-builders.test.ts` 4/4 green。scoped eslint green。
   `tsc --noEmit --pretty false` green、home-config 該当エラー grep 0件。
+- レビュー: opus APPROVE、claude commit f3733036。self-commit なし。
+
+## 2026-07-03 DR-DUP1 pending verdict
+
+- 分類: bug/data-integrity / defensive validation
+- 対象: `src/app/api/dispense-results/route.ts` + focused route test
+- 実施: `lines[].line_id` 重複を zod schema の `superRefine` で 400
+  `VALIDATION_ERROR` 拒否。transaction 前に止め、同一 `DispenseResult` の非決定的上書きを防止。
+- 呼び出し元 recon: 非テスト POST は workbench mutate→adapter の単一路線。
+  FE payload は API `count_rows.map(line.id)` 由来で、drag/drop は splice→push の移動。
+- 挙動変更: あり（malformed duplicate payload を拒否）。正規 FE 呼び出しの正常系は不変。
+- 検証: focused duplicate test green。full `dispense-results/route.test.ts` 43/43 green。scoped eslint green。
 - レビュー: opus verdict 待ち。self-commit なし。
 
 ## 2026-07-03 までのスライス（要約、詳細は archive/ と git log）

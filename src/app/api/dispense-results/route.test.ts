@@ -301,6 +301,50 @@ describe('/api/dispense-results POST', () => {
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
+  it('rejects duplicate submitted line ids before task lookup or write side effects', async () => {
+    const response = await POST(
+      createRequest({
+        task_id: 'task_1',
+        safety_checklist: safetyChecklist,
+        lines: [
+          {
+            line_id: 'line_1',
+            actual_drug_name: 'アムロジピン',
+            actual_drug_code: '123',
+            actual_quantity: 14,
+            ...prescriptionQuantityConfirmed,
+            carry_type: 'carry',
+          },
+          {
+            line_id: 'line_1',
+            actual_drug_name: 'アムロジピン',
+            actual_drug_code: '123',
+            actual_quantity: 7,
+            ...prescriptionQuantityConfirmed,
+            carry_type: 'facility_deposit',
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        lines: ['同じ line_id を複数指定できません'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
   it('returns a sanitized no-store 500 without raw logging when transaction setup fails unexpectedly', async () => {
     const unsafeError = new Error('患者 山田太郎 raw dispense result transaction secret');
     unsafeError.name = 'DispenseResultsRawPatientSecretError';
