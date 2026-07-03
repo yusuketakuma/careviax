@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
+import type { ColumnDef } from '@tanstack/react-table';
 import { format, parseISO, differenceInCalendarDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
@@ -23,6 +24,7 @@ import { buildPrescriptionIntakeApiPath } from '@/lib/prescriptions/api-paths';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DataTable } from '@/components/ui/data-table';
 import { Loading } from '@/components/ui/loading';
 import { ErrorState } from '@/components/ui/error-state';
 import { Separator } from '@/components/ui/separator';
@@ -144,6 +146,107 @@ const METHOD_LABELS: Record<string, string> = {
   crushed: '粉砕',
   other: 'その他',
 };
+
+const prescriptionLineColumns: ColumnDef<PrescriptionLine>[] = [
+  {
+    accessorKey: 'line_number',
+    header: '#',
+    cell: ({ row }) => (
+      <span className="text-xs text-muted-foreground tabular-nums">{row.original.line_number}</span>
+    ),
+  },
+  {
+    accessorKey: 'drug_name',
+    header: '薬剤名',
+    cell: ({ row }) => {
+      const line = row.original;
+      return (
+        <div>
+          <div>
+            <span className="font-medium">{line.drug_name}</span>
+            {line.drug_code && (
+              <span className="ml-1 text-[11px] text-muted-foreground">{line.drug_code}</span>
+            )}
+          </div>
+          {line.dosage_form && (
+            <span className="text-xs text-muted-foreground">{line.dosage_form}</span>
+          )}
+          {line.packaging_instructions && (
+            <p className="mt-0.5 text-xs text-state-confirm">
+              包装指示: {line.packaging_instructions}
+            </p>
+          )}
+          {line.notes && <p className="mt-0.5 text-xs text-muted-foreground">備考: {line.notes}</p>}
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: 'dose',
+    header: '用量',
+    cell: ({ row }) => <span className="tabular-nums">{row.original.dose}</span>,
+  },
+  {
+    accessorKey: 'frequency',
+    header: '用法',
+  },
+  {
+    accessorKey: 'days',
+    header: '日数',
+    cell: ({ row }) => <span className="tabular-nums">{row.original.days}日</span>,
+  },
+  {
+    accessorKey: 'route',
+    header: '投与経路',
+    meta: { mobileHidden: true },
+    cell: ({ row }) => (
+      <span className="text-muted-foreground">
+        {row.original.route ? (ROUTE_LABELS[row.original.route] ?? row.original.route) : '—'}
+      </span>
+    ),
+  },
+  {
+    accessorKey: 'dispensing_method',
+    header: '調剤方法',
+    meta: { mobileHidden: true },
+    cell: ({ row }) => (
+      <span className="text-muted-foreground">
+        {row.original.dispensing_method
+          ? (METHOD_LABELS[row.original.dispensing_method] ?? row.original.dispensing_method)
+          : '—'}
+      </span>
+    ),
+  },
+  {
+    id: 'generic_status',
+    header: '後発品',
+    meta: { mobileHidden: true },
+    cell: ({ row }) => {
+      const line = row.original;
+      if (line.is_generic) {
+        return (
+          <Badge
+            variant="outline"
+            className="border-transparent bg-tag-info/10 text-tag-info text-[11px]"
+          >
+            後発
+          </Badge>
+        );
+      }
+      if (line.is_generic_name_prescription) {
+        return (
+          <Badge
+            variant="outline"
+            className="border-transparent bg-state-done/10 text-state-done text-[11px]"
+          >
+            一般名
+          </Badge>
+        );
+      }
+      return <span className="text-xs text-muted-foreground">先発</span>;
+    },
+  },
+];
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -383,102 +486,12 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
                 {data.lines.length === 0 ? (
                   <p className="text-sm text-muted-foreground">明細行がありません。</p>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm" aria-label="処方明細一覧">
-                      <thead>
-                        <tr className="border-b text-left text-xs font-medium text-muted-foreground">
-                          <th scope="col" className="pb-2 pr-3">
-                            #
-                          </th>
-                          <th scope="col" className="pb-2 pr-3">
-                            薬剤名
-                          </th>
-                          <th scope="col" className="pb-2 pr-3">
-                            用量
-                          </th>
-                          <th scope="col" className="pb-2 pr-3">
-                            用法
-                          </th>
-                          <th scope="col" className="pb-2 pr-3">
-                            日数
-                          </th>
-                          <th scope="col" className="pb-2 pr-3 max-md:hidden">
-                            投与経路
-                          </th>
-                          <th scope="col" className="pb-2 pr-3 max-md:hidden">
-                            調剤方法
-                          </th>
-                          <th scope="col" className="pb-2 max-md:hidden">
-                            後発品
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.lines.map((line) => (
-                          <tr key={line.id} className="border-b border-border/40 last:border-0">
-                            <td className="py-2.5 pr-3 text-xs text-muted-foreground tabular-nums">
-                              {line.line_number}
-                            </td>
-                            <td className="py-2.5 pr-3">
-                              <div>
-                                <span className="font-medium">{line.drug_name}</span>
-                                {line.drug_code && (
-                                  <span className="ml-1 text-[11px] text-muted-foreground">
-                                    {line.drug_code}
-                                  </span>
-                                )}
-                              </div>
-                              {line.dosage_form && (
-                                <span className="text-xs text-muted-foreground">
-                                  {line.dosage_form}
-                                </span>
-                              )}
-                              {line.packaging_instructions && (
-                                <p className="mt-0.5 text-xs text-state-confirm">
-                                  包装指示: {line.packaging_instructions}
-                                </p>
-                              )}
-                              {line.notes && (
-                                <p className="mt-0.5 text-xs text-muted-foreground">
-                                  備考: {line.notes}
-                                </p>
-                              )}
-                            </td>
-                            <td className="py-2.5 pr-3 tabular-nums">{line.dose}</td>
-                            <td className="py-2.5 pr-3">{line.frequency}</td>
-                            <td className="py-2.5 pr-3 tabular-nums">{line.days}日</td>
-                            <td className="py-2.5 pr-3 max-md:hidden text-muted-foreground">
-                              {line.route ? (ROUTE_LABELS[line.route] ?? line.route) : '—'}
-                            </td>
-                            <td className="py-2.5 pr-3 max-md:hidden text-muted-foreground">
-                              {line.dispensing_method
-                                ? (METHOD_LABELS[line.dispensing_method] ?? line.dispensing_method)
-                                : '—'}
-                            </td>
-                            <td className="py-2.5 max-md:hidden">
-                              {line.is_generic ? (
-                                <Badge
-                                  variant="outline"
-                                  className="border-transparent bg-tag-info/10 text-tag-info text-[11px]"
-                                >
-                                  後発
-                                </Badge>
-                              ) : line.is_generic_name_prescription ? (
-                                <Badge
-                                  variant="outline"
-                                  className="border-transparent bg-state-done/10 text-state-done text-[11px]"
-                                >
-                                  一般名
-                                </Badge>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">先発</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <DataTable
+                    columns={prescriptionLineColumns}
+                    data={data.lines}
+                    getRowId={(line) => line.id}
+                    caption="処方明細一覧"
+                  />
                 )}
               </CardContent>
             </Card>

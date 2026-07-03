@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { ColumnDef } from '@tanstack/react-table';
 import { memo, useState } from 'react';
 import {
   differenceInYears,
@@ -25,20 +26,13 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { DataTable } from '@/components/ui/data-table';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loading } from '@/components/ui/loading';
 import { LoadingButton } from '@/components/ui/loading-button';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import {
   getHandlingTagBadgeClass,
@@ -92,6 +86,7 @@ import type {
   PatientDocumentsSnapshot,
   PatientOverview,
   PatientWorkspaceActivity,
+  PatientWorkspacePrescriptionLine,
   PatientWorkspaceTodayTask,
 } from './patient-detail.types';
 import { FirstVisitDocumentsPanel } from './patient-documents-panel';
@@ -316,6 +311,53 @@ function formatQuantityLabel(line: {
   }
   return `${line.days}日分`;
 }
+
+const prescriptionWorkspaceLineColumns: ColumnDef<PatientWorkspacePrescriptionLine>[] = [
+  {
+    accessorKey: 'drug_name',
+    header: '薬剤',
+    cell: ({ row }) => (
+      <span className="font-medium text-foreground">{row.original.drug_name}</span>
+    ),
+  },
+  {
+    accessorKey: 'frequency',
+    header: '用法',
+    cell: ({ row }) => (
+      <span>
+        {row.original.frequency} {row.original.dose}
+      </span>
+    ),
+  },
+  {
+    id: 'quantity',
+    header: '数量',
+    accessorFn: (row) => formatQuantityLabel(row),
+  },
+  {
+    id: 'safety',
+    header: '安全',
+    cell: ({ row }) => {
+      const tags = row.original.packaging_instruction_tags;
+      if (tags.length === 0) return null;
+      return (
+        <span className="flex flex-wrap gap-1">
+          {tags.map((tag) => (
+            <span
+              key={tag}
+              className={cn(
+                'inline-flex items-center rounded-full border px-2 py-0.5 text-xs',
+                getHandlingTagBadgeClass(tag),
+              )}
+            >
+              {getHandlingTagLabel(tag)}
+            </span>
+          ))}
+        </span>
+      );
+    },
+  },
+];
 
 function SectionCard({ children, className, ...props }: React.ComponentProps<'section'>) {
   return (
@@ -4643,50 +4685,16 @@ export function CardWorkspace({
             </div>
             {currentStep ? <ProcessChips currentStep={currentStep} className="mt-3" /> : null}
             {workspace.prescription_lines.length > 0 ? (
-              <Table className="mt-3">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>薬剤</TableHead>
-                    <TableHead>用法</TableHead>
-                    <TableHead className="w-24">数量</TableHead>
-                    <TableHead className="w-32">安全</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {workspace.prescription_lines.map((line) => {
-                    // 麻薬/冷所 等の取扱い注意は「安全」列のトークンベース バッジで表すため、
-                    // 行全体の生アラート色塗り(非トークン)は引き算する(SSOT L406-410)。
-                    return (
-                      <TableRow key={line.id}>
-                        <TableCell className="font-medium text-foreground">
-                          {line.drug_name}
-                        </TableCell>
-                        <TableCell>
-                          {line.frequency} {line.dose}
-                        </TableCell>
-                        <TableCell>{formatQuantityLabel(line)}</TableCell>
-                        <TableCell>
-                          {line.packaging_instruction_tags.length > 0 ? (
-                            <span className="flex flex-wrap gap-1">
-                              {line.packaging_instruction_tags.map((tag) => (
-                                <span
-                                  key={tag}
-                                  className={cn(
-                                    'inline-flex items-center rounded-full border px-2 py-0.5 text-xs',
-                                    getHandlingTagBadgeClass(tag),
-                                  )}
-                                >
-                                  {getHandlingTagLabel(tag)}
-                                </span>
-                              ))}
-                            </span>
-                          ) : null}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+              // 麻薬/冷所 等の取扱い注意は「安全」列のトークンベース バッジで表すため、
+              // 行全体の生アラート色塗り(非トークン)は引き算する(SSOT L406-410)。
+              <div className="mt-3">
+                <DataTable
+                  columns={prescriptionWorkspaceLineColumns}
+                  data={workspace.prescription_lines}
+                  getRowId={(line) => line.id}
+                  caption="今回の処方明細"
+                />
+              </div>
             ) : (
               <p className="mt-3 text-sm text-muted-foreground">
                 処方明細はまだ取り込まれていません。

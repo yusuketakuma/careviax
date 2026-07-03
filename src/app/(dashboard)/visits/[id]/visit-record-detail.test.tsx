@@ -303,11 +303,12 @@ describe('VisitRecordDetail fetch-error handling (no false-empty workflow)', () 
     const outcomeBadge = screen.getByText('完了').closest('[data-role]');
     expect(outcomeBadge?.getAttribute('data-role')).toBe('done');
     // 減数禁止は raw destructive でなく tag-hazard トークン。
-    const prohibited = screen.getByText('減数禁止');
+    // DataTable はデスクトップ表/モバイルカードを両方 DOM に描画するため getAllByText で拾う。
+    const prohibited = screen.getAllByText('減数禁止')[0];
     expect(prohibited.className).toContain('text-tag-hazard');
     expect(prohibited.className).not.toContain('text-destructive');
     // 数値列は tabular-nums(SSOT 3.8)。
-    expect(screen.getByText('10').className).toContain('tabular-nums');
+    expect(screen.getAllByText('10')[0].className).toContain('tabular-nums');
     // 最上部の主見出しは h2(SSOT 4.5)。
     expect(screen.getByRole('heading', { level: 2, name: /訪問記録$/ })).toBeTruthy();
   });

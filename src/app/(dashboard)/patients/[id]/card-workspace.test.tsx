@@ -1201,12 +1201,17 @@ describe('CardWorkspace', () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(true);
-    expect(within(prescriptionSection).getByText('アムロジピン錠5mg')).toBeTruthy();
-    expect(within(prescriptionSection).getByText('オキシコドン錠5mg')).toBeTruthy();
-    expect(within(prescriptionSection).getByText('14錠')).toBeTruthy();
-    expect(within(prescriptionSection).getByText('28日分')).toBeTruthy();
-    expect(within(prescriptionSection).getByText('麻薬')).toBeTruthy();
-    expect(within(prescriptionSection).getByText('冷所')).toBeTruthy();
+    // DataTable はデスクトップ表/モバイルカードを両方 DOM に描画するため getAllByText で拾う。
+    expect(
+      within(prescriptionSection).getAllByText('アムロジピン錠5mg').length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      within(prescriptionSection).getAllByText('オキシコドン錠5mg').length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(within(prescriptionSection).getAllByText('14錠').length).toBeGreaterThanOrEqual(1);
+    expect(within(prescriptionSection).getAllByText('28日分').length).toBeGreaterThanOrEqual(1);
+    expect(within(prescriptionSection).getAllByText('麻薬').length).toBeGreaterThanOrEqual(1);
+    expect(within(prescriptionSection).getAllByText('冷所').length).toBeGreaterThanOrEqual(1);
     // 無タグ行に「安全タグなし」風の淡表示は出さない
     expect(screen.queryByText('安全タグなし')).toBeNull();
 

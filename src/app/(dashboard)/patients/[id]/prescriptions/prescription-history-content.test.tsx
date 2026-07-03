@@ -454,12 +454,13 @@ describe('PrescriptionHistoryContent', () => {
 
     render(<PrescriptionHistoryContent />);
 
+    // DataTable はデスクトップ表/モバイルカードを両方 DOM に描画するため getAllByText で拾う。
     expect(screen.getByRole('columnheader', { name: '薬剤' })).toBeTruthy();
-    expect(screen.getByText('アムロジピン錠5mg')).toBeTruthy();
-    expect(screen.getByText('今回 YJ_NEW / 前回 YJ_OLD')).toBeTruthy();
-    expect(screen.getByText('別マスターとして判定')).toBeTruthy();
-    expect(screen.getByText('ロスバスタチン錠2.5mg')).toBeTruthy();
-    expect(screen.getByText('コード YJ_ROSU')).toBeTruthy();
+    expect(screen.getAllByText('アムロジピン錠5mg').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('今回 YJ_NEW / 前回 YJ_OLD').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('別マスターとして判定').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('ロスバスタチン錠2.5mg').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('コード YJ_ROSU').length).toBeGreaterThanOrEqual(1);
   });
 
   it('uses 6-axis state tokens for change-type badges (added=info, changed=confirm)', () => {

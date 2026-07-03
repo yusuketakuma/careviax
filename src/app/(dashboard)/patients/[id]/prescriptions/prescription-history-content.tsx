@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { ColumnDef } from '@tanstack/react-table';
 import { differenceInCalendarDays, format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
@@ -31,14 +32,7 @@ import { StateBadge } from '@/components/ui/state-badge';
 import { MEDICATION_CYCLE_STATUS_ROLE } from '@/lib/constants/status-labels';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { DataTable } from '@/components/ui/data-table';
 import { HelpPopover } from '@/components/ui/help-popover';
 import { formatDateKey } from '@/lib/date-key';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
@@ -318,6 +312,61 @@ function isDifferentDrugMaster(row: DiffReviewRow): boolean {
   const previousMasterId = row.previous_drug_master_id?.trim();
   return Boolean(currentMasterId && previousMasterId && currentMasterId !== previousMasterId);
 }
+
+const diffReviewColumns: ColumnDef<DiffReviewRow>[] = [
+  {
+    accessorKey: 'change_label',
+    header: '変化',
+    meta: { label: '変化' },
+    cell: ({ row }) => (
+      <span className={`font-medium ${DIFF_CHANGE_TEXT_COLOR[row.original.change_type]}`}>
+        {row.original.change_label}
+      </span>
+    ),
+  },
+  {
+    accessorKey: 'drug_name',
+    header: '薬剤',
+    cell: ({ row }) => (
+      <div className="text-sm">
+        <div className="font-medium text-foreground">
+          {row.original.drug_name.trim() || '薬剤名未確認'}
+        </div>
+        {formatDiffReviewDrugCode(row.original) && (
+          <div className="mt-1 text-xs text-muted-foreground">
+            {formatDiffReviewDrugCode(row.original)}
+          </div>
+        )}
+        {isDifferentDrugMaster(row.original) && (
+          <div className="mt-1 text-xs font-medium text-state-confirm">別マスターとして判定</div>
+        )}
+      </div>
+    ),
+  },
+  {
+    accessorKey: 'previous_label',
+    header: '前回',
+    cell: ({ row }) => (
+      <span className="text-sm text-muted-foreground">{row.original.previous_label ?? 'なし'}</span>
+    ),
+  },
+  {
+    accessorKey: 'current_label',
+    header: '今回',
+    cell: ({ row }) => (
+      <span className="text-sm font-medium text-foreground">
+        {row.original.current_label ?? '—'}
+      </span>
+    ),
+  },
+  {
+    accessorKey: 'pharmacist_memo',
+    header: '薬剤師メモ',
+    cell: ({ row }) => (
+      <span className="text-sm text-muted-foreground">{row.original.pharmacist_memo ?? '—'}</span>
+    ),
+  },
+];
 
 function isDrugMasterInfo(value: unknown): value is DrugMasterInfo {
   return Boolean(
@@ -1263,50 +1312,7 @@ function DiffReviewView({
         {/* 5 列テーブル: 変化 / 薬剤 / 前回 / 今回 / 薬剤師メモ */}
         <Card className="border-border shadow-sm">
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-24">変化</TableHead>
-                  <TableHead className="min-w-48">薬剤</TableHead>
-                  <TableHead>前回</TableHead>
-                  <TableHead>今回</TableHead>
-                  <TableHead>薬剤師メモ</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {diff.rows.map((row) => (
-                  <TableRow key={row.key}>
-                    <TableCell className={`font-medium ${DIFF_CHANGE_TEXT_COLOR[row.change_type]}`}>
-                      {row.change_label}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      <div className="font-medium text-foreground">
-                        {row.drug_name.trim() || '薬剤名未確認'}
-                      </div>
-                      {formatDiffReviewDrugCode(row) && (
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {formatDiffReviewDrugCode(row)}
-                        </div>
-                      )}
-                      {isDifferentDrugMaster(row) && (
-                        <div className="mt-1 text-xs font-medium text-state-confirm">
-                          別マスターとして判定
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {row.previous_label ?? 'なし'}
-                    </TableCell>
-                    <TableCell className="text-sm font-medium text-foreground">
-                      {row.current_label ?? '—'}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {row.pharmacist_memo ?? '—'}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataTable columns={diffReviewColumns} data={diff.rows} getRowId={(row) => row.key} />
           </CardContent>
         </Card>
 

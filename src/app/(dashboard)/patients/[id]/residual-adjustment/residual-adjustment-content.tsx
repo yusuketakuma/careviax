@@ -2,9 +2,11 @@
 
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { BlockedReasonsPanel } from '@/components/features/workspace/action-rail';
@@ -18,8 +20,37 @@ import {
   pickPhysicianInstructions,
   resolveLatestVisitRecordId,
   type PhysicianInstructionSource,
+  type ResidualAdjustmentRow,
   type ResidualMedicationRecord,
 } from './residual-adjustment.shared';
+
+const adjustmentProposalColumns: ColumnDef<ResidualAdjustmentRow>[] = [
+  {
+    accessorKey: 'drugName',
+    header: '薬剤',
+    cell: ({ row }) => (
+      <span data-testid="adjustment-proposal-row" className="font-medium text-foreground">
+        {row.original.drugName}
+      </span>
+    ),
+  },
+  {
+    accessorKey: 'remainingDays',
+    header: '残薬',
+    cell: ({ row }) => `${row.original.remainingDays}日`,
+  },
+  {
+    accessorKey: 'prescribedDays',
+    header: '今回処方',
+    cell: ({ row }) => `${row.original.prescribedDays}日`,
+  },
+  {
+    id: 'proposal',
+    header: '提案',
+    accessorFn: (row) => row.proposal.label,
+    cell: ({ row }) => row.original.proposal.label,
+  },
+];
 
 /**
  * p0_31「残薬調整」: 左=残薬の確認(薬剤カード+残N日)、
@@ -213,43 +244,13 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
         <h2 id="adjustment-proposal-heading" className="text-base font-bold text-foreground">
           調整案
         </h2>
-        <div className="mt-3 overflow-hidden rounded-lg border border-border/70">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr className="text-left text-muted-foreground">
-                <th scope="col" className="px-4 py-2.5 font-medium">
-                  薬剤
-                </th>
-                <th scope="col" className="px-4 py-2.5 font-medium">
-                  残薬
-                </th>
-                <th scope="col" className="px-4 py-2.5 font-medium">
-                  今回処方
-                </th>
-                <th scope="col" className="px-4 py-2.5 font-medium">
-                  提案
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/60 bg-background">
-              {plan.rows.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-4 py-6 text-sm text-muted-foreground">
-                    今回処方と突き合わせできる調整対象はありません。
-                  </td>
-                </tr>
-              ) : (
-                plan.rows.map((row) => (
-                  <tr key={row.id} data-testid="adjustment-proposal-row">
-                    <td className="px-4 py-3 font-medium text-foreground">{row.drugName}</td>
-                    <td className="px-4 py-3 text-foreground">{row.remainingDays}日</td>
-                    <td className="px-4 py-3 text-foreground">{row.prescribedDays}日</td>
-                    <td className="px-4 py-3 text-foreground">{row.proposal.label}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+        <div className="mt-3">
+          <DataTable
+            columns={adjustmentProposalColumns}
+            data={plan.rows}
+            getRowId={(row) => row.id}
+            emptyMessage="今回処方と突き合わせできる調整対象はありません。"
+          />
         </div>
 
         <h3 className="mt-6 text-[15px] font-bold text-foreground">医師の指示記録</h3>

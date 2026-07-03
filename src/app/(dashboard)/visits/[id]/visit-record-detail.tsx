@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { ColumnDef } from '@tanstack/react-table';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
@@ -27,6 +28,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { DataTable } from '@/components/ui/data-table';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -81,6 +83,60 @@ type ResidualMedication = {
   is_prohibited_reduction: boolean;
   is_reduction_target: boolean;
 };
+
+const residualMedicationColumns: ColumnDef<ResidualMedication>[] = [
+  {
+    accessorKey: 'drug_name',
+    header: '薬剤名',
+  },
+  {
+    accessorKey: 'prescribed_quantity',
+    header: '処方量',
+    cell: ({ row }) => (
+      <span className="block text-right tabular-nums text-muted-foreground">
+        {row.original.prescribed_quantity ?? '—'}
+      </span>
+    ),
+  },
+  {
+    accessorKey: 'remaining_quantity',
+    header: '残数',
+    cell: ({ row }) => (
+      <span className="block text-right tabular-nums">{row.original.remaining_quantity}</span>
+    ),
+  },
+  {
+    accessorKey: 'excess_days',
+    header: '余剰日数',
+    cell: ({ row }) => (
+      <span className="block text-right tabular-nums">
+        {row.original.excess_days !== null ? `${row.original.excess_days}日` : '—'}
+      </span>
+    ),
+  },
+  {
+    id: 'reduction_status',
+    header: '区分',
+    cell: ({ row }) => (
+      <div className="flex flex-wrap gap-1">
+        {row.original.is_prohibited_reduction && (
+          /* 臨床ハザード属性は raw destructive でなく tag-hazard トークン(SSOT 7.3)。 */
+          <Badge
+            variant="outline"
+            className="border-tag-hazard/30 bg-tag-hazard/10 text-xs text-tag-hazard"
+          >
+            減数禁止
+          </Badge>
+        )}
+        {row.original.is_reduction_target && !row.original.is_prohibited_reduction && (
+          <Badge variant="outline" className="text-xs text-state-confirm border-state-confirm/30">
+            減数対象
+          </Badge>
+        )}
+      </div>
+    ),
+  },
+];
 
 type VisitRecordFull = {
   id: string;
@@ -1228,70 +1284,12 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
             <h2 className="font-heading text-sm leading-snug font-medium">残薬記録</h2>
           </CardHeader>
           <CardContent>
-            <div className="overflow-auto rounded-md border border-border">
-              <table className="w-full text-sm">
-                <caption className="sr-only">残薬一覧</caption>
-                <thead className="bg-muted/60">
-                  <tr className="border-b border-border">
-                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                      薬剤名
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
-                      処方量
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
-                      残数
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
-                      余剰日数
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                      区分
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {residuals.map((med, i) => (
-                    <tr
-                      key={med.id}
-                      className={`border-b border-border last:border-0 ${i % 2 === 1 ? 'bg-muted/20' : ''}`}
-                    >
-                      <td className="px-3 py-2">{med.drug_name}</td>
-                      <td className="px-3 py-2 text-right text-muted-foreground tabular-nums">
-                        {med.prescribed_quantity ?? '—'}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {med.remaining_quantity}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {med.excess_days !== null ? `${med.excess_days}日` : '—'}
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex flex-wrap gap-1">
-                          {med.is_prohibited_reduction && (
-                            /* 臨床ハザード属性は raw destructive でなく tag-hazard トークン(SSOT 7.3)。 */
-                            <Badge
-                              variant="outline"
-                              className="border-tag-hazard/30 bg-tag-hazard/10 text-xs text-tag-hazard"
-                            >
-                              減数禁止
-                            </Badge>
-                          )}
-                          {med.is_reduction_target && !med.is_prohibited_reduction && (
-                            <Badge
-                              variant="outline"
-                              className="text-xs text-state-confirm border-state-confirm/30"
-                            >
-                              減数対象
-                            </Badge>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              columns={residualMedicationColumns}
+              data={residuals}
+              getRowId={(row) => row.id}
+              caption="残薬一覧"
+            />
           </CardContent>
         </Card>
       )}

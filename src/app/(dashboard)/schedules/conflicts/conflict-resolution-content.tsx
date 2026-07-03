@@ -4,10 +4,12 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { CalendarCheck2 } from 'lucide-react';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
+import { DataTable } from '@/components/ui/data-table';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
@@ -22,8 +24,38 @@ import {
   buildScheduleConflictViewModel,
   type AdjustmentPlan,
   type AdjustmentPlanTone,
+  type ConflictRow,
   type ConflictScheduleInput,
 } from '@/lib/schedules/visit-schedule-conflicts';
+
+const conflictRowColumns: ColumnDef<ConflictRow>[] = [
+  {
+    accessorKey: 'subject',
+    header: '対象',
+    cell: ({ row }) => (
+      <span
+        data-testid="conflict-row"
+        className="flex items-center gap-2 font-medium text-foreground"
+      >
+        {row.original.subject}
+        {row.original.confirmed ? (
+          <StateBadge role="done" className="text-[11px]">
+            確定
+          </StateBadge>
+        ) : null}
+      </span>
+    ),
+  },
+  {
+    accessorKey: 'timeLabel',
+    header: '時間',
+    cell: ({ row }) => <span className="tabular-nums">{row.original.timeLabel}</span>,
+  },
+  {
+    accessorKey: 'detail',
+    header: '内容',
+  },
+];
 
 /**
  * p0_19「予定の重なりを直す」: 本日の訪問予定から、同一薬剤師の時間帯重複と
@@ -428,46 +460,12 @@ export function ConflictResolutionContent({ initialDate }: { initialDate?: strin
           data-testid="conflict-overlap-table"
         >
           <h2 className="text-base font-bold text-foreground">重なっている予定</h2>
-          <div className="mt-4 overflow-hidden rounded-lg border border-border/70">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-muted/50 text-left text-xs text-muted-foreground">
-                  <th scope="col" className="px-3 py-2 font-medium">
-                    対象
-                  </th>
-                  <th scope="col" className="px-3 py-2 font-medium">
-                    時間
-                  </th>
-                  <th scope="col" className="px-3 py-2 font-medium">
-                    内容
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {viewModel.rows.map((row, index) => (
-                  <tr
-                    key={`${row.kind}:${row.scheduleId}:${index}`}
-                    className="border-t border-border/60"
-                    data-testid="conflict-row"
-                  >
-                    <td className="px-3 py-3 align-top font-medium text-foreground">
-                      <span className="flex items-center gap-2">
-                        {row.subject}
-                        {row.confirmed ? (
-                          <StateBadge role="done" className="text-[11px]">
-                            確定
-                          </StateBadge>
-                        ) : null}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 align-top tabular-nums text-foreground">
-                      {row.timeLabel}
-                    </td>
-                    <td className="px-3 py-3 align-top text-foreground">{row.detail}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mt-4">
+            <DataTable
+              columns={conflictRowColumns}
+              data={viewModel.rows}
+              getRowId={(row, index) => `${row.kind}:${row.scheduleId}:${index}`}
+            />
           </div>
         </section>
 

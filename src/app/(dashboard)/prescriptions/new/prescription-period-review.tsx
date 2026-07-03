@@ -1,15 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import type { ColumnDef } from '@tanstack/react-table';
 import { buttonVariants } from '@/components/ui/button';
+import { DataTable } from '@/components/ui/data-table';
 import { cn } from '@/lib/utils';
 import {
   buildPeriodReviewNotices,
@@ -17,7 +11,30 @@ import {
   buildPeriodSummaryLabel,
   buildProcessingChips,
   type PeriodReviewLineInput,
+  type PeriodReviewRow,
 } from './prescription-period-review.shared';
+
+const periodReviewColumns: ColumnDef<PeriodReviewRow>[] = [
+  {
+    accessorKey: 'drugName',
+    header: '薬剤名',
+    cell: ({ row }) => (
+      <span data-testid="period-review-row" className="font-medium text-foreground">
+        {row.original.drugName}
+      </span>
+    ),
+  },
+  { accessorKey: 'frequencyLabel', header: '用法' },
+  { accessorKey: 'daysLabel', header: '日数' },
+  { accessorKey: 'startLabel', header: '開始日' },
+  { accessorKey: 'endLabel', header: '終了日' },
+  { accessorKey: 'processingLabel', header: '加工・セット' },
+  {
+    accessorKey: 'noteLabel',
+    header: '注意',
+    cell: ({ row }) => <span className="text-muted-foreground">{row.original.noteLabel}</span>,
+  },
+];
 
 /**
  * p0_10「処方入力・服用期間」: いつからいつまでの薬か・加工する薬かを
@@ -74,33 +91,12 @@ export function PrescriptionPeriodReview({
         </button>
       </div>
 
-      <div className="mt-4 overflow-x-auto rounded-md border border-border/60">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>薬剤名</TableHead>
-              <TableHead>用法</TableHead>
-              <TableHead>日数</TableHead>
-              <TableHead>開始日</TableHead>
-              <TableHead>終了日</TableHead>
-              <TableHead>加工・セット</TableHead>
-              <TableHead>注意</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row, index) => (
-              <TableRow key={`${row.drugName}-${index}`} data-testid="period-review-row">
-                <TableCell className="font-medium text-foreground">{row.drugName}</TableCell>
-                <TableCell>{row.frequencyLabel}</TableCell>
-                <TableCell>{row.daysLabel}</TableCell>
-                <TableCell>{row.startLabel}</TableCell>
-                <TableCell>{row.endLabel}</TableCell>
-                <TableCell>{row.processingLabel}</TableCell>
-                <TableCell className="text-muted-foreground">{row.noteLabel}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      <div className="mt-4">
+        <DataTable
+          columns={periodReviewColumns}
+          data={rows}
+          getRowId={(row, index) => `${row.drugName}-${index}`}
+        />
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
