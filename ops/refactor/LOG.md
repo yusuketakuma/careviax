@@ -441,3 +441,25 @@
   negative test で固定(mock に display_id を混入させても公開 payload に出ない)。
 - レビュー: opus APPROVE(cuid 維持を site 全数検証)。次: S2=schedule/day-view+patient CareCase パネル。
   billing invoice/PDF 番号は §8.2 別レイヤで恒久 keep-out。
+
+## 2026-07-04 R15 完了級 / R20 完了 / R43 開始 / day-board インシデント
+
+- R15 B4(72392917)/B5(b0801994): 計 72ファイル/291箇所の org ヘッダ収斂完了(残 route-compare 1件
+  =S2 待ち解放済み、core boundary 2ファイルは恒久除外)。B5 は offline/realtime クリティカル経路
+  含む — opus が retry/queue/SSE 不変と条件付き semantics の実装判断(qr-scan/app-header)を検証。
+- R20 B5(9d4fbd89)/B6(45ab4804): no-store アサーション共有化完了(204ファイル)。残14は
+  variant 8 + mock 干渉 6(helper import が hoisting で 500 化するファイル=理由文書化済み)。
+- R43-B1(7e7ebc63): fetch mock helper 共有化開始(11ファイル)。
+- **day-board インシデント(d09688a5)**: R20-B6 で私(committer)が maker の「mixed-lane ファイルは
+  hunk 分離」フラグを見落とし whole-file staging → S2 の test 期待値が先行 land し HEAD 赤2件。
+  detached worktree で赤を実証 → R20-only 内容を再構築して commit、S2 hunk は worktree に復元。
+  **教訓(恒久運用): maker が mixed-lane を明示したファイルは git apply --cached による hunk 単位
+  staging を必須とする。丸ごと add 禁止。**
+
+## 2026-07-04 ID-3-S2 5ef759db — schedule/patient パネルの display_id 表示
+
+- day-view 共有 helper が display-labels 経由に(fallback byte 同一・「未設定」保持)。
+  proposals/day-board/cases API に additive 露出。**redaction は allowlist 再構築で PHI 防御不変**
+  (phone/保険番号等の非露出テスト継続)。UI ラベル置換 + cuid 不変条件を直接値比較で test 固定
+  (route-compare の React key はむしろ display 由来→cuid へ改善)。opus APPROVE、392 tests green。
+- ID-3 残: S3(patient board/detail nested)、S4+(data-explorer 等の設計スライス)。CP-D recon 進行中。
