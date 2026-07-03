@@ -55,6 +55,9 @@ jobs:
       - name: Date-slice classification check
         run: pnpm date-slices:check
 
+      - name: State color token check
+        run: pnpm colors:check
+
       - name: EventBridge schedule definition check
         run: pnpm eventbridge-schedules:check
 
