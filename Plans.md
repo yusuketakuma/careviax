@@ -19,106 +19,155 @@
 - PH-OS / レセコン / 電子薬歴 / 在宅支援システムの責任分界を先に固定し、二重入力を避ける
 - 公開情報ベースの市場比較では、既存製品は「訪問記録・計画書/報告書作成・FAX/メール送付・現場共有」に強い。初期価値は最適化機能より、現場記録/連携/持参漏れ防止に置く
 
-### 直近トラック: 開発方針 2026-07-03（9観点全体スキャン） `cc:WIP`
+### 直近トラック: 開発方針 2026-07-03 — 実装ロードマップ v2（3レビュー再構成） `cc:WIP`
 
-<!-- 2026-07-03: Claude単独運用で 製品完成度 / 品質負債 / テスト・ゲート / セキュリティ・コンプラ / FE false-empty / FE品質・速度 / BE速度・安定性 / バージョンアップ・診療報酬改定耐性 / コアモジュール化(水平展開) の9観点を並行スキャンし統合。本トラックが以後の開発方針SSOT。同日、実装済み39セクション+62項目を docs/plans-archive.md へ移設し本ファイルを現存タスクのみへ整理。本トラックは計画のみ・実装未着手。 -->
+<!-- 2026-07-03: v1(9観点スキャン)を ①リリースクリティカルパス監査 ②網羅性批判レビュー(BLOCKED/ULTRACODE/FEATURE_QUEUE/spec 突合+コード抜き打ち7点=全て新鮮を確認) ③依存・実装順検証 の3独立レビューで実装向けに再構成。リリース判定は実装済みの pilot-launch-dossier(src/server/services/pilot-launch-dossier.ts: UAT/PMDA/backup/ISMS 4軸+org監査)を SSOT とし、外部依存を前提条件へ分離、技術タスクを Wave 0-3 へ再配列。計画のみ・実装未着手。v1 全文はコミット 1d315a86 参照。 -->
 
-**所見サマリ**:
+**v1 所見サマリ（有効）**:
 
 - 基盤は高水準: 認可wrapper 約293route / no-store 260file / DBトリガ監査 / unit 1,229file・APIカバー97% / E2E主要5動線 / 点数改定レジストリはデータ駆動で2026医療改定 confirmed 済 / 依存EOLなし
-- 最大の製品ギャップ: **算定要件の構造化未着手**（`docs/visit-report-collab-spec.md` v2 算定カバレッジ32項目中 充足5。BillingRequirementCatalog / VisitInstruction / SpecialPatientStatus / 加算エビデンス / 摘要欄 projector が schema 0件）
-- 医療安全: CDS false-negative 8件（safety-check CDS fail-open、allergy cross-check skip 等）
-- セキュリティ: RLSテナント分離がDB層未証明（E2EロールがsuperuserでFORCE RLS bypass）/ PHI閲覧監査 36route 未記録 / dispense-results PATCH 認可非対称 / cron全org横断8箇所
-- 速度・安定性: prescription-intakes POST 33.7s（interactive tx 既定5s × DrugMaster OR検索 × プール待ちの複合と推定）/ PrescriptionIntake (org_id,created_at) index 欠落 / マスタ系キャッシュ皆無 / レート制限 auth系4本のみ
-- FE: React Compiler 未有効（手動 memo 62+33file 残）/ 仮想化ゼロ / モバイル画像の無圧縮アップロード / RHF は5fileの島
-- 改定耐性: 点数=データ駆動で優秀（2028点数改定は数日〜2週で追随可能）。弱点= 薬価の版管理なし（遡及再計算不能）/ レジストリ外ハードコード点数 / next-auth v4 ロックイン / 請求エンジン二重（billing-rules ↔ src/phos/domain/claim）
-- 水平展開: 器は良好。**そのまま展開可**=タスク/監査ログ/通知/外部アクセス/コミュニケーション/文書ファイル/プレゼンス/UI基盤（8）。**軽い分離で展開可**=患者情報/スケジュール/訪問記録/報告書/オフライン同期/組織権限（6）。**要リファクタ**=薬局間連携層（base/partner 2者固定）。最強FK汚染= `VisitSchedule.cycle_id → MedicationCycle`
+- 最大の製品ギャップ: **算定要件の構造化未着手**（`docs/visit-report-collab-spec.md` v2 算定カバレッジ32項目中 充足5）
+- 医療安全: CDS false-negative 8件 + safety5(CE01/CE02) / セキュリティ: RLS 実体欠落~33表+DB層未証明・PHI閲覧監査36route未記録 / 速度: prescription-intakes POST 33.7s / FE: React Compiler未有効・仮想化ゼロ・画像無圧縮 / 改定耐性: 点数=優秀、薬価版管理なし・next-auth v4 / 水平展開: そのまま展開可8+軽い分離6、要リファクタ=薬局間連携層
 
-#### A. P0 医療安全・セキュリティ即応 `cc:TODO`
+**v1 からの主な補正（網羅性レビュー）**:
 
-- [ ] A-1 safety-check CDS fail-open 修正: fetcher の非2xx `catch→[]` 潰しを止め degraded バナー+再試行（false-negative 防止）— `src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx:73-90`
-- [ ] A-2 CDS false-negative 残（EPIC2 計8件）: allergy cross-check skip(X02/CXR1-MSR01) / drug_master_id・code null 無言スキップ(F81/X03) / problem-list 禁忌未連携(F82) / eGFR未記録 silent-clean(X04) / 添付文書 alert unsorted slice(0,3)(X05)。医療安全につき1件ずつ厳格レビュー
-- [ ] A-3 dispense-results PATCH 認可: POST と同一の canDispense 必須化（BLOCKED F-20260625 解除。auth ゲート=着手前に human 承認）
-- [ ] A-4 RLS テナント分離の DB 層証明: 非superuser ロール+cross-org シードを CI/E2E に用意し `src/lib/db/rls.test.ts` の it.skip 解消（BLOCKED rls-force-nonsuperuser-proof）
-- [ ] A-5 PHI 閲覧監査の全 route 化: PHI 読取 36route へ read アクセスログ（3省2GL アクセス記録要件）。共通層（withAuthContext/withOrgContext）での方式設計→段階適用
-- [ ] A-6 cron 全org横断 8箇所の by-design/leak 判定（WF-20260625、per-job で明示）
-- [ ] A-7 認可/外部共有残（EPIC3）: trainee 外部 grant 発行可(F80) / 全org grant 列挙(X01) / care-reports 同名別患者(F88) / QR patient 未確定(F89)
-- [ ] A-8 EPIC7 no-store/PHI 4件: webhook secret cacheable(F86) / MFA secret・recovery codes(X11/X12) / 処方元PHI(X13)（auth ゲート=human 承認）
+- 追加: CE01/CE02 safety5（PCA未検品再貸出/訪問prep偽完了）/ EPIC1 RLS 実体欠落~33表+contract再設計 / **billing aggregation over-claim 修正群**（BLOCKED制限解除済・即効）/ spec P2・P5・P6・P7 の未収容分（B-7〜B-10）/ リリースエンジニアリング R群 / BLOCKED human-gate 残6件 / F-20260702-001
+- 訂正: 実参照切れは `docs/decisions.md`+旧spec 2ファイル（`visit-report-collab-spec.md` は実在し正）/ O-1 は v0.2 トラックへ統合
+- 昇格: afterhours-tz off-by-9h（夜間/休日加算の over/under-claim・confirmed）を P2→Wave1 算定正確性へ
+- 分割: B-6→4分割+B-7〜B-10 / H-1→tx-guard epic 14件 / H-2→TZ epic ~14件 / C-7・E-6 は独立作業へ
 
-#### B. P1 製品の芯: 算定要件構造化 `cc:TODO` <!-- visit-report-collab-spec v2。schema変更=migrationゲート(設計→承認→実装) -->
+**リリースマイルストーン**:
 
-- [ ] B-1 BillingRequirementCatalog（型付き算定要件SSOT）設計文書→schema。既存 billing-rules レジストリ（データ駆動・effective-dated）を土台に統合方針を決める
-- [ ] B-2 VisitInstruction 構造化（指示医/指示日/有効期間ゲート）+ SpecialPatientStatus（週2/月8枠の唯一入力源）
-- [ ] B-3 加算エビデンス群（麻薬指導/持続注射/中心静脈栄養/乳幼児/地域系）
-- [ ] B-4 claim-record projector（レセプト摘要欄生成）[CLAIM-01]
-- [ ] B-5 訪問実施エビデンス（visit_started_at/終了/滞在時間。同日複数回の監査根拠）
-- [ ] B-6 報告書 finalize/lock・版管理[RPT-007] / 到達証跡ハードゲート[KYO-007/008] / 保存年限構造化[RPT-002/009] / 単一建物月次動的計数[ZTK-06]
+- **M1 安全・正確性 green** = Wave 0+1 完了（医療安全 / セキュリティ / 算定正確性の既知バグ 0）
+- **M2 パイロット技術線** = Wave 2 R群完了で dossier のコード側 blocker 0。外部前提の完了をもって pilot GO
+- **M3 製品の芯** = Wave 3 B群（算定要件構造化 = multi-quarter プログラム）
 
-#### C. P1 改定・薬価・依存の耐性 `cc:TODO`
+#### 前提条件（外部・人間作業） `cc:blocked`
 
-- [ ] C-1 薬価の effective-dated 版管理+調剤時薬価スナップショット（改定境界の遡及再計算を可能に）— `drug.prisma:62` / `mhlw.ts` / `prescription.prisma:203`【L・migrationゲート】
-- [ ] C-2 レジストリ外ハードコード点数の吸収: 退院時共同指導600点・ターミナル2500点（`conference-sync.ts:124`）/ 体制加算 fallback 100点（`billing-runtime-context.ts:109`）【M】
-- [ ] C-3 請求エンジン二重化の収束方針決定（billing-rules ↔ `src/phos/domain/claim` の SSOT 一本化）【M-L】
-- [ ] C-4 改定運用 runbook の docs 化（点数/薬価/経過措置の手順・テスト fixture 基準）【S】
-- [ ] C-5 next-auth v4 → Auth.js v5 移行（23file）【L】
-- [ ] C-6 renovate/dependabot 導入（CI は堅牢=検知力あり、起票を自動化）【S】
-- [ ] C-7 介護2027改定データ枠の事前整備【S】/ prisma custom generator リンク手順の堅牢化【S】
+- [ ] PMDA メディナビ/マイ医薬品集 登録 + `PMDA_*_URL` secrets（旧0-2i）
+- [ ] backup live drill 実施と `[mode:live]` 記録（旧I-04/12-8）
+- [ ] ISMS 審査機関見積・予算・キックオフ（旧1a-6/1b-6。vendor comparison/decision memo の記入で dossier green）
+- [ ] AWS 本番プロビジョニング + `ALERT_EMAIL` 設定 + SNS email 購読 confirm + 本番 Sentry DSN
+- [ ] パイロット薬局 UAT（critical/high blocker 0 で phase2_entry green。旧1b-9）
+- [ ] 利用規約/プライバシーポリシー本文の法務確定（掲示ページ実装は W2-R4）
+- [ ] 音声メモ STT の AWS Transcribe creds（旧D-8-3）
 
-#### D. P1 速度・安定性 `cc:TODO` <!-- 実装前に pnpm perf:smoke で実測固定 -->
+#### Wave 0 — quick wins（依存なし・並行・各S） `cc:TODO`
 
-- [ ] D-1 prescription-intakes POST tx 再設計: drug-master 解決/検証を tx 外へ前倒し+明示 timeoutMs（BLOCKED RUN-20260622-001 の根治）【M】
-- [ ] D-2 index 追加: `PrescriptionIntake(org_id,created_at)` / `MedicationCycle(org_id,overall_status)` / `DispenseTask(org_id,status)` + 検索列 trgm 検討【S・migrationゲート】
-- [ ] D-3 DrugMaster OR 検索の最適化（UNION 化 or 正規化検索列）【M】
-- [ ] D-4 マスタ系 unstable_cache + 日次 job で revalidateTag（drug-masters / packaging-methods / business-holidays 等）【M】
-- [ ] D-5 レート制限の適用拡大（検索/集計/書込系。現状 auth 系4本のみ）【M】
-- [ ] D-6 無制限 findMany の棚卸し（pharmacy-operating-hours / billing-rules / management-plans / residual-medications）【S】
-- [ ] D-7 DB プール方針の明文化（tx 短縮とセット）【S】
+- [ ] W0-1 colors:check を ci.yml へ（旧G-1。スクリプトは 4510ee7f 導入済み）
+- [ ] W0-2 renovate/dependabot 導入（旧C-6）
+- [ ] W0-3 import 方向 lint 境界: 共通コア→薬局固有の import を warn 可視化（旧F-1・水平展開の柵）
+- [ ] W0-4 軽量 pre-commit（変更ファイル限定 lint/format。旧G-2）
+- [ ] W0-5 docs 参照切れ解消: Plans.md/CLAUDE.md が指す `docs/decisions.md`+旧spec 2ファイルの3参照を実在 docs へ更新 or 復元（旧G-4 訂正版）
+- [ ] W0-6 改定運用 runbook docs（旧C-4）
+- [ ] W0-7 cycle_id 疎化+（組織,職種）N者連携の設計メモ（旧F-6・docs のみ）
+- [ ] W0-8 cron 全org横断 8箇所の by-design/leak 判定（旧A-6）
+- [ ] W0-9 optimizePackageImports 追加（旧E-4）
+- [ ] W0-10 無制限 findMany 棚卸し（旧D-6。EPIC8 CE11/N18/N23/CXR2-PERF01 と統合）
+- [ ] W0-11 介護2027改定データ枠（旧C-7a） / W0-12 prisma generator リンク堅牢化（旧C-7b）
+- [ ] W0-13 担当者命名の抽象化規約（旧F-3）
+- [ ] W0-14 重複解消: formatYen×3（null→0円実害）/ SectionCard×4+dead / QR readString（旧H-3）
+- [ ] W0-15 腎機能ラベル JST 共有フォーマッタ（FEATURE_QUEUE F-20260702-001 収容）
+- [ ] W0-16 safety-check CDS fail-open 修正: fetcher `catch→[]` 廃止・degraded バナー+再試行（旧A-1）— `safety-check-content.tsx:73-90`
 
-#### E. P1 FE 品質・速度 `cc:TODO`
+#### Wave 1 — P0 安全・セキュリティ・算定正確性（M1 必須） `cc:TODO`
 
-- [ ] E-1 モバイル画像の client 側リサイズ+圧縮の共通化（長辺上限）。`visit-record-form.tsx:907` 無圧縮PUT / `capture-content.tsx` フル解像度【S-M・訪問動線に直効】
-- [ ] E-2 React Compiler 方針決定: 有効化+手動 memo 段階撤去 or 方針撤回の明文化（現状未有効・手動 memo 62+33file）【M-L】
-- [ ] E-3 大量一覧の仮想化/ページング（DataTable 共通部品 + patients-board）【M】
-- [ ] E-4 optimizePackageImports 追加（lucide-react / date-fns / recharts）【S】
-- [ ] E-5 FE false-empty 残5件: conferences(notes/activities) / partner-cooperation contracts / operational-policy cockpit / drug-master 二次3クエリ（+N10/N22/CXR2-FE01）
-- [ ] E-6 フォーム RHF 統一（段階）/ 野良 table 16file の DataTable 集約 / drug-master-content(5112行) 分割【L・低優先】
+安全レーン（W0-16 に続き直列・1件ずつ厳格レビュー）:
 
-#### F. P1-P2 水平展開の最小手当（コアモジュール化） `cc:TODO` <!-- Monolith First 維持。package分割/マルチアプリ化はしない。確定候補=多職種情報共有・患者情報管理・スケジュール管理 -->
+- [ ] W1-1 CDS false-negative 8件（旧A-2）: allergy cross-check skip(X02/CXR1-MSR01) / drug_master_id・code null 無言スキップ(F81/X03) / problem-list 禁忌未連携(F82) / eGFR silent-clean(X04) / 添付文書 alert unsorted slice(X05)
+- [ ] W1-2 safety5 CE01/CE02（v1漏れ）: PCA返却検品待ちクエリ崩壊=未検品ポンプ再貸出 / 訪問prep失敗のチェックリスト偽完了
 
-- [ ] F-1 import 方向の lint 境界: 共通コア（visit/patient/care/report/task/audit/notifications/files/auth/communications/collaboration）→薬局固有（prescription/dispense/drug/pca/set）の import を no-restricted-paths 等で warn 可視化【S・後退防止の柵】
-- [ ] F-2 Task の論理境界修正: `medication.prisma` から共通 schema ファイルへ移設（テーブル名不変）+ `components/features/` の core/pharmacy 区分を README 明示【S】
-- [ ] F-3 担当者命名の抽象化規約: 新規は pharmacist_id→assignee_id 系に固定、既存は型エイリアス層で吸収（DB リネームは将来）【S】
-- [ ] F-4 権限の「職種×capability」2軸整理: Permission 型から薬局固有（canDispense/canSet 系）を分離、共通 capability コア化、ProfessionTypeEnum 対応表【M】
-- [ ] F-5 境界 API 化: sync-engine の SyncConfig をエンティティ登録式へ / report-generator のテンプレート差込式へ（patient-detail-timeline-registry パターンの横展開）【M】
-- [ ] F-6 設計メモ先行（実装据え置き）: `VisitSchedule.cycle_id→MedicationCycle` 疎化（driver_type+driver_ref 一般化）/ pharmacy-partnership の（組織,職種）N者連携化【S・docs】
+算定正確性レーン（over/under-claim。billing 制限解除済・B 構造化より先行）:
 
-#### G. P2 ゲート/テスト強化 `cc:TODO`
+- [ ] W1-3 billing aggregation correctness: 空 `requirements_status {}`→claimable / singleBuilding 月次 count tier / delivery_only count↔claim 不一致 / cross-month 返戻 overcount / wrong-domain transmit / `jobs/daily/billing.ts` org_id 欠落（BLOCKED mainui/WF-20260625 両票）
+- [ ] W1-4 afterhours-tz: 夜間/深夜/休日加算の UTC/JST off-by-9h（confirmed。prod=UTC で誤算定）
+- [ ] W1-5 set-derivations daycount rounding（算定隣接・BLOCKED WF-20260625）
 
-- [ ] G-1 colors:check を ci.yml へ追加（スクリプトは 4510ee7f 導入済み）【S】
-- [ ] G-2 軽量 pre-commit（変更ファイル限定 lint/format）【S】
-- [ ] G-3 テスト空白解消: `src/server/jobs/daily`(15file) / `billing-rules/revisions/{medical,care}`（金額直結）【M】
-- [ ] G-4 CLAUDE.md 参照の仕様書2ファイル不在の解消（visit-report-collab-spec.md 等を正に参照更新）【S】
+RLS レーン（DB層 backstop。proof より実装が先）:
 
-#### H. P2 品質負債 sweep `cc:TODO`
+- [ ] W1-6 RLS contract 再設計スライス（rls-policy-contract.test のハードコード allowlist 是正含む。旧A-4 前段）
+- [ ] W1-7 RLS 実体欠落 ~33表の実装（PHI 優先: PatientPackagingProfile/PatientCondition/JahisSupplementalRecord ほか+SSOT drift 7表。migration ゲート）
+- [ ] W1-8 非superuser ロール+cross-org シードで FORCE RLS proof（CI 整備、`rls.test.ts` it.skip 解消。旧A-4）
 
-- [ ] H-1 check-then-act 残: CE05/F83 pharmacy-drug-stock-requests / CE06 dispense-results version / pca-pump-rentals updateMany 混在再確認。DB partial-unique 要(F84/F85/X08) は migration ゲート
-- [ ] H-2 JST 残~8件: operational-policy 月境界 / master-hub / cockpit:199 / triage:192 / daily-helpers / billing-evidence core / qualification-check:181
-- [ ] H-3 重複解消: formatYen×3（partner の null→0円 実害含む）/ SectionCard×4+dead(F26) / QR readString 二重(F32)
-- [ ] H-4 FEUX-2 難候補: analytics(isLoading) / performance(HelpPopover) の StatCard 拡張判断
+認可・PHI レーン（human 承認）:
 
-#### O. P3 運用・インフラ `cc:TODO`
+- [ ] W1-9 dispense-results PATCH canDispense 必須化（旧A-3・BLOCKED F-20260625）
+- [ ] W1-10 EPIC3 認可/外部共有 4件（F80/X01/F88/F89。旧A-7）
+- [ ] W1-11 EPIC7 no-store/PHI 4件（F86/X11/X12/X13。旧A-8）
+- [ ] W1-12 BLOCKED human-gate 残: data-explorer 監査+no-harddelete / jobs error_log redaction / OS通知 PHI redaction / settings compliance ranges / incidents permission affordance / schedule unique org_id FK
 
-- [ ] O-1 v0.2 e2e DB migration 適用+全行程ブラウザ実証（下記 v0.2 トラックの解消）
-- [ ] O-2 staging 環境（旧12-4）
-- [ ] O-3 RUM Core Web Vitals 導入（旧12-7 継続分をアーカイブから収容）
-- [ ] O-4 API バージョニング戦略（旧14-5。URL prefix vs ヘッダは方針判断）
-- [ ] O-5 TZ fail-close 有効化（prod TZ=Asia/Tokyo 設定後。prod ゲート）
-- [ ] O-6 作業証跡写真 + S3 Object Lock + set-photo 患者束縛（mainui-evidence-photo。3省2GL 完全性）
-- [ ] O-7 音声メモ STT（旧D-8-3をアーカイブから収容） `cc:blocked` AWS Transcribe 外部 creds 待ち
+決定レーン（後段 unblock。実装なし・決定文書のみ）:
 
-**実行規律**: 各スライス = maker(Claude) → reviewer-audit 独立レビュー → objective gate（typecheck / typecheck:no-unused / lint / test / build / colors:check）。auth/security/migration/prod-deploy は human 承認（§15）。**推奨着手順**: A-1→A-2（即着手可）→ G-1（1行）→ F-1（柵）→ A-3〜A-6（human 承認つき）→ B-1 設計 → D-1/D-2（実測先行）を主線、H/E をフィラーに。
+- [ ] W1-13 請求エンジン二重化の収束決定（billing-rules ↔ `src/phos/domain/claim`。**W2-B1 の前提**。旧C-3）
+- [ ] W1-14 React Compiler 方針決定（旧E-2 前段） / W1-15 API バージョニング方式決定（旧O-4/14-5）
 
-**外部依存（cc:blocked 維持）**: PMDA 登録(0-2i) / ISMS(1a-6,1b-6) / AWS 実環境(I-04,12-8) / パイロット UAT(1b-9) / 事業判断（店舗数/ISMS 予算）/ STT creds(O-7)
+#### Wave 2 — リリース機構・性能・設計着地（M2 技術線） `cc:TODO`
+
+R リリースエンジニアリング（新設・クリティカルパス監査由来）:
+
+- [ ] W2-R1 本番 migration 適用の deploy パイプライン組込 or 承認付き runbook（deploy-production は Amplify trigger のみで `migrate deploy` が無い）
+- [ ] W2-R2 ジョブ失敗の人到達通知（`runner.ts:159` は in-app のみ → CloudWatch metric→SNS or web-push/SES 配線）
+- [ ] W2-R3 SSK/MHLW DrugMaster 本番初期ロードの実行手順+証跡（importer は ready。PMDA は前提条件成立後に追加）
+- [ ] W2-R4 利用規約/プライバシーポリシー掲示ページ実装（本文=法務前提条件）
+- [ ] W2-R5 パイロット向けユーザー操作ガイド（主要動線: 応需→調剤→訪問→報告→請求）
+- [ ] W2-R6 PHI 閲覧監査の共通層設計→36route 段階適用（3省2GL アクセス記録。旧A-5）
+
+性能レーン（`pnpm perf:smoke` で before/after 実測先行）:
+
+- [ ] W2-P1 prescription-intakes tx 再設計 + DrugMaster OR 検索最適化（旧D-1+D-3 統合。同一 service で直列必須。BLOCKED RUN-20260622-001 根治）
+- [ ] W2-P2 index 追加（旧D-2・migration ゲート） / W2-P3 プール方針明文化（旧D-7） / W2-P4 マスタ系 unstable_cache（旧D-4） / W2-P5 レート制限拡大（旧D-5）
+
+B 設計着地:
+
+- [ ] W2-B1 BillingRequirementCatalog 設計→実装（旧B-1。DB 0・コード中。W1-13 決定が前提。`billing-requirement-validator.ts` の cap-counting/週境界を継承し回帰で担保）
+
+FE:
+
+- [ ] W2-F1 画像リサイズ+圧縮共通化（旧E-1・訪問動線直効） / W2-F2 仮想化・ページング（旧E-3） / W2-F3 false-empty 残5件（旧E-5） / W2-F4 offline lifecycle 偽同期の残（CE12/CE13/N21）
+
+モジュール化・テスト:
+
+- [ ] W2-M1 Task schema 移設+core/pharmacy 区分（旧F-2） / W2-M2 権限の職種×capability 2軸整理（旧F-4）
+- [ ] W2-T1 テスト空白解消: `src/server/jobs/daily` + `billing-rules/revisions`（旧G-3・金額直結）
+
+品質負債 epic:
+
+- [ ] W2-Q1 tx-guard epic 14件（旧H-1 拡張: CE05/F83/CE06/N32/X06/X07/X09/X10/CXR1-CONC01/02 ほか。partial-unique F84/F85/X08 は migration ゲート）
+- [ ] W2-Q2 TZ epic ~14件（旧H-2 拡張: CE03/07/08/09/10/15/16/N19/N24/N26/N30/CXR2-TZ01/02。helper 束ねで一括）
+
+#### Wave 3 — 製品の芯・高 blast（安全網整備後） `cc:TODO`
+
+安全網先行（破壊的 migration の前提）:
+
+- [ ] W3-S1 staging 環境（旧O-2/12-4） / W3-S2 PRE-03 データ移行検証フレームワーク（pre-count/post-integrity/rollback SQL）
+
+B 算定構造化（spec ロードマップ順。W1-13/W2-B1 済前提）:
+
+- [ ] W3-B2 VisitInstruction+SpecialPatientStatus（非破壊 mig・中） ∥ W3-B5 訪問実施エビデンス visit_started_at/ended_at（小）
+- [ ] W3-B3 加算エビデンス群（StructuredSoap 拡張+加算コードマスタ）
+- [ ] W3-B4 claim-record projector（report-generator 分割。F-5 境界 API 化と直列調整）
+- [ ] W3-B6a 報告書 finalize/lock 版管理[RPT-007] / W3-B6b 到達証跡ハードゲート[KYO-007/008] / W3-B6c 保存年限構造化[RPT-002/009] / W3-B6d 単一建物月次動的計数[ZTK-06]（旧B-6 の4分割）
+- [ ] W3-B7 spec P2: ManagementPlanContent 構造化+医療保険の月次見直し強制（KYO-003/004）
+- [ ] W3-B8 spec P6: 多職種 inbound 双方向モデル（多対多 resolution_status, ARCH-6）+FAX/紙 OCR 取込(COLLAB-01)+到着通知(COLLAB-02)+outbound 受領ループ(COLLAB-03)
+- [ ] W3-B9 spec P5: cycle_id 任意化+緊急訪問薬剤管理指導料（料1/料2）+オンライン46単位・緊急通算の月キャップ統合
+- [ ] W3-B10 spec P7: 破壊的 migration 群（CareReport.visit_record_id FK 昇格 / 残薬 canonical 一本化 / レガシー SOAP 削除。human 承認+W3-S1/S2 前提）
+
+改定・依存耐性:
+
+- [ ] W3-C1 薬価 effective-dated 版管理+調剤時スナップショット（旧C-1・L・mig） / W3-C2 レジストリ外ハードコード点数吸収（旧C-2） / W3-C5 next-auth v4→Auth.js v5（旧C-5・L）
+
+FE 仕上げ（低優先）:
+
+- [ ] W3-E1 フォーム RHF 統一（旧E-6a） / W3-E2 野良 table 16file の DataTable 集約（旧E-6b） / W3-E3 drug-master-content(5112行) 分割（旧E-6c）
+- [ ] W3-M1 sync-engine/report-generator の境界 API 化（旧F-5。W3-B4 と直列調整）
+
+運用:
+
+- [ ] W3-O1 v0.2 e2e 実証（下記 v0.2 トラックで管理・重複解消） / W3-O3 RUM（旧12-7残） / W3-O5 TZ fail-close 有効化（prod TZ 設定後・prod ゲート） / W3-O6 証跡写真+S3 Object Lock+set-photo 束縛 / W3-O7 音声メモ STT `cc:blocked`
+
+**直列化必須ペア**: W2-P1 内 D-1↔D-3（同一 service）/ W0-16→W1-1（CDS 系）/ W1-13→W2-B1→B 全系 / W3-B4↔W3-B6↔W3-M1（report-generator 競合）/ W3-B2・B3・B5 の mig は逐次 / W1-14 決定→React Compiler 実装。Wave 内の各レーンはファイル非重複で並行可。
+
+**実行規律**: 各スライス = maker(Claude) → reviewer-audit 独立レビュー → objective gate（typecheck / typecheck:no-unused / lint / test / build / colors:check）。auth/security/migration/prod-deploy は human 承認（§15）。破壊的 mig（W3-B6d/B10/C1）は W3-S1/S2 完了が前提。perf 系は perf:smoke 実測を前段に。
 
 ### 直近トラック: v0.2 薬局間連携仕様追随（2026-06-19） `cc:TODO` <!-- 2026-07-03 監査: コード/migration は完了(20260619* 2本が prisma/migrations に存在)。残は local e2e DB への migration 適用と全行程ブラウザ実証のみ(route-mocked proof は完了済み) -->
 
