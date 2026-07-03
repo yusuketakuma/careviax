@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import type { ColumnDef } from '@tanstack/react-table';
 import {
   AlertTriangle,
   BellRing,
@@ -21,6 +22,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
+import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -86,6 +88,73 @@ function priorityClass(priority: string) {
 
 function severityClass(severity: string) {
   return roleBadgeClass(SEVERITY_ROLE[severity] ?? 'info');
+}
+
+type RefillUpcomingRow = WorkflowData['refill_upcoming'][number];
+
+function buildRefillUpcomingColumns(
+  generateRefillProposalMutation: DashboardMutation<RefillUpcomingRow>,
+): ColumnDef<RefillUpcomingRow>[] {
+  return [
+    {
+      id: 'patient_name',
+      header: '患者名',
+      cell: ({ row }) => (
+        <span className="font-medium">{row.original.cycle.case_.patient.name}</span>
+      ),
+    },
+    {
+      id: 'status',
+      header: '状況',
+      cell: ({ row }) =>
+        row.original.upcoming_kind === 'refill' ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary">リフィル残{row.original.remaining_count}回</Badge>
+            <Badge variant="outline">薬局保管</Badge>
+          </div>
+        ) : (
+          <Badge variant="outline">
+            分割 {row.original.split_dispense_current}/{row.original.split_dispense_total}
+          </Badge>
+        ),
+    },
+    {
+      id: 'next_dispense_date',
+      header: '次回調剤日',
+      cell: ({ row }) => (
+        <span className="text-muted-foreground">
+          {row.original.next_dispense_date
+            ? format(parseISO(row.original.next_dispense_date), 'M/d', { locale: ja })
+            : format(parseISO(row.original.prescribed_date), 'M/d', { locale: ja })}
+        </span>
+      ),
+    },
+    {
+      id: 'action',
+      header: '再訪候補',
+      cell: ({ row }) =>
+        row.original.has_existing_route ? (
+          <Badge variant="outline">既存導線あり</Badge>
+        ) : (
+          <Button
+            size="sm"
+            className="h-auto min-h-11"
+            variant="outline"
+            aria-label={`${
+              row.original.upcoming_kind === 'refill' ? 'リフィル' : '分割調剤'
+            }${row.index + 1}件目の再訪候補を生成`}
+            onClick={() => generateRefillProposalMutation.mutate(row.original)}
+            disabled={
+              !row.original.case_id ||
+              row.original.has_existing_route ||
+              generateRefillProposalMutation.isPending
+            }
+          >
+            候補生成
+          </Button>
+        ),
+    },
+  ];
 }
 
 function WorkflowSection({
@@ -206,6 +275,7 @@ export function WorkflowDashboardView({
   const cycleStatusEntries = Object.entries(workflow?.cycle_status_counts ?? {}).filter(
     ([, count]) => count > 0,
   );
+  const refillUpcomingColumns = buildRefillUpcomingColumns(generateRefillProposalMutation);
   const contextSummary =
     initialContext === 'dashboard_home'
       ? initialFocus === 'communication'
@@ -1383,72 +1453,11 @@ export function WorkflowDashboardView({
         {(workflow?.refill_upcoming.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">継続調剤の予定はありません</p>
         ) : (
-          <div className="overflow-hidden rounded-md border border-border">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur">
-                <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">
-                    患者名
-                  </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">
-                    状況
-                  </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">
-                    次回調剤日
-                  </th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-muted-foreground">
-                    再訪候補
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {workflow?.refill_upcoming.map((item, index) => (
-                  <tr key={item.id} className={index % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
-                    <td className="px-4 py-2 font-medium">{item.cycle.case_.patient.name}</td>
-                    <td className="px-4 py-2">
-                      {item.upcoming_kind === 'refill' ? (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="secondary">リフィル残{item.remaining_count}回</Badge>
-                          <Badge variant="outline">薬局保管</Badge>
-                        </div>
-                      ) : (
-                        <Badge variant="outline">
-                          分割 {item.split_dispense_current}/{item.split_dispense_total}
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-muted-foreground">
-                      {item.next_dispense_date
-                        ? format(parseISO(item.next_dispense_date), 'M/d', { locale: ja })
-                        : format(parseISO(item.prescribed_date), 'M/d', { locale: ja })}
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      {item.has_existing_route ? (
-                        <Badge variant="outline">既存導線あり</Badge>
-                      ) : (
-                        <Button
-                          size="sm"
-                          className="h-auto min-h-11"
-                          variant="outline"
-                          aria-label={`${
-                            item.upcoming_kind === 'refill' ? 'リフィル' : '分割調剤'
-                          }${index + 1}件目の再訪候補を生成`}
-                          onClick={() => generateRefillProposalMutation.mutate(item)}
-                          disabled={
-                            !item.case_id ||
-                            item.has_existing_route ||
-                            generateRefillProposalMutation.isPending
-                          }
-                        >
-                          候補生成
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={refillUpcomingColumns}
+            data={workflow?.refill_upcoming ?? []}
+            getRowId={(item) => item.id}
+          />
         )}
       </PageSection>
 

@@ -279,8 +279,11 @@ describe('WorkflowDashboardContent', () => {
 
     render(<WorkflowDashboardContent />);
 
-    expect(screen.getByText('佐藤花子')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'リフィル1件目の再訪候補を生成' })).toBeTruthy();
+    // DataTable renders a desktop table and a mobile card list at the same time in jsdom.
+    expect(screen.getAllByText('佐藤花子').length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole('button', { name: 'リフィル1件目の再訪候補を生成' }).length,
+    ).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /佐藤花子/ })).toBeNull();
   });
 
