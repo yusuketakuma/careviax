@@ -110,7 +110,9 @@ type CareReport = {
   } | null;
   report_type: string;
   status: string;
-  content: PhysicianReportContent | CareManagerReportContent | AudienceReportContent;
+  // API は canReport で到達可だが、can_edit/can_send のいずれも持たない場合は
+  // content を応答に含めない(閲覧のみでは本文を返さない設計)。FE は欠落を型で表現する。
+  content?: PhysicianReportContent | CareManagerReportContent | AudienceReportContent;
   pdf_url: string | null;
   created_by: string;
   created_at: string;
@@ -756,6 +758,22 @@ export default function ReportDetailPage() {
   const hasCareManagerContent = isCareManager && isCareManagerReportContent(report.content);
   const hasAudienceContent = isAudienceReport && isAudienceReportContent(report.content);
   const hasContentView = hasPhysicianContent || hasCareManagerContent || hasAudienceContent;
+  // hasContentView と等価な条件を型ガードの三項演算子で再表現し、content を
+  // `PhysicianReportContent | CareManagerReportContent | AudienceReportContent`
+  // へ絞り込む(content が optional 化されたため、絞り込みなしの直接参照は型エラーになる)。
+  const viewableReportContent: PhysicianReportContent | CareManagerReportContent | AudienceReportContent | null =
+    isPhysician && isPhysicianReportContent(report.content)
+      ? report.content
+      : isCareManager && isCareManagerReportContent(report.content)
+        ? report.content
+        : isAudienceReport && isAudienceReportContent(report.content)
+          ? report.content
+          : null;
+  // A1-CRC: canReport のみ(canEditReport/canSendReport とも false)のロールは API が
+  // content を応答から省く(route.ts の canLoadEditableContent 判定)。この場合は
+  // 「構造化データが壊れている」ではなく「閲覧権限がない」ことを明示する。
+  const isContentHiddenByPermission =
+    report.content === undefined && !canEditReport && !canSendReport;
   const isConfirmedReport = report.status === 'confirmed';
   const isRetryableReport = report.status === 'failed' || report.status === 'response_waiting';
   const canSendReportStatus = isConfirmedReport || isRetryableReport;
@@ -805,8 +823,8 @@ export default function ReportDetailPage() {
   const channelLabel = CHANNEL_LABELS[effectiveSendForm.channel] ?? effectiveSendForm.channel;
   const billingContext = readReportBillingContext(report.content);
   const warnings = readReportWarnings(report.content);
-  const complianceChecks = hasContentView
-    ? deriveReportComplianceChecks(report.report_type, report.content)
+  const complianceChecks = viewableReportContent
+    ? deriveReportComplianceChecks(report.report_type, viewableReportContent)
     : [];
   const complianceReady =
     hasContentView && warnings.length === 0 && complianceChecks.every((item) => item.passed);
@@ -1440,6 +1458,14 @@ export default function ReportDetailPage() {
                   </>
                 )}
               </>
+            ) : isContentHiddenByPermission ? (
+              <ErrorState
+                variant="forbidden"
+                size="inline"
+                headingLevel={2}
+                title="報告書本文の閲覧権限がありません"
+                description="この報告書の本文を閲覧する権限がありません(編集・送付権限が必要です)。編集または送付の権限を持つ薬剤師・管理者にご確認ください。"
+              />
             ) : (
               <Alert>
                 <AlertTriangle className="size-4" aria-hidden="true" />
@@ -1489,11 +1515,11 @@ export default function ReportDetailPage() {
           </div>
 
           {/* Sidebar: compliance checklist (desktop = right column, mobile = below) */}
-          {hasContentView && (
+          {viewableReportContent && (
             <div className="w-full space-y-4">
               <ComplianceChecklist
                 reportType={report.report_type}
-                content={report.content}
+                content={viewableReportContent}
                 warnings={warnings}
               />
               {canUseDeliverySupport && careTeamSuggestionContacts.length > 0 ? (

@@ -1157,6 +1157,56 @@ describe('ReportDetailPage send safety dialog', () => {
     expect(screen.queryByRole('button', { name: '共有を作成' })).toBeNull();
   });
 
+  it('shows a permission-specific message (not the legacy malformed-content fallback) when content is withheld from a view-only role', () => {
+    // A1-CRC: /api/care-reports/[id] omits `content` entirely when the caller has
+    // neither can_edit nor can_send (clerk with canReport-only access). The FE must
+    // not silent-empty or claim the report is malformed in that case.
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return { data: { data: [] }, isLoading: false };
+      }
+
+      return {
+        data: {
+          data: {
+            ...mockReport(),
+            content: undefined,
+            permissions: {
+              can_edit: false,
+              can_send: false,
+              can_create_external_share: false,
+              can_create_followup_task: false,
+              can_view_patient: true,
+              can_view_related_requests: true,
+            },
+          },
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    expect(screen.getByText('報告書本文の閲覧権限がありません')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'この報告書の本文を閲覧する権限がありません(編集・送付権限が必要です)。編集または送付の権限を持つ薬剤師・管理者にご確認ください。',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('構造化された報告内容がありません')).toBeNull();
+    expect(screen.queryByTestId('physician-report-view')).toBeNull();
+    expect(screen.queryByRole('button', { name: '送付' })).toBeNull();
+  });
+
+  it('still shows the normal report content view for edit/send-permitted roles', () => {
+    render(<ReportDetailPage />);
+
+    expect(screen.getByTestId('physician-report-view')).toBeTruthy();
+    expect(screen.queryByText('報告書本文の閲覧権限がありません')).toBeNull();
+    expect(screen.queryByText('構造化された報告内容がありません')).toBeNull();
+  });
+
   it('hides sending and PDF output actions until the pharmacist confirms the draft', () => {
     useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
       const scope = options.queryKey?.[0];
