@@ -1,5 +1,26 @@
 # Agent Loop — STATE
 
+## Claude Solo Resume Note - 2026-07-03
+
+- 運用モード: **Claude 単独運用**（Codex/agmsg ループ停止）。maker=Claude、
+  checker=`reviewer-audit` サブエージェント（独立コンテキストで承認、同一
+  コンテキストでの自己承認は回避）、最終判定=objective gate
+  (typecheck / typecheck:no-unused / lint / test / build / colors:check)。
+- このセッションで landed（各スライス独立レビュー no blockers＋gate green）:
+  - `b67714d6` fix(schedules): 先行 typecheck 破損修正（68e8a11c が
+    `export type { ScheduleStatus } from …` の再エクスポートのみでローカル束縛
+    を作らず TS2304、HEAD の typecheck gate が赤だった）。
+  - FEUX-2 StatCard 統合: `8651015f`(business-holidays) / `e50a1f27`(staff-kpi) /
+    `88746f18`(workflow MetricCard 24箇所を forwarder 化)。
+  - FEUX-6 状態色: `cc24047c`(drift sweep: document-delivery amber→state-confirm /
+    settings scope 中立 / revision 追加=tag-info・変更/解除=中立) ＋
+    `4510ee7f`(lint ガード `pnpm colors:check`、file-scoped allowlist、ratchet、
+    950 含む、teeth 検証済、0 drift)。
+  - 台帳訂正: FEUX-3/4/5/7/8 は監査で既 landed 判明（queue が stale）→ done。
+- FEUX キャンペーン(RUN-20260702-FEUX)は 2/3/4/5/6/7/8 全て完了。status-icon は
+  多値ドメイン identity として据え置きをユーザーラティファイ済。
+- 次アクション: 新しい repo 品質領域の候補探索、またはユーザー指示待ち。
+
 **Purpose.** Single source of truth for the current loop's runtime state. The two Supervisors
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
