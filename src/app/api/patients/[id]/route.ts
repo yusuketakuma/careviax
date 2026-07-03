@@ -61,6 +61,7 @@ import {
   toPublicExternalAccessScope,
 } from '@/server/services/external-access';
 import { buildPatientTimelineEvents } from '@/server/services/patient-detail-timeline-events';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { listPatientBillingCaseRefs } from '@/server/services/patient-detail-billing-refs';
 import {
   buildPatientTimelineConferenceNoteWhere,
@@ -1548,6 +1549,9 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   }
   const labSummary = Array.from(labSummaryMap.values());
   const privacy = getPatientPrivacyFlags(ctx.role);
+
+  // PHI 閲覧監査（3省2GL アクセス記録）。ベストエフォート、await しない。
+  recordPhiReadAuditForRequest(ctx, { patientId: id, view: 'patient_detail' });
 
   const timeline_events = buildPatientTimelineEvents({
     patientId: id,

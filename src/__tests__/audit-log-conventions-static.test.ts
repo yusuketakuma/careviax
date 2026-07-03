@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 const sourceRoot = join(process.cwd(), 'src');
 const allowedAuditCreateFiles = [
   'src/lib/audit/audit-entry.ts',
+  // W2-R6: PHI 閲覧監査(3省2GL アクセス記録)。設計は docs/security/phi-read-audit-design.md、レビュー済み。
+  'src/lib/audit/phi-read-audit.ts',
   'src/lib/auth/security-events.ts',
   'src/server/services/billing-evidence/core.ts',
   'src/server/services/export-audit.ts',

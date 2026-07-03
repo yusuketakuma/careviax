@@ -5,6 +5,7 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createScopedTxRunner } from '@/lib/db/rls';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { getPatientTimelineData } from '@/server/services/patient-detail';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 
 const authenticatedGET = withAuthContext(
   async (_req, ctx, { params }) => {
@@ -22,6 +23,9 @@ const authenticatedGET = withAuthContext(
       userId: ctx.userId,
     });
     if (!timeline) return notFound('患者が見つかりません');
+
+    // PHI 閲覧監査（3省2GL アクセス記録）。ベストエフォート、await しない。
+    recordPhiReadAuditForRequest(ctx, { patientId: id, view: 'patient_timeline' });
 
     return success(timeline);
   },
