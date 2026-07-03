@@ -69,6 +69,20 @@ function createMalformedRequest() {
   });
 }
 
+type ConsoleErrorSpy = { mock: { calls: unknown[][] } };
+
+function parseConsoleErrorJson(spy: ConsoleErrorSpy) {
+  return spy.mock.calls.flatMap((call) => {
+    const [line] = call;
+    if (typeof line !== 'string') return [];
+    try {
+      return [JSON.parse(line) as Record<string, unknown>];
+    } catch {
+      return [];
+    }
+  });
+}
+
 describe('/api/auth/mfa/recovery POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -206,6 +220,78 @@ describe('/api/auth/mfa/recovery POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'EXTERNAL_MFA_RECOVERY_FAILED',
     });
+  });
+
+  it('logs recovery-code restore failures through safe logger without secret material', async () => {
+    const recoveryCode = 'ABCD-EFGH';
+    const totpSecret = 'JBSWY3DPEHPK3PXP';
+    const sessionToken = 'next-auth.session-token=sess_secret_123';
+    const cognitoAccessToken = 'cognito-access-token-secret';
+    const cognitoIdToken = 'cognito-id-token-secret';
+    const cognitoRefreshToken = 'cognito-refresh-token-secret';
+    const unsafeError = new Error(
+      [
+        'restore failed',
+        `recovery ${recoveryCode}`,
+        `totp ${totpSecret}`,
+        `session ${sessionToken}`,
+        `access ${cognitoAccessToken}`,
+        `id ${cognitoIdToken}`,
+        `refresh ${cognitoRefreshToken}`,
+      ].join(' '),
+    );
+    unsafeError.name = 'CognitoSecretTokenError';
+    disableCognitoTotpForUserMock.mockRejectedValue(new Error('cognito down'));
+    restoreMfaRecoveryCodesMock.mockRejectedValueOnce(unsafeError);
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      const response = await POST(
+        createRequest({
+          email: 'pharmacist@example.com',
+          recoveryCode,
+        }),
+      );
+
+      expect(response.status).toBe(502);
+      expect(restoreMfaRecoveryCodesMock).toHaveBeenCalledWith(
+        'user_1',
+        expect.objectContaining({
+          version: 1,
+          hashes: ['hash_1'],
+        }),
+      );
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'EXTERNAL_MFA_RECOVERY_FAILED',
+      });
+      expect(parseConsoleErrorJson(consoleErrorSpy)).toContainEqual(
+        expect.objectContaining({
+          level: 'error',
+          message: 'auth_mfa_recovery_restore_failed',
+          service: 'ph-os',
+          event: 'auth_mfa_recovery_restore_failed',
+          route: '/api/auth/mfa/recovery',
+          method: 'POST',
+          operation: 'restore_recovery_codes_after_cognito_error',
+          error_name: 'Error',
+        }),
+      );
+      const serializedLog = JSON.stringify(consoleErrorSpy.mock.calls);
+      for (const sensitiveValue of [
+        recoveryCode,
+        totpSecret,
+        sessionToken,
+        cognitoAccessToken,
+        cognitoIdToken,
+        cognitoRefreshToken,
+        'restore failed',
+        'CognitoSecretTokenError',
+      ]) {
+        expect(serializedLog).not.toContain(sensitiveValue);
+      }
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
   });
 
   it('returns 503 when MFA recovery is not configured on the server', async () => {

@@ -11,6 +11,7 @@ import {
   takeMfaRecoveryCodesForRecovery,
 } from '@/server/services/mfa-recovery';
 import { disableCognitoTotpForUser } from '@/server/services/cognito-admin';
+import { logger } from '@/lib/utils/logger';
 
 const recoverySchema = z.object({
   email: z.string().trim().email('メールアドレス形式が不正です'),
@@ -65,8 +66,13 @@ export async function POST(req: Request) {
     await clearMfaRecoveryCodes(user.id);
   } catch {
     await restoreMfaRecoveryCodes(user.id, recoverySnapshot).catch((restoreError) => {
-      console.error(
-        '[mfa-recovery] Failed to restore recovery codes after Cognito error',
+      logger.error(
+        {
+          event: 'auth_mfa_recovery_restore_failed',
+          route: '/api/auth/mfa/recovery',
+          method: 'POST',
+          operation: 'restore_recovery_codes_after_cognito_error',
+        },
         restoreError,
       );
     });

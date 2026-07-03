@@ -15,7 +15,7 @@
 - 挙動変更: なし（docs のみ）
 - 検証: n/a（ソース非接触）
 
-## 2026-07-03 PERF-01 pending verdict
+## 2026-07-03 PERF-01 981f1a58
 
 - 分類: performance / behavior-preserving API internals
 - 対象: `src/app/api/pharmacy-drug-stocks/bulk/route.ts` + focused route test
@@ -25,7 +25,18 @@
 - 検証: baseline focused vitest 18/18 green。post-edit focused vitest 19/19 green（60行 audit row
   mapping regression 追加）。scoped eslint/prettier/diff-check green。`pnpm typecheck` /
   `pnpm typecheck:no-unused` green。
-- レビュー: codex subagents read-only mapping/perf review。opus/Claude verdict 待ち、self-commit なし。
+- レビュー: opus APPROVE、claude commit 981f1a58。self-commit なし。
+
+## 2026-07-03 MFA1 pending verdict
+
+- 分類: auth/security observability / behavior-preserving log convergence
+- 対象: `src/app/api/auth/mfa/recovery/route.ts` + focused route test
+- 実施: Cognito 失敗後の recovery-code restore 失敗ログを `console.error` から safe `logger.error`
+  へ置換。context は event/route/method/operation のみ、error は logger の `error_name` 抽出のみ。
+- 挙動変更: なし。rate-limit、validation、復旧処理、502/503 応答、restore fail-soft 方向は不変。
+- 検証: focused vitest 9/9 green。scoped eslint/prettier/diff-check green。`pnpm typecheck` /
+  `pnpm typecheck:no-unused` green。secret/token 非包含 negative assert 追加。
+- レビュー: auth 領域のため opus/Claude verdict 待ち、self-commit なし。
 
 ## 2026-07-03 までのスライス（要約、詳細は archive/ と git log）
 
