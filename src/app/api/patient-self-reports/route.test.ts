@@ -176,9 +176,47 @@ describe('/api/patient-self-reports', () => {
   });
 
   it('lists self reports with patient display names', async () => {
-    const response = (await GET(createGetRequest('?patient_id=%20patient_1%20&status=triaged'), {
-      params: Promise.resolve({}),
-    }))!;
+    patientSelfReportFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'report_1',
+        patient_id: 'patient_1',
+        reported_by_name: '家族A',
+        relation: 'child',
+        category: 'adherence',
+        subject: '飲み忘れ',
+        content: '夕食後を飲み忘れ',
+        requested_callback: true,
+        preferred_contact_time: '18時以降',
+        status: 'triaged',
+        triaged_by: 'user_1',
+        triaged_at: new Date('2026-03-28T00:00:00.000Z'),
+        created_at: new Date('2026-03-28T00:00:00.000Z'),
+        updated_at: new Date('2026-03-28T00:00:00.000Z'),
+      },
+      {
+        id: 'report_0',
+        patient_id: 'patient_1',
+        reported_by_name: '家族C',
+        relation: 'child',
+        category: 'adherence',
+        subject: '残り',
+        content: '残り',
+        requested_callback: false,
+        preferred_contact_time: null,
+        status: 'triaged',
+        triaged_by: 'user_1',
+        triaged_at: new Date('2026-03-27T00:00:00.000Z'),
+        created_at: new Date('2026-03-27T00:00:00.000Z'),
+        updated_at: new Date('2026-03-27T00:00:00.000Z'),
+      },
+    ]);
+
+    const response = (await GET(
+      createGetRequest('?patient_id=%20patient_1%20&status=triaged&limit=1'),
+      {
+        params: Promise.resolve({}),
+      },
+    ))!;
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
@@ -194,7 +232,9 @@ describe('/api/patient-self-reports', () => {
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
       expect.any(Function),
     );
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'nextCursor']);
+    expect(body).toMatchObject({
       data: [
         expect.objectContaining({
           id: 'report_1',
@@ -210,7 +250,10 @@ describe('/api/patient-self-reports', () => {
           updated_at: '2026-03-28T00:00:00.000Z',
         }),
       ],
+      hasMore: true,
+      nextCursor: 'report_1',
     });
+    expect(body.data).toHaveLength(1);
     expect(patientSelfReportFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -219,6 +262,23 @@ describe('/api/patient-self-reports', () => {
         }),
       }),
     );
+  });
+
+  it('does not mark hasMore when self reports exactly fill the requested limit', async () => {
+    const response = (await GET(createGetRequest('?status=triaged&limit=1'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data', 'hasMore']);
+    expect(body).toMatchObject({
+      data: [expect.objectContaining({ id: 'report_1' })],
+      hasMore: false,
+    });
+    expect(body).not.toHaveProperty('nextCursor');
+    expect(body.data).toHaveLength(1);
   });
 
   it('masks sensitive self report fields for clerk list responses', async () => {

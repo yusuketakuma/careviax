@@ -213,21 +213,44 @@ describe('/api/qr-scan-drafts GET', () => {
       },
     ]);
 
-    const response = await GET(createGetRequest('http://localhost/api/qr-scan-drafts?limit=1'));
+    const response = await GET(
+      createGetRequest('http://localhost/api/qr-scan-drafts?include_unmatched_count=1&limit=1'),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'nextCursor', 'unmatchedCount']);
     expect(body).toMatchObject({
       data: [{ id: 'draft_2' }],
       hasMore: true,
       nextCursor: 'draft_2',
+      unmatchedCount: 3,
     });
     expect(body.data).toHaveLength(1);
     expect(body.data[0]).not.toHaveProperty('raw_qr_texts');
     expect(body.data[0]).not.toHaveProperty('qr_payload_hash');
     expect(body.data[0].parsed_data).not.toHaveProperty('rawText');
+  });
+
+  it('does not mark hasMore when QR scan drafts exactly fill the requested limit', async () => {
+    const response = await GET(
+      createGetRequest('http://localhost/api/qr-scan-drafts?include_unmatched_count=1&limit=1'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'unmatchedCount']);
+    expect(body).toMatchObject({
+      data: [{ id: 'draft_1' }],
+      hasMore: false,
+      unmatchedCount: 3,
+    });
+    expect(body).not.toHaveProperty('nextCursor');
+    expect(body.data).toHaveLength(1);
   });
 
   it('returns a fixed no-store 500 when the draft list read fails', async () => {

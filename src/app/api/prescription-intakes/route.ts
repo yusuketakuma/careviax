@@ -2,7 +2,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError, conflict } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { enforceFeatureRateLimit } from '@/lib/api/rate-limit';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { collectDispensingLineMetadataValidationDetails } from '@/lib/validations/dispensing-line';
 import { createPrescriptionIntakeSchema } from '@/lib/validations/prescription';
@@ -477,15 +477,14 @@ const authenticatedGET = withAuthContext(
           : Promise.resolve(undefined),
       ]);
 
-      const hasMore = intakes.length > limit;
-      const data = hasMore ? intakes.slice(0, limit) : intakes;
-      const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
+      const page = buildCursorPage(intakes, limit, (intake) => intake.id);
+      const data = page.data.map(toPrescriptionSearchResponse);
 
       return withSensitiveNoStore(
         success({
-          data: data.map(toPrescriptionSearchResponse),
-          hasMore,
-          nextCursor,
+          data,
+          hasMore: page.hasMore,
+          nextCursor: page.nextCursor,
           ...(filters.includeTotal ? { totalCount } : {}),
         }),
       );
@@ -529,15 +528,13 @@ const authenticatedGET = withAuthContext(
         : Promise.resolve(undefined),
     ]);
 
-    const hasMore = intakes.length > limit;
-    const data = hasMore ? intakes.slice(0, limit) : intakes;
-    const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
+    const page = buildCursorPage(intakes, limit, (intake) => intake.id);
 
     return withSensitiveNoStore(
       success({
-        data,
-        hasMore,
-        nextCursor,
+        data: page.data,
+        hasMore: page.hasMore,
+        nextCursor: page.nextCursor,
         ...(filters.includeTotal ? { totalCount } : {}),
       }),
     );

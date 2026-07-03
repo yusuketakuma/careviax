@@ -3106,12 +3106,55 @@ describe('/api/prescription-intakes GET', () => {
       }),
     );
     expect(prescriptionIntakeCountMock).toHaveBeenCalledWith({ where: findManyArgs.where });
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'nextCursor', 'totalCount']);
+    expect(body).toMatchObject({
       data: [{ id: 'intake_2' }],
       hasMore: true,
       nextCursor: 'intake_2',
       totalCount: 2,
     });
+    expect(body.data).toHaveLength(1);
+  });
+
+  it('does not mark hasMore when normal intake results exactly fill the requested limit', async () => {
+    prescriptionIntakeFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'intake_exact_1',
+        cycle_id: 'cycle_exact_1',
+        source_type: 'paper',
+        prescribed_date: new Date('2026-03-31T00:00:00.000Z'),
+        prescriber_name: '医師C',
+        prescriber_institution_id: null,
+        prescriber_institution: null,
+        prescription_expiry_date: null,
+        refill_remaining_count: null,
+        refill_next_dispense_date: null,
+        created_at: new Date('2026-03-31T10:00:00.000Z'),
+        cycle: {
+          overall_status: 'intake',
+          patient_id: 'patient_exact_1',
+        },
+      },
+    ]);
+    prescriptionIntakeCountMock.mockResolvedValueOnce(1);
+
+    const response = await GET(
+      createGetRequest('http://localhost/api/prescription-intakes?limit=1&include_total=1'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'totalCount']);
+    expect(body).toMatchObject({
+      data: [{ id: 'intake_exact_1' }],
+      hasMore: false,
+      totalCount: 1,
+    });
+    expect(body).not.toHaveProperty('nextCursor');
+    expect(body.data).toHaveLength(1);
   });
 
   it('applies server-side q search with the same count where and returns a minimal response', async () => {
@@ -3232,6 +3275,7 @@ describe('/api/prescription-intakes GET', () => {
     expect(findManyArgs.select).not.toHaveProperty('original_document_url');
     expect(prescriptionIntakeCountMock).toHaveBeenCalledWith({ where: findManyArgs.where });
     const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'nextCursor', 'totalCount']);
     expect(body).toEqual({
       data: [
         {
@@ -3259,6 +3303,62 @@ describe('/api/prescription-intakes GET', () => {
     expect(body.data[0]).not.toHaveProperty('lines');
     expect(body.data[0]).not.toHaveProperty('original_document_url');
     expect(body.data[0]).not.toHaveProperty('prescriber_institution_ref');
+  });
+
+  it('does not mark hasMore when search intake results exactly fill the requested limit', async () => {
+    prescriptionIntakeFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'intake_search_exact_1',
+        prescribed_date: new Date('2026-04-01T00:00:00.000Z'),
+        prescriber_name: '佐藤 医師',
+        prescriber_institution: null,
+        prescriber_institution_ref: null,
+        cycle: {
+          overall_status: 'intake',
+          case_: {
+            patient: {
+              name: '山田 太郎',
+              name_kana: 'ヤマダ タロウ',
+            },
+          },
+        },
+      },
+    ]);
+    prescriptionIntakeCountMock.mockResolvedValueOnce(1);
+
+    const response = await GET(
+      createGetRequest(
+        'http://localhost/api/prescription-intakes?q=%E5%B1%B1%E7%94%B0&limit=1&include_total=1',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'totalCount']);
+    expect(body).toEqual({
+      data: [
+        {
+          id: 'intake_search_exact_1',
+          prescribed_date: '2026-04-01T00:00:00.000Z',
+          prescriber_name: '佐藤 医師',
+          prescriber_institution: null,
+          cycle: {
+            overall_status: 'intake',
+            case_: {
+              patient: {
+                name: '山田 太郎',
+                name_kana: 'ヤマダ タロウ',
+              },
+            },
+          },
+        },
+      ],
+      hasMore: false,
+      totalCount: 1,
+    });
+    expect(body).not.toHaveProperty('nextCursor');
   });
 
   it('checks the search rate limit scoped to org+user before querying', async () => {

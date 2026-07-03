@@ -2,7 +2,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { createCaseSchema } from '@/lib/validations/case';
-import { parseOptionalBoundedIntegerParam } from '@/lib/api/pagination';
+import { buildCursorPage, parseOptionalBoundedIntegerParam } from '@/lib/api/pagination';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -211,16 +211,15 @@ const authenticatedGET = withAuthContext(
       pharmacists.map((pharmacist) => [pharmacist.id, pharmacist.name]),
     );
 
-    const hasMore = cases.length > query.limit;
-    const data = (hasMore ? cases.slice(0, query.limit) : cases).map((careCase) => ({
+    const page = buildCursorPage(cases, query.limit, (careCase) => careCase.id);
+    const data = page.data.map((careCase) => ({
       ...careCase,
       primary_pharmacist_name: careCase.primary_pharmacist_id
         ? (pharmacistNameById.get(careCase.primary_pharmacist_id) ?? null)
         : null,
     }));
-    const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
-    return success({ data, hasMore, nextCursor });
+    return success({ data, hasMore: page.hasMore, nextCursor: page.nextCursor });
   },
   {
     permission: 'canVisit',

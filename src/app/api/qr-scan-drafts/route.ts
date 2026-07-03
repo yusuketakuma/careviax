@@ -5,7 +5,7 @@ import { toPrismaJsonInput } from '@/lib/db/json';
 import { success, validationError, conflict, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { broadcastOrgRealtimeEvent } from '@/server/services/org-realtime';
@@ -246,11 +246,15 @@ const authenticatedGET = withAuthContext(
       };
     });
 
-    const hasMore = drafts.length > limit;
-    const data = (hasMore ? drafts.slice(0, limit) : drafts).map(toQrDraftResponse);
-    const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
+    const page = buildCursorPage(drafts, limit, (draft) => draft.id);
+    const data = page.data.map(toQrDraftResponse);
 
-    return success({ data, hasMore, nextCursor, unmatchedCount });
+    return success({
+      data,
+      hasMore: page.hasMore,
+      nextCursor: page.nextCursor,
+      unmatchedCount,
+    });
   },
   {
     permission: 'canVisit',

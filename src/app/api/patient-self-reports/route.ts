@@ -2,7 +2,7 @@ import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -111,7 +111,10 @@ async function authenticatedGET(req: NextRequest) {
     const accessiblePatientIds = accessiblePatients.map((patient) => patient.id);
 
     if (accessiblePatientIds.length === 0) {
-      return withSensitiveNoStore(success({ data: [], hasMore: false, nextCursor: undefined }));
+      const page = buildCursorPage<never>([], limit, () => undefined);
+      return withSensitiveNoStore(
+        success({ data: page.data, hasMore: page.hasMore, nextCursor: page.nextCursor }),
+      );
     }
 
     const reports = await prisma.patientSelfReport.findMany({
@@ -126,14 +129,15 @@ async function authenticatedGET(req: NextRequest) {
       select: patientSelfReportResponseSelect,
     });
 
-    const hasMore = reports.length > limit;
+    const page = buildCursorPage(reports, limit, (report) => report.id);
     const privacy = getPatientPrivacyFlags(ctx.role);
-    const data = (hasMore ? reports.slice(0, limit) : reports).map((report) =>
+    const data = page.data.map((report) =>
       serializePatientSelfReport(report, privacy, patientMap.get(report.patient_id)),
     );
-    const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
-    return withSensitiveNoStore(success({ data, hasMore, nextCursor }));
+    return withSensitiveNoStore(
+      success({ data, hasMore: page.hasMore, nextCursor: page.nextCursor }),
+    );
   });
 }
 

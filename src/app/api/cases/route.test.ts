@@ -113,9 +113,38 @@ describe('/api/cases', () => {
   });
 
   it('lists cases and resolves primary pharmacist names', async () => {
+    careCaseFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'case_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        primary_pharmacist_id: 'pharmacist_1',
+        updated_at: new Date('2026-03-29T00:00:00.000Z'),
+        patient: {
+          id: 'patient_1',
+          name: '患者A',
+          name_kana: 'カンジャエー',
+          residences: [],
+        },
+      },
+      {
+        id: 'case_0',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        primary_pharmacist_id: null,
+        updated_at: new Date('2026-03-28T00:00:00.000Z'),
+        patient: {
+          id: 'patient_1',
+          name: '患者A',
+          name_kana: 'カンジャエー',
+          residences: [],
+        },
+      },
+    ]);
+
     const response = (await GET(
       createRequest(
-        'http://localhost/api/cases?patient_id=patient_1&status=active&q=%E6%82%A3%E8%80%85',
+        'http://localhost/api/cases?patient_id=patient_1&status=active&q=%E6%82%A3%E8%80%85&limit=1',
       ),
       emptyRouteContext,
     ))!;
@@ -132,17 +161,41 @@ describe('/api/cases', () => {
             OR: [{ name: { contains: '患者' } }, { name_kana: { contains: '患者' } }],
           },
         }),
-        take: 51,
+        take: 2,
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'nextCursor']);
+    expect(body).toMatchObject({
       data: [
         expect.objectContaining({
           id: 'case_1',
           primary_pharmacist_name: '担当薬剤師',
         }),
       ],
+      hasMore: true,
+      nextCursor: 'case_1',
     });
+    expect(body.data).toHaveLength(1);
+  });
+
+  it('does not mark hasMore when cases exactly fill the requested limit', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/cases?limit=1'),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data', 'hasMore']);
+    expect(body).toMatchObject({
+      data: [expect.objectContaining({ id: 'case_1' })],
+      hasMore: false,
+    });
+    expect(body).not.toHaveProperty('nextCursor');
+    expect(body.data).toHaveLength(1);
+    expect(careCaseFindManyMock).toHaveBeenCalledWith(expect.objectContaining({ take: 2 }));
   });
 
   it('rejects unsupported status filters before querying cases', async () => {
