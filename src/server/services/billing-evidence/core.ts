@@ -1,7 +1,7 @@
 import type { InsuranceApplicationStatus, PayerBasis, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
-import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { japanCivilTimeParts, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { findActiveVisitConsent, findCurrentManagementPlan } from '../management-plans';
 import { upsertOperationalTask, resolveOperationalTasks } from '../operational-tasks';
 import { resolveBillingPayerBasis } from '../billing-payer-basis';
@@ -241,9 +241,9 @@ function resolveAfterHoursVisitCategory(args: {
   visitDate: Date;
   isHoliday: boolean;
 }): 'night' | 'holiday' | 'midnight' | null {
-  const hours = args.visitDate.getHours();
-  const minutes = args.visitDate.getMinutes();
-  const seconds = args.visitDate.getSeconds();
+  // 時刻帯は Asia/Tokyo の民間時刻で判定する。getHours() はランタイム TZ 依存で、
+  // prod=UTC では JST 22:00 の訪問(UTC 13:00 保存)を 13 時と読み深夜加算を取りこぼす。
+  const { hour: hours, minute: minutes, second: seconds } = japanCivilTimeParts(args.visitDate);
   const hasMeaningfulTime = hours !== 0 || minutes !== 0 || seconds !== 0;
 
   if (args.isHoliday) return 'holiday';
@@ -309,8 +309,20 @@ function readNonEmptyString(value: unknown) {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
+/**
+ * 算定対象(claimable)となる訪問結果ステータス。月内/週内の算定上限カウントは
+ * この集合と一致させること。delivery_only(配達のみ)は薬学的管理を伴わず算定対象外
+ * (isClaimableOutcome=false)のため、上限カウントにも含めない。含めると上限枠を
+ * 過大に消費し、正当な算定を「上限超過」で誤って除外して過少請求になる。
+ */
+const CLAIMABLE_VISIT_OUTCOME_STATUSES = [
+  'completed',
+  'completed_with_issue',
+  'revisit_needed',
+] as const;
+
 function isClaimableOutcome(outcome: string) {
-  return ['completed', 'completed_with_issue', 'revisit_needed'].includes(outcome);
+  return (CLAIMABLE_VISIT_OUTCOME_STATUSES as readonly string[]).includes(outcome);
 }
 
 function hasDeliveredCareReportStatus(status: string) {
@@ -1296,8 +1308,10 @@ export async function upsertBillingEvidenceForVisit(
           gte: billingMonthRange.start,
           lt: billingMonthRange.nextStart,
         },
+        // 月内算定上限(rule-engine)の母数。claimable と同じ集合に揃える。
+        // delivery_only を含めると上限を過大消費し過少請求になる。
         outcome_status: {
-          in: ['completed', 'completed_with_issue', 'revisit_needed', 'delivery_only'],
+          in: [...CLAIMABLE_VISIT_OUTCOME_STATUSES],
         },
       },
     }),
@@ -1311,8 +1325,9 @@ export async function upsertBillingEvidenceForVisit(
           gte: weekStart,
           lte: weekEnd,
         },
+        // 週内算定上限(rule-engine)の母数。claimable と同じ集合に揃える。
         outcome_status: {
-          in: ['completed', 'completed_with_issue', 'revisit_needed', 'delivery_only'],
+          in: [...CLAIMABLE_VISIT_OUTCOME_STATUSES],
         },
       },
     }),
@@ -1602,7 +1617,9 @@ export async function upsertBillingEvidenceForVisit(
       : null;
   const afterHoursVisit = resolveAfterHoursVisitCategory({
     visitDate,
-    isHoliday: businessHoliday != null || visitDate.getDay() === 0,
+    // 日曜判定も Asia/Tokyo の曜日で行う。getDay() はランタイム TZ 依存で、prod=UTC では
+    // JST 日曜早朝(UTC 土曜)を取りこぼし、JST 月曜早朝(UTC 日曜)を誤って休日加算する。
+    isHoliday: businessHoliday != null || japanCivilTimeParts(visitDate).weekday === 0,
   });
 
   await ensureHomeCareBillingSsot(tx, args.orgId, { asOfDate: visitDate });

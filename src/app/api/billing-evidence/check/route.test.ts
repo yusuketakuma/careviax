@@ -312,6 +312,35 @@ describe('/api/billing-evidence/check GET', () => {
     });
   });
 
+  it('scopes the 返戻 (rejection) count to the selected billing month, not all months', async () => {
+    const response = await GET(createRequest());
+
+    expect(response.status).toBe(200);
+    // 返戻件数は当月(records)指標。全月合算しないよう billing_month で絞ること。
+    expect(txMock.billingCandidate.count).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        billing_month: currentMonthStart,
+        status: 'excluded',
+        exclusion_reason: { contains: '返戻' },
+      },
+    });
+  });
+
+  it('scopes the 返戻 count to the previous billing month when requested', async () => {
+    const response = await GET(createRequest('?month=previous'));
+
+    expect(response.status).toBe(200);
+    expect(txMock.billingCandidate.count).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        billing_month: previousMonthStart,
+        status: 'excluded',
+        exclusion_reason: { contains: '返戻' },
+      },
+    });
+  });
+
   it('rejects invalid month before opening the org-scoped transaction', async () => {
     const response = await GET(createRequest('?month=next'));
 

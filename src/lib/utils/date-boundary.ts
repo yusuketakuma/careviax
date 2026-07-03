@@ -137,3 +137,36 @@ export function todayUtcRange(now: Date = new Date()): { gte: Date; lt: Date } {
   const gte = utcDateFromLocalKey(japanDateKey(now));
   return { gte, lt: addUtcDays(gte, 1) };
 }
+
+/**
+ * ある瞬間(実時刻 DateTime)を Asia/Tokyo の民間時刻フィールドに分解する。
+ *
+ * `Date#getHours()` / `getDay()` / `getMinutes()` 等はランタイム TZ 依存。prod=UTC の
+ * サーバーでは JST 22:00 の訪問(UTC 13:00 で保存)を 13 時・別曜日として読み、
+ * 夜間/深夜/休日加算の判定を取りこぼす(過少請求)/誤加算する(過大請求)。
+ * 時刻帯・曜日を業務判定に使う箇所は必ずこのヘルパーの JST フィールドを使うこと。
+ *
+ * Asia/Tokyo は UTC+9 固定(DST なし)のため、+9h シフト後に UTC フィールドを読む方式で
+ * 厳密に JST 民間時刻へ変換できる(ランタイム TZ に一切依存しない)。
+ */
+export function japanCivilTimeParts(date: Date): {
+  year: number;
+  monthIndex: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+  /** 0=日曜, 1=月曜, ..., 6=土曜(JST 基準)。 */
+  weekday: number;
+} {
+  const shifted = new Date(date.getTime() + JAPAN_TIME_ZONE_OFFSET_MS);
+  return {
+    year: shifted.getUTCFullYear(),
+    monthIndex: shifted.getUTCMonth(),
+    day: shifted.getUTCDate(),
+    hour: shifted.getUTCHours(),
+    minute: shifted.getUTCMinutes(),
+    second: shifted.getUTCSeconds(),
+    weekday: shifted.getUTCDay(),
+  };
+}

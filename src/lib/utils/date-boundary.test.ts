@@ -4,6 +4,7 @@ import {
   japanDayInstantRange,
   japanDayInstantRangeFromDateKey,
   japanDayStartInstantFromDateKey,
+  japanCivilTimeParts,
   japanDateKey,
   japanMonthInstantRange,
   localDateKey,
@@ -197,6 +198,54 @@ describe('date-boundary (JST 前提)', () => {
       const range = todayUtcRange();
       expect(range.gte.toISOString()).toBe('2026-06-12T00:00:00.000Z');
       expect(range.lt.toISOString()).toBe('2026-06-13T00:00:00.000Z');
+    });
+  });
+
+  describe('japanCivilTimeParts', () => {
+    it('実時刻を Asia/Tokyo の民間時刻フィールドに分解する', () => {
+      // UTC 13:00 = JST 22:00(金)。夜間/深夜加算判定はこの hour=22 を使う。
+      const parts = japanCivilTimeParts(new Date('2026-03-20T13:00:00.000Z'));
+      expect(parts).toMatchObject({
+        year: 2026,
+        monthIndex: 2,
+        day: 20,
+        hour: 22,
+        minute: 0,
+        second: 0,
+        weekday: 5, // 金曜
+      });
+    });
+
+    it('UTC 前日にまたぐ JST 早朝でも JST 暦日・曜日を返す', () => {
+      // UTC 土 16:00 = JST 日 01:00。getDay()(UTC)は 6(土)だが JST では 0(日)。
+      const parts = japanCivilTimeParts(new Date('2026-03-21T16:00:00.000Z'));
+      expect(parts.day).toBe(22);
+      expect(parts.hour).toBe(1);
+      expect(parts.weekday).toBe(0); // 日曜(休日加算対象)
+    });
+
+    describe('ランタイム TZ 非依存(UTC 固定でも JST を返す)', () => {
+      const previousTz = process.env.TZ;
+      beforeAll(() => {
+        process.env.TZ = 'UTC';
+      });
+      afterAll(() => {
+        if (previousTz === undefined) {
+          delete process.env.TZ;
+        } else {
+          process.env.TZ = previousTz;
+        }
+      });
+
+      it('UTC ランタイムでも JST 民間時刻・曜日を返す(env-shift 内側)', () => {
+        // 偽ガード防止: 実際に非東京 TZ で走っていることを内側で確認。
+        expect(process.env.TZ).toBe('UTC');
+        expect(new Date('2026-03-20T13:00:00.000Z').getHours()).toBe(13);
+        // それでも helper は JST(hour=22, 金曜)を返す。
+        const parts = japanCivilTimeParts(new Date('2026-03-20T13:00:00.000Z'));
+        expect(parts.hour).toBe(22);
+        expect(parts.weekday).toBe(5);
+      });
     });
   });
 });

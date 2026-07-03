@@ -184,6 +184,42 @@ describe('/api/admin/facility-standards GET', () => {
     });
   });
 
+  it('treats an empty requirements_status ({}) as unknown, not claimable (no fail-open)', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    facilityStandardCountMock.mockResolvedValue(1);
+    facilityStandardFindManyMock.mockResolvedValue([
+      {
+        id: 'std_empty',
+        standard_type: '地域連携薬局',
+        filed_date: new Date('2026-01-01T00:00:00Z'),
+        effective_date: null,
+        expiry_date: null,
+        renewal_alert_date: null,
+        // 要件が一件も検証・記録されていない状態
+        requirements_status: {},
+        site: {
+          id: 'site_1',
+          name: '本店',
+        },
+      },
+    ]);
+
+    const response = await GET(
+      createGetRequest('?limit=5', { 'x-org-id': 'org_1' }),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    // Object.values({}).every(Boolean) === true の vacuous truth に引きずられて
+    // 'claimable' を返してはならない（未検証を算定可に見せる fail-open の禁止）。
+    expect(body.data[0].claim_status).toBe('unknown');
+    expect(body.data[0].claim_status).not.toBe('claimable');
+    expect(body.data[0].requirements_status).toEqual({});
+  });
+
   it('uses a default list bound and clamps overly large limits', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });

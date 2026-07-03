@@ -56,6 +56,12 @@ export const GET = withAuthContext(
     return success({
       data: standards.map((item) => {
         const requirementsStatus = readRequirementsStatus(item.requirements_status);
+        // 空の requirements_status ({}) は「要件が一件も検証されていない」状態。
+        // Object.values({}).every(Boolean) は vacuously true になり 'claimable'
+        // と誤判定されるため（fail-open で過大算定リスク）、要件が 1 件も
+        // 無い場合は明示的に 'unknown'（要確認）へ倒す。
+        const hasRecordedRequirements =
+          requirementsStatus != null && Object.keys(requirementsStatus).length > 0;
 
         return {
           id: item.id,
@@ -65,7 +71,7 @@ export const GET = withAuthContext(
           expiry_date: item.expiry_date?.toISOString() ?? null,
           renewal_alert_date: item.renewal_alert_date?.toISOString() ?? null,
           requirements_status: requirementsStatus,
-          claim_status: requirementsStatus
+          claim_status: hasRecordedRequirements
             ? Object.values(requirementsStatus).every(Boolean)
               ? 'claimable'
               : 'blocked'

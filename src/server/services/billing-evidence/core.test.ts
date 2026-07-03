@@ -977,6 +977,49 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
     }
   });
 
+  it('excludes delivery_only from the monthly/weekly 算定上限 counts (count/claim parity)', async () => {
+    const tx = makeTx();
+    tx.visitRecord.findFirst = vi.fn().mockResolvedValue(
+      makeVisitRecord({
+        visit_date: new Date('2026-03-20T10:00:00.000Z'),
+      }),
+    );
+
+    await upsertBillingEvidenceForVisit(tx, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+
+    type CountCall = [{ where?: Record<string, unknown> }];
+    const countCalls = tx.visitRecord.count.mock.calls as CountCall[];
+
+    // 月内上限カウント: patient_id + 月レンジ(gte & lt) + schedule 無し。
+    const monthlyCall = countCalls.find((call) => {
+      const where = call[0]?.where ?? {};
+      const visitDate = where.visit_date as { gte?: Date; lt?: Date } | undefined;
+      return (
+        where.patient_id === 'patient_1' &&
+        visitDate?.gte != null &&
+        visitDate?.lt != null &&
+        where.schedule == null
+      );
+    });
+    // 週内上限カウント: schedule.pharmacist_id で絞る。
+    const weeklyCall = countCalls.find((call) => {
+      const where = call[0]?.where ?? {};
+      return (where.schedule as { pharmacist_id?: string } | undefined)?.pharmacist_id != null;
+    });
+
+    for (const call of [monthlyCall, weeklyCall]) {
+      expect(call).toBeDefined();
+      const outcomeStatus = call?.[0]?.where?.outcome_status as { in?: string[] } | undefined;
+      // 算定上限の母数は claimable と同一集合。delivery_only を含めると
+      // 上限を過大消費して正当な算定を誤除外(過少請求)する。
+      expect(outcomeStatus?.in).toEqual(['completed', 'completed_with_issue', 'revisit_needed']);
+      expect(outcomeStatus?.in).not.toContain('delivery_only');
+    }
+  });
+
   it('passes completed 2026 home-visit evidence flags to billing candidate derivation', async () => {
     const tx = makeTx();
     tx.visitRecord.findFirst = vi.fn().mockResolvedValue(
@@ -1643,70 +1686,75 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
     );
   });
 
-  // ── 13. resolveAfterHoursVisitCategory: local 22:00 → midnight ──
-  it('categorizes a 22:00 local-time visit as midnight (深夜加算)', async () => {
-    // Construct a date where getHours() returns 22 in local time
-    const visitDate = new Date(2026, 2, 20, 22, 0, 0); // March 20, 2026 22:00 local
-    const tx = makeTx();
-    tx.visitRecord.findFirst = vi
-      .fn()
-      .mockResolvedValue(makeVisitRecord({ visit_date: visitDate }));
+  // ── 13-15. resolveAfterHoursVisitCategory: 夜間/深夜/休日加算の JST 時刻帯判定 ──
+  //
+  // visit_date は実時刻 DateTime。時刻帯・曜日は Asia/Tokyo の民間時刻で判定する必要が
+  // ある。ランタイム TZ を非東京(UTC)に固定し、UTC 瞬間で表した JST 時刻を投入して、
+  // prod=UTC でも JST 基準で正しく分類されること(off-by-9h 回帰)を内側でアサートする。
+  // 各 UTC instant は「JST 時刻 − 9h」。旧実装(getHours()/getDay())はこの UTC 環境で
+  // JST 22:00→13時・JST 日曜早朝→UTC 土曜 と誤読し、過少/過大請求になっていた。
+  describe('resolveAfterHoursVisitCategory (JST 時刻帯, UTC ランタイム回帰)', () => {
+    const ORIGINAL_TZ = process.env.TZ;
 
-    await upsertBillingEvidenceForVisit(tx, {
-      orgId: 'org_1',
-      visitRecordId: 'visit_1',
+    beforeEach(() => {
+      process.env.TZ = 'UTC';
     });
 
-    expect(buildBillingCandidateSpecsMock).toHaveBeenCalledWith(
-      tx,
-      expect.objectContaining({
-        afterHoursVisit: 'midnight',
-      }),
-    );
-  });
-
-  // ── 14. resolveAfterHoursVisitCategory: Sunday/holiday → holiday ──
-  it('categorizes a Sunday visit as holiday', async () => {
-    // 2026-03-22 is a Sunday in local time
-    const visitDate = new Date(2026, 2, 22, 10, 0, 0); // Sunday, 10:00 local
-    const tx = makeTx();
-    tx.visitRecord.findFirst = vi
-      .fn()
-      .mockResolvedValue(makeVisitRecord({ visit_date: visitDate }));
-
-    await upsertBillingEvidenceForVisit(tx, {
-      orgId: 'org_1',
-      visitRecordId: 'visit_1',
+    afterEach(() => {
+      if (ORIGINAL_TZ === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = ORIGINAL_TZ;
+      }
     });
 
-    expect(buildBillingCandidateSpecsMock).toHaveBeenCalledWith(
-      tx,
-      expect.objectContaining({
-        afterHoursVisit: 'holiday',
-      }),
-    );
-  });
+    async function resolveCategory(visitDate: Date) {
+      const tx = makeTx();
+      tx.visitRecord.findFirst = vi
+        .fn()
+        .mockResolvedValue(makeVisitRecord({ visit_date: visitDate }));
+      await upsertBillingEvidenceForVisit(tx, { orgId: 'org_1', visitRecordId: 'visit_1' });
+      const call = buildBillingCandidateSpecsMock.mock.calls.at(-1);
+      return (call?.[1] as { afterHoursVisit: unknown } | undefined)?.afterHoursVisit;
+    }
 
-  // ── 15. resolveAfterHoursVisitCategory: 10:00 weekday → null ──
-  it('returns null afterHoursVisit for a 10:00 weekday visit', async () => {
-    // 2026-03-20 is a Friday (weekday), 10:00 local is normal hours (8-18)
-    const visitDate = new Date(2026, 2, 20, 10, 0, 0); // Friday 10:00 local
-    const tx = makeTx();
-    tx.visitRecord.findFirst = vi
-      .fn()
-      .mockResolvedValue(makeVisitRecord({ visit_date: visitDate }));
-
-    await upsertBillingEvidenceForVisit(tx, {
-      orgId: 'org_1',
-      visitRecordId: 'visit_1',
+    it('内側で TZ が UTC に固定されている(env-shift ガード)', () => {
+      // 偽ガード防止: このブロックのアサートが実際に非東京 TZ で走っていることを確認。
+      expect(process.env.TZ).toBe('UTC');
+      expect(new Date('2026-03-20T13:00:00.000Z').getHours()).toBe(13);
     });
 
-    expect(buildBillingCandidateSpecsMock).toHaveBeenCalledWith(
-      tx,
-      expect.objectContaining({
-        afterHoursVisit: null,
-      }),
-    );
+    // JST 2026-03-20(金) 22:00 = UTC 13:00 → 深夜(midnight)。旧: getHours()=13 で null(過少請求)。
+    it('JST 22:00 の訪問を midnight(深夜加算)に分類する', async () => {
+      expect(await resolveCategory(new Date('2026-03-20T13:00:00.000Z'))).toBe('midnight');
+    });
+
+    // JST 2026-03-20(金) 05:30 = UTC 前日 20:30 → 深夜(hour<6)。UTC 前日にまたぐ境界。
+    it('JST 早朝 05:30(UTC 前日)の訪問を midnight に分類する', async () => {
+      expect(await resolveCategory(new Date('2026-03-19T20:30:00.000Z'))).toBe('midnight');
+    });
+
+    // JST 2026-03-20(金) 07:00 = UTC 前日 22:00 → 夜間(6<=hour<8)。
+    it('JST 07:00 の訪問を night(夜間加算)に分類する', async () => {
+      expect(await resolveCategory(new Date('2026-03-19T22:00:00.000Z'))).toBe('night');
+    });
+
+    // JST 2026-03-22(日) 01:00 = UTC 前日(土)16:00 → 休日。旧: getDay()=6(土)で取りこぼし(過少請求)。
+    // 休日は時刻帯より優先されること(hour<6 でも midnight でなく holiday)も確認。
+    it('JST 日曜早朝(UTC 土曜)の訪問を holiday に分類する', async () => {
+      expect(await resolveCategory(new Date('2026-03-21T16:00:00.000Z'))).toBe('holiday');
+    });
+
+    // JST 2026-03-23(月) 06:00 = UTC 前日(日)21:00。旧: getDay()=0(日)で誤って holiday(過大請求)。
+    // 正: 平日 → holiday でなく night(hour<8)。過大請求を防ぐ回帰ガード。
+    it('JST 月曜早朝(UTC 日曜)を holiday にせず night に分類する(過大請求防止)', async () => {
+      expect(await resolveCategory(new Date('2026-03-22T21:00:00.000Z'))).toBe('night');
+    });
+
+    // JST 2026-03-20(金) 10:00 = UTC 01:00 → 通常時間帯(8-18)・平日 → null。
+    it('JST 10:00 平日の訪問は null(加算なし)', async () => {
+      expect(await resolveCategory(new Date('2026-03-20T01:00:00.000Z'))).toBeNull();
+    });
   });
 
   // ── 16. Validation layers state transitions ──

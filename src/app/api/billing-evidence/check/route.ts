@@ -164,6 +164,9 @@ async function authenticatedGET(req: NextRequest) {
         const rejectionCount = await tx.billingCandidate.count({
           where: {
             org_id: ctx.orgId,
+            // 返戻件数は選択中の請求月(records セクション)に対する指標。
+            // billing_month で絞らないと全月の返戻を合算し、当月表示を過大計上する。
+            billing_month: monthStart,
             status: 'excluded',
             exclusion_reason: { contains: '返戻' },
           },
