@@ -12,6 +12,27 @@ type StaffMember = {
   name: string;
 };
 
+// insertMention は本文へ `@${name}` を挿入し、直後に区切り（空白）を置く。
+// 編集で表示名が消えた mention を検出するため、同じ規則（@名前 + 区切り）で
+// 本文に残っているかを判定する。部分一致の罠（ある名前が別の名前の接頭辞に
+// なる、名前が他の単語の部分文字列になる）を避けるため、`@name` の直後が
+// 語境界（文字列末尾・空白・別のメンションの @）である場合のみ「存在する」とみなす。
+function isMentionDisplayPresent(text: string, name: string): boolean {
+  if (!name) return false;
+  const token = `@${name}`;
+  let searchFrom = 0;
+  for (;;) {
+    const at = text.indexOf(token, searchFrom);
+    if (at === -1) return false;
+    const nextChar = text[at + token.length];
+    // 末尾・空白（全角空白含む）・別メンションの @ を語境界として扱う。
+    if (nextChar === undefined || nextChar === '@' || /\s/.test(nextChar)) {
+      return true;
+    }
+    searchFrom = at + 1;
+  }
+}
+
 type MentionInputProps = {
   value: string;
   onChange: (value: string) => void;
@@ -107,6 +128,21 @@ export function MentionInput({
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const newValue = e.target.value;
     onChange(newValue);
+
+    // 編集で `@表示名` が本文から消えた mention を除去する。
+    // 名前を解決できる（staffList に存在する）mention のみ判定対象とし、
+    // 解決できない mention（未ロードや既存コメント由来）は誤削除を避けて温存する。
+    if (mentions.length > 0) {
+      const nameById = new Map(staffList.map((s) => [s.id, s.name]));
+      const nextMentions = mentions.filter((id) => {
+        const name = nameById.get(id);
+        if (name === undefined) return true;
+        return isMentionDisplayPresent(newValue, name);
+      });
+      if (nextMentions.length !== mentions.length) {
+        onMentionsChange(nextMentions);
+      }
+    }
 
     const cursorPos = e.target.selectionStart;
     const textBefore = newValue.slice(0, cursorPos);
