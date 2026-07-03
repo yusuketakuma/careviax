@@ -3,33 +3,32 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import type { CdsAlert } from '@/lib/cds/alert-contract';
 import { CdsAlertPanel } from './alert-panel';
 
 setupDomTestEnv();
 
 describe('CdsAlertPanel', () => {
   it('announces critical alert sets once and keeps item details non-interruptive', () => {
-    render(
-      <CdsAlertPanel
-        alerts={[
-          {
-            type: 'contraindication',
-            severity: 'critical',
-            message: '禁忌薬が含まれています',
-          },
-          {
-            type: 'duration',
-            severity: 'warning',
-            message: '投与日数が長めです',
-          },
-          {
-            type: 'note',
-            severity: 'info',
-            message: '監査時に確認してください',
-          },
-        ]}
-      />,
-    );
+    const alerts = [
+      {
+        type: 'contraindication',
+        severity: 'critical',
+        message: '禁忌薬が含まれています',
+      },
+      {
+        type: 'duration',
+        severity: 'warning',
+        message: '投与日数が長めです',
+      },
+      {
+        type: 'note',
+        severity: 'info',
+        message: '監査時に確認してください',
+      },
+    ] satisfies CdsAlert[];
+
+    render(<CdsAlertPanel alerts={alerts} />);
 
     expect(screen.getAllByRole('alert')).toHaveLength(1);
     expect(screen.getByRole('alert').textContent).toContain('禁忌薬が含まれています');

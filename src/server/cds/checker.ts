@@ -2,15 +2,11 @@ import { formatDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 import { medicationIdentityKey } from '@/lib/prescription/medication-diff';
+import type { CdsAlert } from '@/lib/cds/alert-contract';
 import { Prisma, type LabAnalyteCode, type PatientConditionType } from '@prisma/client';
 import { differenceInYears } from 'date-fns';
 
-export type CdsAlert = {
-  type: string;
-  severity: 'critical' | 'warning' | 'info';
-  message: string;
-  details?: Record<string, unknown>;
-};
+export type { CdsAlert } from '@/lib/cds/alert-contract';
 
 // ---------------------------------------------------------------------------
 // Shared types for internal use

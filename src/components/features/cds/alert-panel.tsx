@@ -4,13 +4,9 @@ import { useState } from 'react';
 import { AlertTriangle, AlertCircle, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/loading';
+import type { CdsAlert } from '@/lib/cds/alert-contract';
 
-export type CdsAlert = {
-  type: string;
-  severity: 'critical' | 'warning' | 'info';
-  message: string;
-  details?: Record<string, unknown>;
-};
+export type { CdsAlert } from '@/lib/cds/alert-contract';
 
 type AlertItemProps = {
   alert: CdsAlert;
