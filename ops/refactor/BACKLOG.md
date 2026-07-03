@@ -96,7 +96,7 @@
 
 - `X01` は `.agent-loop/BLOCKED.md` にも登録（human 承認待ち）。W1-10 で POST を
   canManagePatientSharing 化した際の GET 取り残しの可能性が高く、承認されれば同一 ratified
-  パターン適用で済む見込み。status: **P0**
+  パターン適用で済む見込み。status: **done(e02cec50)** — 2026-07-03 ユーザー承認→claude opus lane 実装・opus APPROVE・land 済み(GET を canManagePatientSharing 化、role-matrix 62/62 green)
 
 ---
 
