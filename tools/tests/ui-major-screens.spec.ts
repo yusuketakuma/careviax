@@ -1348,6 +1348,7 @@ async function readUiDemoPharmacyVisitRequest(shareCaseId: string) {
       estimated_amount: number | null;
       has_contract_estimate_snapshot: boolean;
       accepted_by: string | null;
+      updated_at: Date;
     }>(
       `
         SELECT
@@ -1360,7 +1361,9 @@ async function readUiDemoPharmacyVisitRequest(shareCaseId: string) {
           "contract_version_id",
           "estimated_amount",
           ("estimated_snapshot" IS NOT NULL) AS has_contract_estimate_snapshot,
-          "accepted_by"
+          "accepted_by",
+          -- pg は timestamp(タイムゾーンなし)をローカルTZで解釈するため、UTC実値として読む
+          "updated_at" AT TIME ZONE 'UTC' AS updated_at
         FROM "PharmacyVisitRequest"
         WHERE "share_case_id" = $1
         ORDER BY "created_at" DESC
@@ -1393,10 +1396,13 @@ async function readUiDemoPartnerVisitRecord(visitRequestId: string) {
       has_base_confirmation_snapshot: boolean;
       claim_note_count: number;
       report_count: number;
+      updated_at: Date;
     }>(
       `
         SELECT
           pvr."id",
+          -- pg は timestamp(タイムゾーンなし)をローカルTZで解釈するため、UTC実値として読む
+          pvr."updated_at" AT TIME ZONE 'UTC' AS updated_at,
           pvr."visit_request_id",
           pvr."share_case_id",
           pvr."status"::text,
@@ -2100,6 +2106,7 @@ test.describe('major authenticated screens', () => {
         data: {
           decision: 'accept',
           pharmacist_id: demoContext.userId,
+          expected_updated_at: visitRequest!.updated_at.toISOString(),
         },
       },
     );
@@ -2314,6 +2321,11 @@ test.describe('major authenticated screens', () => {
 
     const submitRecordResponse = await page.request.post(
       `/api/partner-visit-records/${partnerRecord.id}/submit`,
+      {
+        data: {
+          expected_updated_at: storedPartnerRecord!.updated_at.toISOString(),
+        },
+      },
     );
     expect(submitRecordResponse.status()).toBe(200);
     const submittedRecord = (await submitRecordResponse.json()) as {
@@ -2331,12 +2343,14 @@ test.describe('major authenticated screens', () => {
     });
     expect(submittedRecord.notify_base_pharmacy).toBe(true);
 
+    const recordAfterSubmit = await readUiDemoPartnerVisitRecord(visitRequest!.id);
     const reviewRecordResponse = await page.request.post(
       `/api/partner-visit-records/${partnerRecord.id}/review`,
       {
         data: {
           decision: 'confirm',
           doctor_report_required: true,
+          expected_updated_at: recordAfterSubmit!.updated_at.toISOString(),
         },
       },
     );
@@ -2717,6 +2731,7 @@ test.describe('major authenticated screens', () => {
         data: {
           decision: 'accept',
           pharmacist_id: demoContext.userId,
+          expected_updated_at: visitRequest!.updated_at.toISOString(),
         },
       },
     );
@@ -2758,17 +2773,25 @@ test.describe('major authenticated screens', () => {
       has_record_content: true,
     });
 
+    const storedFreeRecordBeforeSubmit = await readUiDemoPartnerVisitRecord(visitRequest!.id);
     const submitRecordResponse = await page.request.post(
       `/api/partner-visit-records/${partnerRecord.id}/submit`,
+      {
+        data: {
+          expected_updated_at: storedFreeRecordBeforeSubmit!.updated_at.toISOString(),
+        },
+      },
     );
     expect(submitRecordResponse.status()).toBe(200);
 
+    const freeRecordAfterSubmit = await readUiDemoPartnerVisitRecord(visitRequest!.id);
     const reviewRecordResponse = await page.request.post(
       `/api/partner-visit-records/${partnerRecord.id}/review`,
       {
         data: {
           decision: 'confirm',
           doctor_report_required: false,
+          expected_updated_at: freeRecordAfterSubmit!.updated_at.toISOString(),
         },
       },
     );
