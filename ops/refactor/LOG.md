@@ -38,7 +38,7 @@
   `pnpm typecheck:no-unused` green。secret/token 非包含 negative assert 追加。
 - レビュー: opus APPROVE、claude commit f7bf2e97。self-commit なし。
 
-## 2026-07-03 F84 pending verdict
+## 2026-07-03 F84 c22c7fe3
 
 - 分類: bug/concurrency / behavior-preserving app-layer serialization
 - 対象: `src/app/api/consent-records/route.ts` + focused route test
@@ -47,7 +47,20 @@
 - 挙動変更: なし。既存 400 validation error/message、auth、no-store、audit fail-closed は不変。
 - 検証: baseline focused vitest 13/13 green。post-edit focused vitest 14/14 green。scoped
   eslint/prettier/diff-check green。`pnpm typecheck` / `pnpm typecheck:no-unused` green。
-- レビュー: opus/Claude verdict 待ち、self-commit なし。
+- レビュー: opus APPROVE、claude commit c22c7fe3。self-commit なし。
+
+## 2026-07-03 CE17 pending verdict
+
+- 分類: performance / daily prescription expiry scan bounding
+- 対象: `src/server/jobs/daily/prescriptions.ts` + `src/server/jobs/daily.test.ts`
+- 実施: `checkPrescriptionExpiry` の `prescription_expiry_date <= tomorrow` 全履歴 scan を、
+  JST 7日前開始〜翌日終了の bounded window へ変更。通知 title/message/recipient/dedupe/processedCount は不変。
+- 通知意味論: 直近7日の outage を catch-up し、dedupe_key は intake id のままなので再通知スパムを増やさない。
+- レビュー: opus CHANGES_REQUESTED 1件（初回の今日〜翌日窓では D-1/D 2連続欠落時に通知が永久喪失）。
+  下限を7日前へ修正し、`formatDateKey` TZ表示ズレは CE20 として BACKLOG 起票。
+- 検証: focused `daily.test.ts -t "prescription expiry"` 3/3 green。full `daily.test.ts` 43/43 green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` は並行 A1-CRC FE dirty の `reports/[id]/page.tsx`
+  型エラーで blocked（CE17外、該当 lane へ委譲）。
 
 ## 2026-07-03 までのスライス（要約、詳細は archive/ と git log）
 

@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { addUtcDays, japanDayInstantRange } from '@/lib/utils/date-boundary';
 import { runJob } from '../runner';
 import { buildIntakeLinkageTaskKey, formatDateKey } from '../daily-helpers';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
@@ -234,12 +235,13 @@ export async function checkIntakeToVisitLinkage() {
  */
 export async function checkPrescriptionExpiry() {
   return runJob('prescription_expiry_check', async () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const today = japanDayInstantRange().gte;
+    const sevenDaysAgo = addUtcDays(today, -7);
+    const dayAfterTomorrow = addUtcDays(today, 2);
 
     const expiring = await prisma.prescriptionIntake.findMany({
       where: {
-        prescription_expiry_date: { lte: tomorrow },
+        prescription_expiry_date: { gte: sevenDaysAgo, lt: dayAfterTomorrow },
       },
       include: {
         cycle: {

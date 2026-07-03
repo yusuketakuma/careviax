@@ -706,6 +706,31 @@ describe('daily job local date keys', () => {
     restoreTimezone?.();
   });
 
+  type MockPrescriptionExpiryIntake = {
+    id: string;
+    prescription_expiry_date: Date;
+    cycle: {
+      case_: {
+        org_id: string;
+        patient_id: string;
+        primary_pharmacist_id: string;
+      };
+    };
+  };
+
+  function mockPrescriptionExpiryWindow(intakes: MockPrescriptionExpiryIntake[]) {
+    prescriptionIntakeFindManyMock.mockImplementation(
+      async (query: { where: { prescription_expiry_date: { gte: Date; lt: Date } } }) => {
+        const expiryWindow = query.where.prescription_expiry_date;
+        return intakes.filter(
+          (intake) =>
+            intake.prescription_expiry_date >= expiryWindow.gte &&
+            intake.prescription_expiry_date < expiryWindow.lt,
+        );
+      },
+    );
+  }
+
   it('uses local-calendar expiry dates in prescription expiry notifications', async () => {
     const rawPatientId = 'patient/1?tab=x#frag';
     const encodedPatientHref = `/patients/${encodeURIComponent(rawPatientId)}`;
@@ -736,6 +761,137 @@ describe('daily job local date keys', () => {
           message: '処方箋の有効期限が 2026-06-10 です。早急に対応してください。',
           link: encodedPatientHref,
           dedupe_key: 'prescription-expiry:intake/1',
+        }),
+      ],
+      skipDuplicates: true,
+    });
+  });
+
+  it('bounds prescription expiry notifications to a seven-day catch-up window through tomorrow in Japan time', async () => {
+    const intakes: MockPrescriptionExpiryIntake[] = [
+      {
+        id: 'outside_before_catchup',
+        prescription_expiry_date: new Date('2026-05-31T14:59:59.999Z'),
+        cycle: {
+          case_: {
+            org_id: 'org_1',
+            patient_id: 'patient_before_catchup',
+            primary_pharmacist_id: 'pharmacist_1',
+          },
+        },
+      },
+      {
+        id: 'catchup_lower_boundary',
+        prescription_expiry_date: new Date('2026-05-31T15:00:00.000Z'),
+        cycle: {
+          case_: {
+            org_id: 'org_1',
+            patient_id: 'patient_catchup_lower_boundary',
+            primary_pharmacist_id: 'pharmacist_1',
+          },
+        },
+      },
+      {
+        id: 'tomorrow_window',
+        prescription_expiry_date: new Date('2026-06-09T14:59:59.999Z'),
+        cycle: {
+          case_: {
+            org_id: 'org_1',
+            patient_id: 'patient_tomorrow',
+            primary_pharmacist_id: 'pharmacist_1',
+          },
+        },
+      },
+      {
+        id: 'outside_day_after_tomorrow',
+        prescription_expiry_date: new Date('2026-06-09T15:00:00.000Z'),
+        cycle: {
+          case_: {
+            org_id: 'org_1',
+            patient_id: 'patient_day_after_tomorrow',
+            primary_pharmacist_id: 'pharmacist_1',
+          },
+        },
+      },
+    ];
+
+    mockPrescriptionExpiryWindow(intakes);
+
+    const result = await checkPrescriptionExpiry();
+
+    expect(result).toEqual({ processedCount: 2 });
+    expect(prescriptionIntakeFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          prescription_expiry_date: {
+            gte: new Date('2026-05-31T15:00:00.000Z'),
+            lt: new Date('2026-06-09T15:00:00.000Z'),
+          },
+        },
+      }),
+    );
+    expect(notificationCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          dedupe_key: 'prescription-expiry:catchup_lower_boundary',
+        }),
+        expect.objectContaining({
+          dedupe_key: 'prescription-expiry:tomorrow_window',
+        }),
+      ],
+      skipDuplicates: true,
+    });
+  });
+
+  it('catches up an expiry date after two missed daily runs outside the process timezone', async () => {
+    restoreTimezone?.();
+    restoreTimezone = useTimezone('America/Los_Angeles');
+    vi.setSystemTime(new Date('2026-06-08T09:00:00+09:00'));
+
+    const intakes: MockPrescriptionExpiryIntake[] = [
+      {
+        id: 'missed_deadline_d',
+        prescription_expiry_date: new Date('2026-06-05T15:30:00.000Z'),
+        cycle: {
+          case_: {
+            org_id: 'org_1',
+            patient_id: 'patient_deadline_d',
+            primary_pharmacist_id: 'pharmacist_1',
+          },
+        },
+      },
+      {
+        id: 'outside_day_after_tomorrow',
+        prescription_expiry_date: new Date('2026-06-09T15:00:00.000Z'),
+        cycle: {
+          case_: {
+            org_id: 'org_1',
+            patient_id: 'patient_day_after_tomorrow',
+            primary_pharmacist_id: 'pharmacist_1',
+          },
+        },
+      },
+    ];
+
+    mockPrescriptionExpiryWindow(intakes);
+
+    const result = await checkPrescriptionExpiry();
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(prescriptionIntakeFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          prescription_expiry_date: {
+            gte: new Date('2026-05-31T15:00:00.000Z'),
+            lt: new Date('2026-06-09T15:00:00.000Z'),
+          },
+        },
+      }),
+    );
+    expect(notificationCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          dedupe_key: 'prescription-expiry:missed_deadline_d',
         }),
       ],
       skipDuplicates: true,
