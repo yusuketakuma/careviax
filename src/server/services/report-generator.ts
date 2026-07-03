@@ -30,6 +30,7 @@ import {
 import {
   getCareReportSourceMedicationCycle,
   getCareReportSourcePatient,
+  listCareReportSourceCareTeamLinks,
   listCareReportSourceResidualMedications,
 } from '@/server/services/care-report-source-readers';
 
@@ -268,11 +269,7 @@ export async function generateReportsFromVisit(
     getCareReportSourcePatient(prisma, { orgId, patientId: visitRecord.patient_id }),
     getCareReportSourceMedicationCycle(prisma, { orgId, cycleId: schedule.cycle_id }),
     listCareReportSourceResidualMedications(prisma, { orgId, visitRecordId }),
-    prisma.careTeamLink.findMany({
-      where: { case_id: caseId, org_id: orgId, role: { in: ['physician', 'care_manager'] } },
-      select: { role: true, name: true, organization_name: true },
-      orderBy: { is_primary: 'desc' },
-    }),
+    listCareReportSourceCareTeamLinks(prisma, { orgId, caseId }),
     prisma.user.findFirst({
       where: { id: visitRecord.pharmacist_id },
       select: { name: true },
