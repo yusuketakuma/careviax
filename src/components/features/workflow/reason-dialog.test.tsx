@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
@@ -62,7 +62,7 @@ describe('ReasonDialog', () => {
     expect(submit.disabled).toBe(false);
   });
 
-  it('submits the selected reason code, label, and trimmed note', () => {
+  it('submits the selected reason code, label, and trimmed note', async () => {
     const onSubmit = vi.fn();
     render(
       <ReasonDialog
@@ -81,10 +81,12 @@ describe('ReasonDialog', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: '訪問予定を取り消す' }));
 
-    expect(onSubmit).toHaveBeenCalledWith({
-      code: 'patient_reason',
-      label: '患者都合',
-      note: '家族から延期の連絡',
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith({
+        code: 'patient_reason',
+        label: '患者都合',
+        note: '家族から延期の連絡',
+      });
     });
   });
 
