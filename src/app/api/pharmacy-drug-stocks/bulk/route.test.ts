@@ -581,6 +581,106 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
     expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
 
+  it('keeps large bulk audit row drug ids aligned with preview row order', async () => {
+    const drugs = Array.from({ length: 60 }, (_, index) => {
+      const number = String(index + 1).padStart(12, '0');
+      return {
+        id: `drug_${index + 1}`,
+        yj_code: number,
+        drug_name: `採用薬${index + 1}`,
+        generic_name: `成分${index + 1}`,
+      };
+    });
+    prismaMock.drugMaster.findMany
+      .mockResolvedValueOnce(drugs)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    prismaMock.pharmacyDrugStock.upsert.mockImplementation(({ create }) =>
+      Promise.resolve({ id: `stock_${create.drug_master_id}` }),
+    );
+
+    const csv = [
+      'YJコード,医薬品名,採用,発注点',
+      ...drugs.map((drug, index) => `${drug.yj_code},${drug.drug_name},採用,${index + 1}`),
+    ].join('\n');
+
+    const response = await POST(
+      createRequest({
+        site_id: 'site_1',
+        csv,
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const json = await readBulkPayload(response);
+    expect(json).toMatchObject({
+      importedCount: 60,
+      preview: {
+        summary: {
+          totalRows: 60,
+          processableRows: 60,
+          createCount: 60,
+        },
+      },
+    });
+
+    expect(prismaMock.auditLog.create).toHaveBeenCalledTimes(61);
+    expect(prismaMock.auditLog.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'pharmacy_drug_stock_bulk_imported',
+          changes: expect.objectContaining({
+            row_number: 2,
+            status: 'create',
+            drug_master_id: 'drug_1',
+            before: null,
+            after: expect.objectContaining({
+              reorder_point: 1,
+            }),
+          }),
+        }),
+      }),
+    );
+    expect(prismaMock.auditLog.create).toHaveBeenNthCalledWith(
+      60,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'pharmacy_drug_stock_bulk_imported',
+          changes: expect.objectContaining({
+            row_number: 61,
+            status: 'create',
+            drug_master_id: 'drug_60',
+            before: null,
+            after: expect.objectContaining({
+              reorder_point: 60,
+            }),
+          }),
+        }),
+      }),
+    );
+
+    const summaryAudit = prismaMock.auditLog.create.mock.calls.at(-1)?.[0];
+    expect(summaryAudit).toMatchObject({
+      data: {
+        action: 'pharmacy_drug_stock_bulk_import_summary',
+        changes: {
+          imported_count: 60,
+        },
+      },
+    });
+    const rows = summaryAudit?.data?.changes?.rows as
+      | Array<{ row_number: number; drug_master_id: string | null }>
+      | undefined;
+    expect(rows).toHaveLength(60);
+    expect(rows?.map((row) => row.row_number)).toEqual(
+      Array.from({ length: 60 }, (_, index) => index + 2),
+    );
+    expect(rows?.map((row) => row.drug_master_id)).toEqual(drugs.map((drug) => drug.id));
+  });
+
   it('rejects rows with unresolved preferred generic codes without importing the drug', async () => {
     prismaMock.drugMaster.findMany
       .mockResolvedValueOnce([

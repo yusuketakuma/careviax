@@ -15,6 +15,18 @@
 - 挙動変更: なし（docs のみ）
 - 検証: n/a（ソース非接触）
 
+## 2026-07-03 PERF-01 pending verdict
+
+- 分類: performance / behavior-preserving API internals
+- 対象: `src/app/api/pharmacy-drug-stocks/bulk/route.ts` + focused route test
+- 実施: preview/audit row→operation 照合の `operations.find(rowNumber)` を first-wins
+  `operationByRowNumber` Map に置換。summary audit 側の同種探索も同じ Map へ収束。
+- 挙動変更: なし。response shape、row order、invalid/unmatched、audit payload、upsert/auth/no-store 不変。
+- 検証: baseline focused vitest 18/18 green。post-edit focused vitest 19/19 green（60行 audit row
+  mapping regression 追加）。scoped eslint/prettier/diff-check green。`pnpm typecheck` /
+  `pnpm typecheck:no-unused` green。
+- レビュー: codex subagents read-only mapping/perf review。opus/Claude verdict 待ち、self-commit なし。
+
 ## 2026-07-03 までのスライス（要約、詳細は archive/ と git log）
 
 - Claude lane: Wave2 完了バッチ(9 commits) / W3 code-only(C2/E2/E3, 4 commits) /

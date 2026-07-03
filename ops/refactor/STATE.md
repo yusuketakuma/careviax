@@ -17,8 +17,8 @@
 ## Phase
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
-- Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 次アクション
-- Phase C（実装ループ）: BACKLOG セクション B から着手予定
+- Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
+- Phase C（実装ループ）: `PERF-01` codex 実装中（report→opus verdict→claude commit 待ち）
 
 ## 直近の land（本日・要点）
 
@@ -28,13 +28,12 @@
 
 ## 進行中 / 凍結
 
-- codex: LOCK 凍結中（台帳再編完了通知待ち）。VG1 は WITHDRAW 済（BACKLOG `A1-GEO` flagged）
+- codex: `PERF-01` ACKed lock。`pharmacy-drug-stocks/bulk` の preview/audit row 照合を
+  first-wins `rowNumber` Map 化し、response/row order/audit payload 不変を focused test で検証中。
 - human-gate 待ち: MFA1（auth safe-log）/ X01（external-access GET 認可）→ .agent-loop/BLOCKED.md
 
 ## 次の一手
 
-1. 台帳再編 commit → codex へ新体制通知+凍結解除
-2. Phase B: BACKLOG B-0/B/C から安全×効果×検証容易性スコア順に割当
-   （即候補: PERF-01(O(n²), 安5効4検5) / F84(consent 並行) / CE19(mention 残留通知=bug) /
-   CE17・N18(perf) / R03・R07(dead-code, 現存確認済み)）
-3. UI_LAYOUT 実測監査（dev server+browse）は独立レーンで後続
+1. codex: `PERF-01` の report を agmsg で送信し、opus/Claude verdict を待つ（self-commit なし）
+2. fable: verdict 後に commit。BACKLOG `PERF-01` は commit 後 `done(<commit>)` へ更新
+3. 次候補: fable 割当待ち（F84 / CE19 / CE17 / N18 / R03/R07 等）

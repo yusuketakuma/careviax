@@ -538,13 +538,19 @@ async function authenticatedPOST(req: NextRequest) {
           unmatchedRows,
           invalidRows,
         });
+        const operationByRowNumber = new Map<number, BulkOperation>();
+        for (const operation of operations) {
+          if (!operationByRowNumber.has(operation.row.rowNumber)) {
+            operationByRowNumber.set(operation.row.rowNumber, operation);
+          }
+        }
         const previewRowByDrugId = new Map(
           preview.rows
             .filter(
               (row) => row.status !== 'unmatched' && row.status !== 'invalid' && row.drug_name,
             )
             .map((row) => {
-              const operation = operations.find((item) => item.row.rowNumber === row.rowNumber);
+              const operation = operationByRowNumber.get(row.rowNumber);
               return operation ? [operation.drug.id, row] : null;
             })
             .filter((entry): entry is [string, (typeof preview.rows)[number]] => entry != null),
@@ -627,9 +633,7 @@ async function authenticatedPOST(req: NextRequest) {
               drug_name: row.drug_name ?? null,
               reason: row.reason ?? null,
               candidates: row.candidates ?? null,
-              drug_master_id:
-                operations.find((operation) => operation.row.rowNumber === row.rowNumber)?.drug
-                  .id ?? null,
+              drug_master_id: operationByRowNumber.get(row.rowNumber)?.drug.id ?? null,
             })),
           },
         });
