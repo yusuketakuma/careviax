@@ -13,6 +13,7 @@ const {
   medicationIssueFindManyMock,
   medicationIssueCreateMock,
   withOrgContextMock,
+  allocateDisplayIdMock,
 } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
   requireAuthContextMock: vi.fn(),
@@ -25,6 +26,7 @@ const {
   medicationIssueFindManyMock: vi.fn(),
   medicationIssueCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  allocateDisplayIdMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -63,6 +65,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/display-id', () => ({
+  allocateDisplayId: allocateDisplayIdMock,
 }));
 
 import { GET as rawGET, POST as rawPOST } from './route';
@@ -126,9 +132,11 @@ describe('/api/medication-issues', () => {
     ]);
     medicationIssueCreateMock.mockResolvedValue({
       id: 'issue_2',
+      display_id: 'miss0000000001',
       patient_id: 'patient_1',
       status: 'open',
     });
+    allocateDisplayIdMock.mockResolvedValue('miss0000000001');
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         medicationIssue: {
@@ -139,8 +147,23 @@ describe('/api/medication-issues', () => {
   });
 
   it('lists medication issues filtered by patient and status', async () => {
+    medicationIssueFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'issue_1',
+        patient_id: 'patient_1',
+        status: 'open',
+      },
+      {
+        id: 'issue_0',
+        patient_id: 'patient_1',
+        status: 'open',
+      },
+    ]);
+
     const response = (await GET(
-      createRequest('http://localhost/api/medication-issues?patient_id=patient_1&status=open'),
+      createRequest(
+        'http://localhost/api/medication-issues?patient_id=patient_1&status=open&limit=1',
+      ),
     ))!;
 
     expect(response.status).toBe(200);
@@ -157,6 +180,14 @@ describe('/api/medication-issues', () => {
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
       expect.any(Function),
     );
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'nextCursor']);
+    expect(body).toMatchObject({
+      data: [expect.objectContaining({ id: 'issue_1' })],
+      hasMore: true,
+      nextCursor: 'issue_1',
+    });
+    expect(body.data).toHaveLength(1);
     expect(medicationIssueFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -166,6 +197,23 @@ describe('/api/medication-issues', () => {
         },
       }),
     );
+  });
+
+  it('does not mark hasMore when medication issues exactly fill the requested limit', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/medication-issues?status=open&limit=1'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data', 'hasMore']);
+    expect(body).toMatchObject({
+      data: [expect.objectContaining({ id: 'issue_1' })],
+      hasMore: false,
+    });
+    expect(body).not.toHaveProperty('nextCursor');
+    expect(body.data).toHaveLength(1);
   });
 
   it('hides an inaccessible patient before reading medication issues', async () => {
@@ -321,6 +369,7 @@ describe('/api/medication-issues', () => {
     expect(medicationIssueCreateMock).toHaveBeenCalledWith({
       data: {
         org_id: 'org_1',
+        display_id: 'miss0000000001',
         identified_by: 'user_1',
         patient_id: 'patient_1',
         title: '飲み忘れ',
@@ -329,6 +378,13 @@ describe('/api/medication-issues', () => {
         priority: 'medium',
       },
     });
+    expect(allocateDisplayIdMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        medicationIssue: expect.objectContaining({ create: medicationIssueCreateMock }),
+      }),
+      'MedicationIssue',
+      'org_1',
+    );
   });
 
   it('rejects non-object create payloads before validating patient or case scope', async () => {
@@ -343,6 +399,7 @@ describe('/api/medication-issues', () => {
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(medicationIssueCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON create payloads before validating patient or case scope', async () => {
@@ -357,6 +414,7 @@ describe('/api/medication-issues', () => {
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(medicationIssueCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
   });
 
   it('rejects a patient and case mismatch before creating a medication issue', async () => {
@@ -375,6 +433,7 @@ describe('/api/medication-issues', () => {
     expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(medicationIssueCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
   });
 
   it('returns 404 before creating a medication issue for an unassigned patient', async () => {
@@ -392,6 +451,7 @@ describe('/api/medication-issues', () => {
     expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(medicationIssueCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 without raw logging when medication issue creation fails unexpectedly', async () => {
@@ -433,5 +493,6 @@ describe('/api/medication-issues', () => {
     expect(logContextText).not.toContain('raw medication issue');
     expect(logContextText).not.toContain('MedicationIssueCreateSecretError');
     expect(medicationIssueCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
   });
 });

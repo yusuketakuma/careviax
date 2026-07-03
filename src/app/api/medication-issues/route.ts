@@ -2,11 +2,12 @@ import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { allocateDisplayId } from '@/lib/db/display-id';
 import { withOrgContext } from '@/lib/db/rls';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import {
   createMedicationIssueSchema,
   medicationIssueStatusSchema,
@@ -173,7 +174,10 @@ async function authenticatedGET(req: NextRequest) {
         accessContext,
       }))
     ) {
-      return withSensitiveNoStore(success({ data: [], hasMore: false, nextCursor: undefined }));
+      const page = buildCursorPage<never>([], limit, () => undefined);
+      return withSensitiveNoStore(
+        success({ data: page.data, hasMore: page.hasMore, nextCursor: page.nextCursor }),
+      );
     }
 
     const assignmentWhere = await buildMedicationIssueAssignmentWhere({
@@ -212,11 +216,11 @@ async function authenticatedGET(req: NextRequest) {
       },
     });
 
-    const hasMore = issues.length > limit;
-    const data = hasMore ? issues.slice(0, limit) : issues;
-    const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
+    const page = buildCursorPage(issues, limit, (issue) => issue.id);
 
-    return withSensitiveNoStore(success({ data, hasMore, nextCursor }));
+    return withSensitiveNoStore(
+      success({ data: page.data, hasMore: page.hasMore, nextCursor: page.nextCursor }),
+    );
   });
 }
 
@@ -276,9 +280,11 @@ async function authenticatedPOST(req: NextRequest) {
     }
 
     const issue = await withOrgContext(ctx.orgId, async (tx) => {
+      const displayId = await allocateDisplayId(tx, 'MedicationIssue', ctx.orgId);
       return tx.medicationIssue.create({
         data: {
           org_id: ctx.orgId,
+          display_id: displayId,
           identified_by: ctx.userId,
           ...parsed.data,
         },
