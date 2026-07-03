@@ -63,6 +63,7 @@ import {
 } from '@/lib/prescription/cycle-workspace';
 import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { downscaleImage } from '@/lib/files/downscale-image';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -4001,15 +4002,17 @@ export function CardWorkspace({
   });
 
   const uploadPrescriptionDocument = async (file: File) => {
+    // 画像/PDF 混在: PDF は downscaleImage 内の image/* 判定で無変換のまま返す(W2-F1)。
+    const uploadFile = await downscaleImage(file);
     const presignResponse = await fetch('/api/files/presigned-upload', {
       method: 'POST',
       headers: buildOrgJsonHeaders(orgId),
       body: JSON.stringify({
         purpose: 'prescription',
         patient_id: patientId,
-        file_name: file.name,
-        mime_type: file.type || 'application/octet-stream',
-        size_bytes: file.size,
+        file_name: uploadFile.name,
+        mime_type: uploadFile.type || 'application/octet-stream',
+        size_bytes: uploadFile.size,
       }),
     });
 
@@ -4023,7 +4026,7 @@ export function CardWorkspace({
     const uploadResponse = await fetch(presignJson.data.uploadUrl, {
       method: 'PUT',
       headers: presignJson.data.headers,
-      body: file,
+      body: uploadFile,
     });
     if (!uploadResponse.ok) {
       throw new Error('処方せん画像/PDFのアップロードに失敗しました');

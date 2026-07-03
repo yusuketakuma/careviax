@@ -9,6 +9,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { BlockedReasonsPanel } from '@/components/features/workspace/action-rail';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { downscaleImage } from '@/lib/files/downscale-image';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   buildAdjustmentConfirmDescription,
@@ -96,14 +97,17 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
     if (!latestVisitRecordId) return;
     setUploading(true);
     try {
+      // モバイル撮影画像は長辺 1600px / JPEG 品質 0.85 に縮小してから送信する(W2-F1)。
+      // fail-open: 変換失敗時は元ファイルのまま送信する。
+      const uploadFile = await downscaleImage(file);
       const presignRes = await fetch('/api/files/presigned-upload', {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           purpose: 'visit-photo',
-          file_name: file.name,
-          mime_type: file.type,
-          size_bytes: file.size,
+          file_name: uploadFile.name,
+          mime_type: uploadFile.type,
+          size_bytes: uploadFile.size,
           visit_record_id: latestVisitRecordId,
         }),
       });
@@ -115,7 +119,7 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
       const uploadRes = await fetch(presignJson.data.uploadUrl, {
         method: 'PUT',
         headers: presignJson.data.headers,
-        body: file,
+        body: uploadFile,
       });
       if (!uploadRes.ok) throw new Error('残薬写真のアップロードに失敗しました');
 

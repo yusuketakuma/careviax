@@ -30,6 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { downscaleImage } from '@/lib/files/downscale-image';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
@@ -256,15 +257,17 @@ type CreateFormErrors = {
 };
 
 async function uploadConsentDocument(args: { file: File; patientId: string; orgId: string }) {
+  // 画像/PDF 混在: PDF は downscaleImage 内の image/* 判定で無変換のまま返す(W2-F1)。
+  const uploadFile = await downscaleImage(args.file);
   const presignResponse = await fetch('/api/files/presigned-upload', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-org-id': args.orgId },
     body: JSON.stringify({
       purpose: 'consent-document',
       patient_id: args.patientId,
-      file_name: args.file.name,
-      mime_type: inferConsentDocumentMimeType(args.file),
-      size_bytes: args.file.size,
+      file_name: uploadFile.name,
+      mime_type: inferConsentDocumentMimeType(uploadFile),
+      size_bytes: uploadFile.size,
     }),
   });
 
@@ -276,7 +279,7 @@ async function uploadConsentDocument(args: { file: File; patientId: string; orgI
   const uploadResponse = await fetch(presignJson.data.uploadUrl, {
     method: 'PUT',
     headers: presignJson.data.headers,
-    body: args.file,
+    body: uploadFile,
   });
   if (!uploadResponse.ok) {
     throw new Error('同意書ファイルのアップロードに失敗しました');

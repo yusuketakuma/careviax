@@ -27,6 +27,7 @@ import { isOfflineEncryptionUnavailableError } from '@/lib/offline/crypto';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildDrugMastersApiPath } from '@/lib/drug-masters/api-paths';
+import { downscaleImage } from '@/lib/files/downscale-image';
 import { PatientMcsSummarySection } from '@/components/patient-mcs/patient-mcs-summary-section';
 import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
 import { Badge } from '@/components/ui/badge';
@@ -911,15 +912,17 @@ export function PrescriptionIntakeForm() {
       throw new Error('処方箋原本を登録する前に患者を選択してください');
     }
 
+    // 画像/PDF 混在: PDF は downscaleImage 内の image/* 判定で無変換のまま返す(W2-F1)。
+    const uploadFile = await downscaleImage(file);
     const presignResponse = await fetch('/api/files/presigned-upload', {
       method: 'POST',
       headers: buildOrgJsonHeaders(orgId),
       body: JSON.stringify({
         purpose: 'prescription',
         patient_id: selectedPatientId,
-        file_name: file.name,
-        mime_type: file.type || 'image/jpeg',
-        size_bytes: file.size,
+        file_name: uploadFile.name,
+        mime_type: uploadFile.type || 'image/jpeg',
+        size_bytes: uploadFile.size,
       }),
     });
 
@@ -931,7 +934,7 @@ export function PrescriptionIntakeForm() {
     const uploadResponse = await fetch(presignJson.data.uploadUrl, {
       method: 'PUT',
       headers: presignJson.data.headers,
-      body: file,
+      body: uploadFile,
     });
     if (!uploadResponse.ok) {
       throw new Error('処方箋原本のアップロードに失敗しました');
