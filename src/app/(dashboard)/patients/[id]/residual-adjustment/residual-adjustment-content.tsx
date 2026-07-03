@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { DataTable } from '@/components/ui/data-table';
@@ -119,7 +120,7 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
       await queryClient.invalidateQueries({ queryKey: ['interventions', patientId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '調整案の確定に失敗しました');
+      toast.error(messageFromError(error, '調整案の確定に失敗しました'));
     },
   });
 
@@ -166,7 +167,7 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
 
       toast.success('残薬写真を追加しました');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '残薬写真の追加に失敗しました');
+      toast.error(messageFromError(error, '残薬写真の追加に失敗しました'));
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';

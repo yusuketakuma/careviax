@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleCheck } from 'lucide-react';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
@@ -427,7 +428,7 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
       setConsultDialogOpen(false);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '医師への確認の記録に失敗しました');
+      toast.error(messageFromError(error, '医師への確認の記録に失敗しました'));
     },
   });
 
@@ -449,7 +450,7 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
       toast.success('問題なしとして完了しました');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '課題の完了に失敗しました');
+      toast.error(messageFromError(error, '課題の完了に失敗しました'));
     },
   });
 

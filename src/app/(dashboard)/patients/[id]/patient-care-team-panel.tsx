@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -222,7 +223,7 @@ export function PatientCareTeamPanel({
       setQuickCreateRowIndex(null);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '他職種マスターの登録に失敗しました');
+      toast.error(messageFromError(error, '他職種マスターの登録に失敗しました'));
     },
   });
 
@@ -266,7 +267,7 @@ export function PatientCareTeamPanel({
       await invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId }));
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '多職種連携先の保存に失敗しました');
+      toast.error(messageFromError(error, '多職種連携先の保存に失敗しました'));
     },
   });
 

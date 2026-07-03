@@ -14,6 +14,7 @@ import {
 } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import {
   CalendarDays,
   CheckCircle2,
@@ -3533,7 +3534,7 @@ function PatientFoundationPanel({ patient }: { patient: PatientOverview }) {
       toast.success('正本確認タスクを作成しました');
       await queryClient.invalidateQueries({ queryKey: ['tasks'] });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '正本確認タスクの作成に失敗しました');
+      toast.error(messageFromError(error, '正本確認タスクの作成に失敗しました'));
     } finally {
       setCreatingTaskKey(null);
     }

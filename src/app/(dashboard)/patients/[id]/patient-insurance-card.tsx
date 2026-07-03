@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import { Skeleton } from '@/components/ui/loading';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -622,7 +623,7 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '患者保険情報の保存に失敗しました');
+      toast.error(messageFromError(error, '患者保険情報の保存に失敗しました'));
     },
   });
 
@@ -657,7 +658,7 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '保険情報の削除に失敗しました');
+      toast.error(messageFromError(error, '保険情報の削除に失敗しました'));
     },
   });
 

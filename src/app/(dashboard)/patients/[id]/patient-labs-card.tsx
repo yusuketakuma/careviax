@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import { Skeleton } from '@/components/ui/loading';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -351,7 +352,7 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '検査値の登録に失敗しました');
+      toast.error(messageFromError(error, '検査値の登録に失敗しました'));
     },
   });
 
@@ -381,7 +382,7 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '検査値の更新に失敗しました');
+      toast.error(messageFromError(error, '検査値の更新に失敗しました'));
     },
   });
 

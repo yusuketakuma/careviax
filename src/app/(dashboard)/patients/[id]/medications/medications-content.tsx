@@ -52,6 +52,7 @@ import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query
 import { buildJahisQRText, type JahisPatient } from '@/lib/pharmacy/jahis-qr';
 import { formatDateTimeLabel } from '@/lib/ui/date-format';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 
 type MedicationProfile = {
   id: string;
@@ -792,7 +793,7 @@ export function MedicationsContent({
       setEditingIssue(null);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '課題の保存に失敗しました');
+      toast.error(messageFromError(error, '課題の保存に失敗しました'));
     },
   });
 
@@ -822,7 +823,7 @@ export function MedicationsContent({
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '課題状態の更新に失敗しました');
+      toast.error(messageFromError(error, '課題状態の更新に失敗しました'));
     },
   });
 
@@ -912,7 +913,7 @@ export function MedicationsContent({
       });
     } catch (error) {
       setQrDialogOpen(false);
-      toast.error(error instanceof Error ? error.message : 'QRコードの生成に失敗しました');
+      toast.error(messageFromError(error, 'QRコードの生成に失敗しました'));
     }
   };
 

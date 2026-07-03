@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import { Skeleton } from '@/components/ui/loading';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Badge } from '@/components/ui/badge';
@@ -196,7 +197,7 @@ export function VisitConstraintsCard({ patientId, orgId }: { patientId: string; 
       await invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId }));
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '訪問条件の保存に失敗しました');
+      toast.error(messageFromError(error, '訪問条件の保存に失敗しました'));
     },
   });
 
