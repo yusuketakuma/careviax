@@ -419,3 +419,25 @@
 - 既存 NULL 行は次回 dedupe touch で自己治癒。race は欠番のみで重複なし(欠番許容設計)。
 - display_id create-path: CP-A/B/C で主要経路完了。残 = CP-D(Patient 系 PHI batch)、
   HandoffItem(unique 軸未解決)、derived MedicationIssue(凍結)。次フェーズ ID-3(UI 表示置換) recon 開始。
+
+## 2026-07-04 収斂バッチ群 (R30/R42/R15-B2,B3/R19/R06/R20-B1〜B4)
+
+- R30(77d8efda): formatFileSize 共有化。R42(d77c5829): VisitVehicleResource 契約共有(subset/full 分離)。
+- R15: B2=patients/schedules 19ファイル(489b3da9)、B3=workflow/presence 系 9ファイル(fc261eb2)。
+  共有 planner-hooks は R42 と合本(65b3ce26)。B3 で「広い解釈で実装→裁定後 revert→report が stale」
+  の報告齟齬が発生、opus が実 tree との乖離を検出 → **report には送信時点の git diff --stat を
+  添付する運用**を導入。残 13ファイル/89箇所は B4 進行中(nuance 4件のガイダンス付き)。
+- R19(1baee9ab)/R06(a59d9d4a): diff-review・CdsAlert の BE/FE 契約を中立モジュールへ(type-only)。
+- R20 B1-B4(b268b41e/e646023f/d4573ccb/f023eb6c): no-store アサーション共有 helper + 147ファイル移行。
+  残 ~40 同型 + variant 8(list-only)。
+- 627c46b4 の教訓は既記載(land 後の部分再gate)。
+
+## 2026-07-04 ID-3-S1 3ce1e5c1 — UI display_id 表示の第1スライス
+
+- 表示規約 helper(src/lib/display-id/display-labels.ts): 可視ラベル=display_id 非空優先、
+  fallback は旧 cuid 短縮と byte 同一。**識別子(href/value/key/payload/cursor)は cuid 恒久維持**。
+- prescription-intakes API に additive display_id/cycle.display_id 露出(R24 の key-order テスト無干渉)。
+- prescription 系 5 画面の可視ラベル置換。§7 外部非露出は external-access payload の JSON 全文
+  negative test で固定(mock に display_id を混入させても公開 payload に出ない)。
+- レビュー: opus APPROVE(cuid 維持を site 全数検証)。次: S2=schedule/day-view+patient CareCase パネル。
+  billing invoice/PDF 番号は §8.2 別レイヤで恒久 keep-out。
