@@ -74,7 +74,7 @@
   `tsc --noEmit --pretty false` green、home-config 該当エラー grep 0件。
 - レビュー: opus APPROVE、claude commit f3733036。self-commit なし。
 
-## 2026-07-03 PERF-02 pending verdict
+## 2026-07-03 PERF-02 60469cd1
 
 - 分類: performance / behavior-preserving API internals
 - 対象: `src/app/api/dispense-results/route.ts` + focused route test
@@ -84,6 +84,17 @@
   `resultData` のみ。immutable identity は update に載せない。
 - 検証: route+workflow vitest 45/45 green。scoped eslint/prettier/diff-check green。
   `pnpm typecheck` green。2行投入で `DispenseResult.upsert` 2回のみを test-lock。
+- レビュー: opus APPROVE、claude commit 60469cd1。self-commit なし。
+
+## 2026-07-03 CE20 pending verdict
+
+- 分類: bug/TZ / user-visible notification date
+- 対象: `src/server/jobs/daily/prescriptions.ts` + `src/server/jobs/daily.test.ts`
+- 実施: 処方箋期限通知 message の日付を process-local `formatDateKey` から JST 固定 `japanDateKey` へ変更。
+- 不変: query window / dedupe_key / recipient / link / processedCount / createMany skipDuplicates。
+- 検証: focused `daily.test.ts -t "prescription expiry"` 4/4 green。
+  `daily.test.ts` + `date-boundary.test.ts` 68/68 green。scoped eslint/prettier/diff-check green。
+  `pnpm typecheck` green。
 - レビュー: opus verdict 待ち。self-commit なし。
 
 ## 2026-07-03 DR-DUP1 2e0c7fdb

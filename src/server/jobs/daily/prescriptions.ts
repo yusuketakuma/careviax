@@ -3,9 +3,9 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { buildPatientHref } from '@/lib/patient/navigation';
-import { addUtcDays, japanDayInstantRange } from '@/lib/utils/date-boundary';
+import { addUtcDays, japanDateKey, japanDayInstantRange } from '@/lib/utils/date-boundary';
 import { runJob } from '../runner';
-import { buildIntakeLinkageTaskKey, formatDateKey } from '../daily-helpers';
+import { buildIntakeLinkageTaskKey } from '../daily-helpers';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { createManyNotifications } from './shared';
@@ -266,7 +266,7 @@ export async function checkPrescriptionExpiry() {
           user_id: caseRecord.primary_pharmacist_id,
           type: 'urgent',
           title: '処方箋有効期限切れ間近',
-          message: `処方箋の有効期限が ${intake.prescription_expiry_date ? formatDateKey(intake.prescription_expiry_date) : '不明'} です。早急に対応してください。`,
+          message: `処方箋の有効期限が ${intake.prescription_expiry_date ? japanDateKey(intake.prescription_expiry_date) : '不明'} です。早急に対応してください。`,
           link: buildPatientHref(caseRecord.patient_id),
           dedupe_key: `prescription-expiry:${intake.id}`,
         });

@@ -767,6 +767,39 @@ describe('daily job local date keys', () => {
     });
   });
 
+  it('formats prescription expiry notification dates in Japan time in UTC runtime', async () => {
+    restoreTimezone?.();
+    restoreTimezone = useTimezone('UTC');
+    vi.setSystemTime(new Date('2026-06-08T00:00:00.000Z'));
+
+    prescriptionIntakeFindManyMock.mockResolvedValue([
+      {
+        id: 'intake_utc_runtime',
+        prescription_expiry_date: new Date('2026-06-09T15:30:00.000Z'),
+        cycle: {
+          case_: {
+            org_id: 'org_1',
+            patient_id: 'patient_utc_runtime',
+            primary_pharmacist_id: 'pharmacist_1',
+          },
+        },
+      },
+    ]);
+
+    const result = await checkPrescriptionExpiry();
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(notificationCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          message: '処方箋の有効期限が 2026-06-10 です。早急に対応してください。',
+          dedupe_key: 'prescription-expiry:intake_utc_runtime',
+        }),
+      ],
+      skipDuplicates: true,
+    });
+  });
+
   it('bounds prescription expiry notifications to a seven-day catch-up window through tomorrow in Japan time', async () => {
     const intakes: MockPrescriptionExpiryIntake[] = [
       {
