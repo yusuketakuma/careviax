@@ -5,6 +5,7 @@ import { readJsonResponseBody } from '@/lib/api/response-body';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { parseJsonOrNull, readJsonObject } from '@/lib/db/json';
 import { offlineDb, type OfflineSyncQueue } from './offline-db';
+import type { VisitRecordConflictServerSnapshotInput } from '@/types/visit-record-conflict';
 
 const MAX_RETRIES = 3;
 const GENERIC_SYNC_ERROR_MESSAGE = '同期に失敗しました';
@@ -34,27 +35,7 @@ type SyncQueueCompletionResult =
 
 type VisitRecordConflictSnapshot = {
   local: Record<string, unknown>;
-  server: {
-    id: string;
-    version: number;
-    patient_id: string;
-    visit_date: string;
-    outcome_status: string;
-    soap_subjective?: string | null;
-    soap_objective?: string | null;
-    soap_assessment?: string | null;
-    soap_plan?: string | null;
-    next_visit_suggestion_date?: string | null;
-    residual_medications?: Array<{
-      drug_master_id?: string | null;
-      drug_name: string;
-      drug_code?: string | null;
-      prescribed_quantity?: number | null;
-      prescribed_daily_dose?: number | null;
-      remaining_quantity: number;
-      is_prohibited_reduction: boolean;
-    }>;
-  } | null;
+  server: VisitRecordConflictServerSnapshotInput | null;
 };
 
 export type SyncQueueItemSummary = Omit<OfflineSyncQueue, 'payload' | 'conflict_payload'> & {

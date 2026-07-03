@@ -39,6 +39,7 @@ import {
   isHomeVisit2026CompletionOutcome,
 } from '@/lib/visits/home-visit-2026-evidence';
 import type { StructuredSoap } from '@/types/structured-soap';
+import type { VisitRecordConflictServerSnapshot } from '@/types/visit-record-conflict';
 import { Prisma, type ScheduleStatus } from '@prisma/client';
 import {
   listBillingEvidenceBlockers,
@@ -259,27 +260,7 @@ const FIRST_VISIT_DOCUMENT_TYPE_BY_TEMPLATE: Record<
   consent_form: 'consent',
 };
 
-type VisitRecordConflictDetail = {
-  id: string;
-  version: number;
-  patient_id: string;
-  visit_date: string;
-  outcome_status: string;
-  soap_subjective: string | null;
-  soap_objective: string | null;
-  soap_assessment: string | null;
-  soap_plan: string | null;
-  next_visit_suggestion_date: string | null;
-  residual_medications: Array<{
-    drug_master_id: string | null;
-    drug_name: string;
-    drug_code: string | null;
-    prescribed_quantity: number | null;
-    prescribed_daily_dose: number | null;
-    remaining_quantity: number;
-    is_prohibited_reduction: boolean;
-  }>;
-};
+type VisitRecordConflictDetail = VisitRecordConflictServerSnapshot;
 
 type VisitRecordHandoffExtractionPayload = {
   patientId: string;

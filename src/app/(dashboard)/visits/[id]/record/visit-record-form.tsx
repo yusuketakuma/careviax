@@ -45,6 +45,7 @@ import {
   setupAutoSync,
 } from '@/lib/stores/sync-engine';
 import { useOfflineStore } from '@/lib/stores/offline-store';
+import type { VisitRecordConflictServerSnapshotInput } from '@/types/visit-record-conflict';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -1031,26 +1032,7 @@ export function VisitRecordForm({
           await registerVisitRecordConflict({
             scheduleId: payload.schedule_id,
             payload,
-            server: err.details.existing_record as {
-              id: string;
-              version: number;
-              patient_id: string;
-              visit_date: string;
-              outcome_status: string;
-              soap_subjective?: string | null;
-              soap_objective?: string | null;
-              soap_assessment?: string | null;
-              soap_plan?: string | null;
-              next_visit_suggestion_date?: string | null;
-              residual_medications?: Array<{
-                drug_name: string;
-                drug_code?: string | null;
-                prescribed_quantity?: number | null;
-                prescribed_daily_dose?: number | null;
-                remaining_quantity: number;
-                is_prohibited_reduction: boolean;
-              }>;
-            },
+            server: err.details.existing_record as VisitRecordConflictServerSnapshotInput,
           });
           await refreshSyncState();
           throw new Error(
