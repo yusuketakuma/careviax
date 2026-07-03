@@ -1,4 +1,5 @@
 import type { LabAnalyteCode, Prisma } from '@prisma/client';
+import { allocateDisplayIdRange } from '@/lib/db/display-id';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 
 const LAB_ANALYTE_CODES = new Set([
@@ -83,16 +84,27 @@ export async function syncVisitRecordLabObservations(
 
   if (entries.length === 0) return;
 
+  const displayIds = await allocateDisplayIdRange(
+    tx,
+    'PatientLabObservation',
+    orgId,
+    entries.length,
+  );
   await tx.patientLabObservation.createMany({
-    data: entries.map(([key, val]) => ({
-      org_id: orgId,
-      patient_id: patientId,
-      analyte_code: key as LabAnalyteCode,
-      measured_at: visitDate,
-      value_numeric: val,
-      source_type: 'visit_record',
-      source_visit_record_id: visitRecordId,
-    })),
+    data: entries.map(([key, val], index) => {
+      const displayId = displayIds[index];
+      if (!displayId) throw new Error('PatientLabObservation display_id allocation range is short');
+      return {
+        display_id: displayId,
+        org_id: orgId,
+        patient_id: patientId,
+        analyte_code: key as LabAnalyteCode,
+        measured_at: visitDate,
+        value_numeric: val,
+        source_type: 'visit_record',
+        source_visit_record_id: visitRecordId,
+      };
+    }),
   });
 }
 
@@ -111,8 +123,16 @@ export async function replaceVisitRecordResidualMedications(
 
   if (!residualMedications || residualMedications.length === 0) return;
 
+  const displayIds = await allocateDisplayIdRange(
+    tx,
+    'ResidualMedication',
+    orgId,
+    residualMedications.length,
+  );
   await Promise.all(
-    residualMedications.map((medication) => {
+    residualMedications.map((medication, index) => {
+      const displayId = displayIds[index];
+      if (!displayId) throw new Error('ResidualMedication display_id allocation range is short');
       let excessDays: number | undefined;
       if (
         medication.prescribed_daily_dose &&
@@ -124,6 +144,7 @@ export async function replaceVisitRecordResidualMedications(
 
       return tx.residualMedication.create({
         data: {
+          display_id: displayId,
           org_id: orgId,
           visit_record_id: visitRecordId,
           drug_master_id: medication.drug_master_id ?? null,

@@ -11,6 +11,7 @@ const {
   medicationProfileCreateMock,
   drugMasterFindFirstMock,
   withOrgContextMock,
+  allocateDisplayIdMock,
 } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
@@ -21,6 +22,7 @@ const {
   medicationProfileCreateMock: vi.fn(),
   drugMasterFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  allocateDisplayIdMock: vi.fn(),
 }));
 
 const emptyRouteContext = { params: Promise.resolve({}) };
@@ -65,6 +67,10 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/lib/db/display-id', () => ({
+  allocateDisplayId: allocateDisplayIdMock,
+}));
+
 import { GET, POST } from './route';
 
 function createGetRequest(search = '') {
@@ -103,6 +109,7 @@ describe('/api/medication-profiles', () => {
     drugMasterFindFirstMock.mockResolvedValue({
       id: 'drug_master_1',
     });
+    allocateDisplayIdMock.mockResolvedValue('m0000000001');
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         drugMaster: {
@@ -299,12 +306,20 @@ describe('/api/medication-profiles', () => {
     expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
     expect(medicationProfileCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
+        display_id: 'm0000000001',
         org_id: 'org_1',
         patient_id: 'patient_1',
         drug_name: 'アムロジピン',
         start_date: new Date('2026-03-29'),
       }),
     });
+    expect(allocateDisplayIdMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        medicationProfile: expect.objectContaining({ create: medicationProfileCreateMock }),
+      }),
+      'MedicationProfile',
+      'org_1',
+    );
     expect(drugMasterFindFirstMock).not.toHaveBeenCalled();
   });
 
@@ -357,6 +372,7 @@ describe('/api/medication-profiles', () => {
       },
     });
     expect(medicationProfileCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
   });
 
   it('treats a blank DrugMaster id as unspecified instead of persisting it', async () => {
@@ -392,6 +408,7 @@ describe('/api/medication-profiles', () => {
     expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(medicationProfileCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON create payloads before checking patient access', async () => {

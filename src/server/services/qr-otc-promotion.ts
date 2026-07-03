@@ -1,4 +1,6 @@
+import type { Prisma } from '@prisma/client';
 import { formatUtcDateKey } from '@/lib/date-key';
+import { allocateDisplayId } from '@/lib/db/display-id';
 import { buildPackageLookupOr } from '@/lib/pharmacy/package-code';
 
 type MedicationIssueForQrOtc = {
@@ -221,8 +223,14 @@ export async function promoteResolvedQrOtcIssueToMedicationProfile(
   });
   if (existing) return { promoted: false as const, reason: 'duplicate_current_profile' as const };
 
+  const displayId = await allocateDisplayId(
+    tx as unknown as Prisma.TransactionClient,
+    'MedicationProfile',
+    args.orgId,
+  );
   await tx.medicationProfile.create({
     data: {
+      display_id: displayId,
       org_id: args.orgId,
       patient_id: patient.id,
       drug_name: candidate.drug_name,

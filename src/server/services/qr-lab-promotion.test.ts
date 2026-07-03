@@ -1,4 +1,13 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { allocateDisplayIdRangeMock } = vi.hoisted(() => ({
+  allocateDisplayIdRangeMock: vi.fn(),
+}));
+
+vi.mock('@/lib/db/display-id', () => ({
+  allocateDisplayIdRange: allocateDisplayIdRangeMock,
+}));
+
 import {
   buildQrLabObservationsFromMedicationIssue,
   extractQrLabCandidates,
@@ -126,6 +135,11 @@ describe('buildQrLabObservationsFromMedicationIssue', () => {
 });
 
 describe('promoteResolvedQrLabIssueToPatientLabs', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    allocateDisplayIdRangeMock.mockResolvedValue(['plab0000000001', 'plab0000000002']);
+  });
+
   it('creates one lab observation per supported analyte', async () => {
     const patientLabObservationCreate = vi.fn().mockResolvedValue({});
     const result = await promoteResolvedQrLabIssueToPatientLabs(
@@ -153,9 +167,18 @@ describe('promoteResolvedQrLabIssueToPatientLabs', () => {
     );
 
     expect(result).toMatchObject({ promotedCount: 2 });
+    expect(allocateDisplayIdRangeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        patientLabObservation: expect.objectContaining({ create: patientLabObservationCreate }),
+      }),
+      'PatientLabObservation',
+      'org_1',
+      2,
+    );
     expect(patientLabObservationCreate).toHaveBeenCalledTimes(2);
     expect(patientLabObservationCreate).toHaveBeenNthCalledWith(1, {
       data: expect.objectContaining({
+        display_id: 'plab0000000001',
         org_id: 'org_1',
         patient_id: 'patient_1',
         analyte_code: 'egfr',
@@ -166,6 +189,7 @@ describe('promoteResolvedQrLabIssueToPatientLabs', () => {
     });
     expect(patientLabObservationCreate).toHaveBeenNthCalledWith(2, {
       data: expect.objectContaining({
+        display_id: 'plab0000000002',
         analyte_code: 'pt_inr',
         value_numeric: 2.8,
       }),
@@ -198,9 +222,16 @@ describe('promoteResolvedQrLabIssueToPatientLabs', () => {
     );
 
     expect(result).toMatchObject({ promotedCount: 1 });
+    expect(allocateDisplayIdRangeMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'PatientLabObservation',
+      'org_1',
+      1,
+    );
     expect(patientLabObservationCreate).toHaveBeenCalledTimes(1);
     expect(patientLabObservationCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
+        display_id: 'plab0000000001',
         analyte_code: 'k',
         value_numeric: 5.2,
       }),

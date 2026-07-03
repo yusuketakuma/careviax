@@ -12,6 +12,7 @@ const {
   residualMedicationCreateMock,
   drugMasterFindManyMock,
   withOrgContextMock,
+  allocateDisplayIdRangeMock,
 } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
   requireAuthContextMock: vi.fn(),
@@ -23,6 +24,7 @@ const {
   residualMedicationCreateMock: vi.fn(),
   drugMasterFindManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  allocateDisplayIdRangeMock: vi.fn(),
 }));
 
 const emptyRouteContext = { params: Promise.resolve({}) };
@@ -68,6 +70,10 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/lib/db/display-id', () => ({
+  allocateDisplayIdRange: allocateDisplayIdRangeMock,
+}));
+
 import { GET, POST } from './route';
 
 function createRequest(url: string, body?: unknown) {
@@ -98,6 +104,11 @@ describe('/api/residual-medications', () => {
       visit_record_id: 'visit_1',
     });
     drugMasterFindManyMock.mockResolvedValue([]);
+    allocateDisplayIdRangeMock.mockResolvedValue([
+      'rmed0000000001',
+      'rmed0000000002',
+      'rmed0000000003',
+    ]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         drugMaster: {
@@ -370,14 +381,65 @@ describe('/api/residual-medications', () => {
       },
       select: { id: true },
     });
+    expect(allocateDisplayIdRangeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        residualMedication: expect.objectContaining({ create: residualMedicationCreateMock }),
+      }),
+      'ResidualMedication',
+      'org_1',
+      1,
+    );
     expect(residualMedicationCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
+        display_id: 'rmed0000000001',
         org_id: 'org_1',
         visit_record_id: 'visit_1',
         drug_name: 'アムロジピン',
         remaining_quantity: 10,
         excess_days: 10,
         is_reduction_target: true,
+      }),
+    });
+  });
+
+  it('allocates residual medication display ids in one stable batch', async () => {
+    const response = await POST(
+      createRequest('http://localhost/api/residual-medications', {
+        visit_record_id: 'visit_1',
+        medications: [
+          {
+            drug_name: 'アムロジピン',
+            prescribed_daily_dose: 1,
+            remaining_quantity: 10,
+          },
+          {
+            drug_name: 'ロキソプロフェン',
+            prescribed_daily_dose: 2,
+            remaining_quantity: 6,
+          },
+        ],
+      }),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(allocateDisplayIdRangeMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'ResidualMedication',
+      'org_1',
+      2,
+    );
+    expect(residualMedicationCreateMock).toHaveBeenNthCalledWith(1, {
+      data: expect.objectContaining({
+        display_id: 'rmed0000000001',
+        drug_name: 'アムロジピン',
+      }),
+    });
+    expect(residualMedicationCreateMock).toHaveBeenNthCalledWith(2, {
+      data: expect.objectContaining({
+        display_id: 'rmed0000000002',
+        drug_name: 'ロキソプロフェン',
       }),
     });
   });
@@ -441,6 +503,7 @@ describe('/api/residual-medications', () => {
       },
     });
     expect(residualMedicationCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdRangeMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object create payloads before visit record lookup or writes', async () => {

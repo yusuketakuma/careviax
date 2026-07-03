@@ -2,6 +2,7 @@ import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
+import { allocateDisplayId } from '@/lib/db/display-id';
 import { withOrgContext } from '@/lib/db/rls';
 import { internalError, success, validationError, notFound } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -167,8 +168,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const lab = await withOrgContext(
     ctx.orgId,
     async (tx) => {
+      const displayId = await allocateDisplayId(tx, 'PatientLabObservation', ctx.orgId);
       return tx.patientLabObservation.create({
         data: {
+          display_id: displayId,
           org_id: ctx.orgId,
           patient_id: id,
           analyte_code: parsed.data.analyte_code,

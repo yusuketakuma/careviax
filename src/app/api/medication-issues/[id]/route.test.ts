@@ -15,6 +15,8 @@ const {
   patientLabObservationFindFirstMock,
   patientUpdateMock,
   withOrgContextMock,
+  allocateDisplayIdMock,
+  allocateDisplayIdRangeMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
@@ -29,6 +31,8 @@ const {
   patientLabObservationFindFirstMock: vi.fn(),
   patientUpdateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  allocateDisplayIdMock: vi.fn(),
+  allocateDisplayIdRangeMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -53,6 +57,11 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/display-id', () => ({
+  allocateDisplayId: allocateDisplayIdMock,
+  allocateDisplayIdRange: allocateDisplayIdRangeMock,
 }));
 
 import { PATCH } from './route';
@@ -100,6 +109,8 @@ describe('/api/medication-issues/[id]', () => {
       id: 'issue_1',
       status: 'resolved',
     });
+    allocateDisplayIdMock.mockResolvedValue('m0000000001');
+    allocateDisplayIdRangeMock.mockResolvedValue(['plab0000000001', 'plab0000000002']);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         medicationIssue: {
@@ -426,9 +437,18 @@ describe('/api/medication-issues/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expect(allocateDisplayIdRangeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        patientLabObservation: expect.objectContaining({ create: patientLabObservationCreateMock }),
+      }),
+      'PatientLabObservation',
+      'org_1',
+      2,
+    );
     expect(patientLabObservationCreateMock).toHaveBeenCalledTimes(2);
     expect(patientLabObservationCreateMock).toHaveBeenNthCalledWith(1, {
       data: expect.objectContaining({
+        display_id: 'plab0000000001',
         org_id: 'org_1',
         patient_id: 'patient_1',
         analyte_code: 'egfr',
@@ -526,6 +546,7 @@ describe('/api/medication-issues/[id]', () => {
 
     expect(response.status).toBe(200);
     expect(medicationProfileCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
   });
 
   it('promotes a resolved QR OTC candidate to a current medication profile when explicitly requested', async () => {
@@ -555,8 +576,16 @@ describe('/api/medication-issues/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expect(allocateDisplayIdMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        medicationProfile: expect.objectContaining({ create: medicationProfileCreateMock }),
+      }),
+      'MedicationProfile',
+      'org_1',
+    );
     expect(medicationProfileCreateMock).toHaveBeenCalledWith({
       data: {
+        display_id: 'm0000000001',
         org_id: 'org_1',
         patient_id: 'patient_1',
         drug_name: 'バファリンA',

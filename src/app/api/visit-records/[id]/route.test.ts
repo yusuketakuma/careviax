@@ -21,6 +21,7 @@ const {
   getStoredFileRecordMock,
   toVisitRecordAttachmentMock,
   listBillingEvidenceBlockersMock,
+  allocateDisplayIdRangeMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
@@ -41,6 +42,7 @@ const {
   getStoredFileRecordMock: vi.fn(),
   toVisitRecordAttachmentMock: vi.fn(),
   listBillingEvidenceBlockersMock: vi.fn(),
+  allocateDisplayIdRangeMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -69,6 +71,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/display-id', () => ({
+  allocateDisplayIdRange: allocateDisplayIdRangeMock,
 }));
 
 vi.mock('@/server/services/file-storage', () => ({
@@ -137,6 +143,15 @@ describe('/api/visit-records/[id]', () => {
     drugMasterFindManyMock.mockResolvedValue([]);
     patientLabObservationDeleteManyMock.mockResolvedValue({ count: 1 });
     patientLabObservationCreateManyMock.mockResolvedValue({ count: 1 });
+    allocateDisplayIdRangeMock.mockImplementation(
+      async (_tx, model: string, _orgId: string, amount: number) => {
+        const prefix = model === 'ResidualMedication' ? 'rmed' : 'plab';
+        return Array.from(
+          { length: amount },
+          (_, index) => `${prefix}${String(index + 1).padStart(10, '0')}`,
+        );
+      },
+    );
     listBillingEvidenceBlockersMock.mockResolvedValue([]);
     txVisitRecordFindFirstMock
       .mockResolvedValueOnce({
@@ -853,9 +868,16 @@ describe('/api/visit-records/[id]', () => {
     expect(residualMedicationDeleteManyMock).toHaveBeenCalledWith({
       where: { org_id: 'org_1', visit_record_id: 'visit_1' },
     });
+    expect(allocateDisplayIdRangeMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'ResidualMedication',
+      'org_1',
+      1,
+    );
     expect(residualMedicationCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          display_id: 'rmed0000000001',
           org_id: 'org_1',
           visit_record_id: 'visit_1',
           drug_master_id: 'drug_master_amlodipine',
@@ -868,21 +890,29 @@ describe('/api/visit-records/[id]', () => {
     expect(patientLabObservationDeleteManyMock).toHaveBeenCalledWith({
       where: { org_id: 'org_1', source_visit_record_id: 'visit_1' },
     });
+    expect(allocateDisplayIdRangeMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'PatientLabObservation',
+      'org_1',
+      2,
+    );
     expect(patientLabObservationCreateManyMock).toHaveBeenCalledWith({
-      data: expect.arrayContaining([
+      data: [
         expect.objectContaining({
+          display_id: 'plab0000000001',
           org_id: 'org_1',
           patient_id: 'patient_1',
-          analyte_code: 'egfr',
-          value_numeric: 42,
+          analyte_code: 'scr',
+          value_numeric: 1.2,
           source_type: 'visit_record',
           source_visit_record_id: 'visit_1',
         }),
         expect.objectContaining({
-          analyte_code: 'scr',
-          value_numeric: 1.2,
+          display_id: 'plab0000000002',
+          analyte_code: 'egfr',
+          value_numeric: 42,
         }),
-      ]),
+      ],
     });
     expect(patientLabObservationCreateManyMock.mock.calls[0][0].data).toHaveLength(2);
   });
@@ -918,6 +948,7 @@ describe('/api/visit-records/[id]', () => {
     expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
     expect(residualMedicationDeleteManyMock).not.toHaveBeenCalled();
     expect(residualMedicationCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdRangeMock).not.toHaveBeenCalled();
   });
 
   it('preserves server-owned handoff metadata when ordinary structured SOAP is patched', async () => {

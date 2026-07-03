@@ -1,5 +1,6 @@
-import type { LabAnalyteCode } from '@prisma/client';
+import type { LabAnalyteCode, Prisma } from '@prisma/client';
 import { formatUtcDateKey } from '@/lib/date-key';
+import { allocateDisplayIdRange } from '@/lib/db/display-id';
 
 type MedicationIssueForQrLab = {
   id: string;
@@ -188,7 +189,7 @@ export async function promoteResolvedQrLabIssueToPatientLabs(
   });
   if (!patient) return { promotedCount: 0, reason: 'patient_not_found' as const };
 
-  let promotedCount = 0;
+  const observationsToCreate: typeof observations = [];
   for (const observation of observations) {
     const existing = await tx.patientLabObservation.findFirst({
       where: {
@@ -200,9 +201,26 @@ export async function promoteResolvedQrLabIssueToPatientLabs(
       select: { id: true },
     });
     if (existing) continue;
+    observationsToCreate.push(observation);
+  }
 
+  const displayIds =
+    observationsToCreate.length > 0
+      ? await allocateDisplayIdRange(
+          tx as unknown as Prisma.TransactionClient,
+          'PatientLabObservation',
+          args.orgId,
+          observationsToCreate.length,
+        )
+      : [];
+
+  let promotedCount = 0;
+  for (const [index, observation] of observationsToCreate.entries()) {
+    const displayId = displayIds[index];
+    if (!displayId) throw new Error('PatientLabObservation display_id allocation range is short');
     await tx.patientLabObservation.create({
       data: {
+        display_id: displayId,
         org_id: args.orgId,
         patient_id: patient.id,
         analyte_code: observation.analyte_code,

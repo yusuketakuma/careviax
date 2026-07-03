@@ -1,4 +1,13 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { allocateDisplayIdMock } = vi.hoisted(() => ({
+  allocateDisplayIdMock: vi.fn(),
+}));
+
+vi.mock('@/lib/db/display-id', () => ({
+  allocateDisplayId: allocateDisplayIdMock,
+}));
+
 import {
   buildQrOtcMedicationProfileFromIssue,
   extractQrOtcCandidate,
@@ -98,6 +107,11 @@ describe('buildQrOtcMedicationProfileFromIssue', () => {
 });
 
 describe('promoteResolvedQrOtcIssueToMedicationProfile', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    allocateDisplayIdMock.mockResolvedValue('m0000000001');
+  });
+
   it('creates a current otc_qr MedicationProfile for an explicitly promoted OTC issue', async () => {
     const medicationProfileCreate = vi.fn().mockResolvedValue({});
     const medicationProfileFindFirst = vi.fn().mockResolvedValue(null);
@@ -138,6 +152,7 @@ describe('promoteResolvedQrOtcIssueToMedicationProfile', () => {
     });
     expect(medicationProfileCreate).toHaveBeenCalledWith({
       data: {
+        display_id: 'm0000000001',
         org_id: 'org_1',
         patient_id: 'patient_1',
         drug_name: 'バファリンA',
@@ -151,6 +166,13 @@ describe('promoteResolvedQrOtcIssueToMedicationProfile', () => {
         source: 'otc_qr',
       },
     });
+    expect(allocateDisplayIdMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        medicationProfile: expect.objectContaining({ create: medicationProfileCreate }),
+      }),
+      'MedicationProfile',
+      'org_1',
+    );
   });
 
   it('links OTC MedicationProfile to DrugMaster through DrugPackage JAN when available', async () => {
@@ -399,5 +421,6 @@ describe('promoteResolvedQrOtcIssueToMedicationProfile', () => {
 
     expect(result).toEqual({ promoted: false, reason: 'duplicate_current_profile' });
     expect(medicationProfileCreate).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
   });
 });

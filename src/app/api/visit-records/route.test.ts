@@ -50,6 +50,7 @@ const {
   listBillingEvidenceBlockersMock,
   buildPatientStateSnapshotMock,
   allocateDisplayIdMock,
+  allocateDisplayIdRangeMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   getRequestAuthContextMock: vi.fn(),
@@ -98,6 +99,7 @@ const {
   listBillingEvidenceBlockersMock: vi.fn(),
   buildPatientStateSnapshotMock: vi.fn(),
   allocateDisplayIdMock: vi.fn(),
+  allocateDisplayIdRangeMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -122,6 +124,7 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/lib/db/display-id', () => ({
   allocateDisplayId: allocateDisplayIdMock,
+  allocateDisplayIdRange: allocateDisplayIdRangeMock,
 }));
 
 vi.mock('@/lib/auth/request-context', async (importOriginal) => {
@@ -982,6 +985,15 @@ describe('/api/visit-records POST', () => {
       display_id: 'miss0000000001',
     });
     allocateDisplayIdMock.mockResolvedValue('miss0000000001');
+    allocateDisplayIdRangeMock.mockImplementation(
+      async (_tx, model: string, _orgId: string, amount: number) => {
+        const prefix = model === 'ResidualMedication' ? 'rmed' : 'plab';
+        return Array.from(
+          { length: amount },
+          (_, index) => `${prefix}${String(index + 1).padStart(10, '0')}`,
+        );
+      },
+    );
     tracingReportFindFirstMock.mockResolvedValue(null);
     tracingReportCreateMock.mockResolvedValue({ id: 'tracing_1' });
     communicationRequestFindFirstMock.mockResolvedValue(null);
@@ -2276,6 +2288,7 @@ describe('/api/visit-records POST', () => {
     expect(residualMedicationCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          display_id: 'rmed0000000001',
           drug_master_id: 'drug_master_amlodipine',
           drug_code: '2149001',
         }),
@@ -2345,6 +2358,7 @@ describe('/api/visit-records POST', () => {
     expect(residualMedicationDeleteManyMock).not.toHaveBeenCalled();
     expect(residualMedicationCreateMock).not.toHaveBeenCalled();
     expect(allocateDisplayIdMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdRangeMock).not.toHaveBeenCalled();
     expect(taskUpsertMock).not.toHaveBeenCalled();
   });
 

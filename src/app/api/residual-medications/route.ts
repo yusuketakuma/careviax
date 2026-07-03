@@ -9,6 +9,7 @@ import { internalError, success, validationError, notFound } from '@/lib/api/res
 import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
+import { allocateDisplayIdRange } from '@/lib/db/display-id';
 import { buildVisitRecordScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
@@ -243,8 +244,17 @@ async function authenticatedPOST(req: NextRequest) {
         };
       }
 
+      const displayIds = await allocateDisplayIdRange(
+        tx,
+        'ResidualMedication',
+        ctx.orgId,
+        medications.length,
+      );
       const created = await Promise.all(
-        medications.map((med) => {
+        medications.map((med, index) => {
+          const displayId = displayIds[index];
+          if (!displayId)
+            throw new Error('ResidualMedication display_id allocation range is short');
           // Calculate excess days: remaining_quantity / prescribed_daily_dose
           let excess_days: number | undefined;
           if (
@@ -257,6 +267,7 @@ async function authenticatedPOST(req: NextRequest) {
 
           return tx.residualMedication.create({
             data: {
+              display_id: displayId,
               org_id: ctx.orgId,
               visit_record_id,
               drug_master_id: med.drug_master_id ?? null,

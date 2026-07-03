@@ -6,11 +6,13 @@ const {
   patientLabObservationCreateMock,
   patientLabObservationFindManyMock,
   visitRecordFindFirstMock,
+  allocateDisplayIdMock,
 } = vi.hoisted(() => ({
   patientFindFirstMock: vi.fn(),
   patientLabObservationCreateMock: vi.fn(),
   patientLabObservationFindManyMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
+  allocateDisplayIdMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -32,6 +34,10 @@ vi.mock('@/lib/db/rls', () => ({
         create: patientLabObservationCreateMock,
       },
     }),
+}));
+
+vi.mock('@/lib/db/display-id', () => ({
+  allocateDisplayId: allocateDisplayIdMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -252,6 +258,7 @@ describe('/api/patients/[id]/labs POST', () => {
         ...args.data,
       }),
     );
+    allocateDisplayIdMock.mockResolvedValue('plab0000000001');
   });
 
   it('rejects non-object lab payloads before loading the patient', async () => {
@@ -320,9 +327,17 @@ describe('/api/patients/[id]/labs POST', () => {
     expect(response.status).toBe(201);
     expect(patientLabObservationCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
+        display_id: 'plab0000000001',
         patient_id: rawPatientId,
       }),
     });
+    expect(allocateDisplayIdMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        patientLabObservation: expect.objectContaining({ create: patientLabObservationCreateMock }),
+      }),
+      'PatientLabObservation',
+      'org_1',
+    );
     expect(JSON.stringify(patientLabObservationCreateMock.mock.calls)).not.toContain(
       encodeURIComponent(rawPatientId),
     );
@@ -349,6 +364,7 @@ describe('/api/patients/[id]/labs POST', () => {
     });
     expect(patientLabObservationCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
+        display_id: 'plab0000000001',
         org_id: 'org_1',
         patient_id: 'patient_1',
         source_type: 'visit_record',
@@ -369,6 +385,7 @@ describe('/api/patients/[id]/labs POST', () => {
     expect(response.status).toBe(400);
     expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
     expect(patientLabObservationCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
   });
 
   it('denies before write when the source visit record belongs to another patient', async () => {
@@ -392,6 +409,7 @@ describe('/api/patients/[id]/labs POST', () => {
       select: { id: true },
     });
     expect(patientLabObservationCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
   });
 
   it('denies before write when the source visit record belongs to another org', async () => {
@@ -415,6 +433,7 @@ describe('/api/patients/[id]/labs POST', () => {
       select: { id: true },
     });
     expect(patientLabObservationCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
   });
 
   it('denies before write when the source visit record is not found in the org/patient scope', async () => {

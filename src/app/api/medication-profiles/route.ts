@@ -7,6 +7,7 @@ import { internalError, notFound, success, validationError } from '@/lib/api/res
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
+import { allocateDisplayId } from '@/lib/db/display-id';
 import { createMedicationProfileSchema } from '@/lib/validations/medication';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
@@ -201,8 +202,10 @@ async function authenticatedPOST(req: NextRequest) {
         }
       }
 
+      const displayId = await allocateDisplayId(tx, 'MedicationProfile', ctx.orgId);
       const profile = await tx.medicationProfile.create({
         data: {
+          display_id: displayId,
           org_id: ctx.orgId,
           patient_id,
           ...(drug_master_id ? { drug_master_id } : {}),
