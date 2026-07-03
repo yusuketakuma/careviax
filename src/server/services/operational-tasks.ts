@@ -10,6 +10,17 @@ type Tx = {
   };
 };
 
+type TaskDisplayIdRow = {
+  id: string;
+  display_id: string | null;
+};
+
+type TaskDisplayIdReader = {
+  task: {
+    findFirst(args: unknown): Promise<TaskDisplayIdRow | null>;
+  };
+};
+
 export type TaskPriority = 'urgent' | 'high' | 'normal' | 'low';
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 
@@ -38,11 +49,64 @@ type ResolveOperationalTaskInput = {
   status?: Extract<TaskStatus, 'completed' | 'cancelled'>;
 };
 
+async function ensureTaskDisplayId(
+  tx: Tx,
+  orgId: string,
+  task: TaskDisplayIdRow,
+): Promise<TaskDisplayIdRow> {
+  if (task.display_id) return task;
+
+  const displayId = await allocateDisplayId(
+    tx as unknown as Prisma.TransactionClient,
+    'Task',
+    orgId,
+  );
+  const filled = await tx.task.updateMany({
+    where: {
+      id: task.id,
+      org_id: orgId,
+      display_id: null,
+    },
+    data: {
+      display_id: displayId,
+    },
+  });
+  const filledCount =
+    typeof filled === 'object' &&
+    filled !== null &&
+    'count' in filled &&
+    typeof filled.count === 'number'
+      ? filled.count
+      : null;
+
+  if (filledCount === 1) {
+    return { ...task, display_id: displayId };
+  }
+  if (filledCount !== 0) {
+    throw new Error('Task display_id fill updated an unexpected number of rows');
+  }
+
+  const current = await (tx as Tx & TaskDisplayIdReader).task.findFirst({
+    where: {
+      id: task.id,
+      org_id: orgId,
+    },
+    select: {
+      id: true,
+      display_id: true,
+    },
+  });
+  if (!current?.display_id) {
+    throw new Error('Task display_id fill did not converge');
+  }
+  return current;
+}
+
 export async function upsertOperationalTask(tx: Tx, input: UpsertOperationalTaskInput) {
   const nextStatus = input.status ?? 'pending';
 
   if (input.dedupeKey) {
-    return tx.task.upsert({
+    const task = (await tx.task.upsert({
       where: {
         org_id_dedupe_key: {
           org_id: input.orgId,
@@ -79,7 +143,12 @@ export async function upsertOperationalTask(tx: Tx, input: UpsertOperationalTask
         metadata: input.metadata ?? Prisma.JsonNull,
         completed_at: nextStatus === 'completed' ? new Date() : null,
       },
-    });
+      select: {
+        id: true,
+        display_id: true,
+      },
+    })) as TaskDisplayIdRow;
+    return ensureTaskDisplayId(tx, input.orgId, task);
   }
 
   const displayId = await allocateDisplayId(

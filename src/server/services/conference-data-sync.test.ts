@@ -89,8 +89,9 @@ function createTx() {
     },
     task: {
       create: vi.fn(),
+      findFirst: vi.fn(),
       updateMany: vi.fn(),
-      upsert: vi.fn(),
+      upsert: vi.fn().mockResolvedValue({ id: 'task_1', display_id: 't0000000001' }),
     },
     visitSchedule: {
       findFirst: vi.fn(),

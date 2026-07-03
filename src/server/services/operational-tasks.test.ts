@@ -1,13 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { taskUpsertMock, taskCreateMock, taskUpdateManyMock, allocateDisplayIdMock } = vi.hoisted(
-  () => ({
-    taskUpsertMock: vi.fn(),
-    taskCreateMock: vi.fn(),
-    taskUpdateManyMock: vi.fn(),
-    allocateDisplayIdMock: vi.fn(),
-  }),
-);
+const {
+  taskUpsertMock,
+  taskCreateMock,
+  taskFindFirstMock,
+  taskUpdateManyMock,
+  allocateDisplayIdMock,
+} = vi.hoisted(() => ({
+  taskUpsertMock: vi.fn(),
+  taskCreateMock: vi.fn(),
+  taskFindFirstMock: vi.fn(),
+  taskUpdateManyMock: vi.fn(),
+  allocateDisplayIdMock: vi.fn(),
+}));
 
 vi.mock('@/lib/db/display-id', () => ({
   allocateDisplayId: allocateDisplayIdMock,
@@ -23,6 +28,7 @@ const tx = {
   task: {
     upsert: taskUpsertMock,
     create: taskCreateMock,
+    findFirst: taskFindFirstMock,
     updateMany: taskUpdateManyMock,
   },
 };
@@ -33,8 +39,8 @@ describe('upsertOperationalTask', () => {
     allocateDisplayIdMock.mockResolvedValue('t0000000001');
   });
 
-  it('upserts when dedupeKey is provided', async () => {
-    taskUpsertMock.mockResolvedValue({ id: 'task-1' });
+  it('keeps dedupe update branch display_id untouched when the task already has one', async () => {
+    taskUpsertMock.mockResolvedValue({ id: 'task-1', display_id: 't0000000007' });
 
     const result = await upsertOperationalTask(tx, {
       orgId: 'org-1',
@@ -43,10 +49,12 @@ describe('upsertOperationalTask', () => {
       dedupeKey: 'dedup-1',
     });
 
-    expect(result).toEqual({ id: 'task-1' });
+    expect(result).toEqual({ id: 'task-1', display_id: 't0000000007' });
     expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(taskUpsertMock).toHaveBeenCalledOnce();
     expect(taskCreateMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+    expect(taskFindFirstMock).not.toHaveBeenCalled();
     const call = taskUpsertMock.mock.calls[0][0];
     expect(call.where.org_id_dedupe_key).toEqual({
       org_id: 'org-1',
@@ -54,6 +62,102 @@ describe('upsertOperationalTask', () => {
     });
     expect(call.create.task_type).toBe('visit_demand');
     expect(call.create.status).toBe('pending');
+    expect(call.create).not.toHaveProperty('display_id');
+    expect(call.update).not.toHaveProperty('display_id');
+    expect(call.select).toEqual({ id: true, display_id: true });
+  });
+
+  it('fills display_id after dedupe upsert creates or returns a null display_id task', async () => {
+    taskUpsertMock.mockResolvedValue({ id: 'task-1', display_id: null });
+    taskUpdateManyMock.mockResolvedValue({ count: 1 });
+
+    const result = await upsertOperationalTask(tx, {
+      orgId: 'org-1',
+      taskType: 'visit_demand',
+      title: 'Test task',
+      dedupeKey: 'dedup-1',
+    });
+
+    expect(result).toEqual({ id: 'task-1', display_id: 't0000000001' });
+    expect(taskUpsertMock).toHaveBeenCalledOnce();
+    expect(allocateDisplayIdMock).toHaveBeenCalledWith(tx, 'Task', 'org-1');
+    expect(taskUpdateManyMock).toHaveBeenCalledOnce();
+    expect(taskUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'task-1',
+        org_id: 'org-1',
+        display_id: null,
+      },
+      data: {
+        display_id: 't0000000001',
+      },
+    });
+    expect(taskFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps display_id out of completed dedupe updates', async () => {
+    taskUpsertMock.mockResolvedValue({ id: 'task-1', display_id: 't0000000007' });
+
+    await upsertOperationalTask(tx, {
+      orgId: 'org-1',
+      taskType: 'visit_demand',
+      title: 'Done task',
+      dedupeKey: 'dedup-1',
+      status: 'completed',
+    });
+
+    const call = taskUpsertMock.mock.calls[0][0];
+    expect(call.update).toMatchObject({
+      task_type: 'visit_demand',
+      title: 'Done task',
+      status: 'completed',
+    });
+    expect(call.update.completed_at).toBeInstanceOf(Date);
+    expect(call.update).not.toHaveProperty('display_id');
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+    expect(taskFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('rereads the task when a concurrent display_id fill wins the CAS update', async () => {
+    taskUpsertMock.mockResolvedValue({ id: 'task-1', display_id: null });
+    taskUpdateManyMock.mockResolvedValue({ count: 0 });
+    taskFindFirstMock.mockResolvedValue({ id: 'task-1', display_id: 't0000000042' });
+
+    const result = await upsertOperationalTask(tx, {
+      orgId: 'org-1',
+      taskType: 'visit_demand',
+      title: 'Test task',
+      dedupeKey: 'dedup-1',
+    });
+
+    expect(result).toEqual({ id: 'task-1', display_id: 't0000000042' });
+    expect(allocateDisplayIdMock).toHaveBeenCalledWith(tx, 'Task', 'org-1');
+    expect(taskFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'task-1',
+        org_id: 'org-1',
+      },
+      select: {
+        id: true,
+        display_id: true,
+      },
+    });
+  });
+
+  it('fails closed when a dedupe task display_id fill does not converge', async () => {
+    taskUpsertMock.mockResolvedValue({ id: 'task-1', display_id: null });
+    taskUpdateManyMock.mockResolvedValue({ count: 0 });
+    taskFindFirstMock.mockResolvedValue({ id: 'task-1', display_id: null });
+
+    await expect(
+      upsertOperationalTask(tx, {
+        orgId: 'org-1',
+        taskType: 'visit_demand',
+        title: 'Test task',
+        dedupeKey: 'dedup-1',
+      }),
+    ).rejects.toThrow('Task display_id fill did not converge');
   });
 
   it('creates when no dedupeKey is provided', async () => {
@@ -70,8 +174,11 @@ describe('upsertOperationalTask', () => {
     expect(allocateDisplayIdMock).toHaveBeenCalledWith(tx, 'Task', 'org-1');
     expect(taskCreateMock).toHaveBeenCalledOnce();
     expect(taskUpsertMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+    expect(taskFindFirstMock).not.toHaveBeenCalled();
     const call = taskCreateMock.mock.calls[0][0];
     expect(call.data.display_id).toBe('t0000000001');
+    expect(call.data.dedupe_key).toBeUndefined();
     expect(call.data.priority).toBe('high');
     expect(call.data.status).toBe('pending');
   });
