@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const { authContextMock, authFailureResponseMock, patientFindManyMock } = vi.hoisted(() => ({
   authContextMock: {
@@ -38,11 +39,6 @@ import { GET } from './route';
 
 function createGetRequest(search = '') {
   return new NextRequest(`http://localhost/api/patients/check-duplicate${search}`);
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/patients/check-duplicate GET', () => {

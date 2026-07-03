@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
@@ -68,11 +69,6 @@ function createGuardedDeleteRequest(expectedUpdatedAt: string) {
   const url = new URL('http://localhost/api/patients/patient_1/insurance/insurance_1');
   url.searchParams.set('expected_updated_at', expectedUpdatedAt);
   return new NextRequest(url, { method: 'DELETE' });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/patients/[id]/insurance/[insuranceId]', () => {

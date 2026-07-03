@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   authPlumbingFailureRef,
@@ -64,11 +65,6 @@ function createRequest() {
     'http://localhost/api/partner-visit-records/partner_visit_record_1/physician-report-draft',
     { method: 'POST' },
   );
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/partner-visit-records/[id]/physician-report-draft POST', () => {

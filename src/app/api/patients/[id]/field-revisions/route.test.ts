@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   patientFindFirstMock,
@@ -33,11 +34,6 @@ function createRequest(search = '') {
   return new NextRequest(`http://localhost/api/patients/patient_1/field-revisions${search}`, {
     headers: { 'x-org-id': 'org_1' },
   });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 const params = { params: Promise.resolve({ id: 'patient_1' }) };
