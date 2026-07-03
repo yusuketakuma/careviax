@@ -7,6 +7,7 @@ const {
   membershipFindManyMock,
   dispatchNotificationEventMock,
   withOrgContextMock,
+  loggerWarnMock,
   loggerErrorMock,
 } = vi.hoisted(() => ({
   integrationJobFindFirstMock: vi.fn(),
@@ -15,6 +16,7 @@ const {
   membershipFindManyMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  loggerWarnMock: vi.fn(),
   loggerErrorMock: vi.fn(),
 }));
 
@@ -45,7 +47,7 @@ vi.mock('@/lib/utils/logger', () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
-    warn: vi.fn(),
+    warn: loggerWarnMock,
     error: loggerErrorMock,
   },
 }));
@@ -102,6 +104,14 @@ describe('runJob', () => {
     expect(fn).not.toHaveBeenCalled();
     expect(result).toEqual({ processedCount: 0, skipped: true });
     expect(integrationJobCreateMock).not.toHaveBeenCalled();
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'job.duplicate_running_skipped',
+        jobType: 'test_job',
+        operation: 'run_job',
+        code: 'JOB_ALREADY_RUNNING',
+      }),
+    );
   });
 
   it('skips duplicate in-process starts before the running row is visible', async () => {
@@ -123,6 +133,15 @@ describe('runJob', () => {
     expect(firstFn).toHaveBeenCalledTimes(1);
     expect(secondFn).not.toHaveBeenCalled();
     expect(integrationJobCreateMock).toHaveBeenCalledTimes(1);
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'job.duplicate_in_process_skipped',
+        jobType: 'test_job',
+        operation: 'run_job',
+        code: 'JOB_IN_PROCESS_ALREADY_RUNNING',
+        orgId: 'org_1',
+      }),
+    );
 
     resolveJob({ processedCount: 1 });
     await expect(first).resolves.toEqual({ processedCount: 1 });

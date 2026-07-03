@@ -1,6 +1,6 @@
 # Refactor State
 
-Snapshot: 2026-07-03 19:52 JST
+Snapshot: 2026-07-03 19:59 JST
 
 ## Phase
 
@@ -12,7 +12,7 @@ Snapshot: 2026-07-03 19:52 JST
 
 ## Last Change ID
 
-- `RR-OBS-20260703-JOB1-runner-safe-log`
+- `RR-OBS-20260703-JOB2-runner-duplicate-skip-safe-log`
 
 ## Build State
 
@@ -21,7 +21,7 @@ Snapshot: 2026-07-03 19:52 JST
   2026-07-03: test `13017` passed (`1302` files), lint `0` errors, colors,
   format, typecheck, typecheck:no-unused, and build all green.
 - Current narrow slice evidence:
-  - Baseline runner/logger suite passed `2` files / `21` tests.
+  - Baseline runner/logger suite passed `2` files / `23` tests.
   - Focused runner/logger suite passed `2` files / `23` tests.
   - `pnpm typecheck`: passed.
   - Scoped ESLint, scoped Prettier check, and scoped diff-check passed.
@@ -44,19 +44,25 @@ Snapshot: 2026-07-03 19:52 JST
 
 ## Current Worktree
 
-- The worktree has an owned separate-track job-runner safe-log slice awaiting
-  Claude/opus verdict and Claude commit. Preserve unrelated dirty files if any
-  appear.
+- The worktree has an owned separate-track job-runner duplicate-skip safe-log
+  slice awaiting Claude/opus verdict and Claude commit. Preserve unrelated
+  dirty files if any appear.
 - Latest separate-track slice changed only `src/server/jobs/runner.ts`,
-  `src/server/jobs/runner.test.ts`, and progress ledgers. It replaces the
+  `src/server/jobs/runner.test.ts`, and progress ledgers. It replaces
+  duplicate DB-running and in-process skip `console.warn` calls with shared
+  safe `logger.warn` calls while preserving skip conditions, skipped return
+  values, no job row creation for DB-running duplicates, in-process
+  `activeJobRuns` behavior, and first job completion. Focused runner/logger
+  tests, `pnpm typecheck`, scoped ESLint, scoped Prettier, and diff-check
+  passed. Full build was not run for this narrow slice.
+- Previous job-runner safe-log slice changed only `src/server/jobs/runner.ts`,
+  `src/server/jobs/runner.test.ts`, and progress ledgers, and landed as
+  `c025b133` after Claude/opus approval. It replaced the
   remaining job-runner `console.error` paths for failed-status cleanup and
   job-failure notification delivery/lookup failures with shared safe
   `logger.error` calls. It preserves the existing `job.execution_failed`
   CloudWatch metric event, `integrationJob.error_log` redaction contract,
   notification best-effort semantics, retry loop, and original error throw.
-  Focused runner/logger tests, `pnpm typecheck`, scoped ESLint, scoped
-  Prettier, and diff-check passed. Full build was not run for this narrow
-  slice.
 - Previous query-helper slice changed only `src/app/api/tasks/route.ts`,
   `src/app/api/tasks/route.test.ts`, and progress ledgers, and landed as
   `07cd78a1` after Claude/opus approval.

@@ -1,8 +1,38 @@
 # Bug Findings
 
-Snapshot: 2026-07-03 19:52 JST
+Snapshot: 2026-07-03 19:59 JST
 
 ## Confirmed And Fixed In Recent Slices
+
+### `BUG-JOB-RUNNER-DUPLICATE-SKIP-CONSOLE-WARN-001`: Duplicate job skip notifications bypassed safe structured logging
+
+- Severity: low observability consistency for integration job duplicate-skip
+  handling.
+- Evidence:
+  - `src/server/jobs/runner.ts`
+  - `src/server/jobs/runner.test.ts`
+  - `src/lib/utils/logger.test.ts`
+- Problem:
+  - After the job failure paths converged on the shared safe logger, duplicate
+    job skip notifications still used direct `console.warn`.
+  - These are not failure paths, but they remained outside the shared
+    structured log contract and produced unstructured stderr output in tests.
+- Impact:
+  - Operators could not filter duplicate DB-running skips and in-process skips
+    through stable event names.
+  - The skip paths were not explicitly tested for the emitted warning context.
+- Fix:
+  - Replace DB-running duplicate skip `console.warn` with
+    `logger.warn({ event: 'job.duplicate_running_skipped', ... })`.
+  - Replace in-process duplicate skip `console.warn` with
+    `logger.warn({ event: 'job.duplicate_in_process_skipped', ... })`.
+  - Preserve duplicate detection, skipped return value, no job row creation for
+    DB-running duplicates, and first in-process job completion.
+- Validation:
+  - Baseline runner/logger suite passed `2` files / `23` tests.
+  - Focused runner/logger suite passed `2` files / `23` tests.
+  - `pnpm typecheck` passed.
+  - Scoped ESLint, Prettier, and diff-check passed.
 
 ### `BUG-JOB-RUNNER-CONSOLE-ERROR-SAFE-LOG-001`: Job runner cleanup and notification failures bypassed safe structured logging
 

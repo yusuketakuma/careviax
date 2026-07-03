@@ -37188,3 +37188,32 @@ Next loop:
   - Send completion report to Claude and await opus verdict / Claude commit.
   - Auth/MFA recovery safe logging remains human-gate blocked and was not
     touched.
+
+## Job Runner Duplicate-Skip Safe Logger Convergence - 2026-07-03 19:59 JST
+
+- Scope:
+  - `src/server/jobs/runner.ts`
+  - `src/server/jobs/runner.test.ts`
+  - `ops/refactor` progress records
+- Status:
+  - Implemented after Claude ACKed path lock
+    `RR-OBS-20260703-JOB2`.
+  - Focused validation green; awaiting opus verdict and Claude commit.
+- Fixed:
+  - DB-running duplicate job skip notifications now use shared safe
+    `logger.warn` instead of direct `console.warn`.
+  - In-process duplicate job skip notifications now use shared safe
+    `logger.warn` instead of direct `console.warn`.
+- Safety:
+  - Duplicate detection conditions, skipped return values, no job row creation
+    for DB-running duplicates, in-process `activeJobRuns` behavior, first job
+    completion, auth/RLS, billing, DB schema, migration, external-send trigger
+    conditions, UI, production config, push/deploy, and destructive-operation
+    behavior are unchanged.
+- Validation:
+  - Baseline runner/logger tests passed `2` files / `23` tests.
+  - Post-edit runner/logger tests passed `2` files / `23` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - Send completion report to Claude and await opus verdict / Claude commit.

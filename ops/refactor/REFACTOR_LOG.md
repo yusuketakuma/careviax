@@ -2607,3 +2607,52 @@ continuity`).
   - Send completion report to Claude and await opus verdict / Claude commit.
   - MFA recovery safe logging remains human-gate blocked by Claude §15 and was
     not touched.
+
+## 2026-07-03 19:59 JST - Job Runner Duplicate-Skip Safe Logger Convergence
+
+- Change ID: `RR-OBS-20260703-JOB2-runner-duplicate-skip-safe-log`.
+- Category: observability consistency / privacy-safe logging.
+- Target:
+  - Integration job runner duplicate skip notifications.
+- Purpose:
+  - Route remaining duplicate-skip `console.warn` notifications through the
+    shared safe logger contract without changing skip behavior.
+- Implementation:
+  - Replaced DB-running duplicate skip `console.warn` with
+    `logger.warn({ event: 'job.duplicate_running_skipped', ... })`.
+  - Replaced in-process duplicate skip `console.warn` with
+    `logger.warn({ event: 'job.duplicate_in_process_skipped', ... })`.
+  - Did not change `logger.ts`.
+- Files changed:
+  - `src/server/jobs/runner.ts`
+  - `src/server/jobs/runner.test.ts`
+- Behavior change:
+  - No job control-flow change intended.
+  - DB-running duplicate detection still returns
+    `{ processedCount: 0, skipped: true }` without creating a job row.
+  - In-process duplicate detection still returns skipped while the first job
+    continues and completes.
+- FE/BE alignment impact:
+  - No API response envelope, route, UI, DB schema, migration, billing, auth,
+    RLS, external-send trigger condition, production config, push/deploy, or
+    destructive operation behavior changed.
+- UI layout impact:
+  - None.
+- Performance impact:
+  - No runtime performance claim.
+- Validation:
+  - Baseline before edit:
+    `./node_modules/.bin/vitest run src/server/jobs/runner.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`
+    passed `2` files / `23` tests.
+  - Post-edit focused suite:
+    `./node_modules/.bin/vitest run src/server/jobs/runner.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`
+    passed `2` files / `23` tests.
+  - `./node_modules/.bin/eslint --max-warnings=0 src/server/jobs/runner.ts src/server/jobs/runner.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`
+    passed.
+  - `./node_modules/.bin/prettier --check src/server/jobs/runner.ts src/server/jobs/runner.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`
+    passed.
+  - `git diff --check -- src/server/jobs/runner.ts src/server/jobs/runner.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - Send completion report to Claude and await opus verdict / Claude commit.

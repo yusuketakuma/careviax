@@ -60,7 +60,13 @@ async function runJobOnce(
 ): Promise<RunJobResult> {
   // Skip if the same job type is already in progress
   if (await isJobAlreadyRunning(jobType, orgId)) {
-    console.warn(`[runner] Skipping duplicate job execution: ${jobType} (already running)`);
+    logger.warn({
+      event: 'job.duplicate_running_skipped',
+      jobType,
+      operation: 'run_job',
+      code: 'JOB_ALREADY_RUNNING',
+      ...(orgId ? { orgId } : {}),
+    });
     return { processedCount: 0, skipped: true };
   }
 
@@ -171,7 +177,13 @@ export async function runJob(
 ): Promise<RunJobResult> {
   const activeKey = jobRunKey(jobType, orgId, dedupeKey);
   if (activeJobRuns.has(activeKey)) {
-    console.warn(`[runner] Skipping duplicate in-process job execution: ${jobType}`);
+    logger.warn({
+      event: 'job.duplicate_in_process_skipped',
+      jobType,
+      operation: 'run_job',
+      code: 'JOB_IN_PROCESS_ALREADY_RUNNING',
+      ...(orgId ? { orgId } : {}),
+    });
     return { processedCount: 0, skipped: true };
   }
 
