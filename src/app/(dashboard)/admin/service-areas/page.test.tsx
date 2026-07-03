@@ -45,12 +45,10 @@ vi.mock('@/lib/service-areas/api-paths', async (importActual) => {
   };
 });
 
-vi.mock('sonner', () => ({
-  toast: {
-    error: vi.fn(),
-    success: vi.fn(),
-  },
-}));
+vi.mock('sonner', async () => {
+  const { createSonnerToastMock } = await import('@/test/sonner-test-utils');
+  return createSonnerToastMock().module;
+});
 
 // Base UI Select renders a portaled listbox that jsdom can't drive; mock it to a native
 // <select> (carrying the trigger's id + className) so existing label/value assertions keep

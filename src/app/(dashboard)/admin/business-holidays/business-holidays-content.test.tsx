@@ -19,12 +19,10 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
 
-vi.mock('sonner', () => ({
-  toast: {
-    error: vi.fn(),
-    success: vi.fn(),
-  },
-}));
+vi.mock('sonner', async () => {
+  const { createSonnerToastMock } = await import('@/test/sonner-test-utils');
+  return createSonnerToastMock().module;
+});
 
 // org-header builders are mocked with SENTINEL returns ('x-test-helper') so the
 // tests prove the component DELEGATES to them. A raw inline `{ 'x-org-id': orgId }`
