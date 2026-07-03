@@ -78,6 +78,8 @@
     "db:e2e:migrate": "DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public tsx tools/scripts/prepare-e2e-db.ts",
     "db:e2e:seed": "DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public prisma db seed",
     "db:e2e:prepare": "DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public pnpm db:e2e:migrate",
+    "db:e2e:rls-proof-role": "psql \"${RLS_PROOF_ADMIN_DATABASE_URL:-postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e}\" -v ON_ERROR_STOP=1 -f tools/scripts/setup-rls-test-role.sql",
+    "test:rls-proof": "RLS_PROOF_ADMIN_DATABASE_URL=\"${RLS_PROOF_ADMIN_DATABASE_URL:-postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e}\" RLS_PROOF_DATABASE_URL=\"${RLS_PROOF_DATABASE_URL:-postgresql://ph_os_app:ph_os_app@localhost:5433/ph_os_e2e}\" vitest run src/lib/db/rls.test.ts --reporter=dot",
     "db:migrate": "prisma migrate dev --schema=prisma/schema/",
     "db:migrate:deploy": "prisma migrate deploy --schema=prisma/schema/",
     "db:seed": "prisma db seed",
