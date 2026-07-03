@@ -4,6 +4,8 @@ import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm, useWatch, type UseFormReturn } from 'react-hook-form';
 import {
   CheckCircle2,
   FileText,
@@ -22,6 +24,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { DataTable } from '@/components/ui/data-table';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
+import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
@@ -30,6 +33,7 @@ import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { cursorPaginatedPageSchema, type CursorPaginatedPage } from '@/lib/api/response-schemas';
 import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
 import { formatYen } from '@/lib/format/currency';
+import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   partnerPharmacySummarySchema,
@@ -577,6 +581,22 @@ const EMPTY_PATIENT_SHARE_CONSENT_FORM: PatientShareConsentForm = {
   allowPdfOutput: false,
   allowAttachments: false,
 };
+
+const patientShareConsentFormSchema = z.object({
+  consentDate: z.string().refine((value) => value.trim().length > 0, {
+    message: '同意日を入力してください',
+  }),
+  // The previous submit gate used trim() only for validity; preserve raw submission values.
+  consentPerson: z.string().refine((value) => value.trim().length > 0, {
+    message: '同意者を入力してください',
+  }),
+  consentMethod: z.enum(['paper_scan', 'digital']),
+  consentRecordId: z.string(),
+  fileAssetId: z.string(),
+  validUntil: z.string(),
+  allowPdfOutput: z.boolean(),
+  allowAttachments: z.boolean(),
+}) satisfies z.ZodType<PatientShareConsentForm>;
 
 const VISIT_REQUEST_VISIT_TYPE_OPTIONS: Array<{
   value: Exclude<VisitRequestVisitType, ''>;
@@ -1368,8 +1388,7 @@ function PatientShareConsentsPanel({
   selectedShareCaseId,
   setSelectedShareCaseId,
   consents,
-  form,
-  setForm,
+  formMethods,
   revokeReasons,
   setRevokeReasons,
   isLoading,
@@ -1384,8 +1403,7 @@ function PatientShareConsentsPanel({
   selectedShareCaseId: string;
   setSelectedShareCaseId: (id: string) => void;
   consents: PatientShareConsentRow[];
-  form: PatientShareConsentForm;
-  setForm: Dispatch<SetStateAction<PatientShareConsentForm>>;
+  formMethods: UseFormReturn<PatientShareConsentForm>;
   revokeReasons: Record<string, string>;
   setRevokeReasons: Dispatch<SetStateAction<Record<string, string>>>;
   isLoading: boolean;
@@ -1396,7 +1414,31 @@ function PatientShareConsentsPanel({
   onCreate: () => void;
   onRevoke: (consent: PatientShareConsentRow, reason: string) => void;
 }) {
+  const watchedForm = useWatch({ control: formMethods.control });
+  const form: PatientShareConsentForm = {
+    ...EMPTY_PATIENT_SHARE_CONSENT_FORM,
+    ...watchedForm,
+  };
   const selectedShareCase = shareCases.find((row) => row.id === selectedShareCaseId) ?? null;
+  const errorSummaryId = 'patient-share-consent-error-summary';
+  const {
+    formState: { errors },
+  } = formMethods;
+  const errorSummaryItems = collectFormErrorSummaryItems(errors, {
+    consentDate: '同意日',
+    consentPerson: '同意者',
+    consentMethod: '方法',
+    consentRecordId: '同意記録ID',
+    fileAssetId: '添付ID',
+    validUntil: '有効期限',
+    allowPdfOutput: 'PDF出力',
+    allowAttachments: '添付閲覧',
+  });
+  function focusErrorSummary() {
+    if (typeof document === 'undefined') return;
+    document.getElementById(errorSummaryId)?.focus();
+  }
+
   const canCreate =
     Boolean(selectedShareCaseId) &&
     Boolean(selectedShareCase) &&
@@ -1426,25 +1468,26 @@ function PatientShareConsentsPanel({
           </NativeSelect>
         </label>
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {errorSummaryItems.length > 0 ? (
+            <div className="sm:col-span-2 xl:col-span-3">
+              <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
+            </div>
+          ) : null}
           <label className="flex flex-col gap-1">
             <FieldLabel>同意日</FieldLabel>
             <Input
               type="date"
-              value={form.consentDate}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, consentDate: event.target.value }))
-              }
+              {...formMethods.register('consentDate')}
               aria-label="患者共有同意日"
+              aria-invalid={!!errors.consentDate}
             />
           </label>
           <label className="flex flex-col gap-1">
             <FieldLabel>同意者</FieldLabel>
             <Input
-              value={form.consentPerson}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, consentPerson: event.target.value }))
-              }
+              {...formMethods.register('consentPerson')}
               aria-label="患者共有同意者"
+              aria-invalid={!!errors.consentPerson}
             />
           </label>
           <label className="flex flex-col gap-1">
@@ -1452,10 +1495,11 @@ function PatientShareConsentsPanel({
             <NativeSelect
               value={form.consentMethod}
               onChange={(value) =>
-                setForm((current) => ({
-                  ...current,
-                  consentMethod: value as PatientShareConsentForm['consentMethod'],
-                }))
+                formMethods.setValue(
+                  'consentMethod',
+                  value as PatientShareConsentForm['consentMethod'],
+                  { shouldDirty: true },
+                )
               }
               ariaLabel="患者共有同意方法"
             >
@@ -1466,41 +1510,32 @@ function PatientShareConsentsPanel({
           <label className="flex flex-col gap-1">
             <FieldLabel>同意記録ID</FieldLabel>
             <Input
-              value={form.consentRecordId}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, consentRecordId: event.target.value }))
-              }
+              {...formMethods.register('consentRecordId')}
               aria-label="患者共有同意記録ID"
+              aria-invalid={!!errors.consentRecordId}
             />
           </label>
           <label className="flex flex-col gap-1">
             <FieldLabel>添付ID</FieldLabel>
             <Input
-              value={form.fileAssetId}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, fileAssetId: event.target.value }))
-              }
+              {...formMethods.register('fileAssetId')}
               aria-label="患者共有同意添付ID"
+              aria-invalid={!!errors.fileAssetId}
             />
           </label>
           <label className="flex flex-col gap-1">
             <FieldLabel>有効期限</FieldLabel>
             <Input
               type="date"
-              value={form.validUntil}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, validUntil: event.target.value }))
-              }
+              {...formMethods.register('validUntil')}
               aria-label="患者共有同意有効期限"
+              aria-invalid={!!errors.validUntil}
             />
           </label>
           <label className="flex min-h-11 items-center gap-2 text-sm">
             <input
               type="checkbox"
-              checked={form.allowPdfOutput}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, allowPdfOutput: event.target.checked }))
-              }
+              {...formMethods.register('allowPdfOutput')}
               aria-label="患者共有同意PDF出力"
               className="size-5 rounded border-border"
             />
@@ -1509,10 +1544,7 @@ function PatientShareConsentsPanel({
           <label className="flex min-h-11 items-center gap-2 text-sm">
             <input
               type="checkbox"
-              checked={form.allowAttachments}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, allowAttachments: event.target.checked }))
-              }
+              {...formMethods.register('allowAttachments')}
               aria-label="患者共有同意添付閲覧"
               className="size-5 rounded border-border"
             />
@@ -1520,7 +1552,11 @@ function PatientShareConsentsPanel({
           </label>
         </div>
         <div className="lg:col-span-2">
-          <Button type="button" disabled={isBusy || !canCreate} onClick={onCreate}>
+          <Button
+            type="button"
+            disabled={isBusy || !canCreate}
+            onClick={formMethods.handleSubmit(() => onCreate(), focusErrorSummary)}
+          >
             <CheckCircle2 className="size-4" aria-hidden="true" />
             同意登録
           </Button>
@@ -2606,9 +2642,10 @@ export function PharmacyCooperationWorkflowContent() {
   const [linkAcceptForms, setLinkAcceptForms] = useState<Record<string, LinkAcceptForm>>({});
   const [linkDeclineReasons, setLinkDeclineReasons] = useState<Record<string, string>>({});
   const [selectedConsentShareCaseId, setSelectedConsentShareCaseId] = useState('');
-  const [consentForm, setConsentForm] = useState<PatientShareConsentForm>(
-    EMPTY_PATIENT_SHARE_CONSENT_FORM,
-  );
+  const consentFormMethods = useForm<PatientShareConsentForm>({
+    resolver: zodResolver(patientShareConsentFormSchema),
+    defaultValues: EMPTY_PATIENT_SHARE_CONSENT_FORM,
+  });
   const [consentRevokeReasons, setConsentRevokeReasons] = useState<Record<string, string>>({});
   const [selectedCorrectionShareCaseId, setSelectedCorrectionShareCaseId] = useState('');
   const [correctionForm, setCorrectionForm] = useState<CorrectionForm>(EMPTY_CORRECTION_FORM);
@@ -2832,27 +2869,28 @@ export function PharmacyCooperationWorkflowContent() {
 
   const createPatientShareConsentMutation = useMutation({
     mutationFn: async () => {
+      const currentConsentForm = consentFormMethods.getValues();
       const response = await fetch(
         `/api/patient-share-cases/${effectiveConsentShareCaseId}/consents`,
         {
           method: 'POST',
           headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
           body: JSON.stringify({
-            consent_date: consentForm.consentDate,
-            consent_person: consentForm.consentPerson,
-            consent_method: consentForm.consentMethod,
+            consent_date: currentConsentForm.consentDate,
+            consent_person: currentConsentForm.consentPerson,
+            consent_method: currentConsentForm.consentMethod,
             scope: {
-              pdf_output: consentForm.allowPdfOutput,
-              attachments: consentForm.allowAttachments,
+              pdf_output: currentConsentForm.allowPdfOutput,
+              attachments: currentConsentForm.allowAttachments,
             },
-            ...(consentForm.consentRecordId.trim()
-              ? { consent_record_id: consentForm.consentRecordId.trim() }
+            ...(currentConsentForm.consentRecordId.trim()
+              ? { consent_record_id: currentConsentForm.consentRecordId.trim() }
               : {}),
-            ...(consentForm.fileAssetId.trim()
-              ? { file_asset_id: consentForm.fileAssetId.trim() }
+            ...(currentConsentForm.fileAssetId.trim()
+              ? { file_asset_id: currentConsentForm.fileAssetId.trim() }
               : {}),
-            ...(consentForm.validUntil.trim()
-              ? { valid_until: consentForm.validUntil.trim() }
+            ...(currentConsentForm.validUntil.trim()
+              ? { valid_until: currentConsentForm.validUntil.trim() }
               : {}),
           }),
         },
@@ -2864,7 +2902,7 @@ export function PharmacyCooperationWorkflowContent() {
     },
     onSuccess: async () => {
       toast.success('患者共有同意を登録しました');
-      setConsentForm(EMPTY_PATIENT_SHARE_CONSENT_FORM);
+      consentFormMethods.reset(EMPTY_PATIENT_SHARE_CONSENT_FORM);
       await invalidateWorkflow();
     },
     onError: (error) => {
@@ -3371,8 +3409,7 @@ export function PharmacyCooperationWorkflowContent() {
           selectedShareCaseId={effectiveConsentShareCaseId}
           setSelectedShareCaseId={setSelectedConsentShareCaseId}
           consents={patientShareConsents}
-          form={consentForm}
-          setForm={setConsentForm}
+          formMethods={consentFormMethods}
           revokeReasons={consentRevokeReasons}
           setRevokeReasons={setConsentRevokeReasons}
           isLoading={patientShareConsentsQuery.isLoading}
