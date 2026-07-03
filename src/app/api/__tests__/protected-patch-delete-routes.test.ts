@@ -474,10 +474,20 @@ describe('protected PATCH/DELETE routes auth matrix', () => {
     });
     txMock.pcaPump.findFirst.mockResolvedValue({
       id: 'pump_1',
+      asset_code: 'PCA-001',
+      serial_number: null,
+      model_name: 'CADD Legacy PCA',
+      manufacturer: null,
       status: 'available',
+      maintenance_due_at: null,
+      notes: null,
+      created_at: new Date('2026-06-18T00:00:00.000Z'),
+      updated_at: new Date('2026-06-18T00:00:00.000Z'),
       rentals: [],
       _count: { rentals: 0 },
     });
+    // 34211256 以降 PATCH は楽観 updateMany claim → 再取得の流れ(claim.count 検査)
+    txMock.pcaPump.updateMany.mockResolvedValue({ count: 1 });
     txMock.pcaPump.update.mockResolvedValue({
       id: 'pump_1',
       asset_code: 'PCA-001',
