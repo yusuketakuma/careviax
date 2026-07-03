@@ -15,6 +15,7 @@ import {
 import { ja } from 'date-fns/locale';
 import { CalendarPlus2, Check, ChevronLeft, ChevronRight, UserPlus, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import { Badge } from '@/components/ui/badge';
 import { StateBadge } from '@/components/ui/state-badge';
 import type { StatusRole } from '@/lib/constants/status-tokens';
@@ -478,7 +479,7 @@ export function ShiftsContent() {
       await queryClient.invalidateQueries({ queryKey: ['pharmacist-shifts', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'シフト保存に失敗しました');
+      toast.error(messageFromError(error, 'シフト保存に失敗しました'));
     },
   });
 
@@ -513,7 +514,7 @@ export function ShiftsContent() {
       await queryClient.invalidateQueries({ queryKey: ['business-holidays', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '休日設定の保存に失敗しました');
+      toast.error(messageFromError(error, '休日設定の保存に失敗しました'));
     },
   });
 
@@ -550,7 +551,7 @@ export function ShiftsContent() {
       await queryClient.invalidateQueries({ queryKey: ['business-holidays', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '休日設定の更新に失敗しました');
+      toast.error(messageFromError(error, '休日設定の更新に失敗しました'));
     },
   });
 
@@ -574,7 +575,7 @@ export function ShiftsContent() {
       await queryClient.invalidateQueries({ queryKey: ['business-holidays', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '休日設定の削除に失敗しました');
+      toast.error(messageFromError(error, '休日設定の削除に失敗しました'));
     },
   });
 
@@ -623,7 +624,7 @@ export function ShiftsContent() {
       await queryClient.invalidateQueries({ queryKey: ['pharmacists', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'メンバー登録に失敗しました');
+      toast.error(messageFromError(error, 'メンバー登録に失敗しました'));
     },
   });
 
@@ -665,7 +666,7 @@ export function ShiftsContent() {
       await queryClient.invalidateQueries({ queryKey: ['pharmacists', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'メンバー更新に失敗しました');
+      toast.error(messageFromError(error, 'メンバー更新に失敗しました'));
     },
   });
 
@@ -708,7 +709,7 @@ export function ShiftsContent() {
       await queryClient.invalidateQueries({ queryKey: ['pharmacists', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '薬剤師状態の更新に失敗しました');
+      toast.error(messageFromError(error, '薬剤師状態の更新に失敗しました'));
     },
   });
 
@@ -755,7 +756,7 @@ export function ShiftsContent() {
       toast.success('前月の同日シフトを下書きへコピーしました');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '前月コピーに失敗しました');
+      toast.error(messageFromError(error, '前月コピーに失敗しました'));
     },
   });
 
@@ -793,7 +794,7 @@ export function ShiftsContent() {
       await queryClient.invalidateQueries({ queryKey: ['pharmacist-shift-templates', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '定型シフトの保存に失敗しました');
+      toast.error(messageFromError(error, '定型シフトの保存に失敗しました'));
     },
   });
 
@@ -820,7 +821,7 @@ export function ShiftsContent() {
       await queryClient.invalidateQueries({ queryKey: ['pharmacist-shift-templates', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '定型シフトの削除に失敗しました');
+      toast.error(messageFromError(error, '定型シフトの削除に失敗しました'));
     },
   });
 
@@ -848,7 +849,7 @@ export function ShiftsContent() {
       await queryClient.invalidateQueries({ queryKey: ['pharmacist-shifts', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '定型シフトの反映に失敗しました');
+      toast.error(messageFromError(error, '定型シフトの反映に失敗しました'));
     },
   });
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bell, BellRing, Loader2, MessageSquareText, ShieldAlert, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminNotificationSettingsShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -403,7 +404,7 @@ export function NotificationSettingsContent() {
         if (!active) return;
         setRulesLoadedOrgId(orgId);
         setRulesLoadError(true);
-        toast.error(error instanceof Error ? error.message : '通知設定の取得に失敗しました');
+        toast.error(messageFromError(error, '通知設定の取得に失敗しました'));
       });
 
     return () => {
@@ -450,9 +451,7 @@ export function NotificationSettingsContent() {
         if (!active) return;
         setEscalationLoadError(true);
         setEscalationLoadedOrgId(orgId);
-        toast.error(
-          error instanceof Error ? error.message : 'エスカレーションルールの取得に失敗しました',
-        );
+        toast.error(messageFromError(error, 'エスカレーションルールの取得に失敗しました'));
       });
 
     return () => {
@@ -541,7 +540,7 @@ export function NotificationSettingsContent() {
           enabled ? `${channelLabel}通知を有効化しました` : `${channelLabel}通知を停止しました`,
         );
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : '通知設定の保存に失敗しました');
+        toast.error(messageFromError(error, '通知設定の保存に失敗しました'));
       } finally {
         setSavingKey(null);
       }
@@ -604,9 +603,7 @@ export function NotificationSettingsContent() {
           isActive ? 'エスカレーションを有効化しました' : 'エスカレーションを停止しました',
         );
       } catch (error) {
-        toast.error(
-          error instanceof Error ? error.message : 'エスカレーションルールの保存に失敗しました',
-        );
+        toast.error(messageFromError(error, 'エスカレーションルールの保存に失敗しました'));
       } finally {
         setSavingKey(null);
       }
@@ -652,9 +649,7 @@ export function NotificationSettingsContent() {
       setNewEscalationThresholdError(null);
       toast.success('エスカレーションルールを追加しました');
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'エスカレーションルールの作成に失敗しました',
-      );
+      toast.error(messageFromError(error, 'エスカレーションルールの作成に失敗しました'));
     } finally {
       setSavingKey(null);
     }
@@ -690,9 +685,7 @@ export function NotificationSettingsContent() {
         setDeleteEscalationTarget((current) => (current?.id === ruleId ? null : current));
         toast.success('エスカレーションルールを削除しました');
       } catch (error) {
-        toast.error(
-          error instanceof Error ? error.message : 'エスカレーションルールの削除に失敗しました',
-        );
+        toast.error(messageFromError(error, 'エスカレーションルールの削除に失敗しました'));
       } finally {
         setSavingKey(null);
       }

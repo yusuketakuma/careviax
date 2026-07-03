@@ -17,6 +17,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import {
   getAdminDrugMasterShortcutLinks,
@@ -662,7 +663,7 @@ function DrugMasterOperationalContent({
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '医薬品マスタ取込に失敗しました');
+      toast.error(messageFromError(error, '医薬品マスタ取込に失敗しました'));
     },
   });
 
@@ -700,7 +701,7 @@ function DrugMasterOperationalContent({
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '一括更新に失敗しました');
+      toast.error(messageFromError(error, '一括更新に失敗しました'));
     },
   });
 
@@ -725,7 +726,7 @@ function DrugMasterOperationalContent({
       await queryClient.invalidateQueries({ queryKey: ['drug-master-status'] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'マスター鮮度チェックに失敗しました');
+      toast.error(messageFromError(error, 'マスター鮮度チェックに失敗しました'));
     },
   });
 
@@ -768,7 +769,7 @@ function DrugMasterOperationalContent({
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '採用品設定の保存に失敗しました');
+      toast.error(messageFromError(error, '採用品設定の保存に失敗しました'));
     },
   });
 
@@ -801,7 +802,7 @@ function DrugMasterOperationalContent({
       await queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-requests'] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '採用品変更申請の作成に失敗しました');
+      toast.error(messageFromError(error, '採用品変更申請の作成に失敗しました'));
     },
   });
 
@@ -841,7 +842,7 @@ function DrugMasterOperationalContent({
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '採用品変更申請の決裁に失敗しました');
+      toast.error(messageFromError(error, '採用品変更申請の決裁に失敗しました'));
     },
   });
 
@@ -909,7 +910,7 @@ function DrugMasterOperationalContent({
     onError: (error) => {
       setBulkPreview(null);
       setBulkPreviewExpanded(false);
-      toast.error(error instanceof Error ? error.message : '採用薬CSVの確認に失敗しました');
+      toast.error(messageFromError(error, '採用薬CSVの確認に失敗しました'));
     },
   });
 
@@ -935,7 +936,7 @@ function DrugMasterOperationalContent({
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '採用薬リストの一括登録に失敗しました');
+      toast.error(messageFromError(error, '採用薬リストの一括登録に失敗しました'));
     },
   });
 
@@ -996,7 +997,7 @@ function DrugMasterOperationalContent({
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '採用薬リストのコピーに失敗しました');
+      toast.error(messageFromError(error, '採用薬リストのコピーに失敗しました'));
     },
   });
 
@@ -1024,9 +1025,7 @@ function DrugMasterOperationalContent({
       await queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-templates'] });
     },
     onError: (error) => {
-      toast.error(
-        error instanceof Error ? error.message : '採用品テンプレートの作成に失敗しました',
-      );
+      toast.error(messageFromError(error, '採用品テンプレートの作成に失敗しました'));
     },
   });
 
@@ -1083,9 +1082,7 @@ function DrugMasterOperationalContent({
       ]);
     },
     onError: (error) => {
-      toast.error(
-        error instanceof Error ? error.message : '採用品テンプレートの適用に失敗しました',
-      );
+      toast.error(messageFromError(error, '採用品テンプレートの適用に失敗しました'));
     },
   });
 
@@ -1108,9 +1105,7 @@ function DrugMasterOperationalContent({
       await queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-templates'] });
     },
     onError: (error) => {
-      toast.error(
-        error instanceof Error ? error.message : '採用品テンプレートの削除に失敗しました',
-      );
+      toast.error(messageFromError(error, '採用品テンプレートの削除に失敗しました'));
     },
   });
 
@@ -1134,7 +1129,7 @@ function DrugMasterOperationalContent({
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '採用薬レビューの記録に失敗しました');
+      toast.error(messageFromError(error, '採用薬レビューの記録に失敗しました'));
     },
   });
 
@@ -1169,9 +1164,7 @@ function DrugMasterOperationalContent({
       ]);
     },
     onError: (error) => {
-      toast.error(
-        error instanceof Error ? error.message : '安全性フォローアップの作成に失敗しました',
-      );
+      toast.error(messageFromError(error, '安全性フォローアップの作成に失敗しました'));
     },
   });
 
@@ -1201,7 +1194,7 @@ function DrugMasterOperationalContent({
       toast.success('採用薬CSVを出力しました');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '採用薬CSVの出力に失敗しました');
+      toast.error(messageFromError(error, '採用薬CSVの出力に失敗しました'));
     },
   });
 
@@ -1231,9 +1224,7 @@ function DrugMasterOperationalContent({
       toast.success('採用薬CSVテンプレートを取得しました');
     },
     onError: (error) => {
-      toast.error(
-        error instanceof Error ? error.message : '採用薬CSVテンプレートの取得に失敗しました',
-      );
+      toast.error(messageFromError(error, '採用薬CSVテンプレートの取得に失敗しました'));
     },
   });
 

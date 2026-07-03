@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import { StateBadge } from '@/components/ui/state-badge';
 import type { StatusRole } from '@/lib/constants/status-tokens';
 import { Badge } from '@/components/ui/badge';
@@ -600,7 +601,7 @@ export function PcaPumpsContent() {
       await invalidateAll();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '保存に失敗しました');
+      toast.error(messageFromError(error, '保存に失敗しました'));
     },
   });
 
@@ -637,7 +638,7 @@ export function PcaPumpsContent() {
       await invalidateAll();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '貸出登録に失敗しました');
+      toast.error(messageFromError(error, '貸出登録に失敗しました'));
     },
   });
 
@@ -662,7 +663,7 @@ export function PcaPumpsContent() {
       await invalidateAll();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '更新に失敗しました');
+      toast.error(messageFromError(error, '更新に失敗しました'));
     },
   });
 
@@ -701,7 +702,7 @@ export function PcaPumpsContent() {
       await invalidateAll();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '状態更新に失敗しました');
+      toast.error(messageFromError(error, '状態更新に失敗しました'));
     },
   });
 
@@ -736,7 +737,7 @@ export function PcaPumpsContent() {
       await invalidateAll();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '返却検品の保存に失敗しました');
+      toast.error(messageFromError(error, '返却検品の保存に失敗しました'));
     },
   });
 

@@ -15,6 +15,7 @@ import {
   Save,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import { z } from 'zod';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -1014,7 +1015,7 @@ export function PharmacyCooperationSetupContent() {
       await invalidateSetup();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '協力薬局の登録に失敗しました');
+      toast.error(messageFromError(error, '協力薬局の登録に失敗しました'));
     },
   });
 
@@ -1044,7 +1045,7 @@ export function PharmacyCooperationSetupContent() {
       await invalidateSetup();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '薬局間連携の作成に失敗しました');
+      toast.error(messageFromError(error, '薬局間連携の作成に失敗しました'));
     },
   });
 
@@ -1072,7 +1073,7 @@ export function PharmacyCooperationSetupContent() {
       await invalidateSetup();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '薬局間連携の有効化に失敗しました');
+      toast.error(messageFromError(error, '薬局間連携の有効化に失敗しました'));
     },
   });
 
@@ -1122,7 +1123,7 @@ export function PharmacyCooperationSetupContent() {
       await invalidateSetup();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '薬局間契約の登録に失敗しました');
+      toast.error(messageFromError(error, '薬局間契約の登録に失敗しました'));
     },
   });
 
@@ -1155,7 +1156,7 @@ export function PharmacyCooperationSetupContent() {
       toast.success('契約書プレビューを作成しました');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '契約書プレビューに失敗しました');
+      toast.error(messageFromError(error, '契約書プレビューに失敗しました'));
     },
   });
 
@@ -1196,7 +1197,7 @@ export function PharmacyCooperationSetupContent() {
       await invalidateSetup();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '契約書の保存に失敗しました');
+      toast.error(messageFromError(error, '契約書の保存に失敗しました'));
     },
   });
 
