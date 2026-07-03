@@ -77,9 +77,10 @@ export function findDeprecationEntry(
   routePath: string,
   method?: string,
 ): DeprecationEntry | undefined {
+  const normalizedMethod = method?.toUpperCase();
   return deprecationCatalog.find((entry) => {
     if (entry.routePath !== routePath) return false;
-    if (!method || !entry.methods) return true;
-    return entry.methods.includes(method);
+    if (!normalizedMethod || !entry.methods) return true;
+    return entry.methods.some((entryMethod) => entryMethod.toUpperCase() === normalizedMethod);
   });
 }

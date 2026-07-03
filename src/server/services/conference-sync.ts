@@ -7,8 +7,8 @@ import {
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { logger } from '@/lib/utils/logger';
 import { addUtcDays, japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { resolveBillingAmountByKey } from './billing-evidence/billing-amount-resolver';
 import { billingMonthForJapanTimestamp } from './billing-evidence/core';
-import { resolveBillingRulesForDate } from './billing-rules';
 
 type ReportType =
   | 'physician_report'
@@ -148,18 +148,6 @@ const CONFERENCE_BILLING_CONFIG = {
     ssot_ref: '調剤報酬点数表 C013 在宅患者訪問薬剤管理指導料 ターミナルケア加算',
   },
 } as const;
-
-/**
- * 指定billing月に有効な医療保険レジストリの ssot_key → amount(点数) マップを返す。
- * 会議由来の請求候補も点数は billing-rules/revisions を唯一の値ソースとする。
- */
-function resolveMedicalAmountByKey(billingMonth: Date): Map<string, number> {
-  return new Map(
-    resolveBillingRulesForDate({ payerBasis: 'medical', asOfDate: billingMonth }).map(
-      (rule) => [rule.ssot_key, rule.amount] as const,
-    ),
-  );
-}
 
 type SupportedBillingNoteType = keyof typeof CONFERENCE_BILLING_CONFIG;
 
@@ -571,7 +559,7 @@ export class ConferenceSyncService {
     const referenceDate = note.conference_date ? new Date(note.conference_date) : new Date();
     const billingMonth = billingMonthForJapanTimestamp(referenceDate);
     const points =
-      resolveMedicalAmountByKey(billingMonth).get(billingConfig.ssot_key) ?? billingConfig.points;
+      resolveBillingAmountByKey(billingMonth).get(billingConfig.ssot_key) ?? billingConfig.points;
 
     const participants = parseParticipants(note.participants);
     const sections = parseStructuredSections(note.structured_content);

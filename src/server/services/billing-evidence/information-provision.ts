@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { normalizeJsonInput } from '@/lib/db/json';
-import { HOME_CARE_BILLING_RULESET_VERSION, resolveBillingRulesForDate } from '../billing-rules';
+import { HOME_CARE_BILLING_RULESET_VERSION } from '../billing-rules';
+import { resolveBillingAmountByKey } from './billing-amount-resolver';
 import type { AdditionalBillingRuleDefinition } from './core';
 import {
   startOfMonth,
@@ -78,18 +79,6 @@ export const INFORMATION_PROVISION_RULES: Record<
     targetLabel: '入院前整理',
   },
 };
-
-/**
- * 指定billing月に有効な医療保険レジストリの ssot_key → amount(点数) マップを返す。
- * 改定切替はレジストリの effectiveFrom/To に委譲する（点数の二重管理を避ける）。
- */
-function resolveBillingAmountByKey(billingMonth: Date): Map<string, number> {
-  return new Map(
-    resolveBillingRulesForDate({ payerBasis: 'medical', asOfDate: billingMonth }).map(
-      (rule) => [rule.ssot_key, rule.amount] as const,
-    ),
-  );
-}
 
 export function parseInformationProvisionFeeType(
   content: Prisma.JsonValue | null | undefined,

@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { normalizeJsonInput } from '@/lib/db/json';
-import { HOME_CARE_BILLING_RULESET_VERSION, resolveBillingRulesForDate } from '../billing-rules';
+import { HOME_CARE_BILLING_RULESET_VERSION } from '../billing-rules';
+import { resolveBillingAmountByKey } from './billing-amount-resolver';
 import type { AdditionalBillingRuleDefinition } from './core';
 import {
   startOfMonth,
@@ -117,19 +118,6 @@ export const HOME_ADVERSE_EVENT_RULES_2026: Record<
 };
 
 const MEDICAL_2026_EFFECTIVE = new Date('2026-06-01');
-
-/**
- * 指定billing月に有効な医療保険レジストリの ssot_key → amount(点数) マップを返す。
- * 点数は billing-rules/revisions を SSOT とし、改定切替はレジストリの effectiveFrom/To に委譲する。
- * 各 fee type → ssot_key の構造マッピング(2024⇔2026で別区分)は下記ルール表が担う。
- */
-function resolveBillingAmountByKey(billingMonth: Date): Map<string, number> {
-  return new Map(
-    resolveBillingRulesForDate({ payerBasis: 'medical', asOfDate: billingMonth }).map(
-      (rule) => [rule.ssot_key, rule.amount] as const,
-    ),
-  );
-}
 
 export function resolveHomeDuplicateRules(
   billingMonth: Date,

@@ -62,9 +62,8 @@ describe('findDeprecationEntry', () => {
   it('matches by routePath + method when the entry restricts methods', () => {
     deprecationCatalog.push(sampleEntry);
     try {
-      expect(findDeprecationEntry('/api/patients/:id/legacy-summary', 'GET')).toEqual(
-        sampleEntry,
-      );
+      expect(findDeprecationEntry('/api/patients/:id/legacy-summary', 'GET')).toEqual(sampleEntry);
+      expect(findDeprecationEntry('/api/patients/:id/legacy-summary', 'get')).toEqual(sampleEntry);
       expect(findDeprecationEntry('/api/patients/:id/legacy-summary', 'POST')).toBeUndefined();
     } finally {
       deprecationCatalog.pop();
