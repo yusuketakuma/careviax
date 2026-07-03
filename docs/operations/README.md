@@ -8,3 +8,4 @@
 - `pmda-onboarding-runbook.md` : PMDA onboarding runbook
 - `target-pharmacy-onboarding-checklist.md` : target pharmacy onboarding checklist
 - `webhook-secret-backfill-runbook.md` : encrypted webhook signing-secret backfill and contract plan
+- `git-hooks.md` : opt-in pre-commit フック（staged ファイル限定の eslint/prettier）の導入手順

@@ -86,7 +86,9 @@
     "format:check": "node tools/scripts/check-format-changed-files.mjs",
     "date-slices:check": "node tools/scripts/check-date-slices.mjs",
     "colors:check": "node tools/scripts/check-raw-state-colors.mjs",
-    "eventbridge-schedules:check": "node tools/scripts/check-eventbridge-schedule-drift.mjs"
+    "boundaries:check": "node tools/scripts/check-module-boundaries.mjs",
+    "eventbridge-schedules:check": "node tools/scripts/check-eventbridge-schedule-drift.mjs",
+    "hooks:install": "git config core.hooksPath tools/git-hooks"
   },
   "dependencies": {
     "@aws-sdk/client-apigatewaymanagementapi": "^3.1065.0",
