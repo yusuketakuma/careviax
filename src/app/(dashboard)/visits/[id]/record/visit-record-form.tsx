@@ -33,6 +33,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSpeechRecognition } from '@/lib/hooks/use-speech-recognition';
 import { useSoapDraft } from '@/lib/hooks/use-soap-draft';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
+import { downscaleImage } from '@/lib/files/downscale-image';
 import { isOfflineEncryptionUnavailableError } from '@/lib/offline/crypto';
 import { listEvidenceDraftSummariesForSchedule } from '@/lib/offline/evidence-drafts';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -905,6 +906,11 @@ export function VisitRecordForm({
   }, [captureLocationPhase, draftHydrated, locationTrackingEnabled]);
 
   async function uploadVisitAttachment(recordId: string, attachment: VisitAttachmentDraft) {
+    // モバイル撮影画像は長辺 1600px / JPEG 品質 0.85 に縮小してから送信する(W2-F1)。
+    // presign の size_bytes は complete 時に S3 実サイズと突合されるため、
+    // 縮小後のファイルを presign 段階から一貫して使う(fail-open: 変換失敗時は元ファイル)。
+    const uploadFile = await downscaleImage(attachment.file);
+
     const presignResponse = await fetch('/api/files/presigned-upload', {
       method: 'POST',
       headers: {
@@ -913,9 +919,9 @@ export function VisitRecordForm({
       },
       body: JSON.stringify({
         purpose: 'visit-photo',
-        file_name: attachment.file.name,
-        mime_type: attachment.file.type,
-        size_bytes: attachment.file.size,
+        file_name: uploadFile.name,
+        mime_type: uploadFile.type,
+        size_bytes: uploadFile.size,
         visit_record_id: recordId,
       }),
     });
@@ -930,7 +936,7 @@ export function VisitRecordForm({
     const uploadResponse = await fetch(presignJson.data.uploadUrl, {
       method: 'PUT',
       headers: presignJson.data.headers,
-      body: attachment.file,
+      body: uploadFile,
     });
 
     if (!uploadResponse.ok) {

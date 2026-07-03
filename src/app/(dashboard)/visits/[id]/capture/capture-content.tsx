@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { downscaleImage } from '@/lib/files/downscale-image';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   saveEvidenceDraft,
@@ -134,15 +135,21 @@ export function EvidenceCaptureContent({
         return;
       }
       const capturedAt = new Date();
-      const dataUrl = await readBlobAsDataUrl(blob);
+      // 端末保存(=オフライン queue)前に長辺 1600px / JPEG 品質 0.85 へ縮小する(W2-F1)。
+      // fail-open: 変換失敗(HEIC 等デコード不能を含む)時は元の Blob をそのまま保存する。
+      const sourceFile =
+        blob instanceof File ? blob : new File([blob], 'capture', { type: mimeType });
+      const resizedFile = await downscaleImage(sourceFile);
+      const resizedMimeType = resizedFile.type || mimeType;
+      const dataUrl = await readBlobAsDataUrl(resizedFile);
       await saveEvidenceDraft({
         orgId,
         scheduleId: visitId,
         patientId: patientContext?.patientId ?? undefined,
         category: selectedCategory,
-        fileName: buildEvidenceDraftFileName(selectedCategory, capturedAt, mimeType),
-        mimeType,
-        sizeBytes: blob.size,
+        fileName: buildEvidenceDraftFileName(selectedCategory, capturedAt, resizedMimeType),
+        mimeType: resizedMimeType,
+        sizeBytes: resizedFile.size,
         dataUrl,
         capturedAt,
       });
