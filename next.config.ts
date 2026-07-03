@@ -9,6 +9,11 @@ import { withSentryConfig } from '@sentry/nextjs';
 const nextConfig: NextConfig = {
   allowedDevOrigins: ['127.0.0.1'],
   output: 'standalone',
+  // Babel-based React Compiler (stable in Next 16). Do NOT set
+  // experimental.turbopackRustReactCompiler — that Rust-based variant is
+  // Turbopack-only and breaks `next build --webpack` (pnpm build is pinned
+  // to webpack). See docs/design/react-compiler-decision.md.
+  reactCompiler: true,
   experimental: {
     authInterrupts: true,
     preloadEntriesOnStart: false,
