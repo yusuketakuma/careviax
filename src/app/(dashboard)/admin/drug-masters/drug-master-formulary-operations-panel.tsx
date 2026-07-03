@@ -1,23 +1,55 @@
 'use client';
 
-import { ClipboardCheck, FileWarning, History, ListChecks } from 'lucide-react';
+import type { Dispatch, SetStateAction } from 'react';
+import {
+  Building2,
+  ClipboardCheck,
+  Copy,
+  Download,
+  FileWarning,
+  History,
+  ListChecks,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
+import { Input } from '@/components/ui/input';
 import { LoadingButton } from '@/components/ui/loading-button';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  type buildBulkPreviewViewModel,
   type buildFormularyOperationsViewModel,
+  formatBulkPreviewStatusLabel,
   formatFormularyRequestActionLabel,
   formatMasterChangeTypeLabel,
   type ImpactQueueKey,
 } from './drug-master-formulary-view-model';
+import {
+  EXPORT_PURPOSE_LABELS,
+  formatFormularyTemplateSummary,
+} from './drug-master-content-format';
 import type {
+  BulkPreviewResponse,
   FormularyChangeRequestItem,
   FormularyChangeRequestListResponse,
+  FormularyCopyPreviewResponse,
+  FormularyExportPurpose,
   FormularyImpactResponse,
   FormularyRecentChange,
   FormularyRequestDecisionTarget,
   FormularyStockSummaryRow,
+  FormularyTemplateItem,
+  FormularyTemplatePreviewResponse,
   FormularyUsageMismatchResponse,
+  PharmacySiteOption,
 } from './drug-master-content-types';
 
 type QueryStatusLike = {
@@ -35,6 +67,23 @@ type ActionMutationLike = {
   mutate: () => void;
 };
 
+type MutationLike<TVariables> = {
+  isPending: boolean;
+  mutate: (variables: TVariables) => void;
+};
+
+type PendingStatusLike = {
+  isPending: boolean;
+};
+
+type MutableRef<T> = {
+  current: T;
+};
+
+type DryRunVariables = {
+  dryRun: boolean;
+};
+
 type StockRequestDecisionVariables = {
   request_id: string;
   decision: 'approve' | 'reject';
@@ -50,40 +99,128 @@ type FormularyOperationsViewModel = ReturnType<
   >
 >;
 
+type BulkPreviewViewModel = ReturnType<
+  typeof buildBulkPreviewViewModel<
+    BulkPreviewResponse['preview']['summary'],
+    BulkPreviewResponse['preview']['rows'][number]
+  >
+>;
+
 export type FormularyOperationsPanelProps = {
   formularyOps: FormularyOperationsViewModel;
+  bulkPreviewVm: BulkPreviewViewModel;
   formularyReviewQuery: QueryStatusLike;
   formularyMissingReorderQuery: QueryStatusLike;
   formularyImpactQuery: QueryStatusLike;
   formularyUsageMismatchQuery: QueryStatusLike;
   formularyRequestsQuery: QueryStatusLike;
+  formularyTemplatesQuery: QueryStatusLike;
   pendingFormularyRequests: FormularyChangeRequestItem[];
   formularyRequestSummary: FormularyChangeRequestListResponse['summary'] | undefined;
   formularyUsageMismatch: FormularyUsageMismatchResponse | undefined;
+  sites: PharmacySiteOption[];
+  copySourceSites: PharmacySiteOption[];
+  formularyTemplates: FormularyTemplateItem[];
+  selectedTemplate: FormularyTemplateItem | null;
+  copySourceSiteId: string;
+  copyOverwrite: boolean;
+  copyPreview: FormularyCopyPreviewResponse | null;
+  templateName: string;
+  templateSearchQuery: string;
+  selectedTemplateId: string;
+  templatePreview: FormularyTemplatePreviewResponse | null;
+  bulkCsv: string;
+  exportPurpose: FormularyExportPurpose;
+  bulkPreviewExpanded: boolean;
   stockRequestDecisionMutation: VariableMutationStatusLike<StockRequestDecisionVariables>;
   safetyFollowUpMutation: ActionMutationLike;
+  copyFormularyMutation: VariableMutationStatusLike<DryRunVariables> &
+    MutationLike<DryRunVariables>;
+  createTemplateMutation: ActionMutationLike;
+  applyTemplateMutation: MutationLike<DryRunVariables> & PendingStatusLike;
+  deleteTemplateMutation: PendingStatusLike;
+  bulkPreviewMutation: ActionMutationLike;
+  bulkImportMutation: ActionMutationLike;
+  templateMutation: ActionMutationLike;
+  exportMutation: ActionMutationLike;
+  reviewMutation: ActionMutationLike;
+  copySourceSiteIdRef: MutableRef<string>;
+  overwriteRef: MutableRef<boolean>;
   effectiveSelectedSiteId: string;
   setImpactQueue: (queue: ImpactQueueKey) => void;
   openDrugDetail: (drugId: string | null) => void;
   setFormularyRequestDecisionTarget: (target: FormularyRequestDecisionTarget) => void;
+  setCopySourceSiteId: (value: string) => void;
+  setCopyOverwrite: (value: boolean) => void;
+  setCopyPreview: (value: FormularyCopyPreviewResponse | null) => void;
+  setTemplateName: (value: string) => void;
+  setTemplateSearchQuery: (value: string) => void;
+  applySelectedTemplateId: (value: string) => void;
+  setTemplatePreview: (value: FormularyTemplatePreviewResponse | null) => void;
+  setDeleteTemplateConfirmOpen: (value: boolean) => void;
+  applyBulkCsv: (value: string) => void;
+  setBulkPreview: (value: BulkPreviewResponse | null) => void;
+  setBulkPreviewExpanded: Dispatch<SetStateAction<boolean>>;
+  setExportPurpose: (value: FormularyExportPurpose) => void;
+  copyCandidateYjCode: (yjCode: string) => Promise<void>;
 };
 
 export function FormularyOperationsPanel({
   formularyOps,
+  bulkPreviewVm,
   formularyReviewQuery,
   formularyMissingReorderQuery,
   formularyImpactQuery,
   formularyUsageMismatchQuery,
   formularyRequestsQuery,
+  formularyTemplatesQuery,
   pendingFormularyRequests,
   formularyRequestSummary,
   formularyUsageMismatch,
+  sites,
+  copySourceSites,
+  formularyTemplates,
+  selectedTemplate,
+  copySourceSiteId,
+  copyOverwrite,
+  copyPreview,
+  templateName,
+  templateSearchQuery,
+  selectedTemplateId,
+  templatePreview,
+  bulkCsv,
+  exportPurpose,
+  bulkPreviewExpanded,
   stockRequestDecisionMutation,
   safetyFollowUpMutation,
+  copyFormularyMutation,
+  createTemplateMutation,
+  applyTemplateMutation,
+  deleteTemplateMutation,
+  bulkPreviewMutation,
+  bulkImportMutation,
+  templateMutation,
+  exportMutation,
+  reviewMutation,
+  copySourceSiteIdRef,
+  overwriteRef,
   effectiveSelectedSiteId,
   setImpactQueue,
   openDrugDetail,
   setFormularyRequestDecisionTarget,
+  setCopySourceSiteId,
+  setCopyOverwrite,
+  setCopyPreview,
+  setTemplateName,
+  setTemplateSearchQuery,
+  applySelectedTemplateId,
+  setTemplatePreview,
+  setDeleteTemplateConfirmOpen,
+  applyBulkCsv,
+  setBulkPreview,
+  setBulkPreviewExpanded,
+  setExportPurpose,
+  copyCandidateYjCode,
 }: FormularyOperationsPanelProps) {
   const {
     reviewDueCount,
@@ -106,6 +243,14 @@ export function FormularyOperationsPanel({
     masterChangeReport,
     impactQueueTotalCount,
   } = formularyOps;
+  const {
+    bulkPreviewSummary,
+    bulkPreviewBlockingCount,
+    bulkPreviewRowsForDisplay,
+    visibleBulkPreviewRows,
+    canApplyBulkPreview,
+  } = bulkPreviewVm;
+  const selectedExportPurposeLabel = EXPORT_PURPOSE_LABELS[exportPurpose];
 
   return (
     <>
@@ -784,6 +929,564 @@ export function FormularyOperationsPanel({
                   </span>
                 </button>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+      <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Building2 className="size-4" aria-hidden="true" />
+            拠点間コピー
+          </h3>
+          <Badge variant="outline" className="text-xs">
+            コピー先: {sites.find((site) => site.id === effectiveSelectedSiteId)?.name ?? '未選択'}
+          </Badge>
+        </div>
+        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(180px,260px)_auto_auto] lg:items-end">
+          <div className="space-y-1">
+            <span
+              id="drug-master-copy-source-label"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              コピー元拠点
+            </span>
+            <Select
+              value={copySourceSiteId}
+              onValueChange={(value) => {
+                const next = value === '__none__' || !value ? '' : value;
+                // P1 race guard: 同期的に ref を更新（effect flush を待たない）。
+                copySourceSiteIdRef.current = next;
+                setCopySourceSiteId(next);
+                setCopyPreview(null);
+              }}
+            >
+              <SelectTrigger
+                id="drug-master-copy-source"
+                aria-labelledby="drug-master-copy-source-label"
+                className="min-h-[44px] w-full sm:min-h-[44px]"
+              >
+                <SelectValue placeholder="選択してください" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__" className="min-h-[44px]">
+                  コピー元拠点を未選択に戻す
+                </SelectItem>
+                {copySourceSites.map((site) => (
+                  <SelectItem key={site.id} value={site.id} className="min-h-[44px]">
+                    {site.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <label className="flex min-h-9 items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={copyOverwrite}
+              onChange={(event) => {
+                // P1 race guard: 同期的に ref を更新（effect flush を待たない）。
+                overwriteRef.current = event.target.checked;
+                setCopyOverwrite(event.target.checked);
+                setCopyPreview(null);
+                setTemplatePreview(null);
+              }}
+              className="size-4 rounded border-input"
+            />
+            既存の採用品設定を上書き
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <LoadingButton
+              type="button"
+              size="sm"
+              variant="outline"
+              loading={
+                copyFormularyMutation.isPending && copyFormularyMutation.variables?.dryRun === true
+              }
+              loadingLabel="確認中"
+              disabled={!effectiveSelectedSiteId || !copySourceSiteId}
+              onClick={() => copyFormularyMutation.mutate({ dryRun: true })}
+              className="gap-1"
+            >
+              <ListChecks className="size-3.5" aria-hidden="true" />
+              コピー差分確認
+            </LoadingButton>
+            <LoadingButton
+              type="button"
+              size="sm"
+              loading={
+                copyFormularyMutation.isPending && copyFormularyMutation.variables?.dryRun === false
+              }
+              loadingLabel="コピー中"
+              disabled={!effectiveSelectedSiteId || !copySourceSiteId}
+              onClick={() => copyFormularyMutation.mutate({ dryRun: false })}
+              className="gap-1"
+            >
+              <ClipboardCheck className="size-3.5" aria-hidden="true" />
+              採用品をコピー
+            </LoadingButton>
+          </div>
+        </div>
+        {copyPreview && (
+          <div className="mt-3 rounded-md border border-border/60 bg-background p-3">
+            <div className="grid gap-2 md:grid-cols-4">
+              <div>
+                <p className="text-xs text-muted-foreground">追加</p>
+                <p className="text-lg font-semibold tabular-nums">
+                  {copyPreview.preview.summary.create_count.toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">上書き</p>
+                <p className="text-lg font-semibold tabular-nums">
+                  {copyPreview.preview.summary.update_count.toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">既存スキップ</p>
+                <p className="text-lg font-semibold tabular-nums">
+                  {copyPreview.preview.summary.skip_existing_count.toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">反映予定</p>
+                <p className="text-lg font-semibold tabular-nums">
+                  {copyPreview.preview.summary.apply_count.toLocaleString()}
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 space-y-1">
+              {copyPreview.preview.rows.slice(0, 3).map((row) => (
+                <div
+                  key={`${row.action}-${row.drug_master_id}`}
+                  className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2 text-xs"
+                >
+                  <span className="min-w-0 font-medium text-foreground">
+                    {row.drug_master.drug_name}
+                  </span>
+                  <span className="flex items-center gap-2 text-muted-foreground">
+                    <span className="font-mono">{row.drug_master.yj_code}</span>
+                    <Badge variant="outline" className="text-xs">
+                      {row.action === 'create'
+                        ? '追加'
+                        : row.action === 'update'
+                          ? '上書き'
+                          : '既存スキップ'}
+                    </Badge>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="mt-3 rounded-md border border-border/60 bg-background p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-sm font-semibold text-foreground">施設別採用品テンプレート</h4>
+            <Badge
+              variant={formularyTemplatesQuery.isError ? 'destructive' : 'outline'}
+              className="text-xs"
+            >
+              {formularyTemplatesQuery.isError
+                ? '取得失敗'
+                : `${formularyTemplates.length.toLocaleString()}件`}
+            </Badge>
+          </div>
+          {formularyTemplatesQuery.isError ? (
+            <ErrorState
+              variant="server"
+              size="inline"
+              headingLevel={3}
+              title="採用品テンプレートを読み込めませんでした"
+              description="施設別採用品テンプレートを表示できていません。0件ではなく取得エラーです。再読み込みしてください。"
+              action={{
+                label: '再読み込み',
+                onClick: () => void formularyTemplatesQuery.refetch(),
+              }}
+              className="mt-3 px-4 py-6"
+            />
+          ) : null}
+          <div className="mt-3">
+            <Input
+              value={templateSearchQuery}
+              onChange={(event) => {
+                setTemplateSearchQuery(event.target.value);
+                applySelectedTemplateId('');
+                setTemplatePreview(null);
+              }}
+              placeholder="テンプレート名・説明で検索"
+              aria-label="採用品テンプレート検索"
+            />
+          </div>
+          <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(160px,1fr)_auto]">
+            <Input
+              value={templateName}
+              onChange={(event) => setTemplateName(event.target.value)}
+              placeholder="例: 在宅内科 標準セット"
+              aria-label="採用品テンプレート名"
+            />
+            <LoadingButton
+              type="button"
+              size="sm"
+              variant="outline"
+              loading={createTemplateMutation.isPending}
+              loadingLabel="作成中"
+              disabled={!effectiveSelectedSiteId || templateName.trim().length === 0}
+              onClick={() => createTemplateMutation.mutate()}
+            >
+              現在の拠点から作成
+            </LoadingButton>
+          </div>
+          <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(160px,1fr)_auto_auto_auto]">
+            <Select
+              value={selectedTemplateId}
+              onValueChange={(value) => {
+                const next = value === '__none__' || !value ? '' : value;
+                // applySelectedTemplateId が state と ref を原子的に同期（race guard）。
+                applySelectedTemplateId(next);
+                setDeleteTemplateConfirmOpen(false);
+                setTemplatePreview(null);
+              }}
+            >
+              <SelectTrigger
+                aria-label="適用する採用品テンプレート"
+                className="min-h-[44px] w-full sm:min-h-[44px]"
+              >
+                <SelectValue placeholder="テンプレートを選択" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__" className="min-h-[44px]">
+                  テンプレートを未選択に戻す
+                </SelectItem>
+                {formularyTemplates.map((template) => (
+                  <SelectItem key={template.id} value={template.id} className="min-h-[44px]">
+                    {template.name}（{template.item_count.toLocaleString()}件）
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <LoadingButton
+              type="button"
+              size="sm"
+              variant="outline"
+              loading={applyTemplateMutation.isPending}
+              loadingLabel="確認中"
+              disabled={!effectiveSelectedSiteId || !selectedTemplateId}
+              onClick={() => applyTemplateMutation.mutate({ dryRun: true })}
+            >
+              適用差分確認
+            </LoadingButton>
+            <LoadingButton
+              type="button"
+              size="sm"
+              loading={applyTemplateMutation.isPending}
+              loadingLabel="適用中"
+              disabled={!effectiveSelectedSiteId || !selectedTemplateId}
+              onClick={() => applyTemplateMutation.mutate({ dryRun: false })}
+            >
+              テンプレートを適用
+            </LoadingButton>
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              disabled={!selectedTemplateId || deleteTemplateMutation.isPending}
+              onClick={() => setDeleteTemplateConfirmOpen(true)}
+              aria-label={
+                selectedTemplate
+                  ? `${formatFormularyTemplateSummary(selectedTemplate)} を削除`
+                  : '採用品テンプレートを削除'
+              }
+              title="採用品テンプレートを削除"
+            >
+              <Trash2 className="size-3.5" aria-hidden="true" />
+            </Button>
+          </div>
+          {templatePreview && (
+            <div className="mt-3 rounded-md border border-border/60 bg-background p-3">
+              <div className="grid gap-2 md:grid-cols-4">
+                <div>
+                  <p className="text-xs text-muted-foreground">追加</p>
+                  <p className="text-lg font-semibold tabular-nums">
+                    {templatePreview.preview.summary.create_count.toLocaleString()}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">上書き</p>
+                  <p className="text-lg font-semibold tabular-nums">
+                    {templatePreview.preview.summary.update_count.toLocaleString()}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">既存スキップ</p>
+                  <p className="text-lg font-semibold tabular-nums">
+                    {templatePreview.preview.summary.skip_existing_count.toLocaleString()}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">反映予定</p>
+                  <p className="text-lg font-semibold tabular-nums">
+                    {templatePreview.preview.summary.apply_count.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 space-y-1">
+                {templatePreview.preview.rows.slice(0, 3).map((row) => (
+                  <div
+                    key={`${row.action}-${row.drug_master_id}`}
+                    className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2 text-xs"
+                  >
+                    <span className="min-w-0 font-medium text-foreground">
+                      {row.drug_master.drug_name}
+                    </span>
+                    <span className="flex items-center gap-2 text-muted-foreground">
+                      <span className="font-mono">{row.drug_master.yj_code}</span>
+                      <Badge variant="outline" className="text-xs">
+                        {row.action === 'create'
+                          ? '追加'
+                          : row.action === 'update'
+                            ? '上書き'
+                            : '既存スキップ'}
+                      </Badge>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-muted-foreground">CSV一括登録</span>
+          <textarea
+            value={bulkCsv}
+            onChange={(event) => {
+              // applyBulkCsv が state と ref を原子的に同期（race guard）。
+              applyBulkCsv(event.target.value);
+              setBulkPreview(null);
+            }}
+            placeholder="YJコード,医薬品名,採用,発注点,優先後発品YJコード,メモ"
+            className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          />
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <LoadingButton
+            type="button"
+            size="sm"
+            variant="outline"
+            loading={bulkPreviewMutation.isPending}
+            loadingLabel="確認中"
+            disabled={!effectiveSelectedSiteId || bulkCsv.trim().length === 0}
+            onClick={() => bulkPreviewMutation.mutate()}
+            className="gap-1"
+          >
+            <ListChecks className="size-3.5" aria-hidden="true" />
+            差分確認
+          </LoadingButton>
+          <LoadingButton
+            type="button"
+            size="sm"
+            loading={bulkImportMutation.isPending}
+            loadingLabel="登録中"
+            disabled={!canApplyBulkPreview}
+            onClick={() => bulkImportMutation.mutate()}
+            className="gap-1"
+          >
+            <Upload className="size-3.5" aria-hidden="true" />
+            一括登録
+          </LoadingButton>
+          <LoadingButton
+            type="button"
+            size="sm"
+            variant="outline"
+            loading={templateMutation.isPending}
+            loadingLabel="取得中"
+            onClick={() => templateMutation.mutate()}
+            className="gap-1"
+          >
+            <Download className="size-3.5" aria-hidden="true" />
+            CSVテンプレート
+          </LoadingButton>
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            CSV出力用途
+            <Select
+              value={exportPurpose}
+              onValueChange={(value) =>
+                setExportPurpose((value ?? exportPurpose) as FormularyExportPurpose)
+              }
+            >
+              <SelectTrigger
+                aria-label="CSV出力用途"
+                className="min-h-[44px] min-w-[160px] sm:min-h-[44px]"
+              >
+                <SelectValue>{selectedExportPurposeLabel}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="operations" className="min-h-[44px]">
+                  運用台帳
+                </SelectItem>
+                <SelectItem value="audit" className="min-h-[44px]">
+                  監査
+                </SelectItem>
+                <SelectItem value="posting" className="min-h-[44px]">
+                  掲示用
+                </SelectItem>
+                <SelectItem value="pharmacist_review" className="min-h-[44px]">
+                  薬剤師レビュー
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <LoadingButton
+            type="button"
+            size="sm"
+            variant="outline"
+            loading={exportMutation.isPending}
+            loadingLabel="出力中"
+            disabled={!effectiveSelectedSiteId}
+            onClick={() => exportMutation.mutate()}
+            className="gap-1"
+          >
+            <Download className="size-3.5" aria-hidden="true" />
+            CSV出力
+          </LoadingButton>
+          <LoadingButton
+            type="button"
+            size="sm"
+            variant="outline"
+            loading={reviewMutation.isPending}
+            loadingLabel="記録中"
+            disabled={
+              !effectiveSelectedSiteId || reviewDueCount === 0 || formularyReviewQuery.isError
+            }
+            onClick={() => reviewMutation.mutate()}
+            className="gap-1"
+          >
+            <ClipboardCheck className="size-3.5" aria-hidden="true" />
+            レビュー済み
+          </LoadingButton>
+        </div>
+      </div>
+      {bulkPreviewSummary && (
+        <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <ListChecks className="size-4" aria-hidden="true" />
+              CSV反映前プレビュー
+            </h3>
+            <Badge variant={bulkPreviewBlockingCount > 0 ? 'destructive' : 'outline'}>
+              {bulkPreviewBlockingCount > 0
+                ? `要確認 ${bulkPreviewBlockingCount.toLocaleString()}件`
+                : '反映可能'}
+            </Badge>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+              <p className="text-xs text-muted-foreground">新規採用</p>
+              <p className="text-lg font-semibold tabular-nums">
+                {bulkPreviewSummary.createCount.toLocaleString()}
+              </p>
+            </div>
+            <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+              <p className="text-xs text-muted-foreground">更新</p>
+              <p className="text-lg font-semibold tabular-nums">
+                {bulkPreviewSummary.updateCount.toLocaleString()}
+              </p>
+            </div>
+            <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+              <p className="text-xs text-muted-foreground">採用解除</p>
+              <p className="text-lg font-semibold tabular-nums">
+                {bulkPreviewSummary.deactivateCount.toLocaleString()}
+              </p>
+            </div>
+            <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+              <p className="text-xs text-muted-foreground">変更なし</p>
+              <p className="text-lg font-semibold tabular-nums">
+                {bulkPreviewSummary.noChangeCount.toLocaleString()}
+              </p>
+            </div>
+            <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+              <p className="text-xs text-muted-foreground">未照合</p>
+              <p className="text-lg font-semibold tabular-nums">
+                {bulkPreviewSummary.unmatchedCount.toLocaleString()}
+              </p>
+            </div>
+            <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+              <p className="text-xs text-muted-foreground">無効</p>
+              <p className="text-lg font-semibold tabular-nums">
+                {bulkPreviewSummary.invalidCount.toLocaleString()}
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 space-y-2">
+            {visibleBulkPreviewRows.map((row) => (
+              <div
+                key={`${row.rowNumber}-${row.status}`}
+                className="rounded-md border border-border/60 bg-background px-3 py-2"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      {row.drug_name ?? row.yj_code ?? `行 ${row.rowNumber}`}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      行 {row.rowNumber}
+                      {row.yj_code ? ` / ${row.yj_code}` : ''}
+                      {row.reason ? ` / ${row.reason}` : ''}
+                    </p>
+                  </div>
+                  <Badge
+                    variant={
+                      ['invalid', 'unmatched'].includes(row.status) ? 'destructive' : 'outline'
+                    }
+                  >
+                    {formatBulkPreviewStatusLabel(row.status)}
+                  </Badge>
+                </div>
+                {row.candidates && row.candidates.length > 0 && (
+                  <div className="mt-2 space-y-1 border-t border-border/60 pt-2">
+                    {row.candidates.map((candidate) => (
+                      <div
+                        key={candidate.id}
+                        className="flex flex-wrap items-center justify-between gap-2 text-xs"
+                      >
+                        <span className="min-w-0 font-medium text-foreground">
+                          {candidate.drug_name}
+                        </span>
+                        <span className="flex items-center gap-2 text-muted-foreground">
+                          <span className="font-mono">{candidate.yj_code}</span>
+                          {candidate.generic_name && <span>{candidate.generic_name}</span>}
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="size-7"
+                            aria-label={`${candidate.drug_name}のYJコードをコピー`}
+                            title="YJコードをコピー"
+                            onClick={() => void copyCandidateYjCode(candidate.yj_code)}
+                          >
+                            <Copy className="size-3.5" aria-hidden="true" />
+                          </Button>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          {bulkPreviewRowsForDisplay.length > 6 && (
+            <div className="mt-3 flex justify-end">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setBulkPreviewExpanded((expanded) => !expanded)}
+              >
+                {bulkPreviewExpanded
+                  ? 'プレビューを6件に絞る'
+                  : `全${bulkPreviewRowsForDisplay.length.toLocaleString()}件を表示`}
+              </Button>
             </div>
           )}
         </div>
