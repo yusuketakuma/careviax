@@ -96,7 +96,7 @@ const { authMock, prismaMock, withOrgContextMock, txMock } = vi.hoisted(() => {
 
   const createDbProxy = () => {
     const cache = new Map<PropertyKey, ReturnType<typeof createModel>>();
-    const queryRaw = vi.fn().mockResolvedValue([{ first_value: 1n }]);
+    const queryRaw = vi.fn().mockResolvedValue([{ first_value: BigInt(1) }]);
     return new Proxy(
       {},
       {
