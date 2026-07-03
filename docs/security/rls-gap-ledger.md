@@ -14,10 +14,10 @@ prisma/migrations と prisma/rls-policies.sql の RLS 有効化実態（ENABLE /
 | 指標 | 件数 |
 | --- | ---: |
 | テナントテーブル（org_id 列を持つモデル） | 126 |
-| RLS 完全被覆（ENABLE+FORCE+POLICY） | 103 |
-| RLS 完全欠落（ギャップ 1a） | 14 |
+| RLS 完全被覆（ENABLE+FORCE+POLICY） | 123 |
+| RLS 完全欠落（ギャップ 1a） | 3 |
 | ENABLE のみ/policy 不完全（即修正対象） | 0 |
-| SSOT ドリフト（migration 済・rls-policies.sql 欠、ギャップ 1b） | 9 |
+| SSOT ドリフト（migration 済・rls-policies.sql 欠、ギャップ 1b） | 0 |
 
 ## 1a. RLS 完全欠落（DB 層 backstop 皆無）
 
@@ -26,18 +26,7 @@ W1-7 で ENABLE+FORCE+tenant_isolation policy を追加する。
 
 | テーブル | finding | 分類 | PHI | 理由 | 対応予定（W1-7） |
 | --- | --- | --- | :---: | --- | --- |
-| `PatientPackagingProfile` | N01 | PHI（最重大） | ⚠️ 有 | 患者一包化プロファイル（服薬・PHI）。RLS 皆無で DB 層テナント分離 backstop が完全欠如。 | W1-7 最優先。ENABLE+FORCE ROW LEVEL SECURITY + tenant_isolation policy を追加。 |
-| `VisitScheduleContactLog` | N07 | PHI（最重大） | ⚠️ 有 | 訪問スケジュールの連絡記録（患者・関係者の連絡先/やり取り、PHI 相当）。RLS 皆無。 | W1-7 で org_id ベース tenant_isolation policy + FORCE を追加。 |
-| `VisitScheduleOverride` | N06 | 運用データ | — | 訪問スケジュール上書き（visit スコープ運用データ）。org_id 列有だが DB backstop 欠如。 | W1-7 で ENABLE+FORCE+tenant_isolation policy を追加。 |
-| `BillingRule` | N14 | org 設定/マスタ | — | 請求ルール設定（org billing config）。org_id 列有だが RLS 皆無。 | W1-7 で ENABLE+FORCE+tenant_isolation policy を追加。 |
-| `BusinessHoliday` | N29 | org 設定/マスタ | — | 営業日/休業日設定（org config）。RLS 皆無。 | W1-7 で ENABLE+FORCE+tenant_isolation policy を追加。 |
-| `FacilityUnit` | N12 | org 設定/マスタ | — | 施設ユニットマスタ（tenant master）。親 Facility は RLS 有で被覆が非対称。 | W1-7 で親 Facility と同じ tenant_isolation policy を追加し被覆を対称化。 |
-| `FormularyChangeRequest` | F79 | org 設定/マスタ | — | 採用薬変更申請（org business config）。全 consumer が app 層で org_id filter 済で latent backstop 欠如。 | W1-7 で ENABLE+FORCE+tenant_isolation policy を追加。 |
-| `FormularyTemplate` | F79/N11 | org 設定/マスタ | — | フォーミュラリテンプレート（org business config）。F79 に内包、app 層 filter 済の latent backstop 欠如。 | W1-7 で FormularyChangeRequest と同時に policy を追加。 |
-| `IntegrationJob` | machine-derived | org 設定/マスタ | — | 外部連携ジョブ（org スコープ）。org_id 列有だが RLS 皆無。手動 finding 一覧から漏れており、schema 機械導出で新規に捕捉。 | W1-7 で ENABLE+FORCE+tenant_isolation policy を追加。ペイロードの PHI 有無も要確認。 |
-| `NotificationRule` | N33 | org 設定/マスタ | — | 通知ルール設定（org config）。RLS 皆無。 | W1-7 で ENABLE+FORCE+tenant_isolation policy を追加。 |
-| `PackagingMethodMaster` | N28 | org 設定/マスタ | — | 一包化方法マスタ（tenant master）。RLS 皆無。 | W1-7 で ENABLE+FORCE+tenant_isolation policy を追加。 |
-| `PharmacySiteInsuranceConfig` | N17 | org 設定/マスタ | — | 拠点別保険設定（org 保険 config）。RLS 皆無。 | W1-7 で ENABLE+FORCE+tenant_isolation policy を追加。 |
+| `IntegrationJob` | machine-derived | 運用データ | ⚠️ 有 | ジョブ実行台帳。org_id は nullable。runner.ts が withOrgContext の外で base prisma を使い create/update する。/api/jobs 管理者経路（refreshMedicalInstitutionMaster/refreshCareServiceOfficeMaster が targetOrgIds:[ctx.orgId] → runJob(..., orgId)）は非 NULL org_id を書き込むため、fail-close の FORCE RLS を張ると当該 INSERT が RLS context missing で throw → master-refresh が 500。input/output(Json?) は job_type 次第で PHI を保持しうるため DB backstop は望ましいが、runner が RLS 対応するまで fail-close RLS は unsafe。 | runner.ts の runJobOnce で orgId が非 NULL のとき create/update を withOrgContext(orgId, tx=>…) に包む（NULL の system 行は base prisma のまま）改修を先行。その後に ENABLE+FORCE+tenant_isolation を追加。 |
 | `PrescriberInstitution` | CXR2-RLS01 | design 判定要 | — | 処方元医療機関。org-scoped（拠点別ディレクトリ）か global master かで RLS 適用要否が変わる。要 design 判定。 | W1-7 前に design 判定。org-scoped なら tenant_isolation、global master なら org_id 列自体の撤去/意図明示。 |
 | `User` | CXR2-RLS02 | design 判定要 | — | 認証/identity テーブル。org_id 列有だが RLS 適用は auth 境界に触れるため慎重。cross-org ユーザー参照の要件を含め design review が必要。 | auth 境界レーンで human 承認のもと design review。RLS 適用可否・cross-org 参照要件を確定してから migration。 |
 
@@ -48,25 +37,18 @@ migration で ENABLE+FORCE+POLICY 済のため本番 DB は保護されている
 
 | テーブル | finding | PHI | 理由 |
 | --- | --- | :---: | --- |
-| `JahisSupplementalRecord` | N03 | ⚠️ 有 | 処方 PHI（JAHIS 補足レコード）。migration で RLS 済だが SSOT ファイルに 0 行。 |
-| `PatientCondition` | N08 | ⚠️ 有 | 患者病態（医療 PHI）。migration で RLS 済だが SSOT ファイルに 0 行。 |
-| `ExternalProfessional` | N02/N13/N15 | — | 外部専門職ディレクトリ。migration で RLS 済だが SSOT ファイルに 0 行。 |
-| `Facility` | N02/N13/N15 | — | 施設マスタ。migration で RLS 済だが SSOT ファイルに 0 行。 |
-| `FacilityContact` | N02/N13/N15 | — | 施設連絡先。migration で RLS 済だが SSOT ファイルに 0 行。 |
-| `PharmacyCooperationMessage` | N04/N09 | — | 薬局連携メッセージ。migration で RLS 済だが SSOT ファイルに 0 行。 |
-| `PharmacyCooperationMessageThread` | N04/N09 | — | 薬局連携メッセージスレッド。migration で RLS 済だが SSOT ファイルに 0 行。 |
-| `SavedView` | N05 | — | 保存ビュー。migration で RLS 済だが SSOT ファイルに 0 行。 |
-| `UatFeedback` | N31 | — | UAT フィードバック。migration で RLS 済だが SSOT ファイルに 0 行。 |
 
 ## 参考: RLS 完全被覆テーブル一覧
 
-以下 103 テーブルは ENABLE+FORCE+POLICY が揃い、SSOT にも反映済み（contract テストで機械検証）。
+以下 123 テーブルは ENABLE+FORCE+POLICY が揃い、SSOT にも反映済み（contract テストで機械検証）。
 
 <details><summary>展開</summary>
 
 - `AuditLog`
 - `BillingCandidate`
 - `BillingEvidence`
+- `BillingRule`
+- `BusinessHoliday`
 - `CareCase`
 - `CareReport`
 - `CareReportSendRequest`
@@ -91,24 +73,34 @@ migration で ENABLE+FORCE+POLICY 済のため本番 DB は保護されている
 - `DrugAlertRule`
 - `EscalationRule`
 - `ExternalAccessGrant`
+- `ExternalProfessional`
+- `Facility`
+- `FacilityContact`
 - `FacilityStandardRegistration`
+- `FacilityUnit`
 - `FacilityVisitBatch`
 - `FileAsset`
 - `FirstVisitDocument`
+- `FormularyChangeRequest`
+- `FormularyTemplate`
 - `HandoffBoard`
 - `IncidentReport`
 - `InquiryRecord`
 - `Intervention`
+- `JahisSupplementalRecord`
 - `ManagementPlan`
 - `MedicationCycle`
 - `MedicationIssue`
 - `MedicationProfile`
 - `Membership`
 - `Notification`
+- `NotificationRule`
 - `PackagingGroup`
+- `PackagingMethodMaster`
 - `PartnerPharmacy`
 - `PartnerVisitRecord`
 - `Patient`
+- `PatientCondition`
 - `PatientFieldRevision`
 - `PatientInsurance`
 - `PatientLabObservation`
@@ -118,6 +110,7 @@ migration で ENABLE+FORCE+POLICY 済のため本番 DB は保護されている
 - `PatientMcsSummary`
 - `PatientMedicalProcedure`
 - `PatientNarcoticUse`
+- `PatientPackagingProfile`
 - `PatientSchedulePreference`
 - `PatientSelfReport`
 - `PatientShareCase`
@@ -133,12 +126,15 @@ migration で ENABLE+FORCE+POLICY 済のため本番 DB は保護されている
 - `PharmacyContract`
 - `PharmacyContractFeeRule`
 - `PharmacyContractVersion`
+- `PharmacyCooperationMessage`
+- `PharmacyCooperationMessageThread`
 - `PharmacyDrugStock`
 - `PharmacyInvoice`
 - `PharmacyInvoiceItem`
 - `PharmacyOperatingHours`
 - `PharmacyPartnership`
 - `PharmacySite`
+- `PharmacySiteInsuranceConfig`
 - `PharmacyVisitRequest`
 - `PrescriptionIntake`
 - `PrescriptionLine`
@@ -146,6 +142,7 @@ migration で ENABLE+FORCE+POLICY 済のため本番 DB は保護されている
 - `QrScanDraft`
 - `Residence`
 - `ResidualMedication`
+- `SavedView`
 - `ServiceArea`
 - `SetAudit`
 - `SetBatch`
@@ -156,11 +153,14 @@ migration で ENABLE+FORCE+POLICY 済のため本番 DB は保護されている
 - `TaskComment`
 - `Template`
 - `TracingReport`
+- `UatFeedback`
 - `VisitBillingCandidate`
 - `VisitHandoffExtraction`
 - `VisitPreparation`
 - `VisitRecord`
 - `VisitSchedule`
+- `VisitScheduleContactLog`
+- `VisitScheduleOverride`
 - `VisitScheduleProposal`
 - `VisitScheduleProposalBatch`
 - `VisitVehicleResource`

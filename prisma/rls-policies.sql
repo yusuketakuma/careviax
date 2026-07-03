@@ -501,9 +501,176 @@ CREATE POLICY tenant_isolation ON "WebhookRegistration"
   USING (org_id = current_setting('app.current_org_id', true))
   WITH CHECK (org_id = current_setting('app.current_org_id', true));
 
--- ─── IntegrationJob (org_id is nullable) ────────────────────────────────────
--- IntegrationJob.org_id is String? (nullable) — skip RLS for safety
--- Jobs with null org_id are system-level and should be accessible regardless
+-- =============================================================================
+-- W1-7: tenant tables that previously had NO DB-layer RLS backstop
+-- (docs/security/rls-gap-ledger.md §1a). ENABLE + FORCE + fail-close policy.
+-- Design-review tables (PrescriberInstitution, User) intentionally excluded.
+-- =============================================================================
+
+-- PHI (最重大).
+ALTER TABLE "PatientPackagingProfile" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PatientPackagingProfile";
+CREATE POLICY tenant_isolation ON "PatientPackagingProfile"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "PatientPackagingProfile" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "VisitScheduleContactLog" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "VisitScheduleContactLog";
+CREATE POLICY tenant_isolation ON "VisitScheduleContactLog"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "VisitScheduleContactLog" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "VisitScheduleOverride" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "VisitScheduleOverride";
+CREATE POLICY tenant_isolation ON "VisitScheduleOverride"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "VisitScheduleOverride" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "BillingRule" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "BillingRule";
+CREATE POLICY tenant_isolation ON "BillingRule"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "BillingRule" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "BusinessHoliday" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "BusinessHoliday";
+CREATE POLICY tenant_isolation ON "BusinessHoliday"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "BusinessHoliday" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "FacilityUnit" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "FacilityUnit";
+CREATE POLICY tenant_isolation ON "FacilityUnit"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "FacilityUnit" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "FormularyChangeRequest" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "FormularyChangeRequest";
+CREATE POLICY tenant_isolation ON "FormularyChangeRequest"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "FormularyChangeRequest" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "FormularyTemplate" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "FormularyTemplate";
+CREATE POLICY tenant_isolation ON "FormularyTemplate"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "FormularyTemplate" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "NotificationRule" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "NotificationRule";
+CREATE POLICY tenant_isolation ON "NotificationRule"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "NotificationRule" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "PackagingMethodMaster" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PackagingMethodMaster";
+CREATE POLICY tenant_isolation ON "PackagingMethodMaster"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "PackagingMethodMaster" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "PharmacySiteInsuranceConfig" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PharmacySiteInsuranceConfig";
+CREATE POLICY tenant_isolation ON "PharmacySiteInsuranceConfig"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "PharmacySiteInsuranceConfig" FORCE ROW LEVEL SECURITY;
+
+-- ─── IntegrationJob — skip RLS for safety (org_id nullable, system jobs) ──────
+-- org_id is nullable and the job runner (src/server/jobs/runner.ts) creates/updates
+-- rows via the BASE prisma client OUTSIDE withOrgContext. The /api/jobs admin path
+-- supplies a non-NULL org_id (refreshMedicalInstitutionMaster/refreshCareServiceOfficeMaster
+-- with targetOrgIds:[ctx.orgId] → runJob(..., orgId)), so a fail-close FORCE-RLS policy
+-- would RAISE 'RLS context missing' on that INSERT and 500 the master-refresh endpoint
+-- under any RLS-enforcing (non-superuser) prod role. System jobs must remain accessible
+-- regardless of context, so RLS is intentionally skipped until the runner is reworked to
+-- run org-scoped writes inside withOrgContext. Tracked in src/tools/rls-known-gaps.ts.
+
+-- =============================================================================
+-- W1-7: SSOT drift sync — tables ENABLE+FORCE+POLICY via migration but missing
+-- from this file (docs/security/rls-gap-ledger.md §1b). Statements below mirror
+-- the FINAL applied migration policy for each table (last migration wins).
+-- =============================================================================
+
+-- JahisSupplementalRecord (PHI) — custom policy name, USING-only, soft context
+-- (matches 20260421090000_jahis_supplemental_records).
+ALTER TABLE "JahisSupplementalRecord" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "jahis_supplemental_record_org_isolation" ON "JahisSupplementalRecord";
+CREATE POLICY "jahis_supplemental_record_org_isolation" ON "JahisSupplementalRecord"
+  USING (org_id = current_setting('app.current_org_id', true));
+ALTER TABLE "JahisSupplementalRecord" FORCE ROW LEVEL SECURITY;
+
+-- PatientCondition (PHI) — fail-close (matches 20260329022000_add_patient_conditions_table).
+ALTER TABLE "PatientCondition" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PatientCondition";
+CREATE POLICY tenant_isolation ON "PatientCondition"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "PatientCondition" FORCE ROW LEVEL SECURITY;
+
+-- Facility / FacilityContact / ExternalProfessional — final state is fail-close after
+-- 20260328234500_rls_context_failsafe re-created their policies with app_enforced_org_id().
+ALTER TABLE "Facility" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "Facility";
+CREATE POLICY tenant_isolation ON "Facility"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "Facility" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "FacilityContact" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "FacilityContact";
+CREATE POLICY tenant_isolation ON "FacilityContact"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "FacilityContact" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "ExternalProfessional" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "ExternalProfessional";
+CREATE POLICY tenant_isolation ON "ExternalProfessional"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "ExternalProfessional" FORCE ROW LEVEL SECURITY;
+
+-- PharmacyCooperationMessage / Thread — fail-close
+-- (matches 20260619223000_add_pharmacy_cooperation_message_threads).
+ALTER TABLE "PharmacyCooperationMessageThread" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PharmacyCooperationMessageThread";
+CREATE POLICY tenant_isolation ON "PharmacyCooperationMessageThread"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "PharmacyCooperationMessageThread" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "PharmacyCooperationMessage" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PharmacyCooperationMessage";
+CREATE POLICY tenant_isolation ON "PharmacyCooperationMessage"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "PharmacyCooperationMessage" FORCE ROW LEVEL SECURITY;
+
+-- SavedView — fail-close (matches 20260614120000_wave2_design_fidelity_contract).
+ALTER TABLE "SavedView" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "SavedView";
+CREATE POLICY tenant_isolation ON "SavedView"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "SavedView" FORCE ROW LEVEL SECURITY;
+
+-- UatFeedback — USING-only, hard current_setting (no `true` arg → THROWS on missing
+-- context; matches 20260328234500_add_uat_feedback).
+ALTER TABLE "UatFeedback" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "UatFeedback";
+CREATE POLICY tenant_isolation ON "UatFeedback"
+  USING (org_id = current_setting('app.current_org_id'));
+ALTER TABLE "UatFeedback" FORCE ROW LEVEL SECURITY;
 
 -- ─── LabelDictionary (no org_id) ────────────────────────────────────────────
 -- Global dictionary, no RLS needed
