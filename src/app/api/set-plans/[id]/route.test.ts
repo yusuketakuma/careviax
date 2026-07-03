@@ -54,6 +54,7 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 }));
 
 import { GET, PATCH } from './route';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 function createRequest(body?: unknown) {
   return new NextRequest('http://localhost/api/set-plans/plan_1', {
@@ -75,11 +76,6 @@ function createMalformedPatchRequest() {
     },
     body: '{"set_method":',
   });
-}
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/set-plans/[id]', () => {

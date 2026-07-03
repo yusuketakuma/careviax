@@ -19,16 +19,12 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 import { GET } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 function createRequest(url = 'http://localhost/api/pharmacy-drug-stocks/template?site_id=site_1') {
   return new NextRequest(url, {
     headers: { 'x-org-id': 'org_1' },
   });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/pharmacy-drug-stocks/template', () => {

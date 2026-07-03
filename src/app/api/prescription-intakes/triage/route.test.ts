@@ -35,16 +35,12 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { GET } from './route';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 function createRequest(query = '') {
   return new NextRequest(`http://localhost/api/prescription-intakes/triage${query}`, {
     headers: { 'x-org-id': 'org_1' },
   });
-}
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 type IntakeFixtureArgs = {

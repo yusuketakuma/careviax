@@ -72,6 +72,7 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 }));
 
 import { POST } from './route';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const CURRENT_UPDATED_AT = '2026-03-01T00:00:00.000Z';
 
@@ -111,11 +112,6 @@ function buildSerializableConflictError() {
     code: 'P2034',
     clientVersion: 'test',
   });
-}
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('set-plans/[id]/generate-batches POST', () => {

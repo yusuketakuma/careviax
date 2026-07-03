@@ -42,6 +42,7 @@ vi.mock('@/lib/utils/logger', () => ({
 }));
 
 import { GET as rawGET } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
@@ -60,11 +61,6 @@ function createShift(id: string, siteId: string) {
       name_kana: `ヤクザイシ ${id}`,
     },
   };
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/pharmacist-shifts/available GET', () => {

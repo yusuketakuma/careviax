@@ -37,14 +37,10 @@ vi.mock('@/server/services/export-audit', () => ({
 
 import { PdfNotFoundError } from '@/server/services/pdf-errors';
 import { GET } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 function createRequest() {
   return new NextRequest('http://localhost/api/tracing-reports/report_1/pdf');
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/tracing-reports/[id]/pdf', () => {

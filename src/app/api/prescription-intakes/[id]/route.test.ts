@@ -49,16 +49,12 @@ vi.mock('@/server/services/patient-write-guard', () => ({
 }));
 
 import { GET, PATCH } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 function createGetRequest() {
   return new NextRequest('http://localhost/api/prescription-intakes/intake_1', {
     method: 'GET',
   });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function createRequest(body: unknown) {

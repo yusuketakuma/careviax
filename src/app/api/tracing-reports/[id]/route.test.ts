@@ -55,6 +55,7 @@ vi.mock('@/lib/utils/logger', () => ({
 }));
 
 import { DELETE, PATCH } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const CURRENT_UPDATED_AT = '2026-03-28T04:30:00.000Z';
 const STALE_UPDATED_AT = '2026-03-28T04:29:59.000Z';
@@ -93,11 +94,6 @@ function createMalformedPatchRequest(headers?: Record<string, string>) {
 const HOSTILE_TRACING_REPORT_ID = 'tracing/with space%2F?x=#';
 const HOSTILE_TRACING_REPORT_PDF_URL =
   '/api/tracing-reports/tracing%2Fwith%20space%252F%3Fx%3D%23/pdf';
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
-}
 
 function expectStructuredLifecycleErrorLog(method: 'PATCH' | 'DELETE', error: Error) {
   expect(loggerErrorMock).toHaveBeenCalledWith(

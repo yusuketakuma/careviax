@@ -45,6 +45,7 @@ vi.mock('@/lib/audit/audit-entry', () => ({
 }));
 
 import { POST as rawPOST } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const routeContext = { params: Promise.resolve({ id: 'visit_request_1' }) };
 const CURRENT_UPDATED_AT = '2026-06-18T00:00:00.000Z';
@@ -59,11 +60,6 @@ function createRequest(body: unknown) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(requestBody),
   });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {

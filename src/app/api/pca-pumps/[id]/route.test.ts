@@ -52,6 +52,7 @@ vi.mock('@/lib/utils/logger', () => ({
 }));
 
 import { DELETE, PATCH } from './route';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/pca-pumps/pump_1', {
@@ -74,11 +75,6 @@ function createDeleteRequest() {
     method: 'DELETE',
     headers: { 'x-org-id': 'org_1' },
   });
-}
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 const observedPumpUpdatedAt = new Date('2026-06-10T00:00:00.000Z');

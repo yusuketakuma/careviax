@@ -49,6 +49,7 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { GET as rawGET, POST as rawPOST } from './route';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
@@ -71,11 +72,6 @@ function createMalformedJsonRequest(role = 'admin') {
     headers: { 'content-type': 'application/json', 'x-test-role': role },
     body: '{',
   });
-}
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function createInstitutionFixture(id: string, name = 'みなとクリニック') {

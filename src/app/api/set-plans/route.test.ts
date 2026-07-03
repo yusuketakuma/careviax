@@ -60,6 +60,7 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 }));
 
 import { GET as rawGET, POST as rawPOST } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const GET = (req: NextRequest) => rawGET(req);
 const POST = (req: NextRequest) => rawPOST(req);
@@ -73,11 +74,6 @@ function createRequest(url: string, body?: unknown) {
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function createMalformedPostRequest() {

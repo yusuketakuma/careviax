@@ -22,6 +22,7 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 import { GET, POST } from './route';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 function createRequest(url: string, body?: unknown) {
   return new NextRequest(url, {
@@ -43,11 +44,6 @@ function createMalformedJsonPostRequest() {
       'x-org-id': 'org_1',
     },
   });
-}
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/pharmacy-drug-stocks', () => {

@@ -25,6 +25,7 @@ vi.mock('@/lib/utils/logger', () => ({
 }));
 
 import { GET } from './route';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 function createRequest(
   url = 'http://localhost/api/pharmacy-drug-stocks/usage-mismatch?site_id=site_1',
@@ -32,11 +33,6 @@ function createRequest(
   return new NextRequest(url, {
     headers: { 'x-org-id': 'org_1' },
   });
-}
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {

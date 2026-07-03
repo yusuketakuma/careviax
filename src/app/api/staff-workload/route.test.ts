@@ -73,14 +73,10 @@ vi.mock('@/lib/utils/performance', () => ({
 }));
 
 import { GET } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 function createRequest(url: string) {
   return new NextRequest(url);
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/staff-workload', () => {

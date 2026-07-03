@@ -27,14 +27,10 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 import { GET } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 const routeGET = (req: NextRequest) => GET(req, emptyRouteContext);
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
-}
 
 afterEach(() => {
   vi.useRealTimers();

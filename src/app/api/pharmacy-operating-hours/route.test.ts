@@ -57,6 +57,7 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { GET as rawGET, PUT as rawPUT } from './route';
 import type { PharmacyOperatingHoursPutInput } from '@/lib/validations/pharmacy-operating-hours';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
@@ -80,11 +81,6 @@ function createMalformedPutRequest() {
     headers: { 'content-type': 'application/json' },
     body: '{bad-json',
   });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function weeklyRows(): PharmacyOperatingHoursPutInput['rows'] {

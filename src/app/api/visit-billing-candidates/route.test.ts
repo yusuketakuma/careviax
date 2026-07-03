@@ -47,6 +47,7 @@ vi.mock('@/lib/audit/audit-entry', () => ({
 }));
 
 import { GET as rawGET, POST as rawPOST } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
@@ -62,11 +63,6 @@ function createRequest(body: unknown) {
 
 function createGetRequest(query = '') {
   return new NextRequest(`http://localhost/api/visit-billing-candidates${query}`);
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function confirmedPartnerRecord(overrides: Partial<Record<string, unknown>> = {}) {

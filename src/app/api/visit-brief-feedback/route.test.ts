@@ -16,6 +16,7 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { POST } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/visit-brief-feedback', {
@@ -35,11 +36,6 @@ function createMalformedJsonRequest() {
     },
     body: '{',
   });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/visit-brief-feedback POST', () => {

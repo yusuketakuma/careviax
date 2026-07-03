@@ -125,6 +125,7 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 import { GET as rawGET, POST as rawPOST } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const emptyRouteContext: TestRouteContext = { params: Promise.resolve({}) };
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
@@ -148,11 +149,6 @@ function createMalformedJsonRequest() {
 
 function createGetRequest(url: string) {
   return new NextRequest(url);
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function withDrugMasterDelegate<T extends object>(tx: T) {

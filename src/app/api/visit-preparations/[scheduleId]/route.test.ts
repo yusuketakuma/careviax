@@ -137,6 +137,7 @@ vi.mock('@/server/services/operational-tasks', async (importOriginal) => {
 });
 
 import { GET, PUT } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 function createRequest(headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/visit-preparations/schedule_1', {
@@ -167,11 +168,6 @@ function createMalformedJsonPutRequest(headers: Record<string, string> = { 'x-or
     },
     body: '{"medication_changes_reviewed":',
   });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 const completePreparationBody = {

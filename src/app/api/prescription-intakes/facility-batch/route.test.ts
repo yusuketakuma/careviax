@@ -58,6 +58,7 @@ vi.mock('@/lib/utils/logger', () => ({
 }));
 
 import { POST as rawPOST } from './route';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const POST = (req: NextRequest) => rawPOST(req);
 
@@ -75,11 +76,6 @@ function createMalformedJsonRequest() {
     body: '{"entries":',
     headers: { 'content-type': 'application/json' },
   });
-}
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 const PATIENT_1_IDENTITY_SNAPSHOT = {

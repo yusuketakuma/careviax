@@ -76,6 +76,7 @@ vi.mock('@/lib/utils/logger', () => ({
 }));
 
 import { GET as rawGET, POST as rawPOST } from './route';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 
@@ -108,11 +109,6 @@ function createGetRequest(query = '') {
   return new NextRequest(`http://localhost/api/pharmacists${query}`, {
     headers: { 'x-org-id': 'org_1' },
   });
-}
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 afterEach(() => {

@@ -32,6 +32,7 @@ vi.mock('@/lib/utils/logger', () => ({
 }));
 
 import { POST } from './route';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/pharmacy-drug-stocks/bulk', {
@@ -77,11 +78,6 @@ async function readBulkPayload(response: Response): Promise<BulkPayload> {
     },
   });
   return payload as BulkPayload;
-}
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/pharmacy-drug-stocks/bulk', () => {

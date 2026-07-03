@@ -34,16 +34,12 @@ vi.mock('@/server/services/visit-brief', () => ({
 }));
 
 import { GET } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 function createRequest(headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/visit-preparations/schedule_1/brief', {
     headers,
   });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/visit-preparations/[scheduleId]/brief', () => {
