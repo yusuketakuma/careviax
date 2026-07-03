@@ -302,6 +302,47 @@ describe('PartnerCooperationBillingContent', () => {
     expect(screen.getByText('対象月の集計取得に失敗しました。再試行してください。')).toBeTruthy();
   });
 
+  it('shows the contract error state and retries instead of falsely rendering an empty contract selector', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    let contractsCallCount = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('/api/pharmacy-contracts?')) {
+        contractsCallCount += 1;
+        if (contractsCallCount === 1) {
+          return new Response(JSON.stringify({ message: 'internal error' }), { status: 500 });
+        }
+        return originalFetch!(input, init);
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('有効な薬局間契約を表示できません')).toBeTruthy();
+    expect(screen.getByText('契約一覧の取得に失敗しました。再試行してください。')).toBeTruthy();
+    expect(screen.queryByLabelText('対象契約')).toBeNull();
+    expect(
+      screen.getByText('契約一覧を取得できませんでした。上の「再試行」から取得し直してください。'),
+    ).toBeTruthy();
+
+    // Contract fetch failing must not blank out unrelated billing UI (no false-empty of the wider page).
+    expect(await screen.findByText('協力訪問記録')).toBeTruthy();
+    expect(
+      (screen.getByRole('button', { name: /請求書ドラフト/ }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+
+    await screen.findByText(/選択中: 基幹薬局/);
+    expect(screen.getByLabelText('対象契約')).toBeTruthy();
+    expect(
+      (screen.getByRole('button', { name: /請求書ドラフト/ }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(contractsCallCount).toBeGreaterThanOrEqual(2);
+  });
+
   it('rejects malformed invoice draft success payloads before rendering the draft result', async () => {
     const originalFetch = vi.mocked(fetch).getMockImplementation();
     expect(originalFetch).toBeTruthy();

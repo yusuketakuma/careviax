@@ -1126,14 +1126,37 @@ export function PartnerCooperationBillingContent() {
                 </span>
               ) : null}
             </label>
-            <ContractSelector
-              contracts={contracts}
-              value={effectiveContractId}
-              onChange={(value) => {
-                setSelectedContractId(value);
-                setLastDraft(null);
-              }}
-            />
+            {contractsQuery.isLoading ? (
+              <div className="grid gap-1.5 text-sm font-medium text-foreground">
+                対象契約
+                <Skeleton className="h-11 rounded-lg sm:h-8" />
+              </div>
+            ) : contractsQuery.isError ? (
+              <div className="grid gap-1.5 text-sm font-medium text-foreground">
+                対象契約
+                <ErrorState
+                  variant="server"
+                  size="inline"
+                  title="有効な薬局間契約を表示できません"
+                  description="契約一覧の取得に失敗しました。再試行してください。"
+                  detail={safeErrorDetail()}
+                  action={{
+                    label: '再試行',
+                    size: 'sm',
+                    onClick: () => void contractsQuery.refetch(),
+                  }}
+                />
+              </div>
+            ) : (
+              <ContractSelector
+                contracts={contracts}
+                value={effectiveContractId}
+                onChange={(value) => {
+                  setSelectedContractId(value);
+                  setLastDraft(null);
+                }}
+              />
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -1170,6 +1193,8 @@ export function PartnerCooperationBillingContent() {
               選択中: {selectedContract.partnership.base_site.name} /{' '}
               {selectedContract.partnership.partner_pharmacy.name} / 契約 {selectedContract.id}
             </span>
+          ) : contractsQuery.isError ? (
+            <span>契約一覧を取得できませんでした。上の「再試行」から取得し直してください。</span>
           ) : (
             <span>有効な薬局間契約を作成すると、請求書と無償実績報告書を生成できます。</span>
           )}
