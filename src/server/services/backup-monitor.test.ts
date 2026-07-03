@@ -223,6 +223,86 @@ describe('backup-monitor', () => {
     }
   });
 
+  it('logs default backup check failures through the safe logger without raw provider details', async () => {
+    process.env.RDS_DB_INSTANCE_ID = 'ph-os-prod';
+    process.env.S3_BUCKET_NAME = 'ph-os-files';
+    process.env.AUDIT_LOG_ARCHIVE_BUCKET_NAME = 'ph-os-audit';
+    process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID = 'pool_1';
+    const consoleErrorMock = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const rawFailure = new Error(
+      'aws provider failed token=secret db_password=value bucket=ph-os-files snapshot=snapshot_1 pool=pool_1',
+    );
+
+    rdsSendMock.mockRejectedValueOnce(rawFailure);
+    await expect(checkRdsSnapshot()).resolves.toMatchObject({
+      status: 'error',
+      message: 'RDS snapshot check failed',
+    });
+
+    s3SendMock.mockRejectedValueOnce(rawFailure);
+    await expect(checkS3Versioning()).resolves.toMatchObject({
+      status: 'error',
+      message: 'S3 versioning check failed',
+    });
+
+    s3SendMock.mockRejectedValueOnce(rawFailure);
+    await expect(checkAuditLogArchivePolicy()).resolves.toMatchObject({
+      status: 'error',
+      message: 'Audit archive lifecycle check failed',
+    });
+
+    cognitoSendMock.mockRejectedValueOnce(rawFailure);
+    await expect(checkCognitoAdvancedSecurity()).resolves.toMatchObject({
+      status: 'error',
+      message: 'Cognito Advanced Security check failed',
+    });
+
+    expect(consoleErrorMock).toHaveBeenCalledTimes(4);
+    const entries = consoleErrorMock.mock.calls.map(([line]) => {
+      return JSON.parse(String(line)) as Record<string, unknown>;
+    });
+    expect(entries.map((entry) => entry.operation)).toEqual([
+      'rds_snapshot_check',
+      's3_versioning_check',
+      'audit_archive_lifecycle_check',
+      'cognito_advanced_security_check',
+    ]);
+    for (const entry of entries) {
+      expect(entry).toMatchObject({
+        level: 'error',
+        message: 'backup_monitor_check_failed',
+        event: 'backup_monitor_check_failed',
+        externalProvider: 'aws',
+        error_name: 'Error',
+      });
+      expect(entry).not.toHaveProperty('stack');
+      expect(entry).not.toHaveProperty('error_message');
+    }
+    const logged = JSON.stringify(entries);
+    expect(logged).not.toContain('token=secret');
+    expect(logged).not.toContain('db_password=value');
+    expect(logged).not.toContain('ph-os-prod');
+    expect(logged).not.toContain('ph-os-files');
+    expect(logged).not.toContain('ph-os-audit');
+    expect(logged).not.toContain('snapshot_1');
+    expect(logged).not.toContain('pool_1');
+  });
+
+  it('keeps backup checks fail-soft when the default logging sink throws', async () => {
+    process.env.S3_BUCKET_NAME = 'ph-os-files';
+    const consoleErrorMock = vi.spyOn(console, 'error').mockImplementation(() => {
+      throw new Error('console sink failed token=secret');
+    });
+
+    s3SendMock.mockRejectedValueOnce(new Error('aws provider failed token=secret'));
+    await expect(checkS3Versioning()).resolves.toMatchObject({
+      status: 'error',
+      message: 'S3 versioning check failed',
+    });
+
+    expect(consoleErrorMock).toHaveBeenCalledTimes(2);
+  });
+
   it('skips the S3 versioning check when the bucket is not configured', async () => {
     await expect(checkS3Versioning()).resolves.toMatchObject({
       status: 'skipped',

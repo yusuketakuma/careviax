@@ -2765,3 +2765,63 @@ continuity`).
 - Remaining:
   - Full build was not run for this narrow observability slice.
   - Await Claude/opus verdict; this slice is intentionally not self-committed.
+
+## 2026-07-03 20:33 JST - Backup Monitor Default Safe Logger
+
+- Change ID: `RR-OBS-20260703-BM1-backup-monitor-safe-log`.
+- Category: maintainability / observability safe-log convergence.
+- Target:
+  - `src/server/services/backup-monitor.ts` default AWS check failure logging.
+- Purpose:
+  - Replace the no-injected-logger direct `console.error` fallback with the
+    shared safe logger while preserving backup compliance monitor result
+    semantics.
+- Implementation:
+  - Imported the shared logger as `safeLogger`.
+  - Kept the explicit `options.logger.error(message, err)` override contract
+    unchanged for tests and custom monitor wiring.
+  - Routed the default sink through
+    `logger.error({ event: 'backup_monitor_check_failed', operation, externalProvider: 'aws' }, err)`.
+  - Added fixed safe operations for RDS snapshot, S3 versioning, audit archive
+    lifecycle, and Cognito Advanced Security checks.
+  - Preserved the original console fallback intent as an insurance path if the
+    shared logger sink fails; fallback still receives only the previously
+    sanitized fixed-message `Error`.
+  - Added a final swallow for double logging-sink failure so logging cannot
+    alter backup monitor results.
+- Files changed:
+  - `src/server/services/backup-monitor.ts`
+  - `src/server/services/backup-monitor.test.ts`
+- Behavior change:
+  - No monitor result behavior change intended.
+  - All `BackupCheckResult` statuses/messages/details, skipped-check behavior,
+    AWS SDK dynamic loading, regional client caching, timeout wrapping, and
+    `runBackupMonitorChecks()` overall calculation are unchanged.
+  - The only intended output change is structured safe logging for the default
+    no-injected-logger error sink.
+- FE/BE alignment impact:
+  - No API response envelope, route, UI, DB schema, migration, billing, auth,
+    RLS, alert/notification trigger condition, production config, push/deploy,
+    or destructive operation behavior changed.
+- UI layout impact:
+  - None.
+- Performance impact:
+  - No runtime performance claim.
+- Validation:
+  - Baseline before edit:
+    `./node_modules/.bin/vitest run src/server/services/backup-monitor.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`
+    passed `2` files / `19` tests.
+  - Post-edit focused suite:
+    `./node_modules/.bin/vitest run src/server/services/backup-monitor.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`
+    passed `2` files / `21` tests.
+  - `./node_modules/.bin/eslint --max-warnings=0 src/server/services/backup-monitor.ts src/server/services/backup-monitor.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`
+    passed.
+  - `./node_modules/.bin/prettier --check src/server/services/backup-monitor.ts src/server/services/backup-monitor.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts CODEX_GOAL_PROGRESS.md ops/refactor/STATE.md ops/refactor/INCONSISTENCY_FINDINGS.md ops/refactor/REFACTOR_LOG.md ops/refactor/VERIFICATION.md`
+    passed.
+  - `git diff --check -- src/server/services/backup-monitor.ts src/server/services/backup-monitor.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts CODEX_GOAL_PROGRESS.md .codex/ralph-state.md ops/refactor/STATE.md ops/refactor/INCONSISTENCY_FINDINGS.md ops/refactor/REFACTOR_LOG.md ops/refactor/VERIFICATION.md`
+    passed.
+  - `pnpm typecheck` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Remaining:
+  - Full build was not run for this narrow observability slice.
+  - Await Claude/opus verdict; this slice is intentionally not self-committed.

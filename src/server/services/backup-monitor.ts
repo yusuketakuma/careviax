@@ -4,6 +4,7 @@
  */
 
 import { awsClientConfig, withAwsClientTimeout } from '@/lib/aws/client-timeout';
+import { logger as safeLogger } from '@/lib/utils/logger';
 
 export type BackupCheckResult = {
   status: 'ok' | 'warning' | 'error' | 'skipped';
@@ -18,6 +19,12 @@ export type BackupMonitorLogger = {
 type BackupMonitorOptions = {
   logger?: BackupMonitorLogger;
 };
+
+type BackupMonitorOperation =
+  | 'rds_snapshot_check'
+  | 's3_versioning_check'
+  | 'audit_archive_lifecycle_check'
+  | 'cognito_advanced_security_check';
 
 type AwsClient<TResponse> = {
   send: (cmd: unknown, options?: { abortSignal?: AbortSignal }) => Promise<TResponse>;
@@ -97,8 +104,30 @@ function logBackupMonitorError(
   options: BackupMonitorOptions | undefined,
   message: string,
   err: unknown,
+  operation: BackupMonitorOperation,
 ) {
-  (options?.logger?.error ?? console.error)(message, err);
+  if (options?.logger?.error) {
+    options.logger.error(message, err);
+    return;
+  }
+
+  try {
+    safeLogger.error(
+      {
+        event: 'backup_monitor_check_failed',
+        operation,
+        externalProvider: 'aws',
+      },
+      err,
+    );
+  } catch (loggerError) {
+    try {
+      console.error(message, err);
+    } catch (consoleError) {
+      void loggerError;
+      void consoleError;
+    }
+  }
 }
 
 async function loadRdsModule() {
@@ -219,6 +248,7 @@ export async function checkRdsSnapshot(
       options,
       '[backup-monitor] RDS snapshot check failed:',
       new Error(message),
+      'rds_snapshot_check',
     );
     return {
       status: 'error',
@@ -263,6 +293,7 @@ export async function checkS3Versioning(
       options,
       '[backup-monitor] S3 versioning check failed:',
       new Error(message),
+      's3_versioning_check',
     );
     return {
       status: 'error',
@@ -346,6 +377,7 @@ export async function checkAuditLogArchivePolicy(
       options,
       '[backup-monitor] Audit archive lifecycle check failed:',
       new Error(message),
+      'audit_archive_lifecycle_check',
     );
     return {
       status: 'error',
@@ -395,6 +427,7 @@ export async function checkCognitoAdvancedSecurity(
       options,
       '[backup-monitor] Cognito Advanced Security check failed:',
       new Error(message),
+      'cognito_advanced_security_check',
     );
     return {
       status: 'error',

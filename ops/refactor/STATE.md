@@ -1,6 +1,6 @@
 # Refactor State
 
-Snapshot: 2026-07-03 20:20 JST
+Snapshot: 2026-07-03 20:33 JST
 
 ## Phase
 
@@ -12,7 +12,7 @@ Snapshot: 2026-07-03 20:20 JST
 
 ## Last Change ID
 
-- `RR-OBS-20260703-CW1-cloudwatch-safe-log`
+- `RR-OBS-20260703-BM1-backup-monitor-safe-log`
 
 ## Build State
 
@@ -21,9 +21,10 @@ Snapshot: 2026-07-03 20:20 JST
   2026-07-03: test `13017` passed (`1302` files), lint `0` errors, colors,
   format, typecheck, typecheck:no-unused, and build all green.
 - Current narrow slice evidence:
-  - Baseline CloudWatch plus shared logger suite passed `2` files / `14`
+  - Baseline backup-monitor plus shared logger suite passed `2` files / `19`
     tests.
-  - Focused CloudWatch plus shared logger suite passed `2` files / `14` tests.
+  - Focused backup-monitor plus shared logger suite passed `2` files / `21`
+    tests.
   - `pnpm typecheck`: passed.
   - `pnpm typecheck:no-unused`: passed.
   - Scoped ESLint, scoped Prettier check, and scoped diff-check passed.
@@ -47,6 +48,16 @@ Snapshot: 2026-07-03 20:20 JST
 ## Current Worktree
 
 - Preserve unrelated dirty files if any appear.
+- Latest observability slice changed only
+  `src/server/services/backup-monitor.ts`,
+  `src/server/services/backup-monitor.test.ts`, and progress ledgers under
+  Claude ACKed lock `RR-OBS-20260703-BM1`. It keeps the injected
+  `options.logger.error` contract unchanged, routes the default backup-monitor
+  AWS check failure sink through shared safe `logger.error`, preserves a
+  sanitized console fallback if the shared logger sink fails, and proves that
+  logging failure does not change the backup check result. Baseline and
+  focused backup-monitor/logger tests passed; scoped ESLint, Prettier, and
+  diff-check passed; `pnpm typecheck` and `pnpm typecheck:no-unused` passed.
 - Latest observability slice changed only `src/lib/aws/cloudwatch.ts`,
   `src/lib/aws/cloudwatch.test.ts`, and progress ledgers under Claude ACKed
   lock `RR-OBS-20260703-CW1`. It replaces the fixed direct `console.error`

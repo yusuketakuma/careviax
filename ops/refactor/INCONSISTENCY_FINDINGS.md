@@ -87,7 +87,10 @@ Snapshot: 2026-07-02 02:10 JST
   preserving retry/access-denied classification. CloudWatch metric-emission
   failures now use the shared safe error logger while preserving fail-soft
   caller behavior, batching, request shape, and non-recursive logging; AWS SDK
-  error details are constrained to the `error_name` field.
+  error details are constrained to the `error_name` field. Backup-monitor
+  default AWS check failure logging now uses the shared safe error logger while
+  preserving fixed monitor results, injected logger behavior, and a sanitized
+  console fallback if the shared logger sink fails.
 - `INC-PRIV-001`: persisted failure messages that flow back through authorized
   patient APIs should not contain unnecessary patient-name-bearing text.
   Patient MCS identity conflict `last_sync_error` now uses fixed

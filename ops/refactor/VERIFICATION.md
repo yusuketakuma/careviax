@@ -3566,3 +3566,48 @@ The latest observability slice is
     route contract, DB schema, migration, auth/RLS behavior, external send
     trigger condition, or job execution outcome. The affected best-effort
     metric failure branch is covered by focused unit tests and typecheck.
+
+## Backup Monitor Default Safe Logger Verification
+
+The latest observability slice is
+`RR-OBS-20260703-BM1-backup-monitor-safe-log` at 2026-07-03 20:33 JST.
+
+- Scope:
+  - `src/server/services/backup-monitor.ts`
+  - `src/server/services/backup-monitor.test.ts`
+  - The shared logger implementation was not changed; logger tests were run as
+    a contract backstop.
+- Baseline before edit:
+  - `./node_modules/.bin/vitest run src/server/services/backup-monitor.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `19` tests.
+- Focused regressions after edit:
+  - `./node_modules/.bin/vitest run src/server/services/backup-monitor.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `21` tests.
+  - Coverage: RDS snapshot, S3 versioning, audit archive lifecycle, and
+    Cognito Advanced Security failures still return fixed safe monitor
+    messages; the default no-injected-logger sink emits
+    `backup_monitor_check_failed` with safe `operation`,
+    `externalProvider: 'aws'`, and `error_name: 'Error'`; raw AWS provider
+    text, token/password sentinels, bucket names, snapshot IDs, and user pool
+    IDs are absent; and backup checks still return their result if the shared
+    logger/console sink throws.
+  - Existing injected logger coverage remains intact, proving
+    `options.logger.error(message, err)` call shape is unchanged.
+- Scoped checks:
+  - `./node_modules/.bin/eslint --max-warnings=0 src/server/services/backup-monitor.ts src/server/services/backup-monitor.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`
+  - Result: passed.
+  - `./node_modules/.bin/prettier --check src/server/services/backup-monitor.ts src/server/services/backup-monitor.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`
+  - Result: passed.
+  - `git diff --check -- src/server/services/backup-monitor.ts src/server/services/backup-monitor.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`
+  - Result: passed.
+- Typecheck:
+  - `pnpm typecheck`
+  - Result: passed.
+  - `pnpm typecheck:no-unused`
+  - Result: passed.
+- Skipped:
+  - Full build/browser smoke are skipped unless review requests them because
+    this slice changes no DOM, route contract, DB schema, migration,
+    auth/RLS behavior, billing flow, external send trigger condition, or
+    monitor alert/notification condition. The affected monitor failure logging
+    branch is covered by focused unit tests and typecheck.

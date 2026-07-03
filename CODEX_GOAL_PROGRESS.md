@@ -109,6 +109,44 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Full build was not run for this narrow observability slice.
   - Await Claude/opus verdict; this slice is intentionally not self-committed.
 
+### Observability: Backup Monitor Default Safe Logger - 2026-07-03 20:33 JST
+
+- Scope:
+  - Continued the behavior-preserving observability convergence under Claude
+    ACKed lock `RR-OBS-20260703-BM1`.
+  - Replaced the default no-injected-logger backup-monitor error sink with the
+    shared safe logger while preserving the injected logger override contract.
+- Fixed:
+  - Backup monitor AWS check failures now emit
+    `backup_monitor_check_failed` with safe `operation`,
+    `externalProvider: 'aws'`, and `error_name` metadata only when no
+    `options.logger.error` is provided.
+  - Focused tests now prove default-path logs do not include raw AWS provider
+    error text, tokens, password sentinels, bucket names, snapshot IDs, or
+    Cognito user pool IDs.
+  - The legacy console fallback intent is preserved as an insurance path if
+    the shared logger sink itself fails, and that failure no longer changes the
+    backup check result.
+- Safety:
+  - Preserved every `BackupCheckResult` status/message/detail, AWS SDK dynamic
+    load behavior, regional client caching, timeout wrapping, skipped-check
+    behavior, and aggregate `runBackupMonitorChecks()` overall calculation.
+  - No auth, authorization, RLS, PHI, billing, DB schema, migration,
+    alert/notification trigger condition, production config, push, deploy, or
+    destructive operation changed.
+- Validation:
+  - Baseline focused suite passed `2` files / `19` tests:
+    `./node_modules/.bin/vitest run src/server/services/backup-monitor.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`.
+  - Post-edit focused suite passed `2` files / `21` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`
+    passed.
+  - Main-agent `pnpm typecheck` and `pnpm typecheck:no-unused` passed; the
+    read-only verifier independently reran both successfully.
+- Remaining:
+  - Full build is not planned for this narrow non-route, non-UI observability
+    slice unless review requests it.
+  - Await Claude/opus verdict; this slice is intentionally not self-committed.
+
 ### Backend: PCA Pump Patch Update Claim - 2026-07-03 01:19 JST
 
 - Scope:
