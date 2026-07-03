@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { Plus, ChevronDown, ChevronUp } from 'lucide-react';
+import { Controller, useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -17,6 +20,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { FormErrorSummary } from '@/components/ui/form-error-summary';
+import { LoadingButton } from '@/components/ui/loading-button';
+import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { cn } from '@/lib/utils';
 
 type InterventionType =
@@ -185,17 +191,59 @@ function toLocalDateTimeInputValue(value: Date) {
   return new Date(value.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
+const interventionTypeValues = Object.keys(INTERVENTION_TYPE_LABELS) as [
+  InterventionType,
+  ...InterventionType[],
+];
+
+const newInterventionSchema = z.object({
+  type: z.enum(interventionTypeValues, { error: '介入種別を選択してください' }),
+  // 元実装は raw 値をそのまま送信し API 側 createInterventionSchema も z.string().min(1)(trim なし)。
+  // RHF 移行で挙動を変えないため trim は行わない。
+  description: z.string().min(1, '介入内容を入力してください'),
+  performedAt: z.string().min(1, '実施日時を入力してください'),
+});
+
+type NewInterventionFormValues = z.infer<typeof newInterventionSchema>;
+
 function NewInterventionForm({ patientId, issueId, onCreated }: NewInterventionFormProps) {
   const [open, setOpen] = useState(false);
-  const [type, setType] = useState<InterventionType>('other');
-  const [description, setDescription] = useState('');
-  const [performedAt, setPerformedAt] = useState(toLocalDateTimeInputValue(new Date()));
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // API/ネットワーク由来のエラー(サーバー応答文言)。zod のフィールド検証エラーとは別枠で表示する。
+  const [apiError, setApiError] = useState<string | null>(null);
+  const errorSummaryId = 'new-intervention-error-summary';
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
+  const form = useForm<NewInterventionFormValues>({
+    resolver: zodResolver(newInterventionSchema),
+    defaultValues: {
+      type: 'other',
+      description: '',
+      performedAt: toLocalDateTimeInputValue(new Date()),
+    },
+  });
+  const {
+    register,
+    handleSubmit,
+    control,
+    reset,
+    getValues,
+    formState: { errors },
+  } = form;
+
+  const errorSummaryItems = collectFormErrorSummaryItems(errors, {
+    type: '介入種別',
+    description: '介入内容',
+    performedAt: '実施日時',
+  });
+
+  // referral-form と同じく、無効送信時はエラーサマリへフォーカスを移す(WCAG AA)。
+  function focusErrorSummary() {
+    if (typeof document === 'undefined') return;
+    document.getElementById(errorSummaryId)?.focus();
+  }
+
+  async function onSubmit(data: NewInterventionFormValues) {
+    setApiError(null);
     setSaving(true);
     try {
       const res = await fetch('/api/interventions', {
@@ -204,21 +252,21 @@ function NewInterventionForm({ patientId, issueId, onCreated }: NewInterventionF
         body: JSON.stringify({
           patient_id: patientId,
           issue_id: issueId,
-          type,
-          description,
-          performed_at: new Date(performedAt).toISOString(),
+          type: data.type,
+          description: data.description,
+          performed_at: new Date(data.performedAt).toISOString(),
         }),
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
-        setError(json.message ?? '作成に失敗しました');
+        setApiError(json.message ?? '作成に失敗しました');
         return;
       }
       const json = await res.json();
       onCreated(json.data);
       setOpen(false);
-      setDescription('');
-      setType('other');
+      // performedAt は元実装同様リセットしない(直近入力値を保持)。
+      reset({ type: 'other', description: '', performedAt: getValues('performedAt') });
     } finally {
       setSaving(false);
     }
@@ -240,55 +288,67 @@ function NewInterventionForm({ patientId, issueId, onCreated }: NewInterventionF
           <DialogHeader>
             <DialogTitle>介入記録の追加</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-            <div className="space-y-1.5">
-              <Label>介入種別</Label>
-              <Select value={type} onValueChange={(v) => setType(v as InterventionType)}>
-                <SelectTrigger>
-                  <SelectValue>
-                    {(value) => INTERVENTION_TYPE_LABELS[value as InterventionType] ?? value}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(INTERVENTION_TYPE_LABELS).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <form
+            onSubmit={handleSubmit(onSubmit, focusErrorSummary)}
+            noValidate
+            className="space-y-4 pt-2"
+          >
+            <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
 
             <div className="space-y-1.5">
-              <Label>実施日時</Label>
-              <Input
-                type="datetime-local"
-                value={performedAt}
-                onChange={(e) => setPerformedAt(e.target.value)}
-                required
+              <Label htmlFor="intervention-type">介入種別</Label>
+              <Controller
+                control={control}
+                name="type"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger id="intervention-type" aria-invalid={!!errors.type}>
+                      <SelectValue>
+                        {INTERVENTION_TYPE_LABELS[field.value] ?? field.value}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(INTERVENTION_TYPE_LABELS).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               />
             </div>
 
             <div className="space-y-1.5">
-              <Label>介入内容</Label>
+              <Label htmlFor="intervention-performed-at">実施日時</Label>
+              <Input
+                id="intervention-performed-at"
+                type="datetime-local"
+                aria-invalid={!!errors.performedAt}
+                {...register('performedAt')}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="intervention-description">介入内容</Label>
               <Textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                id="intervention-description"
                 placeholder="実施した介入の内容を記録..."
                 rows={3}
-                required
+                aria-invalid={!!errors.description}
+                {...register('description')}
               />
             </div>
 
-            {error && <p className="text-xs text-destructive">{error}</p>}
+            {apiError && <p className="text-xs text-destructive">{apiError}</p>}
 
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
                 キャンセル
               </Button>
-              <Button type="submit" disabled={saving}>
-                {saving ? '保存中...' : '追加'}
-              </Button>
+              <LoadingButton type="submit" loading={saving} loadingLabel="保存中...">
+                追加
+              </LoadingButton>
             </div>
           </form>
         </DialogContent>
