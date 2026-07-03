@@ -15,6 +15,7 @@ import {
 } from '@/lib/visits/visit-schedule-status-labels';
 import type { HomeCareFeatureState } from '@/types/home-care';
 import type { VisitBrief } from '@/types/visit-brief';
+import type { VisitVehicleResourceSummary } from '@/types/api/visit-vehicle-resources';
 
 export type { VisitPriority, VisitType };
 export type ProposalStatus =
@@ -69,13 +70,7 @@ export type Pharmacist = {
   site_name: string | null;
 };
 
-export type VisitVehicleResourceSummary = {
-  id: string;
-  label: string;
-  travel_mode: 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
-  max_stops: number | null;
-  max_route_duration_minutes: number | null;
-};
+export type { VisitVehicleResourceSummary };
 
 export type ProposalContactLog = {
   id: string;

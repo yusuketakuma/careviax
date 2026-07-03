@@ -38,35 +38,11 @@ import {
   buildVisitVehicleResourceApiPath,
   buildVisitVehicleResourcesApiPath,
 } from '@/lib/visit-vehicle-resources/api-paths';
-
-type TravelMode = 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
-
-export type VisitVehicleResource = {
-  id: string;
-  site_id: string;
-  label: string;
-  vehicle_code: string | null;
-  travel_mode: TravelMode;
-  max_stops: number;
-  max_route_duration_minutes: number | null;
-  available: boolean;
-  next_inspection_date: string | null;
-  notes: string | null;
-  site?: {
-    id: string;
-    name: string;
-  } | null;
-  created_at?: string;
-  updated_at?: string;
-};
-
-type VisitVehicleResourcesResponse = {
-  data: VisitVehicleResource[];
-  total_count?: number;
-  visible_count?: number;
-  hidden_count?: number;
-  truncated?: boolean;
-};
+import type {
+  VisitVehicleResource,
+  VisitVehicleResourcesResponse,
+  VisitVehicleResourceTravelMode,
+} from '@/types/api/visit-vehicle-resources';
 
 type PharmacySiteOption = {
   id: string;
@@ -81,7 +57,7 @@ type FormState = {
   site_id: string;
   label: string;
   vehicle_code: string;
-  travel_mode: TravelMode;
+  travel_mode: VisitVehicleResourceTravelMode;
   max_stops: string;
   max_route_duration_minutes: string;
   available: boolean;
@@ -94,7 +70,7 @@ const EMPTY_VEHICLES: VisitVehicleResource[] = [];
 const EMPTY_SITE_OPTIONS: PharmacySiteOption[] = [];
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-const TRAVEL_MODES: Array<{ value: TravelMode; label: string }> = [
+const TRAVEL_MODES: Array<{ value: VisitVehicleResourceTravelMode; label: string }> = [
   { value: 'DRIVE', label: '自動車' },
   { value: 'TWO_WHEELER', label: '二輪' },
   { value: 'BICYCLE', label: '自転車' },
@@ -152,7 +128,7 @@ function readIntegerInput(value: string) {
   return Number.isInteger(parsed) ? parsed : null;
 }
 
-function getTravelModeLabel(value: TravelMode) {
+function getTravelModeLabel(value: VisitVehicleResourceTravelMode) {
   return TRAVEL_MODES.find((item) => item.value === value)?.label ?? value;
 }
 
@@ -609,7 +585,10 @@ export function VehiclesContent() {
                 <Select
                   value={form.travel_mode}
                   onValueChange={(value) =>
-                    setForm((current) => ({ ...current, travel_mode: value as TravelMode }))
+                    setForm((current) => ({
+                      ...current,
+                      travel_mode: value as VisitVehicleResourceTravelMode,
+                    }))
                   }
                 >
                   <SelectTrigger id="vehicle-resource-travel-mode" className="!h-11 !min-h-[44px]">

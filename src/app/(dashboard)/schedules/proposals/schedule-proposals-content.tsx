@@ -120,6 +120,7 @@ import {
   proposalCandidateRankLabel,
   proposalCandidateRankReason,
 } from '../day-view.shared';
+import type { VisitVehicleResourceScheduleOptionsResponse } from '@/types/api/visit-vehicle-resources';
 
 type DashboardTab = 'unapproved' | 'patient_contact_pending' | 'confirmed' | 'rejected';
 type TravelMode = 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
@@ -230,20 +231,6 @@ type CreateProposalResponse = {
   diagnostics?: ProposalGenerationDiagnostics;
 };
 type CaseSearchResponse = { data: CaseOption[] };
-type VisitVehicleResourceOption = VisitVehicleResourceSummary & {
-  available: boolean;
-  site: {
-    id: string;
-    name: string;
-  } | null;
-};
-type VisitVehicleResourcesResponse = {
-  data: VisitVehicleResourceOption[];
-  total_count?: number;
-  visible_count?: number;
-  hidden_count?: number;
-  truncated?: boolean;
-};
 type ContactOutcome = 'attempted' | 'declined' | 'change_requested' | 'unreachable' | 'confirmed';
 type ContactMethod = 'phone' | 'fax' | 'email';
 
@@ -805,7 +792,7 @@ export function ScheduleProposalsContent({
         headers: { 'x-org-id': orgId },
       });
       if (!response.ok) throw new Error('社用車リソースの取得に失敗しました');
-      return response.json() as Promise<VisitVehicleResourcesResponse>;
+      return response.json() as Promise<VisitVehicleResourceScheduleOptionsResponse>;
     },
     enabled: !!orgId && shouldLoadDashboardEnhancements,
   });

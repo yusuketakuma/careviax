@@ -8,7 +8,8 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { toast } from 'sonner';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildVisitVehicleResourceApiPath } from '@/lib/visit-vehicle-resources/api-paths';
-import { VehiclesContent, type VisitVehicleResource } from './vehicles-content';
+import type { VisitVehicleResource } from '@/types/api/visit-vehicle-resources';
+import { VehiclesContent } from './vehicles-content';
 
 setupDomTestEnv();
 

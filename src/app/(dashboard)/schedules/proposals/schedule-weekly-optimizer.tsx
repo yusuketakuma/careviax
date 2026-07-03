@@ -64,13 +64,16 @@ import {
   type CaseOption,
   type Proposal,
   type VisitPriority,
-  type VisitVehicleResourceSummary,
   type VisitScheduleBillingPreview,
   type VisitSchedule,
   type VisitType,
   VISIT_TYPE_LABELS,
 } from '../day-view.shared';
 import { WeeklyCellInspector } from './weekly-cell-inspector';
+import type {
+  VisitVehicleResourceScheduleOption,
+  VisitVehicleResourceScheduleOptionsResponse,
+} from '@/types/api/visit-vehicle-resources';
 
 type PharmacistShift = {
   id: string;
@@ -119,22 +122,6 @@ type ProposalPayload = {
   candidate_count: number;
 };
 
-type VisitVehicleResourceOption = VisitVehicleResourceSummary & {
-  available: boolean;
-  site: {
-    id: string;
-    name: string;
-  } | null;
-};
-
-type VisitVehicleResourcesResponse = {
-  data: VisitVehicleResourceOption[];
-  total_count?: number;
-  visible_count?: number;
-  hidden_count?: number;
-  truncated?: boolean;
-};
-
 type DragSchedule = {
   id: string;
   patientName: string;
@@ -172,7 +159,7 @@ const EMPTY_CASES: CaseOption[] = [];
 const EMPTY_SCHEDULES: VisitSchedule[] = [];
 const EMPTY_PROPOSALS: Proposal[] = [];
 const EMPTY_SHIFTS: PharmacistShift[] = [];
-const EMPTY_VEHICLE_RESOURCES: VisitVehicleResourceOption[] = [];
+const EMPTY_VEHICLE_RESOURCES: VisitVehicleResourceScheduleOption[] = [];
 
 function shiftFitsSchedule(shift: PharmacistShift | null, schedule: DragSchedule) {
   if (!shift || !shift.available) return false;
@@ -557,7 +544,7 @@ export function ScheduleWeeklyOptimizer({
         headers: { 'x-org-id': orgId },
       });
       if (!response.ok) throw new Error('社用車リソースの取得に失敗しました');
-      return response.json() as Promise<VisitVehicleResourcesResponse>;
+      return response.json() as Promise<VisitVehicleResourceScheduleOptionsResponse>;
     },
     enabled: !!orgId,
   });
