@@ -30,6 +30,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { messageFromError } from '@/lib/utils/error-message';
 import {
   ADMIN_FACILITIES_API_PATH,
   buildAdminFacilitiesApiPath,
@@ -504,7 +505,7 @@ export function FacilitiesContent() {
       await queryClient.invalidateQueries({ queryKey: ['admin-facilities', orgId] });
     },
     onError: async (error) => {
-      toast.error(error instanceof Error ? error.message : '保存に失敗しました');
+      toast.error(messageFromError(error, '保存に失敗しました'));
       if (error instanceof Error && error.message.includes('更新されています')) {
         await queryClient.invalidateQueries({ queryKey: ['admin-facilities', orgId] });
       }
@@ -528,7 +529,7 @@ export function FacilitiesContent() {
       await queryClient.invalidateQueries({ queryKey: ['admin-facilities', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '削除に失敗しました');
+      toast.error(messageFromError(error, '削除に失敗しました'));
     },
   });
 
@@ -563,7 +564,7 @@ export function FacilitiesContent() {
       });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'ユニット保存に失敗しました');
+      toast.error(messageFromError(error, 'ユニット保存に失敗しました'));
     },
   });
 
@@ -588,7 +589,7 @@ export function FacilitiesContent() {
       });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'ユニット削除に失敗しました');
+      toast.error(messageFromError(error, 'ユニット削除に失敗しました'));
     },
   });
 

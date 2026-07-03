@@ -25,6 +25,7 @@ import { parseJsonObjectText } from '@/lib/admin/json-editor';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { ErrorState } from '@/components/ui/error-state';
+import { messageFromError } from '@/lib/utils/error-message';
 
 type ExplorerField = {
   name: string;
@@ -231,7 +232,7 @@ export function DataExplorerContent() {
       });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '更新に失敗しました');
+      toast.error(messageFromError(error, '更新に失敗しました'));
     },
   });
 

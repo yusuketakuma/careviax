@@ -13,6 +13,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
+import { messageFromError } from '@/lib/utils/error-message';
 import { timeIsoToMinutes } from '@/lib/visits/time-of-day';
 import { cn } from '@/lib/utils';
 import type { ScheduleDayBoardResponse } from '@/types/schedule-day-board';
@@ -110,10 +111,6 @@ function routeHeaders(orgId: string) {
   return { 'Content-Type': 'application/json', 'x-org-id': orgId } as const;
 }
 
-function errorMessageFromUnknown(error: unknown, fallback: string) {
-  return error instanceof Error && error.message ? error.message : fallback;
-}
-
 async function computeRoutePlan(args: {
   orgId: string;
   scheduleIds: string[];
@@ -160,7 +157,7 @@ async function fetchRouteCompareScenarios(args: {
       } catch (error) {
         return {
           scenarioId: request.scenarioId,
-          errorMessage: errorMessageFromUnknown(error, 'ルート計算の取得に失敗しました'),
+          errorMessage: messageFromError(error, 'ルート計算の取得に失敗しました'),
         };
       }
     }),
@@ -676,7 +673,7 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '訪問予定の順路更新に失敗しました');
+      toast.error(messageFromError(error, '訪問予定の順路更新に失敗しました'));
     },
   });
   const pendingScenarioId = applyMutation.isPending ? applyMutation.variables?.id : undefined;

@@ -47,6 +47,7 @@ import { formatUtcDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { messageFromError } from '@/lib/utils/error-message';
 import {
   PHARMACY_SITES_API_PATH,
   buildPharmacySiteApiPath,
@@ -236,7 +237,7 @@ export function PharmacySitesContent() {
       await queryClient.invalidateQueries({ queryKey: ['pharmacy-sites-admin', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '更新に失敗しました');
+      toast.error(messageFromError(error, '更新に失敗しました'));
     },
   });
 
@@ -273,7 +274,7 @@ export function PharmacySitesContent() {
       await queryClient.invalidateQueries({ queryKey: ['insurance-configs', orgId, configSiteId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '保存に失敗しました');
+      toast.error(messageFromError(error, '保存に失敗しました'));
     },
   });
 
@@ -292,7 +293,7 @@ export function PharmacySitesContent() {
       await queryClient.invalidateQueries({ queryKey: ['insurance-configs', orgId, configSiteId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '削除に失敗しました');
+      toast.error(messageFromError(error, '削除に失敗しました'));
     },
   });
 

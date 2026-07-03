@@ -39,6 +39,7 @@ import { buildAdminFacilitiesApiPath } from '@/lib/facilities/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { formatDateLabel } from '@/lib/ui/date-format';
+import { messageFromError } from '@/lib/utils/error-message';
 
 type ProfessionType =
   | 'physician'
@@ -432,7 +433,7 @@ export function ExternalProfessionalsContent() {
       await queryClient.invalidateQueries({ queryKey: ['admin-external-professionals', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '保存に失敗しました');
+      toast.error(messageFromError(error, '保存に失敗しました'));
     },
   });
 
@@ -456,7 +457,7 @@ export function ExternalProfessionalsContent() {
       await queryClient.invalidateQueries({ queryKey: ['admin-external-professionals', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '削除に失敗しました');
+      toast.error(messageFromError(error, '削除に失敗しました'));
     },
   });
 

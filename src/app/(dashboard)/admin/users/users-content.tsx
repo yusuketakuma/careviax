@@ -50,6 +50,7 @@ import {
   buildPharmacistsApiPath,
 } from '@/lib/pharmacists/api-paths';
 import { PHARMACY_SITES_API_PATH } from '@/lib/pharmacy-sites/api-paths';
+import { messageFromError } from '@/lib/utils/error-message';
 
 type UserItem = {
   id: string;
@@ -335,7 +336,7 @@ export function UsersContent() {
       await queryClient.invalidateQueries({ queryKey: ['admin-users', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '招待に失敗しました');
+      toast.error(messageFromError(error, '招待に失敗しました'));
     },
   });
 
@@ -377,7 +378,7 @@ export function UsersContent() {
       await queryClient.invalidateQueries({ queryKey: ['admin-users', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '更新に失敗しました');
+      toast.error(messageFromError(error, '更新に失敗しました'));
     },
   });
 
@@ -411,7 +412,7 @@ export function UsersContent() {
       await queryClient.invalidateQueries({ queryKey: ['admin-users', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '操作に失敗しました');
+      toast.error(messageFromError(error, '操作に失敗しました'));
     },
   });
 

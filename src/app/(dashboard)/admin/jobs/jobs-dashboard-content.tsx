@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { formatDateTimeLabel } from '@/lib/ui/date-format';
+import { messageFromError } from '@/lib/utils/error-message';
 
 // --- Types ---
 
@@ -186,7 +187,7 @@ export function JobsDashboardContent() {
       void queryClient.invalidateQueries({ queryKey: ['integration-jobs', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'ジョブの再実行に失敗しました');
+      toast.error(messageFromError(error, 'ジョブの再実行に失敗しました'));
     },
   });
 

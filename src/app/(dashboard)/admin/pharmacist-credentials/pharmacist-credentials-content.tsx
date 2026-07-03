@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { messageFromError } from '@/lib/utils/error-message';
 import {
   PHARMACIST_CREDENTIALS_API_PATH,
   buildPharmacistCredentialApiPath,
@@ -306,7 +307,7 @@ export function PharmacistCredentialsContent() {
       await queryClient.invalidateQueries({ queryKey: ['pharmacist-credentials', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '保存に失敗しました');
+      toast.error(messageFromError(error, '保存に失敗しました'));
     },
   });
 
@@ -328,7 +329,7 @@ export function PharmacistCredentialsContent() {
       await queryClient.invalidateQueries({ queryKey: ['pharmacist-credentials', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '削除に失敗しました');
+      toast.error(messageFromError(error, '削除に失敗しました'));
     },
   });
 

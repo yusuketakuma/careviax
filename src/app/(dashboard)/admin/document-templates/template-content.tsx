@@ -34,6 +34,7 @@ import {
   buildDocumentTemplatesApiPath,
 } from '@/lib/document-templates/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { messageFromError } from '@/lib/utils/error-message';
 import { DocumentDeliveryRuleManager } from './document-delivery-rule-manager';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { PageSection } from '@/components/layout/page-section';
@@ -226,7 +227,7 @@ export function DocumentTemplateContent() {
       await queryClient.invalidateQueries({ queryKey: ['document-templates', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'テンプレートの保存に失敗しました');
+      toast.error(messageFromError(error, 'テンプレートの保存に失敗しました'));
     },
   });
 
@@ -249,7 +250,7 @@ export function DocumentTemplateContent() {
       await queryClient.invalidateQueries({ queryKey: ['document-templates', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'テンプレートの削除に失敗しました');
+      toast.error(messageFromError(error, 'テンプレートの削除に失敗しました'));
     },
   });
 

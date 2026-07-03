@@ -25,6 +25,7 @@ import {
   buildDocumentDeliveryRuleApiPath,
 } from '@/lib/document-templates/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { messageFromError } from '@/lib/utils/error-message';
 
 type DeliveryChannel = 'email' | 'fax' | 'mcs';
 
@@ -162,7 +163,7 @@ export function DocumentDeliveryRuleManager() {
       await queryClient.invalidateQueries({ queryKey: ['document-delivery-rules', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '文書送達ルールの保存に失敗しました');
+      toast.error(messageFromError(error, '文書送達ルールの保存に失敗しました'));
     },
   });
 
@@ -185,7 +186,7 @@ export function DocumentDeliveryRuleManager() {
       await queryClient.invalidateQueries({ queryKey: ['document-delivery-rules', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '文書送達ルールの削除に失敗しました');
+      toast.error(messageFromError(error, '文書送達ルールの削除に失敗しました'));
     },
   });
 
