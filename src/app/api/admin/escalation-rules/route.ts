@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
+import { buildCountedListEnvelope } from '@/lib/api/list-envelope';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -38,24 +39,21 @@ const authenticatedGET = withAuthContext(
         take: limit,
       }),
     ]);
-    const visibleCount = rules.length;
-    const hiddenCount = Math.max(totalCount - visibleCount, 0);
 
     return success({
-      data: rules.map((rule) => ({
-        id: rule.id,
-        trigger_type: rule.trigger_type,
-        condition: serializeCondition(rule.condition),
-        action: rule.action,
-        notify_role: rule.notify_role,
-        is_active: rule.is_active,
-        created_at: rule.created_at.toISOString(),
-        updated_at: rule.updated_at.toISOString(),
-      })),
-      total_count: totalCount,
-      visible_count: visibleCount,
-      hidden_count: hiddenCount,
-      truncated: hiddenCount > 0,
+      ...buildCountedListEnvelope(
+        rules.map((rule) => ({
+          id: rule.id,
+          trigger_type: rule.trigger_type,
+          condition: serializeCondition(rule.condition),
+          action: rule.action,
+          notify_role: rule.notify_role,
+          is_active: rule.is_active,
+          created_at: rule.created_at.toISOString(),
+          updated_at: rule.updated_at.toISOString(),
+        })),
+        totalCount,
+      ),
       count_basis: 'escalation_rules',
       filters_applied: {},
       limit,

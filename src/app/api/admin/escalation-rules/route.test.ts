@@ -119,7 +119,18 @@ describe('/api/admin/escalation-rules', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    await expect(response.json()).resolves.toEqual({
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual([
+      'data',
+      'total_count',
+      'visible_count',
+      'hidden_count',
+      'truncated',
+      'count_basis',
+      'filters_applied',
+      'limit',
+    ]);
+    expect(body).toEqual({
       data: [
         {
           id: 'rule_1',

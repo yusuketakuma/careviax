@@ -1,4 +1,5 @@
 import { withAuthContext } from '@/lib/auth/context';
+import { buildCountedListEnvelope } from '@/lib/api/list-envelope';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
@@ -47,8 +48,6 @@ export const GET = withAuthContext(
         take: limit,
       }),
     ]);
-    const visibleCount = credentials.length;
-    const hiddenCount = Math.max(totalCount - visibleCount, 0);
 
     const pharmacistIds = credentials.map((item) => item.user.id);
     const assignedPatients =
@@ -100,22 +99,21 @@ export const GET = withAuthContext(
     }
 
     return success({
-      data: credentials.map((item) => ({
-        id: item.id,
-        user_id: item.user.id,
-        user_name: item.user.name,
-        certification_type: item.certification_type,
-        certification_number: item.certification_number,
-        issued_date: item.issued_date?.toISOString() ?? null,
-        expiry_date: item.expiry_date?.toISOString() ?? null,
-        tenure_years: item.tenure_years,
-        weekly_work_hours: item.weekly_work_hours,
-        consented_patients: consentedPatientsByPharmacist.get(item.user.id) ?? [],
-      })),
-      total_count: totalCount,
-      visible_count: visibleCount,
-      hidden_count: hiddenCount,
-      truncated: hiddenCount > 0,
+      ...buildCountedListEnvelope(
+        credentials.map((item) => ({
+          id: item.id,
+          user_id: item.user.id,
+          user_name: item.user.name,
+          certification_type: item.certification_type,
+          certification_number: item.certification_number,
+          issued_date: item.issued_date?.toISOString() ?? null,
+          expiry_date: item.expiry_date?.toISOString() ?? null,
+          tenure_years: item.tenure_years,
+          weekly_work_hours: item.weekly_work_hours,
+          consented_patients: consentedPatientsByPharmacist.get(item.user.id) ?? [],
+        })),
+        totalCount,
+      ),
       count_basis: 'pharmacist_credentials',
       filters_applied: {},
       limit,
