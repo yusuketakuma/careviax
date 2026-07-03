@@ -18,8 +18,8 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: `ID-2-W3` visit/communication display_id 第3波 実装・検証済み、
-  agmsg report 待ち
+- Phase C（実装ループ）: `ID-2-W4` organization display_id 第4波 land 済み(7e18fcb2)。
+  次波は `ID-2-W5`（pharmacy-partnership ドメイン org-scoped model）
 
 ## 直近の land（本日・要点）
 
@@ -27,22 +27,24 @@
 - codex lane: BE-1 / RT1 / RR-QP-A/B / JOB1/2 / CW1 / BM1(5be6ebca) / 9d1567ba /
   PERF-01(981f1a58) / MFA1(f7bf2e97) / F84(c22c7fe3) / CE17(5205fc48) / R07(f3733036) /
   DR-DUP1(2e0c7fdb) / PERF-02(60469cd1) / CE20(66d65f99) / ID-1b(0a3b910c, e2a8b414)
-  / ID-2-W1(898c0d6a) / ID-2-W2(90a1276e) — 全 opus APPROVE
+  / ID-2-W1(898c0d6a) / ID-2-W2(90a1276e) / ID-2-W3(8c7e34e7) / ID-2-W4(7e18fcb2)
+  / FIX-CATALOG-IDSEQ(a42065fa) — 全 opus/committer APPROVE
 - claude/opus lane: X01(e02cec50) / CE19(2136c93a) / N18(ad0ff309) / R03(3b31cec1) /
   A1-CRC(eebda8c3) land
 - 全量 gate green: test 13035 passed（2026-07-03 夜、F84/CE19/N18/R03後）
 
 ## 進行中 / 凍結
 
-- codex: `ID-1a` / `ID-1b` / `ID-2-W1` / `ID-2-W2` は land 済み。E1 は基準1 FAIL、
-  E2（明示 tx allocator）正式採用。
-- codex: `ID-2-W3` は report-ready。visit.prisma 10 + communication.prisma 14 direct org model に
-  nullable display_id + org-scoped unique、partial unique migration、generic backfill reuse、
-  local e2e migrate/seed/backfill 検証済み。`HandoffItem` は orgViaParent のため W7 残余へ回す方針。
+- codex: `ID-1a` / `ID-1b` / `ID-2-W1` / `ID-2-W2` / `ID-2-W3` / `ID-2-W4` は land 済み。
+  E1 は基準1 FAIL、E2（明示 tx allocator）正式採用。
+- W4 land 時に既存欠陥 FIX-CATALOG-IDSEQ(a42065fa) を併せて解消（`IdSequence` が
+  data-explorer カバレッジカタログ未分類でフル `pnpm test` が赤だった。db:generate 鮮度更新で顕在化）。
+- 追跡: `ID-2-UR`（BACKLOG）= opus M-1「`User` は registry scope='org' だが波計画では global(W6)。
+  `CXR2-RLS02` の design 判定で確定 → W6 で registry 是正 or org-wave 追加」+ L-1 completeness assertion。
 - codex: `PERF-03` は read-only recon 後、fable 裁定で `flagged(raw SQL 要設計・低優先)` として据え置き。
 - human-gate 記録: MFA1 / X01 とも RESOLVED 済み。
 
 ## 次の一手
 
-1. codex: `ID-2-W3` agmsg report を送る
-2. codex: verdict 前の追加編集は指示があるまで行わない
+1. codex: `ID-2-W5`（pharmacy-partnership ドメイン org-scoped model の display_id 波）を LOCK 割当予定
+2. codex: `R21-SONNER1`（test-only mock helper）は W4 land 後に LOCK 付与

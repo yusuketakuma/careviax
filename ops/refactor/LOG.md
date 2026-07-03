@@ -175,6 +175,31 @@
   `NODE_OPTIONS=--max-old-space-size=12288 pnpm typecheck` と `typecheck:no-unused` green。
 - レビュー: db_steward read-only No Findings。self-commit なし。
 
+## 2026-07-04 ID-2-W4 report-ready
+
+- 分類: infra/db / display_id organization-domain wave 4
+- 対象: `prisma/schema/organization.prisma`, new `20260703154000_add_organization_display_ids`,
+  `src/lib/db/display-id.test.ts`, 台帳3ファイル
+- 実施: organization.prisma の direct org-scoped 15 model へ nullable `display_id` と
+  `@@unique([org_id, display_id])` を追加。`Organization` と `User` は割当指示どおり対象外。
+  migration は W1-W3 同型の `ADD COLUMN` + `WHERE display_id IS NOT NULL` partial unique index のみ。
+- backfill: local e2e dry-run は対象 NULL 38 rows・issues 0。apply は38 rows backfilled、
+  postChecks は全15 model null 0・duplicate 0・invalid 0・sequenceMismatch 0。seed 再実行後に
+  `Membership` が4 rows再作成されたため、所有外の seed caveat として記録し、Membership の再backfill後の
+  final dry-run は全15 model null 0・duplicate 0・invalid 0・sequenceMismatch 0。
+- 検証: prisma validate/db:generate green。`pnpm db:e2e:prepare` / W4 apply / `pnpm db:e2e:seed` /
+  Membership再apply / final dry-run green。focused DB vitest 29/29 green。scoped eslint/format/diff-check green。
+  `NODE_OPTIONS=--max-old-space-size=12288 pnpm typecheck` と `typecheck:no-unused` green。
+- レビュー: db_steward read-only No Findings + opus 独立レビュー APPROVE（15モデル網羅・additive・既存 unique 非破壊）。
+- land: `7e18fcb2`（code+migration+test）+ `a42065fa`（FIX-CATALOG-IDSEQ）。
+- 併せ解消した既存欠陥 FIX-CATALOG-IDSEQ: `IdSequence`（ID-1b 0a3b910c 追加の採番カウンタ表）が
+  `src/lib/admin/data-explorer-catalog.ts` のカバレッジカタログに未登録で、`db:generate` 鮮度更新後の
+  フル `pnpm test` が `classifies every Prisma model exactly once` で赤（過去波は生成 client stale で通過）。
+  `backend_only` へ分類 + `DATA_EXPLORER_MODEL_EXCLUSIONS` へ追加（tenant Data Explorer から除外）。
+  combined gate green（test 13056 passed / 0 failed、lint green、build/typecheck/no-unused は W4 tree で green）。
+- opus follow-up: M-1（`User` は registry scope='org' だが波計画 global(W6)、`CXR2-RLS02` design 判定で確定）と
+  L-1（org-scoped registry model の wave 網羅 completeness assertion）を BACKLOG `ID-2-UR` に登録。
+
 ## 2026-07-03 DR-DUP1 2e0c7fdb
 
 - 分類: bug/data-integrity / defensive validation
