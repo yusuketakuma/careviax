@@ -29,6 +29,7 @@ const {
   broadcastOrgRealtimeEventMock,
   notifyWorkflowMutationMock,
   notifyWebhookEventForOrgMock,
+  enforceFeatureRateLimitMock,
 } = vi.hoisted(() => ({
   withAuthContextMock: vi.fn(
     (
@@ -60,10 +61,15 @@ const {
   broadcastOrgRealtimeEventMock: vi.fn().mockResolvedValue(undefined),
   notifyWorkflowMutationMock: vi.fn().mockResolvedValue(undefined),
   notifyWebhookEventForOrgMock: vi.fn().mockResolvedValue(undefined),
+  enforceFeatureRateLimitMock: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: withAuthContextMock,
+}));
+
+vi.mock('@/lib/api/rate-limit', () => ({
+  enforceFeatureRateLimit: enforceFeatureRateLimitMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -285,6 +291,7 @@ function createQrDraftSuccessfulTransaction(parsedData: unknown) {
 describe('/api/prescription-intakes POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    enforceFeatureRateLimitMock.mockResolvedValue(null);
     drugMasterFindManyMock.mockResolvedValue([
       {
         id: 'drug_master_amlodipine',
@@ -2804,11 +2811,44 @@ describe('/api/prescription-intakes POST', () => {
       },
     });
   });
+
+  it('checks the write rate limit scoped to org+user before creating an intake', async () => {
+    const request = createRequest({});
+    await POST(request);
+
+    expect(enforceFeatureRateLimitMock).toHaveBeenCalledWith(
+      'org_1:user_1',
+      '/api/prescription-intakes',
+      'mutation',
+    );
+  });
+
+  it('returns the 429 response from the rate limiter without creating an intake', async () => {
+    const rateLimitedResponse = Response.json(
+      {
+        code: 'RATE_LIMIT_EXCEEDED',
+        message: 'リクエストが多すぎます。しばらくしてから再度お試しください',
+      },
+      { status: 429, headers: { 'Retry-After': '30' } },
+    );
+    enforceFeatureRateLimitMock.mockResolvedValueOnce(rateLimitedResponse);
+
+    const request = createRequest({});
+    const response = await POST(request);
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get('Retry-After')).toBe('30');
+    const body = (await response.json()) as { code: string };
+    expect(body.code).toBe('RATE_LIMIT_EXCEEDED');
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('/api/prescription-intakes GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    enforceFeatureRateLimitMock.mockResolvedValue(null);
     prescriptionIntakeFindManyMock.mockResolvedValue([
       {
         id: 'intake_2',
@@ -3219,5 +3259,34 @@ describe('/api/prescription-intakes GET', () => {
     expect(body.data[0]).not.toHaveProperty('lines');
     expect(body.data[0]).not.toHaveProperty('original_document_url');
     expect(body.data[0]).not.toHaveProperty('prescriber_institution_ref');
+  });
+
+  it('checks the search rate limit scoped to org+user before querying', async () => {
+    await GET(createGetRequest('http://localhost/api/prescription-intakes'));
+
+    expect(enforceFeatureRateLimitMock).toHaveBeenCalledWith(
+      'org_1:user_1',
+      '/api/prescription-intakes',
+      'search',
+    );
+  });
+
+  it('returns the 429 response from the rate limiter without querying the database', async () => {
+    const rateLimitedResponse = Response.json(
+      {
+        code: 'RATE_LIMIT_EXCEEDED',
+        message: 'リクエストが多すぎます。しばらくしてから再度お試しください',
+      },
+      { status: 429, headers: { 'Retry-After': '12' } },
+    );
+    enforceFeatureRateLimitMock.mockResolvedValueOnce(rateLimitedResponse);
+
+    const response = await GET(createGetRequest('http://localhost/api/prescription-intakes'));
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get('Retry-After')).toBe('12');
+    const body = (await response.json()) as { code: string };
+    expect(body.code).toBe('RATE_LIMIT_EXCEEDED');
+    expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
   });
 });

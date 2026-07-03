@@ -61,6 +61,23 @@ export function conflict(message = '競合が発生しました', details?: unkn
   return error('WORKFLOW_CONFLICT', message, 409, details);
 }
 
+/**
+ * 429 Too Many Requests。Retry-After ヘッダ(秒)付き。
+ * `retryAfterSeconds` は 1 秒未満・NaN・負数を切り上げてガードする。
+ */
+export function rateLimited(
+  retryAfterSeconds: number,
+  message = 'リクエストが多すぎます。しばらくしてから再度お試しください',
+) {
+  const safeRetryAfterSeconds = Number.isFinite(retryAfterSeconds)
+    ? Math.max(1, Math.ceil(retryAfterSeconds))
+    : 1;
+  return NextResponse.json({ code: 'RATE_LIMIT_EXCEEDED', message } satisfies ApiError, {
+    status: 429,
+    headers: { 'Retry-After': String(safeRetryAfterSeconds) },
+  });
+}
+
 async function resolveLocalizedMessage(code: string, message: string, labelKey?: string) {
   const resolvedLabelKey = labelKey ?? defaultLabelKeysByCode[code];
   if (!resolvedLabelKey) return message;

@@ -5,12 +5,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   API_ROUTE_TEMPLATES,
   RATE_LIMIT_DDB_TIMEOUT_MS,
+  RATE_LIMIT_FEATURE_MUTATION_MAX_DEFAULT,
+  RATE_LIMIT_FEATURE_SEARCH_MAX_DEFAULT,
   SSE_MAX_CONNECTIONS,
   acquireSseConnection,
   canonicalizeRateLimitPath,
   checkAuthRateLimit,
+  checkFeatureRateLimit,
   checkRateLimit,
   createRateLimiter,
+  enforceFeatureRateLimit,
   releaseSseConnection,
   resetRateLimitStoreForTests,
 } from './rate-limit';
@@ -58,6 +62,9 @@ describe('rate-limit', () => {
     delete process.env.AWS_ECS_CONTAINER_CREDENTIALS_RELATIVE_URI;
     delete process.env.AWS_CONTAINER_AUTHORIZATION_TOKEN;
     delete process.env.RATE_LIMIT_DDB_TIMEOUT_MS;
+    delete process.env.RATE_LIMIT_FEATURE_DISABLED;
+    delete process.env.RATE_LIMIT_FEATURE_SEARCH_MAX;
+    delete process.env.RATE_LIMIT_FEATURE_MUTATION_MAX;
     vi.restoreAllMocks();
   });
 
@@ -936,5 +943,126 @@ describe('rate-limit', () => {
       allowed: true,
     });
     expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), RATE_LIMIT_DDB_TIMEOUT_MS);
+  });
+
+  describe('checkFeatureRateLimit / enforceFeatureRateLimit', () => {
+    it('allows requests under the default search budget and blocks past it', async () => {
+      const identifier = 'org_1:user_1';
+      for (let index = 1; index <= RATE_LIMIT_FEATURE_SEARCH_MAX_DEFAULT; index += 1) {
+        await expect(
+          checkFeatureRateLimit(identifier, '/api/prescription-intakes', 'search'),
+        ).resolves.toMatchObject({ allowed: true });
+      }
+
+      await expect(
+        checkFeatureRateLimit(identifier, '/api/prescription-intakes', 'search'),
+      ).resolves.toMatchObject({ allowed: false, reason: 'quota_exceeded' });
+    });
+
+    it('allows requests under the default mutation budget and blocks past it', async () => {
+      const identifier = 'org_1:user_1';
+      for (let index = 1; index <= RATE_LIMIT_FEATURE_MUTATION_MAX_DEFAULT; index += 1) {
+        await expect(
+          checkFeatureRateLimit(identifier, '/api/prescription-intakes', 'mutation'),
+        ).resolves.toMatchObject({ allowed: true });
+      }
+
+      await expect(
+        checkFeatureRateLimit(identifier, '/api/prescription-intakes', 'mutation'),
+      ).resolves.toMatchObject({ allowed: false, reason: 'quota_exceeded' });
+    });
+
+    it('scopes search and mutation budgets independently per route+identifier', async () => {
+      const identifier = 'org_1:user_1';
+      await expect(
+        checkFeatureRateLimit(identifier, '/api/patients', 'search'),
+      ).resolves.toMatchObject({
+        allowed: true,
+        remaining: RATE_LIMIT_FEATURE_SEARCH_MAX_DEFAULT - 1,
+      });
+      // Different route -> independent bucket, unaffected by the /api/patients count above.
+      await expect(
+        checkFeatureRateLimit(identifier, '/api/prescription-intakes', 'search'),
+      ).resolves.toMatchObject({
+        allowed: true,
+        remaining: RATE_LIMIT_FEATURE_SEARCH_MAX_DEFAULT - 1,
+      });
+      // Different identifier (different org/user) -> also independent.
+      await expect(
+        checkFeatureRateLimit('org_2:user_2', '/api/patients', 'search'),
+      ).resolves.toMatchObject({
+        allowed: true,
+        remaining: RATE_LIMIT_FEATURE_SEARCH_MAX_DEFAULT - 1,
+      });
+    });
+
+    it('honors RATE_LIMIT_FEATURE_SEARCH_MAX / RATE_LIMIT_FEATURE_MUTATION_MAX overrides', async () => {
+      process.env.RATE_LIMIT_FEATURE_SEARCH_MAX = '2';
+      process.env.RATE_LIMIT_FEATURE_MUTATION_MAX = '1';
+      const identifier = 'org_1:user_1';
+
+      await expect(
+        checkFeatureRateLimit(identifier, '/api/patients', 'search'),
+      ).resolves.toMatchObject({ allowed: true, remaining: 1 });
+      await expect(
+        checkFeatureRateLimit(identifier, '/api/patients', 'search'),
+      ).resolves.toMatchObject({ allowed: true, remaining: 0 });
+      await expect(
+        checkFeatureRateLimit(identifier, '/api/patients', 'search'),
+      ).resolves.toMatchObject({ allowed: false });
+
+      await expect(
+        checkFeatureRateLimit(identifier, '/api/patients', 'mutation'),
+      ).resolves.toMatchObject({ allowed: true, remaining: 0 });
+      await expect(
+        checkFeatureRateLimit(identifier, '/api/patients', 'mutation'),
+      ).resolves.toMatchObject({ allowed: false });
+    });
+
+    it('ignores malformed override env values and falls back to the default', async () => {
+      process.env.RATE_LIMIT_FEATURE_SEARCH_MAX = 'not-a-number';
+
+      await expect(
+        checkFeatureRateLimit('org_1:user_1', '/api/patients', 'search'),
+      ).resolves.toMatchObject({
+        allowed: true,
+        remaining: RATE_LIMIT_FEATURE_SEARCH_MAX_DEFAULT - 1,
+      });
+    });
+
+    it('bypasses the limiter entirely when RATE_LIMIT_FEATURE_DISABLED is set', async () => {
+      process.env.RATE_LIMIT_FEATURE_SEARCH_MAX = '1';
+      process.env.RATE_LIMIT_FEATURE_DISABLED = '1';
+      const identifier = 'org_1:user_1';
+
+      for (let index = 0; index < 5; index += 1) {
+        await expect(
+          checkFeatureRateLimit(identifier, '/api/patients', 'search'),
+        ).resolves.toMatchObject({ allowed: true });
+      }
+    });
+
+    it('enforceFeatureRateLimit returns null when allowed', async () => {
+      await expect(
+        enforceFeatureRateLimit('org_1:user_1', '/api/patients', 'search'),
+      ).resolves.toBeNull();
+    });
+
+    it('enforceFeatureRateLimit returns a 429 with Retry-After and a Japanese message when exceeded', async () => {
+      process.env.RATE_LIMIT_FEATURE_SEARCH_MAX = '1';
+      const identifier = 'org_1:user_1';
+
+      await expect(
+        enforceFeatureRateLimit(identifier, '/api/patients', 'search'),
+      ).resolves.toBeNull();
+
+      const response = await enforceFeatureRateLimit(identifier, '/api/patients', 'search');
+      expect(response).not.toBeNull();
+      expect(response?.status).toBe(429);
+      expect(response?.headers.get('Retry-After')).toMatch(/^\d+$/);
+      const body = (await response?.json()) as { code: string; message: string };
+      expect(body.code).toBe('RATE_LIMIT_EXCEEDED');
+      expect(body.message).toMatch(/[ぁ-んァ-ン一-龯]/);
+    });
   });
 });

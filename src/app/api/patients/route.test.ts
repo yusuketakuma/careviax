@@ -25,6 +25,7 @@ const {
   careTeamLinkCreateManyMock,
   validateOrgReferencesMock,
   notifyWebhookEventForOrgMock,
+  enforceFeatureRateLimitMock,
 } = vi.hoisted(() => ({
   authPlumbingFailureRef: { current: null as Error | null },
   withAuthContextMock: vi.fn(),
@@ -49,6 +50,7 @@ const {
   careTeamLinkCreateManyMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
   notifyWebhookEventForOrgMock: vi.fn(),
+  enforceFeatureRateLimitMock: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -138,6 +140,10 @@ vi.mock('@/lib/patient/facility-reference', () => ({
   getFacilityVisitDefaults: getFacilityVisitDefaultsMock,
 }));
 
+vi.mock('@/lib/api/rate-limit', () => ({
+  enforceFeatureRateLimit: enforceFeatureRateLimitMock,
+}));
+
 import { GET as rawGET, POST as rawPOST } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
@@ -210,6 +216,7 @@ describe('/api/patients GET', () => {
     authPlumbingFailureRef.current = null;
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-20T12:00:00.000Z'));
+    enforceFeatureRateLimitMock.mockResolvedValue(null);
     patientCreateMock.mockResolvedValue({ id: 'patient_new' });
     residenceCreateMock.mockResolvedValue({ id: 'residence_new' });
     contactPartyCreateManyMock.mockResolvedValue({ count: 1 });
@@ -2050,5 +2057,79 @@ describe('/api/patients GET', () => {
         }),
       }),
     );
+  });
+
+  it('checks the search rate limit scoped to org+user before querying patients', async () => {
+    await GET(createAuthenticatedRequest());
+
+    expect(enforceFeatureRateLimitMock).toHaveBeenCalledWith(
+      'org_1:user_1',
+      '/api/patients',
+      'search',
+    );
+  });
+
+  it('returns the 429 response from the rate limiter without querying the database (GET)', async () => {
+    const rateLimitedResponse = Response.json(
+      {
+        code: 'RATE_LIMIT_EXCEEDED',
+        message: 'リクエストが多すぎます。しばらくしてから再度お試しください',
+      },
+      { status: 429, headers: { 'Retry-After': '20' } },
+    );
+    enforceFeatureRateLimitMock.mockResolvedValueOnce(rateLimitedResponse);
+
+    const response = (await GET(createAuthenticatedRequest()))!;
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get('Retry-After')).toBe('20');
+    const body = (await response.json()) as { code: string };
+    expect(body.code).toBe('RATE_LIMIT_EXCEEDED');
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('checks the write rate limit scoped to org+user before creating a patient', async () => {
+    await POST(
+      createJsonRequest({
+        name: '山田 花子',
+        name_kana: 'ヤマダ ハナコ',
+        birth_date: '1950-01-01',
+        gender: 'female',
+        address: '東京都新宿区1-2-3',
+      }),
+    );
+
+    expect(enforceFeatureRateLimitMock).toHaveBeenCalledWith(
+      'org_1:user_1',
+      '/api/patients',
+      'mutation',
+    );
+  });
+
+  it('returns the 429 response from the rate limiter without creating a patient (POST)', async () => {
+    const rateLimitedResponse = Response.json(
+      {
+        code: 'RATE_LIMIT_EXCEEDED',
+        message: 'リクエストが多すぎます。しばらくしてから再度お試しください',
+      },
+      { status: 429, headers: { 'Retry-After': '5' } },
+    );
+    enforceFeatureRateLimitMock.mockResolvedValueOnce(rateLimitedResponse);
+
+    const response = (await POST(
+      createJsonRequest({
+        name: '山田 花子',
+        name_kana: 'ヤマダ ハナコ',
+        birth_date: '1950-01-01',
+        gender: 'female',
+        address: '東京都新宿区1-2-3',
+      }),
+    ))!;
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get('Retry-After')).toBe('5');
+    const body = (await response.json()) as { code: string };
+    expect(body.code).toBe('RATE_LIMIT_EXCEEDED');
+    expect(patientCreateMock).not.toHaveBeenCalled();
   });
 });

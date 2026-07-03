@@ -4,6 +4,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { conflict, internalError, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { enforceFeatureRateLimit } from '@/lib/api/rate-limit';
 import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { createPatientSchema } from '@/lib/validations/patient';
@@ -173,6 +174,13 @@ function normalizeAssignmentId(value: string | undefined) {
 
 const authenticatedGET = withAuthContext(
   async (req, ctx) => {
+    const rateLimitResponse = await enforceFeatureRateLimit(
+      `${ctx.orgId}:${ctx.userId}`,
+      '/api/patients',
+      'search',
+    );
+    if (rateLimitResponse) return rateLimitResponse;
+
     const { searchParams } = new URL(req.url);
     const duplicateFieldErrors = findDuplicatePatientListQueryParams(searchParams);
     if (duplicateFieldErrors) {
@@ -283,6 +291,13 @@ export const GET: typeof authenticatedGET = async (req, routeContext) => {
 
 const authenticatedPOST = withAuthContext(
   async (req, ctx) => {
+    const rateLimitResponse = await enforceFeatureRateLimit(
+      `${ctx.orgId}:${ctx.userId}`,
+      '/api/patients',
+      'mutation',
+    );
+    if (rateLimitResponse) return rateLimitResponse;
+
     const raw = await readJsonObjectRequestBody(req);
     if (!raw) {
       return validationError('リクエストボディが不正です');

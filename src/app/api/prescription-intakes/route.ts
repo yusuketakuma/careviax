@@ -1,6 +1,7 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError, conflict } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { enforceFeatureRateLimit } from '@/lib/api/rate-limit';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { collectDispensingLineMetadataValidationDetails } from '@/lib/validations/dispensing-line';
@@ -398,6 +399,13 @@ function createIntakeErrorResponse(result: IntakeInTxErrorResult, cycleId: strin
 
 const authenticatedGET = withAuthContext(
   async (req, ctx) => {
+    const rateLimitResponse = await enforceFeatureRateLimit(
+      `${ctx.orgId}:${ctx.userId}`,
+      '/api/prescription-intakes',
+      'search',
+    );
+    if (rateLimitResponse) return withSensitiveNoStore(rateLimitResponse);
+
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
     const filters = parsePrescriptionIntakeListFilters(searchParams);
@@ -545,6 +553,13 @@ export const GET: typeof authenticatedGET = async (req, routeContext) =>
 
 export const POST = withAuthContext(
   async (req, ctx) => {
+    const rateLimitResponse = await enforceFeatureRateLimit(
+      `${ctx.orgId}:${ctx.userId}`,
+      '/api/prescription-intakes',
+      'mutation',
+    );
+    if (rateLimitResponse) return rateLimitResponse;
+
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 

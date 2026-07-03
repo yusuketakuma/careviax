@@ -2,6 +2,7 @@ import { signAwsJsonRequest, type AwsCredentials } from '@/lib/aws/sigv4';
 import { readJsonObject } from '@/lib/db/json';
 import { maybeUnrefTimeout } from '@/lib/utils/abort-timeout';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
+import { rateLimited } from './response';
 import { readJsonResponseBody } from './response-body';
 /**
  * Rate limiting module.
@@ -952,6 +953,103 @@ export async function checkAuthRateLimit(
 ): Promise<RateLimitResult> {
   const key = `auth:${identifier}:${canonicalizeRateLimitPath(pathname)}`;
   return getRateLimitStore().increment(key, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_AUTH_MAX);
+}
+
+// ---------------------------------------------------------------------------
+// Feature-scoped limiters — deliberately generous, env-tunable per-feature
+// budgets for specific high-traffic routes (heavy search GETs, high-churn
+// write POSTs). Distinct from the generic checkRateLimit() bucket so these
+// routes can be tuned independently without affecting every API route.
+// ---------------------------------------------------------------------------
+
+/**
+ * Default requests/minute for feature-scoped "search" limiter.
+ * Deliberately generous: normal debounced UI usage should never approach it.
+ * Override with env RATE_LIMIT_FEATURE_SEARCH_MAX.
+ */
+export const RATE_LIMIT_FEATURE_SEARCH_MAX_DEFAULT = 120;
+
+/**
+ * Default requests/minute for feature-scoped "mutation" (write) limiter.
+ * Override with env RATE_LIMIT_FEATURE_MUTATION_MAX.
+ */
+export const RATE_LIMIT_FEATURE_MUTATION_MAX_DEFAULT = 60;
+
+function parsePositiveIntEnv(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const parsed = Number.parseInt(value.trim(), 10);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+/**
+ * Kill switch for feature-scoped rate limiting. Set
+ * RATE_LIMIT_FEATURE_DISABLED=1 (or "true") to disable without a deploy of
+ * code changes, e.g. if a limit turns out to be too tight for real usage.
+ */
+function isFeatureRateLimitDisabled(): boolean {
+  const raw = process.env.RATE_LIMIT_FEATURE_DISABLED;
+  return raw === '1' || raw?.toLowerCase() === 'true';
+}
+
+function resolveFeatureRateLimitMax(kind: 'search' | 'mutation'): number {
+  if (kind === 'search') {
+    return parsePositiveIntEnv(
+      process.env.RATE_LIMIT_FEATURE_SEARCH_MAX,
+      RATE_LIMIT_FEATURE_SEARCH_MAX_DEFAULT,
+    );
+  }
+  return parsePositiveIntEnv(
+    process.env.RATE_LIMIT_FEATURE_MUTATION_MAX,
+    RATE_LIMIT_FEATURE_MUTATION_MAX_DEFAULT,
+  );
+}
+
+/**
+ * Check rate limit for a specific high-traffic feature route (heavy search
+ * GET or high-churn write POST). Scoped separately from the generic
+ * checkRateLimit()/checkAuthRateLimit() buckets so it can be tuned or
+ * disabled per-feature via env without touching every route.
+ *
+ * @param identifier - Stable per-actor key, e.g. `${orgId}:${userId}`
+ * @param pathname   - Request pathname, canonicalized and used to key limits per route
+ * @param kind        - 'search' (generous read budget) or 'mutation' (write budget)
+ */
+export async function checkFeatureRateLimit(
+  identifier: string,
+  pathname: string,
+  kind: 'search' | 'mutation',
+): Promise<RateLimitResult> {
+  if (isFeatureRateLimitDisabled()) {
+    return {
+      allowed: true,
+      remaining: Number.MAX_SAFE_INTEGER,
+      resetAt: Date.now() + RATE_LIMIT_WINDOW_MS,
+    };
+  }
+
+  const maxRequests = resolveFeatureRateLimitMax(kind);
+  const key = `feature:${kind}:${identifier}:${canonicalizeRateLimitPath(pathname)}`;
+  return getRateLimitStore().increment(key, RATE_LIMIT_WINDOW_MS, maxRequests);
+}
+
+/**
+ * Convenience wrapper for route handlers: checks the feature-scoped limiter
+ * and, if exceeded, returns a ready-to-use 429 response (Retry-After header,
+ * Japanese message). Returns null when the request is allowed through.
+ *
+ * @param identifier - Stable per-actor key, e.g. `${orgId}:${userId}`
+ * @param pathname   - Request pathname
+ * @param kind        - 'search' (generous read budget) or 'mutation' (write budget)
+ */
+export async function enforceFeatureRateLimit(
+  identifier: string,
+  pathname: string,
+  kind: 'search' | 'mutation',
+) {
+  const result = await checkFeatureRateLimit(identifier, pathname, kind);
+  if (result.allowed) return null;
+  const retryAfterSeconds = Math.ceil((result.resetAt - Date.now()) / 1000);
+  return rateLimited(retryAfterSeconds);
 }
 
 /**
