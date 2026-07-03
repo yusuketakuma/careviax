@@ -274,3 +274,31 @@
 - 残: R22b（tools/infra/websocket 一式+infra docs）。
 - 教訓: 全量 gate 中のファイル削除が vitest collection と race → EDIT-FREEZE 運用を導入。
   opus 計画審査は src/ 境界のみで tools/ の cross-boundary import を見落とし → maker が検出・FYI 即応で解消。
+
+## 2026-07-04 R08-EXEC cee20c66
+
+- 分類: dead-code removal / 零importer 5モジュール+5テスト削除（922行、codex3）
+- evidence: per-symbol rg 0件、/api/health は backup-monitor shadow 実装で無関係、
+  localStorage 生キー不在、barrel 再export なし — maker と opus が独立に二重検証。
+- 検証: survivor 7 files/64 tests green、typecheck(8GB) green。
+- レビュー: opus APPROVE。Low: design-gap-analysis 等の recent-operations stale 記述
+  (元々未配線・退行なし) → doc 掃除 follow-up。
+
+## 2026-07-04 ID-2-W6 d2bcde00
+
+- 分類: infra/db / display_id admin+drug 波 + 設計判断（codex xhigh）
+- 実施: admin 15 + drug 3 モデルへ W1-W5 同型 additive。**User registry scope='org'→'global' 是正**
+  (M-1 解消。staff 表示は Membership.display_id)。DrugAlertRule/IntegrationJob は nullable org_id で
+  恒久 defer。**L-1 completeness gate 実装**(wave 所属 or 明示 DEFERRED、双方向検査)。
+- backfill: local e2e 25,347 rows(AuditLog 25K 含む)、postChecks 全 green。
+- レビュー: opus APPROVE。Medium(運用): 本番高書込表への index 作成は CONCURRENTLY 別ステップ or
+  メンテ窓 → BACKLOG `ID-2-OPS` に起票。Low×2(DEFERRED 注記分離・IntegrationJob 根拠記録)は W7 で消化。
+
+## 2026-07-04 FE-FALSEEMPTY-SWEEP 27496917
+
+- 分類: bug/fe / false-empty fail-close 4画面（codex2）
+- 実施: QR draft 詳細・conferences カレンダー・conflict-resolution・visit-brief セクションで
+  fetch 失敗が空状態/無言消滅に潰れていたのを ErrorState variant=server + refetch / サマリ '—' へ。
+- 検証: focused 4 files/27 tests green(error UI+false-empty 文言不在+refetch 配線)。
+- レビュー: opus APPROVE(conferences 巨大 diff を git diff -w で分離し3点のみ確認、isLoading→isError
+  順序・enabled ガード適正)。list-only 残余: schedules 系 form 副次データ・billing 隣接(BACKLOG 記載)。

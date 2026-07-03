@@ -19,8 +19,8 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: 3レーン並行体制（2026-07-04〜）。codex(xhigh)=DB/schema、
-  codex2(high)=BE services、codex3(medium)=cleanup。`ID-2-W5` land 済み(86d9d273)、
-  次は `ID-2-W6`。codex2=R16-SWEEP stage2 実装中、codex3=R22-EXEC 実装中。
+  codex2(high)=BE services、codex3(medium)=cleanup。schema 波は W6(d2bcde00) まで land、
+  W7(最終波+HandoffItem 親経由)実装中。codex2=R17-SWEEP、codex3=R23-EXEC 実装中。
 
 ## 直近の land（本日・要点）
 
@@ -29,8 +29,9 @@
   PERF-01(981f1a58) / MFA1(f7bf2e97) / F84(c22c7fe3) / CE17(5205fc48) / R07(f3733036) /
   DR-DUP1(2e0c7fdb) / PERF-02(60469cd1) / CE20(66d65f99) / ID-1b(0a3b910c, e2a8b414)
   / ID-2-W1(898c0d6a) / ID-2-W2(90a1276e) / ID-2-W3(8c7e34e7) / ID-2-W4(7e18fcb2)
-  / FIX-CATALOG-IDSEQ(a42065fa) / R21-SONNER1(68688360) / ID-2-W5(86d9d273) — 全 opus/committer APPROVE
-- codex2 lane: R16-MIN(da5889f0) — committer 検証 APPROVE（Intl 設定 byte-identical 証明）
+  / FIX-CATALOG-IDSEQ(a42065fa) / R21-SONNER1(68688360) / ID-2-W5(86d9d273) / ID-2-W6(d2bcde00) — 全 opus/committer APPROVE
+- codex2 lane: R16-MIN(da5889f0) / R16-SWEEP(6f26c04c) / FE-FALSEEMPTY(27496917) — opus/committer APPROVE
+- codex3 lane: R22-EXEC(759b4dbc) / R08-EXEC(cee20c66) — 全 opus APPROVE
 - claude/opus lane: X01(e02cec50) / CE19(2136c93a) / N18(ad0ff309) / R03(3b31cec1) /
   A1-CRC(eebda8c3) land
 - 全量 gate green: test 13035 passed（2026-07-03 夜、F84/CE19/N18/R03後）
@@ -49,7 +50,8 @@
 
 ## 次の一手
 
-1. codex: `ID-2-W6`（admin+drug+platform 波、設計判断込み: User 帰属提案 / DrugAlertRule hybrid RLS / platform 表の帰属）
-2. codex2: R16-SWEEP stage2 実装→report、codex3: R22-EXEC 実装→report
-3. 運用: 全量 gate は EDIT-FREEZE broadcast → 全レーン ACK → 実行（race 防止）
-4. 運用: W6 以降の ops/refactor 台帳更新は claude が引き取り、codex は report note に留める
+1. codex: `ID-2-W7`（最終 schema 波: medication/pca-pump/core-task/saved-view + HandoffItem 親経由 backfill + DEFERRED 注記分離）→ 次は ID-2-CP（create-path 統合）
+2. codex2: `R17-SWEEP`（truncated-list envelope 収斂、byte-preserving のみ）
+3. codex3: `R23-EXEC`（messageFromError helper + 第1バッチ10ファイル）
+4. claude: W7/R23/R17 の verdict→commit 後、EDIT-FREEZE → 全量 gate（build 込み）
+5. 運用: 台帳更新は claude 専任。全量 gate は EDIT-FREEZE broadcast → 全レーン ACK → 実行
