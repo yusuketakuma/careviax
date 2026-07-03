@@ -52,23 +52,23 @@
 - [ ] 利用規約/プライバシーポリシー本文の法務確定（掲示ページ実装は W2-R4）
 - [ ] 音声メモ STT の AWS Transcribe creds（旧D-8-3）
 
-#### Wave 0 — quick wins（依存なし・並行・各S） `cc:TODO`
+#### Wave 0 — quick wins（依存なし・並行・各S） `cc:完了` <!-- 2026-07-03 ultracode Wave0 実装: a5eb996f..b02d4899 の15コミット(W0-3/4結合)。全項目 独立レビューapprove+gate green(typecheck/no-unused/build/colors/boundaries)。W0-8判定=全てby-design leak無し -->
 
-- [ ] W0-1 colors:check を ci.yml へ（旧G-1。スクリプトは 4510ee7f 導入済み）
-- [ ] W0-2 renovate/dependabot 導入（旧C-6）
-- [ ] W0-3 import 方向 lint 境界: 共通コア→薬局固有の import を warn 可視化（旧F-1・水平展開の柵）
-- [ ] W0-4 軽量 pre-commit（変更ファイル限定 lint/format。旧G-2）
-- [ ] W0-5 docs 参照切れ解消: Plans.md/CLAUDE.md が指す `docs/decisions.md`+旧spec 2ファイルの3参照を実在 docs へ更新 or 復元（旧G-4 訂正版）
-- [ ] W0-6 改定運用 runbook docs（旧C-4）
-- [ ] W0-7 cycle_id 疎化+（組織,職種）N者連携の設計メモ（旧F-6・docs のみ）
-- [ ] W0-8 cron 全org横断 8箇所の by-design/leak 判定（旧A-6）
-- [ ] W0-9 optimizePackageImports 追加（旧E-4）
-- [ ] W0-10 無制限 findMany 棚卸し（旧D-6。EPIC8 CE11/N18/N23/CXR2-PERF01 と統合）
-- [ ] W0-11 介護2027改定データ枠（旧C-7a） / W0-12 prisma generator リンク堅牢化（旧C-7b）
-- [ ] W0-13 担当者命名の抽象化規約（旧F-3）
-- [ ] W0-14 重複解消: formatYen×3（null→0円実害）/ SectionCard×4+dead / QR readString（旧H-3）
-- [ ] W0-15 腎機能ラベル JST 共有フォーマッタ（FEATURE_QUEUE F-20260702-001 収容）
-- [ ] W0-16 safety-check CDS fail-open 修正: fetcher `catch→[]` 廃止・degraded バナー+再試行（旧A-1）— `safety-check-content.tsx:73-90`
+- [x] W0-1 colors:check を ci.yml へ（旧G-1。スクリプトは 4510ee7f 導入済み）
+- [x] W0-2 renovate/dependabot 導入（旧C-6）
+- [x] W0-3 import 方向 lint 境界: 共通コア→薬局固有の import を warn 可視化（旧F-1・水平展開の柵）
+- [x] W0-4 軽量 pre-commit（変更ファイル限定 lint/format。旧G-2）
+- [x] W0-5 docs 参照切れ解消: Plans.md/CLAUDE.md が指す `docs/decisions.md`+旧spec 2ファイルの3参照を実在 docs へ更新 or 復元（旧G-4 訂正版）
+- [x] W0-6 改定運用 runbook docs（旧C-4）
+- [x] W0-7 cycle_id 疎化+（組織,職種）N者連携の設計メモ（旧F-6・docs のみ）
+- [x] W0-8 cron 全org横断 8箇所の by-design/leak 判定（旧A-6）
+- [x] W0-9 optimizePackageImports 追加（旧E-4）
+- [x] W0-10 無制限 findMany 棚卸し（旧D-6。EPIC8 CE11/N18/N23/CXR2-PERF01 と統合）
+- [x] W0-11 介護2027改定データ枠（旧C-7a） / W0-12 prisma generator リンク堅牢化（旧C-7b）
+- [x] W0-13 担当者命名の抽象化規約（旧F-3）
+- [x] W0-14 重複解消: formatYen×3（null→0円実害）/ SectionCard×4+dead / QR readString（旧H-3）
+- [x] W0-15 腎機能ラベル JST 共有フォーマッタ（FEATURE_QUEUE F-20260702-001 収容）
+- [x] W0-16 safety-check CDS fail-open 修正: fetcher `catch→[]` 廃止・degraded バナー+再試行（旧A-1）— `safety-check-content.tsx:73-90`
 
 #### Wave 1 — P0 安全・セキュリティ・算定正確性（M1 必須） `cc:TODO`
 
