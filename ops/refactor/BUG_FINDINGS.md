@@ -1,6 +1,6 @@
 # Bug Findings
 
-Snapshot: 2026-07-03 19:04 JST
+Snapshot: 2026-07-03 19:18 JST
 
 ## Confirmed And Fixed In Recent Slices
 
@@ -1437,9 +1437,36 @@ true`, the route kicked off `drainMedicationHistoryBulkExportQueue` as a
   - Focused patient-detail suite passed `1` file / `70` tests.
   - Scoped ESLint, Prettier check, diff-check, and `pnpm typecheck` passed.
 
+### `BUG-REALTIME-LISTENER-SAFE-LOG-001`: Shared realtime listener failures used route-local console logging
+
+- Severity: medium security/privacy observability.
+- Evidence:
+  - `src/lib/realtime/shared-event-stream.ts`
+  - `src/lib/realtime/shared-event-stream.test.ts`
+  - `src/lib/utils/logger.ts`
+- Problem:
+  - Shared notification/presence SSE listener callbacks are intentionally
+    fail-soft so one throwing listener does not reconnect or block sibling
+    listeners, but the failure path used route-local `console.error` metadata.
+  - The local payload redacted raw messages manually, but it bypassed the
+    shared safe logger contract and had no fixed event/route/operation fields.
+- Impact:
+  - Client realtime listener diagnostics could drift from the centralized
+    safe-log contract and lose operator-searchable operation labels while
+    handling notification/presence callbacks.
+- Fix:
+  - Replaced route-local listener-failure logging with `logger.error()` using a
+    fixed `realtime.listener_failed` event, SSE route, method, org id, and
+    operation key.
+  - Preserved listener isolation, status emission, SSE connection sharing,
+    reconnect behavior, and raw exception redaction.
+- Validation:
+  - Focused shared-event-stream suite passed `1` file / `4` tests.
+  - Scoped ESLint, Prettier check, diff-check, and `pnpm typecheck` passed.
+
 ## Flagged / Not Yet Fixed
 
 No additional unresolved behavior-changing bug is confirmed after the latest
-patient timeline safe-failure-log slice. Potential domain behavior changes must
-stay in findings until route/service tests and product intent prove the issue is
-a bug rather than a specification choice.
+shared realtime listener safe-failure-log slice. Potential domain behavior
+changes must stay in findings until route/service tests and product intent prove
+the issue is a bug rather than a specification choice.

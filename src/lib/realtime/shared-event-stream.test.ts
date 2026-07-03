@@ -27,6 +27,20 @@ function createHangingSseResponse() {
   );
 }
 
+type ConsoleErrorSpy = { mock: { calls: unknown[][] } };
+
+function parseConsoleErrorJson(spy: ConsoleErrorSpy) {
+  return spy.mock.calls.flatMap((call) => {
+    const [line] = call;
+    if (typeof line !== 'string') return [];
+    try {
+      return [JSON.parse(line) as Record<string, unknown>];
+    } catch {
+      return [];
+    }
+  });
+}
+
 describe('subscribeSharedRealtimeStream', () => {
   afterEach(() => {
     resetSharedRealtimeStreamsForTests();
@@ -138,14 +152,29 @@ describe('subscribeSharedRealtimeStream', () => {
     expect(secondStatus).toHaveBeenCalledWith(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(consoleError).toHaveBeenCalledTimes(3);
-    expect(consoleError).toHaveBeenCalledWith('[realtime] listener failed', {
-      kind: 'Error',
-      message: 'Realtime listener failed',
-    });
-    expect(consoleError).toHaveBeenCalledWith('[realtime] listener failed', {
-      kind: 'Error',
-      message: 'Realtime listener failed',
-    });
+    const parsedLogs = parseConsoleErrorJson(consoleError);
+    expect(parsedLogs).toContainEqual(
+      expect.objectContaining({
+        level: 'error',
+        message: 'realtime.listener_failed',
+        service: 'ph-os',
+        event: 'realtime.listener_failed',
+        route: '/api/notifications/stream',
+        method: 'GET',
+        orgId: 'org_1',
+        operation: 'notify_event_listener',
+        error_name: 'Error',
+      }),
+    );
+    expect(parsedLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: 'realtime.listener_failed',
+          operation: 'notify_status_listener',
+          error_name: 'Error',
+        }),
+      ]),
+    );
     const logged = JSON.stringify(consoleError.mock.calls);
     expect(logged).not.toContain('token=secret');
     expect(logged).not.toContain('db_password=value');

@@ -1,10 +1,51 @@
 # Verification
 
-Snapshot: 2026-07-03 19:04 JST
+Snapshot: 2026-07-03 19:18 JST
 
-## Latest Backend Service Slice Verification
+## Latest Client Realtime Slice Verification
 
-The latest backend service slice is
+The latest separate-track refactor slice is
+`RR-BUG-20260703-RT1-shared-event-stream-safe-log` at 2026-07-03 19:18 JST.
+
+- Planning / coordination:
+  - Claude ACKed the RT1 path lock for
+    `src/lib/realtime/shared-event-stream.ts`,
+    `src/lib/realtime/shared-event-stream.test.ts`, and progress ledgers.
+  - BE-3 design memo remained uncommitted/untracked while RT1 was implemented
+    in the approved non-overlapping paths.
+- Fixed:
+  - Shared realtime listener/status callback failures now use `logger.error`
+    with fixed `event`, `route`, `method`, `orgId`, and `operation` fields.
+  - Existing listener isolation regression now asserts JSON safe-log output and
+    `error_name` while continuing to prove raw exception text is not logged.
+- Safety:
+  - Listener failures remain fail-soft; sibling listeners still receive events,
+    status callbacks still fire, and the stream does not reconnect because a
+    consumer callback throws.
+  - No API response, UI rendering, auth, authorization, RLS, DB schema,
+    migration, billing, audit, production config, external send, push/deploy,
+    or destructive-operation behavior changed.
+- Focused regressions:
+  - `pnpm exec vitest run src/lib/realtime/shared-event-stream.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `4` tests.
+- Scoped checks:
+  - `pnpm exec eslint --max-warnings=0 src/lib/realtime/shared-event-stream.ts src/lib/realtime/shared-event-stream.test.ts`
+  - Result: passed.
+  - `pnpm exec prettier --check src/lib/realtime/shared-event-stream.ts src/lib/realtime/shared-event-stream.test.ts docs/design/care-report-finalize-lock-design.md`
+  - Result: passed.
+  - `git diff --check -- src/lib/realtime/shared-event-stream.ts src/lib/realtime/shared-event-stream.test.ts`
+  - Result: passed.
+- Broad gates:
+  - `pnpm typecheck`
+  - Result: passed.
+  - `pnpm build` was not run for this narrow client logger-convergence slice.
+- Skipped:
+  - Browser/E2E smoke was skipped because this changes no DOM layout,
+    navigation, API response shape, or human workflow shape.
+
+## Previous Backend Service Slice Verification
+
+The previous backend service slice is
 `RR-BUG-20260703-PD1-patient-timeline-safe-log` at 2026-07-03 19:04 JST.
 
 - Planning / review:

@@ -1,11 +1,44 @@
 # Refactor Log
 
-Snapshot: 2026-07-03 19:04 JST
+Snapshot: 2026-07-03 19:18 JST
 
 This log is the compact resume log for `ops/refactor`. Detailed per-slice
 evidence also exists in root `REFACTOR_REPORT.md`,
 `REFACTOR_EXECUTION_PLAN.md`, `CODEX_GOAL_PROGRESS.md`, and
 `.codex/ralph-state.md`.
+
+## 2026-07-03 19:18 JST - Shared Realtime Listener Safe Failure Logger
+
+- Change ID: `RR-BUG-20260703-RT1-shared-event-stream-safe-log`.
+- Category: bug fix / privacy-safe observability / client realtime logger
+  convergence.
+- Files changed:
+  - `src/lib/realtime/shared-event-stream.ts`
+  - `src/lib/realtime/shared-event-stream.test.ts`
+- Summary:
+  - Replaced shared realtime listener-failure `console.error` logging with the
+    shared `logger.error` safe-log contract.
+  - Added fixed event/route/method/org/operation context for event-listener and
+    status-listener failures.
+  - Updated existing listener isolation/redaction coverage to assert JSON
+    safe-log output and `error_name`.
+- Safety:
+  - Preserves SSE connection sharing, listener isolation, reconnect behavior,
+    status callbacks, and UI/API behavior.
+  - Does not touch auth, authorization, RLS, DB schema, migration, billing,
+    audit, production config, external sends, push/deploy, or destructive
+    operations.
+- Performance:
+  - No performance optimization is claimed.
+- Validation:
+  - `pnpm exec prettier --write src/lib/realtime/shared-event-stream.ts src/lib/realtime/shared-event-stream.test.ts`
+  - `pnpm exec vitest run src/lib/realtime/shared-event-stream.test.ts --reporter=dot --testTimeout=60000`
+  - `pnpm typecheck`
+  - `pnpm exec eslint --max-warnings=0 src/lib/realtime/shared-event-stream.ts src/lib/realtime/shared-event-stream.test.ts`
+  - `pnpm exec prettier --check src/lib/realtime/shared-event-stream.ts src/lib/realtime/shared-event-stream.test.ts docs/design/care-report-finalize-lock-design.md`
+  - `git diff --check -- src/lib/realtime/shared-event-stream.ts src/lib/realtime/shared-event-stream.test.ts`
+  - Result: focused shared-event-stream suite passed `1` file / `4` tests;
+    typecheck, scoped ESLint, scoped Prettier, and scoped diff-check passed.
 
 ## 2026-07-03 19:04 JST - Patient Timeline Safe Failure Logger
 

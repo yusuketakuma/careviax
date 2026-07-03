@@ -37058,3 +37058,32 @@ Next loop:
 - Remaining:
   - Broad refactor loop remains active.
   - Full `pnpm build` was not run for this narrow logger-convergence slice.
+
+## Shared Realtime Listener Safe Failure Logger - 2026-07-03 19:18 JST
+
+- Scope:
+  - `src/lib/realtime/shared-event-stream.ts`
+  - `src/lib/realtime/shared-event-stream.test.ts`
+  - `ops/refactor` progress records
+- Status:
+  - Implemented after Claude ACKed the RT1 path lock.
+  - Focused validation green; awaiting Claude/opus verdict and Claude commit.
+  - Change ID: `RR-BUG-20260703-RT1-shared-event-stream-safe-log`.
+- Fixed:
+  - Shared realtime event/status listener failures now use the shared
+    `logger.error` safe-log contract instead of route-local `console.error`.
+  - Existing listener-isolation regression now asserts JSON safe-log output,
+    including `error_name`, and keeps raw message redaction checks.
+- Safety:
+  - Listener fail-soft behavior, sibling listener delivery, status emission,
+    connection sharing, reconnect behavior, UI/API shape, auth, RLS, billing,
+    audit, migration, external send, push/deploy, and destructive-operation
+    behavior are preserved.
+- Validation:
+  - Focused shared-event-stream suite passed `1` file / `4` tests.
+  - `pnpm typecheck`: passed.
+  - Scoped ESLint, scoped Prettier, and scoped diff-check passed.
+- Remaining:
+  - Claude-assigned BE-3 design memo remains untracked and awaiting
+    opus/Claude review/commit.
+  - Full `pnpm build` was not run for this narrow logger-convergence slice.

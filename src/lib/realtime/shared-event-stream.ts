@@ -1,6 +1,7 @@
 'use client';
 
 import { normalizeRealtimeEventPayload } from '@/lib/realtime/events';
+import { logger } from '@/lib/utils/logger';
 
 type RealtimeListener = (event: unknown) => void;
 type StatusListener = (connected: boolean) => void;
@@ -24,7 +25,6 @@ type SharedRealtimeStream = {
 };
 
 const PRESENCE_TARGET_RECONNECT_DEBOUNCE_MS = 150;
-const REALTIME_LISTENER_FAILED_MESSAGE = 'Realtime listener failed';
 const streams = new Map<string, SharedRealtimeStream>();
 
 function presenceTargetKey(target: RealtimePresenceTarget) {
@@ -70,11 +70,21 @@ function schedulePresenceTargetReconnect(stream: SharedRealtimeStream) {
   }, PRESENCE_TARGET_RECONNECT_DEBOUNCE_MS);
 }
 
-function logRealtimeListenerError(error: unknown) {
-  console.error('[realtime] listener failed', {
-    kind: error instanceof Error ? 'Error' : typeof error,
-    message: REALTIME_LISTENER_FAILED_MESSAGE,
-  });
+function logRealtimeListenerError(
+  stream: SharedRealtimeStream,
+  operation: 'notify_event_listener' | 'notify_status_listener',
+  error: unknown,
+) {
+  logger.error(
+    {
+      event: 'realtime.listener_failed',
+      route: '/api/notifications/stream',
+      method: 'GET',
+      orgId: stream.orgId,
+      operation,
+    },
+    error,
+  );
 }
 
 function emitStatus(stream: SharedRealtimeStream, connected: boolean) {
@@ -84,7 +94,7 @@ function emitStatus(stream: SharedRealtimeStream, connected: boolean) {
     try {
       listener(connected);
     } catch (error) {
-      logRealtimeListenerError(error);
+      logRealtimeListenerError(stream, 'notify_status_listener', error);
     }
   }
 }
@@ -106,7 +116,7 @@ function dispatchSseChunk(stream: SharedRealtimeStream, chunk: string) {
     try {
       listener(event);
     } catch (error) {
-      logRealtimeListenerError(error);
+      logRealtimeListenerError(stream, 'notify_event_listener', error);
     }
   }
 }
@@ -233,7 +243,7 @@ export function subscribeSharedRealtimeStream(args: {
     try {
       args.onStatus(stream.connected);
     } catch (error) {
-      logRealtimeListenerError(error);
+      logRealtimeListenerError(stream, 'notify_status_listener', error);
     }
   }
 
