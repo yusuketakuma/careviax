@@ -31,6 +31,8 @@ const PRESCRIPTION_DISPLAY_ID_W2_MIGRATION =
   'prisma/migrations/20260703152000_add_prescription_display_ids/migration.sql';
 const VISIT_COMMUNICATION_DISPLAY_ID_W3_MIGRATION =
   'prisma/migrations/20260703153000_add_visit_communication_display_ids/migration.sql';
+const ORGANIZATION_DISPLAY_ID_W4_MIGRATION =
+  'prisma/migrations/20260703154000_add_organization_display_ids/migration.sql';
 const PATIENT_DISPLAY_ID_W1_MODELS = [
   'Patient',
   'Residence',
@@ -99,6 +101,23 @@ const COMMUNICATION_DISPLAY_ID_W3_MODELS = [
   'TaskComment',
   'HandoffBoard',
 ] as const satisfies readonly DisplayIdModel[];
+const ORGANIZATION_DISPLAY_ID_W4_MODELS = [
+  'PharmacySite',
+  'ServiceArea',
+  'PharmacySiteInsuranceConfig',
+  'Membership',
+  'FacilityStandardRegistration',
+  'PharmacistCredential',
+  'PharmacistShift',
+  'PharmacistShiftTemplate',
+  'BusinessHoliday',
+  'PharmacyOperatingHours',
+  'Facility',
+  'FacilityUnit',
+  'FacilityContact',
+  'ExternalProfessional',
+  'PrescriberInstitution',
+] as const satisfies readonly DisplayIdModel[];
 const DISPLAY_ID_SCHEMA_WAVES = [
   {
     label: 'W1 patient-domain',
@@ -123,6 +142,12 @@ const DISPLAY_ID_SCHEMA_WAVES = [
     schemaFile: 'communication.prisma',
     migrationPath: VISIT_COMMUNICATION_DISPLAY_ID_W3_MIGRATION,
     models: COMMUNICATION_DISPLAY_ID_W3_MODELS,
+  },
+  {
+    label: 'W4 organization-domain',
+    schemaFile: 'organization.prisma',
+    migrationPath: ORGANIZATION_DISPLAY_ID_W4_MIGRATION,
+    models: ORGANIZATION_DISPLAY_ID_W4_MODELS,
   },
 ] as const;
 const DISPLAY_ID_WAVE_MODELS = DISPLAY_ID_SCHEMA_WAVES.flatMap((wave) => wave.models);

@@ -102,6 +102,7 @@ model Organization {
 model PharmacySite {
   id                         String       @id @default(cuid())
   org_id                     String
+  display_id                 String?
   org                        Organization @relation(fields: [org_id], references: [id])
   name                       String
   address                    String
@@ -132,6 +133,7 @@ model PharmacySite {
   visit_vehicle_resources    VisitVehicleResource[]
   base_pharmacy_partnerships PharmacyPartnership[]          @relation("BaseSitePharmacyPartnerships")
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@index([org_id])
 }
@@ -139,6 +141,7 @@ model PharmacySite {
 model ServiceArea {
   id         String       @id @default(cuid())
   org_id     String
+  display_id String?
   org        Organization @relation(fields: [org_id], references: [id])
   site_id    String
   site       PharmacySite @relation(fields: [site_id], references: [id])
@@ -149,6 +152,7 @@ model ServiceArea {
   created_at DateTime     @default(now())
   updated_at DateTime     @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([site_id])
   @@index([area_type])
@@ -165,6 +169,7 @@ model ServiceArea {
 model PharmacySiteInsuranceConfig {
   id      String       @id @default(cuid())
   org_id  String
+  display_id String?
   site_id String
   site    PharmacySite @relation(fields: [site_id], references: [id])
 
@@ -186,6 +191,7 @@ model PharmacySiteInsuranceConfig {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([org_id, site_id, insurance_type, revision_code])
   @@index([org_id])
   @@index([site_id])
@@ -232,6 +238,7 @@ model User {
 model Membership {
   id                 String        @id @default(cuid())
   org_id             String
+  display_id         String?
   org                Organization  @relation(fields: [org_id], references: [id])
   user_id            String
   user               User          @relation(fields: [user_id], references: [id])
@@ -246,6 +253,7 @@ model Membership {
   created_at         DateTime      @default(now())
   updated_at         DateTime      @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([user_id, org_id, site_id])
   @@index([org_id])
 }
@@ -253,6 +261,7 @@ model Membership {
 model FacilityStandardRegistration {
   id                  String       @id @default(cuid())
   org_id              String
+  display_id          String?
   site_id             String
   site                PharmacySite @relation(fields: [site_id], references: [id])
   standard_type       String // 届出種別
@@ -264,6 +273,7 @@ model FacilityStandardRegistration {
   created_at          DateTime     @default(now())
   updated_at          DateTime     @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([site_id])
 }
@@ -271,6 +281,7 @@ model FacilityStandardRegistration {
 model PharmacistCredential {
   id                   String    @id @default(cuid())
   org_id               String
+  display_id           String?
   user_id              String
   user                 User      @relation(fields: [user_id], references: [id])
   certification_type   String // 研修認定証タイプ
@@ -282,6 +293,7 @@ model PharmacistCredential {
   created_at           DateTime  @default(now())
   updated_at           DateTime  @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([user_id])
 }
@@ -289,6 +301,7 @@ model PharmacistCredential {
 model PharmacistShift {
   id             String       @id @default(cuid())
   org_id         String
+  display_id     String?
   site_id        String
   site           PharmacySite @relation(fields: [site_id], references: [id])
   user_id        String
@@ -301,6 +314,7 @@ model PharmacistShift {
   created_at     DateTime     @default(now())
   updated_at     DateTime     @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([user_id, date])
   @@index([org_id])
   @@index([site_id, date])
@@ -309,6 +323,7 @@ model PharmacistShift {
 model PharmacistShiftTemplate {
   id             String       @id @default(cuid())
   org_id         String
+  display_id     String?
   site_id        String
   site           PharmacySite @relation(fields: [site_id], references: [id])
   user_id        String
@@ -321,6 +336,7 @@ model PharmacistShiftTemplate {
   created_at     DateTime     @default(now())
   updated_at     DateTime     @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([user_id, weekday])
   @@index([org_id, weekday])
 }
@@ -328,6 +344,7 @@ model PharmacistShiftTemplate {
 model BusinessHoliday {
   id           String        @id @default(cuid())
   org_id       String
+  display_id   String?
   site_id      String?
   site         PharmacySite? @relation(fields: [site_id], references: [id])
   date         DateTime      @db.Date
@@ -339,6 +356,7 @@ model BusinessHoliday {
   created_at   DateTime      @default(now())
   updated_at   DateTime      @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id, date])
   @@index([site_id, date])
 }
@@ -346,6 +364,7 @@ model BusinessHoliday {
 model PharmacyOperatingHours {
   id         String    @id @default(cuid())
   org_id     String
+  display_id String?
   site_id    String
   weekday    Int
   is_open    Boolean   @default(true)
@@ -358,6 +377,7 @@ model PharmacyOperatingHours {
   org  Organization @relation(fields: [org_id], references: [id])
   site PharmacySite @relation(fields: [site_id, org_id], references: [id, org_id])
 
+  @@unique([org_id, display_id])
   @@unique([site_id, weekday])
   @@index([org_id])
   @@index([org_id, site_id])
@@ -369,6 +389,7 @@ model PharmacyOperatingHours {
 model Facility {
   id                     String           @id @default(cuid())
   org_id                 String
+  display_id             String?
   org                    Organization     @relation(fields: [org_id], references: [id])
   name                   String
   facility_type          FacilityTypeEnum
@@ -389,6 +410,7 @@ model Facility {
   residences             Residence[]
   external_professionals ExternalProfessional[]
 
+  @@unique([org_id, display_id])
   @@unique([org_id, name])
   @@index([org_id])
 }
@@ -399,6 +421,7 @@ model Facility {
 model FacilityUnit {
   id            String   @id @default(cuid())
   org_id        String
+  display_id    String?
   facility_id   String
   facility      Facility @relation(fields: [facility_id], references: [id])
   name          String // e.g., "2F東ユニット"
@@ -414,6 +437,7 @@ model FacilityUnit {
   visit_schedules        VisitSchedule[]
   facility_visit_batches FacilityVisitBatch[]
 
+  @@unique([org_id, display_id])
   @@unique([org_id, facility_id, name])
   @@index([org_id])
   @@index([facility_id])
@@ -422,6 +446,7 @@ model FacilityUnit {
 model FacilityContact {
   id                       String                @id @default(cuid())
   org_id                   String
+  display_id               String?
   facility_id              String
   facility                 Facility              @relation(fields: [facility_id], references: [id], onDelete: Cascade)
   name                     String
@@ -438,6 +463,7 @@ model FacilityContact {
   created_at               DateTime              @default(now())
   updated_at               DateTime              @default(now()) @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([facility_id])
 }
@@ -445,6 +471,7 @@ model FacilityContact {
 model ExternalProfessional {
   id                       String                @id @default(cuid())
   org_id                   String
+  display_id               String?
   org                      Organization          @relation(fields: [org_id], references: [id])
   profession_type          ProfessionTypeEnum
   name                     String
@@ -465,6 +492,7 @@ model ExternalProfessional {
   updated_at               DateTime              @default(now()) @updatedAt
   care_team_links          CareTeamLink[]
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([profession_type])
   @@index([facility_id])
@@ -473,6 +501,7 @@ model ExternalProfessional {
 model PrescriberInstitution {
   id                       String                @id @default(cuid())
   org_id                   String
+  display_id               String?
   org                      Organization          @relation(fields: [org_id], references: [id])
   name                     String
   institution_code         String?
@@ -490,6 +519,7 @@ model PrescriberInstitution {
   prescription_intakes PrescriptionIntake[]
   pca_pump_rentals     PcaPumpRental[]
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@unique([org_id, name])
   @@index([org_id])
