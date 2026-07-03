@@ -1,7 +1,8 @@
 # プラットフォーム運営者コンソール（監査付きブレークグラス方式）設計
 
-- 状態: DRAFT（設計のみ・実装は Wave 分割）
+- 状態: **P-0 実装済み**（2026-07-03、独立セキュリティレビュー APPROVE）。P-1/P-2 は下記 §8 参照
 - 作成: 2026-07-03
+- 実装: schema `prisma/schema/platform.prisma` + migration `20260703100000` / core lib `src/lib/platform/{operator,break-glass,step-up-mfa}.ts` + `src/lib/audit/break-glass-audit.ts` / API `src/app/api/platform/**` / UI `src/app/platform/**`。テスト計52件（lib 44 + UI 8）
 - 決定者: fable（ユーザー指示「機能はベストプラクティスを調査して fable が決めて良い」に基づく）
 - 関連: `docs/security/rls-gap-ledger.md`, `prisma/rls-policies.sql`, `src/lib/db/rls.ts`, `src/lib/auth/permission-matrix.ts`, `src/lib/audit/*`, `src/server/services/data-explorer.ts`
 
@@ -137,6 +138,14 @@ withBreakGlassOrgContext(session: BreakGlassSession, targetOrgId, fn, options)
 - **P-0（MVP: 閲覧 + ログ）**: identity モデル + BreakGlassSession + MFA step-up + read-only テナント横断 data-explorer + 全アクセス監査 + `/platform` UI 骨格 + テナントディレクトリ + アクセス監査ビューア。→ 「データログ確認 + テナントデータ閲覧」を満たす。
 - **P-1（write ops）**: scope=read_write の限定操作 + 追加監査 + アラート + hash-chain tamper-evidence。
 - **P-2（横展開）**: 多職種展開（医科・訪問看護）に向けた operator 権限の汎用化。
+
+### P-0 後のフォローアップ（2026-07-03 セキュリティレビュー指摘・いずれも非 blocker）
+
+- operator suspend 時に既存 active `BreakGlassSession` を cascade revoke する（現状は次アクセスの `requirePlatformOperator` で 401 になり実質失効するが、明示 revoke がより明確）。
+- break-glass 起動エンドポイントに operator 単位の試行レート制限/ロックアウト（現状は Cognito 側スロットリング依存）。
+- `assertSessionUsable` の org_mismatch 分岐は現行呼び出しで冗長（session を org-scoped で取得済み）。将来 id 単独取得の呼び出しを追加する際は route の orgId を seam に渡して guard を活性化する。
+- 監査ビューアの `changes` は現状非 PHI（session_id/reason/scope/metadata）だが、将来 break_glass 系 action に PHI を載せない契約コメントを維持すること。
+- グローバル（全テナント横断）の break-glass アクセス監査ダッシュボード（現状は選択テナント単位）。
 
 ## 9. hard-stop 明示
 
