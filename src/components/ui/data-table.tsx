@@ -4,6 +4,7 @@ import {
   type ColumnFiltersState,
   type ColumnDef,
   type ExpandedState,
+  type PaginationState,
   type Row,
   type RowSelectionState,
   type SortingState,
@@ -12,19 +13,22 @@ import {
   getCoreRowModel,
   getExpandedRowModel,
   getFilteredRowModel,
+  getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   ChevronsUpDown,
   Columns3,
   Download,
   Printer,
   Search,
-  AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -84,6 +88,12 @@ interface DataTableProps<TData> {
   errorMessage?: string;
   errorActionLabel?: string;
   onRetry?: () => void;
+  /**
+   * opt-in クライアントページネーション。大量一覧の描画コスト対策(W2-F2)。
+   * 既定 100行/ページ。未指定時は既存挙動(全行描画)のまま変わらない。
+   */
+  enablePagination?: boolean;
+  pageSize?: number;
 }
 
 function getColumnMeta<TData>(column: ColumnDef<TData>): DataTableColumnMeta<TData> | undefined {
@@ -130,6 +140,8 @@ export function DataTable<TData>({
   errorMessage,
   errorActionLabel = '再読み込み',
   onRetry,
+  enablePagination = false,
+  pageSize = 100,
 }: DataTableProps<TData>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
@@ -137,6 +149,10 @@ export function DataTable<TData>({
   const [expanded, setExpanded] = useState<ExpandedState>({});
   const [globalFilter, setGlobalFilter] = useState('');
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [paginationState, setPaginationState] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize,
+  });
   const toolbarDisabledReasonId = useId();
   const getResolvedRowA11yLabel = useCallback(
     (row: Row<TData>) => getRowA11yLabel?.(row.original, row.index) ?? row.id,
@@ -231,6 +247,7 @@ export function DataTable<TData>({
       expanded,
       globalFilter,
       columnFilters,
+      ...(enablePagination ? { pagination: paginationState } : {}),
     },
     enableRowSelection,
     enableColumnResizing: true,
@@ -243,11 +260,22 @@ export function DataTable<TData>({
     onExpandedChange: setExpanded,
     onGlobalFilterChange: setGlobalFilter,
     onColumnFiltersChange: setColumnFilters,
+    ...(enablePagination
+      ? { onPaginationChange: setPaginationState, getPaginationRowModel: getPaginationRowModel() }
+      : {}),
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
   });
+
+  // フィルタ/検索が変わったら現在ページを先頭へ戻す(既存フィルタ後の結果0件誤表示を防止)。
+  useEffect(() => {
+    if (!enablePagination) return;
+    setPaginationState((previous) =>
+      previous.pageIndex === 0 ? previous : { ...previous, pageIndex: 0 },
+    );
+  }, [enablePagination, globalFilter, columnFilters]);
 
   const latestSelectionChangeRef = useRef(onSelectionChange);
   const notifiedSelectionRef = useRef<string | null>(null);
@@ -274,14 +302,17 @@ export function DataTable<TData>({
     .getVisibleLeafColumns()
     .filter((column) => !column.id.startsWith('__'));
   const selectedCount = table.getSelectedRowModel().rows.length;
+  // フィルタ・ソート後の全行(ページネーション適用前)。CSV出力・件数表示・空判定の基準にする。
+  // ページネーション未使用時は table.getRowModel().rows と常に同一集合。
+  const fullRows = table.getSortedRowModel().rows;
   const toolbarActionsDisabled =
     toolbar?.disableActionsWhenInvalid !== false &&
-    (Boolean(errorMessage) || Boolean(isLoading) || table.getRowModel().rows.length === 0);
+    (Boolean(errorMessage) || Boolean(isLoading) || fullRows.length === 0);
   const toolbarDisabledReason = errorMessage
     ? '取得エラー中は出力できません'
     : isLoading
       ? '読み込み中は出力できません'
-      : table.getRowModel().rows.length === 0
+      : fullRows.length === 0
         ? '出力できる行がありません'
         : undefined;
   const displayedEmptyMessage = errorMessage
@@ -300,12 +331,20 @@ export function DataTable<TData>({
     : hasActiveFilters
       ? '検索語やフィルタを減らすと、表示できる行が戻ります。'
       : '登録済みの行がある場合は、再読み込みしてください。';
+  const currentPagination = table.getState().pagination;
+  const currentPageNumber = currentPagination.pageIndex + 1;
+  const currentPageCount = Math.max(table.getPageCount(), 1);
+  const currentPageStart = currentPagination.pageIndex * currentPagination.pageSize + 1;
+  const currentPageEnd = Math.min(
+    (currentPagination.pageIndex + 1) * currentPagination.pageSize,
+    fullRows.length,
+  );
 
   function handleExport() {
     if (toolbarActionsDisabled) return;
 
     const headers = visibleLeafColumns.map((column) => getColumnLabel(column.columnDef, column.id));
-    const rows = table.getRowModel().rows.map((row) =>
+    const rows = fullRows.map((row) =>
       visibleLeafColumns.map((column) => {
         const meta = getColumnMeta(column.columnDef);
         const value = meta?.exportValue ? meta.exportValue(row.original) : row.getValue(column.id);
@@ -694,6 +733,44 @@ export function DataTable<TData>({
           })
         )}
       </div>
+
+      {enablePagination && fullRows.length > 0 ? (
+        <div
+          className="flex flex-col items-center justify-between gap-3 border-t border-border/60 pt-3 sm:flex-row"
+          data-testid="data-table-pagination"
+        >
+          <p className="text-xs text-muted-foreground" data-testid="data-table-pagination-summary">
+            全{fullRows.length}件中 {currentPageStart}〜{currentPageEnd}件を表示（
+            {currentPageNumber}/{currentPageCount}ページ）
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-h-[44px] sm:min-h-0"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+              aria-label="前のページ"
+            >
+              <ChevronLeft className="mr-1 size-3.5" aria-hidden="true" />
+              前へ
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-h-[44px] sm:min-h-0"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+              aria-label="次のページ"
+            >
+              次へ
+              <ChevronRight className="ml-1 size-3.5" aria-hidden="true" />
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {hasMore && onLoadMore && (
         <div className="mt-4 flex justify-center">

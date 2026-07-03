@@ -601,6 +601,82 @@ describe('PatientsBoard', () => {
     expect(within(evidence).getByText('9名')).toBeTruthy();
     expect(within(evidence).getAllByRole('link', { name: /開く/ })).toHaveLength(3);
   });
+
+  it('caps the rendered card grid and expands it with さらに表示 instead of rendering every row (W2-F2)', () => {
+    const manyCards: PatientBoardCard[] = Array.from({ length: 130 }, (_, index) =>
+      card({
+        patient_id: `pt_bulk_${index}`,
+        name: `患者 ${index.toString().padStart(3, '0')}`,
+      }),
+    );
+    const data: PatientBoardResponse = {
+      ...buildFixture(),
+      assigned_total: manyCards.length,
+      cards: manyCards,
+    };
+    useRealtimeQueryMock.mockReturnValue({
+      data,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchMock,
+    });
+
+    render(<PatientsBoard />);
+
+    // 既定 60 件のみ描画(仮想化ではなく表示上限+もっと見る)。
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(60);
+    const note = screen.getByTestId('patients-board-visible-count-note');
+    expect(note.textContent).toContain('130名中');
+    expect(note.textContent).toContain('60名を表示');
+
+    fireEvent.click(screen.getByRole('button', { name: 'さらに表示' }));
+
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(120);
+    expect(screen.getByTestId('patients-board-visible-count-note').textContent).toContain(
+      '120名を表示',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'さらに表示' }));
+
+    // 残数(10件)まで到達すると全件表示済みとなり、ボタン/件数注記は消える。
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(130);
+    expect(screen.queryByTestId('patients-board-visible-count-note')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'さらに表示' })).toBeNull();
+  });
+
+  it('resets the card display cap to the default when the filter chip changes', () => {
+    const manyCards: PatientBoardCard[] = Array.from({ length: 130 }, (_, index) =>
+      card({
+        patient_id: `pt_bulk_${index}`,
+        name: `患者 ${index.toString().padStart(3, '0')}`,
+      }),
+    );
+    const data: PatientBoardResponse = {
+      ...buildFixture(),
+      assigned_total: manyCards.length,
+      cards: manyCards,
+    };
+    useRealtimeQueryMock.mockReturnValue({
+      data,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchMock,
+    });
+
+    render(<PatientsBoard />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'さらに表示' }));
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(120);
+
+    fireEvent.change(screen.getByPlaceholderText('氏名・状態で検索'), {
+      target: { value: '患者 00' },
+    });
+
+    // 検索で絞り込むと展開状態はリセットされ、既定件数から再スタートする。
+    expect(screen.getAllByTestId('patient-board-card').length).toBeLessThanOrEqual(60);
+  });
 });
 
 describe('PatientBoardLoadingShell', () => {

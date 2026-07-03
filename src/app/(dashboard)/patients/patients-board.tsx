@@ -87,6 +87,13 @@ const SORT_OPTIONS: Array<{ value: BoardSort; label: string }> = [
   { value: 'name', label: '氏名順' },
 ];
 
+/**
+ * 大量一覧の描画コスト対策(W2-F2)。カードグリッドの既存 UX(グリッドレイアウト)を
+ * 崩さないよう仮想化ではなく「表示上限+もっと見る」を採用する。絞り込み変更時は先頭へ戻す。
+ */
+const DEFAULT_VISIBLE_PATIENT_CARDS = 60;
+const PATIENT_CARDS_LOAD_MORE_STEP = 60;
+
 /** フィルタチップ。「今すぐ対応」=既定(優先順で全件表示)、他は絞り込み。 */
 // wait_release は summaryTile「再開できる」専用の絞り込み(tile-only)。下段 chipOptions には出さない。
 type BoardChipValue =
@@ -533,6 +540,7 @@ export function PatientsBoard() {
   const [sort, setSort] = useState<BoardSort>('priority');
   const [searchQuery, setSearchQuery] = useState('');
   const deferredSearchQuery = useDeferredValue(searchQuery);
+  const [visibleCardCount, setVisibleCardCount] = useState(DEFAULT_VISIBLE_PATIENT_CARDS);
   const isBootstrappingOrg = !orgId;
 
   const foundationIssue = chip === 'foundation_gap' ? 'needs_confirmation' : undefined;
@@ -594,6 +602,22 @@ export function PatientsBoard() {
       : byChip;
     return sortPatientCards(searched, sort);
   }, [chip, data, deferredSearchQuery, sort, todayKey]);
+
+  // 絞り込み条件が変わったら表示件数を既定へ戻す(「もっと見る」の展開状態を引き継がない)。
+  // レンダー中に前回条件との差分を見て調整する(Effect ではなく React 推奨の
+  // 「prop変化に応じた state 調整」パターン。cascading render を避ける)。
+  const visibleCardFilterKey = `${scope}|${chip}|${sort}|${deferredSearchQuery}`;
+  const [prevVisibleCardFilterKey, setPrevVisibleCardFilterKey] = useState(visibleCardFilterKey);
+  if (prevVisibleCardFilterKey !== visibleCardFilterKey) {
+    setPrevVisibleCardFilterKey(visibleCardFilterKey);
+    setVisibleCardCount(DEFAULT_VISIBLE_PATIENT_CARDS);
+  }
+
+  const displayedCards = useMemo(
+    () => visibleCards.slice(0, visibleCardCount),
+    [visibleCards, visibleCardCount],
+  );
+  const hasMoreCardsToShow = visibleCards.length > displayedCards.length;
 
   const chipOptions = useMemo(() => {
     const counts = data?.chip_counts;
@@ -841,11 +865,33 @@ export function PatientsBoard() {
                   className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
                   data-testid="patients-board-grid"
                 >
-                  {visibleCards.map((card) => (
+                  {displayedCards.map((card) => (
                     <PatientBoardCardItem key={card.patient_id} card={card} now={now} />
                   ))}
                 </div>
               )}
+              {hasMoreCardsToShow ? (
+                <div className="mt-4 flex flex-col items-center gap-2">
+                  <p
+                    className="text-xs text-muted-foreground"
+                    data-testid="patients-board-visible-count-note"
+                  >
+                    {visibleCards.length}名中 {displayedCards.length}名を表示
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVisibleCardCount((count) => count + PATIENT_CARDS_LOAD_MORE_STEP)
+                    }
+                    className={cn(
+                      buttonVariants({ variant: 'outline', size: 'sm' }),
+                      'min-h-[44px] sm:min-h-9',
+                    )}
+                  >
+                    さらに表示
+                  </button>
+                </div>
+              ) : null}
             </div>
             {data.truncated ? (
               <div

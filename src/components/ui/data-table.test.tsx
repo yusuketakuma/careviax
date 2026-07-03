@@ -286,4 +286,75 @@ describe('DataTable', () => {
       anchorClick.mockRestore();
     }
   });
+
+  it('does not paginate by default (existing screens keep rendering every row)', () => {
+    const manyRows: RowData[] = Array.from({ length: 120 }, (_, index) => ({
+      id: `row-${index}`,
+      name: `患者 ${index}`,
+    }));
+
+    render(<DataTable columns={columns} data={manyRows} />);
+
+    expect(screen.getAllByText(/患者 /).length).toBeGreaterThanOrEqual(120);
+    expect(screen.queryByTestId('data-table-pagination')).toBeNull();
+  });
+
+  it('paginates client-side when opted in, with a counted-list summary and working pager', () => {
+    const manyRows: RowData[] = Array.from({ length: 250 }, (_, index) => ({
+      id: `row-${index}`,
+      name: `患者 ${index.toString().padStart(3, '0')}`,
+    }));
+
+    render(<DataTable columns={columns} data={manyRows} enablePagination pageSize={100} />);
+
+    // 1ページ目: 100件のみ描画、件数は総数(250件)を明示する(counted-list contract)。
+    const table = screen.getByRole('table');
+    expect(within(table).getAllByText(/患者 /).length).toBe(100);
+    expect(within(table).getByText('患者 000')).toBeTruthy();
+    expect(within(table).queryByText('患者 100')).toBeNull();
+    const summary = screen.getByTestId('data-table-pagination-summary');
+    expect(summary.textContent).toContain('全250件中');
+    expect(summary.textContent).toContain('1〜100件');
+    expect(summary.textContent).toContain('1/3ページ');
+    expect((screen.getByRole('button', { name: '前のページ' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '次のページ' }));
+
+    expect(within(table).getByText('患者 100')).toBeTruthy();
+    expect(within(table).queryByText('患者 000')).toBeNull();
+    expect(screen.getByTestId('data-table-pagination-summary').textContent).toContain('101〜200件');
+    expect((screen.getByRole('button', { name: '前のページ' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+  });
+
+  it('resets to the first page when a filter narrows the paginated result set', () => {
+    const manyRows: RowData[] = Array.from({ length: 250 }, (_, index) => ({
+      id: `row-${index}`,
+      name: index === 249 ? '該当患者' : `患者 ${index.toString().padStart(3, '0')}`,
+    }));
+
+    render(
+      <DataTable
+        columns={columns}
+        data={manyRows}
+        enablePagination
+        pageSize={100}
+        toolbar={{ enableGlobalFilter: true }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '次のページ' }));
+    expect(screen.getByTestId('data-table-pagination-summary').textContent).toContain('101〜200件');
+
+    fireEvent.change(screen.getByPlaceholderText('テーブル内を絞り込み'), {
+      target: { value: '該当患者' },
+    });
+
+    expect(within(screen.getByRole('table')).getByText('該当患者')).toBeTruthy();
+    expect(screen.getByTestId('data-table-pagination-summary').textContent).toContain('全1件中');
+    expect(screen.getByTestId('data-table-pagination-summary').textContent).toContain('1〜1件');
+  });
 });
