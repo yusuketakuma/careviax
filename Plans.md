@@ -70,7 +70,7 @@
 - [x] W0-15 腎機能ラベル JST 共有フォーマッタ（FEATURE_QUEUE F-20260702-001 収容）
 - [x] W0-16 safety-check CDS fail-open 修正: fetcher `catch→[]` 廃止・degraded バナー+再試行（旧A-1）— `safety-check-content.tsx:73-90`
 
-#### Wave 1 — P0 安全・セキュリティ・算定正確性（M1 必須） `cc:WIP` <!-- 2026-07-03 安全レーン完了(CDS5/safety5=na/算定3/RLS contract/決定3)。残=W1-7〜W1-12 の human承認レーン(承認待ち)。W1-3 据え置き2件: 疑義KPI full-count=意図的仕様 / summary_template_kind_count=摘要template_type の定義確定待ち -->
+#### Wave 1 — P0 安全・セキュリティ・算定正確性（M1 必須） `cc:WIP` <!-- 2026-07-03 安全レーン完了(CDS5/safety5=na/算定3/RLS contract/決定3)。承認レーン W1-7〜W1-12(+W1-12f/HG-1..5)全承認→land済(8d614c2a/db2ce0bf/e58e3aae/2c511a64/14318d48)、gate全green+reviewer-audit APPROVE。残=W1-3据え置き2件(疑義KPI full-count=意図的仕様 / summary_template_kind_count定義待ち)+W1-4/W1-5等の残スライスのみ -->
 
 安全レーン（W0-16 に続き直列・1件ずつ厳格レビュー）:
 
@@ -86,15 +86,15 @@
 RLS レーン（DB層 backstop。proof より実装が先）:
 
 - [x] W1-6 RLS contract 再設計スライス（rls-policy-contract.test のハードコード allowlist 是正含む。旧A-4 前段） ✅9b7982e4
-- [ ] W1-7 RLS 実体欠落 ~33表の実装（PHI 優先: PatientPackagingProfile/PatientCondition/JahisSupplementalRecord ほか+SSOT drift 7表。migration ゲート）
-- [ ] W1-8 非superuser ロール+cross-org シードで FORCE RLS proof（CI 整備、`rls.test.ts` it.skip 解消。旧A-4）
+- [x] W1-7 RLS 実体欠落表の実装（11表に ENABLE+tenant_isolation+FORCE、PHI: PatientPackagingProfile/VisitScheduleContactLog 含む。3表=IntegrationJob/PrescriberInstitution/User は意図的除外を台帳明記） ✅2026-07-03 承認レーン land(8d614c2a)・gate全green+reviewer-audit APPROVE
+- [x] W1-8 非superuser ロール ph_os_app+FORCE RLS proof（`setup-rls-test-role.sql`、`rls.test.ts` it.skip→env-gated、両policy形に頑健化、CI 配線） ✅2026-07-03 land(8d614c2a/14318d48)
 
 認可・PHI レーン（human 承認）:
 
-- [ ] W1-9 dispense-results PATCH canDispense 必須化（旧A-3・BLOCKED F-20260625）
-- [ ] W1-10 EPIC3 認可/外部共有 4件（F80/X01/F88/F89。旧A-7）
-- [ ] W1-11 EPIC7 no-store/PHI 4件（F86/X11/X12/X13。旧A-8）
-- [ ] W1-12 BLOCKED human-gate 残: data-explorer 監査+no-harddelete / jobs error_log redaction / OS通知 PHI redaction / settings compliance ranges / incidents permission affordance / schedule unique org_id FK
+- [x] W1-9 dispense-results PATCH canDispense 必須化（POST と対称、clerk/driver/external 403 + owner/admin 200 実証） ✅2026-07-03 land(e58e3aae)
+- [x] W1-10 EPIC3 認可/外部共有（external-access canManagePatientSharing化・care-reports F88 cross-patient修正・prescriber-institutions authz・qr-scan F89 fail-close） ✅2026-07-03 land(e58e3aae/2c511a64)
+- [x] W1-11 EPIC7 no-store/PHI（mfa setup/verify・prescriber-institutions・webhooks に withSensitiveNoStore） ✅2026-07-03 land(e58e3aae)
+- [x] W1-12 BLOCKED human-gate: HG-1 data-explorer 監査+no-harddelete / HG-3 jobs error_log redaction / HG-5 OS通知 PHI redaction / HG-2 settings compliance ranges / HG-4 incidents permission affordance / W1-12f schedule composite FK ✅2026-07-03 land(2c511a64/db2ce0bf)・BLOCKED.md RESOLVED注記済
 
 決定レーン（後段 unblock。実装なし・決定文書のみ）:
 
@@ -115,7 +115,7 @@ R リリースエンジニアリング（新設・クリティカルパス監査
 性能レーン（`pnpm perf:smoke` で before/after 実測先行）:
 
 - [x] W2-P1 prescription-intakes tx 再設計 + DrugMaster OR 検索最適化（旧D-1+D-3 統合。同一 service で直列必須。BLOCKED RUN-20260622-001 根治） ✅2026-07-03 BatchA 実装済(gate: 全量1284file green)
-- [ ] W2-P2 index 追加（旧D-2・migration ゲート） / W2-P3 プール方針明文化（旧D-7） / W2-P4 マスタ系 unstable_cache（旧D-4） / W2-P5 レート制限拡大（旧D-5）
+- [~] W2-P2 index 追加（3複合index migration land ✅2026-07-03 db2ce0bf） / W2-P3 プール方針明文化 ✅BatchA(00984095) / W2-P5 レート制限拡大 ✅BatchA(ce260f26) ／ 残: W2-P4 マスタ系 unstable_cache（旧D-4）
 
 B 設計着地:
 
