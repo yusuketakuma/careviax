@@ -153,7 +153,8 @@ FE:
 
 安全網先行（破壊的 migration の前提）:
 
-- [ ] W3-S1 staging 環境（旧O-2/12-4） / W3-S2 PRE-03 データ移行検証フレームワーク（pre-count/post-integrity/rollback SQL）
+- [ ] W3-S1 staging 環境（旧O-2/12-4・AWS 実環境待ち）
+- [x] W3-S2 PRE-03 データ移行検証フレームワーク（pre-count/post-integrity/rollback SQL） ✅2026-07-03 Phase 5-PRE PRE-03 として消化（p03-lab-values 追加+テーブル名/adapter の実行不能欠陥修正。詳細は PRE-03 セクション）
 
 B 算定構造化（spec ロードマップ順。W1-13/W2-B1 済前提）:
 
@@ -168,11 +169,14 @@ B 算定構造化（spec ロードマップ順。W1-13/W2-B1 済前提）:
 
 改定・依存耐性:
 
-- [ ] W3-C1 薬価 effective-dated 版管理+調剤時スナップショット（旧C-1・L・mig） / W3-C2 レジストリ外ハードコード点数吸収（旧C-2） / W3-C5 next-auth v4→Auth.js v5（旧C-5・L）
+- [ ] W3-C1 薬価 effective-dated 版管理+調剤時スナップショット（旧C-1・L・mig） / W3-C5 next-auth v4→Auth.js v5（旧C-5・L）
+- [x] W3-C2 レジストリ外ハードコード点数吸収（旧C-2） ✅2026-07-03 billing-evidence（情報提供/重複投薬）+conference-sync の算定経路点数を billing-rules レジストリ実行時解決へ置換（2024/2026 両改定で同値性を回帰テスト固定、旧値は未収載日 fallback として残置）。deferred: duplicate-interaction の日付分岐は構造マッピング選択でレジストリ未エンコード（点数 drift は解消済み）/ UI ラベル内点数（表示専用）/ core.ts 到達不能 legacy branch（死コード）
 
 FE 仕上げ（低優先）:
 
-- [ ] W3-E1 フォーム RHF 統一（旧E-6a） / W3-E2 野良 table 16file の DataTable 集約（旧E-6b） / W3-E3 drug-master-content(5112行) 分割（旧E-6c）
+- [ ] W3-E1 フォーム RHF 統一（旧E-6a）
+- [~] W3-E2 野良 table の DataTable 集約（旧E-6b） 2026-07-03 前半7ファイル変換済（residual-adjustment/conflict-resolution/visit-record-detail/prescription-history/period-review/prescription-detail/card-workspace 処方明細）。残: clerk-support・intake-triage・report-share（Table+Card 二重実装の統合、本命だが検証コスト高）/ workflow-dashboard・offline-sync（テスト未整備）/ prescriptions-table（listbox a11y 契約要再検証）/ prescription-inline-detail（意図的高密度レイアウトで DataTable だと UI 退行懸念）。変換非推奨5件（マトリクス/インライン編集/sticky列/印刷系）は対象外のまま
+- [~] W3-E3 drug-master-content(5177行) 分割（旧E-6c） 2026-07-03 純粋コード約900行を types/format/columns の3ファイルへ抽出（5177→4279行、公開API不変・82テスト green）。本体 DrugMasterOperationalContent の分割は 50+ useState と医療安全 race-guard ref 群の単一スコープ結合が強く、動作保存優先で独立レビュー付き段階パスへ deferred（次候補=detail Sheet 約810行）
 - [ ] W3-M1 sync-engine/report-generator の境界 API 化（旧F-5。W3-B4 と直列調整）
 
 運用:
