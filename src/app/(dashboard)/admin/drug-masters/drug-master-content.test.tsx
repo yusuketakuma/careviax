@@ -2796,6 +2796,47 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     expect(refetchSpies.get('pharmacy-drug-stock')).toHaveBeenCalled();
   });
 
+  it('shows retryable errors instead of a false-empty adoption-change history when the fetch fails', () => {
+    queuePendingFormularyRequest();
+    detailDataMock.current = buildGenericDetail();
+    queryErrorKeys.add('pharmacy-drug-stock-history');
+
+    render(<DrugMasterContent variant="formulary" />);
+    fireEvent.click(screen.getByText('採用追加'));
+
+    expect(screen.getByText('採用品変更履歴を読み込めませんでした')).toBeTruthy();
+    expect(screen.queryByText('この薬剤の採用品変更履歴はまだありません。')).toBeNull();
+
+    fireEvent.click(screen.getAllByRole('button', { name: '再読み込み' })[0]);
+    expect(refetchSpies.get('pharmacy-drug-stock-history')).toHaveBeenCalled();
+  });
+
+  it('shows retryable errors instead of a false-empty formulary template list when the fetch fails', () => {
+    queryErrorKeys.add('pharmacy-drug-stock-templates');
+
+    render(<DrugMasterContent variant="formulary" />);
+
+    expect(screen.getByText('採用品テンプレートを読み込めませんでした')).toBeTruthy();
+    expect(screen.getByText('取得失敗')).toBeTruthy();
+
+    fireEvent.click(screen.getAllByRole('button', { name: '再読み込み' })[0]);
+    expect(refetchSpies.get('pharmacy-drug-stock-templates')).toHaveBeenCalled();
+  });
+
+  it('shows retryable errors instead of a false-empty preferred-generic select when the fetch fails', () => {
+    queuePendingFormularyRequest();
+    detailDataMock.current = buildGenericDetail();
+    queryErrorKeys.add('preferred-generic-candidates');
+
+    render(<DrugMasterContent variant="formulary" />);
+    fireEvent.click(screen.getByText('採用追加'));
+
+    expect(screen.getByText('採用後発薬候補を読み込めませんでした')).toBeTruthy();
+
+    fireEvent.click(screen.getAllByRole('button', { name: '再読み込み' })[0]);
+    expect(refetchSpies.get('preferred-generic-candidates')).toHaveBeenCalled();
+  });
+
   it('keeps the generic recommendation and ingredient-group success panels visible', () => {
     queuePendingFormularyRequest();
     detailDataMock.current = buildGenericDetail();

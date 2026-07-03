@@ -3175,10 +3175,29 @@ function DrugMasterOperationalContent({
                   <h4 className="text-sm font-semibold text-foreground">
                     施設別採用品テンプレート
                   </h4>
-                  <Badge variant="outline" className="text-xs">
-                    {formularyTemplates.length.toLocaleString()}件
+                  <Badge
+                    variant={formularyTemplatesQuery.isError ? 'destructive' : 'outline'}
+                    className="text-xs"
+                  >
+                    {formularyTemplatesQuery.isError
+                      ? '取得失敗'
+                      : `${formularyTemplates.length.toLocaleString()}件`}
                   </Badge>
                 </div>
+                {formularyTemplatesQuery.isError ? (
+                  <ErrorState
+                    variant="server"
+                    size="inline"
+                    headingLevel={3}
+                    title="採用品テンプレートを読み込めませんでした"
+                    description="施設別採用品テンプレートを表示できていません。0件ではなく取得エラーです。再読み込みしてください。"
+                    action={{
+                      label: '再読み込み',
+                      onClick: () => void formularyTemplatesQuery.refetch(),
+                    }}
+                    className="mt-3 px-4 py-6"
+                  />
+                ) : null}
                 <div className="mt-3">
                   <Input
                     value={templateSearchQuery}
@@ -4485,6 +4504,20 @@ function DrugMasterOperationalContent({
                               ))}
                             </SelectContent>
                           </Select>
+                          {preferredGenericCandidatesQuery.isError ? (
+                            <ErrorState
+                              variant="server"
+                              size="inline"
+                              headingLevel={3}
+                              title="採用後発薬候補を読み込めませんでした"
+                              description="採用後発薬の候補を表示できていません。候補なしではなく取得エラーです。再読み込みしてください。"
+                              action={{
+                                label: '再読み込み',
+                                onClick: () => void preferredGenericCandidatesQuery.refetch(),
+                              }}
+                              className="px-4 py-6"
+                            />
+                          ) : null}
                           {genericRecommendationsQuery.isError ? (
                             <ErrorState
                               variant="server"
@@ -4841,6 +4874,19 @@ function DrugMasterOperationalContent({
                     </p>
                   ) : stockHistoryQuery.isLoading ? (
                     <p className="text-sm text-muted-foreground">採用品履歴を読み込み中です…</p>
+                  ) : stockHistoryQuery.isError ? (
+                    <ErrorState
+                      variant="server"
+                      size="inline"
+                      headingLevel={3}
+                      title="採用品変更履歴を読み込めませんでした"
+                      description="採用品変更履歴を表示できていません。履歴なしではなく取得エラーです。再読み込みしてください。"
+                      action={{
+                        label: '再読み込み',
+                        onClick: () => void stockHistoryQuery.refetch(),
+                      }}
+                      className="px-4 py-6"
+                    />
                   ) : stockHistory.length === 0 ? (
                     <p className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
                       この薬剤の採用品変更履歴はまだありません。
