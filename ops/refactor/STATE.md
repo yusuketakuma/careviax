@@ -18,14 +18,15 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: `ID-1b` E2 採番基盤 実装・検証済み、report/opus verdict 待ち
+- Phase C（実装ループ）: `ID-2-W1` patient.prisma display_id 第1波 実装・検証済み、
+  report/opus verdict 待ち
 
 ## 直近の land（本日・要点）
 
 - Wave 2 完了 / W3-C2/E2/E3 / W3-B4 中核(52ce1f66) / B6 設計ラティファイ(3a39f69e) / v0.2 実証
 - codex lane: BE-1 / RT1 / RR-QP-A/B / JOB1/2 / CW1 / BM1(5be6ebca) / 9d1567ba /
   PERF-01(981f1a58) / MFA1(f7bf2e97) / F84(c22c7fe3) / CE17(5205fc48) / R07(f3733036) /
-  DR-DUP1(2e0c7fdb) / PERF-02(60469cd1) / CE20(66d65f99)
+  DR-DUP1(2e0c7fdb) / PERF-02(60469cd1) / CE20(66d65f99) / ID-1b(0a3b910c, e2a8b414)
   — 全 opus APPROVE
 - claude/opus lane: X01(e02cec50) / CE19(2136c93a) / N18(ad0ff309) / R03(3b31cec1) /
   A1-CRC(eebda8c3) land
@@ -33,14 +34,13 @@
 
 ## 進行中 / 凍結
 
-- codex: `ID-1a` は opus APPROVE、9b1da23b + follow-up 9ac76b13 で land 済み。E1 は基準1 FAIL、
-  E2（明示 tx allocator）正式採用。
-- codex: `ID-1b` は E2 採番基盤 report-ready。IdSequence additive migration、138件 registry、
-  allocateDisplayId/Range/Global、RLS intentional exclusion、DB concurrent/rollback tests 実装済み。
+- codex: `ID-1a` / `ID-1b` は land 済み。E1 は基準1 FAIL、E2（明示 tx allocator）正式採用。
+- codex: `ID-2-W1` は report-ready。patient.prisma 18 org-scoped model に nullable display_id +
+  org-scoped unique、partial unique migration、generic backfill script/test、local e2e migrate/seed/backfill 検証済み。
 - codex: `PERF-03` は read-only recon 後、fable 裁定で `flagged(raw SQL 要設計・低優先)` として据え置き。
 - human-gate 記録: MFA1 / X01 とも RESOLVED 済み。
 
 ## 次の一手
 
-1. codex: `ID-1b` report を agmsg 送信し、opus verdict / claude commit を待つ
+1. codex: `ID-2-W1` report を agmsg 送信し、opus verdict / claude commit を待つ
 2. codex: verdict 前の追加編集は指示があるまで行わない

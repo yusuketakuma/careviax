@@ -21,9 +21,32 @@ import {
   getDisplayIdModelForPrefix,
   getDisplayIdRegistryEntry,
   parseDisplayId,
+  type DisplayIdModel,
 } from './display-id';
 
 const SCHEMA_DIR = 'prisma/schema';
+const PATIENT_DISPLAY_ID_W1_MIGRATION =
+  'prisma/migrations/20260703150000_add_patient_display_ids/migration.sql';
+const PATIENT_DISPLAY_ID_W1_MODELS = [
+  'Patient',
+  'Residence',
+  'CareCase',
+  'ContactParty',
+  'CareTeamLink',
+  'PatientCondition',
+  'ConsentRecord',
+  'ManagementPlan',
+  'PatientSchedulePreference',
+  'PatientPackagingProfile',
+  'PatientMcsLink',
+  'PatientMcsSummary',
+  'PatientInsurance',
+  'PatientLabObservation',
+  'PatientMcsMessage',
+  'PatientFieldRevision',
+  'PatientMedicalProcedure',
+  'PatientNarcoticUse',
+] as const satisfies readonly DisplayIdModel[];
 const RUN_ID = randomUUID().replaceAll('-', '').slice(0, 12);
 const databaseUrl = process.env.DISPLAY_ID_DATABASE_URL ?? process.env.DATABASE_URL;
 const shouldRunDbTests =
@@ -31,6 +54,13 @@ const shouldRunDbTests =
 const describeDb = shouldRunDbTests ? describe : describe.skip;
 
 type SequenceRow = { next_value: bigint };
+type DisplayIdIndexRow = {
+  indexName: string;
+  tableName: string;
+  isUnique: boolean;
+  predicate: string | null;
+  indexDef: string;
+};
 
 function readSchemaModels(): string[] {
   const modelNames: string[] = [];
@@ -43,6 +73,12 @@ function readSchemaModels(): string[] {
     }
   }
   return modelNames.sort();
+}
+
+function readModelBlock(schema: string, model: string): string {
+  const match = new RegExp(`^model ${model} \\{[\\s\\S]*?^\\}`, 'm').exec(schema);
+  if (!match) throw new Error(`Missing Prisma model block: ${model}`);
+  return match[0];
 }
 
 function collectSourceFiles(root: string): string[] {
@@ -182,6 +218,34 @@ describe('display_id registry and format contract', () => {
     });
     expect(offenders).toEqual([]);
   });
+
+  it('declares W1 patient-domain display IDs as nullable tenant-local identifiers', () => {
+    const schema = readFileSync(join(SCHEMA_DIR, 'patient.prisma'), 'utf8');
+    const migration = readFileSync(PATIENT_DISPLAY_ID_W1_MIGRATION, 'utf8');
+
+    for (const model of PATIENT_DISPLAY_ID_W1_MODELS) {
+      expect(getDisplayIdRegistryEntry(model).scope, model).toBe('org');
+
+      const block = readModelBlock(schema, model);
+      expect(block, model).toMatch(/\n\s+display_id\s+String\?(?:\s|$)/);
+      expect(block, model).not.toMatch(/\n\s+display_id\s+String\b(?!\?)/);
+      expect(block, model).toContain('@@unique([org_id, display_id])');
+
+      expect(migration, model).toContain(`ALTER TABLE "${model}" ADD COLUMN "display_id" TEXT;`);
+      expect(migration, model).toContain(
+        `CREATE UNIQUE INDEX "${model}_org_id_display_id_key" ON "${model}"("org_id", "display_id") WHERE "display_id" IS NOT NULL;`,
+      );
+      expect(migration, model).not.toContain(
+        `ALTER TABLE "${model}" ALTER COLUMN "display_id" SET NOT NULL`,
+      );
+      expect(migration, model).not.toContain(
+        `ON "${model}"("display_id") WHERE "display_id" IS NOT NULL`,
+      );
+    }
+
+    expect(migration).not.toMatch(/\bDROP\b/i);
+    expect(migration).not.toMatch(/\bALTER COLUMN\b/i);
+  });
 });
 
 describeDb('display_id allocator integration (local e2e DB)', () => {
@@ -233,6 +297,39 @@ describeDb('display_id allocator integration (local e2e DB)', () => {
     expect(first).toBe('p0000000001');
     expect(nextRange).toEqual(['p0000000002', 'p0000000003', 'p0000000004']);
     await expect(readSequence(org, 'p')).resolves.toBe(BigInt(5));
+  });
+
+  it('keeps W1 patient-domain uniqueness backed by partial DB indexes', async () => {
+    const rows = await prisma.$queryRaw<DisplayIdIndexRow[]>`
+      SELECT
+        index_class.relname AS "indexName",
+        table_class.relname AS "tableName",
+        pg_index.indisunique AS "isUnique",
+        pg_get_expr(pg_index.indpred, pg_index.indrelid) AS "predicate",
+        pg_get_indexdef(pg_index.indexrelid) AS "indexDef"
+      FROM pg_index
+      INNER JOIN pg_class index_class
+        ON index_class.oid = pg_index.indexrelid
+      INNER JOIN pg_class table_class
+        ON table_class.oid = pg_index.indrelid
+      INNER JOIN pg_namespace namespace
+        ON namespace.oid = table_class.relnamespace
+      WHERE namespace.nspname = 'public'
+        AND index_class.relname LIKE '%_org_id_display_id_key'
+    `;
+    const byIndexName = new Map(rows.map((row) => [row.indexName, row]));
+
+    for (const model of PATIENT_DISPLAY_ID_W1_MODELS) {
+      const row = byIndexName.get(`${model}_org_id_display_id_key`);
+      expect(row, model).toMatchObject({
+        tableName: model,
+        isUnique: true,
+        predicate: '(display_id IS NOT NULL)',
+      });
+      expect(row?.indexDef, model).toContain('CREATE UNIQUE INDEX');
+      expect(row?.indexDef, model).toContain(`ON public."${model}"`);
+      expect(row?.indexDef, model).toContain('(org_id, display_id)');
+    }
   });
 
   it('rolls back sequence allocation with the caller transaction', async () => {

@@ -128,6 +128,22 @@
   `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。
 - レビュー: report pending。self-commit なし。
 
+## 2026-07-03 ID-2-W1 report-ready
+
+- 分類: infra/db / display_id patient-domain wave 1
+- 対象: `prisma/schema/patient.prisma`, new `20260703150000_add_patient_display_ids`,
+  `tools/scripts/backfill-display-ids.ts` + test, `src/lib/db/display-id.test.ts`, 台帳3ファイル
+- 実施: patient.prisma の18 org-scoped model へ nullable `display_id` と `@@unique([org_id, display_id])` を追加。
+  migration は既存列非破壊の `ADD COLUMN` + `WHERE display_id IS NOT NULL` partial unique index のみ。
+- backfill: registry model args 指定、org別 `created_at ASC, id ASC`、`allocateDisplayIdRange` batch 採番、
+  NULLのみ更新、duplicate/format/sequence pre/post check。local e2eで322 rows backfilled。
+- addendum: `--max-rows` を model単位ではなく run全体の apply 上限として事前合計チェック+残budget共有へ修正。
+- seed確認: `pnpm db:e2e:prepare` / `pnpm db:e2e:seed` green。post-seed dry-run は全18 model null 0・issues 0。
+- 検証: prisma validate/db:generate green。focused vitest DB込み 24/24 green。scoped eslint/format green。
+  `pnpm typecheck` は4GB OOM、`NODE_OPTIONS=--max-old-space-size=12288 pnpm typecheck` green。
+- 備考: dev DB `localhost:5432` は未起動（接続不可）。Patient create-path allocation は今回LOCK外のため follow-up 候補。
+- レビュー: report pending。self-commit なし。
+
 ## 2026-07-03 DR-DUP1 2e0c7fdb
 
 - 分類: bug/data-integrity / defensive validation

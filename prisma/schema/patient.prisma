@@ -102,6 +102,7 @@ enum PatientConditionType {
 model Patient {
   id                       String    @id @default(cuid())
   org_id                   String
+  display_id               String?
   name                     String
   name_kana                String
   birth_date               DateTime  @db.Date
@@ -139,6 +140,7 @@ model Patient {
   workflow_exceptions        WorkflowException[]
   share_cases_as_base        PatientShareCase[]         @relation("PatientShareCaseBasePatient")
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@index([org_id])
   @@index([name_kana])
@@ -147,6 +149,7 @@ model Patient {
 model Residence {
   id               String        @id @default(cuid())
   org_id           String
+  display_id       String?
   patient_id       String
   patient          Patient       @relation(fields: [patient_id], references: [id])
   address          String
@@ -166,6 +169,7 @@ model Residence {
   created_at       DateTime      @default(now())
   updated_at       DateTime      @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([patient_id])
   @@index([facility_id])
@@ -175,6 +179,7 @@ model Residence {
 model CareCase {
   id                     String     @id @default(cuid())
   org_id                 String
+  display_id             String?
   patient_id             String
   patient                Patient    @relation(fields: [patient_id], references: [id])
   status                 CaseStatus @default(referral_received)
@@ -200,6 +205,7 @@ model CareCase {
   care_reports             CareReport[]
   patient_share_cases      PatientShareCase[]      @relation("PatientShareCaseBaseCareCase")
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@index([org_id])
   @@index([patient_id])
@@ -209,6 +215,7 @@ model CareCase {
 model ContactParty {
   id                   String          @id @default(cuid())
   org_id               String
+  display_id           String?
   patient_id           String
   patient              Patient         @relation(fields: [patient_id], references: [id])
   name                 String
@@ -225,6 +232,7 @@ model ContactParty {
   created_at           DateTime        @default(now())
   updated_at           DateTime        @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([patient_id])
 }
@@ -232,6 +240,7 @@ model ContactParty {
 model CareTeamLink {
   id                       String                @id @default(cuid())
   org_id                   String
+  display_id               String?
   case_id                  String
   case_                    CareCase              @relation(fields: [case_id], references: [id])
   external_professional_id String?
@@ -249,6 +258,7 @@ model CareTeamLink {
   created_at               DateTime              @default(now())
   updated_at               DateTime              @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([case_id])
   @@index([external_professional_id])
@@ -257,6 +267,7 @@ model CareTeamLink {
 model PatientCondition {
   id             String               @id @default(cuid())
   org_id         String
+  display_id     String?
   patient_id     String
   patient        Patient              @relation(fields: [patient_id], references: [id])
   condition_type PatientConditionType
@@ -268,6 +279,7 @@ model PatientCondition {
   created_at     DateTime             @default(now())
   updated_at     DateTime             @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([patient_id])
   @@index([condition_type])
@@ -276,6 +288,7 @@ model PatientCondition {
 model ConsentRecord {
   id                String        @id @default(cuid())
   org_id            String
+  display_id        String?
   patient_id        String
   patient           Patient       @relation(fields: [patient_id], references: [id])
   case_id           String?
@@ -297,6 +310,7 @@ model ConsentRecord {
 
   patient_share_consents PatientShareConsent[]
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@index([org_id])
   @@index([patient_id])
@@ -306,6 +320,7 @@ model ConsentRecord {
 model ManagementPlan {
   id               String               @id @default(cuid())
   org_id           String
+  display_id       String?
   case_id          String
   case_            CareCase             @relation(fields: [case_id], references: [id])
   status           ManagementPlanStatus @default(draft)
@@ -324,6 +339,7 @@ model ManagementPlan {
   created_at       DateTime             @default(now())
   updated_at       DateTime             @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([case_id, version])
   @@index([org_id])
   @@index([case_id])
@@ -333,6 +349,7 @@ model ManagementPlan {
 model PatientSchedulePreference {
   id                            String    @id @default(cuid())
   org_id                        String
+  display_id                    String?
   patient_id                    String    @unique
   patient                       Patient   @relation(fields: [patient_id], references: [id])
   preferred_weekdays            Json?
@@ -364,6 +381,7 @@ model PatientSchedulePreference {
   created_at                    DateTime  @default(now())
   updated_at                    DateTime  @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
 }
 
@@ -373,6 +391,7 @@ model PatientSchedulePreference {
 model PatientPackagingProfile {
   id                       String           @id @default(cuid())
   org_id                   String
+  display_id               String?
   patient_id               String           @unique
   patient                  Patient          @relation(fields: [patient_id], references: [id])
   default_packaging_method PackagingMethod?
@@ -384,6 +403,7 @@ model PatientPackagingProfile {
   created_at               DateTime         @default(now())
   updated_at               DateTime         @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([patient_id])
 }
@@ -391,6 +411,7 @@ model PatientPackagingProfile {
 model PatientMcsLink {
   id                   String    @id @default(cuid())
   org_id               String
+  display_id           String?
   patient_id           String    @unique
   patient              Patient   @relation(fields: [patient_id], references: [id])
   source_url           String
@@ -413,6 +434,7 @@ model PatientMcsLink {
   messages PatientMcsMessage[]
   summary  PatientMcsSummary?
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([patient_id])
   @@index([mcs_project_id])
@@ -421,6 +443,7 @@ model PatientMcsLink {
 model PatientMcsSummary {
   id                               String         @id @default(cuid())
   org_id                           String
+  display_id                       String?
   patient_id                       String         @unique
   patient                          Patient        @relation(fields: [patient_id], references: [id])
   link_id                          String         @unique
@@ -444,6 +467,7 @@ model PatientMcsSummary {
   created_at                       DateTime       @default(now())
   updated_at                       DateTime       @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([patient_id])
   @@index([link_id])
@@ -452,6 +476,7 @@ model PatientMcsSummary {
 model PatientInsurance {
   id                       String                     @id @default(cuid())
   org_id                   String
+  display_id               String?
   patient_id               String
   patient                  Patient                    @relation(fields: [patient_id], references: [id])
   insurance_type           InsuranceType
@@ -474,6 +499,7 @@ model PatientInsurance {
   created_at               DateTime                   @default(now())
   updated_at               DateTime                   @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([patient_id])
   @@index([patient_id, insurance_type, is_active])
@@ -483,6 +509,7 @@ model PatientInsurance {
 model PatientLabObservation {
   id                     String         @id @default(cuid())
   org_id                 String
+  display_id             String?
   patient_id             String
   patient                Patient        @relation(fields: [patient_id], references: [id])
   analyte_code           LabAnalyteCode
@@ -499,6 +526,7 @@ model PatientLabObservation {
   created_at             DateTime       @default(now())
   updated_at             DateTime       @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([patient_id, analyte_code, measured_at])
   @@index([source_visit_record_id])
@@ -507,6 +535,7 @@ model PatientLabObservation {
 model PatientMcsMessage {
   id                  String         @id @default(cuid())
   org_id              String
+  display_id          String?
   patient_id          String
   patient             Patient        @relation(fields: [patient_id], references: [id])
   link_id             String
@@ -528,6 +557,7 @@ model PatientMcsMessage {
   created_at          DateTime       @default(now())
   updated_at          DateTime       @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([link_id, source_message_id])
   @@index([org_id])
   @@index([patient_id, posted_at])
@@ -542,6 +572,7 @@ model PatientMcsMessage {
 model PatientFieldRevision {
   id                     String    @id @default(cuid())
   org_id                 String
+  display_id             String?
   patient_id             String
   case_id                String? // ケースに紐づく項目(intake/home_visit_intake)用
   category               String // 現状: basic/residence/contacts/conditions/clinical（pharmaceutical/medical_care/narcotic は後続スライスで追加）
@@ -563,6 +594,7 @@ model PatientFieldRevision {
   created_at             DateTime  @default(now()) // 変更日時(システム入力日時)
   updated_at             DateTime  @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([patient_id, field_key, valid_from(sort: Desc)])
   @@index([patient_id, is_current])
@@ -576,6 +608,7 @@ model PatientFieldRevision {
 model PatientMedicalProcedure {
   id             String    @id @default(cuid())
   org_id         String
+  display_id     String?
   patient_id     String
   case_id        String?
   procedure_type String // specialProcedureLabels のキー(tpn/cv/cv_port/picc/home_oxygen/enteral/gastrostomy/pressure_ulcer/dialysis ...)
@@ -589,6 +622,7 @@ model PatientMedicalProcedure {
   created_at     DateTime  @default(now())
   updated_at     DateTime  @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([patient_id, is_active])
   @@index([patient_id, procedure_type])
@@ -598,6 +632,7 @@ model PatientMedicalProcedure {
 model PatientNarcoticUse {
   id            String    @id @default(cuid())
   org_id        String
+  display_id    String?
   patient_id    String
   case_id       String?
   narcotic_kind String // base / rescue
@@ -611,6 +646,7 @@ model PatientNarcoticUse {
   created_at    DateTime  @default(now())
   updated_at    DateTime  @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([patient_id, is_active])
 }
