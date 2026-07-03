@@ -49,7 +49,7 @@
   eslint/prettier/diff-check green。`pnpm typecheck` / `pnpm typecheck:no-unused` green。
 - レビュー: opus APPROVE、claude commit c22c7fe3。self-commit なし。
 
-## 2026-07-03 CE17 pending verdict
+## 2026-07-03 CE17 5205fc48
 
 - 分類: performance / daily prescription expiry scan bounding
 - 対象: `src/server/jobs/daily/prescriptions.ts` + `src/server/jobs/daily.test.ts`
@@ -61,6 +61,18 @@
 - 検証: focused `daily.test.ts -t "prescription expiry"` 3/3 green。full `daily.test.ts` 43/43 green。
   scoped eslint/prettier/diff-check green。`pnpm typecheck` は並行 A1-CRC FE dirty の `reports/[id]/page.tsx`
   型エラーで blocked（CE17外、該当 lane へ委譲）。
+- 最終: opus APPROVE、claude commit 5205fc48。self-commit なし。
+
+## 2026-07-03 R07 pending verdict
+
+- 分類: dead-code removal / behavior-preserving cleanup
+- 対象: `src/lib/dashboard/home-config.ts` + 自テスト
+- 実施: 外部参照0の dashboard home config（358行）と、その config のみを検証していたテスト（95行）を削除。
+  `home-link-builders.ts` は18以上の生存 consumer があるため保持。
+- 挙動変更: なし。runtime import なし、route/config/script/型のみ参照なし。docs の生きた参照なし、archive 参照のみ残置。
+- 検証: export symbol 静的 `rg` 0件。`home-link-builders.test.ts` 4/4 green。scoped eslint green。
+  `tsc --noEmit --pretty false` green、home-config 該当エラー grep 0件。
+- レビュー: opus verdict 待ち。self-commit なし。
 
 ## 2026-07-03 までのスライス（要約、詳細は archive/ と git log）
 
