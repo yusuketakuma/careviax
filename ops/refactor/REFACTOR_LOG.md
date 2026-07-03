@@ -2656,3 +2656,58 @@ continuity`).
   - `pnpm typecheck` passed.
 - Remaining:
   - Send completion report to Claude and await opus verdict / Claude commit.
+
+## 2026-07-03 20:05 JST - Billing Candidates Query Helper Convergence
+
+- Change ID: `RR-QP-20260703-C-billing-candidates-query-helper`.
+- Category: maintainability / API validation helper convergence.
+- Target:
+  - `/api/billing-candidates` optional read filters:
+    `billing_month`, `patient_id`, `status`, and `billing_domain`.
+- Purpose:
+  - Remove the route-local strict optional search-param parser now that its
+    duplicate, omitted, blank, padded, and max-length semantics match
+    `readStrictOptionalSearchParam`.
+- Implementation:
+  - Imported `readStrictOptionalSearchParam` from `src/lib/api/search-params.ts`.
+  - Replaced all `readStrictOptionalBillingCandidateFilter` call sites with
+    the shared helper.
+  - Removed `BillingCandidateQueryName` and the route-local parser.
+  - Added a focused regression proving omitted `billing_domain` still defaults
+    to `home_care` in the Prisma `where` clause and workbench summary input.
+  - Added a focused regression proving unsupported `billing_domain` GET
+    filters still reject before org-scoped DB work.
+- Files changed:
+  - `src/app/api/billing-candidates/route.ts`
+  - `src/app/api/billing-candidates/route.test.ts`
+- Behavior change:
+  - No API behavior change intended.
+  - Billing month parsing, patient/status/domain validation messages,
+    duplicate param rejection, explicit blank/padded/max-length rejection,
+    unsupported status/domain handling, and default
+    `billingDomain: 'home_care'` are preserved.
+- FE/BE alignment impact:
+  - No response envelope, route, UI, DB schema, migration, billing generation,
+    auth, RLS, external-send trigger condition, production config,
+    push/deploy, or destructive operation behavior changed.
+- UI layout impact:
+  - None.
+- Performance impact:
+  - No runtime performance claim.
+- Validation:
+  - Baseline before edit:
+    `./node_modules/.bin/vitest run src/app/api/billing-candidates/route.test.ts src/lib/api/search-params.test.ts --reporter=dot --testTimeout=60000`
+    passed `2` files / `42` tests.
+  - Post-edit focused suite:
+    `./node_modules/.bin/vitest run src/app/api/billing-candidates/route.test.ts src/lib/api/search-params.test.ts --reporter=dot --testTimeout=60000`
+    passed `2` files / `44` tests.
+  - `./node_modules/.bin/eslint --max-warnings=0 src/app/api/billing-candidates/route.ts src/app/api/billing-candidates/route.test.ts src/lib/api/search-params.ts src/lib/api/search-params.test.ts`
+    passed.
+  - `./node_modules/.bin/prettier --check src/app/api/billing-candidates/route.ts src/app/api/billing-candidates/route.test.ts src/lib/api/search-params.ts src/lib/api/search-params.test.ts`
+    passed after formatting `route.ts`.
+  - `git diff --check -- src/app/api/billing-candidates/route.ts src/app/api/billing-candidates/route.test.ts src/lib/api/search-params.ts src/lib/api/search-params.test.ts`
+    passed.
+  - `pnpm typecheck` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Remaining:
+  - Full build was not run for this narrow helper-convergence slice.

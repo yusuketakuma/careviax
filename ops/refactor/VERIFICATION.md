@@ -3487,3 +3487,42 @@ The latest observability slice is
     route contract, DB schema, migration, auth/RLS behavior, external send
     trigger condition, or job execution outcome. The affected skip branches are
     covered by focused unit tests and typecheck.
+
+## Billing Candidates Query Helper Verification
+
+The latest query-param helper convergence slice is
+`RR-QP-20260703-C-billing-candidates-query-helper` at 2026-07-03 20:05 JST.
+
+- Scope:
+  - `/api/billing-candidates` optional single-value filters:
+    `billing_month`, `patient_id`, `status`, and `billing_domain`.
+  - No helper implementation change was needed; the route now delegates to
+    `readStrictOptionalSearchParam`.
+- Baseline before edit:
+  - `./node_modules/.bin/vitest run src/app/api/billing-candidates/route.test.ts src/lib/api/search-params.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `42` tests.
+- Focused regressions after edit:
+  - `./node_modules/.bin/vitest run src/app/api/billing-candidates/route.test.ts src/lib/api/search-params.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `44` tests.
+  - Coverage: shared helper duplicate/blank/padded/max-length semantics already
+    covered by route/helper tests, malformed explicit billing filters rejecting
+    before org context, omitted `billing_domain` still defaulting to
+    `home_care` in both candidate query and summary input, and unsupported
+    `billing_domain` GET rejecting before org context.
+- Scoped checks:
+  - `./node_modules/.bin/eslint --max-warnings=0 src/app/api/billing-candidates/route.ts src/app/api/billing-candidates/route.test.ts src/lib/api/search-params.ts src/lib/api/search-params.test.ts`
+  - Result: passed.
+  - `./node_modules/.bin/prettier --check src/app/api/billing-candidates/route.ts src/app/api/billing-candidates/route.test.ts src/lib/api/search-params.ts src/lib/api/search-params.test.ts`
+  - Result: passed after formatting `route.ts`.
+  - `git diff --check -- src/app/api/billing-candidates/route.ts src/app/api/billing-candidates/route.test.ts src/lib/api/search-params.ts src/lib/api/search-params.test.ts`
+  - Result: passed.
+- Typecheck:
+  - `pnpm typecheck`
+  - Result: passed.
+  - `pnpm typecheck:no-unused`
+  - Result: passed.
+- Skipped:
+  - Full build/browser smoke were skipped because this slice changes no DOM,
+    DB schema, migration, auth/RLS behavior, external send trigger condition,
+    billing generation flow, or visible UI. The affected route validation
+    branches are covered by focused route/helper tests and typecheck.

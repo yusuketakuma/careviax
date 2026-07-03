@@ -101,11 +101,12 @@ Snapshot: 2026-07-02 02:10 JST
   `/api/medication-issues`, `/api/residual-medications`, and
   `/api/first-visit-documents`, `/api/medication-cycles`,
   `/api/dispense-tasks`, `/api/medication-profiles`,
-  `/api/communication-events`, and `/api/tasks` now use
+  `/api/communication-events`, `/api/tasks`, and
+  `/api/billing-candidates` now use
   `src/lib/api/search-params.ts`; continue only where exact omitted, blank,
   padded, too-long, duplicate, and field-message semantics match and focused
-  tests lock the response. Remaining verified candidate from the current grep:
-  `/api/billing-candidates`.
+  tests lock the response. Remaining verified candidates from the current
+  scoped grep: none.
 - Response helper/no-store convergence remains a periodic scan target, but no
   new unverified candidate is being edited in this artifact-sync slice.
 - API path/header helper convergence should continue only where exact URL shape

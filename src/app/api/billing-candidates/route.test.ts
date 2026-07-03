@@ -272,6 +272,48 @@ describe('/api/billing-candidates', () => {
     });
   });
 
+  it('defaults omitted billing_domain to home_care on read', async () => {
+    billingCandidateFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'candidate_1',
+        patient_id: 'patient_1',
+        status: 'confirmed',
+        updated_at: new Date(CANDIDATE_UPDATED_AT),
+        source_snapshot: null,
+      },
+    ]);
+    patientFindManyMock.mockResolvedValueOnce([{ id: 'patient_1', name: '佐藤 花子' }]);
+
+    const response = await GET(
+      createGetRequest(
+        'http://localhost/api/billing-candidates?billing_month=2026-03-01&patient_id=patient_1&limit=10',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(billingCandidateFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          billing_month: new Date('2026-03-01T00:00:00.000Z'),
+          patient_id: 'patient_1',
+          billing_domain: 'home_care',
+        }),
+      }),
+    );
+    expect(workbenchSummaryMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        orgId: 'org_1',
+        billingMonth: new Date('2026-03-01T00:00:00.000Z'),
+        patientId: 'patient_1',
+        billingDomain: 'home_care',
+      }),
+    );
+  });
+
   it('normalizes malformed source snapshot metadata on read', async () => {
     billingCandidateFindManyMock.mockResolvedValueOnce([
       {
@@ -478,6 +520,23 @@ describe('/api/billing-candidates', () => {
       details: {
         status: ['対応していないステータスです'],
       },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
+    expect(workbenchSummaryMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported billing_domain filters on read before org context', async () => {
+    const response = await GET(
+      createGetRequest('http://localhost/api/billing-candidates?billing_domain=unknown'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'billing_domain は home_care または pca_rental を指定してください',
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(billingCandidateFindManyMock).not.toHaveBeenCalled();

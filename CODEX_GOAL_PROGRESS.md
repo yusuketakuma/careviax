@@ -42,6 +42,41 @@ Objective: preserve existing external behavior while maximizing maintainability,
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
 
+### Backend/API Query Helper Convergence - 2026-07-03 20:05 JST
+
+- Scope:
+  - Continued the behavior-preserving strict optional query-param helper
+    convergence.
+  - Removed the `/api/billing-candidates` route-local strict optional parser
+    and delegated matching single-value optional filters to
+    `readStrictOptionalSearchParam`.
+- Fixed:
+  - Eliminated duplicate parsing logic for `billing_month`, `patient_id`,
+    `status`, and `billing_domain` in
+    `src/app/api/billing-candidates/route.ts`.
+  - Added a focused read regression proving omitted `billing_domain` still
+    defaults to `home_care` in both the Prisma `where` clause and workbench
+    summary input.
+- Safety:
+  - Preserved billing month parsing, patient/status/domain validation messages,
+    malformed-filter rejection before org-scoped DB work, default
+    `billingDomain: 'home_care'`, response envelope, no-store headers, auth,
+    RLS, billing generation, schema, migrations, external send, push, and
+    deploy boundaries.
+  - The change touched only the billing-candidates route/test and progress
+    ledgers.
+- Validation:
+  - Baseline focused suite passed `2` files / `42` tests:
+    `./node_modules/.bin/vitest run src/app/api/billing-candidates/route.test.ts src/lib/api/search-params.test.ts --reporter=dot --testTimeout=60000`.
+  - Post-edit focused suite passed `2` files / `44` tests with the added
+    default-domain and unsupported-domain GET regressions.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`,
+    `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- Remaining:
+  - Full build was not run for this narrow helper-convergence slice.
+  - Continue scanning for the next exact behavior-preserving backend/API
+    convergence candidate after this slice is committed.
+
 ### Backend: PCA Pump Patch Update Claim - 2026-07-03 01:19 JST
 
 - Scope:

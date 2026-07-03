@@ -1,6 +1,6 @@
 # Refactor State
 
-Snapshot: 2026-07-03 19:59 JST
+Snapshot: 2026-07-03 20:05 JST
 
 ## Phase
 
@@ -12,7 +12,7 @@ Snapshot: 2026-07-03 19:59 JST
 
 ## Last Change ID
 
-- `RR-OBS-20260703-JOB2-runner-duplicate-skip-safe-log`
+- `RR-QP-20260703-C-billing-candidates-query-helper`
 
 ## Build State
 
@@ -21,13 +21,16 @@ Snapshot: 2026-07-03 19:59 JST
   2026-07-03: test `13017` passed (`1302` files), lint `0` errors, colors,
   format, typecheck, typecheck:no-unused, and build all green.
 - Current narrow slice evidence:
-  - Baseline runner/logger suite passed `2` files / `23` tests.
-  - Focused runner/logger suite passed `2` files / `23` tests.
+  - Baseline billing-candidates route plus shared helper suite passed `2`
+    files / `42` tests.
+  - Focused billing-candidates route plus shared helper suite passed `2`
+    files / `44` tests.
   - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
   - Scoped ESLint, scoped Prettier check, and scoped diff-check passed.
-  - Full build was not run for this narrow logger-convergence slice; the
+  - Full build was not run for this narrow query-helper convergence slice; the
     immediately preceding Claude full gate was green.
-  - `pnpm build` was not run for this narrow logger-convergence slice.
+  - `pnpm build` was not run for this narrow query-helper convergence slice.
 - Previous narrow slice evidence:
   - Focused patient-detail suite passed `1` file / `70` tests.
   - `pnpm typecheck`: passed.
@@ -44,9 +47,18 @@ Snapshot: 2026-07-03 19:59 JST
 
 ## Current Worktree
 
-- The worktree has an owned separate-track job-runner duplicate-skip safe-log
-  slice awaiting Claude/opus verdict and Claude commit. Preserve unrelated
-  dirty files if any appear.
+- Preserve unrelated dirty files if any appear.
+- Latest query-helper slice changed only
+  `src/app/api/billing-candidates/route.ts`,
+  `src/app/api/billing-candidates/route.test.ts`, and progress ledgers. It
+  replaces the route-local strict optional parser for `billing_month`,
+  `patient_id`, `status`, and `billing_domain` with the shared
+  `readStrictOptionalSearchParam` helper while preserving validation messages,
+  malformed-filter pre-DB rejection, omitted `billing_domain` defaulting to
+  `home_care`, and unsupported `billing_domain` GET rejection. Focused
+  route/helper tests, `pnpm typecheck`, `pnpm typecheck:no-unused`, scoped
+  ESLint, scoped Prettier, and diff-check passed. Full build was not run for
+  this narrow slice.
 - Latest separate-track slice changed only `src/server/jobs/runner.ts`,
   `src/server/jobs/runner.test.ts`, and progress ledgers. It replaces
   duplicate DB-running and in-process skip `console.warn` calls with shared

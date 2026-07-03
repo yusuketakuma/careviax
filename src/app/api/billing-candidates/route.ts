@@ -4,6 +4,7 @@ import { success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { parsePaginationParams } from '@/lib/api/pagination';
+import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { readBillingValidationLayers } from '@/lib/billing/validation-layers';
@@ -19,7 +20,6 @@ import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from './billing
 
 const BILLING_CANDIDATE_STATUSES = ['candidate', 'confirmed', 'excluded', 'exported'] as const;
 type BillingCandidateStatus = (typeof BILLING_CANDIDATE_STATUSES)[number];
-type BillingCandidateQueryName = 'billing_month' | 'patient_id' | 'status' | 'billing_domain';
 
 function readWorkflowState(sourceSnapshot: unknown) {
   const state = readJsonObject(readJsonObject(sourceSnapshot)?.billing_close);
@@ -82,46 +82,11 @@ function sanitizeBillingCandidateSourceSnapshot(sourceSnapshot: unknown) {
   };
 }
 
-function readStrictOptionalBillingCandidateFilter(
-  searchParams: URLSearchParams,
-  name: BillingCandidateQueryName,
-  messages: { blank: string; invalid: string },
-) {
-  const values = searchParams.getAll(name);
-  if (values.length === 0) return { ok: true as const, value: undefined };
-  if (values.length > 1) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [`${name} は1つだけ指定してください`] },
-    };
-  }
-
-  const value = values[0];
-  if (value.trim().length === 0) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [messages.blank] },
-    };
-  }
-  if (value !== value.trim() || value.length > 100) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [messages.invalid] },
-    };
-  }
-
-  return { ok: true as const, value };
-}
-
 function parseBillingCandidateListFilters(searchParams: URLSearchParams) {
-  const billingMonthResult = readStrictOptionalBillingCandidateFilter(
-    searchParams,
-    'billing_month',
-    {
-      blank: BILLING_MONTH_FORMAT_MESSAGE,
-      invalid: BILLING_MONTH_FORMAT_MESSAGE,
-    },
-  );
+  const billingMonthResult = readStrictOptionalSearchParam(searchParams, 'billing_month', {
+    blank: BILLING_MONTH_FORMAT_MESSAGE,
+    invalid: BILLING_MONTH_FORMAT_MESSAGE,
+  });
   if (!billingMonthResult.ok) {
     return {
       ok: false as const,
@@ -139,7 +104,7 @@ function parseBillingCandidateListFilters(searchParams: URLSearchParams) {
     };
   }
 
-  const patientResult = readStrictOptionalBillingCandidateFilter(searchParams, 'patient_id', {
+  const patientResult = readStrictOptionalSearchParam(searchParams, 'patient_id', {
     blank: '患者IDを指定してください',
     invalid: '患者IDの形式が不正です',
   });
@@ -150,7 +115,7 @@ function parseBillingCandidateListFilters(searchParams: URLSearchParams) {
     };
   }
 
-  const statusResult = readStrictOptionalBillingCandidateFilter(searchParams, 'status', {
+  const statusResult = readStrictOptionalSearchParam(searchParams, 'status', {
     blank: 'ステータスを指定してください',
     invalid: '対応していないステータスです',
   });
@@ -172,14 +137,10 @@ function parseBillingCandidateListFilters(searchParams: URLSearchParams) {
     };
   }
 
-  const billingDomainResult = readStrictOptionalBillingCandidateFilter(
-    searchParams,
-    'billing_domain',
-    {
-      blank: 'billing_domain を指定してください',
-      invalid: BILLING_DOMAIN_ERROR_MESSAGE,
-    },
-  );
+  const billingDomainResult = readStrictOptionalSearchParam(searchParams, 'billing_domain', {
+    blank: 'billing_domain を指定してください',
+    invalid: BILLING_DOMAIN_ERROR_MESSAGE,
+  });
   if (!billingDomainResult.ok) {
     return {
       ok: false as const,
