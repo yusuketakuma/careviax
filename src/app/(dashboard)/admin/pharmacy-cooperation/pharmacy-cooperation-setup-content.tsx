@@ -27,6 +27,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/loading';
 import { readApiJson } from '@/lib/api/client-json';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import {
   apiDataSchema,
   cursorPaginatedPageSchema,
@@ -232,7 +233,7 @@ function todayDateKey() {
 }
 
 async function fetchPharmacySites(orgId: string) {
-  const response = await fetch('/api/pharmacy-sites', { headers: { 'x-org-id': orgId } });
+  const response = await fetch('/api/pharmacy-sites', { headers: buildOrgHeaders(orgId) });
   return readApiJson<{ data: PharmacySiteRow[] }>(response, {
     fallbackMessage: '薬局拠点の取得に失敗しました',
     schema: pharmacySitesResponseSchema,
@@ -241,7 +242,7 @@ async function fetchPharmacySites(orgId: string) {
 
 async function fetchPartnerPharmacies(orgId: string) {
   const response = await fetch('/api/partner-pharmacies?limit=20', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   return readApiJson<CursorPaginatedPage<PartnerPharmacyRow>>(response, {
     fallbackMessage: '協力薬局の取得に失敗しました',
@@ -251,7 +252,7 @@ async function fetchPartnerPharmacies(orgId: string) {
 
 async function fetchPartnerships(orgId: string) {
   const response = await fetch('/api/pharmacy-partnerships?limit=20', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   return readApiJson<CursorPaginatedPage<PharmacyPartnershipRow>>(response, {
     fallbackMessage: '薬局間連携の取得に失敗しました',
@@ -261,7 +262,7 @@ async function fetchPartnerships(orgId: string) {
 
 async function fetchContracts(orgId: string) {
   const response = await fetch('/api/pharmacy-contracts?limit=20', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   return readApiJson<CursorPaginatedPage<PharmacyContractRow>>(response, {
     fallbackMessage: '薬局間契約の取得に失敗しました',
@@ -271,7 +272,7 @@ async function fetchContracts(orgId: string) {
 
 async function fetchContractTemplates(orgId: string) {
   const response = await fetch('/api/templates?template_type=contract_document', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   return readApiJson<{ data: ContractTemplateRow[] }>(response, {
     fallbackMessage: '契約テンプレートの取得に失敗しました',
@@ -281,7 +282,7 @@ async function fetchContractTemplates(orgId: string) {
 
 async function fetchContractDocuments(orgId: string, contractId: string) {
   const response = await fetch(`/api/pharmacy-contracts/${contractId}/documents`, {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   return readApiJson<{ data: ContractDocumentRow[] }>(response, {
     fallbackMessage: '契約書類の取得に失敗しました',
@@ -296,10 +297,7 @@ async function uploadContractDocumentPdf(orgId: string, file: File) {
 
   const presignResponse = await fetch('/api/files/presigned-upload', {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-org-id': orgId,
-    },
+    headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
     body: JSON.stringify({
       purpose: 'contract-document',
       file_name: file.name,
@@ -323,10 +321,7 @@ async function uploadContractDocumentPdf(orgId: string, file: File) {
 
   const completeResponse = await fetch('/api/files/complete', {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-org-id': orgId,
-    },
+    headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
     body: JSON.stringify({
       file_id: presigned.data.id,
       etag: uploadResponse.headers.get('etag') ?? undefined,
@@ -994,10 +989,7 @@ export function PharmacyCooperationSetupContent() {
       if (!partnerForm.name.trim()) throw new Error('協力薬局名を入力してください');
       const response = await fetch('/api/partner-pharmacies', {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
         body: JSON.stringify({
           name: partnerForm.name,
           ...(partnerForm.pharmacy_code ? { pharmacy_code: partnerForm.pharmacy_code } : {}),
@@ -1025,10 +1017,7 @@ export function PharmacyCooperationSetupContent() {
       if (!effectivePartnerPharmacyId) throw new Error('協力薬局を選択してください');
       const response = await fetch('/api/pharmacy-partnerships', {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
         body: JSON.stringify({
           base_site_id: effectiveBaseSiteId,
           partner_pharmacy_id: effectivePartnerPharmacyId,
@@ -1057,10 +1046,7 @@ export function PharmacyCooperationSetupContent() {
       }
       const response = await fetch(`/api/pharmacy-partnerships/${id}/activate`, {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
         body: JSON.stringify(approvals),
       });
       return readApiJson<PharmacyPartnershipRow>(response, {
@@ -1091,10 +1077,7 @@ export function PharmacyCooperationSetupContent() {
           : null;
       const response = await fetch('/api/pharmacy-contracts', {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
         body: JSON.stringify({
           partnership_id: effectiveContractPartnershipId,
           status: contractForm.status,
@@ -1135,10 +1118,7 @@ export function PharmacyCooperationSetupContent() {
         `/api/pharmacy-contracts/${effectiveDocumentContractId}/documents`,
         {
           method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-org-id': orgId,
-          },
+          headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
           body: JSON.stringify({
             mode: 'preview',
             template_id: effectiveDocumentTemplateId,
@@ -1172,10 +1152,7 @@ export function PharmacyCooperationSetupContent() {
         `/api/pharmacy-contracts/${effectiveDocumentContractId}/documents`,
         {
           method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-org-id': orgId,
-          },
+          headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
           body: JSON.stringify({
             mode: 'save',
             template_id: effectiveDocumentTemplateId,

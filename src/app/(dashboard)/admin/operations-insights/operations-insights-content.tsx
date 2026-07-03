@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/loading';
 import { StatCard } from '@/components/ui/stat-card';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import type { MonthlyVisitBucket, ProcessDuration } from '@/lib/analytics/operations-insights';
 import {
@@ -69,7 +70,7 @@ export function OperationsInsightsContent() {
     queryKey: ['admin-operations-insights', orgId],
     queryFn: async () => {
       const res = await fetch('/api/admin/operations-insights', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('運用分析の取得に失敗しました');
       const json = await res.json();

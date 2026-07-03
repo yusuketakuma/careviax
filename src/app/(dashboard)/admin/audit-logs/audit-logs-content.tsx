@@ -29,6 +29,7 @@ import {
   AUDIT_LOG_ACTION_OPTIONS,
   AUDIT_LOG_TARGET_TYPE_OPTIONS,
 } from '@/lib/audit-logs/filter-options';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 // --- Types ---
@@ -98,7 +99,7 @@ export function AuditLogsContent() {
     queryKey: ['audit-logs', orgId, actorFilter, targetTypeFilter, actionFilter, dateFrom, dateTo],
     queryFn: async () => {
       const res = await fetch(`/api/audit-logs?${queryParams}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('監査ログの取得に失敗しました');
       return res.json() as Promise<{ data: AuditLog[] }>;
@@ -176,7 +177,7 @@ export function AuditLogsContent() {
       const exportParams = new URLSearchParams(queryParams);
       exportParams.set('format', format);
       const response = await fetch(`/api/audit-logs/export?${exportParams.toString()}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { message?: string } | null;

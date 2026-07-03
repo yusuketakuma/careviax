@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { formatDateTimeLabel } from '@/lib/ui/date-format';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -158,7 +159,7 @@ export function JobsDashboardContent() {
     queryKey: ['integration-jobs', orgId],
     queryFn: async () => {
       const res = await fetch('/api/jobs', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('ジョブ一覧の取得に失敗しました');
       return res.json() as Promise<{ data: JobDefinitionEntry[] }>;
@@ -171,7 +172,7 @@ export function JobsDashboardContent() {
     mutationFn: async ({ endpoint, jobType }: { endpoint: string; jobType: string }) => {
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({}),
       });
       if (!res.ok) {

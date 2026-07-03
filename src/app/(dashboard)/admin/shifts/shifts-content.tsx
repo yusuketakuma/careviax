@@ -49,6 +49,7 @@ import {
   roleRequiresSite,
   type ManageableMemberRole,
 } from '@/lib/auth/member-roles';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   buildShiftGrid,
@@ -159,7 +160,7 @@ export function ShiftsContent() {
     queryKey: ['pharmacy-sites', orgId],
     queryFn: async () => {
       const res = await fetch('/api/pharmacy-sites', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('店舗情報の取得に失敗しました');
       return res.json() as Promise<{ data: PharmacySite[] }>;
@@ -176,7 +177,7 @@ export function ShiftsContent() {
     queryKey: ['pharmacists', orgId, 'admin-shifts'],
     queryFn: async () => {
       const res = await fetch('/api/pharmacists?include_collaborators=true', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('メンバー一覧の取得に失敗しました');
       return res.json() as Promise<{ data: Pharmacist[] }>;
@@ -194,7 +195,7 @@ export function ShiftsContent() {
     queryFn: async () => {
       const month = format(currentMonth, 'yyyy-MM-01');
       const res = await fetch(`/api/pharmacist-shifts?month=${month}&limit=400`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('シフトの取得に失敗しました');
       return res.json() as Promise<{ data: ShiftRecord[] }>;
@@ -219,7 +220,7 @@ export function ShiftsContent() {
         date_to: format(monthEnd, 'yyyy-MM-dd'),
       });
       const res = await fetch(`/api/business-holidays?${params}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('休日設定の取得に失敗しました');
       return res.json() as Promise<{ data: BusinessHoliday[] }>;
@@ -235,7 +236,7 @@ export function ShiftsContent() {
     queryKey: ['pharmacist-shift-templates', orgId],
     queryFn: async () => {
       const res = await fetch('/api/pharmacist-shift-templates', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('定型シフトの取得に失敗しました');
       return res.json() as Promise<{ data: ShiftTemplate[] }>;
@@ -449,10 +450,7 @@ export function ShiftsContent() {
         changed.map(async (shift) => {
           const res = await fetch('/api/pharmacist-shifts', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-org-id': orgId,
-            },
+            headers: buildOrgJsonHeaders(orgId),
             body: JSON.stringify({
               site_id: shift.site_id,
               user_id: shift.user_id,
@@ -487,10 +485,7 @@ export function ShiftsContent() {
     mutationFn: async () => {
       const res = await fetch('/api/business-holidays', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           date: holidayForm.date,
           name: holidayForm.name,
@@ -524,10 +519,7 @@ export function ShiftsContent() {
 
       const res = await fetch(`/api/business-holidays/${editingHoliday.id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           date: holidayEditForm.date,
           name: holidayEditForm.name,
@@ -559,9 +551,7 @@ export function ShiftsContent() {
     mutationFn: async (holiday: BusinessHoliday) => {
       const res = await fetch(`/api/business-holidays/${holiday.id}`, {
         method: 'DELETE',
-        headers: {
-          'x-org-id': orgId,
-        },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
@@ -583,10 +573,7 @@ export function ShiftsContent() {
     mutationFn: async () => {
       const res = await fetch('/api/pharmacists', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           ...pharmacistForm,
           phone: pharmacistForm.phone || undefined,
@@ -634,10 +621,7 @@ export function ShiftsContent() {
 
       const res = await fetch(`/api/pharmacists/${editingPharmacistId}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           action: 'update',
           name: pharmacistForm.name,
@@ -678,10 +662,7 @@ export function ShiftsContent() {
     }) => {
       const res = await fetch(`/api/pharmacists/${target.pharmacist.id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(
           target.reason
             ? { action: target.action, reason: target.reason }
@@ -719,7 +700,7 @@ export function ShiftsContent() {
       const res = await fetch(
         `/api/pharmacist-shifts?month=${format(sourceMonth, 'yyyy-MM-01')}&limit=400`,
         {
-          headers: { 'x-org-id': orgId },
+          headers: buildOrgHeaders(orgId),
         },
       );
       if (!res.ok) {
@@ -764,10 +745,7 @@ export function ShiftsContent() {
     mutationFn: async () => {
       const res = await fetch('/api/pharmacist-shift-templates', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           user_id: effectiveTemplateForm.user_id,
           site_id: effectiveTemplateForm.site_id,
@@ -802,9 +780,7 @@ export function ShiftsContent() {
     mutationFn: async (template: ShiftTemplate) => {
       const res = await fetch(`/api/pharmacist-shift-templates/${template.id}`, {
         method: 'DELETE',
-        headers: {
-          'x-org-id': orgId,
-        },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
@@ -829,10 +805,7 @@ export function ShiftsContent() {
     mutationFn: async () => {
       const res = await fetch('/api/pharmacist-shift-templates/apply', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           month: templateApplyMonth,
           user_id: templateApplyUserId === 'all' ? undefined : templateApplyUserId,

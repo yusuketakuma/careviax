@@ -32,6 +32,7 @@ import {
   INCIDENT_REPORTS_API_PATH,
   buildIncidentReportApiPath,
 } from '@/lib/incident-reports/api-paths';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { cn } from '@/lib/utils';
 import {
@@ -96,7 +97,7 @@ export function IncidentsContent() {
     queryKey: ['incident-reports', orgId],
     queryFn: async () => {
       const res = await fetch(INCIDENT_REPORTS_API_PATH, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('ヒヤリハット記録の取得に失敗しました');
       const json = (await res.json()) as { data: IncidentReportListItem[] };
@@ -123,7 +124,7 @@ export function IncidentsContent() {
       if (!selected) throw new Error('記録一覧から記録を選択してください');
       const res = await fetch(buildIncidentReportApiPath(selected.id), {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(buildIncidentMemoPatchPayload(form)),
       });
       if (!res.ok) {
@@ -151,7 +152,7 @@ export function IncidentsContent() {
       if (!nextStatus) throw new Error('対応していないステータスです');
       const res = await fetch(buildIncidentReportApiPath(selected.id), {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ status: nextStatus }),
       });
       if (!res.ok) {
@@ -176,7 +177,7 @@ export function IncidentsContent() {
     mutationFn: async () => {
       const res = await fetch(INCIDENT_REPORTS_API_PATH, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(buildIncidentCreatePayload(createForm)),
       });
       if (!res.ok) {

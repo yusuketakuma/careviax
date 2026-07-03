@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   getSettingRangeError,
   SCOPE_LABELS,
@@ -171,7 +172,7 @@ function ScopePanel({
       }
 
       const response = await fetch(`/api/settings?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { message?: string } | null;
@@ -248,10 +249,7 @@ function ScopePanel({
 
       const response = await fetch('/api/settings', {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           scope,
           scope_id: scopeId,
@@ -387,7 +385,7 @@ export function SettingsContent() {
     queryKey: ['pharmacy-sites', orgId, 'admin-settings'],
     queryFn: async () => {
       const response = await fetch('/api/pharmacy-sites', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('店舗一覧の取得に失敗しました');
       return response.json() as Promise<{ data: SiteOption[] }>;

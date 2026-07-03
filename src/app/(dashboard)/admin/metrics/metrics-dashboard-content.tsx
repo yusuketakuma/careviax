@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorState } from '@/components/ui/error-state';
 import { HelpPopover } from '@/components/ui/help-popover';
 import { SegmentedProgressBar } from '@/components/ui/segmented-progress-bar';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/loading';
@@ -143,7 +144,7 @@ export function MetricsDashboardContent() {
     queryKey: ['admin-metrics', orgId],
     queryFn: async () => {
       const res = await fetch('/api/admin/metrics', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('経営指標の取得に失敗しました');
       return res.json() as Promise<{ data: MetricsData }>;

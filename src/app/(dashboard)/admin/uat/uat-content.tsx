@@ -18,6 +18,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SegmentedProgressBar } from '@/components/ui/segmented-progress-bar';
 import { Separator } from '@/components/ui/separator';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { UAT_CHECKLIST, UAT_PRIORITY_OPTIONS, UAT_STATUS_OPTIONS } from '@/lib/constants/uat';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -204,6 +205,13 @@ type PilotLaunchDossierData = {
   };
 };
 
+function buildUatRequestHeaders(orgId: string, headers?: HeadersInit): Record<string, string> {
+  if (!headers) return buildOrgHeaders(orgId);
+  if (headers instanceof Headers) return buildOrgHeaders(orgId, Object.fromEntries(headers));
+  if (Array.isArray(headers)) return buildOrgHeaders(orgId, Object.fromEntries(headers));
+  return buildOrgHeaders(orgId, headers);
+}
+
 async function fetchOrgJson<T>(
   orgId: string,
   input: RequestInfo | URL,
@@ -212,10 +220,7 @@ async function fetchOrgJson<T>(
 ) {
   const response = await fetch(input, {
     ...init,
-    headers: {
-      'x-org-id': orgId,
-      ...(init?.headers ?? {}),
-    },
+    headers: buildUatRequestHeaders(orgId, init?.headers),
   });
 
   const payload = (await response.json().catch(() => null)) as (T & { message?: string }) | null;

@@ -16,6 +16,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 // --- Types ---
@@ -142,7 +143,7 @@ export function FacilityStandardsContent() {
     queryKey: ['facility-standards', orgId],
     queryFn: async () => {
       const res = await fetch('/api/admin/facility-standards', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('施設基準の取得に失敗しました');
       return res.json() as Promise<FacilityStandardsResponse>;

@@ -11,6 +11,7 @@ import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { StateBadge } from '@/components/ui/state-badge';
 import type { StatusRole } from '@/lib/constants/status-tokens';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   DRUG_FORECAST_STATUS_LABELS,
@@ -199,7 +200,7 @@ export function InventoryForecastContent() {
     queryKey: ['admin-inventory-forecast', orgId],
     queryFn: async () => {
       const res = await fetch('/api/admin/inventory-forecast', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('在庫予測の取得に失敗しました');
       const json = await res.json();

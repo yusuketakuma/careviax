@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { HelpPopover } from '@/components/ui/help-popover';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { StaffKpiPanel } from '@/app/(dashboard)/admin/staff/staff-kpi-panel';
@@ -186,7 +187,7 @@ export default function PerformancePage() {
     queryKey: ['admin-performance-workflow', orgId],
     queryFn: async () => {
       const res = await fetch('/api/dashboard/workflow?view=performance', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('ワークフローの取得に失敗しました');
       return res.json() as Promise<{ data: WorkflowData }>;
@@ -205,7 +206,7 @@ export default function PerformancePage() {
         limit: '200',
       });
       const res = await fetch(`/api/visit-schedules?${params}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('訪問予定の取得に失敗しました');
       return res.json() as Promise<{ data: VisitSchedule[] }>;
@@ -223,7 +224,7 @@ export default function PerformancePage() {
         date_to: dateTo,
       });
       const res = await fetch(`/api/visit-schedule-proposals?${params}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('訪問候補の取得に失敗しました');
       return res.json() as Promise<{ data: Proposal[] }>;
@@ -237,7 +238,7 @@ export default function PerformancePage() {
     queryKey: ['admin-performance-runtime', orgId],
     queryFn: async () => {
       const res = await fetch('/api/admin/performance-metrics?top=6', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('API 応答指標の取得に失敗しました');
       return res.json() as Promise<{ data: RuntimePerformanceSnapshot }>;

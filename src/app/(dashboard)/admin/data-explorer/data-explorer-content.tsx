@@ -22,6 +22,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { ErrorState } from '@/components/ui/error-state';
@@ -103,7 +104,11 @@ function extractEditablePatch(row: Record<string, unknown> | null, columns: Expl
 }
 
 function orgScopedHeaders(orgId: string): HeadersInit | undefined {
-  return orgId ? { 'x-org-id': orgId } : undefined;
+  return orgId ? buildOrgHeaders(orgId) : undefined;
+}
+
+function orgScopedJsonHeaders(orgId: string): HeadersInit {
+  return orgId ? buildOrgJsonHeaders(orgId) : { 'Content-Type': 'application/json' };
 }
 
 export function DataExplorerContent() {
@@ -201,10 +206,7 @@ export function DataExplorerContent() {
         `/api/admin/data-explorer/${effectiveSelectedTable}/${effectiveSelectedRowId}`,
         {
           method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(orgId ? { 'x-org-id': orgId } : {}),
-          },
+          headers: orgScopedJsonHeaders(orgId),
           body: JSON.stringify({ patch }),
         },
       );

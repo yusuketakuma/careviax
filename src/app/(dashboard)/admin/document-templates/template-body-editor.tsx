@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { buildDocumentTemplateApiPath } from '@/lib/document-templates/api-paths';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 
@@ -87,7 +88,7 @@ export function TemplateBodyEditor({ templates }: { templates: TemplateBodyEdito
       if (!selected) throw new Error('テンプレートを選択してください');
       const res = await fetch(buildDocumentTemplateApiPath(selected.id), {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ content: { ...selected.content, body_text: bodyText } }),
       });
       if (!res.ok) {

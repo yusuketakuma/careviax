@@ -10,6 +10,7 @@ import { Loading } from '@/components/ui/loading';
 import { ErrorState } from '@/components/ui/error-state';
 import { Button } from '@/components/ui/button';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 
 type RejectBreakdownItem = {
   code: string;
@@ -48,7 +49,7 @@ export default function DispenseAuditStatsPage() {
     queryKey: ['reject-reason-stats', orgId, days],
     queryFn: async () => {
       const res = await fetch(`/api/admin/reject-reason-stats?days=${days}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('統計の取得に失敗しました');
       return res.json() as Promise<{ data: RejectReasonStats }>;

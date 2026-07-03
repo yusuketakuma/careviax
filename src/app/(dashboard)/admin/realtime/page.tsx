@@ -15,6 +15,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { StateBadge } from '@/components/ui/state-badge';
 import type { StatusRole } from '@/lib/constants/status-tokens';
 import { PRIORITY_DISPLAY_LABELS, PRIORITY_ROLE } from '@/lib/constants/status-labels';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
@@ -100,7 +101,7 @@ export default function RealtimePage() {
     queryKey: ['admin-realtime-workflow', orgId],
     queryFn: async () => {
       const res = await fetch('/api/dashboard/workflow?view=realtime', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('ワークフローの取得に失敗しました');
       return res.json() as Promise<{ data: WorkflowSnapshot }>;
@@ -114,7 +115,7 @@ export default function RealtimePage() {
     queryKey: ['admin-realtime-notifications', orgId],
     queryFn: async () => {
       const res = await fetch('/api/notifications?limit=12&is_read=false', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('通知の取得に失敗しました');
       return res.json() as Promise<{ data: Notification[] }>;

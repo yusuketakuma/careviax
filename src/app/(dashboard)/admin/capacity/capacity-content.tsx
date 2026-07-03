@@ -7,6 +7,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { StatCard } from '@/components/ui/stat-card';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import type { CapacityProcessKey } from '@/lib/analytics/capacity';
 
@@ -139,7 +140,7 @@ export function CapacityContent() {
     queryKey: ['admin-capacity', orgId],
     queryFn: async () => {
       const res = await fetch('/api/admin/capacity', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('キャパシティの取得に失敗しました');
       const json = await res.json();
