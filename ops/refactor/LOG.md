@@ -372,3 +372,26 @@
   't' prefix は org 内ホット行 — 長尺 tx の Task create は org 単位で直列化(設計内在の trade-off)。
 - medication-issues は CP-A(POST)+R24-B1(GET) の二重レーン共有ファイル → 両 verdict 後に
   合本コミット ee089258 で land(hunk 非干渉を opus 確認)。
+
+## 2026-07-04 R25-B1 bf005a43 / R18 47c80904 / R23-B5〜B7 348aea1a,8c6d746e,786fdec7+40102b7e
+
+- R25-B1(codex2): 手組み retry action 63箇所/50画面 → 既存 onRetry へ(レンダリング完全同値、
+  外観保全 site 3件と「再読み込み」系は保全。label prop 化は契約変更として保留)。opus APPROVE。
+- R18(codex3): prescriptions FE の重複 DTO 2型を shared へ(純 type-only、committer 全数検査=
+  type-only は検査で完全検証可能なため opus 省略の明示例外)。
+- R23 B5-B7(codex3): patient cards 17 + schedules/visits 22 + 最終18箇所。B7 は opus が
+  「変数名 error 固定の sweep が draftError を見逃し完了宣言が偽」を捕捉→修正。
+  **toast 同型 sweep 完了(B1-B7 計~140箇所)**。教訓: 同型検出は変数名非依存+rg -U を標準。
+- B7 land 時に committer の add pathspec ミスで 2 コミット分割(786fdec7+40102b7e、内容同一)。
+
+## 2026-07-04 ID-2-CP-C fbbbe905 / FIX-CPA-MATRIX 435a4b0f / Gate #2 ALL GREEN
+
+- CP-C(codex): range 採番配線 = MedicationProfile/PatientLabObservation/ResidualMedication の
+  7経路。opus: range 数=実挿入数を全経路実証、dup-skip→採番順序、skipDuplicates 不在。
+- Gate #2(EDIT-FREEZE 下): 唯一の失敗 = auth-matrix ハーネスの汎用 tx proxy に $queryRaw 欠落
+  (CP-A 配線 route が 500)。診断で route 設計は正(採番は event-create 分岐内)と確定、
+  harness 修正+negative assert 追加(435a4b0f)。test 再実行 13007 passed で ALL GREEN 宣言。
+- 教訓: create-path 配線スライスは focused suite に加え **cross-cutting matrix テスト
+  (protected-post/patch-delete)を必須検証に含める**。
+- 凍結中の idle recon 成果: R06/R19/R20/R30/R35/R42/R45(codex2)、R09/R10/R12/R14/R15/R22b(codex3)
+  の現存確認・スライス案が揃い、FREEZE 解除後のキューに投入。
