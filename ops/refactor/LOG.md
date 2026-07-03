@@ -86,7 +86,7 @@
   `pnpm typecheck` green。2行投入で `DispenseResult.upsert` 2回のみを test-lock。
 - レビュー: opus APPROVE、claude commit 60469cd1。self-commit なし。
 
-## 2026-07-03 CE20 pending verdict
+## 2026-07-03 CE20 66d65f99
 
 - 分類: bug/TZ / user-visible notification date
 - 対象: `src/server/jobs/daily/prescriptions.ts` + `src/server/jobs/daily.test.ts`
@@ -95,7 +95,7 @@
 - 検証: focused `daily.test.ts -t "prescription expiry"` 4/4 green。
   `daily.test.ts` + `date-boundary.test.ts` 68/68 green。scoped eslint/prettier/diff-check green。
   `pnpm typecheck` green。
-- レビュー: opus verdict 待ち。self-commit なし。
+- レビュー: opus APPROVE、claude commit 66d65f99。self-commit なし。
 
 ## 2026-07-03 DR-DUP1 2e0c7fdb
 
