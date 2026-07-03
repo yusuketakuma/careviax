@@ -28,6 +28,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
 import { cursorPaginatedPageSchema, type CursorPaginatedPage } from '@/lib/api/response-schemas';
 import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
+import { formatYen } from '@/lib/format/currency';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   partnerPharmacySummarySchema,
@@ -695,11 +696,6 @@ async function fetchMessageThreads(
 function formatDateTime(value: string | null | undefined) {
   if (!value) return '-';
   return value.slice(0, 16).replace('T', ' ');
-}
-
-function formatYen(value: number | null | undefined) {
-  if (value === null || value === undefined) return '-';
-  return `${Math.round(value).toLocaleString('ja-JP')}円`;
 }
 
 function billingModelLabel(value: string | null | undefined) {

@@ -2,28 +2,17 @@
 
 import { AlertTriangle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StateBadge } from '@/components/ui/state-badge';
 import { ADHERENCE_LABELS } from '@/lib/constants/soap-options';
 import type { PhysicianReportContent } from '@/types/care-report-content';
 import { formatReportDate } from './report-date-format';
+import { SectionCard } from './section-card';
 
 const GENDER_LABELS: Record<string, string> = {
   male: '男性',
   female: '女性',
   other: 'その他',
 };
-
-function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-semibold text-foreground">{title}</CardTitle>
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
-  );
-}
 
 function FunctionalItem({ label, value }: { label: string; value: string }) {
   const hasIssue = value !== 'no_issues' && value !== '' && value !== '問題なし';

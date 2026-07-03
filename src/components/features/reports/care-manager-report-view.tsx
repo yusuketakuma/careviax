@@ -1,21 +1,10 @@
 'use client';
 
 import { AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StateBadge } from '@/components/ui/state-badge';
 import type { CareManagerReportContent } from '@/types/care-report-content';
 import { formatReportDate } from './report-date-format';
-
-function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-semibold text-foreground">{title}</CardTitle>
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
-  );
-}
+import { SectionCard } from './section-card';
 
 function ImpactCard({ label, value }: { label: string; value: string }) {
   const hasIssue = value !== 'no_issues' && value !== '' && value !== '問題なし';

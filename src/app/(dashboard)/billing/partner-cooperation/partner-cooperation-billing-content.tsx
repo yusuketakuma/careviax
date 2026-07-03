@@ -32,6 +32,7 @@ import {
   type CursorPaginatedPage,
 } from '@/lib/api/response-schemas';
 import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
+import { formatYen } from '@/lib/format/currency';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   pharmacyContractRowSchema as pharmacyCooperationContractRowSchema,
@@ -265,10 +266,6 @@ function canonicalBillingMonth(monthInput: string) {
 
 function isValidMonthInput(monthInput: string) {
   return /^\d{4}-\d{2}$/.test(monthInput);
-}
-
-function formatYen(value: number | null | undefined) {
-  return `${Math.round(value ?? 0).toLocaleString('ja-JP')}円`;
 }
 
 function safeErrorDetail() {

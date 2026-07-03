@@ -1,3 +1,5 @@
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
 interface SectionCardProps {
   title: string;
   children: React.ReactNode;
@@ -5,9 +7,11 @@ interface SectionCardProps {
 
 export function SectionCard({ title, children }: SectionCardProps) {
   return (
-    <div className="rounded-lg border bg-card p-4 print:break-inside-avoid print:border-gray-300 print:shadow-none">
-      <h3 className="mb-3 text-sm font-semibold text-foreground">{title}</h3>
-      {children}
-    </div>
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-semibold text-foreground">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>{children}</CardContent>
+    </Card>
   );
 }

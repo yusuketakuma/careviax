@@ -33,6 +33,7 @@ import {
 } from '@/lib/api/response-schemas';
 import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
 import { formatUtcDateKey } from '@/lib/date-key';
+import { formatYen } from '@/lib/format/currency';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   partnerPharmacyRowSchema,
@@ -409,11 +410,6 @@ function buildContractRenewalAlerts(contracts: PharmacyContractRow[], today: str
       ];
     })
     .sort((left, right) => left.daysRemaining - right.daysRemaining);
-}
-
-function formatYen(value: number | null | undefined) {
-  if (value === null || value === undefined) return '-';
-  return `${Math.round(value).toLocaleString('ja-JP')}円`;
 }
 
 function billingModelLabel(model: string | null | undefined) {
