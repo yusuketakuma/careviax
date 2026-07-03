@@ -1,5 +1,4 @@
 import type { Prisma } from '@prisma/client';
-import { format } from 'date-fns';
 import { hasPermission } from '@/lib/auth/permissions';
 import { prisma } from '@/lib/db/client';
 import type { ScopedTxRunner } from '@/lib/db/rls';
@@ -14,6 +13,7 @@ import { selectVisibleSafetyTags, sortPatientSafetyTags } from '@/lib/patient/sa
 import { batchResolveNames } from '@/lib/utils/name-resolver';
 import { findPatientOverviewBase } from '@/server/services/patient-state-snapshot';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { formatRenalSafetyLabel } from '@/lib/patient/renal-safety-label';
 import { getPatientRiskSummary } from '@/server/services/patient-risk';
 import { getPatientVisitBrief } from '@/server/services/visit-brief';
 import { getPatientHomeCareFeatureSummary } from '@/server/services/home-care-ops';
@@ -525,7 +525,7 @@ export async function getPatientHeaderSummary(
   const egfrValue = egfrObservation?.value_numeric ?? egfrObservation?.value_text ?? null;
   const renal =
     egfrObservation && egfrValue != null
-      ? `eGFR ${egfrValue}(${format(egfrObservation.measured_at, 'M/d')})`
+      ? formatRenalSafetyLabel(egfrValue, egfrObservation.measured_at)
       : null;
   const safetyTagSet = new Set<string>(handlingTags);
   if (renal) safetyTagSet.add('renal');

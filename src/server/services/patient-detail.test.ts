@@ -263,7 +263,7 @@ describe('getPatientHeaderSummary', () => {
         last_prescribed_date: '2026-06-01T00:00:00.000Z',
         safety: {
           allergy: 'セフェム系(2019)',
-          renal: 'eGFR 38(6/1)',
+          renal: 'eGFR 38(2026年6月1日)',
           handling_tags: ['narcotic', 'cold_storage', 'unit_dose'],
           swallowing: '錠剤OK・大きい錠は半割',
           cautions: ['ふらつき(6/5〜経過観察)'],
@@ -376,6 +376,45 @@ describe('getPatientHeaderSummary', () => {
         measured_at: true,
       },
     });
+  });
+
+  it('formats the renal safety label from the Asia/Tokyo calendar date even when the server runtime timezone is UTC', async () => {
+    const originalTz = process.env.TZ;
+    process.env.TZ = 'UTC';
+    try {
+      const db = buildDb();
+      db.patient.findFirst.mockResolvedValue(headerPatient());
+      db.user.findMany.mockResolvedValue([]);
+      db.visitRecord.findFirst.mockResolvedValue(null);
+      db.prescriptionIntake.findFirst.mockResolvedValue(null);
+      // 2026-06-30T15:30:00.000Z is 2026-07-01T00:30 JST — just after the JST
+      // midnight boundary. date-fns `format(measured_at, 'M/d')` under
+      // TZ=UTC would render this as 6/30 (previous day). The shared
+      // formatter must resolve the Asia/Tokyo calendar date (7/1).
+      db.patientLabObservation.findFirst.mockResolvedValue({
+        value_numeric: 38,
+        value_text: null,
+        measured_at: new Date('2026-06-30T15:30:00.000Z'),
+      });
+
+      const result = await getPatientHeaderSummary(
+        db as unknown as Parameters<typeof getPatientHeaderSummary>[0],
+        {
+          orgId: 'org_1',
+          patientId: 'patient_1',
+          role: 'pharmacist',
+          userId: 'user_1',
+        },
+      );
+
+      expect(result?.safety.renal).toBe('eGFR 38(2026年7月1日)');
+    } finally {
+      if (originalTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTz;
+      }
+    }
   });
 
   it('returns null when the patient is outside the readable scope', async () => {

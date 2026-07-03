@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db/client';
 import { getCycleWorkspaceAction } from '@/lib/prescription/cycle-workspace';
 import { detectMedicationChanges } from '@/lib/prescription/medication-diff';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
+import { formatRenalSafetyLabel } from '@/lib/patient/renal-safety-label';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
 import { logger } from '@/lib/utils/logger';
 import {
@@ -264,7 +265,7 @@ export async function buildPatientWorkspace(db: DbClient, args: BuildPatientWork
     allergy: buildAllergyLabel(args.allergyInfo),
     renal:
       egfrObservation && egfrValue != null
-        ? `eGFR ${egfrValue}(${format(egfrObservation.measured_at, 'M/d')})`
+        ? formatRenalSafetyLabel(egfrValue, egfrObservation.measured_at)
         : null,
     handling_tags: handlingTags,
     swallowing: args.swallowingRoute?.trim() || null,

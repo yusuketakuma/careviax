@@ -251,7 +251,7 @@ describe('buildPatientWorkspace', () => {
       },
       safety: {
         allergy: 'NSAIDs(発疹 2024)',
-        renal: 'eGFR 42(6/1)',
+        renal: 'eGFR 42(2026年6月1日)',
         handling_tags: ['narcotic', 'unit_dose', 'separate_pack'],
         swallowing: 'ゼリー',
         cautions: ['嚥下注意(とろみ)'],
