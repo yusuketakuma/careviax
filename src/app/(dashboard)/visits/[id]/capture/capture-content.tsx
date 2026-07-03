@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { messageFromError } from '@/lib/utils/error-message';
 import { Button } from '@/components/ui/button';
 import { downscaleImage } from '@/lib/files/downscale-image';
-import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   saveEvidenceDraft,
@@ -56,6 +56,8 @@ export function EvidenceCaptureContent({
     useState<EvidenceCategoryId>(DEFAULT_CAPTURE_CATEGORY);
   const [cameraActive, setCameraActive] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [endingVisit, setEndingVisit] = useState(false);
+  const [recordedVisitEndedAt, setRecordedVisitEndedAt] = useState<string | null>(null);
   const [savedCount, setSavedCount] = useState(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -77,12 +79,24 @@ export function EvidenceCaptureContent({
 
       const recordRes = await fetch(`/api/visit-records/${visitId}`, { headers });
       if (recordRes.ok) {
-        const patientId = pickVisitPatientId(await recordRes.json());
+        const record = await recordRes.json();
+        const patientId = pickVisitPatientId(record);
         if (patientId) {
           const patientRes = await fetch(buildPatientApiPath(patientId), { headers });
           const patient = patientRes.ok ? await patientRes.json().catch(() => null) : null;
           const patientName = typeof patient?.name === 'string' ? patient.name : null;
-          return { patientId, patientName, visitRecordId: visitId };
+          return {
+            patientId,
+            patientName,
+            visitRecordId: visitId,
+            visitRecordVersion:
+              typeof record.version === 'number' && Number.isInteger(record.version)
+                ? record.version
+                : null,
+            visitStartedAt:
+              typeof record.visit_started_at === 'string' ? record.visit_started_at : null,
+            visitEndedAt: typeof record.visit_ended_at === 'string' ? record.visit_ended_at : null,
+          };
         }
       }
 
@@ -225,12 +239,57 @@ export function EvidenceCaptureContent({
     }
   }
 
+  async function handleVisitEndClick() {
+    const recordId = patientContext?.visitRecordId;
+    const recordVersion = patientContext?.visitRecordVersion;
+    const startedAt = patientContext?.visitStartedAt;
+    if (!orgId || !recordId || recordVersion == null || !startedAt) return;
+
+    const endedAt = new Date().toISOString();
+    setEndingVisit(true);
+    try {
+      const response = await fetch(`/api/visit-records/${recordId}`, {
+        method: 'PATCH',
+        headers: buildOrgJsonHeaders(orgId),
+        body: JSON.stringify({
+          version: recordVersion,
+          visit_ended_at: endedAt,
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(body?.message ?? '訪問終了を記録できませんでした');
+      }
+      setRecordedVisitEndedAt(
+        typeof body?.visit_ended_at === 'string' ? body.visit_ended_at : endedAt,
+      );
+      toast.success('訪問終了を記録しました');
+    } catch (error) {
+      toast.error(messageFromError(error, '訪問終了を記録できませんでした'));
+    } finally {
+      setEndingVisit(false);
+    }
+  }
+
   const patientLoading = !orgId || patientQuery.isPending;
   const captureSummary = buildCaptureStatusSummary({
     categoryId: selectedCategory,
     patientName: patientContext?.patientName,
     savedCount,
   });
+  const resolvedVisitEndedAt = recordedVisitEndedAt ?? patientContext?.visitEndedAt ?? null;
+  const canRecordVisitEnd =
+    Boolean(orgId) &&
+    Boolean(patientContext?.visitRecordId) &&
+    patientContext?.visitRecordVersion != null &&
+    Boolean(patientContext?.visitStartedAt) &&
+    !resolvedVisitEndedAt;
+  const visitRecordHref = patientContext?.visitRecordId
+    ? `/visits/${patientContext.visitRecordId}`
+    : `/visits/${visitId}/record`;
+  const visitRecordActionLabel = patientContext?.visitRecordId
+    ? '訪問記録を開く'
+    : '訪問記録を作成';
 
   return (
     <div
@@ -314,6 +373,42 @@ export function EvidenceCaptureContent({
           {captureSummary.savedDraftLabel}
         </span>
         <span className="text-[12px] font-medium">端末保存後、画像・証跡へ同期</span>
+      </section>
+
+      <section
+        aria-label="訪問終了の記録"
+        className="mt-4 rounded-xl border border-border/70 bg-card px-4 py-3"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-[15px] font-bold leading-6 text-foreground">訪問終了</h2>
+            <p className="mt-1 text-xs font-medium text-muted-foreground">
+              {resolvedVisitEndedAt
+                ? '記録済み'
+                : canRecordVisitEnd
+                  ? '終了時に明示記録します'
+                  : '訪問記録で開始後に記録できます'}
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant={canRecordVisitEnd ? 'default' : 'outline'}
+            className="min-h-11"
+            disabled={!canRecordVisitEnd || endingVisit}
+            onClick={handleVisitEndClick}
+          >
+            {endingVisit ? '記録中' : resolvedVisitEndedAt ? '終了記録済み' : '訪問終了を記録'}
+          </Button>
+        </div>
+        {!canRecordVisitEnd && !resolvedVisitEndedAt ? (
+          <Link
+            href={visitRecordHref}
+            className="mt-2 inline-flex min-h-11 items-center text-xs font-medium text-primary underline underline-offset-2"
+          >
+            {visitRecordActionLabel}
+          </Link>
+        ) : null}
       </section>
 
       {/* フォールバック用(モバイル実機ではネイティブカメラが開く) */}

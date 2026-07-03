@@ -146,6 +146,8 @@ type VisitRecordFull = {
   patient_id: string;
   pharmacist_id: string;
   visit_date: string;
+  visit_started_at: string | null;
+  visit_ended_at: string | null;
   outcome_status: string;
   soap_subjective: string | null;
   soap_objective: string | null;
@@ -747,7 +749,11 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       label: '添付・現地証跡',
       description: '写真、PDF、位置情報は薬局での報告書確認を補強します。',
       done: Boolean(
-        record.attachments.length > 0 || record.visit_geo_log?.start || record.visit_geo_log?.end,
+        record.attachments.length > 0 ||
+        record.visit_started_at ||
+        record.visit_ended_at ||
+        record.visit_geo_log?.start ||
+        record.visit_geo_log?.end,
       ),
       required: false,
     },
@@ -1197,6 +1203,41 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
             <p className="mt-3 text-xs text-muted-foreground">
               権限状態: {record.visit_geo_log.permission}
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {(record.visit_started_at || record.visit_ended_at) && (
+        <Card>
+          <CardHeader className="pb-2">
+            <h2 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
+              <Clock className="size-4 text-muted-foreground" aria-hidden="true" />
+              訪問実施時刻
+            </h2>
+          </CardHeader>
+          <CardContent>
+            <dl className="grid gap-3 md:grid-cols-2">
+              <div>
+                <dt className="text-xs text-muted-foreground">開始時刻</dt>
+                <dd className="mt-0.5">
+                  {record.visit_started_at
+                    ? format(parseISO(record.visit_started_at), 'yyyy/MM/dd HH:mm', {
+                        locale: ja,
+                      })
+                    : '未記録'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">終了時刻</dt>
+                <dd className="mt-0.5">
+                  {record.visit_ended_at
+                    ? format(parseISO(record.visit_ended_at), 'yyyy/MM/dd HH:mm', {
+                        locale: ja,
+                      })
+                    : '未記録'}
+                </dd>
+              </div>
+            </dl>
           </CardContent>
         </Card>
       )}

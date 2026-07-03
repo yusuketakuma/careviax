@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { EvidenceCaptureContent } from './capture-content';
 
 setupDomTestEnv();
@@ -68,6 +69,9 @@ describe('EvidenceCaptureContent', () => {
           patientId: 'patient_1',
           patientName: '田中 一郎',
           visitRecordId: null,
+          visitRecordVersion: null,
+          visitStartedAt: null,
+          visitEndedAt: null,
         }}
       />,
     );
@@ -104,15 +108,15 @@ describe('EvidenceCaptureContent', () => {
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       const url = String(input);
       if (url === '/api/visit-schedules/visit_1') {
-        return { ok: false, json: () => Promise.resolve({}) } as Response;
+        return jsonResponse({}, 500);
       }
       if (url === '/api/visit-records/visit_1') {
-        return { ok: true, json: () => Promise.resolve({ patient_id: patientId }) } as Response;
+        return jsonResponse({ patient_id: patientId });
       }
       if (url === '/api/patients/__helper_pt__') {
-        return { ok: true, json: () => Promise.resolve({ name: '田中 一郎' }) } as Response;
+        return jsonResponse({ name: '田中 一郎' });
       }
-      return { ok: false, json: () => Promise.resolve({}) } as Response;
+      return jsonResponse({}, 500);
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -122,6 +126,9 @@ describe('EvidenceCaptureContent', () => {
         patientId,
         patientName: '田中 一郎',
         visitRecordId: 'visit_1',
+        visitRecordVersion: null,
+        visitStartedAt: null,
+        visitEndedAt: null,
       });
 
       expect(buildPatientApiPath).toHaveBeenCalledWith(patientId);
@@ -132,6 +139,53 @@ describe('EvidenceCaptureContent', () => {
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();
+    }
+  });
+
+  it('records visit end through PATCH only when the visit record version and start are known', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    setupEvidenceAutoSyncMock.mockReturnValue(undefined);
+    useQueryMock.mockReturnValue({
+      data: {
+        patientId: 'patient_1',
+        patientName: '田中 一郎',
+        visitRecordId: 'record_1',
+        visitRecordVersion: 3,
+        visitStartedAt: '2026-04-09T01:00:00.000Z',
+        visitEndedAt: null,
+      },
+      isPending: false,
+      error: null,
+    });
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-04-09T01:45:00.000Z'));
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/visit-records/record_1' && init?.method === 'PATCH') {
+        expect(JSON.parse(String(init.body))).toMatchObject({
+          version: 3,
+          visit_ended_at: '2026-04-09T01:45:00.000Z',
+        });
+        return jsonResponse({ visit_ended_at: '2026-04-09T01:45:00.000Z' });
+      }
+      return jsonResponse({}, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<EvidenceCaptureContent visitId="visit_1" />);
+      fireEvent.click(screen.getByRole('button', { name: '訪問終了を記録' }));
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          '/api/visit-records/record_1',
+          expect.objectContaining({ method: 'PATCH' }),
+        );
+      });
+      expect(toastSuccessMock).toHaveBeenCalledWith('訪問終了を記録しました');
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
     }
   });
 });

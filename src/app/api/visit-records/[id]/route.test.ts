@@ -155,6 +155,8 @@ describe('/api/visit-records/[id]', () => {
         version: 1,
         patient_id: 'patient_1',
         visit_date: new Date('2026-03-28T00:00:00.000Z'),
+        visit_started_at: null,
+        visit_ended_at: null,
         outcome_status: 'delivery_only',
         structured_soap: null,
         schedule: {
@@ -610,6 +612,74 @@ describe('/api/visit-records/[id]', () => {
         }),
       }),
     );
+  });
+
+  it('patches visit end when an existing visit start timestamp is present', async () => {
+    txVisitRecordFindFirstMock.mockReset();
+    txVisitRecordFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'visit_1',
+        version: 1,
+        patient_id: 'patient_1',
+        visit_date: new Date('2026-03-28T00:00:00.000Z'),
+        visit_started_at: new Date('2026-03-28T01:00:00.000Z'),
+        visit_ended_at: null,
+        outcome_status: 'delivery_only',
+        structured_soap: null,
+        schedule: {
+          case_id: 'case_1',
+          pharmacist_id: 'user_1',
+          visit_type: 'regular',
+          case_: {
+            primary_pharmacist_id: 'user_primary',
+            backup_pharmacist_id: null,
+            required_visit_support: null,
+          },
+        },
+      })
+      .mockResolvedValue({ id: 'visit_1', version: 2 });
+
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        visit_ended_at: '2026-03-28T01:35:00.000Z',
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitRecordUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          visit_ended_at: new Date('2026-03-28T01:35:00.000Z'),
+        }),
+      }),
+    );
+  });
+
+  it('rejects visit end patches when no effective visit start exists', async () => {
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        visit_ended_at: '2026-03-28T01:35:00.000Z',
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        visit_ended_at: ['訪問終了時刻を記録するには訪問開始時刻が必要です'],
+      },
+    });
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects calendar-overflow receipt timestamps before loading the visit record', async () => {

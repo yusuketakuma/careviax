@@ -11,6 +11,8 @@ export type OfflineVisitDraft = {
   patientId: string;
   pharmacistId: string;
   visitDate?: string;
+  visitStartedAt?: string;
+  visitEndedAt?: string;
   outcomeStatus?: string;
   receiptPersonName?: string;
   receiptPersonRelation?: string;

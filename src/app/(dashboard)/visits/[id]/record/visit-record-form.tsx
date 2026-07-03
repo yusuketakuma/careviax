@@ -22,6 +22,7 @@ import {
   ClipboardList,
   User,
   CalendarCheck,
+  Clock,
   MapPin,
   LocateFixed,
   Mic,
@@ -209,6 +210,25 @@ const formSchema = visitRecordBaseSchema
       .optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.visit_ended_at && !data.visit_started_at) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['visit_ended_at'],
+        message: '訪問終了時刻を記録するには訪問開始時刻が必要です',
+      });
+    }
+    if (
+      data.visit_started_at &&
+      data.visit_ended_at &&
+      new Date(data.visit_ended_at).getTime() < new Date(data.visit_started_at).getTime()
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['visit_ended_at'],
+        message: '訪問終了時刻は訪問開始時刻以降にしてください',
+      });
+    }
+
     const readiness = getVisitReceiptReadiness(data);
     if (!readiness.hasIdentityInput || readiness.hasCompleteIdentity) return;
 
@@ -430,6 +450,8 @@ function buildStructuredSoap(
 function buildDraftMetadata(values: FormValues, visitGeoLog: VisitGeoLog | null) {
   return {
     visitDate: values.visit_date,
+    visitStartedAt: values.visit_started_at,
+    visitEndedAt: values.visit_ended_at,
     outcomeStatus: values.outcome_status,
     receiptPersonName: values.receipt_person_name,
     receiptPersonRelation: values.receipt_person_relation,
@@ -450,6 +472,13 @@ function formatVisitBillingAmount(value: number | null | undefined) {
 function formatVisitBillingDateTime(value: string | null | undefined) {
   if (!value) return '未記録';
   const parsed = parseISO(value);
+  if (Number.isNaN(parsed.getTime())) return '未記録';
+  return format(parsed, 'yyyy/MM/dd HH:mm');
+}
+
+function formatVisitExecutionTimestamp(value: string | null | undefined) {
+  if (!value) return '未記録';
+  const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return '未記録';
   return format(parsed, 'yyyy/MM/dd HH:mm');
 }
@@ -622,6 +651,8 @@ export function VisitRecordForm({
       schedule_id: id,
       patient_id: schedule?.patient_id ?? '',
       visit_date: today,
+      visit_started_at: undefined,
+      visit_ended_at: undefined,
       outcome_status: 'completed',
       soap_subjective: '',
       soap_objective: '',
@@ -657,6 +688,14 @@ export function VisitRecordForm({
       control: form.control,
       name: 'visit_date',
     }) ?? today;
+  const visitStartedAt = useWatch({
+    control: form.control,
+    name: 'visit_started_at',
+  });
+  const visitEndedAt = useWatch({
+    control: form.control,
+    name: 'visit_ended_at',
+  });
   const receiptPersonRelation =
     useWatch({
       control: form.control,
@@ -729,6 +768,8 @@ export function VisitRecordForm({
             schedule_id: id,
             patient_id: schedule.patient_id,
             visit_date: draft.visitDate ?? today,
+            visit_started_at: draft.visitStartedAt ?? undefined,
+            visit_ended_at: draft.visitEndedAt ?? undefined,
             outcome_status: (draft.outcomeStatus as FormValues['outcome_status']) ?? 'completed',
             soap_subjective: draft.structuredSoap.subjective.free_text ?? '',
             soap_objective: draft.structuredSoap.objective.free_text ?? '',
@@ -867,6 +908,12 @@ export function VisitRecordForm({
 
       try {
         const point = await captureVisitGeoPoint();
+        if (phase === 'start' && !form.getValues('visit_started_at')) {
+          form.setValue('visit_started_at', point.captured_at, {
+            shouldDirty: true,
+            shouldValidate: true,
+          });
+        }
         setVisitGeoLog((current) => ({
           enabled: true,
           permission: 'granted',
@@ -893,8 +940,58 @@ export function VisitRecordForm({
         setLocationCaptureState('idle');
       }
     },
-    [locationTrackingEnabled],
+    [form, locationTrackingEnabled],
   );
+
+  async function handleVisitStartClick() {
+    const fallbackStartedAt = new Date().toISOString();
+    if (locationTrackingEnabled) {
+      const point = await captureLocationPhase('start', {
+        successMessage: '訪問開始を記録しました',
+      });
+      form.setValue('visit_started_at', point?.captured_at ?? fallbackStartedAt, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      return;
+    }
+
+    form.setValue('visit_started_at', fallbackStartedAt, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    toast.success('訪問開始を記録しました');
+  }
+
+  async function handleVisitEndClick() {
+    const currentStartedAt = form.getValues('visit_started_at');
+    if (!currentStartedAt) {
+      form.setError('visit_ended_at', {
+        type: 'manual',
+        message: '訪問終了を記録する前に、訪問開始を記録してください',
+      });
+      toast.error('訪問開始を記録してから終了してください');
+      return;
+    }
+
+    const fallbackEndedAt = new Date().toISOString();
+    if (locationTrackingEnabled) {
+      const point = await captureLocationPhase('end', {
+        successMessage: '訪問終了を記録しました',
+      });
+      form.setValue('visit_ended_at', point?.captured_at ?? fallbackEndedAt, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      return;
+    }
+
+    form.setValue('visit_ended_at', fallbackEndedAt, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    toast.success('訪問終了を記録しました');
+  }
 
   useEffect(() => {
     if (!draftHydrated || !locationTrackingEnabled || autoCapturedStartRef.current) return;
@@ -1242,6 +1339,7 @@ export function VisitRecordForm({
   const errorSummaryItems = collectFormErrorSummaryItems(form.formState.errors, {
     visit_date: '訪問日',
     outcome_status: '訪問結果',
+    visit_ended_at: '訪問終了時刻',
     carry_item_warning_acknowledged: '持参物一部未確定の確認',
     structured_soap: '訪問薬剤管理の必須確認',
     receipt_person_name: '受領者名',
@@ -1697,94 +1795,91 @@ export function VisitRecordForm({
                 </Card>
               )}
 
-              {(locationTrackingEnabled || visitGeoLog) && (
-                <Card className="border-l-4 border-border/70 border-l-tag-info bg-card">
-                  <CardHeader className="pb-3">
-                    <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-tag-info">
-                      <MapPin className="h-4 w-4 text-tag-info" aria-hidden="true" />
-                      訪問位置情報
-                    </h3>
-                  </CardHeader>
-                  <CardContent className="space-y-3 text-sm">
-                    <p className="text-muted-foreground">
-                      開始時に現在地を記録し、保存時に終了位置を追加します。無効化は
-                      ユーザー設定から行えます。
+              <Card className="border-l-4 border-border/70 border-l-tag-info bg-card">
+                <CardHeader className="pb-3">
+                  <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-tag-info">
+                    <Clock className="h-4 w-4 text-tag-info" aria-hidden="true" />
+                    訪問実施エビデンス
+                  </h3>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  <p className="text-muted-foreground">
+                    訪問開始と訪問終了は時刻として保存します。位置情報は補助証跡で、無効化はユーザー設定から行えます。
+                  </p>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <div className="rounded-lg border border-border/70 bg-background px-3 py-2">
+                      <p className="text-xs text-muted-foreground">開始時刻</p>
+                      <p className="mt-1 font-medium text-foreground">
+                        {formatVisitExecutionTimestamp(visitStartedAt)}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {visitGeoLog?.start
+                          ? `位置: ${visitGeoLog.start.latitude.toFixed(5)}, ${visitGeoLog.start.longitude.toFixed(5)}`
+                          : '位置情報は未記録'}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border/70 bg-background px-3 py-2">
+                      <p className="text-xs text-muted-foreground">終了時刻</p>
+                      <p className="mt-1 font-medium text-foreground">
+                        {formatVisitExecutionTimestamp(visitEndedAt)}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {visitGeoLog?.end
+                          ? `位置: ${visitGeoLog.end.latitude.toFixed(5)}, ${visitGeoLog.end.longitude.toFixed(5)}`
+                          : '訪問終了ボタンで明示記録します'}
+                      </p>
+                    </div>
+                  </div>
+                  {form.formState.errors.visit_ended_at?.message ? (
+                    <p className="text-xs font-medium text-state-blocked" role="alert">
+                      {form.formState.errors.visit_ended_at.message}
                     </p>
-                    <div className="grid gap-2 md:grid-cols-2">
-                      <div className="rounded-lg border border-border/70 bg-background px-3 py-2">
-                        <p className="text-xs text-muted-foreground">開始位置</p>
-                        <p className="mt-1 font-medium text-foreground">
-                          {visitGeoLog?.start
-                            ? `${visitGeoLog.start.latitude.toFixed(5)}, ${visitGeoLog.start.longitude.toFixed(5)}`
-                            : '未記録'}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {visitGeoLog?.start
-                            ? `${format(
-                                new Date(visitGeoLog.start.captured_at),
-                                'yyyy/MM/dd HH:mm',
-                              )}${
-                                visitGeoLog.start.accuracy_meters != null
-                                  ? ` / 精度 ±${visitGeoLog.start.accuracy_meters}m`
-                                  : ''
-                              }`
-                            : '画面を開いた時点で取得を試みます'}
-                        </p>
-                      </div>
-                      <div className="rounded-lg border border-border/70 bg-background px-3 py-2">
-                        <p className="text-xs text-muted-foreground">終了位置</p>
-                        <p className="mt-1 font-medium text-foreground">
-                          {visitGeoLog?.end
-                            ? `${visitGeoLog.end.latitude.toFixed(5)}, ${visitGeoLog.end.longitude.toFixed(5)}`
-                            : '未記録'}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {visitGeoLog?.end
-                            ? `${format(new Date(visitGeoLog.end.captured_at), 'yyyy/MM/dd HH:mm')}${
-                                visitGeoLog.end.accuracy_meters != null
-                                  ? ` / 精度 ±${visitGeoLog.end.accuracy_meters}m`
-                                  : ''
-                              }`
-                            : '保存時に現在地を取得します'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span>権限状態: {visitGeoLog?.permission ?? 'prompt'}</span>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="gap-1.5"
-                        onClick={() =>
-                          void captureLocationPhase(visitGeoLog?.start ? 'end' : 'start', {
-                            successMessage: visitGeoLog?.start
-                              ? '終了位置を更新しました'
-                              : '開始位置を記録しました',
-                          })
-                        }
-                        disabled={locationCaptureState !== 'idle'}
-                      >
-                        <LocateFixed className="h-4 w-4" aria-hidden="true" />
-                        {locationCaptureState === 'capturing-start'
-                          ? '開始位置を取得中...'
-                          : locationCaptureState === 'capturing-end'
-                            ? '終了位置を取得中...'
-                            : visitGeoLog?.start
-                              ? '現在地を再取得'
-                              : '開始位置を記録'}
-                      </Button>
-                      {/* 44px タッチターゲット(SSOT 8.2)+トークンサイズ(text-xs)。 */}
-                      <a
-                        href="/settings"
-                        className="inline-flex min-h-[44px] items-center rounded-[min(var(--radius-md),12px)] px-2.5 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                      >
-                        設定で無効化
-                      </a>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span className="inline-flex min-h-9 items-center">
+                      <MapPin className="mr-1 h-4 w-4" aria-hidden="true" />
+                      位置権限:{' '}
+                      {visitGeoLog?.permission ?? (locationTrackingEnabled ? 'prompt' : 'off')}
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5"
+                      onClick={() => void handleVisitStartClick()}
+                      disabled={locationCaptureState !== 'idle'}
+                    >
+                      <LocateFixed className="h-4 w-4" aria-hidden="true" />
+                      {locationCaptureState === 'capturing-start'
+                        ? '開始を取得中...'
+                        : visitStartedAt
+                          ? '開始を更新'
+                          : '訪問開始を記録'}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5"
+                      onClick={() => void handleVisitEndClick()}
+                      disabled={locationCaptureState !== 'idle'}
+                    >
+                      <Check className="h-4 w-4" aria-hidden="true" />
+                      {locationCaptureState === 'capturing-end'
+                        ? '終了を取得中...'
+                        : visitEndedAt
+                          ? '終了を更新'
+                          : '訪問終了を記録'}
+                    </Button>
+                    <a
+                      href="/settings"
+                      className="inline-flex min-h-[44px] items-center rounded-[min(var(--radius-md),12px)] px-2.5 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                    >
+                      設定で無効化
+                    </a>
+                  </div>
+                </CardContent>
+              </Card>
 
               {(isOffline || pendingSyncCount > 0) && (
                 <div className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card px-4 py-3 text-sm text-state-confirm">

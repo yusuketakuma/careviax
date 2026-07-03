@@ -31,6 +31,8 @@ export type SoapDraftSnapshot = {
   structuredSoap: StructuredSoap;
   currentStep: number;
   visitDate: string | null;
+  visitStartedAt: string | null;
+  visitEndedAt: string | null;
   outcomeStatus: string | null;
   receiptPersonName: string | null;
   receiptPersonRelation: string | null;
@@ -45,6 +47,8 @@ export type SoapDraftSnapshot = {
 
 export type SoapDraftMetadata = {
   visitDate?: string;
+  visitStartedAt?: string;
+  visitEndedAt?: string;
   outcomeStatus?: string;
   receiptPersonName?: string;
   receiptPersonRelation?: string;
@@ -260,6 +264,8 @@ export function useSoapDraft(scheduleId: string, patientId: string) {
       structuredSoap,
       currentStep: readCurrentStep(draft.currentStep),
       visitDate: readNullableString(draft.visitDate),
+      visitStartedAt: readNullableString(draft.visitStartedAt),
+      visitEndedAt: readNullableString(draft.visitEndedAt),
       outcomeStatus: readNullableString(draft.outcomeStatus),
       receiptPersonName: readNullableString(draft.receiptPersonName),
       receiptPersonRelation: readNullableString(draft.receiptPersonRelation),
@@ -301,6 +307,8 @@ export function useSoapDraft(scheduleId: string, patientId: string) {
         structuredSoap,
         currentStep,
         visitDate: metadata.visitDate,
+        visitStartedAt: metadata.visitStartedAt,
+        visitEndedAt: metadata.visitEndedAt,
         outcomeStatus: metadata.outcomeStatus,
         receiptPersonName: metadata.receiptPersonName,
         receiptPersonRelation: metadata.receiptPersonRelation,

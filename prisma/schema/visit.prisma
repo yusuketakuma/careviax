@@ -201,6 +201,8 @@ model VisitRecord {
   patient_id                 String
   pharmacist_id              String
   visit_date                 DateTime
+  visit_started_at           DateTime?
+  visit_ended_at             DateTime?
   outcome_status             VisitOutcome
   soap_subjective            String? // S
   soap_objective             String? // O

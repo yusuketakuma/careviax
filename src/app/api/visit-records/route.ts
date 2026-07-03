@@ -1005,6 +1005,8 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
     schedule_id,
     patient_id,
     visit_date,
+    visit_started_at,
+    visit_ended_at,
     outcome_status,
     next_visit_suggestion_date,
     structured_soap,
@@ -1018,6 +1020,8 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
     ...rest
   } = input;
   const visitRecordedAt = new Date(visit_date);
+  const visitStartedAt = visit_started_at ? new Date(visit_started_at) : null;
+  const visitEndedAt = visit_ended_at ? new Date(visit_ended_at) : null;
   const scheduleStatus = scheduleStatusByOutcome[outcome_status];
   const shouldAdvanceVisitWorkflow = cycleCompletionOutcomes.has(outcome_status);
   const reductionCandidates = collectResidualReductionCandidates(residual_medications);
@@ -1282,6 +1286,8 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
           patient_id: careCase.patient_id,
           pharmacist_id: ctx.userId,
           visit_date: visitRecordedAt,
+          visit_started_at: visitStartedAt,
+          visit_ended_at: visitEndedAt,
           next_visit_suggestion_date: nextVisitSuggestionDateInput,
           receipt_at: receipt_at ? new Date(receipt_at) : null,
           ...rest,
@@ -1316,6 +1322,8 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
             patient_id: careCase.patient_id,
             pharmacist_id: ctx.userId,
             visit_date: visitRecordedAt,
+            visit_started_at: visitStartedAt ?? undefined,
+            visit_ended_at: visitEndedAt ?? undefined,
             next_visit_suggestion_date: nextVisitSuggestionDateInput ?? undefined,
             receipt_at: receipt_at ? new Date(receipt_at) : undefined,
             ...rest,

@@ -26,7 +26,14 @@ async function resolveInitialCapturePatientContext(
     where: { id: visitId, org_id: orgId },
     select: {
       case_: { select: { patient: { select: { id: true, name: true } } } },
-      visit_record: { select: { id: true } },
+      visit_record: {
+        select: {
+          id: true,
+          version: true,
+          visit_started_at: true,
+          visit_ended_at: true,
+        },
+      },
     },
   });
   if (!schedule) return null;
@@ -35,6 +42,9 @@ async function resolveInitialCapturePatientContext(
     patientId: schedule.case_?.patient.id ?? null,
     patientName: schedule.case_?.patient.name ?? null,
     visitRecordId: schedule.visit_record?.id ?? null,
+    visitRecordVersion: schedule.visit_record?.version ?? null,
+    visitStartedAt: schedule.visit_record?.visit_started_at?.toISOString() ?? null,
+    visitEndedAt: schedule.visit_record?.visit_ended_at?.toISOString() ?? null,
   };
 }
 

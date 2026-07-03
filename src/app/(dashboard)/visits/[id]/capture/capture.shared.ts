@@ -56,6 +56,9 @@ export type CapturePatientContext = {
   patientId: string | null;
   patientName: string | null;
   visitRecordId: string | null;
+  visitRecordVersion: number | null;
+  visitStartedAt: string | null;
+  visitEndedAt: string | null;
 };
 
 export type CaptureStatusSummary = {
@@ -100,13 +103,21 @@ export function resolveCapturePatientContext(payload: unknown): CapturePatientCo
     patientId: null,
     patientName: null,
     visitRecordId: null,
+    visitRecordVersion: null,
+    visitStartedAt: null,
+    visitEndedAt: null,
   };
   if (typeof payload !== 'object' || payload === null) return empty;
 
   const source = payload as {
     patient_id?: unknown;
     case_?: { patient?: { name?: unknown } | null } | null;
-    visit_record?: { id?: unknown } | null;
+    visit_record?: {
+      id?: unknown;
+      version?: unknown;
+      visit_started_at?: unknown;
+      visit_ended_at?: unknown;
+    } | null;
   };
 
   const patientId =
@@ -117,6 +128,26 @@ export function resolveCapturePatientContext(payload: unknown): CapturePatientCo
 
   const rawRecordId = source.visit_record?.id;
   const visitRecordId = typeof rawRecordId === 'string' && rawRecordId ? rawRecordId : null;
+  const rawRecordVersion = source.visit_record?.version;
+  const visitRecordVersion =
+    typeof rawRecordVersion === 'number' && Number.isInteger(rawRecordVersion)
+      ? rawRecordVersion
+      : null;
+  const visitStartedAt =
+    typeof source.visit_record?.visit_started_at === 'string'
+      ? source.visit_record.visit_started_at
+      : null;
+  const visitEndedAt =
+    typeof source.visit_record?.visit_ended_at === 'string'
+      ? source.visit_record.visit_ended_at
+      : null;
 
-  return { patientId, patientName, visitRecordId };
+  return {
+    patientId,
+    patientName,
+    visitRecordId,
+    visitRecordVersion,
+    visitStartedAt,
+    visitEndedAt,
+  };
 }

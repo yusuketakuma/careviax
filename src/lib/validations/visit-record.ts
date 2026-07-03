@@ -32,6 +32,8 @@ const localDateTimeMinuteSchema = z
   .string()
   .refine(isValidLocalDateTimeMinute, '日時形式が不正です（YYYY-MM-DDTHH:mm）');
 
+const visitExecutionTimestampSchema = z.string().datetime('訪問実施時刻の形式が不正です');
+
 export const visitRecordAttachmentRefSchema = z.object({
   file_id: z.string().uuid('file_id の形式が不正です'),
 });
@@ -54,6 +56,8 @@ export const visitRecordBaseSchema = z.object({
   schedule_id: z.string().min(1, 'スケジュールIDは必須です'),
   patient_id: z.string().min(1, '患者IDは必須です'),
   visit_date: dateKeySchema('日付形式が不正です（YYYY-MM-DD）'),
+  visit_started_at: visitExecutionTimestampSchema.optional(),
+  visit_ended_at: visitExecutionTimestampSchema.optional(),
   outcome_status: z.enum([
     'completed',
     'revisit_needed',
@@ -100,6 +104,25 @@ export const createVisitRecordInputSchema = visitRecordBaseSchema.extend({
 });
 
 export const createVisitRecordSchema = createVisitRecordInputSchema.superRefine((data, ctx) => {
+  if (data.visit_ended_at && !data.visit_started_at) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['visit_ended_at'],
+      message: '訪問終了時刻を記録するには訪問開始時刻が必要です',
+    });
+  }
+  if (
+    data.visit_started_at &&
+    data.visit_ended_at &&
+    new Date(data.visit_ended_at).getTime() < new Date(data.visit_started_at).getTime()
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['visit_ended_at'],
+      message: '訪問終了時刻は訪問開始時刻以降にしてください',
+    });
+  }
+
   if (data.outcome_status === 'completed') {
     const hasS = Boolean(data.soap_subjective?.trim());
     const hasP = Boolean(data.soap_plan?.trim());

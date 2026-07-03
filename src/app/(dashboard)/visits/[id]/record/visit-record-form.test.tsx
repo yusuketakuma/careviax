@@ -799,6 +799,54 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     expect(fetchUrls.some((url) => url.includes('/labs'))).toBe(false);
   });
 
+  it('does not infer visit end time from form save alone', async () => {
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => {
+      expect(visitRecordPostBodies).toHaveLength(1);
+    });
+    expect(visitRecordPostBodies[0]).not.toHaveProperty('visit_ended_at');
+  });
+
+  it('posts visit end time only after the explicit end action', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-04-09T02:30:00.000Z'));
+    try {
+      renderVisitRecordForm();
+
+      await waitFor(() => {
+        expect(
+          (document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value,
+        ).toBe('patient_1');
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: '訪問開始を記録' }));
+      vi.setSystemTime(new Date('2026-04-09T03:05:00.000Z'));
+      fireEvent.click(screen.getByRole('button', { name: '訪問終了を記録' }));
+      fireEvent.click(screen.getByRole('button', { name: '延期' }));
+      fireEvent.submit(document.querySelector('form')!);
+
+      await waitFor(() => {
+        expect(visitRecordPostBodies).toHaveLength(1);
+      });
+      expect(visitRecordPostBodies[0]).toMatchObject({
+        visit_started_at: '2026-04-09T02:30:00.000Z',
+        visit_ended_at: '2026-04-09T03:05:00.000Z',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('shows billing collection context without posting billing fields as visit record data', async () => {
     renderVisitRecordForm();
 

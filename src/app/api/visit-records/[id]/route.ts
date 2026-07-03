@@ -77,6 +77,30 @@ function parseStoredVisitRecordAttachments(value: unknown): VisitRecordAttachmen
 
 const VISIT_RECORD_ATTACHMENT_VALIDATION_MESSAGE = '添付ファイル情報が不正です';
 
+function validateVisitExecutionTimestamps(args: {
+  visitStartedAt: Date | null;
+  visitEndedAt: Date | null;
+}) {
+  if (args.visitEndedAt && !args.visitStartedAt) {
+    return {
+      field: 'visit_ended_at',
+      message: '訪問終了時刻を記録するには訪問開始時刻が必要です',
+    };
+  }
+  if (
+    args.visitStartedAt &&
+    args.visitEndedAt &&
+    args.visitEndedAt.getTime() < args.visitStartedAt.getTime()
+  ) {
+    return {
+      field: 'visit_ended_at',
+      message: '訪問終了時刻は訪問開始時刻以降にしてください',
+    };
+  }
+
+  return null;
+}
+
 async function resolveVisitRecordAttachments(
   orgId: string,
   recordId: string,
@@ -251,6 +275,8 @@ async function authenticatedPATCH(
     version,
     next_visit_suggestion_date,
     visit_date,
+    visit_started_at,
+    visit_ended_at,
     attachments,
     residual_medications,
     ...rest
@@ -266,6 +292,8 @@ async function authenticatedPATCH(
           version: true,
           patient_id: true,
           visit_date: true,
+          visit_started_at: true,
+          visit_ended_at: true,
           outcome_status: true,
           structured_soap: true,
           schedule: {
@@ -290,6 +318,22 @@ async function authenticatedPATCH(
       }
       const schedule = existing.schedule;
       if (existing.version !== version) return 'conflict' as const;
+
+      const nextVisitStartedAt =
+        visit_started_at !== undefined ? new Date(visit_started_at) : existing.visit_started_at;
+      const nextVisitEndedAt =
+        visit_ended_at !== undefined ? new Date(visit_ended_at) : existing.visit_ended_at;
+      const visitExecutionTimestampError = validateVisitExecutionTimestamps({
+        visitStartedAt: nextVisitStartedAt,
+        visitEndedAt: nextVisitEndedAt,
+      });
+      if (visitExecutionTimestampError) {
+        return {
+          error: 'visit_execution_timestamp_validation' as const,
+          field: visitExecutionTimestampError.field,
+          message: visitExecutionTimestampError.message,
+        };
+      }
 
       const missingResidualMedicationDrugMasterIds =
         await findMissingResidualMedicationDrugMasterIds(tx, residual_medications);
@@ -403,6 +447,10 @@ async function authenticatedPATCH(
         data: {
           ...rest,
           ...(visit_date ? { visit_date: new Date(visit_date) } : {}),
+          ...(visit_started_at !== undefined
+            ? { visit_started_at: new Date(visit_started_at) }
+            : {}),
+          ...(visit_ended_at !== undefined ? { visit_ended_at: new Date(visit_ended_at) } : {}),
           ...(next_visit_suggestion_date !== undefined
             ? {
                 next_visit_suggestion_date:
@@ -463,6 +511,11 @@ async function authenticatedPATCH(
   if ('error' in updated && updated.error === 'invalid_residual_medication_drug_master_id') {
     return validationError('入力値が不正です', {
       drug_master_id: ['存在する医薬品マスターを選択してください'],
+    });
+  }
+  if ('error' in updated && updated.error === 'visit_execution_timestamp_validation') {
+    return validationError('入力値が不正です', {
+      [updated.field]: [updated.message],
     });
   }
   if ('error' in updated && updated.error === 'home_visit_2026_readiness_incomplete') {

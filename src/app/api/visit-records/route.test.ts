@@ -1348,6 +1348,34 @@ describe('/api/visit-records POST', () => {
     );
   });
 
+  it('persists explicit visit execution timestamps on create without inferring the end time', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          visit_started_at: '2026-03-26T01:00:00.000Z',
+          visit_ended_at: '2026-03-26T01:35:00.000Z',
+          outcome_status: 'completed',
+          structured_soap: completedVisitStructuredSoap,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(visitRecordCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          visit_started_at: new Date('2026-03-26T01:00:00.000Z'),
+          visit_ended_at: new Date('2026-03-26T01:35:00.000Z'),
+        }),
+      }),
+    );
+  });
+
   it('logs only sanitized patient-state snapshot failure metadata and still saves the visit record', async () => {
     const rawError = new Error('患者 山田太郎 medication=アムロジピン raw snapshot secret');
     buildPatientStateSnapshotMock.mockRejectedValueOnce(rawError);
@@ -1777,6 +1805,33 @@ describe('/api/visit-records POST', () => {
     expect(receiptResponse.status).toBe(400);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects visit end timestamps without a start timestamp before loading the visit schedule', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          visit_ended_at: '2026-03-26T01:35:00.000Z',
+          outcome_status: 'completed',
+          structured_soap: completedVisitStructuredSoap,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        visit_ended_at: ['訪問終了時刻を記録するには訪問開始時刻が必要です'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitRecordCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object create payloads before loading the visit schedule', async () => {
