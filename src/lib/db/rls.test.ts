@@ -119,7 +119,6 @@ describe('createScopedTxRunner', () => {
     expect(() => runScoped(async () => 'never')).toThrow(/Request orgId mismatch/);
     expect(transactionSpy).not.toHaveBeenCalled();
   });
-
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -206,17 +205,13 @@ describeProof('FORCE RLS non-superuser proof (RLS_PROOF_DATABASE_URL)', () => {
            name text NOT NULL
          )`,
       );
-      await adminPool.query(
-        `ALTER TABLE ${q}.rls_proof_patient ENABLE ROW LEVEL SECURITY`,
-      );
+      await adminPool.query(`ALTER TABLE ${q}.rls_proof_patient ENABLE ROW LEVEL SECURITY`);
       await adminPool.query(
         `CREATE POLICY tenant_isolation ON ${q}.rls_proof_patient
            USING (${TENANT_ISOLATION_USING})
            WITH CHECK (${TENANT_ISOLATION_USING})`,
       );
-      await adminPool.query(
-        `ALTER TABLE ${q}.rls_proof_patient FORCE ROW LEVEL SECURITY`,
-      );
+      await adminPool.query(`ALTER TABLE ${q}.rls_proof_patient FORCE ROW LEVEL SECURITY`);
       await adminPool.query(`GRANT USAGE ON SCHEMA ${q} TO ph_os_app`);
       await adminPool.query(
         `GRANT SELECT, INSERT, UPDATE, DELETE ON ${q}.rls_proof_patient TO ph_os_app`,
@@ -254,9 +249,7 @@ describeProof('FORCE RLS non-superuser proof (RLS_PROOF_DATABASE_URL)', () => {
 
         // Fail-close: with no org context set, the role sees nothing.
         await proofClient.query("SELECT set_config('app.current_org_id', '', false)");
-        const withoutContext = await proofClient.query(
-          'SELECT id FROM rls_proof_patient',
-        );
+        const withoutContext = await proofClient.query('SELECT id FROM rls_proof_patient');
         expect(withoutContext.rows).toEqual([]);
       } finally {
         proofClient.release();
@@ -283,30 +276,39 @@ describeProof('FORCE RLS non-superuser proof (RLS_PROOF_DATABASE_URL)', () => {
           const orgId = seededOrg.rows[0].org_id;
           const orgCount = Number(seededOrg.rows[0].n);
           const realClient = await proofPool.connect();
+          // Counts "Patient" rows the non-superuser can see under the given org
+          // context. Real migrated tables use one of two tenant_isolation shapes:
+          // current_setting('app.current_org_id') (missing → NULL → 0 rows) or the
+          // fail-close public.app_enforced_org_id() (missing → RAISE). Both are
+          // fail-close; treat a raised "RLS context missing" as "0 visible rows".
+          const countPatients = async (org: string | null): Promise<number | 'raised'> => {
+            await realClient.query("SELECT set_config('app.rls_context_applied', $1, false)", [
+              org === null ? '' : 'true',
+            ]);
+            await realClient.query("SELECT set_config('app.current_org_id', $1, false)", [
+              org ?? '',
+            ]);
+            try {
+              const r = await realClient.query<{ n: string }>(
+                'SELECT count(*)::text AS n FROM "Patient"',
+              );
+              return Number(r.rows[0]?.n);
+            } catch (err) {
+              if (/RLS context missing|row-level security/i.test(String(err))) {
+                return 'raised';
+              }
+              throw err;
+            }
+          };
           try {
-            // No context → fail-close on the real migrated table.
-            const empty = await realClient.query<{ n: string }>(
-              'SELECT count(*)::text AS n FROM "Patient"',
-            );
-            expect(Number(empty.rows[0]?.n)).toBe(0);
+            // No context → fail-close (0 rows or a raised context-missing error).
+            expect([0, 'raised']).toContain(await countPatients(null));
 
             // Correct org context → sees exactly that org's rows.
-            await realClient.query("SELECT set_config('app.current_org_id', $1, false)", [
-              orgId,
-            ]);
-            const scoped = await realClient.query<{ n: string }>(
-              'SELECT count(*)::text AS n FROM "Patient"',
-            );
-            expect(Number(scoped.rows[0]?.n)).toBe(orgCount);
+            expect(await countPatients(orgId)).toBe(orgCount);
 
             // A different (bogus) org → sees nothing (cross-org SELECT denied).
-            await realClient.query(
-              "SELECT set_config('app.current_org_id', 'org_that_does_not_exist', false)",
-            );
-            const foreign = await realClient.query<{ n: string }>(
-              'SELECT count(*)::text AS n FROM "Patient"',
-            );
-            expect(Number(foreign.rows[0]?.n)).toBe(0);
+            expect(await countPatients('org_that_does_not_exist')).toBe(0);
           } finally {
             realClient.release();
           }

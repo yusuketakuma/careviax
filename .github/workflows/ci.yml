@@ -198,6 +198,11 @@ jobs:
 
     env:
       PHOS_AURORA_RLS_TEST_DATABASE_URL: postgresql://ph_os:ph_os@localhost:5435/ph_os_rls
+      # Superuser connection used only to seed/DDL the throwaway proof schema.
+      RLS_PROOF_ADMIN_DATABASE_URL: postgresql://ph_os:ph_os@localhost:5435/ph_os_rls
+      # Non-superuser (NOSUPERUSER NOBYPASSRLS) role actually under test — this is
+      # the connection that must be denied cross-org rows by FORCE ROW LEVEL SECURITY.
+      RLS_PROOF_DATABASE_URL: postgresql://ph_os_app:ph_os_app@localhost:5435/ph_os_rls
 
     steps:
       - uses: actions/checkout@v4
@@ -214,8 +219,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Provision non-superuser RLS proof role (ph_os_app)
+        run: psql "$RLS_PROOF_ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f tools/scripts/setup-rls-test-role.sql
+
       - name: Verify PH-OS FeeRule RLS
         run: pnpm exec vitest run src/phos/infra/aurora-fee-rules-rls.integration.test.ts --reporter=dot
+
+      - name: Prove FORCE RLS denies a non-superuser cross-org rows
+        run: pnpm exec vitest run src/lib/db/rls.test.ts --reporter=dot
 
   # ─────────────────────────────────────────────────────────────
   # Medical UI/UX gate: production build + local E2E DB + Playwright/axe
