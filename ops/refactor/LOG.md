@@ -302,3 +302,38 @@
 - 検証: focused 4 files/27 tests green(error UI+false-empty 文言不在+refetch 配線)。
 - レビュー: opus APPROVE(conferences 巨大 diff を git diff -w で分離し3点のみ確認、isLoading→isError
   順序・enabled ガード適正)。list-only 残余: schedules 系 form 副次データ・billing 隣接(BACKLOG 記載)。
+
+## 2026-07-04 R17-SWEEP 0fd02044 / R17-B2 6d5b256d
+
+- 分類: refactor / counted-list envelope の byte-preserving 収斂（codex2）
+- 実施: buildCountedListEnvelope 新設(先頭5キー固定・metadata 後置)、8+2 route を収斂。
+  cursor 系/meta.has_more 系/複雑 shape は drift 実在のため list-only(R17 stage1 分類)。
+- 検証: キー順を helper/route 両層の full-key-order assert でロック。truncated 2変種の数学的
+  同値を opus が証明。9 files/86 tests + B2 30 tests green。
+- レビュー: opus APPROVE + B2 は committer 検査(opus 事前検証済みパターン)。
+
+## 2026-07-04 R23 batch2 7e7b6bcd / batch3 618c591a
+
+- 分類: refactor / messageFromError 移行 第2-3バッチ（codex3）
+- 実施: B2=admin 9ファイル20箇所+route-compare の byte-identical ローカル helper 削除。
+  B3=dashboard 8ファイル15箇所(billing candidates は CSV export toast 1箇所のみ=算定非接触を
+  opus が hunk 単位確認)。fallback 全 byte 保存。残量 88 hits/26 files(大半機械的候補、継続妥当)。
+- レビュー: 両バッチ opus APPROVE。
+
+## 2026-07-04 ID-2-W7 483750cb — schema 波完遂
+
+- 分類: infra/db / display_id 最終 residual 波（codex xhigh）
+- 実施: 残余12 direct-org モデル同型 additive。HandoffItem は org_id 列なし→display_id+非unique
+  partial index+--include-parent-scoped opt-in の親join backfill(board→org、二重 reject+test固定)。
+  DEFERRED は恒久 defer(DrugAlertRule/IntegrationJob=nullable org_id)のみに分離。
+- レビュー: opus APPROVE。Low 申し送り: **HandoffItem の親org unique 軸は未解決 — runtime allocator
+  配線前に必ず解決**(design doc §11 参照)。injection 面 clean(quoteIdentifier allowlist+parameterized)。
+- これで W1-W7 全波 land。org-scoped 137モデル(恒久defer 2除く)に display_id 列+backfill 経路が揃った。
+
+## 2026-07-04 全量 gate ALL GREEN（EDIT-FREEZE 下）
+
+- 手順: EDIT-FREEZE broadcast → 3レーン ACK 確認 → 直列 gate 実行(新運用の初適用、race ゼロ)。
+- 結果: db:generate / test 12995 passed(削除スライス反映で母数減は想定どおり) / lint / format:check /
+  colors:check / typecheck(8GB) / typecheck:no-unused(8GB) / build 全 PASS。
+- 対象: W4 以降の本日 land 全19スライス(display-id W4-W7 / FIX-CATALOG / R21 / R16×2 / R22 / R08 /
+  R23×3 / R17×2 / FE-FALSEEMPTY / 台帳4)。
