@@ -19,6 +19,8 @@ import { z } from 'zod';
 import {
   createPrescriptionIntake,
   createPrescriptionIntakeInTx,
+  PRESCRIPTION_INTAKE_WRITE_TX_MAX_WAIT_MS,
+  PRESCRIPTION_INTAKE_WRITE_TX_TIMEOUT_MS,
   PrescriptionIntakeTransactionRollback,
   runPrescriptionIntakePostCreateHooks,
 } from '@/server/services/prescription-intake-service';
@@ -637,168 +639,177 @@ export const POST = withAuthContext(
           };
 
       try {
-        qrResult = await withOrgContext(ctx.orgId, async (tx) => {
-          const qrDraft = await tx.qrScanDraft.findFirst({
-            where: {
-              id: qr_draft_id,
-              org_id: ctx.orgId,
-              ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
-            },
-            select: {
-              id: true,
-              status: true,
-              patient_id: true,
-              qr_payload_hash: true,
-              parsed_data: true,
-            },
-          });
+        qrResult = await withOrgContext(
+          ctx.orgId,
+          async (tx) => {
+            const qrDraft = await tx.qrScanDraft.findFirst({
+              where: {
+                id: qr_draft_id,
+                org_id: ctx.orgId,
+                ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+              },
+              select: {
+                id: true,
+                status: true,
+                patient_id: true,
+                qr_payload_hash: true,
+                parsed_data: true,
+              },
+            });
 
-          if (!qrDraft) {
-            return { kind: 'not_found' as const };
-          }
+            if (!qrDraft) {
+              return { kind: 'not_found' as const };
+            }
 
-          if (qrDraft.status !== 'pending') {
-            return { kind: 'already_processed' as const };
-          }
+            if (qrDraft.status !== 'pending') {
+              return { kind: 'already_processed' as const };
+            }
 
-          if (qrDraft.patient_id && qrDraft.patient_id !== patient_id) {
-            return { kind: 'patient_mismatch' as const };
-          }
+            if (qrDraft.patient_id && qrDraft.patient_id !== patient_id) {
+              return { kind: 'patient_mismatch' as const };
+            }
 
-          const parsedData = readJsonObject(qrDraft.parsed_data);
-          const identityAssessment = assessQrPatientIdentity(
-            readQrPatientIdentityFromDraftParsedData(parsedData),
-            targetPatient,
-          );
-          if (identityAssessment.kind === 'unverifiable') {
+            const parsedData = readJsonObject(qrDraft.parsed_data);
+            const identityAssessment = assessQrPatientIdentity(
+              readQrPatientIdentityFromDraftParsedData(parsedData),
+              targetPatient,
+            );
+            if (identityAssessment.kind === 'unverifiable') {
+              return {
+                kind: 'patient_identity_unverifiable' as const,
+                missing: identityAssessment.missing,
+              };
+            }
+            if (identityAssessment.kind === 'mismatch') {
+              return {
+                kind: 'patient_identity_mismatch' as const,
+                mismatches: identityAssessment.mismatches,
+              };
+            }
+
+            const lineMismatches = findQrDraftLineMismatches(intakeInput, parsedData, payload);
+            if (lineMismatches.length > 0) {
+              return { kind: 'line_mismatch' as const, mismatches: lineMismatches };
+            }
+
+            const drugCodeResolutionDetails = collectDrugCodeResolutionReviewDetails(
+              parsedData,
+              intakeInput,
+            );
+            if (drugCodeResolutionDetails) {
+              return {
+                kind: 'line_validation_error' as const,
+                details: drugCodeResolutionDetails,
+              };
+            }
+
+            intakeInput = enrichQrIntakeInputFromDraft(intakeInput, parsedData, payload);
+            const lineValidationDetails = collectDispensingLineMetadataValidationDetails(
+              intakeInput.lines,
+            );
+            if (lineValidationDetails) {
+              return { kind: 'line_validation_error' as const, details: lineValidationDetails };
+            }
+
+            const claimResult = await tx.qrScanDraft.updateMany({
+              where: {
+                id: qrDraft.id,
+                org_id: ctx.orgId,
+                status: 'pending',
+                ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+              },
+              data: {
+                patient_id,
+                status: 'confirmed',
+              },
+            });
+
+            if (claimResult.count === 0) {
+              return { kind: 'claim_conflict' as const };
+            }
+
+            const intakeResult = await createPrescriptionIntakeInTx(
+              tx,
+              intakeInput,
+              ctx.orgId,
+              ctx.userId,
+              {
+                skipStructuringCheck: source_type === 'qr_scan' && Boolean(qr_draft_id),
+                accessContext: { userId: ctx.userId, role: ctx.role },
+              },
+            );
+
+            if (intakeResult.kind === 'error') {
+              throw new PrescriptionIntakeRollback(intakeResult);
+            }
+
+            const supplementalRecords = readJahisSupplementalRecords(
+              parsedData?.supplementalRecords,
+            );
+            const prescriptionInsurance = readJahisPrescriptionInsurance(
+              parsedData?.prescriptionInsurance,
+            );
+            await attachJahisSupplementalRecordsToIntake(tx, {
+              orgId: ctx.orgId,
+              patientId: patient_id,
+              qrDraftId: qrDraft.id,
+              prescriptionIntakeId: intakeResult.intake.id,
+              fallbackRecords: supplementalRecords,
+            });
+
+            await attachJahisPrescriptionInsuranceSidecarToIntake(tx, {
+              orgId: ctx.orgId,
+              patientId: patient_id,
+              qrDraftId: qrDraft.id,
+              prescriptionIntakeId: intakeResult.intake.id,
+              prescriptionInsurance,
+            });
+
+            await createMedicationIssueCandidatesFromPrescriptionInsurance(tx, {
+              orgId: ctx.orgId,
+              patientId: patient_id,
+              caseId: intakeInput.case_id,
+              prescriptionIntakeId: intakeResult.intake.id,
+              identifiedBy: ctx.userId,
+              prescriptionInsurance,
+            });
+
+            await createMedicationIssueCandidatesFromJahisSupplementalRecords(tx, {
+              orgId: ctx.orgId,
+              patientId: patient_id,
+              caseId: intakeInput.case_id,
+              prescriptionIntakeId: intakeResult.intake.id,
+              identifiedBy: ctx.userId,
+              records: supplementalRecords,
+            });
+
+            await tx.qrScanDraft.update({
+              where: { id: qrDraft.id },
+              data: {
+                patient_id,
+                status: 'confirmed',
+                confirmed_intake_id: intakeResult.intake.id,
+                raw_qr_texts: [],
+                qr_payload_hash: null,
+                parsed_data: buildConfirmedQrParsedData(intakeResult.intake.id),
+                parse_errors: Prisma.JsonNull,
+                auto_completed: Prisma.JsonNull,
+                expected_qr_count: null,
+              },
+            });
+
             return {
-              kind: 'patient_identity_unverifiable' as const,
-              missing: identityAssessment.missing,
+              kind: 'created' as const,
+              intake: intakeResult.intake,
+              cycle: intakeResult.cycle,
+              hookLines: intakeResult.intake.lines,
             };
-          }
-          if (identityAssessment.kind === 'mismatch') {
-            return {
-              kind: 'patient_identity_mismatch' as const,
-              mismatches: identityAssessment.mismatches,
-            };
-          }
-
-          const lineMismatches = findQrDraftLineMismatches(intakeInput, parsedData, payload);
-          if (lineMismatches.length > 0) {
-            return { kind: 'line_mismatch' as const, mismatches: lineMismatches };
-          }
-
-          const drugCodeResolutionDetails = collectDrugCodeResolutionReviewDetails(
-            parsedData,
-            intakeInput,
-          );
-          if (drugCodeResolutionDetails) {
-            return {
-              kind: 'line_validation_error' as const,
-              details: drugCodeResolutionDetails,
-            };
-          }
-
-          intakeInput = enrichQrIntakeInputFromDraft(intakeInput, parsedData, payload);
-          const lineValidationDetails = collectDispensingLineMetadataValidationDetails(
-            intakeInput.lines,
-          );
-          if (lineValidationDetails) {
-            return { kind: 'line_validation_error' as const, details: lineValidationDetails };
-          }
-
-          const claimResult = await tx.qrScanDraft.updateMany({
-            where: {
-              id: qrDraft.id,
-              org_id: ctx.orgId,
-              status: 'pending',
-              ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
-            },
-            data: {
-              patient_id,
-              status: 'confirmed',
-            },
-          });
-
-          if (claimResult.count === 0) {
-            return { kind: 'claim_conflict' as const };
-          }
-
-          const intakeResult = await createPrescriptionIntakeInTx(
-            tx,
-            intakeInput,
-            ctx.orgId,
-            ctx.userId,
-            {
-              skipStructuringCheck: source_type === 'qr_scan' && Boolean(qr_draft_id),
-              accessContext: { userId: ctx.userId, role: ctx.role },
-            },
-          );
-
-          if (intakeResult.kind === 'error') {
-            throw new PrescriptionIntakeRollback(intakeResult);
-          }
-
-          const supplementalRecords = readJahisSupplementalRecords(parsedData?.supplementalRecords);
-          const prescriptionInsurance = readJahisPrescriptionInsurance(
-            parsedData?.prescriptionInsurance,
-          );
-          await attachJahisSupplementalRecordsToIntake(tx, {
-            orgId: ctx.orgId,
-            patientId: patient_id,
-            qrDraftId: qrDraft.id,
-            prescriptionIntakeId: intakeResult.intake.id,
-            fallbackRecords: supplementalRecords,
-          });
-
-          await attachJahisPrescriptionInsuranceSidecarToIntake(tx, {
-            orgId: ctx.orgId,
-            patientId: patient_id,
-            qrDraftId: qrDraft.id,
-            prescriptionIntakeId: intakeResult.intake.id,
-            prescriptionInsurance,
-          });
-
-          await createMedicationIssueCandidatesFromPrescriptionInsurance(tx, {
-            orgId: ctx.orgId,
-            patientId: patient_id,
-            caseId: intakeInput.case_id,
-            prescriptionIntakeId: intakeResult.intake.id,
-            identifiedBy: ctx.userId,
-            prescriptionInsurance,
-          });
-
-          await createMedicationIssueCandidatesFromJahisSupplementalRecords(tx, {
-            orgId: ctx.orgId,
-            patientId: patient_id,
-            caseId: intakeInput.case_id,
-            prescriptionIntakeId: intakeResult.intake.id,
-            identifiedBy: ctx.userId,
-            records: supplementalRecords,
-          });
-
-          await tx.qrScanDraft.update({
-            where: { id: qrDraft.id },
-            data: {
-              patient_id,
-              status: 'confirmed',
-              confirmed_intake_id: intakeResult.intake.id,
-              raw_qr_texts: [],
-              qr_payload_hash: null,
-              parsed_data: buildConfirmedQrParsedData(intakeResult.intake.id),
-              parse_errors: Prisma.JsonNull,
-              auto_completed: Prisma.JsonNull,
-              expected_qr_count: null,
-            },
-          });
-
-          return {
-            kind: 'created' as const,
-            intake: intakeResult.intake,
-            cycle: intakeResult.cycle,
-            hookLines: intakeResult.intake.lines,
-          };
-        });
+          },
+          {
+            timeoutMs: PRESCRIPTION_INTAKE_WRITE_TX_TIMEOUT_MS,
+            maxWaitMs: PRESCRIPTION_INTAKE_WRITE_TX_MAX_WAIT_MS,
+          },
+        );
       } catch (error) {
         if (error instanceof PrescriptionIntakeRollback) {
           return createIntakeErrorResponse(error.result, cycle_id);

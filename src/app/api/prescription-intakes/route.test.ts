@@ -2011,14 +2011,9 @@ describe('/api/prescription-intakes POST', () => {
         },
       }),
     });
+    // DrugMaster の 3 列 OR 検索は各列単体の findMany に分割済み(index が効く形)。
     expect(drugMasterFindManyMock).toHaveBeenCalledWith({
-      where: {
-        OR: [
-          { yj_code: { in: ['2149001'] } },
-          { receipt_code: { in: ['2149001'] } },
-          { hot_code: { in: ['2149001'] } },
-        ],
-      },
+      where: { yj_code: { in: ['2149001'] } },
       select: {
         id: true,
         yj_code: true,

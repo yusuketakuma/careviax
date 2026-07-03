@@ -462,10 +462,11 @@ describe('createPrescriptionIntake', () => {
 
     expect(result.kind).toBe('intake');
     if (result.kind !== 'intake') throw new Error('expected intake result');
+    // 3 列 OR は各列単体 findMany + id 単体 findMany に分割済み。この行は drug_master_id のみ
+    // (コードなし)なので id 単体クエリのみが走る。
+    expect(tx.drugMaster.findMany).toHaveBeenCalledTimes(1);
     expect(tx.drugMaster.findMany).toHaveBeenCalledWith({
-      where: {
-        OR: [{ id: { in: ['drug_master_selected'] } }],
-      },
+      where: { id: { in: ['drug_master_selected'] } },
       select: {
         id: true,
         yj_code: true,
@@ -603,25 +604,29 @@ describe('createPrescriptionIntake', () => {
       error: 'invalid_drug_master_id',
       drugMasterIds: ['drug_master_selected'],
     });
+    // コード検索(yj/receipt/hot 各列単体)+ 明示 id 検索の 4 つの findMany に分割済み。
+    const drugMasterCodeSelect = {
+      id: true,
+      yj_code: true,
+      receipt_code: true,
+      hot_code: true,
+    };
+    expect(tx.drugMaster.findMany).toHaveBeenCalledTimes(4);
     expect(tx.drugMaster.findMany).toHaveBeenCalledWith({
-      where: {
-        OR: [
-          {
-            OR: [
-              { yj_code: { in: ['RC_SELECTED', 'YJ_CONFLICT'] } },
-              { receipt_code: { in: ['RC_SELECTED', 'YJ_CONFLICT'] } },
-              { hot_code: { in: ['RC_SELECTED', 'YJ_CONFLICT'] } },
-            ],
-          },
-          { id: { in: ['drug_master_selected'] } },
-        ],
-      },
-      select: {
-        id: true,
-        yj_code: true,
-        receipt_code: true,
-        hot_code: true,
-      },
+      where: { yj_code: { in: ['RC_SELECTED', 'YJ_CONFLICT'] } },
+      select: drugMasterCodeSelect,
+    });
+    expect(tx.drugMaster.findMany).toHaveBeenCalledWith({
+      where: { receipt_code: { in: ['RC_SELECTED', 'YJ_CONFLICT'] } },
+      select: drugMasterCodeSelect,
+    });
+    expect(tx.drugMaster.findMany).toHaveBeenCalledWith({
+      where: { hot_code: { in: ['RC_SELECTED', 'YJ_CONFLICT'] } },
+      select: drugMasterCodeSelect,
+    });
+    expect(tx.drugMaster.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ['drug_master_selected'] } },
+      select: drugMasterCodeSelect,
     });
     expect(tx.prescriptionIntake.create).not.toHaveBeenCalled();
     expect(createDispenseDraftMock).not.toHaveBeenCalled();
@@ -1062,20 +1067,24 @@ describe('createPrescriptionIntake', () => {
         },
       ],
     });
+    // 外来注射の適格判定も 3 列 OR を各列単体 findMany に分割済み。
+    const outpatientMasterSelect = {
+      yj_code: true,
+      receipt_code: true,
+      hot_code: true,
+      outpatient_injection_eligible: true,
+    };
     expect(tx.drugMaster.findMany).toHaveBeenCalledWith({
-      where: {
-        OR: [
-          { yj_code: { in: ['INJ001'] } },
-          { receipt_code: { in: ['INJ001'] } },
-          { hot_code: { in: ['INJ001'] } },
-        ],
-      },
-      select: {
-        yj_code: true,
-        receipt_code: true,
-        hot_code: true,
-        outpatient_injection_eligible: true,
-      },
+      where: { yj_code: { in: ['INJ001'] } },
+      select: outpatientMasterSelect,
+    });
+    expect(tx.drugMaster.findMany).toHaveBeenCalledWith({
+      where: { receipt_code: { in: ['INJ001'] } },
+      select: outpatientMasterSelect,
+    });
+    expect(tx.drugMaster.findMany).toHaveBeenCalledWith({
+      where: { hot_code: { in: ['INJ001'] } },
+      select: outpatientMasterSelect,
     });
     expect(tx.workflowException.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -1488,20 +1497,24 @@ describe('createPrescriptionIntake', () => {
       sourceType: 'qr_scan',
     });
 
+    // 服薬プロファイル同期のコード解決も 3 列 OR を各列単体 findMany に分割済み。
+    const profileSyncMasterSelect = {
+      id: true,
+      yj_code: true,
+      receipt_code: true,
+      hot_code: true,
+    };
     expect(prismaMock.drugMaster.findMany).toHaveBeenCalledWith({
-      where: {
-        OR: [
-          { yj_code: { in: ['2149001'] } },
-          { receipt_code: { in: ['2149001'] } },
-          { hot_code: { in: ['2149001'] } },
-        ],
-      },
-      select: {
-        id: true,
-        yj_code: true,
-        receipt_code: true,
-        hot_code: true,
-      },
+      where: { yj_code: { in: ['2149001'] } },
+      select: profileSyncMasterSelect,
+    });
+    expect(prismaMock.drugMaster.findMany).toHaveBeenCalledWith({
+      where: { receipt_code: { in: ['2149001'] } },
+      select: profileSyncMasterSelect,
+    });
+    expect(prismaMock.drugMaster.findMany).toHaveBeenCalledWith({
+      where: { hot_code: { in: ['2149001'] } },
+      select: profileSyncMasterSelect,
     });
     // テナント分離(二重防御): 既存プロファイル更新も org_id を併用する updateMany 経由で、
     // id 単独の update は使わない。WHERE に org_id が必須であることを pin する。

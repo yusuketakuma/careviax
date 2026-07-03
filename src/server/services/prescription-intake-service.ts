@@ -520,7 +520,10 @@ function isInjectablePrescriptionLine(line: CreateIntakeLineInput) {
   );
 }
 
-async function collectOutpatientInjectionBlockedLines(tx: Tx, lines: CreateIntakeLineInput[]) {
+async function collectOutpatientInjectionBlockedLines(
+  client: DrugMasterReader,
+  lines: CreateIntakeLineInput[],
+) {
   const injectableLines = lines.filter(isInjectablePrescriptionLine);
   if (injectableLines.length === 0) return [];
 
@@ -534,23 +537,33 @@ async function collectOutpatientInjectionBlockedLines(tx: Tx, lines: CreateIntak
   const eligibleCodes = new Set<string>();
 
   if (codes.length > 0) {
-    const masters = await tx.drugMaster.findMany({
-      where: {
-        OR: [
-          { yj_code: { in: codes } },
-          { receipt_code: { in: codes } },
-          { hot_code: { in: codes } },
-        ],
-      },
-      select: {
-        yj_code: true,
-        receipt_code: true,
-        hot_code: true,
-        outpatient_injection_eligible: true,
-      },
-    });
+    // 3 列 OR を各列単体の findMany に分割(index が効く)。yj_code は @unique のため
+    // 行の dedupe キーに使える。直列 await(トランザクション接続を跨がない)。
+    const mastersByYjCode = new Map<
+      string,
+      {
+        yj_code: string;
+        receipt_code: string | null;
+        hot_code: string | null;
+        outpatient_injection_eligible: boolean;
+      }
+    >();
+    for (const where of buildDrugMasterCodeWheres(codes)) {
+      const rows = await client.drugMaster.findMany({
+        where,
+        select: {
+          yj_code: true,
+          receipt_code: true,
+          hot_code: true,
+          outpatient_injection_eligible: true,
+        },
+      });
+      for (const row of rows) {
+        mastersByYjCode.set(row.yj_code, row);
+      }
+    }
 
-    for (const master of masters) {
+    for (const master of mastersByYjCode.values()) {
       if (!master.outpatient_injection_eligible) continue;
       for (const code of [master.yj_code, master.receipt_code, master.hot_code]) {
         const normalizedCode = normalizePrescriptionDrugCode(code);
@@ -615,8 +628,52 @@ type ResolveCreateIntakeLineDrugIdentitiesResult =
   | { ok: true; lines: ResolvedCreateIntakeLineInput[] }
   | { ok: false; drugMasterIds: string[] };
 
+/**
+ * DrugMaster は org_id を持たないグローバル参照表(RLS 対象外)。よって解決系の読み取りは
+ * RLS 付き interactive transaction の外(通常の `prisma`)からでも安全に実行できる。
+ * ここでは `tx`(トランザクション内)と `prisma`(トランザクション外)の双方を受けられるよう、
+ * `findMany` だけを要求する最小インターフェースに絞る。
+ */
+type DrugMasterReader = {
+  drugMaster: Pick<Prisma.TransactionClient['drugMaster'], 'findMany'>;
+};
+
+/**
+ * yj_code / receipt_code / hot_code の 3 列 OR 検索を、各列単体の WHERE に分割する。
+ * 3 列同時 OR はプランナが seq scan に落ちやすく(RUN-20260622-001: 直 fetch 33.7s)、
+ * 各列には個別 index(@@index([yj_code]) 等)があるため、列ごとに分けると index が効く。
+ * 呼び出し側は返した WHERE ごとに findMany し、結果を id / yj_code で dedupe して結合する。
+ */
+function buildDrugMasterCodeWheres(codes: string[]): Prisma.DrugMasterWhereInput[] {
+  if (codes.length === 0) return [];
+  return [{ yj_code: { in: codes } }, { receipt_code: { in: codes } }, { hot_code: { in: codes } }];
+}
+
+/**
+ * 書き込み transaction の外で先に済ませておける読み取り検証結果。interactive tx の
+ * timeout 予算をグローバル参照表(DrugMaster)の読み取りに費やさないよう、
+ * {@link createPrescriptionIntake} が事前計算して {@link createPrescriptionIntakeInTx} へ渡す。
+ * 未指定(QR フロー等、tx 内で行が確定するケース)のときは従来どおり tx 内で解決する。
+ */
+export type PreparedIntakeReads = {
+  drugIdentityResolution: ResolveCreateIntakeLineDrugIdentitiesResult;
+  outpatientInjectionBlockedLines: Array<{
+    line_number: number;
+    drug_name: string;
+    reason: string;
+  }>;
+};
+
+/**
+ * 書き込み+整合性再確認だけを担う短い tx の明示 timeout。読み取り検証を tx 外へ前倒しした後の
+ * 残り作業(intake/line 作成・rx 採番・fax/inquiry・createDispenseDraft の状態遷移)向けに、
+ * interactive tx 既定の 5s より余裕を持たせつつ上限を明示する。
+ */
+export const PRESCRIPTION_INTAKE_WRITE_TX_TIMEOUT_MS = 15_000;
+export const PRESCRIPTION_INTAKE_WRITE_TX_MAX_WAIT_MS = 5_000;
+
 async function resolveCreateIntakeLineDrugIdentities(
-  tx: Tx,
+  client: DrugMasterReader,
   lines: CreateIntakeLineInput[],
 ): Promise<ResolveCreateIntakeLineDrugIdentitiesResult> {
   const sourceCodes = Array.from(
@@ -633,42 +690,32 @@ async function resolveCreateIntakeLineDrugIdentities(
         .filter((id): id is string => Boolean(id)),
     ),
   );
-  const sourceCodeFilter: Prisma.DrugMasterWhereInput | null =
-    sourceCodes.length > 0
-      ? {
-          OR: [
-            { yj_code: { in: sourceCodes } },
-            { receipt_code: { in: sourceCodes } },
-            { hot_code: { in: sourceCodes } },
-          ],
-        }
-      : null;
-  const masterFilters: Prisma.DrugMasterWhereInput[] = [];
-  if (sourceCodeFilter) {
-    masterFilters.push(sourceCodeFilter);
+  // 3 列 OR を各列単体の findMany に分割し(index が効く)、id で dedupe して結合する。
+  // 明示 drug_master_id は id 単体の findMany を追加する。DrugMaster はグローバル参照表のため
+  // 同一トランザクション接続を跨がないよう await を直列に回す(並列化はしない)。
+  const drugMasterWheres: Prisma.DrugMasterWhereInput[] = [
+    ...buildDrugMasterCodeWheres(sourceCodes),
+    ...(explicitDrugMasterIds.length > 0 ? [{ id: { in: explicitDrugMasterIds } }] : []),
+  ];
+  const masterById = new Map<
+    string,
+    { id: string; yj_code: string; receipt_code: string | null; hot_code: string | null }
+  >();
+  for (const where of drugMasterWheres) {
+    const rows = await client.drugMaster.findMany({
+      where,
+      select: {
+        id: true,
+        yj_code: true,
+        receipt_code: true,
+        hot_code: true,
+      },
+    });
+    for (const row of rows) {
+      masterById.set(row.id, row);
+    }
   }
-  if (explicitDrugMasterIds.length > 0) {
-    masterFilters.push({ id: { in: explicitDrugMasterIds } });
-  }
-
-  const masterWhere: Prisma.DrugMasterWhereInput =
-    sourceCodeFilter && explicitDrugMasterIds.length === 0
-      ? sourceCodeFilter
-      : { OR: masterFilters };
-
-  const masters =
-    masterFilters.length > 0
-      ? await tx.drugMaster.findMany({
-          where: masterWhere,
-          select: {
-            id: true,
-            yj_code: true,
-            receipt_code: true,
-            hot_code: true,
-          },
-        })
-      : [];
-  const masterById = new Map(masters.map((master) => [master.id, master]));
+  const masters = [...masterById.values()];
   const invalidExplicitDrugMasterIds = explicitDrugMasterIds.filter((id) => {
     const master = masterById.get(id);
     return !master || !normalizeMedicationCode(master.yj_code);
@@ -954,6 +1001,7 @@ export async function createPrescriptionIntakeInTx(
   orgId: string,
   userId: string,
   options: CreateIntakeOptions = {},
+  prepared?: PreparedIntakeReads,
 ): Promise<TransactionResult> {
   const {
     cycle_id,
@@ -1012,7 +1060,11 @@ export async function createPrescriptionIntakeInTx(
   if (!sourceValidation.ok) {
     return { kind: 'error', error: sourceValidation.error };
   }
-  const drugIdentityResolution = await resolveCreateIntakeLineDrugIdentities(tx, lines);
+  // 読み取り検証(DrugMaster 解決)は tx 外で前倒し済みなら再実行しない。TOCTOU 上の
+  // 懸念は薄い(DrugMaster はグローバル参照表で、書き込みは drug_master_id/drug_code を
+  // 非正規化保存するだけ・FK 強制なし)。未前倒し(QR フロー等)のときは従来どおり tx 内で解決。
+  const drugIdentityResolution =
+    prepared?.drugIdentityResolution ?? (await resolveCreateIntakeLineDrugIdentities(tx, lines));
   if (!drugIdentityResolution.ok) {
     return {
       kind: 'error',
@@ -1088,10 +1140,9 @@ export async function createPrescriptionIntakeInTx(
     }
   }
 
-  const outpatientInjectionBlockedLines = await collectOutpatientInjectionBlockedLines(
-    tx,
-    resolvedLines,
-  );
+  const outpatientInjectionBlockedLines =
+    prepared?.outpatientInjectionBlockedLines ??
+    (await collectOutpatientInjectionBlockedLines(tx, resolvedLines));
   if (outpatientInjectionBlockedLines.length > 0) {
     if (existingCycle) {
       await createOutpatientInjectionBlockExceptionIfNeeded(tx, {
@@ -1277,10 +1328,28 @@ export async function createPrescriptionIntake(
     }
   }
 
+  // DrugMaster(グローバル参照表・RLS 対象外)の解決系読み取りを interactive tx の外へ前倒しし、
+  // 書き込み tx の timeout 予算を守る(RUN-20260622-001: tx 内 DrugMaster OR 検索 seq scan による
+  // 5s 期限切れの根治)。エラー種別/順序は tx 内で従来位置(source 検証の後)に評価されるよう、
+  // 解決結果ごと prepared に載せて createPrescriptionIntakeInTx へ引き渡す。
+  const drugIdentityResolution = await resolveCreateIntakeLineDrugIdentities(prisma, input.lines);
+  const outpatientInjectionBlockedLines = drugIdentityResolution.ok
+    ? await collectOutpatientInjectionBlockedLines(prisma, drugIdentityResolution.lines)
+    : [];
+  const prepared: PreparedIntakeReads = {
+    drugIdentityResolution,
+    outpatientInjectionBlockedLines,
+  };
+
   let txResult: TransactionResult;
   try {
-    txResult = await withOrgContext(orgId, (tx) =>
-      createPrescriptionIntakeInTx(tx, input, orgId, userId, options),
+    txResult = await withOrgContext(
+      orgId,
+      (tx) => createPrescriptionIntakeInTx(tx, input, orgId, userId, options, prepared),
+      {
+        timeoutMs: PRESCRIPTION_INTAKE_WRITE_TX_TIMEOUT_MS,
+        maxWaitMs: PRESCRIPTION_INTAKE_WRITE_TX_MAX_WAIT_MS,
+      },
     );
   } catch (error) {
     if (error instanceof PrescriptionIntakeTransactionRollback) {
@@ -1625,21 +1694,26 @@ async function resolveDrugMasterIdsByPrescriptionCode(lines: MedicationProfileSy
   const byCode = new Map<string, string>();
   if (codes.length === 0) return byCode;
 
-  const masters = await prisma.drugMaster.findMany({
-    where: {
-      OR: [
-        { yj_code: { in: codes } },
-        { receipt_code: { in: codes } },
-        { hot_code: { in: codes } },
-      ],
-    },
-    select: {
-      id: true,
-      yj_code: true,
-      receipt_code: true,
-      hot_code: true,
-    },
-  });
+  // 3 列 OR を各列単体の findMany に分割(index が効く)。id で dedupe して結合する。
+  const mastersById = new Map<
+    string,
+    { id: string; yj_code: string; receipt_code: string | null; hot_code: string | null }
+  >();
+  for (const where of buildDrugMasterCodeWheres(codes)) {
+    const rows = await prisma.drugMaster.findMany({
+      where,
+      select: {
+        id: true,
+        yj_code: true,
+        receipt_code: true,
+        hot_code: true,
+      },
+    });
+    for (const row of rows) {
+      mastersById.set(row.id, row);
+    }
+  }
+  const masters = [...mastersById.values()];
 
   // The shared resolver performs deterministic YJ-first resolution and leaves
   // duplicate receipt/HOT candidates unresolved instead of relying on DB order.

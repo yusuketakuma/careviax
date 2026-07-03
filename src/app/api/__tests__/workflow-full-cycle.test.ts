@@ -237,6 +237,22 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
+    // W2-P1: DrugMaster 解決は interactive tx の外(モジュールレベル prisma)へ前倒しされたため、
+    // tx 側 stub と同じ内容を top-level client mock にも用意する。
+    drugMaster: {
+      findMany: vi.fn(async (args?: { where?: { is_narcotic?: boolean } }) =>
+        args?.where?.is_narcotic
+          ? []
+          : [
+              {
+                id: 'drug_amlodipine',
+                yj_code: '111',
+                receipt_code: null,
+                hot_code: null,
+              },
+            ],
+      ),
+    },
     patient: {
       findFirst: patientFindFirstMock,
       findMany: vi.fn().mockResolvedValue([]),
