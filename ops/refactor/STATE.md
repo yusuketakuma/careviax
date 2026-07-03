@@ -18,7 +18,7 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: `ID-1a` feasibility spike 実装・検証済み、report/opus verdict 待ち
+- Phase C（実装ループ）: `ID-1b` E2 採番基盤 実装・検証済み、report/opus verdict 待ち
 
 ## 直近の land（本日・要点）
 
@@ -33,14 +33,14 @@
 
 ## 進行中 / 凍結
 
-- codex: `PERF-02` は opus APPROVE、60469cd1 で land 済み。
-- codex: `CE20` は opus APPROVE、66d65f99 で land 済み。
-- codex: `ID-1a` は Prisma extension 採番 spike 4/4 green。判定は E1 基準1 FAIL（tx rollback から
-  sequence upsert が漏れる）/ 基準2-4 PASS。E2 推奨で report 待ち。
+- codex: `ID-1a` は opus APPROVE、9b1da23b + follow-up 9ac76b13 で land 済み。E1 は基準1 FAIL、
+  E2（明示 tx allocator）正式採用。
+- codex: `ID-1b` は E2 採番基盤 report-ready。IdSequence additive migration、138件 registry、
+  allocateDisplayId/Range/Global、RLS intentional exclusion、DB concurrent/rollback tests 実装済み。
 - codex: `PERF-03` は read-only recon 後、fable 裁定で `flagged(raw SQL 要設計・低優先)` として据え置き。
 - human-gate 記録: MFA1 / X01 とも RESOLVED 済み。
 
 ## 次の一手
 
-1. codex: `ID-1a` report を agmsg 送信し、opus verdict / claude commit を待つ
+1. codex: `ID-1b` report を agmsg 送信し、opus verdict / claude commit を待つ
 2. codex: verdict 前の追加編集は指示があるまで行わない

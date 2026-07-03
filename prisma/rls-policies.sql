@@ -595,6 +595,15 @@ ALTER TABLE "PharmacySiteInsuranceConfig" FORCE ROW LEVEL SECURITY;
 -- regardless of context, so RLS is intentionally skipped until the runner is reworked to
 -- run org-scoped writes inside withOrgContext. Tracked in src/tools/rls-known-gaps.ts.
 
+-- ─── id_sequence / IdSequence — intentional RLS exclusion (internal counter) ──
+-- id_sequence stores only per-scope display_id counters: org_id, prefix, next_value,
+-- updated_at. It contains no PHI or secret material. Global master imports allocate
+-- through the explicit '__global__' sentinel outside withOrgContext, while tenant
+-- allocations are limited by allocateDisplayId* helper signatures and tests.
+-- Adding fail-close FORCE RLS would break those global imports and is intentionally
+-- skipped by design. Direct prisma.idSequence access and raw id_sequence writes outside
+-- the allocator are forbidden by src/lib/db/display-id.test.ts.
+
 -- =============================================================================
 -- W1-7: SSOT drift sync — tables ENABLE+FORCE+POLICY via migration but missing
 -- from this file (docs/security/rls-gap-ledger.md §1b). Statements below mirror

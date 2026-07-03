@@ -19,7 +19,23 @@ import { renderRlsGapLedger, LEDGER_PATH } from './rls-gap-ledger';
  * rls-policies.sql の RLS 実態と突き合わせる。既知ギャップは rls-known-gaps.ts に明示列挙され、
  * それ以外の欠落は即 fail する（新規テーブルに RLS が無ければ赤くなる ratchet）。
  */
-const scan = scanRlsContract();
+const rawScan = scanRlsContract();
+const INTENTIONAL_RLS_EXCLUSION_TABLES = new Set(['IdSequence']);
+
+function withoutIntentionalRlsExclusions(scan: typeof rawScan): typeof rawScan {
+  const coverage = scan.coverage.filter((c) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(c.table));
+  return {
+    ...scan,
+    tenantTables: scan.tenantTables.filter((t) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(t)),
+    coverage,
+    missing: scan.missing.filter((t) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(t)),
+    partial: scan.partial.filter((t) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(t)),
+    ssotDrift: scan.ssotDrift.filter((t) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(t)),
+    covered: scan.covered.filter((t) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(t)),
+  };
+}
+
+const scan = withoutIntentionalRlsExclusions(rawScan);
 
 describe('RLS contract — machine-derived tenant coverage', () => {
   it('derives a non-trivial tenant-table set from prisma/schema (guards a broken parser)', () => {
@@ -82,6 +98,20 @@ describe('RLS contract — machine-derived tenant coverage', () => {
         `known-gap の ${g.table} が org_id 列を持つテナントモデルとして存在しません（rename/削除? 台帳を更新してください）`,
       ).toBe(true);
     }
+  });
+});
+
+describe('RLS contract — intentional internal exclusions', () => {
+  it('keeps IdSequence as an explicitly documented non-RLS internal counter', () => {
+    expect(rawScan.allModels).toContain('IdSequence');
+    expect(rawScan.tenantTables).toContain('IdSequence');
+    expect(rawScan.missing).toContain('IdSequence');
+    expect(scan.missing).not.toContain('IdSequence');
+
+    const ssot = readFileSync('prisma/rls-policies.sql', 'utf8');
+    expect(ssot).toContain('id_sequence / IdSequence');
+    expect(ssot).toContain('intentional RLS exclusion');
+    expect(ssot).toContain('allocateDisplayId');
   });
 });
 

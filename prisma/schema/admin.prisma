@@ -19,6 +19,22 @@ enum SettingScope {
   user
 }
 
+// display_id 採番カウンタ（docs/design/display-id-design.md §3）。
+// RLS 意図的除外（rls-policies.sql 参照）・アクセスは src/lib/db/display-id.ts の allocate 系限定。
+// CHECK 制約（org_id 非空 / prefix ^[a-z]{1,6}$ / next_value>=1）は Prisma で表現できないため
+// migration 20260703143000 で手管理している（migrate dev 再生成では再現されない点に注意）。
+// @@index([prefix]) は将来の platform 横断集計（prefix 単位の採番状況照会）向けの意図的な先行整備。
+model IdSequence {
+  org_id     String
+  prefix     String
+  next_value BigInt   @default(1)
+  updated_at DateTime @default(now()) @updatedAt
+
+  @@id([org_id, prefix])
+  @@index([prefix])
+  @@map("id_sequence")
+}
+
 model NotificationRule {
   id         String   @id @default(cuid())
   org_id     String

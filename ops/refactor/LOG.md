@@ -112,6 +112,22 @@
   `pnpm typecheck` green。`pnpm typecheck:no-unused` は Node 4GB heap OOM、8GB指定で green。
 - レビュー: report pending。self-commit なし。
 
+## 2026-07-03 ID-1b report-ready
+
+- 分類: infra/db / display_id E2 allocation foundation
+- 対象: `prisma/schema/admin.prisma`, new `20260703143000_add_id_sequence`, `src/lib/db/display-id*`,
+  `prisma/rls-policies.sql`, `src/tools/rls-policy-contract.test.ts`, 台帳3ファイル
+- 実施: `IdSequence` additive table（`@@map("id_sequence")`, PK org_id+prefix, DB defaults/checks）、
+  §2表の138件 registry、`allocateDisplayId` / `allocateDisplayIdRange` / `allocateGlobalDisplayId` を実装。
+- 安全契約: org scope は tx 必須、global は `__global__` の明示 helper のみ。`Setting` は業務除外、
+  `IdSequence` は infrastructure 除外、`cfg` は予約 prefix。RLS は設計通り intentional exclusion。
+- 検証: prisma validate green。unit/static 32 pass + DB 5 skip（env unset）。local e2e migration 適用成功、
+  DB integration 含む 37/37 green（rollback非リーク・20並行連番・tenant分離・global sentinel）。
+  dev `.env` は `localhost:5432/ph_os_dev` だが DB 未起動で `migrate deploy` は P1001（prod接続なし）。
+  eslint/format:check/diff-check green。`pnpm typecheck` は4GB OOM、8GB指定で green。
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。
+- レビュー: report pending。self-commit なし。
+
 ## 2026-07-03 DR-DUP1 2e0c7fdb
 
 - 分類: bug/data-integrity / defensive validation
