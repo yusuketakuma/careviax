@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
-import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { z } from 'zod';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
@@ -259,6 +259,14 @@ export async function PUT(
   }
 }
 
+function staleInsuranceConflict(expectedUpdatedAt: Date, currentUpdatedAt: Date | null) {
+  return conflict('保険情報が他の操作で更新されています。再読み込みしてください', {
+    conflict_type: 'stale_patient_insurance',
+    expected_updated_at: expectedUpdatedAt.toISOString(),
+    current_updated_at: currentUpdatedAt?.toISOString() ?? null,
+  });
+}
+
 async function authenticatedDELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; insuranceId: string }> },
@@ -276,6 +284,22 @@ async function authenticatedDELETE(
   const insuranceId = normalizeRequiredRouteParam(rawInsuranceId);
   if (!insuranceId) return validationError('保険情報IDが不正です');
 
+  // Optimistic concurrency guard (CXR1-CONC02): when the client supplies the
+  // updated_at it last observed, refuse to delete a row that another staff
+  // member has since corrected. The token is optional to stay backward
+  // compatible with legacy callers that delete by id only.
+  const expectedUpdatedAtRaw = new URL(req.url).searchParams.get('expected_updated_at');
+  let expectedUpdatedAt: Date | null = null;
+  if (expectedUpdatedAtRaw !== null) {
+    const parsed = new Date(expectedUpdatedAtRaw);
+    if (Number.isNaN(parsed.getTime())) {
+      return validationError('保険情報の更新時刻が不正です', {
+        expected_updated_at: ['日時形式が不正です'],
+      });
+    }
+    expectedUpdatedAt = parsed;
+  }
+
   const writable = await requireWritablePatient(prisma, ctx, id);
   if ('response' in writable) return writable.response;
 
@@ -292,15 +316,46 @@ async function authenticatedDELETE(
         ? { patient: { cases: { some: caseAssignmentWhereDelete } } }
         : {}),
     },
-    select: { id: true },
+    select: { id: true, updated_at: true },
   });
   if (!existing) return notFound('保険情報が見つかりません');
 
-  await withOrgContext(ctx.orgId, (tx) =>
-    tx.patientInsurance.delete({
-      where: { id: insuranceId },
-    }),
-  );
+  // Fast-path stale detection before opening the write transaction.
+  if (
+    expectedUpdatedAt !== null &&
+    existing.updated_at.toISOString() !== expectedUpdatedAt.toISOString()
+  ) {
+    return staleInsuranceConflict(expectedUpdatedAt, existing.updated_at);
+  }
+
+  const deleted = await withOrgContext(ctx.orgId, async (tx) => {
+    if (expectedUpdatedAt === null) {
+      await tx.patientInsurance.delete({ where: { id: insuranceId } });
+      return true;
+    }
+    // Guarded delete closes the TOCTOU window between the existence check above
+    // and the write: the row is only removed if updated_at still matches, so a
+    // concurrent correction (which bumps updated_at) leaves the row intact.
+    const result = await tx.patientInsurance.deleteMany({
+      where: {
+        id: insuranceId,
+        patient_id: id,
+        org_id: ctx.orgId,
+        updated_at: expectedUpdatedAt,
+      },
+    });
+    return result.count > 0;
+  });
+
+  if (!deleted) {
+    const current = await prisma.patientInsurance.findFirst({
+      where: { id: insuranceId, patient_id: id, org_id: ctx.orgId },
+      select: { updated_at: true },
+    });
+    if (!current) return notFound('保険情報が見つかりません');
+    // expectedUpdatedAt is non-null here: the null path always deletes.
+    return staleInsuranceConflict(expectedUpdatedAt as Date, current.updated_at);
+  }
 
   return success({ id: insuranceId, deleted: true });
 }

@@ -46,6 +46,7 @@ type InsuranceRecord = {
   valid_until: string | null;
   is_active: boolean;
   notes: string | null;
+  updated_at: string;
 };
 
 type InsuranceResponse = {
@@ -626,14 +627,17 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (insuranceId: string) => {
-      const response = await fetch(
-        buildPatientApiPath(patientId, `/insurance/${encodePathSegment(insuranceId)}`),
-        {
-          method: 'DELETE',
-          headers: buildOrgHeaders(orgId),
-        },
-      );
+    mutationFn: async (insurance: { id: string; updated_at: string }) => {
+      // Send the last-observed updated_at so the API can refuse a stale delete
+      // that would drop a concurrently corrected row (CXR1-CONC02).
+      const path = `${buildPatientApiPath(
+        patientId,
+        `/insurance/${encodePathSegment(insurance.id)}`,
+      )}?expected_updated_at=${encodeURIComponent(insurance.updated_at)}`;
+      const response = await fetch(path, {
+        method: 'DELETE',
+        headers: buildOrgHeaders(orgId),
+      });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(
@@ -811,7 +815,7 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
         description="履歴として不要な保険情報を削除します。この操作は元に戻せません。"
         confirmLabel="削除する"
         onConfirm={() => {
-          if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
+          if (deleteTarget) deleteMutation.mutate(deleteTarget);
         }}
       />
     </Card>

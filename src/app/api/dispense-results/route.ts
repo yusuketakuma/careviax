@@ -663,6 +663,18 @@ async function authenticatedPOST(req: NextRequest) {
           throw err;
         }
 
+        // CXR1-CONC01: for partial dispenses, serialize concurrent submissions on
+        // this cycle by row-locking it FOR UPDATE before any writes. This both
+        // makes the open partial_dispense exception dedup below atomic and keeps
+        // the lock order (cycle → dispense rows) identical to the completing path
+        // (which locks the cycle via transitionCycleStatus above), avoiding a
+        // deadlock between a concurrent partial and completing submission.
+        if (!canComplete) {
+          await tx.$queryRaw(
+            Prisma.sql`SELECT "id" FROM "MedicationCycle" WHERE "id" = ${task.cycle_id} AND "org_id" = ${ctx.orgId} FOR UPDATE`,
+          );
+        }
+
         const results = await Promise.all(
           lines.map(async (line) => {
             const decision = resolveDispensingDecision(line);
@@ -775,7 +787,11 @@ async function authenticatedPOST(req: NextRequest) {
         });
 
         if (!canComplete) {
-          // B3: Create WorkflowException for partial dispense (guard against duplicates)
+          // B3: Create WorkflowException for partial dispense (guard against
+          // duplicates). The cycle was row-locked FOR UPDATE above, so this
+          // findFirst/create dedup runs under mutual exclusion: a concurrent
+          // partial submission blocks until this transaction commits and then
+          // observes the exception created here (CXR1-CONC01).
           const missingLineIds = latestIntakeLineIds.filter(
             (lineId) => !completedLineIds.has(lineId),
           );

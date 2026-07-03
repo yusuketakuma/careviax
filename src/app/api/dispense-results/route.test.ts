@@ -3499,4 +3499,160 @@ describe('/api/dispense-results POST', () => {
       },
     });
   });
+
+  function mockPartialDispenseTx(overrides: {
+    $queryRaw: ReturnType<typeof vi.fn>;
+    workflowExceptionFindFirst: ReturnType<typeof vi.fn>;
+    workflowExceptionCreate: ReturnType<typeof vi.fn>;
+    dispenseResultCreate: ReturnType<typeof vi.fn>;
+    dispenseTaskUpdate: ReturnType<typeof vi.fn>;
+    auditLogCreate: ReturnType<typeof vi.fn>;
+  }) {
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        $queryRaw: overrides.$queryRaw,
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_1',
+            cycle_id: 'cycle_1',
+            results: [],
+            cycle: {
+              id: 'cycle_1',
+              patient_id: 'patient_1',
+              overall_status: 'dispensing',
+              version: 1,
+              inquiries: [],
+              prescription_intakes: [
+                {
+                  id: 'intake_1',
+                  source_type: 'paper',
+                  original_collected_at: null,
+                  lines: [
+                    {
+                      id: 'line_1',
+                      drug_name: 'アムロジピン',
+                      drug_code: '123',
+                      quantity: 14,
+                      unit: '錠',
+                    },
+                    {
+                      id: 'line_2',
+                      drug_name: 'ロキソプロフェン',
+                      drug_code: '456',
+                      quantity: 14,
+                      unit: '錠',
+                    },
+                  ],
+                },
+              ],
+              visit_schedules: [],
+              case_: { patient: { name: '山田 太郎' } },
+            },
+          }),
+          update: overrides.dispenseTaskUpdate,
+        },
+        dispenseResult: {
+          create: overrides.dispenseResultCreate,
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        workflowException: {
+          findFirst: overrides.workflowExceptionFindFirst,
+          create: overrides.workflowExceptionCreate,
+        },
+        auditLog: { create: overrides.auditLogCreate },
+      }),
+    );
+  }
+
+  function partialDispenseRequest() {
+    return createRequest({
+      task_id: 'task_1',
+      safety_checklist: safetyChecklist,
+      lines: [
+        {
+          line_id: 'line_1',
+          actual_drug_name: 'アムロジピン',
+          actual_drug_code: '123',
+          actual_quantity: 14,
+          ...prescriptionQuantityConfirmed,
+          actual_unit: '錠',
+          carry_type: 'carry',
+        },
+      ],
+    });
+  }
+
+  it('locks the cycle row FOR UPDATE before opening a partial-dispense exception (CXR1-CONC01)', async () => {
+    const cycleLockQueryRawMock = vi.fn().mockResolvedValue([{ id: 'cycle_1' }]);
+    const workflowExceptionFindFirstMock = vi.fn().mockResolvedValue(null);
+    const workflowExceptionCreateMock = vi.fn().mockResolvedValue({ id: 'exc_1' });
+
+    mockPartialDispenseTx({
+      $queryRaw: cycleLockQueryRawMock,
+      workflowExceptionFindFirst: workflowExceptionFindFirstMock,
+      workflowExceptionCreate: workflowExceptionCreateMock,
+      dispenseResultCreate: vi.fn().mockResolvedValue({ id: 'result_1', line_id: 'line_1' }),
+      dispenseTaskUpdate: vi.fn().mockResolvedValue({}),
+      auditLogCreate: vi.fn().mockResolvedValue({ id: 'audit_1' }),
+    });
+
+    const response = await POST(partialDispenseRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({ task_id: 'task_1', partial: true });
+
+    // Cycle is row-locked to serialize concurrent partial submissions.
+    expect(cycleLockQueryRawMock).toHaveBeenCalledTimes(1);
+    const lockQuery = cycleLockQueryRawMock.mock.calls[0][0];
+    expect(lockQuery.sql).toContain('FOR UPDATE');
+    expect(lockQuery.sql).toContain('MedicationCycle');
+    expect(lockQuery.values).toContain('cycle_1');
+
+    // Lock must precede the dedup findFirst, which must precede the create.
+    expect(cycleLockQueryRawMock.mock.invocationCallOrder[0]).toBeLessThan(
+      workflowExceptionFindFirstMock.mock.invocationCallOrder[0],
+    );
+    expect(workflowExceptionFindFirstMock.mock.invocationCallOrder[0]).toBeLessThan(
+      workflowExceptionCreateMock.mock.invocationCallOrder[0],
+    );
+    expect(workflowExceptionCreateMock).toHaveBeenCalledTimes(1);
+    expect(workflowExceptionCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          cycle_id: 'cycle_1',
+          exception_type: 'partial_dispense',
+          status: 'open',
+        }),
+      }),
+    );
+  });
+
+  it('does not open a duplicate exception when one is already open under the lock (CXR1-CONC01)', async () => {
+    const cycleLockQueryRawMock = vi.fn().mockResolvedValue([{ id: 'cycle_1' }]);
+    const workflowExceptionFindFirstMock = vi
+      .fn()
+      .mockResolvedValue({ id: 'existing_exc', status: 'open' });
+    const workflowExceptionCreateMock = vi.fn().mockResolvedValue({ id: 'exc_1' });
+
+    mockPartialDispenseTx({
+      $queryRaw: cycleLockQueryRawMock,
+      workflowExceptionFindFirst: workflowExceptionFindFirstMock,
+      workflowExceptionCreate: workflowExceptionCreateMock,
+      dispenseResultCreate: vi.fn().mockResolvedValue({ id: 'result_1', line_id: 'line_1' }),
+      dispenseTaskUpdate: vi.fn().mockResolvedValue({}),
+      auditLogCreate: vi.fn().mockResolvedValue({ id: 'audit_1' }),
+    });
+
+    const response = await POST(partialDispenseRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({ task_id: 'task_1', partial: true });
+
+    // Lock is still acquired, but the existing open exception suppresses a duplicate create.
+    expect(cycleLockQueryRawMock).toHaveBeenCalledTimes(1);
+    expect(workflowExceptionFindFirstMock).toHaveBeenCalledTimes(1);
+    expect(workflowExceptionCreateMock).not.toHaveBeenCalled();
+  });
 });

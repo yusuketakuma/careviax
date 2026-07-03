@@ -8,6 +8,7 @@ const {
   patientInsuranceOverlapFindFirstMock,
   patientInsuranceUpdateMock,
   patientInsuranceDeleteMock,
+  patientInsuranceDeleteManyMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -16,6 +17,7 @@ const {
   patientInsuranceOverlapFindFirstMock: vi.fn(),
   patientInsuranceUpdateMock: vi.fn(),
   patientInsuranceDeleteMock: vi.fn(),
+  patientInsuranceDeleteManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -62,6 +64,12 @@ function createDeleteRequest() {
   });
 }
 
+function createGuardedDeleteRequest(expectedUpdatedAt: string) {
+  const url = new URL('http://localhost/api/patients/patient_1/insurance/insurance_1');
+  url.searchParams.set('expected_updated_at', expectedUpdatedAt);
+  return new NextRequest(url, { method: 'DELETE' });
+}
+
 function expectSensitiveNoStore(response: Response) {
   expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
   expect(response.headers.get('Pragma')).toBe('no-cache');
@@ -89,12 +97,14 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
     patientInsuranceOverlapFindFirstMock.mockResolvedValue(null);
     patientInsuranceUpdateMock.mockResolvedValue({ id: 'insurance_1', is_active: false });
     patientInsuranceDeleteMock.mockResolvedValue({ id: 'insurance_1' });
+    patientInsuranceDeleteManyMock.mockResolvedValue({ count: 1 });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         patientInsurance: {
           findFirst: patientInsuranceOverlapFindFirstMock,
           update: patientInsuranceUpdateMock,
           delete: patientInsuranceDeleteMock,
+          deleteMany: patientInsuranceDeleteManyMock,
         },
       }),
     );
@@ -412,6 +422,108 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
     });
     expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceDeleteMock).not.toHaveBeenCalled();
+  });
+
+  it('DELETE with a matching expected_updated_at deletes via the guarded deleteMany (CXR1-CONC02)', async () => {
+    const updatedAt = new Date('2026-05-01T00:00:00.000Z');
+    patientInsuranceFindFirstMock.mockResolvedValue({
+      id: 'insurance_1',
+      updated_at: updatedAt,
+    });
+
+    const response = await DELETE(createGuardedDeleteRequest(updatedAt.toISOString()), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    // Guarded delete requires updated_at to still match; plain delete must not be used.
+    expect(patientInsuranceDeleteManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'insurance_1',
+        patient_id: 'patient_1',
+        org_id: 'org_1',
+        updated_at: updatedAt,
+      },
+    });
+    expect(patientInsuranceDeleteMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({ id: 'insurance_1', deleted: true });
+  });
+
+  it('DELETE returns 409 when expected_updated_at is stale before the write (CXR1-CONC02)', async () => {
+    const currentUpdatedAt = new Date('2026-05-02T00:00:00.000Z');
+    const staleUpdatedAt = new Date('2026-05-01T00:00:00.000Z');
+    patientInsuranceFindFirstMock.mockResolvedValue({
+      id: 'insurance_1',
+      updated_at: currentUpdatedAt,
+    });
+
+    const response = await DELETE(createGuardedDeleteRequest(staleUpdatedAt.toISOString()), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        conflict_type: 'stale_patient_insurance',
+        expected_updated_at: staleUpdatedAt.toISOString(),
+        current_updated_at: currentUpdatedAt.toISOString(),
+      },
+    });
+    // Stale request must not reach any delete.
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceDeleteManyMock).not.toHaveBeenCalled();
+    expect(patientInsuranceDeleteMock).not.toHaveBeenCalled();
+  });
+
+  it('DELETE returns 409 when the row is corrected between the check and the guarded delete (CXR1-CONC02)', async () => {
+    const observedUpdatedAt = new Date('2026-05-01T00:00:00.000Z');
+    const correctedUpdatedAt = new Date('2026-05-03T00:00:00.000Z');
+    // First findFirst (access + version read) sees the observed timestamp, so the
+    // fast-path check passes; the guarded deleteMany then matches 0 rows because a
+    // concurrent correction bumped updated_at. The re-fetch reveals the new value.
+    patientInsuranceFindFirstMock
+      .mockResolvedValueOnce({ id: 'insurance_1', updated_at: observedUpdatedAt })
+      .mockResolvedValueOnce({ updated_at: correctedUpdatedAt });
+    patientInsuranceDeleteManyMock.mockResolvedValue({ count: 0 });
+
+    const response = await DELETE(createGuardedDeleteRequest(observedUpdatedAt.toISOString()), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        conflict_type: 'stale_patient_insurance',
+        expected_updated_at: observedUpdatedAt.toISOString(),
+        current_updated_at: correctedUpdatedAt.toISOString(),
+      },
+    });
+    expect(patientInsuranceDeleteManyMock).toHaveBeenCalledTimes(1);
+    expect(patientInsuranceDeleteMock).not.toHaveBeenCalled();
+  });
+
+  it('DELETE returns 400 when expected_updated_at is not a valid date (CXR1-CONC02)', async () => {
+    const response = await DELETE(createGuardedDeleteRequest('not-a-date'), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '保険情報の更新時刻が不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceDeleteManyMock).not.toHaveBeenCalled();
     expect(patientInsuranceDeleteMock).not.toHaveBeenCalled();
   });
 

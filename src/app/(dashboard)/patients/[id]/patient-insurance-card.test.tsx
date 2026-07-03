@@ -353,15 +353,21 @@ describe('PatientInsuranceCard', () => {
     try {
       render(<PatientInsuranceCard patientId={hostilePatientId} orgId="org_1" />);
 
-      await mutationConfigs[1]?.mutationFn?.(hostileInsuranceId);
+      const deleteUpdatedAt = '2026-05-01T00:00:00.000Z';
+      await mutationConfigs[1]?.mutationFn?.({
+        id: hostileInsuranceId,
+        updated_at: deleteUpdatedAt,
+      });
 
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(buildPatientApiPath).toHaveBeenCalledWith(
         hostilePatientId,
         `/insurance/${encodeURIComponent(hostileInsuranceId)}`,
       );
+      // The last-observed updated_at rides in the query string so the API can
+      // reject a stale delete (CXR1-CONC02); ids still live only in the path.
       expect(url).toBe(
-        `/api/patients/${encodeURIComponent(hostilePatientId)}/insurance/${encodeURIComponent(hostileInsuranceId)}`,
+        `/api/patients/${encodeURIComponent(hostilePatientId)}/insurance/${encodeURIComponent(hostileInsuranceId)}?expected_updated_at=${encodeURIComponent(deleteUpdatedAt)}`,
       );
       expect(url).not.toContain('%25');
       expect(init.method).toBe('DELETE');
@@ -390,7 +396,10 @@ describe('PatientInsuranceCard', () => {
       await queryConfigs[0]?.queryFn?.();
       await mutationConfigs[0]?.mutationFn?.({ form: sampleForm });
       await mutationConfigs[0]?.mutationFn?.({ insuranceId, form: sampleForm });
-      await mutationConfigs[1]?.mutationFn?.(insuranceId);
+      await mutationConfigs[1]?.mutationFn?.({
+        id: insuranceId,
+        updated_at: '2026-05-01T00:00:00.000Z',
+      });
 
       expect(buildPatientApiPath).toHaveBeenNthCalledWith(1, patientId, '/insurance');
       expect(buildPatientApiPath).toHaveBeenNthCalledWith(2, patientId, '/insurance');
@@ -400,7 +409,7 @@ describe('PatientInsuranceCard', () => {
         '/api/patients/__helper_patient__/insurance',
         '/api/patients/__helper_patient__/insurance',
         '/api/patients/__helper_patient__/insurance/ins_1',
-        '/api/patients/__helper_patient__/insurance/ins_1',
+        `/api/patients/__helper_patient__/insurance/ins_1?expected_updated_at=${encodeURIComponent('2026-05-01T00:00:00.000Z')}`,
       ]);
       expect(fetchMock).not.toHaveBeenCalledWith(
         `/api/patients/${patientId}/insurance`,
@@ -426,7 +435,9 @@ describe('PatientInsuranceCard', () => {
         await expect(
           mutationConfigs[0]?.mutationFn?.({ insuranceId: 'ins_1', form: sampleForm }),
         ).rejects.toThrow(RangeError);
-        await expect(mutationConfigs[1]?.mutationFn?.('ins_1')).rejects.toThrow(RangeError);
+        await expect(
+          mutationConfigs[1]?.mutationFn?.({ id: 'ins_1', updated_at: '2026-05-01T00:00:00.000Z' }),
+        ).rejects.toThrow(RangeError);
         expect(fetchMock).not.toHaveBeenCalled();
       } finally {
         vi.unstubAllGlobals();
@@ -448,7 +459,9 @@ describe('PatientInsuranceCard', () => {
         await expect(
           mutationConfigs[0]?.mutationFn?.({ insuranceId: dotId, form: sampleForm }),
         ).rejects.toThrow(RangeError);
-        await expect(mutationConfigs[1]?.mutationFn?.(dotId)).rejects.toThrow(RangeError);
+        await expect(
+          mutationConfigs[1]?.mutationFn?.({ id: dotId, updated_at: '2026-05-01T00:00:00.000Z' }),
+        ).rejects.toThrow(RangeError);
         expect(fetchMock).not.toHaveBeenCalled();
       } finally {
         vi.unstubAllGlobals();
