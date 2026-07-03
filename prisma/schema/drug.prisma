@@ -52,6 +52,7 @@ enum ImportStatus {
 // グローバルマスタ（org_id なし）
 model DrugMaster {
   id                            String    @id @default(cuid())
+  display_id                    String?   @unique
   yj_code                       String    @unique // YJコード 12桁
   receipt_code                  String? // レセ電コード 9桁
   hot_code                      String? // HOTコード 13桁
@@ -106,6 +107,7 @@ model DrugMaster {
 // グローバルマスタ（org_id なし）
 model DrugPackage {
   id                    String        @id @default(cuid())
+  display_id            String?       @unique
   drug_master_id        String
   drug_master           DrugMaster    @relation(fields: [drug_master_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
   gtin                  String        @unique
@@ -133,6 +135,7 @@ model DrugPackage {
 // グローバルマスタ（org_id なし）
 model DrugPackageInsert {
   id                      String                @id @default(cuid())
+  display_id              String?               @unique
   drug_master_id          String
   drug_master             DrugMaster            @relation(fields: [drug_master_id], references: [id])
   contraindications       Json?
@@ -152,6 +155,7 @@ model DrugPackageInsert {
 // グローバルマスタ（org_id なし）
 model DrugInteraction {
   id              String              @id @default(cuid())
+  display_id      String?             @unique
   drug_a_id       String
   drug_a          DrugMaster          @relation("DrugA", fields: [drug_a_id], references: [id])
   drug_b_id       String
@@ -268,6 +272,7 @@ model FormularyTemplate {
 // グローバルマスタ（org_id なし）
 model GenericDrugMapping {
   id               String   @id @default(cuid())
+  display_id       String?  @unique
   generic_name     String
   brand_drug_ids   Json // String[]
   price_comparison Json?
@@ -280,6 +285,7 @@ model GenericDrugMapping {
 // グローバル（org_id なし）
 model DrugMasterImportLog {
   id                  String       @id @default(cuid())
+  display_id          String?      @unique
   source              ImportSource
   imported_at         DateTime     @default(now())
   record_count        Int
@@ -303,6 +309,7 @@ model DrugMasterImportLog {
 // グローバルマスタ取込差分
 model DrugMasterChangeEvent {
   id             String       @id @default(cuid())
+  display_id     String?      @unique
   import_log_id  String?
   source         ImportSource
   yj_code        String

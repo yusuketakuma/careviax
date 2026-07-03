@@ -16,6 +16,7 @@ import {
   allocateDisplayId,
   allocateDisplayIdRange,
   allocateGlobalDisplayId,
+  allocateGlobalDisplayIdRange,
   displayIdSchema,
   formatDisplayId,
   getDisplayIdModelForPrefix,
@@ -39,6 +40,8 @@ const ADMIN_DRUG_DISPLAY_ID_W6_MIGRATION =
   'prisma/migrations/20260703160000_add_admin_drug_display_ids/migration.sql';
 const RESIDUAL_DISPLAY_ID_W7_MIGRATION =
   'prisma/migrations/20260703161000_add_residual_display_ids/migration.sql';
+const DRUG_GLOBAL_DISPLAY_ID_W8A_MIGRATION =
+  'prisma/migrations/20260704083000_add_drug_global_display_ids/migration.sql';
 const PATIENT_DISPLAY_ID_W1_MODELS = [
   'Patient',
   'Residence',
@@ -185,6 +188,15 @@ const SAVED_VIEW_DISPLAY_ID_W7_MODELS = ['SavedView'] as const satisfies readonl
 const PARENT_SCOPED_DISPLAY_ID_W7_MODELS = [
   'HandoffItem',
 ] as const satisfies readonly DisplayIdModel[];
+const DRUG_GLOBAL_DISPLAY_ID_W8A_MODELS = [
+  'DrugMaster',
+  'DrugPackage',
+  'DrugPackageInsert',
+  'DrugInteraction',
+  'GenericDrugMapping',
+  'DrugMasterImportLog',
+  'DrugMasterChangeEvent',
+] as const satisfies readonly DisplayIdModel[];
 // Permanent defer: nullable/hybrid org_id requires explicit tenant-vs-global semantics.
 const PERMANENT_DEFERRED_DISPLAY_ID_SCHEMA_MODELS = [
   'DrugAlertRule',
@@ -276,6 +288,14 @@ const DISPLAY_ID_PARENT_SCOPED_SCHEMA_WAVES = [
     schemaFile: 'communication.prisma',
     migrationPath: RESIDUAL_DISPLAY_ID_W7_MIGRATION,
     models: PARENT_SCOPED_DISPLAY_ID_W7_MODELS,
+  },
+] as const;
+const DISPLAY_ID_GLOBAL_SCHEMA_WAVES = [
+  {
+    label: 'W8a drug-global-domain',
+    schemaFile: 'drug.prisma',
+    migrationPath: DRUG_GLOBAL_DISPLAY_ID_W8A_MIGRATION,
+    models: DRUG_GLOBAL_DISPLAY_ID_W8A_MODELS,
   },
 ] as const;
 const DISPLAY_ID_DIRECT_WAVE_MODELS = DISPLAY_ID_SCHEMA_WAVES.flatMap((wave) => wave.models);
@@ -554,6 +574,41 @@ describe('display_id registry and format contract', () => {
     expect(migration).not.toContain('CREATE UNIQUE INDEX "HandoffItem');
   });
 
+  it('declares global display ID waves as nullable globally unique identifiers', () => {
+    for (const wave of DISPLAY_ID_GLOBAL_SCHEMA_WAVES) {
+      const schema = readFileSync(join(SCHEMA_DIR, wave.schemaFile), 'utf8');
+      const migration = readFileSync(wave.migrationPath, 'utf8');
+
+      for (const model of wave.models) {
+        expect(getDisplayIdRegistryEntry(model).scope, `${wave.label}:${model}`).toBe('global');
+
+        const block = readModelBlock(schema, model);
+        expect(block, `${wave.label}:${model}`).not.toMatch(/\n\s+org_id\s+String(?:\s|$)/);
+        expect(block, `${wave.label}:${model}`).toMatch(/\n\s+created_at\s+DateTime(?:\s|$)/);
+        expect(block, `${wave.label}:${model}`).toMatch(
+          /\n\s+display_id\s+String\?\s+@unique(?:\s|$)/,
+        );
+        expect(block, `${wave.label}:${model}`).not.toContain('@@unique([org_id, display_id])');
+
+        expect(migration, `${wave.label}:${model}`).toMatch(
+          new RegExp(`ALTER TABLE "${model}" ADD COLUMN\\s+"display_id" TEXT;`),
+        );
+        expect(migration, `${wave.label}:${model}`).toContain(
+          `CREATE UNIQUE INDEX "${model}_display_id_key" ON "${model}"("display_id");`,
+        );
+        expect(migration, `${wave.label}:${model}`).not.toContain(
+          `ALTER TABLE "${model}" ALTER COLUMN "display_id" SET NOT NULL`,
+        );
+        expect(migration, `${wave.label}:${model}`).not.toContain(
+          `ON "${model}"("org_id", "display_id")`,
+        );
+      }
+
+      expect(migration, wave.label).not.toMatch(/\bDROP\b/i);
+      expect(migration, wave.label).not.toMatch(/\bALTER COLUMN\b/i);
+    }
+  });
+
   it('keeps the W5 pharmacy-partnership wave aligned with direct org-scoped models', () => {
     const schema = readFileSync(join(SCHEMA_DIR, 'pharmacy-partnership.prisma'), 'utf8');
     expect(collectDirectOrgScopedModels(schema)).toEqual(
@@ -770,6 +825,10 @@ describeDb('display_id allocator integration (local e2e DB)', () => {
     await expect(allocateGlobalDisplayId(prisma, 'Patient')).rejects.toThrow(/tenant-scoped/);
 
     await expect(allocateGlobalDisplayId(prisma, 'DrugMaster')).resolves.toBe('drug0000000001');
-    await expect(readSequence(DISPLAY_ID_GLOBAL_ORG_ID, 'drug')).resolves.toBe(BigInt(2));
+    await expect(allocateGlobalDisplayIdRange(prisma, 'DrugMaster', 2)).resolves.toEqual([
+      'drug0000000002',
+      'drug0000000003',
+    ]);
+    await expect(readSequence(DISPLAY_ID_GLOBAL_ORG_ID, 'drug')).resolves.toBe(BigInt(4));
   });
 });

@@ -9,7 +9,9 @@ import { Prisma, PrismaClient } from '@prisma/client';
 
 import {
   DISPLAY_ID_EXCLUDED_MODELS,
+  DISPLAY_ID_GLOBAL_ORG_ID,
   allocateDisplayIdRange,
+  allocateGlobalDisplayIdRange,
   formatDisplayId,
   getDisplayIdRegistryEntry,
   isDisplayIdModel,
@@ -18,7 +20,7 @@ import {
 } from '@/lib/db/display-id';
 
 type BackfillMode = 'dry-run' | 'apply';
-type DisplayIdBackfillOrgSource = 'direct' | 'handoffBoardParent';
+type DisplayIdBackfillOrgSource = 'direct' | 'handoffBoardParent' | 'global';
 
 export type DisplayIdBackfillOptions = {
   mode: BackfillMode;
@@ -156,6 +158,7 @@ type DisplayIdRawExecutor = {
 export type DisplayIdBackfillDeps = {
   createAdapter: (executor: unknown) => DisplayIdBackfillAdapter;
   allocateRange: typeof allocateDisplayIdRange;
+  allocateGlobalRange: typeof allocateGlobalDisplayIdRange;
   now: () => Date;
 };
 
@@ -164,17 +167,17 @@ const DEFAULT_BATCH_SIZE = 1_000;
 const DEFAULT_SAMPLE_LIMIT = 20;
 const DISPLAY_ID_ORG_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const USAGE = [
-  'Usage: pnpm tsx tools/scripts/backfill-display-ids.ts --models Patient,Residence [--dry-run]',
+  'Usage: pnpm tsx tools/scripts/backfill-display-ids.ts --models Patient,DrugMaster [--dry-run]',
   '       pnpm tsx tools/scripts/backfill-display-ids.ts --apply --models Patient --max-rows 100000',
   '',
   'Options:',
-  '  --models LIST       Comma-separated DisplayId registry models to target',
+  '  --models LIST       Comma-separated DisplayId registry models to target; tenant and global models are allowed',
   '  --apply             Mutate rows and id_sequence; requires --models and --max-rows',
   '  --dry-run           Read-only mode (default)',
   '  --max-rows N        Apply fail-fast ceiling; dry-run reports target NULL rows, apply refuses before mutation if rows exceed N',
   '  --batch-size N      Rows per (model, org) transaction batch',
   '  --sample-limit N    Bounded reporting sample size',
-  '  --org-id ORG        Optional single tenant/org filter',
+  '  --org-id ORG        Optional single tenant/org filter; rejected when any target model is global',
   '  --include-parent-scoped  Opt in to HandoffItem board_id -> HandoffBoard.org_id backfill',
   '  --json-output PATH  Write JSON report',
   '  --markdown-output PATH  Write Markdown report',
@@ -252,7 +255,7 @@ function parseModels(
         `Model ${model} is parent-scoped and requires --include-parent-scoped for backfill`,
       );
     }
-    if (entry.scope !== 'org' && !isSupportedParentScoped) {
+    if (entry.scope !== 'org' && entry.scope !== 'global' && !isSupportedParentScoped) {
       throw new Error(`Model ${model} is not tenant-scoped and cannot use this backfill`);
     }
     return model;
@@ -273,6 +276,17 @@ export function parseDisplayIdBackfillArgs(argv: string[]): DisplayIdBackfillOpt
   const maxRowsValue = readValue(argv, '--max-rows');
   const includeParentScoped = argv.includes('--include-parent-scoped');
   const models = parseModels(readValue(argv, '--models'), { includeParentScoped });
+  const orgId = parseOrgId(readValue(argv, '--org-id'));
+  if (orgId !== null) {
+    const globalModels = models.filter(
+      (model) => getDisplayIdRegistryEntry(model).scope === 'global',
+    );
+    if (globalModels.length > 0) {
+      throw new Error(
+        `--org-id cannot be used with global display_id model(s): ${globalModels.join(', ')}`,
+      );
+    }
+  }
   if (apply && models.length === 0) {
     throw new Error('--apply requires --models');
   }
@@ -294,7 +308,7 @@ export function parseDisplayIdBackfillArgs(argv: string[]): DisplayIdBackfillOpt
       '--sample-limit',
       DEFAULT_SAMPLE_LIMIT,
     ),
-    orgId: parseOrgId(readValue(argv, '--org-id')),
+    orgId,
     includeParentScoped,
     jsonOutputPath: readValue(argv, '--json-output'),
     markdownOutputPath: readValue(argv, '--markdown-output'),
@@ -319,6 +333,14 @@ function createModelConfig(
       tableName: model,
       prefix: entry.prefix,
       orgSource: 'direct',
+    };
+  }
+  if (entry.scope === 'global') {
+    return {
+      model,
+      tableName: model,
+      prefix: entry.prefix,
+      orgSource: 'global',
     };
   }
   if (
@@ -388,6 +410,29 @@ function isHandoffBoardParentScoped(config: DisplayIdBackfillModelConfig): boole
   return config.orgSource === 'handoffBoardParent';
 }
 
+function isGlobalScoped(config: DisplayIdBackfillModelConfig): boolean {
+  return config.orgSource === 'global';
+}
+
+function assertNoOrgFilterForGlobal(
+  config: DisplayIdBackfillModelConfig,
+  orgId: string | null,
+): void {
+  if (isGlobalScoped(config) && orgId !== null) {
+    throw new Error(`--org-id cannot be used with global display_id model ${config.model}`);
+  }
+}
+
+function appendConfigOrgFilter(
+  values: unknown[],
+  config: DisplayIdBackfillModelConfig,
+  orgId: string | null,
+): string {
+  assertNoOrgFilterForGlobal(config, orgId);
+  if (isGlobalScoped(config)) return '';
+  return appendOrgFilter(values, orgId, orgColumn(config));
+}
+
 function targetFromClause(config: DisplayIdBackfillModelConfig): string {
   if (isHandoffBoardParentScoped(config)) {
     return `${quoteIdentifier(config.tableName)} item INNER JOIN "HandoffBoard" board ON board."id" = item."board_id"`;
@@ -401,6 +446,9 @@ function targetColumn(config: DisplayIdBackfillModelConfig, column: string): str
 }
 
 function orgColumn(config: DisplayIdBackfillModelConfig): string {
+  if (isGlobalScoped(config)) {
+    throw new Error(`Global display_id model ${config.model} does not have org_id`);
+  }
   return isHandoffBoardParentScoped(config) ? 'board."org_id"' : '"org_id"';
 }
 
@@ -424,7 +472,7 @@ class PrismaDisplayIdBackfillAdapter implements DisplayIdBackfillAdapter {
 
   async countRows(config: DisplayIdBackfillModelConfig, orgId: string | null): Promise<number> {
     const values: unknown[] = [];
-    const filter = appendOrgFilter(values, orgId, orgColumn(config));
+    const filter = appendConfigOrgFilter(values, config, orgId);
     const rows = await this.executor.$queryRawUnsafe<Array<{ count: string | bigint }>>(
       `SELECT COUNT(*)::text AS "count" FROM ${targetFromClause(config)} WHERE TRUE${filter}`,
       ...values,
@@ -434,7 +482,7 @@ class PrismaDisplayIdBackfillAdapter implements DisplayIdBackfillAdapter {
 
   async countNullRows(config: DisplayIdBackfillModelConfig, orgId: string | null): Promise<number> {
     const values: unknown[] = [];
-    const filter = appendOrgFilter(values, orgId, orgColumn(config));
+    const filter = appendConfigOrgFilter(values, config, orgId);
     const rows = await this.executor.$queryRawUnsafe<Array<{ count: string | bigint }>>(
       `SELECT COUNT(*)::text AS "count" FROM ${targetFromClause(config)} WHERE ${targetColumn(config, 'display_id')} IS NULL${filter}`,
       ...values,
@@ -447,7 +495,23 @@ class PrismaDisplayIdBackfillAdapter implements DisplayIdBackfillAdapter {
     orgId: string | null,
   ): Promise<number> {
     const values: unknown[] = [];
-    const filter = appendOrgFilter(values, orgId, orgColumn(config));
+    const filter = appendConfigOrgFilter(values, config, orgId);
+    if (isGlobalScoped(config)) {
+      const rows = await this.executor.$queryRawUnsafe<Array<{ count: string | bigint }>>(
+        `
+          SELECT COUNT(*)::text AS "count"
+          FROM (
+            SELECT ${targetColumn(config, 'display_id')} AS "displayId"
+            FROM ${targetFromClause(config)}
+            WHERE ${targetColumn(config, 'display_id')} IS NOT NULL${filter}
+            GROUP BY ${targetColumn(config, 'display_id')}
+            HAVING COUNT(*) > 1
+          ) duplicate_groups
+        `,
+        ...values,
+      );
+      return toNumberCount(rows[0]?.count ?? '0');
+    }
     const rows = await this.executor.$queryRawUnsafe<Array<{ count: string | bigint }>>(
       `
         SELECT COUNT(*)::text AS "count"
@@ -469,7 +533,7 @@ class PrismaDisplayIdBackfillAdapter implements DisplayIdBackfillAdapter {
     orgId: string | null,
   ): Promise<number> {
     const values: unknown[] = [displayIdFormatRegex(config.prefix)];
-    const filter = appendOrgFilter(values, orgId, orgColumn(config));
+    const filter = appendConfigOrgFilter(values, config, orgId);
     const sequenceStart = config.prefix.length + 1;
     const rows = await this.executor.$queryRawUnsafe<Array<{ count: string | bigint }>>(
       `
@@ -488,7 +552,11 @@ class PrismaDisplayIdBackfillAdapter implements DisplayIdBackfillAdapter {
     orgId: string | null,
   ): Promise<DisplayIdOrgCount[]> {
     const values: unknown[] = [];
-    const filter = appendOrgFilter(values, orgId, orgColumn(config));
+    const filter = appendConfigOrgFilter(values, config, orgId);
+    if (isGlobalScoped(config)) {
+      const count = await this.countNullRows(config, orgId);
+      return count > 0 ? [{ orgId: DISPLAY_ID_GLOBAL_ORG_ID, count }] : [];
+    }
     const rows = await this.executor.$queryRawUnsafe<Array<{ orgId: string; count: string }>>(
       `
         SELECT ${orgColumn(config)} AS "orgId", COUNT(*)::text AS "count"
@@ -507,8 +575,21 @@ class PrismaDisplayIdBackfillAdapter implements DisplayIdBackfillAdapter {
     orgId: string | null,
   ): Promise<DisplayIdMaxSequence[]> {
     const values: unknown[] = [displayIdFormatRegex(config.prefix)];
-    const filter = appendOrgFilter(values, orgId, orgColumn(config));
+    const filter = appendConfigOrgFilter(values, config, orgId);
     const sequenceStart = config.prefix.length + 1;
+    if (isGlobalScoped(config)) {
+      const rows = await this.executor.$queryRawUnsafe<Array<{ maxSequence: string | null }>>(
+        `
+          SELECT
+            MAX(SUBSTRING(${targetColumn(config, 'display_id')} FROM ${sequenceStart})::bigint)::text AS "maxSequence"
+          FROM ${targetFromClause(config)}
+          WHERE ${canonicalDisplayIdSqlPredicate(targetColumn(config, 'display_id'), sequenceStart)}${filter}
+        `,
+        ...values,
+      );
+      const maxSequence = toBigIntValue(rows[0]?.maxSequence);
+      return maxSequence === null ? [] : [{ orgId: DISPLAY_ID_GLOBAL_ORG_ID, maxSequence }];
+    }
     const rows = await this.executor.$queryRawUnsafe<Array<{ orgId: string; maxSequence: string }>>(
       `
         SELECT
@@ -565,6 +646,26 @@ class PrismaDisplayIdBackfillAdapter implements DisplayIdBackfillAdapter {
     orgId: string,
     limit: number,
   ): Promise<DisplayIdBackfillRow[]> {
+    if (isGlobalScoped(config)) {
+      if (orgId !== DISPLAY_ID_GLOBAL_ORG_ID) {
+        throw new Error(`Global display_id backfill requires orgId ${DISPLAY_ID_GLOBAL_ORG_ID}`);
+      }
+      const rows = await this.executor.$queryRawUnsafe<
+        Array<{ id: string; orgId: string; createdAt: Date }>
+      >(
+        `
+          SELECT ${targetColumn(config, 'id')} AS "id", $1::text AS "orgId", ${targetColumn(config, 'created_at')} AS "createdAt"
+          FROM ${targetFromClause(config)}
+          WHERE ${targetColumn(config, 'display_id')} IS NULL
+          ORDER BY ${targetColumn(config, 'created_at')} ASC, ${targetColumn(config, 'id')} ASC
+          LIMIT $2
+          FOR UPDATE
+        `,
+        DISPLAY_ID_GLOBAL_ORG_ID,
+        limit,
+      );
+      return rows;
+    }
     const rows = await this.executor.$queryRawUnsafe<
       Array<{ id: string; orgId: string; createdAt: Date }>
     >(
@@ -587,6 +688,23 @@ class PrismaDisplayIdBackfillAdapter implements DisplayIdBackfillAdapter {
     row: DisplayIdBackfillRow,
     displayId: string,
   ): Promise<number> {
+    if (isGlobalScoped(config)) {
+      if (row.orgId !== DISPLAY_ID_GLOBAL_ORG_ID) {
+        throw new Error(
+          `Global display_id backfill requires row orgId ${DISPLAY_ID_GLOBAL_ORG_ID}`,
+        );
+      }
+      return this.executor.$executeRawUnsafe(
+        `
+          UPDATE ${quoteIdentifier(config.tableName)}
+          SET "display_id" = $1
+          WHERE "id" = $2
+            AND "display_id" IS NULL
+        `,
+        displayId,
+        row.id,
+      );
+    }
     if (isHandoffBoardParentScoped(config)) {
       return this.executor.$executeRawUnsafe(
         `
@@ -625,6 +743,7 @@ export function createPrismaDisplayIdBackfillAdapter(executor: unknown): Display
 const defaultDeps: DisplayIdBackfillDeps = {
   createAdapter: createPrismaDisplayIdBackfillAdapter,
   allocateRange: allocateDisplayIdRange,
+  allocateGlobalRange: allocateGlobalDisplayIdRange,
   now: () => new Date(),
 };
 
@@ -825,12 +944,18 @@ async function applyModelBackfill(
           const rows = await txAdapter.selectNullRowsForOrg(config, orgCount.orgId, batchSize);
           if (rows.length === 0) return 0;
 
-          const displayIds = await deps.allocateRange(
-            tx as Prisma.TransactionClient,
-            config.model,
-            orgCount.orgId,
-            rows.length,
-          );
+          const displayIds = isGlobalScoped(config)
+            ? await deps.allocateGlobalRange(
+                tx as Prisma.TransactionClient,
+                config.model,
+                rows.length,
+              )
+            : await deps.allocateRange(
+                tx as Prisma.TransactionClient,
+                config.model,
+                orgCount.orgId,
+                rows.length,
+              );
           if (displayIds.length !== rows.length) {
             throw new Error(
               `Allocator returned ${displayIds.length} display IDs for ${rows.length} ${config.model} row(s)`,

@@ -215,16 +215,25 @@ export async function allocateGlobalDisplayId(
   client: DisplayIdGlobalSqlExecutor,
   model: DisplayIdModel,
 ): Promise<string> {
+  const ids = await allocateGlobalDisplayIdRange(client, model, 1);
+  const id = ids[0];
+  if (!id) {
+    throw new Error('global display_id allocation returned an empty range');
+  }
+  return id;
+}
+
+export async function allocateGlobalDisplayIdRange(
+  client: DisplayIdGlobalSqlExecutor,
+  model: DisplayIdModel,
+  amount: number,
+): Promise<string[]> {
   const entry = requireGlobalScopedEntry(model);
   const sequences = await allocateDisplayIdRangeByPrefix(
     client,
     DISPLAY_ID_GLOBAL_ORG_ID,
     entry.prefix,
-    1,
+    amount,
   );
-  const sequence = sequences[0];
-  if (sequence === undefined) {
-    throw new Error('global display_id allocation returned an empty range');
-  }
-  return formatDisplayIdFromPrefix(entry.prefix, sequence);
+  return sequences.map((sequence) => formatDisplayIdFromPrefix(entry.prefix, sequence));
 }

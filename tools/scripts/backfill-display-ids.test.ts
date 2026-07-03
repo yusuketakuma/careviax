@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  DISPLAY_ID_GLOBAL_ORG_ID,
   formatDisplayId,
   getDisplayIdRegistryEntry,
   type DisplayIdModel,
@@ -160,14 +161,25 @@ function makeMockRuntime(rows: MockRow[]) {
     sequences.set(key, firstSequence + BigInt(amount));
     return ids;
   });
+  const allocateGlobalRange = vi.fn(async (_tx, model: DisplayIdModel, amount: number) => {
+    const prefix = getDisplayIdRegistryEntry(model).prefix;
+    const key = sequenceKey(DISPLAY_ID_GLOBAL_ORG_ID, prefix);
+    const firstSequence = sequences.get(key) ?? BigInt(1);
+    const ids = Array.from({ length: amount }, (_, index) =>
+      formatDisplayId(model, firstSequence + BigInt(index)),
+    );
+    sequences.set(key, firstSequence + BigInt(amount));
+    return ids;
+  });
 
   const deps: DisplayIdBackfillDeps = {
     createAdapter: () => adapter,
     allocateRange,
+    allocateGlobalRange,
     now: () => new Date('2026-07-03T15:00:00.000Z'),
   };
 
-  return { client, deps, allocateRange, updates, sequences, rows };
+  return { client, deps, allocateRange, allocateGlobalRange, updates, sequences, rows };
 }
 
 describe('backfill-display-ids', () => {
@@ -232,9 +244,14 @@ describe('backfill-display-ids', () => {
       /Unknown display_id model/,
     );
     expect(() => parseDisplayIdBackfillArgs(['--models', 'Patient,Patient'])).toThrow(/duplicate/i);
-    expect(() => parseDisplayIdBackfillArgs(['--models', 'DrugMaster'])).toThrow(
-      /not tenant-scoped/,
-    );
+    expect(parseDisplayIdBackfillArgs(['--models', 'DrugMaster'])).toMatchObject({
+      mode: 'dry-run',
+      models: ['DrugMaster'],
+      orgId: null,
+    });
+    expect(() =>
+      parseDisplayIdBackfillArgs(['--models', 'DrugMaster', '--org-id', 'org_a']),
+    ).toThrow(/global display_id model/);
     expect(() => parseDisplayIdBackfillArgs(['--models', 'HandoffItem'])).toThrow(/parent-scoped/);
     expect(() => parseDisplayIdBackfillArgs(['--models', 'Patient', '--org-id='])).toThrow(
       /non-empty safe orgId/,
@@ -311,6 +328,56 @@ describe('backfill-display-ids', () => {
     expect(runtime.rows.every((row) => row.displayId === null)).toBe(true);
   });
 
+  it('keeps global dry-run read-only while previewing sentinel ranges', async () => {
+    const runtime = makeMockRuntime([
+      {
+        model: 'DrugMaster',
+        id: 'drug_b',
+        orgId: DISPLAY_ID_GLOBAL_ORG_ID,
+        createdAt: new Date('2026-01-02T00:00:00.000Z'),
+        displayId: null,
+      },
+      {
+        model: 'DrugMaster',
+        id: 'drug_a',
+        orgId: DISPLAY_ID_GLOBAL_ORG_ID,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        displayId: null,
+      },
+    ]);
+
+    const result = await runDisplayIdBackfill(
+      runtime.client,
+      defaultOptions({ mode: 'dry-run', models: ['DrugMaster'] }),
+      runtime.deps,
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      models: {
+        DrugMaster: {
+          totalRows: 2,
+          nullDisplayIdRows: 2,
+          duplicateDisplayIdGroups: 0,
+          invalidFormatRows: 0,
+          backfilledRows: 0,
+        },
+      },
+      orgs: [
+        {
+          model: 'DrugMaster',
+          orgId: DISPLAY_ID_GLOBAL_ORG_ID,
+          rowsToBackfill: 2,
+          firstPreviewDisplayId: 'drug0000000001',
+          lastPreviewDisplayId: 'drug0000000002',
+        },
+      ],
+    });
+    expect(runtime.allocateRange).not.toHaveBeenCalled();
+    expect(runtime.allocateGlobalRange).not.toHaveBeenCalled();
+    expect(runtime.updates).toEqual([]);
+  });
+
   it('applies by org in created_at/id order using one range allocation per org', async () => {
     const runtime = makeMockRuntime([
       {
@@ -373,6 +440,57 @@ describe('backfill-display-ids', () => {
         nullDisplayIdRows: 0,
       }),
     ]);
+  });
+
+  it('applies global models through the sentinel allocation path', async () => {
+    const runtime = makeMockRuntime([
+      {
+        model: 'DrugMaster',
+        id: 'drug_b',
+        orgId: DISPLAY_ID_GLOBAL_ORG_ID,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        displayId: null,
+      },
+      {
+        model: 'DrugMaster',
+        id: 'drug_a',
+        orgId: DISPLAY_ID_GLOBAL_ORG_ID,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        displayId: null,
+      },
+    ]);
+
+    const result = await runDisplayIdBackfill(
+      runtime.client,
+      defaultOptions({ mode: 'apply', models: ['DrugMaster'], maxRows: 10 }),
+      runtime.deps,
+    );
+
+    expect(runtime.allocateGlobalRange).toHaveBeenCalledTimes(1);
+    expect(runtime.allocateGlobalRange).toHaveBeenCalledWith(expect.any(Object), 'DrugMaster', 2);
+    expect(runtime.allocateRange).not.toHaveBeenCalled();
+    expect(runtime.updates).toEqual([
+      {
+        model: 'DrugMaster',
+        rowId: 'drug_a',
+        orgId: DISPLAY_ID_GLOBAL_ORG_ID,
+        displayId: 'drug0000000001',
+      },
+      {
+        model: 'DrugMaster',
+        rowId: 'drug_b',
+        orgId: DISPLAY_ID_GLOBAL_ORG_ID,
+        displayId: 'drug0000000002',
+      },
+    ]);
+    expect(result.ok).toBe(true);
+    expect(result.models.DrugMaster).toMatchObject({
+      nullDisplayIdRows: 0,
+      duplicateDisplayIdGroups: 0,
+      invalidFormatRows: 0,
+      sequenceMismatches: [],
+      backfilledRows: 2,
+    });
   });
 
   it('applies HandoffItem by parent-derived org only when explicitly opted in', async () => {
