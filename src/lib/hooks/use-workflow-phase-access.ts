@@ -1,5 +1,6 @@
 'use client';
 
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { readJsonResponseBody } from '@/lib/api/response-body';
@@ -197,8 +198,7 @@ export function buildWorkflowPhaseAccess(
   const dispensing = workbench.filter((item) => item.action_href.startsWith('/dispense'));
   const auditing = workbench.filter((item) => item.action_href.startsWith('/audit'));
   const medicationSets = workbench.filter(
-    (item) =>
-      item.action_href.startsWith('/set') && !item.action_href.startsWith('/set-audit'),
+    (item) => item.action_href.startsWith('/set') && !item.action_href.startsWith('/set-audit'),
   );
   const setAudits = workbench.filter((item) => item.action_href.startsWith('/set-audit'));
   const schedules = workbench.filter((item) => item.action_href.startsWith('/schedules'));
@@ -370,7 +370,7 @@ export function useWorkflowPhaseAccess() {
     queryKey: ['dashboard-workflow', orgId],
     queryFn: async () => {
       const response = await fetch('/api/dashboard/workflow?view=phase', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) {
         throw new Error('工程ナビゲーションの取得に失敗しました');

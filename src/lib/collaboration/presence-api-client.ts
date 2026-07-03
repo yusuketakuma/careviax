@@ -1,3 +1,4 @@
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { readJsonResponseBody } from '@/lib/api/response-body';
 import { logger } from '@/lib/utils/logger';
 import { readPresenceUsersResponse, type PresenceUser } from './presence-contract';
@@ -49,7 +50,7 @@ export async function fetchPresenceUsers({
   entityId,
 }: PresenceRequestOptions): Promise<PresenceUser[]> {
   const response = await fetch(buildPresenceUrl(entityType, entityId), {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   if (!response.ok) return [];
   return readPresenceUsersResponse(await readJsonResponseBody(response));
@@ -63,7 +64,7 @@ export function postPresenceUpdate({
 }: PostPresenceUpdateOptions) {
   return fetch('/api/presence', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+    headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify({
       entity_type: entityType,
       entity_id: entityId,

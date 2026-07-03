@@ -28,6 +28,7 @@ import {
   buildDailyOpsBlockedReasons,
   buildDailyOpsNextAction,
 } from '@/lib/workspace/daily-ops-rail';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { cn } from '@/lib/utils';
@@ -54,7 +55,7 @@ type LaneFilter = IntakeTriageLane | 'all';
 
 async function fetchIntakeTriage(orgId: string): Promise<IntakeTriageResponse> {
   const res = await fetch('/api/prescription-intakes/triage', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   if (!res.ok) throw new Error('取込キューの取得に失敗しました');
   const json = await res.json();
@@ -63,7 +64,7 @@ async function fetchIntakeTriage(orgId: string): Promise<IntakeTriageResponse> {
 
 async function fetchCockpit(orgId: string): Promise<DashboardCockpitResponse> {
   const res = await fetch('/api/dashboard/cockpit', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   if (!res.ok) throw new Error('当日オペレーション状態の取得に失敗しました');
   const json = await res.json();

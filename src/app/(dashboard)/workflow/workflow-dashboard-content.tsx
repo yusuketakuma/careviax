@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
 import type { HomeLinkContext, WorkflowFocus } from '@/lib/dashboard/home-link-builders';
@@ -66,7 +67,7 @@ export function WorkflowDashboardContent({
     queryKey: ['dashboard-workflow', orgId],
     queryFn: async () => {
       const res = await fetch('/api/dashboard/workflow', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('ダッシュボードの取得に失敗しました');
       return res.json() as Promise<{ data: WorkflowData }>;
@@ -82,10 +83,7 @@ export function WorkflowDashboardContent({
     mutationFn: async (draft: WorkflowData['communication_queue']['emergency_drafts'][number]) => {
       const res = await fetch('/api/communication-requests', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           patient_id: draft.patient_id,
           request_type: draft.request_type,
@@ -128,10 +126,7 @@ export function WorkflowDashboardContent({
       dueDate.setDate(dueDate.getDate() + 1);
       const res = await fetch('/api/inquiry-records', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           cycle_id: item.cycle_id,
           issue_id: item.issue_id,
@@ -181,10 +176,7 @@ export function WorkflowDashboardContent({
     }) => {
       const res = await fetch(`/api/inquiry-records/${inquiryId}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           result,
           change_detail:
@@ -250,10 +242,7 @@ export function WorkflowDashboardContent({
         item.prescribed_date;
       const res = await fetch('/api/visit-schedule-proposals', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           case_id: item.case_id,
           visit_type: 'regular',

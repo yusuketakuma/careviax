@@ -27,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { readApiJson } from '@/lib/api/client-json';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
@@ -258,7 +259,7 @@ export function TasksContent({
       return fetchAllCursorPages<Task>({
         path: '/api/tasks',
         params: new URLSearchParams(queryParams),
-        init: { headers: { 'x-org-id': orgId } },
+        init: { headers: buildOrgHeaders(orgId) },
         errorMessage: 'タスクの取得に失敗しました',
         itemSchema: taskSchema,
       });
@@ -277,7 +278,7 @@ export function TasksContent({
     queryKey: ['staff-workload', orgId],
     queryFn: async () => {
       const res = await fetch('/api/staff-workload', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('スタッフ別業務量の取得に失敗しました');
       return res.json() as Promise<{ data: StaffWorkload[]; date: string }>;
@@ -307,7 +308,7 @@ export function TasksContent({
         : null;
       const res = await fetch('/api/tasks', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           task_type: requestType,
           title: requestTitle.trim(),
@@ -346,7 +347,7 @@ export function TasksContent({
     mutationFn: async (ids: string[]) => {
       const res = await fetch('/api/tasks/bulk', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ ids }),
       });
       const payload = await readApiJson<BulkCompleteTasksResponse>(res, {

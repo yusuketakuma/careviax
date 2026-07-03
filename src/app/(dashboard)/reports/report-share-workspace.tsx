@@ -18,6 +18,7 @@ import {
 import { WorkspaceActionRail } from '@/components/features/workspace/action-rail';
 import { MainWorkflowCompactNav } from '@/components/features/workflow/main-workflow-route';
 import { readApiJson } from '@/lib/api/client-json';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { generateCareReportFromVisit } from '@/lib/reports/generate-from-visit-client';
@@ -99,7 +100,7 @@ function deliveryRetryLabel(retryCount: number): string {
 
 async function fetchReportsTodayWorkspace(orgId: string): Promise<ReportsTodayWorkspaceResponse> {
   const res = await fetch('/api/care-reports/today-workspace', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   const json = await readApiJson<{ data: ReportsTodayWorkspaceResponse }>(
     res,
@@ -110,7 +111,7 @@ async function fetchReportsTodayWorkspace(orgId: string): Promise<ReportsTodayWo
 
 async function fetchOperationCockpit(orgId: string): Promise<DashboardCockpitResponse> {
   const res = await fetch('/api/dashboard/cockpit', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   const json = await readApiJson<{ data: DashboardCockpitResponse }>(
     res,

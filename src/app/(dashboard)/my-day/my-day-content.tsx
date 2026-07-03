@@ -31,6 +31,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import { useAuthStore } from '@/lib/stores/auth-store';
@@ -68,11 +69,7 @@ import type {
   MyDayVisitFilter,
 } from '@/lib/dashboard/home-link-builders';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
-import {
-  MyDayNextStepPanel,
-  SectionSkeleton,
-  UnpreparedVisitLink,
-} from './my-day-sections';
+import { MyDayNextStepPanel, SectionSkeleton, UnpreparedVisitLink } from './my-day-sections';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
@@ -201,7 +198,7 @@ export function MyDayContent({
       const params = new URLSearchParams({ date_from: today, date_to: today });
       if (userId) params.set('pharmacist_id', userId);
       const res = await fetch(`/api/visit-schedules?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('訪問スケジュールの取得に失敗しました');
       return res.json() as Promise<{ data: VisitSchedule[] }>;
@@ -219,7 +216,7 @@ export function MyDayContent({
       return fetchAllCursorPages<Task>({
         path: '/api/tasks',
         params,
-        init: { headers: { 'x-org-id': orgId } },
+        init: { headers: buildOrgHeaders(orgId) },
         errorMessage: 'タスクの取得に失敗しました',
       });
     },
@@ -244,7 +241,7 @@ export function MyDayContent({
         date_from: `${today}T00:00:00+09:00`,
       });
       const res = await fetch(`/api/audit-logs?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('ステータス変更の取得に失敗しました');
       const json = await res.json();

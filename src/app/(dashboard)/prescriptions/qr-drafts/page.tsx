@@ -12,6 +12,7 @@ import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import {
@@ -139,7 +140,7 @@ function QrDraftList() {
     queryKey: ['qr-drafts', orgId, 'all'],
     queryFn: async () => {
       const res = await fetch('/api/qr-scan-drafts?include_unmatched_count=1', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('QRスキャン下書きの取得に失敗しました');
       return res.json() as Promise<QrDraftListResponse>;
@@ -157,7 +158,7 @@ function QrDraftList() {
     queryKey: ['qr-drafts', orgId, 'unmatched'],
     queryFn: async () => {
       const res = await fetch('/api/qr-scan-drafts?unmatched=true', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('QRスキャン下書きの取得に失敗しました');
       return res.json() as Promise<QrDraftListResponse>;

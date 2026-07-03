@@ -1,3 +1,5 @@
+import { buildOrgHeaders } from '@/lib/api/org-headers';
+
 export type TransitionLog = {
   id: string;
   from_status: string;
@@ -31,12 +33,9 @@ export const WORKFLOW_HISTORY_INVALIDATION_EVENTS = [
   'workflow_refresh',
 ] as const;
 
-export async function fetchCycleTransitionLogs(args: {
-  cycleId: string;
-  orgId: string;
-}) {
+export async function fetchCycleTransitionLogs(args: { cycleId: string; orgId: string }) {
   const res = await fetch(`/api/medication-cycles/${args.cycleId}/history`, {
-    headers: { 'x-org-id': args.orgId },
+    headers: buildOrgHeaders(args.orgId),
   });
   if (!res.ok) throw new Error('履歴の取得に失敗しました');
   return res.json() as Promise<TransitionLog[]>;
