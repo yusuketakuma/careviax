@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const { withOrgContextMock, recordDataExportAuditMock, txMock } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
@@ -67,11 +68,6 @@ import { GET } from './route';
 
 function createRequest(url: string) {
   return new NextRequest(url);
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function parseCsvLine(line: string) {

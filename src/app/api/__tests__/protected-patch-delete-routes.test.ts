@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const { authMock, prismaMock, withOrgContextMock, txMock } = vi.hoisted(() => {
   const createRecord = () => ({
@@ -182,11 +183,6 @@ function createDeleteRequest(url: string, headers?: Record<string, string>) {
       ...headers,
     },
   });
-}
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function routeShouldBeNoStore(routeName: string) {

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const { authMock, membershipFindFirstMock, findManyMock, countMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
@@ -27,11 +28,6 @@ vi.mock('@/lib/db/client', () => ({
 import { GET } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
-}
 
 function createRequest(headers?: Record<string, string>, search = 'limit=10') {
   return new NextRequest(`http://localhost/api/audit-logs?${search}`, {

@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 import { createHmac } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { EMAIL_DELIVERY_FAILURE_REASON } from '@/lib/reports/delivery-failure-reasons';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
@@ -187,11 +188,6 @@ function createMalformedRequest() {
     },
     body: '{"channel":',
   });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function buildExpectedSendRequestFingerprint(
