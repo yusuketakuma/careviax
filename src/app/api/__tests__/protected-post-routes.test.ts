@@ -273,6 +273,7 @@ describe('protected POST routes auth/body matrix', () => {
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(401);
       if (
+        route.name === 'cases POST' ||
         route.name === 'visit-preparations/brief-batch POST' ||
         route.name === 'prescription-intakes/facility-batch POST' ||
         route.name === 'communication-requests/[id]/responses POST' ||
@@ -318,6 +319,7 @@ describe('protected POST routes auth/body matrix', () => {
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(403);
       if (
+        route.name === 'cases POST' ||
         route.name === 'visit-preparations/brief-batch POST' ||
         route.name === 'prescription-intakes/facility-batch POST' ||
         route.name === 'communication-requests/[id]/responses POST' ||
@@ -365,6 +367,7 @@ describe('protected POST routes auth/body matrix', () => {
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(400);
       if (
+        route.name === 'cases POST' ||
         route.name === 'visit-preparations/brief-batch POST' ||
         route.name === 'prescription-intakes/facility-batch POST' ||
         route.name === 'communication-requests/[id]/responses POST' ||

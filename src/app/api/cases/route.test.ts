@@ -292,6 +292,7 @@ describe('/api/cases', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(careCaseCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -309,6 +310,7 @@ describe('/api/cases', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(careCaseCreateMock).not.toHaveBeenCalled();
@@ -318,6 +320,7 @@ describe('/api/cases', () => {
     const response = (await POST(createMalformedPostRequest(), emptyRouteContext))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -340,6 +343,68 @@ describe('/api/cases', () => {
     ))!;
 
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(careCaseCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('adds no-store headers to POST auth failures', async () => {
+    authMock.mockResolvedValue(null);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/cases', {
+        patient_id: 'patient_1',
+        referral_source: '病院A',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(401);
+    expectSensitiveNoStore(response);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('adds no-store headers to POST permission failures', async () => {
+    membershipFindFirstMock.mockResolvedValue({ role: 'driver' });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/cases', {
+        patient_id: 'patient_1',
+        referral_source: '病院A',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when case creation throws unexpectedly', async () => {
+    careCaseCreateMock.mockRejectedValueOnce(
+      new Error('raw case failure patient=患者A token=secret display_id=cc0000009999'),
+    );
+
+    const response = (await POST(
+      createRequest('http://localhost/api/cases', {
+        patient_id: 'patient_1',
+        referral_source: '病院A',
+        notes: '初回相談',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('患者A');
+    expect(bodyText).not.toContain('token=secret');
+    expect(bodyText).not.toContain('cc0000009999');
   });
 });

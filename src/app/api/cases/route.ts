@@ -1,6 +1,7 @@
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, internalError } from '@/lib/api/response';
 import { createCaseSchema } from '@/lib/validations/case';
 import { buildCursorPage, parseOptionalBoundedIntegerParam } from '@/lib/api/pagination';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -231,7 +232,7 @@ const authenticatedGET = withAuthContext(
 export const GET: typeof authenticatedGET = async (req, routeContext) =>
   withSensitiveNoStore(await authenticatedGET(req, routeContext));
 
-export const POST = withAuthContext(
+const authenticatedPOST = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -267,3 +268,12 @@ export const POST = withAuthContext(
     message: 'ケースの作成権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
