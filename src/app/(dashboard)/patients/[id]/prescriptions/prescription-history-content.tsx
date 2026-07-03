@@ -39,6 +39,12 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPrescriptionIntakeApiPath } from '@/lib/prescriptions/api-paths';
+import type {
+  PrescriptionDiffMeta as DiffMeta,
+  PrescriptionDiffReview as DiffReview,
+  PrescriptionDiffReviewChangeType as DiffReviewChangeType,
+  PrescriptionDiffReviewRow as DiffReviewRow,
+} from '@/lib/prescriptions/diff-review-contract';
 import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
 import { medicationIdentityKey, prescriptionLineKey } from '@/lib/prescription/medication-diff';
 import { Loading } from '@/components/ui/loading';
@@ -96,36 +102,6 @@ type PrescriptionIntake = {
 };
 
 type PatientInfo = { id: string; name: string; name_kana: string };
-
-// ─── p0_11 処方の変化を確認(差分レビュー)─────────────────────────────────────
-
-type DiffReviewChangeType = 'added' | 'removed' | 'changed' | 'unchanged';
-
-type DiffReviewRow = {
-  key: string;
-  drug_name: string;
-  current_drug_master_id: string | null;
-  current_drug_code: string | null;
-  previous_drug_master_id: string | null;
-  previous_drug_code: string | null;
-  change_type: DiffReviewChangeType;
-  change_label: string;
-  previous_label: string | null;
-  current_label: string | null;
-  pharmacist_memo: string | null;
-};
-
-type DiffReview = {
-  rows: DiffReviewRow[];
-  set_impacts: string[];
-  patient_checks: string[];
-  change_count: number;
-};
-
-type DiffMeta = {
-  current: { id: string; prescribed_date: string };
-  previous: { id: string; prescribed_date: string };
-};
 
 type DrugMasterInfo = {
   id: string;

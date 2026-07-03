@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import type { PrescriptionDiffReview } from '@/lib/prescriptions/diff-review-contract';
 
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useOrgIdMock = vi.hoisted(() => vi.fn());
@@ -398,6 +399,40 @@ describe('PrescriptionHistoryContent', () => {
   });
 
   it('shows drug names and human-readable codes in diff review rows', () => {
+    const diffReview = {
+      rows: [
+        {
+          key: 'row_amlo',
+          drug_name: 'アムロジピン錠5mg',
+          current_drug_master_id: 'drug_master_new',
+          current_drug_code: 'YJ_NEW',
+          previous_drug_master_id: 'drug_master_old',
+          previous_drug_code: 'YJ_OLD',
+          change_type: 'changed',
+          change_label: '変更',
+          previous_label: '5mg 朝食後 28日',
+          current_label: '10mg 朝食後 28日',
+          pharmacist_memo: null,
+        },
+        {
+          key: 'row_rosu',
+          drug_name: 'ロスバスタチン錠2.5mg',
+          current_drug_master_id: 'drug_master_rosu',
+          current_drug_code: 'YJ_ROSU',
+          previous_drug_master_id: null,
+          previous_drug_code: null,
+          change_type: 'added',
+          change_label: '追加',
+          previous_label: 'なし',
+          current_label: '2.5mg 夕食後 28日',
+          pharmacist_memo: '眠前へ変更予定',
+        },
+      ],
+      set_impacts: [],
+      patient_checks: [],
+      change_count: 2,
+    } satisfies PrescriptionDiffReview;
+
     useOrgIdMock.mockReturnValue('org_1');
     useParamsMock.mockReturnValue({ id: 'patient_1' });
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
@@ -410,39 +445,7 @@ describe('PrescriptionHistoryContent', () => {
         data: {
           patient: { id: 'patient_1', name: '山田花子', name_kana: 'ヤマダハナコ' },
           data: [],
-          diff_review: {
-            rows: [
-              {
-                key: 'row_amlo',
-                drug_name: 'アムロジピン錠5mg',
-                current_drug_master_id: 'drug_master_new',
-                current_drug_code: 'YJ_NEW',
-                previous_drug_master_id: 'drug_master_old',
-                previous_drug_code: 'YJ_OLD',
-                change_type: 'changed',
-                change_label: '変更',
-                previous_label: '5mg 朝食後 28日',
-                current_label: '10mg 朝食後 28日',
-                pharmacist_memo: null,
-              },
-              {
-                key: 'row_rosu',
-                drug_name: 'ロスバスタチン錠2.5mg',
-                current_drug_master_id: 'drug_master_rosu',
-                current_drug_code: 'YJ_ROSU',
-                previous_drug_master_id: null,
-                previous_drug_code: null,
-                change_type: 'added',
-                change_label: '追加',
-                previous_label: 'なし',
-                current_label: '2.5mg 夕食後 28日',
-                pharmacist_memo: '眠前へ変更予定',
-              },
-            ],
-            set_impacts: [],
-            patient_checks: [],
-            change_count: 2,
-          },
+          diff_review: diffReview,
           diff_meta: {
             previous: { id: 'old', prescribed_date: '2026-06-01' },
             current: { id: 'new', prescribed_date: '2026-06-02' },

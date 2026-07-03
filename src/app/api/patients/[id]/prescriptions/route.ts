@@ -17,6 +17,11 @@ import {
   detectMedicationChanges,
   matchMedicationDiffLines,
 } from '@/lib/prescription/medication-diff';
+import type {
+  PrescriptionDiffReview as DiffReview,
+  PrescriptionDiffReviewChangeType as DiffReviewChangeType,
+  PrescriptionDiffReviewRow as DiffReviewRow,
+} from '@/lib/prescriptions/diff-review-contract';
 
 const ROUTE = '/api/patients/[id]/prescriptions';
 const PATIENT_PRESCRIPTION_CURSOR_KEYS = ['prescribed_date', 'created_at'] as const;
@@ -36,32 +41,6 @@ type DiffReviewLine = {
   /** Prisma の DateTime? @db.Date(JS Date)。JSON 化前は Date 型 */
   start_date: Date | null;
   notes: string | null;
-};
-
-type DiffReviewChangeType = 'added' | 'removed' | 'changed' | 'unchanged';
-
-type DiffReviewRow = {
-  /** 安定キー(drug_master_id 優先、なければ drug_code、最後に未解決 drug_name) */
-  key: string;
-  drug_name: string;
-  /** 今回行の医薬品マスターID。中止行では null */
-  current_drug_master_id: string | null;
-  /** 今回行の医薬品コード。中止行では null */
-  current_drug_code: string | null;
-  /** 前回行の医薬品マスターID。追加行では null */
-  previous_drug_master_id: string | null;
-  /** 前回行の医薬品コード。追加行では null */
-  previous_drug_code: string | null;
-  /** added | removed | changed | unchanged */
-  change_type: DiffReviewChangeType;
-  /** 変化列ラベル: 追加 / 中止 / 変更 / 変化なし */
-  change_label: string;
-  /** 前回列: dose / frequency / days を畳んだ表示(無ければ「なし」) */
-  previous_label: string | null;
-  /** 今回列: 同上(中止のときは「中止」、変化なしのときは「同じ」) */
-  current_label: string | null;
-  /** 薬剤師メモ列: 現行行(中止時は前回行)の notes */
-  pharmacist_memo: string | null;
 };
 
 const CHANGE_LABELS: Record<DiffReviewChangeType, string> = {
@@ -135,7 +114,7 @@ function diffReviewRowKey(line: DiffReviewLine): string {
  * 最新 intake と前回 intake から p0_11 の差分レビュー構造を組み立てる。
  * 既存の detectMedicationChanges を流用し、変化なしの行も含めて 4 列テーブルを作る。
  */
-function buildDiffReview(latest: DiffReviewLine[], previous: DiffReviewLine[]) {
+function buildDiffReview(latest: DiffReviewLine[], previous: DiffReviewLine[]): DiffReview {
   // サブカード集約・件数には既存の detectMedicationChanges を流用する
   const changes = detectMedicationChanges(latest, previous);
 
