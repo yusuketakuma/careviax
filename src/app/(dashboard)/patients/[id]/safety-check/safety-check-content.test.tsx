@@ -193,6 +193,60 @@ describe('SafetyCheckContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(refetchPatient).toHaveBeenCalled();
   });
+
+  it('surfaces a non-blocking degraded banner and suppresses the false-safe empty text when the CDS check fails', () => {
+    const refetchCds = vi.fn();
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockImplementation((cfg: { queryKey: unknown[] }) => {
+      const key = String((cfg.queryKey as unknown[])[0]);
+      if (key === 'medication-issues') {
+        // 課題は空。CDS 補強が失敗している状態では「気になる点はありません」を出してはならない。
+        return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+      }
+      if (key === 'safety-check-cds') {
+        return { data: undefined, isLoading: false, isError: true, refetch: refetchCds };
+      }
+      if (key === 'patient-safety-check-summary') {
+        return { data: { name: '山田花子' }, isLoading: false };
+      }
+      return { data: undefined, isLoading: false };
+    });
+
+    render(<SafetyCheckContent patientId="patient_1" />);
+
+    const banner = screen.getByTestId('safety-cds-degraded');
+    expect(banner.getAttribute('role')).toBe('alert');
+    expect(within(banner).getByText(/相互作用チェックを実行できませんでした/)).toBeTruthy();
+    // false-safe な「気になる点はありません」はエラー時に出さない。
+    expect(screen.queryByText(/気になる点はありません/)).toBeNull();
+
+    fireEvent.click(within(banner).getByRole('button', { name: '再試行' }));
+    expect(refetchCds).toHaveBeenCalled();
+  });
+
+  it('keeps the clean-state empty text (no degraded banner) when the CDS check succeeds with zero concerns', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockImplementation((cfg: { queryKey: unknown[] }) => {
+      const key = String((cfg.queryKey as unknown[])[0]);
+      if (key === 'medication-issues') {
+        return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+      }
+      if (key === 'safety-check-cds') return { data: [], isLoading: false, isError: false };
+      if (key === 'patient-safety-check-summary') {
+        return { data: { name: '山田花子' }, isLoading: false };
+      }
+      return { data: undefined, isLoading: false };
+    });
+
+    render(<SafetyCheckContent patientId="patient_1" />);
+
+    expect(screen.queryByTestId('safety-cds-degraded')).toBeNull();
+    expect(screen.getByText(/気になる点はありません/)).toBeTruthy();
+  });
 });
 
 describe('SafetyCheckContent url/header convergence', () => {
@@ -377,6 +431,82 @@ describe('SafetyCheckContent url/header convergence', () => {
       });
       expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
       expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('cds helper throws (does not swallow to empty) when the medication-cycles GET returns a 5xx server error', async () => {
+    const { queryConfigs } = renderSafetyCheck();
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: async () => ({}),
+    } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      // 5xx を [] に潰すと CDS 障害が「問題なし」に偽装される。throw して isError に乗せる。
+      await expect(queryConfigs.get('safety-check-cds')!.queryFn()).rejects.toThrow();
+      // cds/check POST までは到達しない(前提取得で失敗)。
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('cds helper throws when the cds/check POST returns a 5xx server error', async () => {
+    const { queryConfigs } = renderSafetyCheck();
+    const fetchMock = vi.fn();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: [{ id: 'cycle_1' }] }),
+    } as Response);
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      json: async () => ({}),
+    } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      await expect(queryConfigs.get('safety-check-cds')!.queryFn()).rejects.toThrow();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('cds helper returns [] (legitimate empty, no throw) when there are zero medication cycles', async () => {
+    const { queryConfigs } = renderSafetyCheck();
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: [] }),
+    } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      await expect(queryConfigs.get('safety-check-cds')!.queryFn()).resolves.toEqual([]);
+      // サイクルが無ければ cds/check POST は発火しない。
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('cds helper returns [] (legitimate empty, no throw) when the medication-cycles GET is a 4xx permission denial', async () => {
+    const { queryConfigs } = renderSafetyCheck();
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      json: async () => ({}),
+    } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      // 閲覧権限(canDispense)による空は正当な空。degraded を出さず補強なしで扱う。
+      await expect(queryConfigs.get('safety-check-cds')!.queryFn()).resolves.toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     } finally {
       vi.unstubAllGlobals();
     }

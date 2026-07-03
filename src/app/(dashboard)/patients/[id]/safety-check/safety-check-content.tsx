@@ -72,12 +72,19 @@ type PatientSummaryResponse = {
 
 async function fetchPatientCdsAlerts(orgId: string, patientId: string): Promise<SafetyCdsAlert[]> {
   // CDS チェックはサイクル単位のため、患者の最新サイクルを引いてから実行する。
-  // サイクル無し・権限不足(閲覧は canDispense)・チェック失敗は補強なしとして扱う。
+  // 「正当な空」(サイクル無し・権限による空=閲覧は canDispense のため 4xx)は補強なしの [] で扱う。
+  // ただしサーバエラー(5xx)は握り潰さず throw し、cdsQuery.isError に乗せて degraded を明示する。
+  // 相互作用/アレルギーの false-negative は最重被害のため、失敗を「問題なし」に偽装しない(fail-close)。
   const cyclesRes = await fetch(
     `/api/medication-cycles?${new URLSearchParams({ patient_id: patientId, limit: '1' })}`,
     { headers: buildOrgHeaders(orgId) },
   );
-  if (!cyclesRes.ok) return [];
+  if (!cyclesRes.ok) {
+    if (cyclesRes.status >= 500) {
+      throw new Error('相互作用チェックの前提となる服薬サイクルを取得できませんでした');
+    }
+    return [];
+  }
   const cyclesJson = (await cyclesRes.json()) as { data?: Array<{ id: string }> };
   const cycleId = cyclesJson.data?.[0]?.id;
   if (!cycleId) return [];
@@ -87,7 +94,12 @@ async function fetchPatientCdsAlerts(orgId: string, patientId: string): Promise<
     headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify({ cycleId, patientId }),
   });
-  if (!checkRes.ok) return [];
+  if (!checkRes.ok) {
+    if (checkRes.status >= 500) {
+      throw new Error('相互作用チェックを実行できませんでした');
+    }
+    return [];
+  }
   const checkJson = (await checkRes.json()) as { alerts?: SafetyCdsAlert[] };
   return checkJson.alerts ?? [];
 }
@@ -523,11 +535,28 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
                 >
                   気になる点
                 </h2>
-                {concerns.length === 0 ? (
-                  <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                    気になる点はありません。新しい課題は服薬管理画面から登録できます。
-                  </p>
-                ) : (
+                {/* CDS 補強の取得失敗を「問題なし」に潰さない(false-safe 禁止)。相互作用チェックが
+                    実行できなかった旨と、表示中の気になる点が不完全でありうる旨を明示し、再試行導線を出す。 */}
+                {cdsQuery.isError ? (
+                  <div
+                    role="alert"
+                    data-testid="safety-cds-degraded"
+                    className="mt-4 flex flex-wrap items-center gap-3 rounded-md border border-border/70 border-l-4 border-l-state-blocked bg-card p-3"
+                  >
+                    <p className="min-w-0 flex-1 text-sm leading-6 text-foreground">
+                      相互作用チェックを実行できませんでした。表示中の「気になる点」は不完全な可能性があります。
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void cdsQuery.refetch()}
+                    >
+                      再試行
+                    </Button>
+                  </div>
+                ) : null}
+                {concerns.length > 0 ? (
                   <ul className="mt-4 space-y-4" role="list">
                     {concerns.map((concern) => (
                       <ConcernCard
@@ -538,6 +567,10 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
                       />
                     ))}
                   </ul>
+                ) : cdsQuery.isError ? null : (
+                  <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                    気になる点はありません。新しい課題は服薬管理画面から登録できます。
+                  </p>
                 )}
               </section>
 
