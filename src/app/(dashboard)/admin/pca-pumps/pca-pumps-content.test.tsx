@@ -14,6 +14,7 @@ import {
 } from '@/lib/pca-pumps/api-paths';
 import { PRESCRIBER_INSTITUTIONS_API_PATH } from '@/lib/prescriber-institutions/api-paths';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { stubJsonFetch } from '@/test/fetch-test-utils';
 import {
   buildPcaPumpStatusUpdatePayload,
   buildPcaReturnInspectionPayload,
@@ -387,12 +388,7 @@ function latestMutationFn(slot: 0 | 1 | 2 | 3 | 4) {
 }
 
 function stubFetchOk(payload: unknown = { data: [] }) {
-  const fetchMock = vi.fn().mockResolvedValue({
-    ok: true,
-    json: async () => payload,
-  });
-  vi.stubGlobal('fetch', fetchMock);
-  return fetchMock;
+  return stubJsonFetch(payload);
 }
 
 describe('PcaPumpsContent', () => {

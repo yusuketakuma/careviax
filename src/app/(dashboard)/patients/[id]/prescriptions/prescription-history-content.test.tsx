@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { stubJsonFetch } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import type { PrescriptionDiffReview } from '@/lib/prescriptions/diff-review-contract';
@@ -1457,9 +1458,7 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
   }
 
   function stubFetch(json: unknown = { data: [] }) {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => json } as Response);
-    vi.stubGlobal('fetch', fetchMock);
-    return fetchMock;
+    return stubJsonFetch(json);
   }
 
   beforeEach(() => {

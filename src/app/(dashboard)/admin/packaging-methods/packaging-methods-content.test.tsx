@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { stubJsonFetch } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   PACKAGING_METHODS_API_PATH,
@@ -78,9 +79,7 @@ function latestMutationFn() {
 }
 
 function stubFetchOk() {
-  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: [METHOD] }) });
-  vi.stubGlobal('fetch', fetchMock);
-  return fetchMock;
+  return stubJsonFetch({ data: [METHOD] });
 }
 
 beforeEach(() => {
@@ -145,8 +144,11 @@ describe('PackagingMethodsContent', () => {
 
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit | undefined];
     expect(url).toBe(PACKAGING_METHODS_API_PATH);
+    if (!init) {
+      throw new Error('Expected fetch init for packaging method create');
+    }
     expect(init.method).toBe('POST');
     expect(init.headers).toEqual(buildOrgJsonHeaders('org_1'));
   });
@@ -162,8 +164,11 @@ describe('PackagingMethodsContent', () => {
     await latestMutationFn()();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit | undefined];
     expect(url).toBe('/api/packaging-methods/a%2Fb%20c');
+    if (!init) {
+      throw new Error('Expected fetch init for packaging method update');
+    }
     expect(init.method).toBe('PATCH');
     expect(init.headers).toEqual(buildOrgJsonHeaders('org_1'));
     expect(buildPackagingMethodApiPath).toHaveBeenCalledWith('a/b c');

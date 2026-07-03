@@ -22,7 +22,7 @@ export function jsonResponse(body: unknown, init: JsonResponseInit = {}) {
 }
 
 export function createJsonFetchMock(body: unknown, init: JsonResponseInit = {}) {
-  return vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(body, init));
+  return vi.fn<typeof fetch>(async () => jsonResponse(body, init));
 }
 
 export function stubJsonFetch(body: unknown, init: JsonResponseInit = {}) {

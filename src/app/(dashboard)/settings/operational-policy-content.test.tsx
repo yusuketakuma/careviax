@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { stubJsonFetch } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useUIStore } from '@/lib/stores/ui-store';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
@@ -192,9 +193,7 @@ function renderWithCapturedQueries({
 }
 
 function stubFetch(json: unknown = { data: buildPolicyFixture() }) {
-  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => json } as Response);
-  vi.stubGlobal('fetch', fetchMock);
-  return fetchMock;
+  return stubJsonFetch(json);
 }
 
 beforeEach(() => {

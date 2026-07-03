@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { stubJsonFetch } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
@@ -246,11 +247,7 @@ describe('MedicationsContent url/header convergence', () => {
   }
 
   function stubFetch() {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue({ ok: true, json: async () => ({ data: [] }) } as Response);
-    vi.stubGlobal('fetch', fetchMock);
-    return fetchMock;
+    return stubJsonFetch({ data: [] });
   }
 
   beforeEach(() => {
