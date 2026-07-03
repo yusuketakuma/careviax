@@ -397,6 +397,44 @@ function createRequest(body: unknown, headers?: Record<string, string>) {
 }
 
 function buildTx(state: TestState) {
+  function buildDispenseResultFromData(
+    id: string,
+    lineId: string,
+    data: Record<string, unknown>,
+  ): TestState['dispenseResults'][number] {
+    return {
+      id,
+      line_id: lineId,
+      actual_drug_name: data.actual_drug_name as string,
+      actual_drug_code: (data.actual_drug_code as string | undefined) ?? null,
+      actual_quantity: data.actual_quantity as number,
+      actual_unit: (data.actual_unit as string | undefined) ?? null,
+      carry_type: data.carry_type as 'carry' | 'facility_deposit' | 'deferred',
+      special_notes: (data.special_notes as string | undefined) ?? null,
+      dispensed_at: data.dispensed_at as Date,
+    };
+  }
+
+  function createDispenseResult(data: Record<string, unknown>) {
+    const created = buildDispenseResultFromData(
+      `result_${state.dispenseResults.length + 1}`,
+      data.line_id as string,
+      data,
+    );
+    state.dispenseResults.push(created);
+    return created;
+  }
+
+  function updateDispenseResult(id: string, data: Record<string, unknown>) {
+    let updated: TestState['dispenseResults'][number] | undefined;
+    state.dispenseResults = state.dispenseResults.map((result) => {
+      if (result.id !== id) return result;
+      updated = buildDispenseResultFromData(result.id, result.line_id, data);
+      return updated;
+    });
+    return updated;
+  }
+
   return {
     patient: {
       findFirst: vi.fn(async ({ where }: { where: { id: string } }) => {
@@ -783,38 +821,28 @@ function buildTx(state: TestState) {
       })),
     },
     dispenseResult: {
-      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
-        const created = {
-          id: `result_${state.dispenseResults.length + 1}`,
-          line_id: data.line_id as string,
-          actual_drug_name: data.actual_drug_name as string,
-          actual_drug_code: (data.actual_drug_code as string | undefined) ?? null,
-          actual_quantity: data.actual_quantity as number,
-          actual_unit: (data.actual_unit as string | undefined) ?? null,
-          carry_type: data.carry_type as 'carry' | 'facility_deposit' | 'deferred',
-          special_notes: (data.special_notes as string | undefined) ?? null,
-          dispensed_at: data.dispensed_at as Date,
-        };
-        state.dispenseResults.push(created);
-        return created;
-      }),
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) =>
+        createDispenseResult(data),
+      ),
       update: vi.fn(
         async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
-          state.dispenseResults = state.dispenseResults.map((result) =>
-            result.id === where.id
-              ? {
-                  ...result,
-                  actual_drug_name: data.actual_drug_name as string,
-                  actual_drug_code: (data.actual_drug_code as string | undefined) ?? null,
-                  actual_quantity: data.actual_quantity as number,
-                  actual_unit: (data.actual_unit as string | undefined) ?? null,
-                  carry_type: data.carry_type as 'carry' | 'facility_deposit' | 'deferred',
-                  special_notes: (data.special_notes as string | undefined) ?? null,
-                  dispensed_at: data.dispensed_at as Date,
-                }
-              : result,
-          );
-          return state.dispenseResults.find((result) => result.id === where.id);
+          return updateDispenseResult(where.id, data);
+        },
+      ),
+      upsert: vi.fn(
+        async ({
+          where,
+          create,
+          update,
+        }: {
+          where: { org_id_task_id_line_id: { line_id: string } };
+          create: Record<string, unknown>;
+          update: Record<string, unknown>;
+        }) => {
+          const key = where.org_id_task_id_line_id;
+          const existing = state.dispenseResults.find((result) => result.line_id === key.line_id);
+          if (!existing) return createDispenseResult(create);
+          return updateDispenseResult(existing.id, update);
         },
       ),
       findMany: vi.fn(async () => state.dispenseResults),

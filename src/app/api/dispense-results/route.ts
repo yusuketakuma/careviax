@@ -206,10 +206,6 @@ async function findInvalidPackagingGroupAssignments(args: {
   });
 }
 
-function isUniqueConstraintError(error: unknown) {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
-}
-
 function normalizeOptionalText(value: string | null | undefined) {
   const normalized = value?.trim();
   return normalized ? normalized : null;
@@ -464,7 +460,6 @@ async function authenticatedPOST(req: NextRequest) {
 
         const latestIntake = task.cycle.prescription_intakes?.[0] ?? null;
         const existingResults = task.results ?? [];
-        const existingResultByLineId = new Map(existingResults.map((item) => [item.line_id, item]));
 
         // 楽観的ロック(§12-4): クライアントがワークベンチ表示時の cycle.version を
         // 送ってきた場合のみ、書込前に現在値と照合する。ズレていれば他者更新として 409。
@@ -740,38 +735,22 @@ async function authenticatedPOST(req: NextRequest) {
               dispensed_at: now,
             };
 
-            if (existingResultByLineId.has(line.line_id)) {
-              return tx.dispenseResult.update({
-                where: { id: existingResultByLineId.get(line.line_id)!.id },
-                data: resultData,
-              });
-            }
-
-            try {
-              return await tx.dispenseResult.create({
-                data: {
-                  org_id: ctx.orgId,
-                  task_id,
-                  line_id: line.line_id,
-                  ...resultData,
-                },
-              });
-            } catch (err) {
-              if (!isUniqueConstraintError(err)) throw err;
-              const concurrentResult = await tx.dispenseResult.findFirst({
-                where: {
+            return tx.dispenseResult.upsert({
+              where: {
+                org_id_task_id_line_id: {
                   org_id: ctx.orgId,
                   task_id,
                   line_id: line.line_id,
                 },
-                select: { id: true },
-              });
-              if (!concurrentResult) throw err;
-              return tx.dispenseResult.update({
-                where: { id: concurrentResult.id },
-                data: resultData,
-              });
-            }
+              },
+              create: {
+                org_id: ctx.orgId,
+                task_id,
+                line_id: line.line_id,
+                ...resultData,
+              },
+              update: resultData,
+            });
           }),
         );
 

@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { Prisma } from '@prisma/client';
 
 const {
   loggerErrorMock,
@@ -88,13 +87,6 @@ const prescriptionQuantityConfirmed = {
   actual_quantity_source: 'prescription_quantity_confirmed' as const,
 };
 
-function createUniqueConstraintError() {
-  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
-    code: 'P2002',
-    clientVersion: 'test',
-  });
-}
-
 function createRequest(body: unknown) {
   const normalizedBody =
     body && typeof body === 'object' && !Array.isArray(body) && !('expected_version' in body)
@@ -145,7 +137,7 @@ function mockDispenseTaskForQuantityValidation(args: {
   prescribedUnit?: string | null;
   results?: Array<{ id: string; line_id: string; actual_quantity: number }>;
 }) {
-  const dispenseResultCreateMock = vi.fn();
+  const dispenseResultUpsertMock = vi.fn();
   const dispenseResultUpdateMock = vi.fn();
   const dispenseTaskUpdateMock = vi.fn();
   const visitScheduleUpdateMock = vi.fn();
@@ -197,7 +189,7 @@ function mockDispenseTaskForQuantityValidation(args: {
         update: dispenseTaskUpdateMock,
       },
       dispenseResult: {
-        create: dispenseResultCreateMock,
+        upsert: dispenseResultUpsertMock,
         update: dispenseResultUpdateMock,
         findMany: vi.fn().mockResolvedValue([]),
       },
@@ -211,7 +203,7 @@ function mockDispenseTaskForQuantityValidation(args: {
   );
 
   return {
-    dispenseResultCreateMock,
+    dispenseResultUpsertMock,
     dispenseResultUpdateMock,
     dispenseTaskUpdateMock,
     visitScheduleUpdateMock,
@@ -400,7 +392,7 @@ describe('/api/dispense-results POST', () => {
   });
 
   it('returns 409 WORKFLOW_CONFLICT when expected_version does not match the current cycle version', async () => {
-    const dispenseResultCreateMock = vi.fn();
+    const dispenseResultUpsertMock = vi.fn();
     const dispenseTaskUpdateMock = vi.fn();
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -439,7 +431,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: vi.fn().mockResolvedValue([]),
         },
       }),
@@ -475,13 +467,13 @@ describe('/api/dispense-results POST', () => {
       },
     });
     // Stale write must abort before any mutation or CDS check
-    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
   });
 
   it('replays an already-persisted stale dispense result by actual drug code despite display-name drift', async () => {
-    const dispenseResultCreateMock = vi.fn();
+    const dispenseResultUpsertMock = vi.fn();
     const dispenseResultUpdateMock = vi.fn();
     const dispenseTaskUpdateMock = vi.fn();
     const auditLogCreateMock = vi.fn();
@@ -535,7 +527,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           update: dispenseResultUpdateMock,
           findMany: vi.fn().mockResolvedValue([]),
         },
@@ -570,7 +562,7 @@ describe('/api/dispense-results POST', () => {
       idempotent: true,
       results: [{ id: 'result_1', line_id: 'line_1' }],
     });
-    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
@@ -582,7 +574,7 @@ describe('/api/dispense-results POST', () => {
   });
 
   it('keeps stale dispense result conflicts when actual drug codes differ even if names match', async () => {
-    const dispenseResultCreateMock = vi.fn();
+    const dispenseResultUpsertMock = vi.fn();
     const dispenseTaskUpdateMock = vi.fn();
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -633,7 +625,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: vi.fn().mockResolvedValue([]),
         },
       }),
@@ -667,13 +659,13 @@ describe('/api/dispense-results POST', () => {
         current_version: 6,
       },
     });
-    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
   });
 
   it('replays an already-persisted stale dispense result by name when both actual drug codes are blank', async () => {
-    const dispenseResultCreateMock = vi.fn();
+    const dispenseResultUpsertMock = vi.fn();
     const dispenseResultUpdateMock = vi.fn();
     const dispenseTaskUpdateMock = vi.fn();
     const auditLogCreateMock = vi.fn();
@@ -727,7 +719,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           update: dispenseResultUpdateMock,
           findMany: vi.fn().mockResolvedValue([]),
         },
@@ -760,7 +752,7 @@ describe('/api/dispense-results POST', () => {
       idempotent: true,
       results: [{ id: 'result_1', line_id: 'line_1' }],
     });
-    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
@@ -772,7 +764,7 @@ describe('/api/dispense-results POST', () => {
   });
 
   it('keeps stale dispense result conflicts when only one side has an actual drug code', async () => {
-    const dispenseResultCreateMock = vi.fn();
+    const dispenseResultUpsertMock = vi.fn();
     const dispenseTaskUpdateMock = vi.fn();
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -823,7 +815,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: vi.fn().mockResolvedValue([]),
         },
       }),
@@ -856,13 +848,13 @@ describe('/api/dispense-results POST', () => {
         current_version: 6,
       },
     });
-    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
   });
 
   it('replays an already-persisted identical stale dispense result with valid barcode evidence', async () => {
-    const dispenseResultCreateMock = vi.fn();
+    const dispenseResultUpsertMock = vi.fn();
     const dispenseResultUpdateMock = vi.fn();
     const dispenseTaskUpdateMock = vi.fn();
     const auditLogCreateMock = vi.fn();
@@ -917,7 +909,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           update: dispenseResultUpdateMock,
           findMany: vi.fn().mockResolvedValue([]),
         },
@@ -957,7 +949,7 @@ describe('/api/dispense-results POST', () => {
       results: [{ id: 'result_1', line_id: 'line_1' }],
     });
     expect(drugMasterFindFirstMock).toHaveBeenCalled();
-    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
@@ -968,7 +960,7 @@ describe('/api/dispense-results POST', () => {
   });
 
   it('keeps stale dispense result conflicts when persisted content differs from the replay payload', async () => {
-    const dispenseResultCreateMock = vi.fn();
+    const dispenseResultUpsertMock = vi.fn();
     const dispenseTaskUpdateMock = vi.fn();
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -1019,7 +1011,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: vi.fn().mockResolvedValue([]),
         },
       }),
@@ -1053,7 +1045,7 @@ describe('/api/dispense-results POST', () => {
         current_version: 6,
       },
     });
-    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
@@ -1061,7 +1053,7 @@ describe('/api/dispense-results POST', () => {
   });
 
   it('proceeds when expected_version matches the current cycle version', async () => {
-    const dispenseResultCreateMock = vi.fn().mockResolvedValue({
+    const dispenseResultUpsertMock = vi.fn().mockResolvedValue({
       id: 'result_1',
       line_id: 'line_1',
       actual_drug_name: 'アムロジピン',
@@ -1131,7 +1123,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: dispenseResultFindManyMock,
         },
         medicationCycle: {
@@ -1190,17 +1182,34 @@ describe('/api/dispense-results POST', () => {
         }),
       }),
     );
-    expect(dispenseResultCreateMock).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+    expect(dispenseResultUpsertMock).toHaveBeenCalledWith({
+      where: {
+        org_id_task_id_line_id: {
+          org_id: 'org_1',
+          task_id: 'task_1',
+          line_id: 'line_1',
+        },
+      },
+      create: expect.objectContaining({
+        org_id: 'org_1',
+        task_id: 'task_1',
+        line_id: 'line_1',
         actual_quantity: 12,
         actual_unit: '錠',
         discrepancy_reason: '残薬調整',
         // 帰属は常にセッションユーザ（ctx.userId='user_1'）。偽装 'attacker' は採用しない。
         dispensed_by: 'user_1',
       }),
+      update: expect.objectContaining({
+        actual_quantity: 12,
+        actual_unit: '錠',
+        discrepancy_reason: '残薬調整',
+        dispensed_by: 'user_1',
+      }),
     });
-    expect(dispenseResultCreateMock).not.toHaveBeenCalledWith({
-      data: expect.objectContaining({ dispensed_by: 'attacker' }),
+    expect(dispenseResultUpsertMock).not.toHaveBeenCalledWith({
+      create: expect.objectContaining({ dispensed_by: 'attacker' }),
+      update: expect.objectContaining({ dispensed_by: 'attacker' }),
     });
     expect(auditLogCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1241,7 +1250,7 @@ describe('/api/dispense-results POST', () => {
   });
 
   it('rejects barcode mismatches before dispensing side effects', async () => {
-    const dispenseResultCreateMock = vi.fn();
+    const dispenseResultUpsertMock = vi.fn();
     const dispenseTaskUpdateMock = vi.fn();
     const auditLogCreateMock = vi.fn();
     const drugMasterFindFirstMock = vi.fn().mockResolvedValue({ yj_code: 'DIFFERENT' });
@@ -1282,7 +1291,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: vi.fn().mockResolvedValue([]),
         },
         drugMaster: { findFirst: drugMasterFindFirstMock },
@@ -1328,7 +1337,7 @@ describe('/api/dispense-results POST', () => {
         ],
       },
     });
-    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
@@ -1338,7 +1347,7 @@ describe('/api/dispense-results POST', () => {
   });
 
   it('rejects barcode evidence when both the master YJ code and line drug code are missing', async () => {
-    const dispenseResultCreateMock = vi.fn();
+    const dispenseResultUpsertMock = vi.fn();
     const dispenseTaskUpdateMock = vi.fn();
     const auditLogCreateMock = vi.fn();
     const drugMasterFindFirstMock = vi.fn().mockResolvedValue({ yj_code: null });
@@ -1379,7 +1388,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: vi.fn().mockResolvedValue([]),
         },
         drugMaster: { findFirst: drugMasterFindFirstMock },
@@ -1419,14 +1428,14 @@ describe('/api/dispense-results POST', () => {
         ],
       },
     });
-    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
   });
 
   it('rejects barcode evidence when DrugMaster has no JAN match instead of using prefix fallback', async () => {
-    const dispenseResultCreateMock = vi.fn();
+    const dispenseResultUpsertMock = vi.fn();
     const dispenseTaskUpdateMock = vi.fn();
     const auditLogCreateMock = vi.fn();
     const drugMasterFindFirstMock = vi.fn().mockResolvedValue(null);
@@ -1467,7 +1476,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: vi.fn().mockResolvedValue([]),
         },
         drugMaster: { findFirst: drugMasterFindFirstMock },
@@ -1509,14 +1518,14 @@ describe('/api/dispense-results POST', () => {
         ],
       },
     });
-    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
   });
 
   it('rejects expired barcode evidence before dispensing side effects', async () => {
-    const dispenseResultCreateMock = vi.fn();
+    const dispenseResultUpsertMock = vi.fn();
     const dispenseTaskUpdateMock = vi.fn();
     const auditLogCreateMock = vi.fn();
     const drugMasterFindFirstMock = vi.fn().mockResolvedValue({ yj_code: '123' });
@@ -1557,7 +1566,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: vi.fn().mockResolvedValue([]),
         },
         drugMaster: { findFirst: drugMasterFindFirstMock },
@@ -1600,7 +1609,7 @@ describe('/api/dispense-results POST', () => {
         ],
       },
     });
-    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
@@ -1713,7 +1722,7 @@ describe('/api/dispense-results POST', () => {
   });
 
   it('requires safety checklist acknowledgement before saving dispense results', async () => {
-    const dispenseResultCreateMock = vi.fn();
+    const dispenseResultUpsertMock = vi.fn();
     const dispenseTaskUpdateMock = vi.fn();
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -1753,7 +1762,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: vi.fn().mockResolvedValue([]),
         },
         workflowException: {
@@ -1786,13 +1795,13 @@ describe('/api/dispense-results POST', () => {
         safety_checklist: ['required'],
       },
     });
-    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
   });
 
   it('blocks partial dispense result writes when the safety checklist is missing', async () => {
-    const dispenseResultCreateMock = vi.fn();
+    const dispenseResultUpsertMock = vi.fn();
     const dispenseTaskUpdateMock = vi.fn();
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -1839,7 +1848,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: vi.fn().mockResolvedValue([]),
         },
         workflowException: {
@@ -1871,13 +1880,13 @@ describe('/api/dispense-results POST', () => {
         safety_checklist: ['required'],
       },
     });
-    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
   });
 
   it('rejects dispense result writes when the prescribed quantity is unresolved', async () => {
-    const dispenseResultCreateMock = vi.fn();
+    const dispenseResultUpsertMock = vi.fn();
     const dispenseTaskUpdateMock = vi.fn();
     const visitScheduleUpdateMock = vi.fn();
 
@@ -1913,7 +1922,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: vi.fn().mockResolvedValue([]),
         },
         visitSchedule: { update: visitScheduleUpdateMock },
@@ -1944,7 +1953,7 @@ describe('/api/dispense-results POST', () => {
         unresolved_quantity_lines: [{ line_id: 'line_1', reason: 'prescribed_quantity_required' }],
       },
     });
-    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
@@ -1999,7 +2008,7 @@ describe('/api/dispense-results POST', () => {
           actual_quantity_confirmation_lines: [{ line_id: 'line_1', reason }],
         },
       });
-      expect(sideEffects.dispenseResultCreateMock).not.toHaveBeenCalled();
+      expect(sideEffects.dispenseResultUpsertMock).not.toHaveBeenCalled();
       expect(sideEffects.dispenseResultUpdateMock).not.toHaveBeenCalled();
       expect(sideEffects.dispenseTaskUpdateMock).not.toHaveBeenCalled();
       expect(sideEffects.visitScheduleUpdateMock).not.toHaveBeenCalled();
@@ -2045,7 +2054,7 @@ describe('/api/dispense-results POST', () => {
         ],
       },
     });
-    expect(sideEffects.dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(sideEffects.dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(sideEffects.dispenseResultUpdateMock).not.toHaveBeenCalled();
     expect(sideEffects.dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(sideEffects.visitScheduleUpdateMock).not.toHaveBeenCalled();
@@ -2093,7 +2102,7 @@ describe('/api/dispense-results POST', () => {
         actual_quantity_confirmation_lines: [{ line_id: 'line_1', reason }],
       },
     });
-    expect(sideEffects.dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(sideEffects.dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(sideEffects.dispenseResultUpdateMock).not.toHaveBeenCalled();
     expect(sideEffects.dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(sideEffects.visitScheduleUpdateMock).not.toHaveBeenCalled();
@@ -2131,7 +2140,7 @@ describe('/api/dispense-results POST', () => {
         ],
       },
     });
-    expect(sideEffects.dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(sideEffects.dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(sideEffects.dispenseResultUpdateMock).not.toHaveBeenCalled();
     expect(sideEffects.dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(sideEffects.visitScheduleUpdateMock).not.toHaveBeenCalled();
@@ -2139,8 +2148,7 @@ describe('/api/dispense-results POST', () => {
   });
 
   it('allows unchanged existing-result quantity resubmits with existing_result source', async () => {
-    const dispenseResultCreateMock = vi.fn();
-    const dispenseResultUpdateMock = vi.fn().mockResolvedValue({
+    const dispenseResultUpsertMock = vi.fn().mockResolvedValue({
       id: 'result_1',
       line_id: 'line_1',
       actual_drug_name: 'アムロジピン',
@@ -2211,8 +2219,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
-          update: dispenseResultUpdateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: dispenseResultFindManyMock,
         },
         medicationCycle: {
@@ -2254,10 +2261,22 @@ describe('/api/dispense-results POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
-    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
-    expect(dispenseResultUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'result_1' },
-      data: expect.objectContaining({
+    expect(dispenseResultUpsertMock).toHaveBeenCalledWith({
+      where: {
+        org_id_task_id_line_id: {
+          org_id: 'org_1',
+          task_id: 'task_1',
+          line_id: 'line_1',
+        },
+      },
+      create: expect.objectContaining({
+        org_id: 'org_1',
+        task_id: 'task_1',
+        line_id: 'line_1',
+        actual_quantity: 12,
+        discrepancy_reason: '既存実績',
+      }),
+      update: expect.objectContaining({
         actual_quantity: 12,
         discrepancy_reason: '既存実績',
       }),
@@ -2265,7 +2284,7 @@ describe('/api/dispense-results POST', () => {
   });
 
   it('blocks dispense result writes when server-side CDS cannot complete', async () => {
-    const dispenseResultCreateMock = vi.fn();
+    const dispenseResultUpsertMock = vi.fn();
     const dispenseTaskUpdateMock = vi.fn();
     checkDispenseAlertsMock.mockRejectedValueOnce(new Error('cds unavailable'));
 
@@ -2307,7 +2326,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: vi.fn().mockResolvedValue([]),
         },
         workflowException: {
@@ -2343,12 +2362,12 @@ describe('/api/dispense-results POST', () => {
       },
     });
     expect(checkDispenseAlertsMock).toHaveBeenCalledWith('org_1', 'cycle_1', 'patient_1');
-    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
   });
 
   it('rejects stale completion transitions before writing dispense results', async () => {
-    const dispenseResultCreateMock = vi.fn();
+    const dispenseResultUpsertMock = vi.fn();
     const dispenseTaskUpdateMock = vi.fn();
     const auditLogCreateMock = vi.fn();
     const medicationCycleFindFirstMock = vi.fn().mockResolvedValue({
@@ -2397,7 +2416,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: vi.fn().mockResolvedValue([]),
         },
         medicationCycle: {
@@ -2438,18 +2457,19 @@ describe('/api/dispense-results POST', () => {
     });
     expect(checkDispenseAlertsMock).toHaveBeenCalledWith('org_1', 'cycle_1', 'patient_1');
     expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
-    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpsertMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
-  it('converges concurrent first writes to one dispense result per task line', async () => {
-    const dispenseResultCreateMock = vi.fn().mockRejectedValueOnce(createUniqueConstraintError());
-    const dispenseResultFindFirstMock = vi.fn().mockResolvedValue({ id: 'result_existing' });
-    const dispenseResultUpdateMock = vi.fn().mockResolvedValue({
-      id: 'result_existing',
+  it('uses compound upsert to converge concurrent first writes to one dispense result per task line', async () => {
+    const legacyCreateMock = vi.fn();
+    const legacyFindFirstMock = vi.fn();
+    const legacyUpdateMock = vi.fn();
+    const dispenseResultUpsertMock = vi.fn().mockResolvedValue({
+      id: 'result_1',
       line_id: 'line_1',
       actual_drug_name: 'アムロジピン',
       actual_drug_code: '123',
@@ -2508,9 +2528,10 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
-          findFirst: dispenseResultFindFirstMock,
-          update: dispenseResultUpdateMock,
+          create: legacyCreateMock,
+          upsert: dispenseResultUpsertMock,
+          findFirst: legacyFindFirstMock,
+          update: legacyUpdateMock,
           findMany: dispenseResultFindManyMock,
         },
         medicationCycle: {
@@ -2547,18 +2568,26 @@ describe('/api/dispense-results POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
-    expect(dispenseResultCreateMock).toHaveBeenCalledTimes(1);
-    expect(dispenseResultFindFirstMock).toHaveBeenCalledWith({
+    expect(dispenseResultUpsertMock).toHaveBeenCalledTimes(1);
+    expect(dispenseResultUpsertMock).toHaveBeenCalledWith({
       where: {
+        org_id_task_id_line_id: {
+          org_id: 'org_1',
+          task_id: 'task_1',
+          line_id: 'line_1',
+        },
+      },
+      create: expect.objectContaining({
         org_id: 'org_1',
         task_id: 'task_1',
         line_id: 'line_1',
-      },
-      select: { id: true },
-    });
-    expect(dispenseResultUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'result_existing' },
-      data: expect.objectContaining({
+        actual_drug_name: 'アムロジピン',
+        actual_drug_code: '123',
+        actual_quantity: 14,
+        carry_type: 'carry',
+        dispensed_by: 'user_1',
+      }),
+      update: expect.objectContaining({
         actual_drug_name: 'アムロジピン',
         actual_drug_code: '123',
         actual_quantity: 14,
@@ -2566,6 +2595,9 @@ describe('/api/dispense-results POST', () => {
         dispensed_by: 'user_1',
       }),
     });
+    expect(legacyCreateMock).not.toHaveBeenCalled();
+    expect(legacyFindFirstMock).not.toHaveBeenCalled();
+    expect(legacyUpdateMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).toHaveBeenCalledWith({
       where: { id: 'task_1' },
       data: { status: 'completed' },
@@ -2573,7 +2605,7 @@ describe('/api/dispense-results POST', () => {
   });
 
   it('allows fax-origin prescriptions to complete dispensing and creates a follow-up task for original collection', async () => {
-    const dispenseResultCreateMock = vi.fn().mockResolvedValue({
+    const dispenseResultUpsertMock = vi.fn().mockResolvedValue({
       id: 'result_1',
       line_id: 'line_1',
       actual_drug_name: 'アムロジピン',
@@ -2646,7 +2678,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: dispenseResultFindManyMock,
         },
         dispensingDecision: {
@@ -2851,7 +2883,7 @@ describe('/api/dispense-results POST', () => {
   });
 
   it('updates active visit schedules and downgrades ready schedules when deferred lines remain', async () => {
-    const dispenseResultCreateMock = vi
+    const dispenseResultUpsertMock = vi
       .fn()
       .mockResolvedValueOnce({
         id: 'result_1',
@@ -2950,7 +2982,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: dispenseResultFindManyMock,
         },
         medicationCycle: {
@@ -3007,6 +3039,7 @@ describe('/api/dispense-results POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expect(dispenseResultUpsertMock).toHaveBeenCalledTimes(2);
     expect(visitPreparationUpdateManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -3058,7 +3091,7 @@ describe('/api/dispense-results POST', () => {
   });
 
   it('reopens a ready visit schedule when dispensing regenerates ready carry items', async () => {
-    const dispenseResultCreateMock = vi.fn().mockResolvedValue({
+    const dispenseResultUpsertMock = vi.fn().mockResolvedValue({
       id: 'result_1',
       line_id: 'line_1',
       actual_drug_name: 'アムロジピン',
@@ -3130,7 +3163,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: dispenseResultFindManyMock,
         },
         medicationCycle: {
@@ -3208,7 +3241,7 @@ describe('/api/dispense-results POST', () => {
   });
 
   it('preserves prescribed drug code in visit carry items when the dispensed actual drug code is blank', async () => {
-    const dispenseResultCreateMock = vi.fn().mockResolvedValue({
+    const dispenseResultUpsertMock = vi.fn().mockResolvedValue({
       id: 'result_1',
       line_id: 'line_1',
       actual_drug_name: 'アムロジピン',
@@ -3272,7 +3305,7 @@ describe('/api/dispense-results POST', () => {
           update: vi.fn().mockResolvedValue({}),
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: dispenseResultFindManyMock,
         },
         medicationCycle: {
@@ -3342,7 +3375,7 @@ describe('/api/dispense-results POST', () => {
   });
 
   it('downgrades a ready visit schedule when all carry items are deferred', async () => {
-    const dispenseResultCreateMock = vi.fn().mockResolvedValue({
+    const dispenseResultUpsertMock = vi.fn().mockResolvedValue({
       id: 'result_1',
       line_id: 'line_1',
       actual_drug_name: 'ロキソプロフェン',
@@ -3411,7 +3444,7 @@ describe('/api/dispense-results POST', () => {
           update: dispenseTaskUpdateMock,
         },
         dispenseResult: {
-          create: dispenseResultCreateMock,
+          upsert: dispenseResultUpsertMock,
           findMany: dispenseResultFindManyMock,
         },
         medicationCycle: {
@@ -3596,7 +3629,7 @@ describe('/api/dispense-results POST', () => {
           update: overrides.dispenseTaskUpdate,
         },
         dispenseResult: {
-          create: overrides.dispenseResultCreate,
+          upsert: overrides.dispenseResultCreate,
           findMany: vi.fn().mockResolvedValue([]),
         },
         workflowException: {

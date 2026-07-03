@@ -74,7 +74,19 @@
   `tsc --noEmit --pretty false` green、home-config 該当エラー grep 0件。
 - レビュー: opus APPROVE、claude commit f3733036。self-commit なし。
 
-## 2026-07-03 DR-DUP1 pending verdict
+## 2026-07-03 PERF-02 pending verdict
+
+- 分類: performance / behavior-preserving API internals
+- 対象: `src/app/api/dispense-results/route.ts` + focused route test
+- 実施: `DispenseResult` 保存の update/create/P2002 fallback を `org_id_task_id_line_id`
+  compound unique upsert へ置換。`DispensingDecision` upsert、partial lock、replay、audit/webhook は不変。
+- 同値性: create arm は旧 create の `org_id/task_id/line_id + resultData`、update arm は旧 update/fallback update の
+  `resultData` のみ。immutable identity は update に載せない。
+- 検証: route+workflow vitest 45/45 green。scoped eslint/prettier/diff-check green。
+  `pnpm typecheck` green。2行投入で `DispenseResult.upsert` 2回のみを test-lock。
+- レビュー: opus verdict 待ち。self-commit なし。
+
+## 2026-07-03 DR-DUP1 2e0c7fdb
 
 - 分類: bug/data-integrity / defensive validation
 - 対象: `src/app/api/dispense-results/route.ts` + focused route test
@@ -84,7 +96,7 @@
   FE payload は API `count_rows.map(line.id)` 由来で、drag/drop は splice→push の移動。
 - 挙動変更: あり（malformed duplicate payload を拒否）。正規 FE 呼び出しの正常系は不変。
 - 検証: focused duplicate test green。full `dispense-results/route.test.ts` 43/43 green。scoped eslint green。
-- レビュー: opus verdict 待ち。self-commit なし。
+- レビュー: opus APPROVE、claude commit 2e0c7fdb。self-commit なし。
 
 ## 2026-07-03 までのスライス（要約、詳細は archive/ と git log）
 
