@@ -1,6 +1,5 @@
 import { encode } from 'next-auth/jwt';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { issueCollaborationRoomToken } from '@/server/services/collaboration-room-token';
 import { clearRoomTokenSecretCache } from '../shared/room-token';
 import { handler } from './handler';
 
@@ -52,6 +51,35 @@ function denyPolicy() {
   };
 }
 
+async function issueTestCollaborationRoomToken({
+  orgId,
+  userId,
+  entityType,
+  entityId,
+}: {
+  orgId: string;
+  userId: string;
+  entityType: string;
+  entityId: string;
+}) {
+  const room = `${orgId}:${entityType}:${entityId}`;
+
+  return encode({
+    secret: TEST_ROOM_TOKEN_SECRET,
+    salt: TOKEN_SALT,
+    maxAge: 300,
+    token: {
+      sub: userId,
+      purpose: 'collaboration_room',
+      org_id: orgId,
+      user_id: userId,
+      entity_type: entityType,
+      entity_id: entityId,
+      room,
+    },
+  });
+}
+
 describe('websocket authorizer handler', () => {
   const originalNextAuthSecret = process.env.NEXTAUTH_SECRET;
   const originalAuthSecret = process.env.AUTH_SECRET;
@@ -92,7 +120,7 @@ describe('websocket authorizer handler', () => {
   });
 
   it('allows a valid collaboration room token and exposes only verified context', async () => {
-    const token = await issueCollaborationRoomToken({
+    const token = await issueTestCollaborationRoomToken({
       orgId: 'org_1',
       userId: 'user_1',
       entityType: 'dispense_task',
@@ -163,7 +191,7 @@ describe('websocket authorizer handler', () => {
   });
 
   it('ignores client-supplied room query values and exposes no unverified context', async () => {
-    const token = await issueCollaborationRoomToken({
+    const token = await issueTestCollaborationRoomToken({
       orgId: 'org_1',
       userId: 'user_1',
       entityType: 'dispense_task',
@@ -205,7 +233,7 @@ describe('websocket authorizer handler', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-05-21T00:00:00.000Z'));
 
-    const token = await issueCollaborationRoomToken({
+    const token = await issueTestCollaborationRoomToken({
       orgId: 'org_1',
       userId: 'user_1',
       entityType: 'visit_record',

@@ -178,7 +178,6 @@ describe('presence collaboration contract', () => {
   it('keeps visual collaboration atoms on the pure presence contract', () => {
     for (const relativePath of [
       'src/components/features/collaboration/field-lock-indicator.tsx',
-      'src/components/features/collaboration/cursor-overlay.tsx',
       'src/components/features/collaboration/presence-avatars.tsx',
     ]) {
       const source = readFileSync(resolve(process.cwd(), relativePath), 'utf8');

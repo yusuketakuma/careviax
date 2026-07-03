@@ -496,7 +496,7 @@ post:
 
 ### 8.1 UI の cuid 疑似短縮（`id.slice(-8)` / `slice(0,8)`）— 内部面・置換対象
 
-`grep -rEln 'slice\(-8\)|slice\(0, ?8\)' src` で検出。display 用途のもの（下記）を display_id 表示へ置換する。非 display 用途（`src/lib/aws/sigv4.ts` の署名計算、`src/lib/hooks/use-yjs-collaboration-room.ts` の room key 等）は対象外。
+`grep -rEln 'slice\(-8\)|slice\(0, ?8\)' src` で検出。display 用途のもの（下記）を display_id 表示へ置換する。非 display 用途（`src/lib/aws/sigv4.ts` の署名計算など）は対象外。
 
 - `src/app/(dashboard)/admin/realtime/page.tsx`
 - `src/app/(dashboard)/my-day/my-day-content.tsx`

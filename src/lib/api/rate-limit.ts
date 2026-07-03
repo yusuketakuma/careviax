@@ -555,7 +555,6 @@ export const API_ROUTE_TEMPLATES = [
   '/api/cases/:id',
   '/api/cases/:id/transition',
   '/api/cds/check',
-  '/api/collaboration/room-token',
   '/api/comments',
   '/api/comments/:id',
   '/api/comments/recent',

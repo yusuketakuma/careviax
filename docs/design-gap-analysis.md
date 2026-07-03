@@ -1130,7 +1130,7 @@
   - /api/comments は entity_type/entity_id 対応済みで不足なし
   - presence/comments とも permission が canDispense 固定。デザインに事務ロール(鈴木事務)が登場するため、事務を含む権限への緩和判断が必要
   - 「最新を読み込む」はクライアント refetch で完結(API 不足なし)
-- データ源: `/Users/yusuke/workspace/careviax/src/app/api/presence/route.ts と src/server/services/presence-store.ts(TTL 60秒 in-memory)` / `/Users/yusuke/workspace/careviax/src/components/features/collaboration/presence-avatars.tsx(改修ベース)` / `/Users/yusuke/workspace/careviax/src/components/features/comments/comment-thread.tsx と /api/comments` / `/Users/yusuke/workspace/careviax/src/lib/hooks/use-collaborative-form.ts(重複防止・stale 検知)` / `/Users/yusuke/workspace/careviax/src/lib/hooks/use-realtime-events.ts(SSE)`
+- データ源: `/Users/yusuke/workspace/careviax/src/app/api/presence/route.ts と src/server/services/presence-store.ts(TTL 60秒 in-memory)` / `/Users/yusuke/workspace/careviax/src/components/features/collaboration/presence-avatars.tsx(改修ベース)` / `/Users/yusuke/workspace/careviax/src/components/features/comments/comment-thread.tsx と /api/comments` / `/Users/yusuke/workspace/careviax/src/lib/hooks/use-realtime-events.ts(SSE)`
 - 撮影セットアップ: presence は in-memory TTL 60秒のため静的 seed 不可。組込先(第一候補: /dispensing/[taskId]、将来は /workflow カード詳細)を route 登録し、setup 内で API 直叩き(別ユーザー3名分の POST /api/presence に active_field を付与+POST /api/comments 3件)してから撮影する。複数ユーザー seed(薬剤師2+事務1)が前提。
 
 ### p1_14_ai_signal_tuning

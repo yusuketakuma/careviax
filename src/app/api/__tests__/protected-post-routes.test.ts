@@ -80,7 +80,6 @@ import { POST as pharmacistsPost } from '../pharmacists/route';
 import { POST as visitScheduleProposalsPost } from '../visit-schedule-proposals/route';
 import { POST as visitPreparationBriefBatchPost } from '../visit-preparations/brief-batch/route';
 import { POST as visitSchedulesReschedulePost } from '../visit-schedules/[id]/reschedule/route';
-import { POST as collaborationRoomTokenPost } from '../collaboration/room-token/route';
 
 type Handler = (req: NextRequest) => Promise<Response | undefined>;
 type RouteEntry = { name: string; handler: Handler; successBody?: unknown; invalidBody?: unknown };
@@ -229,7 +228,6 @@ const routes: RouteEntry[] = [
     handler: (req) => visitScheduleProposalsPost(req, emptyRouteContext),
   },
   { name: 'visit-preparations/brief-batch POST', handler: visitPreparationBriefBatchPost },
-  { name: 'collaboration/room-token POST', handler: collaborationRoomTokenPost },
   {
     name: 'visit-schedules/[id]/reschedule POST',
     handler: (req) =>

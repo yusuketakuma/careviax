@@ -1,12 +1,40 @@
 import { encode } from 'next-auth/jwt';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { issueCollaborationRoomToken } from '../../../../../src/server/services/collaboration-room-token';
 import { clearRoomTokenSecretCache, validateRoomToken } from './room-token';
 
 const TOKEN_SALT = 'ph-os.collaboration-room-token.v1';
 const TEST_ROOM_TOKEN_SECRET = 'test-collaboration-room-secret-32';
 const SECRETS_MANAGER_ROOM_TOKEN_SECRET = 'secrets-manager-room-token-secret';
 const DIRECT_PRODUCTION_SECRET = 'direct-production-room-token-secret';
+
+async function issueTestCollaborationRoomToken({
+  orgId,
+  userId,
+  entityType,
+  entityId,
+}: {
+  orgId: string;
+  userId: string;
+  entityType: string;
+  entityId: string;
+}) {
+  const room = `${orgId}:${entityType}:${entityId}`;
+
+  return encode({
+    secret: TEST_ROOM_TOKEN_SECRET,
+    salt: TOKEN_SALT,
+    maxAge: 300,
+    token: {
+      sub: userId,
+      purpose: 'collaboration_room',
+      org_id: orgId,
+      user_id: userId,
+      entity_type: entityType,
+      entity_id: entityId,
+      room,
+    },
+  });
+}
 
 const { secretsManagerClientMock, secretsManagerSendMock, getSecretValueCommandMock } = vi.hoisted(
   () => ({
@@ -77,7 +105,7 @@ describe('lambda room-token verifier', () => {
   });
 
   it('accepts tokens issued by the application service', async () => {
-    const token = await issueCollaborationRoomToken({
+    const token = await issueTestCollaborationRoomToken({
       orgId: 'org_1',
       userId: 'user_1',
       entityType: 'dispense_task',

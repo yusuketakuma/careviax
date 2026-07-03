@@ -74,7 +74,6 @@ Current key count: 139. The earlier refactor note recorded 118 keys; the live re
 | `NEXT_PUBLIC_PHOS_API_BASE_URL`              | public optional      | Exposed to the browser bundle; never store secrets here.        |
 | `NEXT_PUBLIC_SENTRY_DSN`                     | public optional      | Exposed to the browser bundle; never store secrets here.        |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY`               | public optional      | Exposed to the browser bundle; never store secrets here.        |
-| `NEXT_PUBLIC_YJS_WEBSOCKET_URL`              | public optional      | Exposed to the browser bundle; never store secrets here.        |
 | `NEXT_RUNTIME`                               | optional             |                                                                 |
 | `NODE_ENV`                                   | optional             |                                                                 |
 | `OQC_ACCESS_TOKEN`                           | secret optional      | Secret or credential-like value; manage through secret storage. |
