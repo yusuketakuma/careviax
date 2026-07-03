@@ -1,10 +1,12 @@
 import type { MemberRole } from '@prisma/client';
 
-type Permission = {
-  canDispense: boolean;
-  canAuditDispense: boolean;
-  canSet: boolean;
-  canAuditSet: boolean;
+/**
+ * CorePermission: 職種を問わず共通の受け皿として定義されるケイパビリティ
+ * （訪問・報告書・連携・ダッシュボード等）。ProfessionTypeEnum に nurse/physician
+ * 等のロールを追加する際も、この共通セットをそのまま再利用できる想定。
+ * 対応表は docs/design/core-naming-conventions.md §5 を参照。
+ */
+type CorePermission = {
   canVisit: boolean;
   canReport: boolean;
   // canAuthorReport: 臨床報告書の「作成・編集・生成」など薬剤師の専門的記載を伴う書き込み。
@@ -18,6 +20,23 @@ type Permission = {
   canAdmin: boolean;
 };
 
+/**
+ * PharmacyPermission: 8ステップ調剤ワークフロー（監査を伴う二重チェック工程含む）
+ * に固有の、薬局業務専用のケイパビリティ。
+ */
+type PharmacyPermission = {
+  canDispense: boolean;
+  canAuditDispense: boolean;
+  canSet: boolean;
+  canAuditSet: boolean;
+};
+
+// 既存 Permission は Core capability と Pharmacy 固有 capability を合成した型として再構成する。
+// ROLE_PERMISSIONS の値は両方のキーを同時に持つ必要があるため、型演算子としては
+// intersection（&）を用いて CorePermission と PharmacyPermission の capability セットを合成する。
+type Permission = CorePermission & PharmacyPermission;
+
+export type { CorePermission, PharmacyPermission };
 export type PermissionKey = keyof Permission;
 
 // Role-based permission matrix aligned with the 8-step pharmacy workflow.

@@ -94,3 +94,14 @@
 - 本メモは命名規約とドキュメント化のみ。Prisma schema・マイグレーション・アプリケーションコードへの変更は一切含まない。
 - `CLAUDE.md` は変更しない。
 - 請求・契約パイプライン固有の語彙（`PharmacyContract`/`PharmacyInvoice`/`dispensing_fee_category` 等）は §1 の例外規定により対象外。誤って一般化しないこと。
+
+---
+
+## 5. 権限マトリクスの Core/Pharmacy 分離と ProfessionTypeEnum との対応（W2-M2）
+
+- `src/lib/auth/permission-matrix.ts` の `Permission` 型は `CorePermission`（職種非依存の共通ケイパビリティ）と `PharmacyPermission`（8ステップ調剤ワークフロー固有のケイパビリティ）に**型レベルのみ**分離済み（`Permission = CorePermission & PharmacyPermission`）。`ROLE_PERMISSIONS` の実値・`hasPermission()` の挙動・`PermissionKey`（既存 export 名）は完全互換で、本分離による振る舞いの変更は一切ない。
+- `MemberRole`（`prisma/schema/organization.prisma:1-9`）は組織内メンバーの**役割**（owner/admin/pharmacist/pharmacist_trainee/clerk/driver/external_viewer）を表し、`ProfessionTypeEnum`（同ファイル L22-36）は `ExternalProfessional`/`CareTeamLink` 経由で連携する**外部専門職の職種**（physician/nurse/care_manager/...）を表す。両者は現状 1:1 の対応表ではなく、別レイヤーの列挙型である点に注意。
+- 将来、在宅訪問看護・訪問診療などへの水平展開で `MemberRole` に `nurse`/`physician` 相当のロールを追加する場合の受け皿は以下の通り:
+  - `CorePermission`（`canVisit`/`canReport`/`canAuthorReport`/`canSendCareReport`/`canManageBilling`/`canManagePatientSharing`/`canViewDashboard`/`canAdmin`）は職種を問わず共通に付与しうるケイパビリティであり、そのまま流用できる。
+  - `PharmacyPermission`（`canDispense`/`canAuditDispense`/`canSet`/`canAuditSet`）は調剤（dispense/set 工程＋監査）に固有のため、nurse/physician ロールには通常 `false` 固定、または業態別の並行ケイパビリティ型（例: 将来の `VisitCarePermission`）として別途新設する想定であり、`PharmacyPermission` を無理に汎用化しない（§1 の「請求・法制度上、業態に本質的に紐づく概念は無理に一般化しない」方針と整合）。
+  - `ProfessionTypeEnum` の値のうち、既に `phosRoleFromMemberRole()`（`src/lib/auth/phos-role.ts`）が `MemberRole → UserRole`（PHOS 契約側の職種列挙）にマップしている `pharmacist`/`clerk`/`driver` 系以外（`physician`/`nurse`/`care_manager`/`medical_social_worker`/`physical_therapist`/`occupational_therapist`/`speech_therapist`/`registered_dietitian`/`dentist`/`dental_hygienist`/`home_helper`/`care_staff`/`other`）は現状 `MemberRole` に対応するロールが存在しない（`ExternalProfessional` 経由の外部連携者としてのみ表現される）。`MemberRole` へのロール追加が具体化した時点で、`member-roles.ts`/`phos-role.ts`/`permission-matrix.ts` の switch/`ROLE_PERMISSIONS` を拡張する（本メモは受け皿の型を用意するのみで、実装は行わない）。
