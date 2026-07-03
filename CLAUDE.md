@@ -7,8 +7,7 @@
 
 仕様書:
 
-- `docs/ph-os_pharmacy_workflow_spec_project_context.md` — ワークフロー詳細仕様
-- `docs/ph-os_pharmacy_multidisciplinary_collaboration_spec_project_context.md` — 多職種連携詳細仕様
+- `docs/visit-report-collab-spec.md` — ワークフロー/多職種連携詳細仕様
 - `docs/decisions.md` — 設計判断
 - `docs/ui-ux-design-guidelines.md` — UI/UX 設計の SSOT。UI/UX 変更時は必ず先に参照すること
 

@@ -1,6 +1,6 @@
 # PH-OS Pharmacy — Implementation Plan
 
-> 仕様書: [ワークフロー](docs/ph-os_pharmacy_workflow_spec_project_context.md) | [多職種連携](docs/ph-os_pharmacy_multidisciplinary_collaboration_spec_project_context.md) | [設計判断](docs/decisions.md)
+> 仕様書: [ワークフロー/多職種連携](docs/visit-report-collab-spec.md) | [設計判断](docs/decisions.md)
 > アーキテクチャ / デザイン方針: CLAUDE.md 参照
 > ※ Phase 3 は Phase 2 完了時に詳細化する
 
