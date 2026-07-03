@@ -18,6 +18,7 @@ import {
 } from '@/lib/db/display-id';
 
 type BackfillMode = 'dry-run' | 'apply';
+type DisplayIdBackfillOrgSource = 'direct' | 'handoffBoardParent';
 
 export type DisplayIdBackfillOptions = {
   mode: BackfillMode;
@@ -26,6 +27,7 @@ export type DisplayIdBackfillOptions = {
   batchSize: number;
   sampleLimit: number;
   orgId: string | null;
+  includeParentScoped: boolean;
   jsonOutputPath: string | null;
   markdownOutputPath: string | null;
 };
@@ -106,6 +108,7 @@ export type DisplayIdBackfillModelConfig = {
   model: DisplayIdModel;
   tableName: string;
   prefix: DisplayIdPrefix;
+  orgSource: DisplayIdBackfillOrgSource;
 };
 
 export type DisplayIdBackfillAdapter = {
@@ -172,6 +175,7 @@ const USAGE = [
   '  --batch-size N      Rows per (model, org) transaction batch',
   '  --sample-limit N    Bounded reporting sample size',
   '  --org-id ORG        Optional single tenant/org filter',
+  '  --include-parent-scoped  Opt in to HandoffItem board_id -> HandoffBoard.org_id backfill',
   '  --json-output PATH  Write JSON report',
   '  --markdown-output PATH  Write Markdown report',
 ].join('\n');
@@ -212,7 +216,10 @@ function parseOrgId(value: string | null): string | null {
   return value;
 }
 
-function parseModels(value: string | null): DisplayIdModel[] {
+function parseModels(
+  value: string | null,
+  options: { includeParentScoped: boolean },
+): DisplayIdModel[] {
   if (!value) return [];
 
   const models = value
@@ -235,7 +242,17 @@ function parseModels(value: string | null): DisplayIdModel[] {
     }
 
     const entry = getDisplayIdRegistryEntry(model);
-    if (entry.scope !== 'org') {
+    const isSupportedParentScoped =
+      options.includeParentScoped &&
+      model === 'HandoffItem' &&
+      entry.scope === 'orgViaParent' &&
+      entry.parent === 'HandoffBoard';
+    if (model === 'HandoffItem' && entry.scope === 'orgViaParent' && !isSupportedParentScoped) {
+      throw new Error(
+        `Model ${model} is parent-scoped and requires --include-parent-scoped for backfill`,
+      );
+    }
+    if (entry.scope !== 'org' && !isSupportedParentScoped) {
       throw new Error(`Model ${model} is not tenant-scoped and cannot use this backfill`);
     }
     return model;
@@ -254,7 +271,8 @@ export function parseDisplayIdBackfillArgs(argv: string[]): DisplayIdBackfillOpt
   }
 
   const maxRowsValue = readValue(argv, '--max-rows');
-  const models = parseModels(readValue(argv, '--models'));
+  const includeParentScoped = argv.includes('--include-parent-scoped');
+  const models = parseModels(readValue(argv, '--models'), { includeParentScoped });
   if (apply && models.length === 0) {
     throw new Error('--apply requires --models');
   }
@@ -277,6 +295,7 @@ export function parseDisplayIdBackfillArgs(argv: string[]): DisplayIdBackfillOpt
       DEFAULT_SAMPLE_LIMIT,
     ),
     orgId: parseOrgId(readValue(argv, '--org-id')),
+    includeParentScoped,
     jsonOutputPath: readValue(argv, '--json-output'),
     markdownOutputPath: readValue(argv, '--markdown-output'),
   };
@@ -289,16 +308,38 @@ function requireTargetModels(options: DisplayIdBackfillOptions): DisplayIdModel[
   return options.models;
 }
 
-function createModelConfig(model: DisplayIdModel): DisplayIdBackfillModelConfig {
+function createModelConfig(
+  model: DisplayIdModel,
+  options: Pick<DisplayIdBackfillOptions, 'includeParentScoped'>,
+): DisplayIdBackfillModelConfig {
   const entry = getDisplayIdRegistryEntry(model);
-  if (entry.scope !== 'org') {
-    throw new Error(`Model ${model} is not tenant-scoped and cannot use this backfill`);
+  if (entry.scope === 'org') {
+    return {
+      model,
+      tableName: model,
+      prefix: entry.prefix,
+      orgSource: 'direct',
+    };
   }
-  return {
-    model,
-    tableName: model,
-    prefix: entry.prefix,
-  };
+  if (
+    options.includeParentScoped &&
+    model === 'HandoffItem' &&
+    entry.scope === 'orgViaParent' &&
+    entry.parent === 'HandoffBoard'
+  ) {
+    return {
+      model,
+      tableName: model,
+      prefix: entry.prefix,
+      orgSource: 'handoffBoardParent',
+    };
+  }
+  if (entry.scope === 'orgViaParent') {
+    throw new Error(
+      `Model ${model} is parent-scoped and requires --include-parent-scoped for backfill`,
+    );
+  }
+  throw new Error(`Model ${model} is not tenant-scoped and cannot use this backfill`);
 }
 
 function quoteIdentifier(identifier: string): string {
@@ -333,18 +374,45 @@ function toNumberCount(value: bigint | number | string): number {
   return asNumber;
 }
 
-function appendOrgFilter(values: unknown[], orgId: string | null): string {
+function appendOrgFilter(
+  values: unknown[],
+  orgId: string | null,
+  orgExpression = '"org_id"',
+): string {
   if (orgId === null) return '';
   values.push(orgId);
-  return ` AND "org_id" = $${values.length}`;
+  return ` AND ${orgExpression} = $${values.length}`;
+}
+
+function isHandoffBoardParentScoped(config: DisplayIdBackfillModelConfig): boolean {
+  return config.orgSource === 'handoffBoardParent';
+}
+
+function targetFromClause(config: DisplayIdBackfillModelConfig): string {
+  if (isHandoffBoardParentScoped(config)) {
+    return `${quoteIdentifier(config.tableName)} item INNER JOIN "HandoffBoard" board ON board."id" = item."board_id"`;
+  }
+  return quoteIdentifier(config.tableName);
+}
+
+function targetColumn(config: DisplayIdBackfillModelConfig, column: string): string {
+  const quoted = quoteIdentifier(column);
+  return isHandoffBoardParentScoped(config) ? `item.${quoted}` : quoted;
+}
+
+function orgColumn(config: DisplayIdBackfillModelConfig): string {
+  return isHandoffBoardParentScoped(config) ? 'board."org_id"' : '"org_id"';
 }
 
 function displayIdFormatRegex(prefix: DisplayIdPrefix): string {
   return `^${prefix}[0-9]{10,15}$`;
 }
 
-function canonicalDisplayIdSqlPredicate(sequenceStart: number): string {
-  return `CASE WHEN "display_id" ~ $1 THEN SUBSTRING("display_id" FROM ${sequenceStart})::bigint > 0 ELSE false END`;
+function canonicalDisplayIdSqlPredicate(
+  displayIdExpression: string,
+  sequenceStart: number,
+): string {
+  return `CASE WHEN ${displayIdExpression} ~ $1 THEN SUBSTRING(${displayIdExpression} FROM ${sequenceStart})::bigint > 0 ELSE false END`;
 }
 
 function maxBigInt(values: bigint[]): bigint {
@@ -356,9 +424,9 @@ class PrismaDisplayIdBackfillAdapter implements DisplayIdBackfillAdapter {
 
   async countRows(config: DisplayIdBackfillModelConfig, orgId: string | null): Promise<number> {
     const values: unknown[] = [];
-    const filter = appendOrgFilter(values, orgId);
+    const filter = appendOrgFilter(values, orgId, orgColumn(config));
     const rows = await this.executor.$queryRawUnsafe<Array<{ count: string | bigint }>>(
-      `SELECT COUNT(*)::text AS "count" FROM ${quoteIdentifier(config.tableName)} WHERE TRUE${filter}`,
+      `SELECT COUNT(*)::text AS "count" FROM ${targetFromClause(config)} WHERE TRUE${filter}`,
       ...values,
     );
     return toNumberCount(rows[0]?.count ?? '0');
@@ -366,9 +434,9 @@ class PrismaDisplayIdBackfillAdapter implements DisplayIdBackfillAdapter {
 
   async countNullRows(config: DisplayIdBackfillModelConfig, orgId: string | null): Promise<number> {
     const values: unknown[] = [];
-    const filter = appendOrgFilter(values, orgId);
+    const filter = appendOrgFilter(values, orgId, orgColumn(config));
     const rows = await this.executor.$queryRawUnsafe<Array<{ count: string | bigint }>>(
-      `SELECT COUNT(*)::text AS "count" FROM ${quoteIdentifier(config.tableName)} WHERE "display_id" IS NULL${filter}`,
+      `SELECT COUNT(*)::text AS "count" FROM ${targetFromClause(config)} WHERE ${targetColumn(config, 'display_id')} IS NULL${filter}`,
       ...values,
     );
     return toNumberCount(rows[0]?.count ?? '0');
@@ -379,15 +447,15 @@ class PrismaDisplayIdBackfillAdapter implements DisplayIdBackfillAdapter {
     orgId: string | null,
   ): Promise<number> {
     const values: unknown[] = [];
-    const filter = appendOrgFilter(values, orgId);
+    const filter = appendOrgFilter(values, orgId, orgColumn(config));
     const rows = await this.executor.$queryRawUnsafe<Array<{ count: string | bigint }>>(
       `
         SELECT COUNT(*)::text AS "count"
         FROM (
-          SELECT "org_id", "display_id"
-          FROM ${quoteIdentifier(config.tableName)}
-          WHERE "display_id" IS NOT NULL${filter}
-          GROUP BY "org_id", "display_id"
+          SELECT ${orgColumn(config)} AS "orgId", ${targetColumn(config, 'display_id')} AS "displayId"
+          FROM ${targetFromClause(config)}
+          WHERE ${targetColumn(config, 'display_id')} IS NOT NULL${filter}
+          GROUP BY ${orgColumn(config)}, ${targetColumn(config, 'display_id')}
           HAVING COUNT(*) > 1
         ) duplicate_groups
       `,
@@ -401,14 +469,14 @@ class PrismaDisplayIdBackfillAdapter implements DisplayIdBackfillAdapter {
     orgId: string | null,
   ): Promise<number> {
     const values: unknown[] = [displayIdFormatRegex(config.prefix)];
-    const filter = appendOrgFilter(values, orgId);
+    const filter = appendOrgFilter(values, orgId, orgColumn(config));
     const sequenceStart = config.prefix.length + 1;
     const rows = await this.executor.$queryRawUnsafe<Array<{ count: string | bigint }>>(
       `
         SELECT COUNT(*)::text AS "count"
-        FROM ${quoteIdentifier(config.tableName)}
-        WHERE "display_id" IS NOT NULL
-          AND NOT (${canonicalDisplayIdSqlPredicate(sequenceStart)})${filter}
+        FROM ${targetFromClause(config)}
+        WHERE ${targetColumn(config, 'display_id')} IS NOT NULL
+          AND NOT (${canonicalDisplayIdSqlPredicate(targetColumn(config, 'display_id'), sequenceStart)})${filter}
       `,
       ...values,
     );
@@ -420,14 +488,14 @@ class PrismaDisplayIdBackfillAdapter implements DisplayIdBackfillAdapter {
     orgId: string | null,
   ): Promise<DisplayIdOrgCount[]> {
     const values: unknown[] = [];
-    const filter = appendOrgFilter(values, orgId);
+    const filter = appendOrgFilter(values, orgId, orgColumn(config));
     const rows = await this.executor.$queryRawUnsafe<Array<{ orgId: string; count: string }>>(
       `
-        SELECT "org_id" AS "orgId", COUNT(*)::text AS "count"
-        FROM ${quoteIdentifier(config.tableName)}
-        WHERE "display_id" IS NULL${filter}
-        GROUP BY "org_id"
-        ORDER BY "org_id" ASC
+        SELECT ${orgColumn(config)} AS "orgId", COUNT(*)::text AS "count"
+        FROM ${targetFromClause(config)}
+        WHERE ${targetColumn(config, 'display_id')} IS NULL${filter}
+        GROUP BY ${orgColumn(config)}
+        ORDER BY ${orgColumn(config)} ASC
       `,
       ...values,
     );
@@ -439,17 +507,17 @@ class PrismaDisplayIdBackfillAdapter implements DisplayIdBackfillAdapter {
     orgId: string | null,
   ): Promise<DisplayIdMaxSequence[]> {
     const values: unknown[] = [displayIdFormatRegex(config.prefix)];
-    const filter = appendOrgFilter(values, orgId);
+    const filter = appendOrgFilter(values, orgId, orgColumn(config));
     const sequenceStart = config.prefix.length + 1;
     const rows = await this.executor.$queryRawUnsafe<Array<{ orgId: string; maxSequence: string }>>(
       `
         SELECT
-          "org_id" AS "orgId",
-          MAX(SUBSTRING("display_id" FROM ${sequenceStart})::bigint)::text AS "maxSequence"
-        FROM ${quoteIdentifier(config.tableName)}
-        WHERE ${canonicalDisplayIdSqlPredicate(sequenceStart)}${filter}
-        GROUP BY "org_id"
-        ORDER BY "org_id" ASC
+          ${orgColumn(config)} AS "orgId",
+          MAX(SUBSTRING(${targetColumn(config, 'display_id')} FROM ${sequenceStart})::bigint)::text AS "maxSequence"
+        FROM ${targetFromClause(config)}
+        WHERE ${canonicalDisplayIdSqlPredicate(targetColumn(config, 'display_id'), sequenceStart)}${filter}
+        GROUP BY ${orgColumn(config)}
+        ORDER BY ${orgColumn(config)} ASC
       `,
       ...values,
     );
@@ -501,12 +569,12 @@ class PrismaDisplayIdBackfillAdapter implements DisplayIdBackfillAdapter {
       Array<{ id: string; orgId: string; createdAt: Date }>
     >(
       `
-        SELECT "id", "org_id" AS "orgId", "created_at" AS "createdAt"
-        FROM ${quoteIdentifier(config.tableName)}
-        WHERE "org_id" = $1 AND "display_id" IS NULL
-        ORDER BY "created_at" ASC, "id" ASC
+        SELECT ${targetColumn(config, 'id')} AS "id", ${orgColumn(config)} AS "orgId", ${targetColumn(config, 'created_at')} AS "createdAt"
+        FROM ${targetFromClause(config)}
+        WHERE ${orgColumn(config)} = $1 AND ${targetColumn(config, 'display_id')} IS NULL
+        ORDER BY ${targetColumn(config, 'created_at')} ASC, ${targetColumn(config, 'id')} ASC
         LIMIT $2
-        FOR UPDATE
+        FOR UPDATE${isHandoffBoardParentScoped(config) ? ' OF item' : ''}
       `,
       orgId,
       limit,
@@ -519,6 +587,22 @@ class PrismaDisplayIdBackfillAdapter implements DisplayIdBackfillAdapter {
     row: DisplayIdBackfillRow,
     displayId: string,
   ): Promise<number> {
+    if (isHandoffBoardParentScoped(config)) {
+      return this.executor.$executeRawUnsafe(
+        `
+          UPDATE ${quoteIdentifier(config.tableName)} item
+          SET "display_id" = $1
+          FROM "HandoffBoard" board
+          WHERE item."id" = $2
+            AND item."board_id" = board."id"
+            AND board."org_id" = $3
+            AND item."display_id" IS NULL
+        `,
+        displayId,
+        row.id,
+        row.orgId,
+      );
+    }
     return this.executor.$executeRawUnsafe(
       `
         UPDATE ${quoteIdentifier(config.tableName)}
@@ -792,7 +876,7 @@ export async function runDisplayIdBackfill(
   const models: Record<string, DisplayIdBackfillModelResult> = {};
 
   for (const model of targetModels) {
-    const config = createModelConfig(model);
+    const config = createModelConfig(model, options);
     const adapter = deps.createAdapter(client);
     const preSummary = await collectModelResult(adapter, config, options, 0);
     preSummaries.set(model, preSummary);
@@ -819,7 +903,7 @@ export async function runDisplayIdBackfill(
   const hasPreApplyError = issues.some((issue) => issue.severity === 'error');
 
   for (const model of targetModels) {
-    const config = createModelConfig(model);
+    const config = createModelConfig(model, options);
     const preSummary = preSummaries.get(model);
     if (!preSummary) {
       throw new Error(`Missing pre-check summary for ${model}`);

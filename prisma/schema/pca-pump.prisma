@@ -35,6 +35,7 @@ enum PcaPumpMaintenanceResult {
 model PcaPump {
   id                 String                    @id @default(cuid())
   org_id             String
+  display_id         String?
   org                Organization              @relation(fields: [org_id], references: [id])
   asset_code         String
   serial_number      String?
@@ -49,6 +50,7 @@ model PcaPump {
   maintenance_events PcaPumpMaintenanceEvent[]
 
   @@unique([id, org_id])
+  @@unique([org_id, display_id])
   @@unique([org_id, asset_code])
   @@index([org_id, status])
   @@index([org_id, serial_number])
@@ -57,6 +59,7 @@ model PcaPump {
 model PcaPumpMaintenanceEvent {
   id                      String                      @id @default(cuid())
   org_id                  String
+  display_id              String?
   org                     Organization                @relation(fields: [org_id], references: [id])
   pump_id                 String
   pump                    PcaPump                     @relation(fields: [pump_id, org_id], references: [id, org_id])
@@ -73,6 +76,7 @@ model PcaPumpMaintenanceEvent {
   next_maintenance_due_at DateTime?                   @db.Date
   created_at              DateTime                    @default(now())
 
+  @@unique([org_id, display_id])
   @@index([org_id, pump_id, performed_at])
   @@index([org_id, rental_id])
   @@index([org_id, event_type])
@@ -81,6 +85,7 @@ model PcaPumpMaintenanceEvent {
 model PcaPumpRental {
   id                       String                         @id @default(cuid())
   org_id                   String
+  display_id               String?
   org                      Organization                   @relation(fields: [org_id], references: [id])
   pump_id                  String
   pump                     PcaPump                        @relation(fields: [pump_id, org_id], references: [id, org_id])
@@ -105,6 +110,7 @@ model PcaPumpRental {
   accessories              PcaPumpRentalAccessory[]
 
   @@unique([id, org_id])
+  @@unique([org_id, display_id])
   @@index([org_id, status])
   @@index([org_id, pump_id])
   @@index([org_id, institution_id])
@@ -115,6 +121,7 @@ model PcaPumpRental {
 model PcaPumpRentalAccessory {
   id                   String        @id @default(cuid())
   org_id               String
+  display_id           String?
   org                  Organization  @relation(fields: [org_id], references: [id])
   rental_id            String
   rental               PcaPumpRental @relation(fields: [rental_id, org_id], references: [id, org_id], onDelete: Cascade)
@@ -132,6 +139,7 @@ model PcaPumpRentalAccessory {
   created_at           DateTime      @default(now())
   updated_at           DateTime      @default(now()) @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([org_id, rental_id, accessory_key])
   @@index([org_id, rental_id])
   @@index([org_id, discrepancy_status])

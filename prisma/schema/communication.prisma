@@ -403,6 +403,7 @@ model HandoffBoard {
 model HandoffItem {
   id                String       @id @default(cuid())
   board_id          String
+  display_id        String?
   board             HandoffBoard @relation(fields: [board_id], references: [id])
   content           String
   priority          String       @default("normal") // normal, high, urgent
@@ -431,6 +432,7 @@ model HandoffItem {
   created_at        DateTime     @default(now())
 
   @@index([board_id])
+  @@index([display_id])
   @@index([recipient_user_id])
   @@index([consult_status])
 }

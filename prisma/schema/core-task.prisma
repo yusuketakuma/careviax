@@ -15,6 +15,7 @@ enum TaskPriority {
 model Task {
   id                  String       @id @default(cuid())
   org_id              String
+  display_id          String?
   task_type           String       @default("general")
   title               String
   description         String?
@@ -31,6 +32,7 @@ model Task {
   created_at          DateTime     @default(now())
   updated_at          DateTime     @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([org_id, dedupe_key])
   @@index([org_id])
   @@index([status])

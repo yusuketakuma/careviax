@@ -40,6 +40,7 @@ export const DISPLAY_ID_REGISTRY = {
   DispenseTask: { prefix: 'd', scope: 'org' },
   DispensingDecision: { prefix: 'dpd', scope: 'org' },
   DocumentDeliveryRule: { prefix: 'ddr', scope: 'org' },
+  // Nullable org_id hybrid; schema/backfill wave is deferred until tenant-vs-global semantics are explicit.
   DrugAlertRule: { prefix: 'dar', scope: 'org' },
   DrugInteraction: { prefix: 'dint', scope: 'global' },
   DrugMaster: { prefix: 'drug', scope: 'global' },
@@ -64,6 +65,7 @@ export const DISPLAY_ID_REGISTRY = {
   HandoffItem: { prefix: 'h', scope: 'orgViaParent', parent: 'HandoffBoard' },
   IncidentReport: { prefix: 'x', scope: 'org' },
   InquiryRecord: { prefix: 'i', scope: 'org' },
+  // Nullable org_id job rows can represent global work; schema/backfill wave is permanently deferred.
   IntegrationJob: { prefix: 'ijob', scope: 'org' },
   Intervention: { prefix: 'itv', scope: 'org' },
   JahisSupplementalRecord: { prefix: 'jsr', scope: 'org' },

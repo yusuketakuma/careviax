@@ -31,6 +31,7 @@ function defaultOptions(
     batchSize: 1_000,
     sampleLimit: 20,
     orgId: null,
+    includeParentScoped: false,
     jsonOutputPath: null,
     markdownOutputPath: null,
     ...overrides,
@@ -178,6 +179,7 @@ describe('backfill-display-ids', () => {
       batchSize: 1_000,
       sampleLimit: 20,
       orgId: null,
+      includeParentScoped: false,
       jsonOutputPath: null,
       markdownOutputPath: null,
     });
@@ -206,6 +208,18 @@ describe('backfill-display-ids', () => {
       orgId: 'org_a',
       jsonOutputPath: 'tmp/display-id.json',
     });
+    expect(
+      parseDisplayIdBackfillArgs([
+        '--dry-run',
+        '--models',
+        'HandoffItem',
+        '--include-parent-scoped',
+      ]),
+    ).toMatchObject({
+      mode: 'dry-run',
+      models: ['HandoffItem'],
+      includeParentScoped: true,
+    });
 
     expect(() => parseDisplayIdBackfillArgs(['--apply'])).toThrow(/--models/);
     expect(() => parseDisplayIdBackfillArgs(['--apply', '--models', 'Patient'])).toThrow(
@@ -221,6 +235,7 @@ describe('backfill-display-ids', () => {
     expect(() => parseDisplayIdBackfillArgs(['--models', 'DrugMaster'])).toThrow(
       /not tenant-scoped/,
     );
+    expect(() => parseDisplayIdBackfillArgs(['--models', 'HandoffItem'])).toThrow(/parent-scoped/);
     expect(() => parseDisplayIdBackfillArgs(['--models', 'Patient', '--org-id='])).toThrow(
       /non-empty safe orgId/,
     );
@@ -358,6 +373,64 @@ describe('backfill-display-ids', () => {
         nullDisplayIdRows: 0,
       }),
     ]);
+  });
+
+  it('applies HandoffItem by parent-derived org only when explicitly opted in', async () => {
+    const runtime = makeMockRuntime([
+      {
+        model: 'HandoffItem',
+        id: 'handoff_b',
+        orgId: 'org_parent',
+        createdAt: new Date('2026-01-02T00:00:00.000Z'),
+        displayId: null,
+      },
+      {
+        model: 'HandoffItem',
+        id: 'handoff_a',
+        orgId: 'org_parent',
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        displayId: null,
+      },
+    ]);
+
+    await expect(
+      runDisplayIdBackfill(
+        runtime.client,
+        defaultOptions({ mode: 'apply', models: ['HandoffItem'], maxRows: 10 }),
+        runtime.deps,
+      ),
+    ).rejects.toThrow(/parent-scoped/);
+
+    const result = await runDisplayIdBackfill(
+      runtime.client,
+      defaultOptions({
+        mode: 'apply',
+        models: ['HandoffItem'],
+        includeParentScoped: true,
+        maxRows: 10,
+      }),
+      runtime.deps,
+    );
+
+    expect(runtime.allocateRange).toHaveBeenCalledTimes(1);
+    expect(runtime.allocateRange).toHaveBeenCalledWith(
+      expect.any(Object),
+      'HandoffItem',
+      'org_parent',
+      2,
+    );
+    expect(runtime.updates).toEqual([
+      { model: 'HandoffItem', rowId: 'handoff_a', orgId: 'org_parent', displayId: 'h0000000001' },
+      { model: 'HandoffItem', rowId: 'handoff_b', orgId: 'org_parent', displayId: 'h0000000002' },
+    ]);
+    expect(result.ok).toBe(true);
+    expect(result.models.HandoffItem).toMatchObject({
+      nullDisplayIdRows: 0,
+      duplicateDisplayIdGroups: 0,
+      invalidFormatRows: 0,
+      sequenceMismatches: [],
+      backfilledRows: 2,
+    });
   });
 
   it('limits apply to the requested org when --org-id is present', async () => {

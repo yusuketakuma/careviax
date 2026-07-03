@@ -3,6 +3,7 @@
 model SavedView {
   id         String   @id @default(cuid())
   org_id     String
+  display_id String?
   user_id    String // 所有者 (User ID)
   name       String // 表示名 例「今日の訪問・未確認のみ」
   scope      String // 適用先リスト/画面: patients / schedules / notifications / reports など
@@ -13,6 +14,7 @@ model SavedView {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([org_id, user_id, scope, name])
   @@index([org_id, user_id, scope])
   @@index([org_id, scope, is_shared])

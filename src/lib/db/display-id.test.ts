@@ -37,6 +37,8 @@ const PHARMACY_PARTNERSHIP_DISPLAY_ID_W5_MIGRATION =
   'prisma/migrations/20260703155000_add_pharmacy_partnership_display_ids/migration.sql';
 const ADMIN_DRUG_DISPLAY_ID_W6_MIGRATION =
   'prisma/migrations/20260703160000_add_admin_drug_display_ids/migration.sql';
+const RESIDUAL_DISPLAY_ID_W7_MIGRATION =
+  'prisma/migrations/20260703161000_add_residual_display_ids/migration.sql';
 const PATIENT_DISPLAY_ID_W1_MODELS = [
   'Patient',
   'Residence',
@@ -164,22 +166,35 @@ const DRUG_DISPLAY_ID_W6_MODELS = [
   'FormularyChangeRequest',
   'FormularyTemplate',
 ] as const satisfies readonly DisplayIdModel[];
-const DEFERRED_DISPLAY_ID_SCHEMA_MODELS = [
-  'DrugAlertRule',
+const MEDICATION_DISPLAY_ID_W7_MODELS = [
   'FirstVisitDocument',
-  'HandoffItem',
-  'IntegrationJob',
   'Intervention',
   'MedicationIssue',
   'MedicationProfile',
   'PackagingMethodMaster',
+  'ResidualMedication',
+] as const satisfies readonly DisplayIdModel[];
+const PCA_PUMP_DISPLAY_ID_W7_MODELS = [
   'PcaPump',
   'PcaPumpMaintenanceEvent',
   'PcaPumpRental',
   'PcaPumpRentalAccessory',
-  'ResidualMedication',
-  'SavedView',
-  'Task',
+] as const satisfies readonly DisplayIdModel[];
+const CORE_TASK_DISPLAY_ID_W7_MODELS = ['Task'] as const satisfies readonly DisplayIdModel[];
+const SAVED_VIEW_DISPLAY_ID_W7_MODELS = ['SavedView'] as const satisfies readonly DisplayIdModel[];
+const PARENT_SCOPED_DISPLAY_ID_W7_MODELS = [
+  'HandoffItem',
+] as const satisfies readonly DisplayIdModel[];
+// Permanent defer: nullable/hybrid org_id requires explicit tenant-vs-global semantics.
+const PERMANENT_DEFERRED_DISPLAY_ID_SCHEMA_MODELS = [
+  'DrugAlertRule',
+  'IntegrationJob',
+] as const satisfies readonly DisplayIdModel[];
+// Temporary defer should stay empty after W7 consumes the direct-org and parent-scoped residuals.
+const TEMPORARY_DEFERRED_DISPLAY_ID_SCHEMA_MODELS = [] as const satisfies readonly DisplayIdModel[];
+const DEFERRED_DISPLAY_ID_SCHEMA_MODELS = [
+  ...PERMANENT_DEFERRED_DISPLAY_ID_SCHEMA_MODELS,
+  ...TEMPORARY_DEFERRED_DISPLAY_ID_SCHEMA_MODELS,
 ] as const satisfies readonly DisplayIdModel[];
 const DISPLAY_ID_SCHEMA_WAVES = [
   {
@@ -230,8 +245,47 @@ const DISPLAY_ID_SCHEMA_WAVES = [
     migrationPath: ADMIN_DRUG_DISPLAY_ID_W6_MIGRATION,
     models: DRUG_DISPLAY_ID_W6_MODELS,
   },
+  {
+    label: 'W7 medication-domain',
+    schemaFile: 'medication.prisma',
+    migrationPath: RESIDUAL_DISPLAY_ID_W7_MIGRATION,
+    models: MEDICATION_DISPLAY_ID_W7_MODELS,
+  },
+  {
+    label: 'W7 pca-pump-domain',
+    schemaFile: 'pca-pump.prisma',
+    migrationPath: RESIDUAL_DISPLAY_ID_W7_MIGRATION,
+    models: PCA_PUMP_DISPLAY_ID_W7_MODELS,
+  },
+  {
+    label: 'W7 core-task-domain',
+    schemaFile: 'core-task.prisma',
+    migrationPath: RESIDUAL_DISPLAY_ID_W7_MIGRATION,
+    models: CORE_TASK_DISPLAY_ID_W7_MODELS,
+  },
+  {
+    label: 'W7 saved-view-domain',
+    schemaFile: 'saved-view.prisma',
+    migrationPath: RESIDUAL_DISPLAY_ID_W7_MIGRATION,
+    models: SAVED_VIEW_DISPLAY_ID_W7_MODELS,
+  },
 ] as const;
-const DISPLAY_ID_WAVE_MODELS = DISPLAY_ID_SCHEMA_WAVES.flatMap((wave) => wave.models);
+const DISPLAY_ID_PARENT_SCOPED_SCHEMA_WAVES = [
+  {
+    label: 'W7 handoff-item-parent-domain',
+    schemaFile: 'communication.prisma',
+    migrationPath: RESIDUAL_DISPLAY_ID_W7_MIGRATION,
+    models: PARENT_SCOPED_DISPLAY_ID_W7_MODELS,
+  },
+] as const;
+const DISPLAY_ID_DIRECT_WAVE_MODELS = DISPLAY_ID_SCHEMA_WAVES.flatMap((wave) => wave.models);
+const DISPLAY_ID_PARENT_SCOPED_WAVE_MODELS = DISPLAY_ID_PARENT_SCOPED_SCHEMA_WAVES.flatMap(
+  (wave) => wave.models,
+);
+const DISPLAY_ID_WAVE_MODELS = [
+  ...DISPLAY_ID_DIRECT_WAVE_MODELS,
+  ...DISPLAY_ID_PARENT_SCOPED_WAVE_MODELS,
+];
 const DISPLAY_ID_SCHEMA_DEFERRED_MODELS = [...DEFERRED_DISPLAY_ID_SCHEMA_MODELS];
 const RUN_ID = randomUUID().replaceAll('-', '').slice(0, 12);
 const databaseUrl = process.env.DISPLAY_ID_DATABASE_URL ?? process.env.DATABASE_URL;
@@ -475,6 +529,31 @@ describe('display_id registry and format contract', () => {
     }
   });
 
+  it('declares HandoffItem as nullable parent-scoped without unsafe org_id uniqueness', () => {
+    const wave = DISPLAY_ID_PARENT_SCOPED_SCHEMA_WAVES[0];
+    const schema = readFileSync(join(SCHEMA_DIR, wave.schemaFile), 'utf8');
+    const migration = readFileSync(wave.migrationPath, 'utf8');
+    const block = readModelBlock(schema, 'HandoffItem');
+
+    expect(getDisplayIdRegistryEntry('HandoffItem')).toEqual({
+      prefix: 'h',
+      scope: 'orgViaParent',
+      parent: 'HandoffBoard',
+    });
+    expect(block).not.toMatch(/\n\s+org_id\s+String(?:\s|$)/);
+    expect(block).toMatch(/\n\s+board_id\s+String(?:\s|$)/);
+    expect(block).toMatch(/\n\s+display_id\s+String\?(?:\s|$)/);
+    expect(block).toContain('@@index([display_id])');
+    expect(block).not.toContain('@@unique([org_id, display_id])');
+    expect(block).not.toContain('@unique');
+    expect(migration).toContain('ALTER TABLE "HandoffItem" ADD COLUMN "display_id" TEXT;');
+    expect(migration).toContain(
+      'CREATE INDEX "HandoffItem_display_id_idx" ON "HandoffItem"("display_id") WHERE "display_id" IS NOT NULL;',
+    );
+    expect(migration).not.toContain('"HandoffItem_org_id_display_id_key"');
+    expect(migration).not.toContain('CREATE UNIQUE INDEX "HandoffItem');
+  });
+
   it('keeps the W5 pharmacy-partnership wave aligned with direct org-scoped models', () => {
     const schema = readFileSync(join(SCHEMA_DIR, 'pharmacy-partnership.prisma'), 'utf8');
     expect(collectDirectOrgScopedModels(schema)).toEqual(
@@ -492,6 +571,34 @@ describe('display_id registry and format contract', () => {
     expect(collectNonNullableOrgScopedModels(drugSchema)).toEqual(
       [...DRUG_DISPLAY_ID_W6_MODELS].sort(),
     );
+  });
+
+  it('keeps the W7 residual direct-org waves aligned with non-null direct org-scoped models', () => {
+    expect(
+      collectNonNullableOrgScopedModels(
+        readFileSync(join(SCHEMA_DIR, 'medication.prisma'), 'utf8'),
+      ),
+    ).toEqual([...MEDICATION_DISPLAY_ID_W7_MODELS].sort());
+    expect(
+      collectNonNullableOrgScopedModels(readFileSync(join(SCHEMA_DIR, 'pca-pump.prisma'), 'utf8')),
+    ).toEqual([...PCA_PUMP_DISPLAY_ID_W7_MODELS].sort());
+    expect(
+      collectNonNullableOrgScopedModels(readFileSync(join(SCHEMA_DIR, 'core-task.prisma'), 'utf8')),
+    ).toEqual([...CORE_TASK_DISPLAY_ID_W7_MODELS].sort());
+    expect(
+      collectNonNullableOrgScopedModels(
+        readFileSync(join(SCHEMA_DIR, 'saved-view.prisma'), 'utf8'),
+      ),
+    ).toEqual([...SAVED_VIEW_DISPLAY_ID_W7_MODELS].sort());
+  });
+
+  it('leaves only permanent nullable-org models deferred after W7', () => {
+    expect(TEMPORARY_DEFERRED_DISPLAY_ID_SCHEMA_MODELS).toEqual([]);
+    expect(PERMANENT_DEFERRED_DISPLAY_ID_SCHEMA_MODELS).toEqual([
+      'DrugAlertRule',
+      'IntegrationJob',
+    ]);
+    expect(DISPLAY_ID_SCHEMA_DEFERRED_MODELS).toEqual(['DrugAlertRule', 'IntegrationJob']);
   });
 
   it('assigns every tenant-scoped registry model to a wave or explicit deferred list', () => {
@@ -594,7 +701,7 @@ describeDb('display_id allocator integration (local e2e DB)', () => {
     `;
     const byIndexName = new Map(rows.map((row) => [row.indexName, row]));
 
-    for (const model of DISPLAY_ID_WAVE_MODELS) {
+    for (const model of DISPLAY_ID_DIRECT_WAVE_MODELS) {
       const row = byIndexName.get(`${model}_org_id_display_id_key`);
       expect(row, model).toMatchObject({
         tableName: model,

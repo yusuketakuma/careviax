@@ -25,6 +25,7 @@ enum InterventionType {
 model MedicationProfile {
   id             String    @id @default(cuid())
   org_id         String
+  display_id     String?
   patient_id     String
   patient        Patient   @relation(fields: [patient_id], references: [id])
   drug_master_id String?
@@ -39,6 +40,7 @@ model MedicationProfile {
   created_at     DateTime  @default(now())
   updated_at     DateTime  @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([patient_id])
   @@index([org_id, patient_id, created_at(sort: Desc)], map: "FirstVisitDocument_org_patient_created_idx")
@@ -47,6 +49,7 @@ model MedicationProfile {
 model ResidualMedication {
   id                      String      @id @default(cuid())
   org_id                  String
+  display_id              String?
   visit_record_id         String
   drug_master_id          String?
   drug_master             DrugMaster? @relation(fields: [drug_master_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
@@ -61,6 +64,7 @@ model ResidualMedication {
   created_at              DateTime    @default(now())
   updated_at              DateTime    @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([visit_record_id])
   @@index([drug_master_id])
@@ -70,6 +74,7 @@ model ResidualMedication {
 model MedicationIssue {
   id            String        @id @default(cuid())
   org_id        String
+  display_id    String?
   patient_id    String
   case_id       String?
   title         String
@@ -88,6 +93,7 @@ model MedicationIssue {
   inquiries       InquiryRecord[]
   tracing_reports TracingReport[]
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([patient_id])
   @@index([status])
@@ -96,6 +102,7 @@ model MedicationIssue {
 model Intervention {
   id           String           @id @default(cuid())
   org_id       String
+  display_id   String?
   issue_id     String?
   issue        MedicationIssue? @relation(fields: [issue_id], references: [id])
   patient_id   String
@@ -107,6 +114,7 @@ model Intervention {
   created_at   DateTime         @default(now())
   updated_at   DateTime         @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([patient_id])
 }
@@ -114,6 +122,7 @@ model Intervention {
 model FirstVisitDocument {
   id                 String    @id @default(cuid())
   org_id             String
+  display_id         String?
   patient_id         String
   case_id            String
   emergency_contacts Json
@@ -123,6 +132,7 @@ model FirstVisitDocument {
   created_at         DateTime  @default(now())
   updated_at         DateTime  @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([patient_id])
 }
@@ -130,6 +140,7 @@ model FirstVisitDocument {
 model PackagingMethodMaster {
   id          String   @id @default(cuid())
   org_id      String
+  display_id  String?
   name        String
   description String?
   icon_key    String?
@@ -140,6 +151,7 @@ model PackagingMethodMaster {
 
   set_plans SetPlan[]
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([org_id, sort_order])
 }

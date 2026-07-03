@@ -1,12 +1,12 @@
 # 業務ID（display_id）設計文書
 
 - 状態: \***\*ラティファイ済（2026-07-03 fable、ユーザー承認パラメータ準拠）** — 改訂2版。opus critic 2巡（CHANGES_REQUESTED→C1/M1/M2/M3+m1-m4 全解消→APPROVE）。実装順: ID-1a spike 完了(2026-07-03、src/lib/db/display-id-spike.test.ts に恒久化)。判定=基準1 FAIL(hook params に tx client 参照なし・採番が root 接続へ leak することを実DBで実証)/基準2-4 PASS → **E2(リポジトリ層明示採番 allocateDisplayId(tx, model, orgId))を正式採用**(fable 確定)。E1 の将来再検討は非公式 API(getExtensionContext 等)の調査が前提\*\* — 方式・採番・範囲・フォーマットはユーザーラティファイ済（2026-07-03）。critic レビュー（CHANGES_REQUESTED）の裁定を反映: C1=Setting を対象から除外（対象 138 + 除外 1）/ M1=extension 自動付与は feasibility spike を必須ゲートとし、失敗時はリポジトリ層明示採番へ fallback（§4）/ M2=IdSequence は RLS 非対象の内部テーブル（§3.1）/ M3=外部露出ポリシー新設（§7）/ minor m1-m4。§11 の未決事項（表示幅・コピーUI・グローバル検索・超高頻度表の性能影響）は fable ラティファイ時に判断する。
-- 対象: Prisma 139 モデル中 **138 モデル**（Setting は §2 の裁定で除外）。DB 主キー cuid は不変のまま、`display_id` カラムを追加して UI/検索/帳票で使用する
+- 対象: Prisma 140 モデル中 **138 モデル**（Setting は §2 の裁定で除外、IdSequence はインフラ）。DB 主キー cuid は不変のまま、`display_id` カラムを追加して UI/検索/帳票で使用する
 - 関連:
   - `docs/design/api-versioning-decision.md`（決定文書スタイルの範）
   - `docs/design/care-report-finalize-lock-design.md`（同）
   - `docs/design/core-naming-conventions.md`（識別子命名規約）
-  - `prisma/schema/*.prisma`（139 モデル定義の正本）
+  - `prisma/schema/*.prisma`（140 モデル定義の正本）
   - `src/lib/db/advisory-lock.ts`（既存 advisory lock ヘルパ）
 - 補足: 本文書は設計のみ。コード・schema・migration・API 契約は変更しない。DB migration / バックフィル / 監査ログ関連は human approval 前提で、本文書は確定方向と推奨案を整理する。
 
@@ -61,9 +61,9 @@ parseDisplayId(s):
 
 - 連番は 15 桁 = 最大 10^15 で `Number.MAX_SAFE_INTEGER`（約 9×10^15）未満だが、演算・比較は `BigInt` を用いて安全側に倒す。DB カラムの `next_value` は `BigInt`（Prisma `BigInt` / Postgres `bigint`）で持つ。
 
-## 2. プレフィックス台帳（対象 138 モデル + 除外 1）
+## 2. プレフィックス台帳（対象 138 モデル + 除外 1 + インフラ 1）
 
-モデル名アルファベット順に schema の全 139 モデルを載せる（**対象 138 + 除外 1 = Setting**）。**一意性は機械検証済み**（§2.1）。対象 138 の全 prefix が `^[a-z]{1,6}$` を満たし、重複ゼロ。
+モデル名アルファベット順に schema の全 140 モデルを載せる（**対象 138 + 除外 1 = Setting + インフラ 1 = IdSequence**）。**一意性は機械検証済み**（§2.1）。対象 138 の全 prefix が `^[a-z]{1,6}$` を満たし、重複ゼロ。
 
 主要 20 モデルには 1 文字 prefix（`p r d v s c b m n e q f h o u t i x w l`）を割り当てた。残り 118 は語感優先の 2〜6 文字。スコープ列 `org` = 薬局組織ごと採番、`global` = 全社共通マスタ（`org_id='__global__'` sentinel、§3.3）、`org (親経由)` = 自モデルに `org_id` 列は無いが親から org を導出する、`除外` = display_id を付与しない。
 
@@ -98,7 +98,7 @@ parseDisplayId(s):
 | DispenseTask                     | `d`     | org          | 調剤タスク（主要20）。例 d0000000001                                           |
 | DispensingDecision               | `dpd`   | org          | 調剤判断                                                                       |
 | DocumentDeliveryRule             | `ddr`   | org          | 文書配信ルール                                                                 |
-| DrugAlertRule                    | `dar`   | org          | 薬剤アラートルール（hybrid org-scoped、FORCE RLS）                             |
+| DrugAlertRule                    | `dar`   | org          | 薬剤アラートルール（hybrid/nullable org_id、schema/backfill は恒久 defer）     |
 | DrugInteraction                  | `dint`  | global       | 相互作用マスタ（global）                                                       |
 | DrugMaster                       | `drug`  | global       | 医薬品マスタ（global、SSK/YJ）。例 drug0000000001                              |
 | DrugMasterChangeEvent            | `dmce`  | global       | 医薬品マスタ変更イベント（global）                                             |
@@ -122,7 +122,7 @@ parseDisplayId(s):
 | HandoffItem                      | `h`     | org (親経由) | 引き継ぎアイテム（主要20）。org_id列なし→board_id経由でorg導出。例 h0000000001 |
 | IncidentReport                   | `x`     | org          | インシデント報告（主要20・x）。例 x0000000001                                  |
 | InquiryRecord                    | `i`     | org          | 疑義照会（主要20・i）。例 i0000000001                                          |
-| IntegrationJob                   | `ijob`  | org          | 連携ジョブ                                                                     |
+| IntegrationJob                   | `ijob`  | org          | 連携ジョブ（nullable org_id、global job 行を含みうるため恒久 defer）           |
 | Intervention                     | `itv`   | org          | 薬学的介入                                                                     |
 | JahisSupplementalRecord          | `jsr`   | org          | JAHIS補足レコード                                                              |
 | LabelDictionary                  | `lbl`   | global       | ラベル辞書（global・keyがすでに@unique）                                       |
@@ -219,10 +219,10 @@ parseDisplayId(s):
 
 台帳は本文書生成時に Python スクリプトで検証済み（改訂2版で Setting 除外後に再実行）。検証内容と結果:
 
-- **モデル数**: schema 全体 139（`grep -rh '^model ' prisma/schema/*.prisma | wc -l` と一致）。うち registry 対象 **138**、除外 1（Setting）。
+- **モデル数**: schema 全体 140（`grep -rh '^model ' prisma/schema/*.prisma | wc -l` と一致）。うち registry 対象 **138**、除外 1（Setting）、インフラ 1（IdSequence）。
 - **正規表現適合**: 対象 138 の全 prefix が `^[a-z]{1,6}$` にマッチ（違反 0 件）。
 - **重複**: `Counter(prefix)` で n>1 の要素 0 件。distinct prefix = **138**（= 対象モデル数）。
-- **スコープ内訳（実測）**: **org 126 / global 11 / org(親経由) 1（= HandoffItem）/ 除外 1（= Setting）**。global 11 = BreakGlassSession, DrugInteraction, DrugMaster, DrugMasterChangeEvent, DrugMasterImportLog, DrugPackage, DrugPackageInsert, GenericDrugMapping, LabelDictionary, Organization, PlatformOperator。
+- **スコープ内訳（実測）**: **org 125 / global 12 / org(親経由) 1（= HandoffItem）/ 除外 1（= Setting）/ インフラ 1（= IdSequence）**。global 12 = BreakGlassSession, DrugInteraction, DrugMaster, DrugMasterChangeEvent, DrugMasterImportLog, DrugPackage, DrugPackageInsert, GenericDrugMapping, LabelDictionary, Organization, PlatformOperator, User。
 
 **実装時の再検証（CI ゲート）**: prefix レジストリ（§4.5）を単一の TypeScript 定数として持ち、以下を単体テストで恒常検証する。(1) 全値が `/^[a-z]{1,6}$/`、(2) `new Set(values).size === entries.length`（重複ゼロ）、(3) レジストリのキー集合 + 明示除外リスト（Setting、予約 prefix `cfg` 含む）の和集合が `prisma/schema` の全モデル名集合と一致（モデル追加時に prefix 未登録を検出、除外は明示宣言を強制）。これによりモデル追加で prefix を付け忘れる／衝突させる退行を landing 前に捕捉する。
 
@@ -275,7 +275,7 @@ RETURNING next_value - 1 AS allocated;   -- 払い出した番号
 
 ### 3.3 グローバル表の sentinel 行
 
-`org_id` を持たないモデル（global 11 種、§2.1）は、採番カウンタも全社共通で 1 本にする必要がある。`IdSequence` に `org_id = '__global__'` の sentinel 行を用いる。
+`org_id` を持たない、または multi-org identity として global 扱いするモデル（global 12 種、§2.1）は、採番カウンタも全社共通で 1 本にする必要がある。`IdSequence` に `org_id = '__global__'` の sentinel 行を用いる。
 
 - `'__global__'` は Organization.id（cuid）と衝突しない予約文字列。cuid は `[a-z0-9]` の固定形式で `_` を含まないため安全。
 - global 採番の実行コンテキスト: `IdSequence` は RLS 非対象（§3.1）のため、グローバルマスタ import のように **`withOrgContext` 外・非 tx のコンテキストからでも、`'__global__'` 行への単文 upsert（§3.2）がそのまま動く**。org セッション変数は不要。アクセスは §3.1 の専用ヘルパー経由に限定する。
@@ -421,16 +421,16 @@ model DrugMaster {
 ```
 
 - org スコープ: `@@unique([org_id, display_id])`。テナント内で一意。異なる org 間で同じ `p0000000001` が並存するのは意図通り（org ごと 1 起点連番）。
-- global スコープ（11 種）: `@unique`。全社で一意。
-- HandoffItem（org 親経由）: `org_id` 列が無いため `@@unique([org_id, display_id])` は張れない。選択肢は (a) `org_id` 列を非正規化追加してユニーク制約を張る、(b) `@unique`（display_id 単独、prefix=`h` で全社一意になるよう global カウンタ化する）。§3.3 の方針では親 org 採番のため (a) が整合的だが、`org_id` 列追加のコストと引き換え。→ **§11 未決**（HandoffItem のユニーク制約軸）。初期は nullable 導入のみで制約は保留可。
+- global スコープ（12 種）: `@unique`。全社で一意。
+- HandoffItem（org 親経由）: `org_id` 列が無いため `@@unique([org_id, display_id])` は張れない。W7 では `display_id String?` と検索用 index のみを導入し、親 `HandoffBoard.org_id` で採番する専用 backfill 経路を opt-in で追加する。ユニーク制約の選択肢は (a) `org_id` 列を非正規化追加してユニーク制約を張る、(b) `@unique`（display_id 単独、prefix=`h` で全社一意になるよう global カウンタ化する）。§3.3 の方針では親 org 採番のため (a) が整合的だが、`org_id` 列追加のコストと引き換え。→ **§11 未決**（HandoffItem のユニーク制約軸）。
 
 ### 5.2 3 段階のライフサイクル
 
-| 段階                       | 状態                 | 内容                                                                                                                                               |
-| -------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1. nullable 導入**       | `display_id String?` | 列 + ユニーク制約（partial: NULL 許容）を追加。registry へ登録し、採番機構（§4 の E1 または E2）が以後の新規行に付与。既存行は NULL。              |
-| **2. バックフィル**        | 既存行を採番         | §6 のスクリプトで org ごと `created_at, id` 順に採番して埋める。`IdSequence.next_value` はバックフィル済みの最大値 +1 に設定。                     |
-| **3. NOT NULL 化（将来）** | `display_id String`  | 全行埋まったことを検証後、`NOT NULL` 制約へ昇格。**human approval 前提**。段階 3 は全モデルの段階 2 完了後、性能・運用が安定してから別途判断する。 |
+| 段階                       | 状態                 | 内容                                                                                                                                                                               |
+| -------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1. nullable 導入**       | `display_id String?` | 列 + ユニーク制約（partial: NULL 許容、HandoffItem は §5.1 の未決により index のみ）を追加。registry へ登録し、採番機構（§4 の E1 または E2）が以後の新規行に付与。既存行は NULL。 |
+| **2. バックフィル**        | 既存行を採番         | §6 のスクリプトで org ごと `created_at, id` 順に採番して埋める。`IdSequence.next_value` はバックフィル済みの最大値 +1 に設定。                                                     |
+| **3. NOT NULL 化（将来）** | `display_id String`  | 全行埋まったことを検証後、`NOT NULL` 制約へ昇格。**human approval 前提**。段階 3 は全モデルの段階 2 完了後、性能・運用が安定してから別途判断する。                                 |
 
 - ユニーク制約は段階 1 から張る（NULL は Postgres で重複可なので nullable でも成立）。ただし partial unique index（`WHERE display_id IS NOT NULL`）にするか通常 unique にするかは Postgres の NULL 扱い（NULL は unique 制約で複数許容）で自然に両立するため通常 unique で可。
 
@@ -438,15 +438,15 @@ model DrugMaster {
 
 対象 138 モデルへの列追加を 1 migration で行うとロック時間・レビュー負荷が過大になる。ドメイン境界（schema ファイル）で 5〜7 波に分割する。
 
-| 波  | 対象ドメイン（schema ファイル）                                                                | 目安モデル数 |
-| --- | ---------------------------------------------------------------------------------------------- | ------------ |
-| W1  | patient.prisma（Patient 系）                                                                   | ~24          |
-| W2  | prescription.prisma（処方・調剤・セット）                                                      | ~22          |
-| W3  | visit.prisma + communication.prisma（訪問・連携・報告書）                                      | ~30          |
-| W4  | organization.prisma（組織・施設・薬剤師）                                                      | ~20          |
-| W5  | pharmacy-partnership.prisma（薬局間連携・契約・請求書）                                        | ~24          |
-| W6  | admin.prisma + drug.prisma + platform.prisma（管理・マスタ・運営、Setting は除外のため対象外） | ~29          |
-| W7  | medication.prisma + pca-pump.prisma + core-task.prisma + saved-view.prisma（残余）             | ~11          |
+| 波  | 対象ドメイン（schema ファイル）                                                                                             | 目安モデル数 |
+| --- | --------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| W1  | patient.prisma（Patient 系）                                                                                                | ~24          |
+| W2  | prescription.prisma（処方・調剤・セット）                                                                                   | ~22          |
+| W3  | visit.prisma + communication.prisma（訪問・連携・報告書）                                                                   | ~30          |
+| W4  | organization.prisma（組織・施設・薬剤師）                                                                                   | ~20          |
+| W5  | pharmacy-partnership.prisma（薬局間連携・契約・請求書）                                                                     | ~24          |
+| W6  | admin.prisma + drug.prisma + platform.prisma（管理・マスタ・運営、Setting は除外のため対象外）                              | ~29          |
+| W7  | medication.prisma + pca-pump.prisma + core-task.prisma + saved-view.prisma（direct org 残余 12）+ HandoffItem nullable-only | ~13          |
 
 - 各波: (1) 列 + ユニーク制約追加 migration、(2) registry へ当該モデルを登録（自動付与開始）、(3) バックフィルスクリプト実行、(4) 検証。波内でこの順を守れば、登録前に作られた行だけがバックフィル対象になる。
 - 波の粒度・順序は実装時に調整可。患者・処方など UI 露出が最も多いドメインを先行させる（ID-3 の効果が早く出る）。
@@ -459,7 +459,7 @@ model DrugMaster {
 
 - org スコープ: org ごとに `ORDER BY created_at ASC, id ASC` で全行を走査し、1 から連番を振る。`created_at` 同値の tie-break に `id`（cuid）を使い決定的にする。
 - global スコープ: 全行を `created_at ASC, id ASC` で 1 から連番。
-- HandoffItem: 親 HandoffBoard の org ごとに `created_at, id` 順で採番（§5.1 の制約方針が確定してから）。
+- HandoffItem: 親 HandoffBoard の org ごとに `created_at, id` 順で採番する。generic direct-org backfill には混ぜず、`board_id -> HandoffBoard.org_id` を join する専用 opt-in 経路でのみ処理する。DB の親 org unique 制約は §5.1 / §11 の未決が解消するまで保留する。
 
 ### 6.2 スクリプト構造（pre / apply / post）
 
