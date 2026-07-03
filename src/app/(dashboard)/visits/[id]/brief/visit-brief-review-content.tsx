@@ -9,6 +9,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { cn } from '@/lib/utils';
@@ -55,7 +56,7 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
   const patientQuery = useQuery<{ patientId: string }>({
     queryKey: ['visit-brief-review-patient', visitId, orgId],
     queryFn: async () => {
-      const headers = { 'x-org-id': orgId };
+      const headers = buildOrgHeaders(orgId);
       const scheduleRes = await fetch(`/api/visit-schedules/${visitId}`, { headers });
       if (scheduleRes.ok) {
         const patientId = pickVisitPatientId(await scheduleRes.json());
@@ -77,7 +78,7 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
     queryFn: async () => {
       if (!patientId) throw new Error('患者IDが未解決です');
       const res = await fetch(buildPatientApiPath(patientId, '/visit-brief'), {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('訪問前まとめの取得に失敗しました');
       return res.json();
@@ -97,10 +98,7 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
       const summary = selectBriefSummary(brief);
       const res = await fetch('/api/visit-brief-feedback', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           patient_id: brief.patient.id,
           context: brief.context,

@@ -43,6 +43,7 @@ import type { PatientHeaderSummary } from '@/server/services/patient-detail';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { formatFileSize } from '@/lib/files/format-file-size';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { generateCareReportFromVisit } from '@/lib/reports/generate-from-visit-client';
 import { OUTCOME_LABELS } from '@/lib/constants/visit';
@@ -496,10 +497,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     }) => {
       const response = await fetch('/api/visit-schedules', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
 
@@ -528,7 +526,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     queryKey: ['visit-record', recordId, orgId],
     queryFn: async () => {
       const res = await fetch(`/api/visit-records/${recordId}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('訪問記録の取得に失敗しました');
       return res.json();
@@ -546,7 +544,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     queryKey: ['patient-header-summary', record?.patient_id, orgId],
     queryFn: async () => {
       const res = await fetch(buildPatientApiPath(record?.patient_id ?? '', '/header-summary'), {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('患者ヘッダー情報の取得に失敗しました');
       return res.json();
@@ -563,7 +561,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     queryKey: ['care-reports-by-visit', recordId, orgId],
     queryFn: async () => {
       const res = await fetch(`/api/care-reports?visit_record_id=${recordId}&limit=10`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('報告書の取得に失敗しました');
       return res.json();
@@ -583,7 +581,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       if (record?.patient_id) params.set('patient_id', record.patient_id);
       params.set('limit', '20');
       const res = await fetch(`/api/billing-candidates?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('請求候補の取得に失敗しました');
       return res.json();
@@ -596,7 +594,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       if (!billingMonth) throw new Error('対象月を判定できません');
       const res = await fetch('/api/billing-candidates', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ billing_month: billingMonth }),
       });
       const json = await res.json().catch(() => null);
@@ -626,7 +624,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     queryKey: ['residual-medications', recordId, orgId],
     queryFn: async () => {
       const res = await fetch(`/api/residual-medications?visit_record_id=${recordId}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       // 取得失敗を空配列に潰すと残薬ゼロ(=訪問準備の根拠なし)と区別できないため、
       // throw して isError を立て、利用側で「取得失敗」を明示する。
@@ -645,7 +643,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     queryKey: ['visit-preparation-care-team', record?.schedule?.id, orgId],
     queryFn: async () => {
       const res = await fetch(`/api/visit-preparations/${record?.schedule?.id}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('訪問準備情報の取得に失敗しました');
       return res.json();

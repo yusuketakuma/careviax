@@ -9,6 +9,7 @@ import { messageFromError } from '@/lib/utils/error-message';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { resolveScheduleVisitRecordId } from '@/lib/offline/evidence-drafts.shared';
 import {
@@ -319,7 +320,7 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
   const appendMutation = useMutation({
     mutationFn: async () => {
       if (!transcript?.trim()) throw new Error('追記できる文字起こしがありません');
-      const headers = { 'x-org-id': orgId };
+      const headers = buildOrgHeaders(orgId);
 
       let recordId: string | null = null;
       let visitResolved = false;
@@ -351,7 +352,7 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
 
       const patchRes = await fetch(`/api/visit-records/${recordId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(body),
       });
       if (!patchRes.ok) {

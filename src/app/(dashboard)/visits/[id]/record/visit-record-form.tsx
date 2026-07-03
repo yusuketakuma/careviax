@@ -30,6 +30,7 @@ import {
 import { z } from 'zod';
 import { visitRecordBaseSchema } from '@/lib/validations/visit-record';
 import { useNetworkOnline } from '@/lib/hooks/use-network-online';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSpeechRecognition } from '@/lib/hooks/use-speech-recognition';
 import { useSoapDraft } from '@/lib/hooks/use-soap-draft';
@@ -503,7 +504,7 @@ export function VisitRecordForm({
     queryKey: ['schedule', id, orgId],
     queryFn: async () => {
       const res = await fetch(`/api/visit-schedules/${id}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('スケジュール情報の取得に失敗しました');
       return res.json();
@@ -519,7 +520,7 @@ export function VisitRecordForm({
     queryKey: ['patient-header-summary', schedule?.patient_id, orgId],
     queryFn: async () => {
       const res = await fetch(buildPatientApiPath(schedule?.patient_id ?? '', '/header-summary'), {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('患者ヘッダー情報の取得に失敗しました');
       return res.json();
@@ -542,10 +543,7 @@ export function VisitRecordForm({
     queryFn: async () => {
       const res = await fetch('/api/cds/check', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ cycleId: schedule!.cycle_id }),
       });
       if (!res.ok) {
@@ -573,7 +571,7 @@ export function VisitRecordForm({
     queryKey: ['visit-preparation-care-team', id, orgId],
     queryFn: async () => {
       const res = await fetch(`/api/visit-preparations/${id}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('訪問準備情報の取得に失敗しました');
       return res.json();
@@ -914,10 +912,7 @@ export function VisitRecordForm({
 
     const presignResponse = await fetch('/api/files/presigned-upload', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-org-id': orgId,
-      },
+      headers: buildOrgJsonHeaders(orgId),
       body: JSON.stringify({
         purpose: 'visit-photo',
         file_name: uploadFile.name,
@@ -946,10 +941,7 @@ export function VisitRecordForm({
 
     const completeResponse = await fetch('/api/files/complete', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-org-id': orgId,
-      },
+      headers: buildOrgJsonHeaders(orgId),
       body: JSON.stringify({
         file_id: presignJson.data.id,
         etag: uploadResponse.headers.get('etag') ?? undefined,
@@ -1025,10 +1017,7 @@ export function VisitRecordForm({
 
       const res = await fetch('/api/visit-records', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
 
@@ -1084,7 +1073,7 @@ export function VisitRecordForm({
         if (reflectIntake) {
           void fetch(buildPatientApiPath(labPatientId), {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+            headers: buildOrgJsonHeaders(orgId),
             body: JSON.stringify({
               intake: reflectIntake,
               source_visit_record_id: record.id,
@@ -1118,10 +1107,7 @@ export function VisitRecordForm({
 
         const patchResponse = await fetch(`/api/visit-records/${record.id}`, {
           method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-org-id': orgId,
-          },
+          headers: buildOrgJsonHeaders(orgId),
           body: JSON.stringify({
             version: record.version,
             attachments: uploadedAttachments.map((attachment) => ({

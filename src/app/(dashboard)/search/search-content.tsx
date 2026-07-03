@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { FilterChipBar } from '@/components/features/workspace/filter-chip-bar';
 import { ListOpenCard } from '@/components/features/workspace/list-open-card';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { AdvancedFilterModal } from './advanced-filter-modal';
 import { type AdvancedFilterState, EMPTY_ADVANCED_FILTER } from './advanced-filter.shared';
@@ -222,7 +223,7 @@ export function SearchContent({
     if (!orgId) return;
     // unmount/orgId変更で in-flight を中断し、teardown後の setState と stale 上書きを防ぐ
     const controller = new AbortController();
-    void fetch('/api/pharmacists', { headers: { 'x-org-id': orgId }, signal: controller.signal })
+    void fetch('/api/pharmacists', { headers: buildOrgHeaders(orgId), signal: controller.signal })
       .then((res) => (res.ok ? res.json() : null))
       .then((payload: { data?: Array<{ user: { id: string; name: string } }> } | null) => {
         if (!payload?.data) return;
@@ -268,7 +269,7 @@ export function SearchContent({
 
       try {
         const q = encodeURIComponent(normalized);
-        const headers: HeadersInit = orgId ? { 'x-org-id': orgId } : {};
+        const headers: HeadersInit = orgId ? buildOrgHeaders(orgId) : {};
         const sig = controller.signal;
         const requestInit = { headers, signal: sig };
 

@@ -41,6 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
@@ -142,6 +143,7 @@ type MixedRouteItem = {
   routeId: string;
   itemType: 'schedule' | 'proposal';
   itemId: string;
+  itemDisplayId?: string | null;
   patientName: string;
   timeWindowStart: string | null;
   timeWindowEnd: string | null;
@@ -342,6 +344,7 @@ function buildMixedRouteItems(args: {
       routeId: schedule.id,
       itemType: 'schedule' as const,
       itemId: schedule.id,
+      itemDisplayId: schedule.display_id,
       patientName: schedule.case_.patient.name,
       timeWindowStart: schedule.time_window_start,
       timeWindowEnd: schedule.time_window_end,
@@ -356,6 +359,7 @@ function buildMixedRouteItems(args: {
       routeId: `proposal:${proposal.id}`,
       itemType: 'proposal' as const,
       itemId: proposal.id,
+      itemDisplayId: proposal.display_id,
       patientName: proposal.case_.patient.name,
       timeWindowStart: proposal.time_window_start,
       timeWindowEnd: proposal.time_window_end,
@@ -375,10 +379,7 @@ async function requestVisitScheduleProposal(
 ): Promise<{ data: Proposal[]; diagnostics?: ProposalGenerationDiagnostics }> {
   const response = await fetch('/api/visit-schedule-proposals', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-org-id': orgId,
-    },
+    headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
@@ -466,7 +467,7 @@ export function ScheduleWeeklyOptimizer({
     queryFn: async () => {
       const params = new URLSearchParams({ status: 'active', limit: '100' });
       const response = await fetch(`/api/cases?${params}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('ケース一覧の取得に失敗しました');
       return response.json() as Promise<{ data: CaseOption[] }>;
@@ -482,7 +483,7 @@ export function ScheduleWeeklyOptimizer({
         q: deferredCaseSearchInput,
       });
       const response = await fetch(`/api/cases?${params}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('ケース候補の取得に失敗しました');
       return response.json() as Promise<{ data: CaseOption[] }>;
@@ -512,7 +513,7 @@ export function ScheduleWeeklyOptimizer({
         date_to: dateTo,
       });
       const response = await fetch(`/api/visit-schedule-proposals?${params}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('週間候補の取得に失敗しました');
       return response.json() as Promise<{ data: Proposal[] }>;
@@ -529,7 +530,7 @@ export function ScheduleWeeklyOptimizer({
         date_to: dateTo,
       });
       const response = await fetch(`/api/pharmacist-shifts?${params}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('薬剤師シフトの取得に失敗しました');
       return response.json() as Promise<{ data: PharmacistShift[] }>;
@@ -541,7 +542,7 @@ export function ScheduleWeeklyOptimizer({
     queryKey: ['visit-vehicle-resources', orgId, 'weekly-optimizer', 'available'],
     queryFn: async () => {
       const response = await fetch('/api/visit-vehicle-resources?available=true', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('社用車リソースの取得に失敗しました');
       return response.json() as Promise<VisitVehicleResourceScheduleOptionsResponse>;
@@ -595,7 +596,7 @@ export function ScheduleWeeklyOptimizer({
         proposed_date: dateFrom,
       });
       const response = await fetch(`/api/visit-schedule-proposals/billing-preview?${params}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('算定プレビューの取得に失敗しました');
       return response.json() as Promise<VisitScheduleBillingPreview>;
@@ -741,10 +742,7 @@ export function ScheduleWeeklyOptimizer({
     queryFn: async () => {
       const response = await fetch('/api/visit-routes', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           schedule_ids: selectedCellSchedules.map((schedule) => schedule.id),
           proposal_ids: selectedCellProposals.map((proposal) => proposal.id),
@@ -1863,7 +1861,10 @@ export function ScheduleWeeklyOptimizer({
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {formatNullableTimeRange(row.timeWindowStart, row.timeWindowEnd)} / ID{' '}
-                      {formatShortEntityIdentifier(row.itemId)}
+                      {formatShortEntityIdentifier({
+                        id: row.itemId,
+                        display_id: row.itemDisplayId,
+                      })}
                     </p>
                     {row.medicationSummary ? (
                       <p className="mt-1 text-xs text-state-confirm">

@@ -65,6 +65,7 @@ import {
 } from '@/components/ui/sheet';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
@@ -743,7 +744,7 @@ export function ScheduleProposalsContent({
     queryKey: ['schedule-proposals-dashboard', orgId, queryParams],
     queryFn: async () => {
       const response = await fetch(`/api/visit-schedule-proposals?${queryParams}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('訪問候補の取得に失敗しました');
       return response.json() as Promise<ScheduleProposalsResponse>;
@@ -762,7 +763,7 @@ export function ScheduleProposalsContent({
         q: deferredCaseSearchInput,
       });
       const response = await fetch(`/api/cases?${params}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('ケース候補の取得に失敗しました');
       return response.json() as Promise<CaseSearchResponse>;
@@ -789,7 +790,7 @@ export function ScheduleProposalsContent({
     queryKey: ['visit-vehicle-resources', orgId, 'available'],
     queryFn: async () => {
       const response = await fetch('/api/visit-vehicle-resources?available=true', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('社用車リソースの取得に失敗しました');
       return response.json() as Promise<VisitVehicleResourceScheduleOptionsResponse>;
@@ -860,10 +861,7 @@ export function ScheduleProposalsContent({
     queryFn: async () => {
       const response = await fetch('/api/visit-schedule-proposals/billing-preview-batch', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ items: proposalPreviewRequests }),
       });
       if (!response.ok) throw new Error('候補の算定プレビュー取得に失敗しました');
@@ -935,7 +933,7 @@ export function ScheduleProposalsContent({
       const response = await fetch(
         `/api/visit-schedule-proposals/${activeDetailId}?travel_mode=${routeTravelMode}`,
         {
-          headers: { 'x-org-id': orgId },
+          headers: buildOrgHeaders(orgId),
         },
       );
       if (!response.ok) throw new Error('確定フローの取得に失敗しました');
@@ -1119,10 +1117,7 @@ export function ScheduleProposalsContent({
       try {
         response = await fetch(`/api/visit-schedule-proposals/${id}`, {
           method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-org-id': orgId,
-          },
+          headers: buildOrgJsonHeaders(orgId),
           body: JSON.stringify(payload),
         });
       } catch (error) {
@@ -1202,10 +1197,7 @@ export function ScheduleProposalsContent({
           try {
             response = await fetch(`/api/visit-schedule-proposals/${proposal.id}`, {
               method: 'PATCH',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-org-id': orgId,
-              },
+              headers: buildOrgJsonHeaders(orgId),
               body: JSON.stringify(
                 action === 'reject'
                   ? {
@@ -1361,10 +1353,7 @@ export function ScheduleProposalsContent({
 
       const response = await fetch('/api/visit-schedule-proposals', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           case_id: detail.case_id,
           visit_type: detail.visit_type,

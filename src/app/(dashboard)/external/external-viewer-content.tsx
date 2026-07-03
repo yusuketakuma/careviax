@@ -14,6 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { StatCard } from '@/components/ui/stat-card';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { SELF_REPORT_STATUS_LABELS } from '@/lib/constants/status-labels';
 import { PageSection } from '@/components/layout/page-section';
@@ -81,7 +82,7 @@ export function ExternalViewerContent({
     queryKey: ['external-access-grants', orgId],
     queryFn: async () => {
       const response = await fetch('/api/external-access', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('外部共有の取得に失敗しました');
       return response.json() as Promise<{ data: ExternalGrant[] }>;
@@ -93,7 +94,7 @@ export function ExternalViewerContent({
     queryKey: ['patient-self-reports', orgId, 'external-dashboard'],
     queryFn: async () => {
       const response = await fetch('/api/patient-self-reports?limit=12', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('自己申告の取得に失敗しました');
       return response.json() as Promise<{ data: SelfReport[] }>;
@@ -105,7 +106,7 @@ export function ExternalViewerContent({
     queryKey: ['community-activities', orgId, 'follow-up'],
     queryFn: async () => {
       const response = await fetch('/api/community-activities?limit=8&follow_up_required=true', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('地域活動の取得に失敗しました');
       return response.json() as Promise<{ data: CommunityActivity[] }>;
@@ -140,10 +141,7 @@ export function ExternalViewerContent({
     }) => {
       const response = await fetch(`/api/patient-self-reports/${id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ status, updated_at }),
       });
       if (!response.ok) {
@@ -162,10 +160,7 @@ export function ExternalViewerContent({
     mutationFn: async (report: SelfReport) => {
       const response = await fetch('/api/tasks', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           task_type: 'patient_self_report_followup',
           title: `${report.patient_name ?? '患者'}: ${report.subject}`,

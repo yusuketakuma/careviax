@@ -10,6 +10,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import {
@@ -56,7 +57,7 @@ export function FacilityPacketContent({ scheduleId }: { scheduleId: string }) {
     queryKey: ['visit-preparation-facility-packet', scheduleId, orgId],
     queryFn: async () => {
       const res = await fetch(`/api/visit-preparations/${scheduleId}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('施設訪問パケットの取得に失敗しました');
       return res.json();
@@ -205,7 +206,7 @@ function FacilityPacketMemoSection({
     mutationFn: async (memo: FacilityPacketMemo) => {
       const res = await fetch('/api/facility-visit-batches', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
         body: JSON.stringify({
           schedule_ids: orderedScheduleIds,
           ordered_schedule_ids: orderedScheduleIds,

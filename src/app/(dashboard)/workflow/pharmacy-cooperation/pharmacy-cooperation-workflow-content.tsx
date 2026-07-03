@@ -26,6 +26,7 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { cursorPaginatedPageSchema, type CursorPaginatedPage } from '@/lib/api/response-schemas';
 import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
 import { formatYen } from '@/lib/format/currency';
@@ -621,7 +622,7 @@ async function fetchShareCases(orgId: string) {
   const response = await fetch(
     '/api/patient-share-cases?limit=8&view_context=pharmacy_cooperation_workflow',
     {
-      headers: { 'x-org-id': orgId },
+      headers: buildOrgHeaders(orgId),
     },
   );
   return readApiJson<PatientShareCasePage>(response, {
@@ -632,7 +633,7 @@ async function fetchShareCases(orgId: string) {
 
 async function fetchVisitRequests(orgId: string) {
   const response = await fetch('/api/pharmacy-visit-requests?limit=8', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   return readApiJson<CursorPaginatedPage<PharmacyVisitRequestRow>>(response, {
     fallbackMessage: '訪問依頼の取得に失敗しました',
@@ -642,7 +643,7 @@ async function fetchVisitRequests(orgId: string) {
 
 async function fetchPartnerVisitRecords(orgId: string) {
   const response = await fetch('/api/partner-visit-records?limit=8', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   return readApiJson<CursorPaginatedPage<PartnerVisitRecordRow>>(response, {
     fallbackMessage: '協力薬局訪問記録の取得に失敗しました',
@@ -654,7 +655,7 @@ async function fetchCorrectionRequests(orgId: string, shareCaseId: string) {
   const response = await fetch(
     `/api/patient-share-cases/${shareCaseId}/correction-requests?limit=8`,
     {
-      headers: { 'x-org-id': orgId },
+      headers: buildOrgHeaders(orgId),
     },
   );
   return readApiJson<CursorPaginatedPage<CorrectionRequestRow>>(response, {
@@ -665,7 +666,7 @@ async function fetchCorrectionRequests(orgId: string, shareCaseId: string) {
 
 async function fetchPatientShareConsents(orgId: string, shareCaseId: string) {
   const response = await fetch(`/api/patient-share-cases/${shareCaseId}/consents?limit=8`, {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   return readApiJson<CursorPaginatedPage<PatientShareConsentRow>>(response, {
     fallbackMessage: '患者共有同意の取得に失敗しました',
@@ -686,7 +687,7 @@ async function fetchMessageThreads(
   if (visitRequestId) params.set('visit_request_id', visitRequestId);
 
   const response = await fetch(`/api/pharmacy-cooperation-message-threads?${params.toString()}`, {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   return readApiJson<CursorPaginatedPage<PharmacyCooperationMessageThreadRow>>(response, {
     fallbackMessage: '連携メッセージの取得に失敗しました',
@@ -2769,7 +2770,7 @@ export function PharmacyCooperationWorkflowContent() {
     mutationFn: async (id: string) => {
       const response = await fetch(`/api/patient-share-cases/${id}/activate`, {
         method: 'POST',
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       return readApiJson<unknown>(response);
     },
@@ -2796,10 +2797,7 @@ export function PharmacyCooperationWorkflowContent() {
     }) => {
       const response = await fetch(`/api/patient-share-cases/${id}/patient-link`, {
         method: 'PATCH',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
         body: JSON.stringify({
           decision,
           ...(decision === 'accept' && acceptForm
@@ -2838,10 +2836,7 @@ export function PharmacyCooperationWorkflowContent() {
         `/api/patient-share-cases/${effectiveConsentShareCaseId}/consents`,
         {
           method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-org-id': orgId,
-          },
+          headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
           body: JSON.stringify({
             consent_date: consentForm.consentDate,
             consent_person: consentForm.consentPerson,
@@ -2894,10 +2889,7 @@ export function PharmacyCooperationWorkflowContent() {
         `/api/patient-share-cases/${shareCaseId}/consents/${consentId}/revoke`,
         {
           method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-org-id': orgId,
-          },
+          headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
           body: JSON.stringify({ reason: trimmedReason }),
         },
       );
@@ -2918,10 +2910,7 @@ export function PharmacyCooperationWorkflowContent() {
         `/api/patient-share-cases/${effectiveCorrectionShareCaseId}/correction-requests`,
         {
           method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-org-id': orgId,
-          },
+          headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
           body: JSON.stringify({
             target_type: correctionForm.targetType,
             request_type: correctionForm.requestType,
@@ -2958,10 +2947,7 @@ export function PharmacyCooperationWorkflowContent() {
       const carryItems = multilineItems(visitRequestForm.carryItems);
       const response = await fetch('/api/pharmacy-visit-requests', {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
         body: JSON.stringify({
           share_case_id: effectiveVisitRequestShareCaseId,
           urgency: visitRequestForm.urgency,
@@ -2999,10 +2985,7 @@ export function PharmacyCooperationWorkflowContent() {
     mutationFn: async () => {
       const response = await fetch('/api/pharmacy-cooperation-message-threads', {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
         body: JSON.stringify({
           share_case_id: effectiveMessageShareCaseId,
           ...(effectiveMessageVisitRequestId
@@ -3033,10 +3016,7 @@ export function PharmacyCooperationWorkflowContent() {
     mutationFn: async () => {
       const response = await fetch('/api/partner-visit-records', {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
         body: JSON.stringify({
           visit_request_id: effectiveRecordVisitRequestId,
           ...(recordDraftForm.pharmacistId.trim()
@@ -3081,10 +3061,7 @@ export function PharmacyCooperationWorkflowContent() {
     }) => {
       const response = await fetch(`/api/pharmacy-visit-requests/${id}/decision`, {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
         body: JSON.stringify({
           decision,
           expected_updated_at: expectedUpdatedAt,
@@ -3106,10 +3083,7 @@ export function PharmacyCooperationWorkflowContent() {
     mutationFn: async ({ id, expectedUpdatedAt }: { id: string; expectedUpdatedAt: string }) => {
       const response = await fetch(buildPartnerVisitRecordApiPath(id, '/submit'), {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
         body: JSON.stringify({ expected_updated_at: expectedUpdatedAt }),
       });
       return readApiJson<unknown>(response);
@@ -3139,10 +3113,7 @@ export function PharmacyCooperationWorkflowContent() {
     }) => {
       const response = await fetch(buildPartnerVisitRecordApiPath(id, '/review'), {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
         body: JSON.stringify({
           decision,
           expected_updated_at: expectedUpdatedAt,
@@ -3165,7 +3136,7 @@ export function PharmacyCooperationWorkflowContent() {
     mutationFn: async (id: string) => {
       const response = await fetch(buildPartnerVisitRecordApiPath(id, '/physician-report-draft'), {
         method: 'POST',
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       return readApiJson<ReportDraftResult>(response, {
         fallbackMessage: '報告書ドラフトの作成に失敗しました',

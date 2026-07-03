@@ -25,6 +25,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
 import {
@@ -372,7 +373,7 @@ export function BillingCandidatesContent({
       if (patientIdFilter) params.set('patient_id', patientIdFilter);
       if (pageParam) params.set('cursor', pageParam);
       const res = await fetch(`/api/billing-candidates?${params}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('請求候補の取得に失敗しました');
       return res.json() as Promise<BillingCandidatesResponse>;
@@ -398,7 +399,7 @@ export function BillingCandidatesContent({
       });
       if (patientIdFilter) params.set('patient_id', patientIdFilter);
       const res = await fetch(`/api/billing-candidates/export?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('請求CSVの出力前確認に失敗しました');
       return res.json() as Promise<BillingExportPreviewResponse>;
@@ -424,10 +425,7 @@ export function BillingCandidatesContent({
     mutationFn: async () => {
       const res = await fetch('/api/billing-candidates', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ billing_month: billingMonthStr, billing_domain: billingDomain }),
       });
       if (!res.ok) {
@@ -454,10 +452,7 @@ export function BillingCandidatesContent({
     }) => {
       const res = await fetch(`/api/billing-candidates/${input.id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           action: input.action,
           expected_updated_at: input.expectedUpdatedAt,
@@ -483,10 +478,7 @@ export function BillingCandidatesContent({
     mutationFn: async () => {
       const res = await fetch('/api/billing-candidates/close', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ billing_month: billingMonthStr, billing_domain: billingDomain }),
       });
       if (!res.ok) {
@@ -774,7 +766,7 @@ export function BillingCandidatesContent({
       params.set('billing_domain', billingDomain);
       if (patientIdFilter) params.set('patient_id', patientIdFilter);
       const response = await fetch(`/api/billing-candidates/export?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
 
       if (!response.ok) {

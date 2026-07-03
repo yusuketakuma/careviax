@@ -28,6 +28,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { WorkspaceActionRail } from '@/components/features/workspace/action-rail';
 import { HandoffConfirmPanel } from '@/components/features/visits/handoff-confirm-panel';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { useAuthStore } from '@/lib/stores/auth-store';
@@ -71,7 +72,7 @@ import {
 
 async function fetchHandoffBoard(orgId: string): Promise<HandoffBoardResponse> {
   const res = await fetch('/api/handoff-board', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   if (!res.ok) throw new Error('ハンドオフボードの取得に失敗しました');
   const json = await res.json();
@@ -91,7 +92,7 @@ function isHandoffBoardInvalidationEvent(event: unknown) {
 
 async function fetchOperationCockpit(orgId: string): Promise<DashboardCockpitResponse> {
   const res = await fetch('/api/dashboard/cockpit', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   if (!res.ok) throw new Error('当日オペレーション情報の取得に失敗しました');
   const json = await res.json();
@@ -113,7 +114,7 @@ async function fetchHandoffConfirmationTasks(orgId: string): Promise<HandoffConf
     task_type: 'handoff_confirmation',
   });
   const res = await fetch(`/api/tasks?${params.toString()}`, {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   if (!res.ok) throw new Error('訪問申し送り確認タスクの取得に失敗しました');
   const json = (await res.json()) as { data?: HandoffConfirmationTask[] };
@@ -144,7 +145,7 @@ const COMMENT_ENTITY_LABELS: Record<string, string> = {
 
 async function fetchRecentComments(orgId: string): Promise<RecentComment[]> {
   const res = await fetch('/api/comments/recent', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   if (!res.ok) throw new Error('やり取りの取得に失敗しました');
   const json = (await res.json()) as { data?: RecentComment[] };
@@ -153,7 +154,7 @@ async function fetchRecentComments(orgId: string): Promise<RecentComment[]> {
 
 async function fetchVisitHandoff(orgId: string, visitRecordId: string): Promise<VisitHandoff> {
   const res = await fetch(`/api/visit-records/${visitRecordId}/handoff`, {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   if (!res.ok) {
     const payload = (await res.json().catch(() => null)) as { message?: string } | null;
@@ -339,10 +340,7 @@ function TransferDialog({
       if (!boardId) throw new Error('ボードが見つかりません');
       const res = await fetch('/api/handoff-board/items', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           board_id: boardId,
           content: draft.content.trim(),
@@ -624,7 +622,7 @@ function HandoffMessageChannel({
       const recipient = recipientOptions.find((option) => option.id === recipientUserId);
       const res = await fetch('/api/handoff-board/items', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           board_id: boardId,
           kind: 'message',
@@ -651,7 +649,7 @@ function HandoffMessageChannel({
     mutationFn: async (itemId: string) => {
       const res = await fetch(`/api/handoff-board/items/${itemId}/read`, {
         method: 'PATCH',
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
@@ -915,10 +913,7 @@ function ConsultResolutionPanel({
       if (!item) throw new Error('相談が選択されていません');
       const res = await fetch(`/api/handoff-board/items/${item.id}/resolve`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           resolution_action: action,
           resolution_note: note.trim() ? note.trim() : undefined,
@@ -1032,7 +1027,7 @@ function ConsultIntake({
       const recipient = pharmacistOptions.find((option) => option.id === recipientUserId);
       const res = await fetch('/api/handoff-board/items', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           board_id: boardId,
           consult_status: 'open',
@@ -1418,7 +1413,7 @@ export function HandoffWorkspace() {
     mutationFn: async (itemId: string) => {
       const res = await fetch(`/api/handoff-board/items/${itemId}/read`, {
         method: 'PATCH',
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);

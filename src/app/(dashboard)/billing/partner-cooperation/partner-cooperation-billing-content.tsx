@@ -27,6 +27,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import {
   apiDataSchema,
   cursorPaginatedPageSchema,
@@ -304,7 +305,7 @@ function billingModelLabel(model: string | null) {
 async function fetchSummary(orgId: string, billingMonth: string) {
   const response = await fetch(
     `/api/visit-billing-candidates/summary?billing_month=${encodeURIComponent(billingMonth)}`,
-    { headers: { 'x-org-id': orgId } },
+    { headers: buildOrgHeaders(orgId) },
   );
   return readApiJson<PartnerCooperationSummary>(response, {
     fallbackMessage: '薬局間協力請求サマリーの取得に失敗しました',
@@ -314,7 +315,7 @@ async function fetchSummary(orgId: string, billingMonth: string) {
 
 async function fetchActiveContracts(orgId: string) {
   const response = await fetch('/api/pharmacy-contracts?status=active&limit=50', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   const json = await readApiJson<{ data: PharmacyContractRow[] }>(response, {
     fallbackMessage: '有効な薬局間契約の取得に失敗しました',
@@ -326,7 +327,7 @@ async function fetchActiveContracts(orgId: string) {
 async function fetchCandidates(orgId: string, billingMonth: string) {
   const response = await fetch(
     `/api/visit-billing-candidates?billing_month=${encodeURIComponent(billingMonth)}&limit=20`,
-    { headers: { 'x-org-id': orgId } },
+    { headers: buildOrgHeaders(orgId) },
   );
   const json = await readApiJson<CursorPaginatedPage<VisitBillingCandidateRow>>(response, {
     fallbackMessage: '請求候補の取得に失敗しました',
@@ -338,7 +339,7 @@ async function fetchCandidates(orgId: string, billingMonth: string) {
 async function fetchInvoices(orgId: string, billingMonth: string) {
   const response = await fetch(
     `/api/pharmacy-invoices?billing_month=${encodeURIComponent(billingMonth)}&limit=20`,
-    { headers: { 'x-org-id': orgId } },
+    { headers: buildOrgHeaders(orgId) },
   );
   const json = await readApiJson<{ data: PharmacyInvoiceRow[] }>(response, {
     fallbackMessage: '月次ドキュメントの取得に失敗しました',
@@ -354,10 +355,7 @@ async function patchInvoiceStatus(
 ): Promise<PharmacyInvoiceTransitionResult> {
   const response = await fetch(`/api/pharmacy-invoices/${invoiceId}`, {
     method: 'PATCH',
-    headers: {
-      'content-type': 'application/json',
-      'x-org-id': orgId,
-    },
+    headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
     body: JSON.stringify(body),
   });
   return readApiJson<PharmacyInvoiceTransitionResult>(response, {
@@ -994,10 +992,7 @@ export function PartnerCooperationBillingContent() {
       if (!isMonthInputValid) throw new Error('対象月を選択してください');
       const response = await fetch('/api/visit-billing-candidates', {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
         body: JSON.stringify({ billing_month: billingMonth }),
       });
       return readApiJson<CandidateGenerationResult>(response, {
@@ -1021,10 +1016,7 @@ export function PartnerCooperationBillingContent() {
       if (!effectiveContractId) throw new Error('対象契約を選択してください');
       const response = await fetch('/api/pharmacy-invoices', {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
         body: JSON.stringify({
           billing_month: billingMonth,
           contract_id: effectiveContractId,
