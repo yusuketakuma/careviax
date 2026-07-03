@@ -16,6 +16,7 @@ import {
 import { decryptOfflinePayload } from '@/lib/offline/crypto';
 import { OUTCOME_LABELS } from '@/lib/constants/visit';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { messageFromError } from '@/lib/utils/error-message';
 import { offlineDb } from '@/lib/stores/offline-db';
 import { useOfflineStore } from '@/lib/stores/offline-store';
 import {
@@ -99,7 +100,7 @@ export function OfflineSyncContent() {
     let active = true;
     refreshSyncState().catch((error) => {
       if (!active) return;
-      toast.error(error instanceof Error ? error.message : '未同期データの読み込みに失敗しました');
+      toast.error(messageFromError(error, '未同期データの読み込みに失敗しました'));
     });
 
     return () => {
@@ -166,7 +167,7 @@ export function OfflineSyncContent() {
       await refreshSyncState();
     },
     onError: async (error) => {
-      toast.error(error instanceof Error ? error.message : '再試行に失敗しました');
+      toast.error(messageFromError(error, '再試行に失敗しました'));
       await refreshSyncState();
     },
   });
@@ -180,7 +181,7 @@ export function OfflineSyncContent() {
       await refreshSyncState();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '競合の解決に失敗しました');
+      toast.error(messageFromError(error, '競合の解決に失敗しました'));
     },
   });
 
@@ -196,7 +197,7 @@ export function OfflineSyncContent() {
       await refreshSyncState();
     },
     onError: async (error) => {
-      toast.error(error instanceof Error ? error.message : '上書き保存に失敗しました');
+      toast.error(messageFromError(error, '上書き保存に失敗しました'));
       await refreshSyncState();
     },
   });
