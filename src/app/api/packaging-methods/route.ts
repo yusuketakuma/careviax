@@ -1,4 +1,5 @@
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { buildCountedListEnvelope } from '@/lib/api/list-envelope';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
@@ -43,15 +44,8 @@ export const GET = withAuthContext(
       ]),
     );
 
-    const visibleCount = methods.length;
-    const hiddenCount = Math.max(totalCount - visibleCount, 0);
-
     return success({
-      data: methods,
-      total_count: totalCount,
-      visible_count: visibleCount,
-      hidden_count: hiddenCount,
-      truncated: hiddenCount > 0,
+      ...buildCountedListEnvelope(methods, totalCount),
       count_basis: PACKAGING_METHOD_COUNT_BASIS,
       filters_applied: {},
       limit,

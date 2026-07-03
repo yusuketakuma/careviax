@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { buildCountedListEnvelope } from '@/lib/api/list-envelope';
 import { withAuthContext } from '@/lib/auth/context';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -132,15 +133,8 @@ export const GET = withAuthContext(
       { requestContext: authCtx },
     );
 
-    const visibleCount = templates.length;
-    const hiddenCount = Math.max(totalCount - visibleCount, 0);
-
     return success({
-      data: templates,
-      total_count: totalCount,
-      visible_count: visibleCount,
-      hidden_count: hiddenCount,
-      truncated: hiddenCount > 0,
+      ...buildCountedListEnvelope(templates, totalCount),
       count_basis: TEMPLATE_COUNT_BASIS,
       filters_applied: {
         template_type: parsedTemplateType.data ?? null,

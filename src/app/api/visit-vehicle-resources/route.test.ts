@@ -163,7 +163,18 @@ describe('/api/visit-vehicle-resources', () => {
         },
       },
     });
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual([
+      'data',
+      'total_count',
+      'visible_count',
+      'hidden_count',
+      'truncated',
+      'count_basis',
+      'filters_applied',
+      'limit',
+    ]);
+    expect(body).toMatchObject({
       data: [expect.objectContaining({ id: 'vehicle_1', label: '社用車A' })],
       total_count: 1,
       visible_count: 1,

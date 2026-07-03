@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { buildCountedListEnvelope } from '@/lib/api/list-envelope';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { requireAuthContext } from '@/lib/auth/context';
@@ -67,15 +68,8 @@ export async function GET(req: NextRequest) {
       tx.drugAlertRule.count({ where }),
     ]),
   );
-  const visibleCount = rules.length;
-  const hiddenCount = Math.max(totalCount - visibleCount, 0);
-
   return success({
-    data: rules,
-    total_count: totalCount,
-    visible_count: visibleCount,
-    hidden_count: hiddenCount,
-    truncated: hiddenCount > 0,
+    ...buildCountedListEnvelope(rules, totalCount),
     count_basis: DRUG_ALERT_RULE_COUNT_BASIS,
     filters_applied: {
       alert_type: alertType?.data ?? null,

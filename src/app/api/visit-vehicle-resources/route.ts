@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { buildCountedListEnvelope } from '@/lib/api/list-envelope';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -77,15 +78,8 @@ async function authenticatedGET(req: NextRequest) {
         ]),
       { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
-    const visibleCount = resources.length;
-    const hiddenCount = Math.max(totalCount - visibleCount, 0);
-
     return success({
-      data: resources,
-      total_count: totalCount,
-      visible_count: visibleCount,
-      hidden_count: hiddenCount,
-      truncated: hiddenCount > 0,
+      ...buildCountedListEnvelope(resources, totalCount),
       count_basis: 'visit_vehicle_resources',
       filters_applied: {
         ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),

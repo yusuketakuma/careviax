@@ -102,7 +102,18 @@ describe('/api/templates', () => {
         template_type: 'care_report',
       },
     });
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual([
+      'data',
+      'total_count',
+      'visible_count',
+      'hidden_count',
+      'truncated',
+      'count_basis',
+      'filters_applied',
+      'limit',
+    ]);
+    expect(body).toMatchObject({
       data: [{ id: 'template_1' }],
       total_count: 3,
       visible_count: 1,

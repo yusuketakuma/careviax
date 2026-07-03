@@ -126,7 +126,18 @@ describe('/api/packaging-methods', () => {
         org_id: 'org_1',
       },
     });
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual([
+      'data',
+      'total_count',
+      'visible_count',
+      'hidden_count',
+      'truncated',
+      'count_basis',
+      'filters_applied',
+      'limit',
+    ]);
+    expect(body).toMatchObject({
       data: [{ id: 'method_1', name: '一包化' }],
       total_count: 1,
       visible_count: 1,

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { unstable_rethrow } from 'next/navigation';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { Prisma } from '@prisma/client';
+import { buildCountedListEnvelope } from '@/lib/api/list-envelope';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
@@ -48,15 +49,8 @@ async function authenticatedGET(req: NextRequest) {
       }),
     ]),
   );
-  const visibleCount = rules.length;
-  const hiddenCount = Math.max(totalCount - visibleCount, 0);
-
   return success({
-    data: rules,
-    total_count: totalCount,
-    visible_count: visibleCount,
-    hidden_count: hiddenCount,
-    truncated: hiddenCount > 0,
+    ...buildCountedListEnvelope(rules, totalCount),
     count_basis: 'notification_rules',
     filters_applied: {},
     limit,

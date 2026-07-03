@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { buildCountedListEnvelope } from '@/lib/api/list-envelope';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { requireAuthContext } from '@/lib/auth/context';
 import { validateOrgReferences } from '@/lib/api/org-reference';
@@ -71,14 +72,8 @@ export async function GET(req: NextRequest) {
     ]),
   );
 
-  const visibleCount = serviceAreas.length;
-
   return success({
-    data: serviceAreas,
-    total_count: totalCount,
-    visible_count: visibleCount,
-    hidden_count: Math.max(totalCount - visibleCount, 0),
-    truncated: totalCount > visibleCount,
+    ...buildCountedListEnvelope(serviceAreas, totalCount),
     count_basis: 'service_areas',
     filters_applied: {
       site_id: parsedSiteId?.success ? parsedSiteId.data : null,

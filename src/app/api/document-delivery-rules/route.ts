@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
+import { buildCountedListEnvelope } from '@/lib/api/list-envelope';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { requireAuthContext } from '@/lib/auth/context';
@@ -70,16 +71,9 @@ export async function GET(req: NextRequest) {
         ]),
       { requestContext: ctx },
     );
-    const visibleCount = rules.length;
-    const hiddenCount = Math.max(totalCount - visibleCount, 0);
-
     return withSensitiveNoStore(
       success({
-        data: rules,
-        total_count: totalCount,
-        visible_count: visibleCount,
-        hidden_count: hiddenCount,
-        truncated: hiddenCount > 0,
+        ...buildCountedListEnvelope(rules, totalCount),
         count_basis: DOCUMENT_DELIVERY_RULE_COUNT_BASIS,
         filters_applied: {
           document_type: parsedDocumentType?.success ? parsedDocumentType.data : null,

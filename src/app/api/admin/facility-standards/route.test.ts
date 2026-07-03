@@ -103,7 +103,18 @@ describe('/api/admin/facility-standards GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual([
+      'data',
+      'total_count',
+      'visible_count',
+      'hidden_count',
+      'truncated',
+      'count_basis',
+      'filters_applied',
+      'limit',
+    ]);
+    expect(body).toMatchObject({
       data: [
         expect.objectContaining({
           id: 'std_1',

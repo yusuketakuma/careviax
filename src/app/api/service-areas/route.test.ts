@@ -80,7 +80,18 @@ describe('/api/service-areas', () => {
     const response = (await GET(createGetRequest('http://localhost/api/service-areas')))!;
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual([
+      'data',
+      'total_count',
+      'visible_count',
+      'hidden_count',
+      'truncated',
+      'count_basis',
+      'filters_applied',
+      'limit',
+    ]);
+    expect(body).toMatchObject({
       data: [{ id: 'area_1' }],
       total_count: 1,
       visible_count: 1,
