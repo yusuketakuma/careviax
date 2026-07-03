@@ -1,25 +1,29 @@
 # Refactor State
 
-Snapshot: 2026-07-02 16:34 JST
+Snapshot: 2026-07-03 19:04 JST
 
 ## Phase
 
 - Current phase: Codex execution with Codex subagent review plus continued
   behavior-preserving refactor loop.
-- Current theme: frontend medical-safety false-empty / false-safe fixes, with
-  Codex also allowed to autonomously identify and implement additional verified
-  candidates.
+- Current theme: behavior-preserving bug/refactor slices, currently prioritizing
+  safe server logging convergence and verified fail-soft behavior.
 - Status: active. The broad repo-wide objective is not complete.
 
 ## Last Change ID
 
-- `RR-OFFLINE-EPIC-CE14-N25-sync-queue-evidence-retry`
+- `RR-BUG-20260703-PD1-patient-timeline-safe-log`
 
 ## Build State
 
 - Last full production build evidence:
   `pnpm build` passed after the offline lifecycle CE14/N25 sync queue and
   evidence retry slice.
+- Current narrow slice evidence:
+  - Focused patient-detail suite passed `1` file / `70` tests.
+  - `pnpm typecheck`: passed.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check passed.
+  - `pnpm build` was not run for this narrow logger-convergence slice.
 - Last full cheap gate bundle evidence:
   - Focused offline/evidence/sync bundle passed `5` files / `65` tests.
   - `pnpm typecheck`: passed.
@@ -33,6 +37,13 @@ Snapshot: 2026-07-02 16:34 JST
 
 - The worktree is intentionally dirty from verified small slices. Preserve all
   existing dirty files unless explicitly owning a new slice.
+- Latest safe-logger slice changed only
+  `src/server/services/patient-detail.ts` and
+  `src/server/services/patient-detail.test.ts`. It replaces patient timeline
+  partial-source failure `console.error` with the shared safe logger while
+  preserving partial timeline responses and warning payloads. Focused
+  patient-detail tests, typecheck, scoped ESLint, scoped Prettier, and
+  diff-check passed. Full build was not run for this narrow slice.
 - Latest offline lifecycle slice changed:
   `src/lib/stores/offline-db.ts`, `src/lib/stores/sync-engine.ts`,
   `src/lib/stores/sync-engine.test.ts`,

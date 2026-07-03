@@ -106,6 +106,34 @@ function buildDb<T extends Record<string, unknown> = Record<string, never>>(over
   };
 }
 
+type ConsoleErrorSpy = { mock: { calls: unknown[][] } };
+
+function parseConsoleErrorJson(spy: ConsoleErrorSpy) {
+  return spy.mock.calls.flatMap((call) => {
+    const [line] = call;
+    if (typeof line !== 'string') return [];
+    try {
+      return [JSON.parse(line) as Record<string, unknown>];
+    } catch {
+      return [];
+    }
+  });
+}
+
+function expectPatientTimelineFailureLog(spy: ConsoleErrorSpy, operation: string): void {
+  expect(parseConsoleErrorJson(spy)).toContainEqual(
+    expect.objectContaining({
+      level: 'error',
+      message: 'patient_timeline_source_query_failed',
+      service: 'ph-os',
+      event: 'patient_timeline_source_query_failed',
+      orgId: 'org_1',
+      operation,
+      error_name: 'Error',
+    }),
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   getPatientRiskSummaryMock.mockResolvedValue({
@@ -3985,11 +4013,7 @@ describe('getPatientTimelineData', () => {
           message: '一部のタイムライン情報を取得できませんでした',
         },
       ]);
-      expect(consoleErrorSpy).toHaveBeenCalledWith('[patient-timeline] source query failed', {
-        orgId: 'org_1',
-        source: 'communicationEvents',
-        error: 'Error',
-      });
+      expectPatientTimelineFailureLog(consoleErrorSpy, 'communicationEvents');
     } finally {
       consoleErrorSpy.mockRestore();
     }
@@ -4269,11 +4293,7 @@ describe('getPatientTimelineData', () => {
         },
       ]);
       // redaction proof: error.name only, never the raw message
-      expect(consoleErrorSpy).toHaveBeenCalledWith('[patient-timeline] source query failed', {
-        orgId: 'org_1',
-        source: 'operation_history',
-        error: 'Error',
-      });
+      expectPatientTimelineFailureLog(consoleErrorSpy, 'operation_history');
       expect(JSON.stringify(consoleErrorSpy.mock.calls)).not.toContain('audit log query failed');
     } finally {
       consoleErrorSpy.mockRestore();
@@ -4349,11 +4369,7 @@ describe('getPatientTimelineData', () => {
         },
       ]);
       // redaction proof
-      expect(consoleErrorSpy).toHaveBeenCalledWith('[patient-timeline] source query failed', {
-        orgId: 'org_1',
-        source: 'actor_names',
-        error: 'Error',
-      });
+      expectPatientTimelineFailureLog(consoleErrorSpy, 'actor_names');
       expect(JSON.stringify(consoleErrorSpy.mock.calls)).not.toContain('user lookup failed');
     } finally {
       consoleErrorSpy.mockRestore();

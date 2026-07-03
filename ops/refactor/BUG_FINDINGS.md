@@ -1,6 +1,6 @@
 # Bug Findings
 
-Snapshot: 2026-07-02 04:50 JST
+Snapshot: 2026-07-03 19:04 JST
 
 ## Confirmed And Fixed In Recent Slices
 
@@ -1409,9 +1409,37 @@ true`, the route kicked off `drainMedicationHistoryBulkExportQueue` as a
   - Full test suite: `1266` files passed / `1` skipped; `12592` tests passed /
     `2` skipped.
 
+### `BUG-PATIENT-TIMELINE-SAFE-LOG-001`: Patient timeline fail-soft source errors bypassed safe logger
+
+- Severity: medium security/privacy observability.
+- Evidence:
+  - `src/server/services/patient-detail.ts`
+  - `src/server/services/patient-detail.test.ts`
+  - `src/lib/utils/logger.ts`
+- Problem:
+  - `getPatientTimelineData()` intentionally keeps partial timeline rendering
+    available when an optional source query fails, but
+    `logPatientTimelineTaskFailure()` called legacy `console.error` directly.
+  - The local helper manually reduced `Error` objects to `error.name`, but it
+    bypassed the shared logger contract that standardizes JSON output and
+    redacted error metadata across server paths.
+- Impact:
+  - Patient-detail timeline partial-failure logs were inconsistent with the
+    shared safe-log contract and could regress independently from central
+    logger redaction behavior.
+- Fix:
+  - Replaced the legacy `console.error` path with `logger.error()` using a
+    fixed event name, org id, and operation key.
+  - Removed the route-local error-name helper and relied on the shared logger to
+    emit `error_name` without raw exception messages.
+  - Preserved partial timeline response shape and fail-soft UI/API behavior.
+- Validation:
+  - Focused patient-detail suite passed `1` file / `70` tests.
+  - Scoped ESLint, Prettier check, diff-check, and `pnpm typecheck` passed.
+
 ## Flagged / Not Yet Fixed
 
 No additional unresolved behavior-changing bug is confirmed after the latest
-`/api/me/profile` MFA safe-failure-log slice. Potential domain behavior changes
-must stay in findings until route/service tests and product intent prove the
-issue is a bug rather than a specification choice.
+patient timeline safe-failure-log slice. Potential domain behavior changes must
+stay in findings until route/service tests and product intent prove the issue is
+a bug rather than a specification choice.

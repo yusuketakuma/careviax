@@ -37027,3 +37027,34 @@ Next loop:
 - Remaining:
   - Claude approved `9c06c73f`.
   - FEUX-1 analytics diff was committed separately as `11b431e9` and approved.
+
+## Patient Timeline Safe Failure Logger - 2026-07-03 19:04 JST
+
+- Scope:
+  - `src/server/services/patient-detail.ts`
+  - `src/server/services/patient-detail.test.ts`
+  - `ops/refactor` progress records
+- Status:
+  - Implemented and focused-validation green.
+  - Change ID: `RR-BUG-20260703-PD1-patient-timeline-safe-log`.
+- Fixed:
+  - Patient timeline partial-source failures now use the shared `logger.error`
+    safe-log contract instead of a route-local `console.error` call.
+  - Existing partial-failure tests now assert JSON safe-log output, including
+    `error_name`, and keep redaction checks for raw exception messages.
+- Safety:
+  - Partial timeline response shape and warning payloads are preserved.
+  - No auth, RLS, tenant boundary, PHI export, billing, migration, production
+    config, push/deploy, external send, or destructive operation behavior
+    changed.
+- Validation:
+  - Focused patient-detail suite passed `1` file / `70` tests.
+  - `pnpm typecheck`: passed.
+  - Scoped ESLint, scoped Prettier, and scoped diff-check passed.
+  - Code plus `ops/refactor` and `CODEX_GOAL_PROGRESS.md` Prettier check
+    passed with increased Node heap.
+  - `.codex/ralph-state.md` Prettier check remains a pre-existing whole-ledger
+    formatting issue; `git diff --check` is used for the touched ledger hunk.
+- Remaining:
+  - Broad refactor loop remains active.
+  - Full `pnpm build` was not run for this narrow logger-convergence slice.

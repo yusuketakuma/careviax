@@ -1,8 +1,53 @@
 # Verification
 
-Snapshot: 2026-07-03 00:31 JST
+Snapshot: 2026-07-03 19:04 JST
 
-## Latest Backend/API Slice Verification
+## Latest Backend Service Slice Verification
+
+The latest backend service slice is
+`RR-BUG-20260703-PD1-patient-timeline-safe-log` at 2026-07-03 19:04 JST.
+
+- Planning / review:
+  - Codex selected a non-overlapping refactor-loop candidate outside current
+    Claude-owned UI files and outside the completed BE-1 assignment paths.
+  - The slice was scoped to patient-detail timeline fail-soft logging only.
+- Fixed:
+  - `logPatientTimelineTaskFailure()` now uses the shared `logger.error`
+    contract with fixed `event`, `orgId`, and `operation` fields.
+  - The route-local `describePatientTimelineTaskError()` helper was removed.
+  - Existing timeline partial-failure tests now assert safe JSON log output and
+    continue to prove raw exception messages are not logged.
+- Safety:
+  - API/UI response behavior is unchanged; failed optional timeline sources
+    still return partial timeline data plus the existing warning payload.
+  - No auth, authorization, RLS, DB schema, migration, external send, billing,
+    secrets, production config, push/deploy, or destructive operation behavior
+    changed.
+- Focused regressions:
+  - `pnpm exec vitest run src/server/services/patient-detail.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `1` file / `70` tests.
+- Scoped checks:
+  - `pnpm exec eslint --max-warnings=0 src/server/services/patient-detail.ts src/server/services/patient-detail.test.ts`
+  - Result: passed.
+  - `pnpm exec prettier --check src/server/services/patient-detail.ts src/server/services/patient-detail.test.ts`
+  - Result: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --check src/server/services/patient-detail.ts src/server/services/patient-detail.test.ts ops/refactor/STATE.md ops/refactor/BUG_FINDINGS.md ops/refactor/REFACTOR_LOG.md ops/refactor/VERIFICATION.md CODEX_GOAL_PROGRESS.md`
+  - Result: passed.
+  - The same scoped check including `.codex/ralph-state.md` failed on existing
+    ledger formatting; `HEAD:.codex/ralph-state.md` also fails a stdin
+    Prettier check, so the slice avoided whole-ledger rewrites and relied on
+    scoped diff-check for that file.
+  - `git diff --check -- src/server/services/patient-detail.ts src/server/services/patient-detail.test.ts`
+  - Result: passed.
+- Broad gates:
+  - `pnpm typecheck`
+  - Result: passed.
+  - `pnpm build` was not run for this narrow logger-convergence slice.
+- Skipped:
+  - Browser/E2E smoke was skipped because this changes no DOM layout,
+    navigation, API response shape, or human workflow shape.
+
+## Previous Backend/API Slice Verification
 
 The latest backend/API slice was
 `backend-pca-rental-return-update-claim` at 2026-07-03 00:31 JST.

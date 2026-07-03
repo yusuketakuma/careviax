@@ -13,6 +13,7 @@ import { selectVisibleSafetyTags, sortPatientSafetyTags } from '@/lib/patient/sa
 import { batchResolveNames } from '@/lib/utils/name-resolver';
 import { findPatientOverviewBase } from '@/server/services/patient-state-snapshot';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { logger } from '@/lib/utils/logger';
 import { formatRenalSafetyLabel } from '@/lib/patient/renal-safety-label';
 import { getPatientRiskSummary } from '@/server/services/patient-risk';
 import { getPatientVisitBrief } from '@/server/services/visit-brief';
@@ -169,19 +170,15 @@ type PatientHeaderConditionInput = WorkspaceConditionInput & {
   is_primary: boolean;
 };
 
-function describePatientTimelineTaskError(error: unknown) {
-  if (error instanceof Error) {
-    return error.name;
-  }
-  return 'Unknown error';
-}
-
 function logPatientTimelineTaskFailure(orgId: string, failure: PatientDetailTaskFailure) {
-  console.error('[patient-timeline] source query failed', {
-    orgId,
-    source: failure.key,
-    error: describePatientTimelineTaskError(failure.error),
-  });
+  logger.error(
+    {
+      event: 'patient_timeline_source_query_failed',
+      orgId,
+      operation: failure.key,
+    },
+    failure.error,
+  );
 }
 
 function toPatientTimelinePartialFailure(

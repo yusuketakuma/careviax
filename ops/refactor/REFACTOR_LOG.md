@@ -1,11 +1,43 @@
 # Refactor Log
 
-Snapshot: 2026-07-02 16:34 JST
+Snapshot: 2026-07-03 19:04 JST
 
 This log is the compact resume log for `ops/refactor`. Detailed per-slice
 evidence also exists in root `REFACTOR_REPORT.md`,
 `REFACTOR_EXECUTION_PLAN.md`, `CODEX_GOAL_PROGRESS.md`, and
 `.codex/ralph-state.md`.
+
+## 2026-07-03 19:04 JST - Patient Timeline Safe Failure Logger
+
+- Change ID: `RR-BUG-20260703-PD1-patient-timeline-safe-log`.
+- Category: bug fix / privacy-safe observability / logger convergence.
+- Files changed:
+  - `src/server/services/patient-detail.ts`
+  - `src/server/services/patient-detail.test.ts`
+- Summary:
+  - Replaced patient timeline partial-source failure `console.error` logging
+    with the shared `logger.error` object overload.
+  - Preserved fail-soft timeline behavior and partial-failure response payloads.
+  - Kept source identity as `operation` and let the shared logger emit
+    `error_name` without raw exception messages.
+  - Updated existing redaction regressions to assert the JSON safe-log contract.
+- Safety:
+  - Reduces drift from the central safe logging contract on a patient-detail
+    server path.
+  - No auth, authorization, RLS, response shape, DB schema, migration, external
+    send, billing, production config, dependency, push/deploy, or destructive
+    operation behavior changed.
+- Performance:
+  - No performance optimization is claimed.
+- Validation:
+  - `pnpm exec prettier --write src/server/services/patient-detail.ts src/server/services/patient-detail.test.ts`
+  - `pnpm exec vitest run src/server/services/patient-detail.test.ts --reporter=dot --testTimeout=60000`
+  - `pnpm typecheck`
+  - `pnpm exec eslint --max-warnings=0 src/server/services/patient-detail.ts src/server/services/patient-detail.test.ts`
+  - `pnpm exec prettier --check src/server/services/patient-detail.ts src/server/services/patient-detail.test.ts`
+  - `git diff --check -- src/server/services/patient-detail.ts src/server/services/patient-detail.test.ts`
+  - Result: focused patient-detail suite passed `1` file / `70` tests; typecheck,
+    scoped ESLint, scoped Prettier, and scoped diff-check passed.
 
 ## 2026-07-02 16:34 JST - Offline Lifecycle Sync Queue And Evidence Retry
 
