@@ -1,5 +1,8 @@
 # PH-OS API バージョニングポリシー
 
+> 調査・比較・推奨理由の正本は [`docs/design/api-versioning-decision.md`](./design/api-versioning-decision.md)。
+> 矛盾がある場合は決定文書を優先する。本ポリシーはその要約・運用ルールを記す。
+
 ## 方針
 
 現行 PH-OS API は `/api` 直下の unprefixed endpoints を v1 相当として扱う。
@@ -77,13 +80,23 @@
 - バグ修正（仕様と異なる挙動の修正）
 - パフォーマンス改善
 
-## レスポンスヘッダー（将来実装）
+## レスポンスヘッダー（Deprecated 対象エンドポイントのみ）
 
 ```
 X-API-Version: 1
-X-API-Deprecated: true          # v1 が deprecated になった時に付与
-X-API-Sunset-Date: 2027-04-01   # Sunset 日を事前告知
+X-API-Deprecated: true          # Deprecated フェーズに入った時点で付与
+X-API-Sunset-Date: 2027-04-01   # Sunset 予定日を事前告知
 ```
+
+**実装対象は Deprecated 対象エンドポイントのみに限定し、全 363 route への一律付与は行わない**
+（`docs/design/api-versioning-decision.md` §4.4。投資対効果の観点から一律導入は見送り確定）。
+
+- 実装: `src/lib/api/versioning.ts` の `applyDeprecationHeaders()` helper。
+- カタログ: `src/lib/api/deprecation-catalog.ts`（`deprecationCatalog` 配列）。
+  Deprecated にする route はここへエントリを追加してから helper を呼び出す。
+- `src/lib/api/response.ts` の共通レスポンス関数群はこの用途のために変更しない
+  （全 route への一律付与を避けるための意図的な分離）。
+- 具体的な追加手順は [`docs/api-versioning-implementation-guide.md`](./api-versioning-implementation-guide.md) を参照。
 
 ## 参考
 
