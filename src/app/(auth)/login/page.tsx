@@ -234,6 +234,21 @@ function LoginForm() {
             </Link>
           </div>
 
+          <div className="mt-1 flex flex-wrap justify-center">
+            <Link
+              href="/terms"
+              className="inline-flex min-h-11 items-center rounded px-3 text-sm font-medium text-muted-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              利用規約
+            </Link>
+            <Link
+              href="/privacy"
+              className="inline-flex min-h-11 items-center rounded px-3 text-sm font-medium text-muted-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              プライバシーポリシー
+            </Link>
+          </div>
+
           <div className="mt-4 rounded-xl border-l-4 border-border/70 border-l-tag-info bg-card p-4">
             <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
               <Smartphone className="h-4 w-4 text-tag-info" aria-hidden="true" />
