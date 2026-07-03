@@ -27,6 +27,7 @@ import {
   listLatestPatientLabObservations,
   type LatestPatientLabObservation,
 } from '@/server/services/patient-detail-labs';
+import { getCareReportSourcePatient } from '@/server/services/care-report-source-readers';
 
 // CareReport.report_type は Prisma enum ReportType に対応する。
 // 訪問看護向け = nurse_share / 施設向け = facility_handoff（schema 既存値を再利用）。
@@ -260,10 +261,7 @@ export async function generateReportsFromVisit(
     recentConferenceNotes,
     latestLabObservations,
   ] = await Promise.all([
-    prisma.patient.findFirst({
-      where: { id: visitRecord.patient_id, org_id: orgId },
-      select: { id: true, name: true, birth_date: true, gender: true },
-    }),
+    getCareReportSourcePatient(prisma, { orgId, patientId: visitRecord.patient_id }),
     prisma.medicationCycle.findFirst({
       where: { id: schedule.cycle_id, org_id: orgId },
       orderBy: { created_at: 'desc' },
