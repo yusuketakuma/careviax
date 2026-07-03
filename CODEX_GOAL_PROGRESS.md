@@ -37154,3 +37154,37 @@ Next loop:
   - `/api/billing-candidates` remains the only current route-local strict
     optional helper candidate from the scoped grep; handle separately because
     it is billing-domain sensitive.
+
+## Job Runner Safe Logger Convergence - 2026-07-03 19:52 JST
+
+- Scope:
+  - `src/server/jobs/runner.ts`
+  - `src/server/jobs/runner.test.ts`
+  - `ops/refactor` progress records
+- Status:
+  - Implemented after Claude ACKed path lock
+    `RR-OBS-20260703-JOB1`.
+  - Focused validation green; awaiting opus verdict and Claude commit.
+- Fixed:
+  - Job runner failed-status cleanup failures now use shared safe
+    `logger.error` instead of direct `console.error`.
+  - Per-org job-failure notification delivery failures now use shared safe
+    `logger.error` and still do not block later org deliveries.
+  - Outer admin notification lookup failures now use shared safe `logger.error`
+    and still do not mask the original job failure.
+- Safety:
+  - `job.execution_failed` CloudWatch metric event remains unchanged.
+  - `integrationJob.error_log` redaction text remains unchanged.
+  - Retry count, failed-row persistence attempts, notification payloads,
+    RLS-scoped notification dispatch, original error throw, auth/RLS, billing,
+    DB schema, migration, external-send trigger conditions, UI, production
+    config, push/deploy, and destructive-operation behavior are unchanged.
+- Validation:
+  - Baseline runner/logger tests passed `2` files / `21` tests.
+  - Post-edit runner/logger tests passed `2` files / `23` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - Send completion report to Claude and await opus verdict / Claude commit.
+  - Auth/MFA recovery safe logging remains human-gate blocked and was not
+    touched.

@@ -3415,3 +3415,40 @@ The latest query-param helper convergence slice is
     no response shape, DOM, DB query meaning, auth/RLS behavior, external send,
     migration, production config, or visible UI. The affected validation
     branches are covered by focused route and helper tests.
+
+## Job Runner Safe Logger Verification
+
+The latest observability slice is `RR-OBS-20260703-JOB1-runner-safe-log` at
+2026-07-03 19:52 JST.
+
+- Scope:
+  - `src/server/jobs/runner.ts`
+  - `src/server/jobs/runner.test.ts`
+  - The shared logger implementation was not changed; logger tests were run as
+    a contract backstop.
+- Baseline before edit:
+  - `./node_modules/.bin/vitest run src/server/jobs/runner.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `21` tests.
+- Focused regressions after edit:
+  - `./node_modules/.bin/vitest run src/server/jobs/runner.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `23` tests.
+  - Coverage: failed-status cleanup persistence failure safe-log context,
+    original job error preservation, notification lookup failure swallowing,
+    per-org notification delivery failure not blocking later org deliveries,
+    unchanged `job.execution_failed` logger contract, and shared logger
+    error-name redaction.
+- Scoped checks:
+  - `./node_modules/.bin/eslint --max-warnings=0 src/server/jobs/runner.ts src/server/jobs/runner.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`
+  - Result: passed.
+  - `./node_modules/.bin/prettier --check src/server/jobs/runner.ts src/server/jobs/runner.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`
+  - Result: passed.
+  - `git diff --check -- src/server/jobs/runner.ts src/server/jobs/runner.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`
+  - Result: passed.
+- Typecheck:
+  - `pnpm typecheck`
+  - Result: passed.
+- Skipped:
+  - Full build/browser smoke were skipped because this slice changes no DOM,
+    route contract, DB schema, migration, auth/RLS behavior, or notification
+    trigger condition. The affected fail-soft branches are covered by focused
+    unit tests and typecheck.

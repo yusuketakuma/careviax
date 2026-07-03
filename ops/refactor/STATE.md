@@ -1,6 +1,6 @@
 # Refactor State
 
-Snapshot: 2026-07-03 19:42 JST
+Snapshot: 2026-07-03 19:52 JST
 
 ## Phase
 
@@ -12,7 +12,7 @@ Snapshot: 2026-07-03 19:42 JST
 
 ## Last Change ID
 
-- `RR-QP-20260703-B-tasks-query-helper`
+- `RR-OBS-20260703-JOB1-runner-safe-log`
 
 ## Build State
 
@@ -21,13 +21,12 @@ Snapshot: 2026-07-03 19:42 JST
   2026-07-03: test `13017` passed (`1302` files), lint `0` errors, colors,
   format, typecheck, typecheck:no-unused, and build all green.
 - Current narrow slice evidence:
-  - Baseline tasks route suite passed `1` file / `32` tests.
-  - Focused tasks route suite passed `1` file / `46` tests.
-  - Tasks route plus shared search-param helper suite passed `2` files / `51`
-    tests.
+  - Baseline runner/logger suite passed `2` files / `21` tests.
+  - Focused runner/logger suite passed `2` files / `23` tests.
+  - `pnpm typecheck`: passed.
   - Scoped ESLint, scoped Prettier check, and scoped diff-check passed.
-  - Full build/typecheck were not run for this narrow helper-convergence slice;
-    the immediately preceding Claude full gate was green.
+  - Full build was not run for this narrow logger-convergence slice; the
+    immediately preceding Claude full gate was green.
   - `pnpm build` was not run for this narrow logger-convergence slice.
 - Previous narrow slice evidence:
   - Focused patient-detail suite passed `1` file / `70` tests.
@@ -45,18 +44,22 @@ Snapshot: 2026-07-03 19:42 JST
 
 ## Current Worktree
 
-- The worktree has an owned separate-track query-helper slice awaiting
+- The worktree has an owned separate-track job-runner safe-log slice awaiting
   Claude/opus verdict and Claude commit. Preserve unrelated dirty files if any
   appear.
-- Latest separate-track slice changed only `src/app/api/tasks/route.ts`,
-  `src/app/api/tasks/route.test.ts`, and progress ledgers. It removes the
-  route-local duplicate `readStrictOptionalTaskFilter` and delegates exact
-  optional single-value filters to `readStrictOptionalSearchParam`, while
-  keeping `task_types` CSV parsing route-local. Omitted filters stay absent
-  from Prisma `where`; duplicate, blank, padded, and too-long malformed
-  filters still reject before assignment-scope/DB work. Focused tasks/helper
-  tests, scoped ESLint, scoped Prettier, and diff-check passed. Full
-  build/typecheck were not run for this narrow slice.
+- Latest separate-track slice changed only `src/server/jobs/runner.ts`,
+  `src/server/jobs/runner.test.ts`, and progress ledgers. It replaces the
+  remaining job-runner `console.error` paths for failed-status cleanup and
+  job-failure notification delivery/lookup failures with shared safe
+  `logger.error` calls. It preserves the existing `job.execution_failed`
+  CloudWatch metric event, `integrationJob.error_log` redaction contract,
+  notification best-effort semantics, retry loop, and original error throw.
+  Focused runner/logger tests, `pnpm typecheck`, scoped ESLint, scoped
+  Prettier, and diff-check passed. Full build was not run for this narrow
+  slice.
+- Previous query-helper slice changed only `src/app/api/tasks/route.ts`,
+  `src/app/api/tasks/route.test.ts`, and progress ledgers, and landed as
+  `07cd78a1` after Claude/opus approval.
 - Latest safe-logger slice changed only
   `src/server/services/patient-detail.ts` and
   `src/server/services/patient-detail.test.ts`. It replaces patient timeline

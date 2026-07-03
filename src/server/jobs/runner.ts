@@ -7,7 +7,6 @@ import { dispatchNotificationEvent } from '@/server/services/notifications';
 
 const MAX_RETRIES = 3;
 const JOB_EXECUTION_FAILED_MESSAGE = 'Job execution failed';
-const JOB_CLEANUP_FAILED_MESSAGE = 'Job cleanup failed';
 const JOB_EXECUTION_FAILED_NOTIFICATION_MESSAGE = 'ジョブの実行に失敗しました';
 // Structured-log event name for permanent job failures. Kept stable because the
 // CloudWatch Logs metric filter in tools/infra/cloudwatch-alarms.json keys off it.
@@ -125,13 +124,18 @@ async function runJobOnce(
           },
         });
       } catch (cleanupError) {
-        const cleanupKind = cleanupError instanceof Error ? 'Error' : typeof cleanupError;
-        const originalKind = error instanceof Error ? 'Error' : typeof error;
-        console.error(
-          `[runner] CRITICAL: failed to mark job ${job.id} (${jobType}) as 'failed' after retries exhausted. ` +
-            `Row may remain 'running' and block future runs. ${JOB_CLEANUP_FAILED_MESSAGE}. ` +
-            `Original error: ${JOB_EXECUTION_FAILED_MESSAGE}. Cleanup kind: ${cleanupKind}. ` +
-            `Original kind: ${originalKind}`,
+        logger.error(
+          {
+            event: 'job.cleanup_status_persist_failed',
+            jobType,
+            operation: 'mark_job_failed_after_retries',
+            code: 'JOB_CLEANUP_FAILED',
+            entityType: 'integration_job',
+            entityId: job.id,
+            attempt: attempt + 1,
+            ...(orgId ? { orgId } : {}),
+          },
+          cleanupError,
         );
         // Intentionally NOT overwriting lastError — caller must see the original failure.
       }
@@ -235,15 +239,31 @@ async function notifyAdminsOfJobFailure(jobType: string, orgId?: string) {
             dedupeKey,
           }),
         );
-      } catch {
+      } catch (deliveryError) {
         // One org's delivery failure must not block the others or the caller.
-        console.error(
-          `[runner] Failed to deliver job-failure notification for org ${dispatchOrgId}: ${jobType}`,
+        logger.error(
+          {
+            event: 'job.failure_notification_delivery_failed',
+            jobType,
+            operation: 'notify_admins_of_job_failure',
+            code: 'JOB_FAILURE_NOTIFICATION_DELIVERY_FAILED',
+            orgId: dispatchOrgId,
+          },
+          deliveryError,
         );
       }
     }
-  } catch {
+  } catch (notificationError) {
     // Notification failure should not mask the original job error
-    console.error(`[runner] Failed to notify admins about job failure: ${jobType}`);
+    logger.error(
+      {
+        event: 'job.failure_notification_failed',
+        jobType,
+        operation: 'notify_admins_of_job_failure',
+        code: 'JOB_FAILURE_NOTIFICATION_FAILED',
+        ...(orgId ? { orgId } : {}),
+      },
+      notificationError,
+    );
   }
 }

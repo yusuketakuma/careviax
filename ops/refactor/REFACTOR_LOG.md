@@ -2552,3 +2552,58 @@ continuity`).
   - `/api/billing-candidates` remains the only current route-local strict
     optional helper candidate from the scoped grep, but it is billing-domain
     sensitive and should be handled as its own slice.
+
+## 2026-07-03 19:52 JST - Job Runner Safe Logger Convergence
+
+- Change ID: `RR-OBS-20260703-JOB1-runner-safe-log`.
+- Category: bug fix / observability / privacy-safe logging.
+- Target:
+  - Integration job runner cleanup and notification failure paths.
+- Purpose:
+  - Route remaining job-runner `console.error` paths through the shared safe
+    logger contract without changing job execution, persistence, notification,
+    or metric semantics.
+- Implementation:
+  - Replaced failed-status cleanup `console.error` with
+    `logger.error({ event: 'job.cleanup_status_persist_failed', ... }, error)`.
+  - Replaced per-org job-failure notification delivery `console.error` with
+    `job.failure_notification_delivery_failed`.
+  - Replaced outer admin notification failure `console.error` with
+    `job.failure_notification_failed`.
+  - Left duplicate-skip `console.warn` messages unchanged.
+- Files changed:
+  - `src/server/jobs/runner.ts`
+  - `src/server/jobs/runner.test.ts`
+- Behavior change:
+  - No job control-flow change intended.
+  - `job.execution_failed` CloudWatch metric event remains unchanged and still
+    fires before admin notification.
+  - `integrationJob.error_log` persistence remains fixed redacted text.
+  - Notification failure remains best-effort and never masks the original job
+    failure.
+- FE/BE alignment impact:
+  - No API response envelope, route, UI, DB schema, migration, billing, auth,
+    RLS, external-send trigger condition, production config, push/deploy, or
+    destructive operation behavior changed.
+- UI layout impact:
+  - None.
+- Performance impact:
+  - No runtime performance claim.
+- Validation:
+  - Baseline before edit:
+    `./node_modules/.bin/vitest run src/server/jobs/runner.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`
+    passed `2` files / `21` tests.
+  - Post-edit focused suite:
+    `./node_modules/.bin/vitest run src/server/jobs/runner.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`
+    passed `2` files / `23` tests.
+  - `./node_modules/.bin/eslint --max-warnings=0 src/server/jobs/runner.ts src/server/jobs/runner.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`
+    passed.
+  - `./node_modules/.bin/prettier --check src/server/jobs/runner.ts src/server/jobs/runner.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`
+    passed.
+  - `git diff --check -- src/server/jobs/runner.ts src/server/jobs/runner.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - Send completion report to Claude and await opus verdict / Claude commit.
+  - MFA recovery safe logging remains human-gate blocked by Claude §15 and was
+    not touched.

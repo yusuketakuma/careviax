@@ -52,6 +52,10 @@ vi.mock('@/lib/utils/logger', () => ({
 
 import { runJob } from './runner';
 
+function findLoggerErrorCall(event: string) {
+  return loggerErrorMock.mock.calls.find(([context]) => context?.event === event);
+}
+
 describe('runJob', () => {
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
@@ -255,9 +259,10 @@ describe('runJob', () => {
 
   it('continues (throws the original error) even when notification dispatch fails', async () => {
     const original = new Error('upstream-failure');
+    const deliveryError = new Error('web-push transport down token=secret patient=患者A');
     const fn = vi.fn().mockRejectedValue(original);
     membershipFindManyMock.mockResolvedValue([{ user_id: 'admin_1', org_id: 'org_1' }]);
-    dispatchNotificationEventMock.mockRejectedValue(new Error('web-push transport down'));
+    dispatchNotificationEventMock.mockRejectedValue(deliveryError);
 
     await expect(runJob('test_job', fn, 'org_1')).rejects.toBe(original);
 
@@ -267,6 +272,73 @@ describe('runJob', () => {
       where: { id: 'job_1' },
       data: expect.objectContaining({ status: 'failed' }),
     });
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'job.failure_notification_delivery_failed',
+        jobType: 'test_job',
+        operation: 'notify_admins_of_job_failure',
+        code: 'JOB_FAILURE_NOTIFICATION_DELIVERY_FAILED',
+        orgId: 'org_1',
+      }),
+      deliveryError,
+    );
+    const deliveryLog = findLoggerErrorCall('job.failure_notification_delivery_failed');
+    expect(JSON.stringify(deliveryLog?.[0])).not.toContain('token=secret');
+    expect(JSON.stringify(deliveryLog?.[0])).not.toContain('患者A');
+  });
+
+  it('continues delivery for other orgs when one job-failure notification dispatch fails', async () => {
+    const original = new Error('upstream-failure');
+    const deliveryError = new Error('org_1 delivery failed token=secret');
+    const fn = vi.fn().mockRejectedValue(original);
+    membershipFindManyMock.mockResolvedValue([
+      { user_id: 'admin_1', org_id: 'org_1' },
+      { user_id: 'admin_2', org_id: 'org_2' },
+    ]);
+    dispatchNotificationEventMock.mockRejectedValueOnce(deliveryError).mockResolvedValueOnce([]);
+
+    await expect(runJob('test_job', fn)).rejects.toBe(original);
+
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_2', expect.any(Function));
+    expect(dispatchNotificationEventMock).toHaveBeenCalledTimes(2);
+    expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_2', explicitUserIds: ['admin_2'] }),
+    );
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'job.failure_notification_delivery_failed',
+        jobType: 'test_job',
+        orgId: 'org_1',
+      }),
+      deliveryError,
+    );
+  });
+
+  it('preserves the original job error when admin notification lookup fails', async () => {
+    const original = new Error('upstream token=secret patient=患者A');
+    const notificationError = new Error('membership lookup failed db_password=value');
+    const fn = vi.fn().mockRejectedValue(original);
+    membershipFindManyMock.mockRejectedValue(notificationError);
+
+    await expect(runJob('test_job', fn, 'org_1')).rejects.toBe(original);
+
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'job.failure_notification_failed',
+        jobType: 'test_job',
+        operation: 'notify_admins_of_job_failure',
+        code: 'JOB_FAILURE_NOTIFICATION_FAILED',
+        orgId: 'org_1',
+      }),
+      notificationError,
+    );
+    const notificationLog = findLoggerErrorCall('job.failure_notification_failed');
+    expect(JSON.stringify(notificationLog?.[0])).not.toContain('token=secret');
+    expect(JSON.stringify(notificationLog?.[0])).not.toContain('db_password=value');
+    expect(JSON.stringify(notificationLog?.[0])).not.toContain('患者A');
   });
 
   it('preserves the ORIGINAL error when the cleanup status update itself fails', async () => {
@@ -282,13 +354,22 @@ describe('runJob', () => {
 
     await expect(runJob('test_job', fn)).rejects.toBe(original);
 
-    // Verify the operator-facing log fires without leaking raw upstream details.
-    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('CRITICAL'));
-    const logged = consoleErrorSpy.mock.calls.flat().join(' ');
-    expect(logged).toContain('Job cleanup failed');
-    expect(logged).toContain('Job execution failed');
-    expect(logged).not.toContain('token=secret');
-    expect(logged).not.toContain('db_password=value');
-    expect(logged).not.toContain('患者A');
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'job.cleanup_status_persist_failed',
+        jobType: 'test_job',
+        operation: 'mark_job_failed_after_retries',
+        code: 'JOB_CLEANUP_FAILED',
+        entityType: 'integration_job',
+        entityId: 'job_1',
+        attempt: 4,
+      }),
+      cleanupError,
+    );
+    const cleanupLog = findLoggerErrorCall('job.cleanup_status_persist_failed');
+    expect(JSON.stringify(cleanupLog?.[0])).not.toContain('token=secret');
+    expect(JSON.stringify(cleanupLog?.[0])).not.toContain('db_password=value');
+    expect(JSON.stringify(cleanupLog?.[0])).not.toContain('患者A');
   });
 });

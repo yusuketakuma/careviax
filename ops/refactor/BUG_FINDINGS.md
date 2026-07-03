@@ -1,8 +1,40 @@
 # Bug Findings
 
-Snapshot: 2026-07-03 19:18 JST
+Snapshot: 2026-07-03 19:52 JST
 
 ## Confirmed And Fixed In Recent Slices
+
+### `BUG-JOB-RUNNER-CONSOLE-ERROR-SAFE-LOG-001`: Job runner cleanup and notification failures bypassed safe structured logging
+
+- Severity: medium observability/privacy for integration job failure handling.
+- Evidence:
+  - `src/server/jobs/runner.ts`
+  - `src/server/jobs/runner.test.ts`
+  - `src/lib/utils/logger.test.ts`
+- Problem:
+  - The permanent job failure path already emitted the stable
+    `job.execution_failed` safe logger event, but secondary failures still used
+    direct `console.error`.
+  - A failed write to mark an exhausted job as `failed`, a per-org admin
+    notification delivery failure, or an admin notification lookup failure was
+    not routed through the shared safe logger contract.
+- Impact:
+  - These fail-soft paths could drift away from the shared log allowlist,
+    Sentry redaction, and structured event fields needed for operations.
+  - Notification failures also needed explicit tests proving one org delivery
+    failure does not block remaining org deliveries or mask the original job
+    error.
+- Fix:
+  - Replace the remaining job-runner `console.error` paths with shared
+    `logger.error` object-overload events.
+  - Preserve `job.execution_failed` CloudWatch metric emission,
+    `integrationJob.error_log` fixed redaction text, notification payloads,
+    retry loop, best-effort notification swallowing, and original error throw.
+- Validation:
+  - Baseline runner/logger suite passed `2` files / `21` tests.
+  - Focused runner/logger suite passed `2` files / `23` tests.
+  - `pnpm typecheck` passed.
+  - Scoped ESLint, Prettier, and diff-check passed.
 
 ### `BUG-OFFLINE-EVIDENCE-RETRY-ORG-SCOPE-001`: Evidence retry reset and gallery retry needed tenant scope and fresh drain
 
