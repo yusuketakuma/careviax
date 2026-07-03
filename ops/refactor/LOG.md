@@ -337,3 +337,38 @@
   colors:check / typecheck(8GB) / typecheck:no-unused(8GB) / build 全 PASS。
 - 対象: W4 以降の本日 land 全19スライス(display-id W4-W7 / FIX-CATALOG / R21 / R16×2 / R22 / R08 /
   R23×3 / R17×2 / FE-FALSEEMPTY / 台帳4)。
+
+## 2026-07-04 R23 batch4-6 81958346 / 348aea1a / 8c6d746e
+
+- 分類: refactor / messageFromError 移行 B4-B6（codex3）
+- B4=admin 5 files 44箇所(初回 report は単一行 grep で multiline 9箇所を取りこぼし
+  → opus CHANGES_REQUESTED → 修正 → 私の独立 rg -U で 0 確認)。B5=patient cards 10 files 17箇所。
+  B6=schedules/visits/billing 9 files 22箇所(billing hunks は onError toast のみ)。
+- 教訓: 同型 sweep の検出は rg -U (multiline) を標準化。残余 ~20 hits は workflow/offline
+  大ファイル+非toast sink → B7-RECON で最終評価中。
+
+## 2026-07-04 R24 cursor-pagination 収斂 bdb02a75 (+ee089258 GET 分)
+
+- 分類: refactor / 手組みカーソルページネーション→buildCursorPage（codex2）
+- B1=patient-self-reports/cases/qr-scan-drafts/medication-issues、B2=prescription-intakes 2分岐。
+  キー順 byte 保持(full-key-order assert)+exact-limit 境界テスト。take/slice 同値・nextCursor
+  表示末尾行 id 同値を opus が証明。複雑系(consent-records/visit-records/care-reports/drug-masters/
+  offset型 medication-cycles)と billing-candidates は recon 分類で除外のまま(BACKLOG 保留)。
+- インシデント: レビューアが検証で git stash 退避→maker 再適用と衝突し一時差分消失
+  → 完全復元・データ喪失なし。以後レビューアには working-tree 変更禁止(git show HEAD: 参照)を
+  プロンプトで明示する運用に変更。
+
+## 2026-07-04 ID-2-CP-A a564c824 / ee089258 — create-path 配線 第1弾
+
+- 分類: infra/db / 本番 create 経路が IdSequence 消費開始（codex xhigh）
+- 対象: SavedView/Task(非dedupe: operational+set-audit rework+conflict-reconfirmation)/PcaPump/
+  PcaPumpRental/PcaPumpMaintenanceEvent/MedicationIssue(visit-record 残薬経路含む) の 6モデル、
+  route 9+service 1。same-tx 採番・validation 後配置・4xx 非採番(negative assert は allocator
+  不呼出を直接検査)・operational-tasks 公開型 byte 同一(billing-evidence 等 caller 無変更)。
+- レビュー: opus 全9項目 PASS で APPROVE。272 tests green。
+- 追跡(Medium): **dedupe upsert Task 経路(本番最多)は未配線=NULL display_id 続行** → CP-B で
+  設計裁定(事前チェック型 vs 事後埋め型 vs 定期 backfill)。
+- 運用ノート(Low): same-tx 採番は id_sequence(org,prefix) 行ロックを commit まで保持。Task の
+  't' prefix は org 内ホット行 — 長尺 tx の Task create は org 単位で直列化(設計内在の trade-off)。
+- medication-issues は CP-A(POST)+R24-B1(GET) の二重レーン共有ファイル → 両 verdict 後に
+  合本コミット ee089258 で land(hunk 非干渉を opus 確認)。
