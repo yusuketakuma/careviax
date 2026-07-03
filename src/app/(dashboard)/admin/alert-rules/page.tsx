@@ -26,6 +26,7 @@ import {
   DRUG_ALERT_RULES_API_PATH,
   buildDrugAlertRuleApiPath,
 } from '@/lib/drug-alert-rules/api-paths';
+import { messageFromError } from '@/lib/utils/error-message';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { SignalTuningPanel } from './signal-tuning-panel';
 import { PageSection } from '@/components/layout/page-section';
@@ -147,7 +148,7 @@ export default function AlertRulesPage() {
       await queryClient.invalidateQueries({ queryKey: ['drug-alert-rules', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '保存に失敗しました');
+      toast.error(messageFromError(error, '保存に失敗しました'));
     },
   });
 
@@ -177,7 +178,7 @@ export default function AlertRulesPage() {
       await queryClient.invalidateQueries({ queryKey: ['drug-alert-rules', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '削除に失敗しました');
+      toast.error(messageFromError(error, '削除に失敗しました'));
     },
   });
 
@@ -200,7 +201,7 @@ export default function AlertRulesPage() {
       toast.success(`テスト実行完了: ${payload.alerts.length}件のアラート`);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'テスト実行に失敗しました');
+      toast.error(messageFromError(error, 'テスト実行に失敗しました'));
     },
   });
 

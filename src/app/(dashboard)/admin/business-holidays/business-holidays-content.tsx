@@ -35,6 +35,7 @@ import {
 } from '@/lib/business-holidays/api-paths';
 import { formatDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { messageFromError } from '@/lib/utils/error-message';
 
 type Holiday = {
   id: string;
@@ -193,7 +194,7 @@ export function BusinessHolidaysContent() {
       await queryClient.invalidateQueries({ queryKey: ['business-holidays', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '保存に失敗しました');
+      toast.error(messageFromError(error, '保存に失敗しました'));
     },
   });
 
@@ -212,7 +213,7 @@ export function BusinessHolidaysContent() {
       await queryClient.invalidateQueries({ queryKey: ['business-holidays', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '削除に失敗しました');
+      toast.error(messageFromError(error, '削除に失敗しました'));
     },
   });
 
@@ -250,7 +251,7 @@ export function BusinessHolidaysContent() {
       await queryClient.invalidateQueries({ queryKey: ['business-holidays', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '一括登録に失敗しました');
+      toast.error(messageFromError(error, '一括登録に失敗しました'));
     },
   });
 

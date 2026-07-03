@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { SERVICE_AREAS_API_PATH, buildServiceAreaApiPath } from '@/lib/service-areas/api-paths';
+import { messageFromError } from '@/lib/utils/error-message';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
 
@@ -76,7 +77,7 @@ function getServiceAreaGeoError(geoText: string) {
     parseJsonObjectText(geoText, 'エリア定義(JSON) の形式が不正です');
     return null;
   } catch (error) {
-    return error instanceof Error ? error.message : 'エリア定義(JSON) の形式が不正です';
+    return messageFromError(error, 'エリア定義(JSON) の形式が不正です');
   }
 }
 
@@ -149,7 +150,7 @@ export default function ServiceAreasPage() {
       await queryClient.invalidateQueries({ queryKey: ['service-areas', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '訪問エリアの保存に失敗しました');
+      toast.error(messageFromError(error, '訪問エリアの保存に失敗しました'));
     },
   });
 
@@ -172,7 +173,7 @@ export default function ServiceAreasPage() {
       await queryClient.invalidateQueries({ queryKey: ['service-areas', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '訪問エリアの削除に失敗しました');
+      toast.error(messageFromError(error, '訪問エリアの削除に失敗しました'));
     },
   });
 

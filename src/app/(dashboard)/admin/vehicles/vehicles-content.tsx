@@ -29,6 +29,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { japanDateKey } from '@/lib/utils/date-boundary';
+import { messageFromError } from '@/lib/utils/error-message';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PHARMACY_SITES_API_PATH } from '@/lib/pharmacy-sites/api-paths';
 import { formatDateLabel } from '@/lib/ui/date-format';
@@ -326,7 +327,7 @@ export function VehiclesContent() {
       await queryClient.invalidateQueries({ queryKey: ['admin-visit-vehicle-resources', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '保存に失敗しました');
+      toast.error(messageFromError(error, '保存に失敗しました'));
     },
   });
 
@@ -348,7 +349,7 @@ export function VehiclesContent() {
       await queryClient.invalidateQueries({ queryKey: ['admin-visit-vehicle-resources', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '状態変更に失敗しました');
+      toast.error(messageFromError(error, '状態変更に失敗しました'));
     },
   });
 

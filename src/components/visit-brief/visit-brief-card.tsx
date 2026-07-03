@@ -22,6 +22,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { StateBadge } from '@/components/ui/state-badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 import type {
   VisitBrief,
   VisitBriefMedicationChange,
@@ -129,7 +130,7 @@ export function VisitBriefCard({
       toast.success('要約フィードバックを保存しました');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'フィードバック送信に失敗しました');
+      toast.error(messageFromError(error, 'フィードバック送信に失敗しました'));
     },
   });
 

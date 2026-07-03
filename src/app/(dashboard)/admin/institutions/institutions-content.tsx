@@ -32,6 +32,7 @@ import {
 } from '@/lib/prescriber-institutions/api-paths';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { formatDateLabel } from '@/lib/ui/date-format';
+import { messageFromError } from '@/lib/utils/error-message';
 
 /** 最終処方日が「古い(要確認)」とみなす日数。これを超えると鮮度バッジを confirm 表示する。 */
 const STALE_PRESCRIPTION_DAYS = 180;
@@ -198,7 +199,7 @@ export function InstitutionsContent() {
       await queryClient.invalidateQueries({ queryKey: ['prescriber-institutions', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '保存に失敗しました');
+      toast.error(messageFromError(error, '保存に失敗しました'));
     },
   });
 
@@ -219,7 +220,7 @@ export function InstitutionsContent() {
       await queryClient.invalidateQueries({ queryKey: ['prescriber-institutions', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '削除に失敗しました');
+      toast.error(messageFromError(error, '削除に失敗しました'));
     },
   });
 

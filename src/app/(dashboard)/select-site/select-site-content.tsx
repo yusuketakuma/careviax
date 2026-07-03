@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/loading';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 
 /**
  * p0_02「薬局を選ぶ」: 所属サイトのカードから使う薬局を切り替える。
@@ -61,7 +62,7 @@ export function SelectSiteContent() {
       router.push('/dashboard');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '薬局の切り替えに失敗しました');
+      toast.error(messageFromError(error, '薬局の切り替えに失敗しました'));
     },
   });
 

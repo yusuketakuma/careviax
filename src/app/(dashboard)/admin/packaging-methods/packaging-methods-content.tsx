@@ -17,6 +17,7 @@ import {
   PACKAGING_METHODS_API_PATH,
   buildPackagingMethodApiPath,
 } from '@/lib/packaging-methods/api-paths';
+import { messageFromError } from '@/lib/utils/error-message';
 
 type PackagingMethodRow = {
   id: string;
@@ -90,7 +91,7 @@ export function PackagingMethodsContent() {
       await queryClient.invalidateQueries({ queryKey: ['packaging-methods', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '配薬方法マスターの保存に失敗しました');
+      toast.error(messageFromError(error, '配薬方法マスターの保存に失敗しました'));
     },
   });
 

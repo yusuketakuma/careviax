@@ -26,6 +26,7 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 
 type ContactProfile = {
   id: string;
@@ -164,7 +165,7 @@ export function ContactProfilesContent() {
       await queryClient.invalidateQueries({ queryKey: ['contact-profiles', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '保存に失敗しました');
+      toast.error(messageFromError(error, '保存に失敗しました'));
     },
   });
 

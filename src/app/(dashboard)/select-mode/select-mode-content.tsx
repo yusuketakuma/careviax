@@ -8,6 +8,7 @@ import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useUIStore } from '@/lib/stores/ui-store';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 
 /**
  * p0_03「使い方を選ぶ」: 今日の入口(薬剤師 / 事務サポート / 管理)を選ぶ。
@@ -86,7 +87,7 @@ export function SelectModeContent() {
       router.push(option.landingHref);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'モードの切り替えに失敗しました');
+      toast.error(messageFromError(error, 'モードの切り替えに失敗しました'));
     },
   });
 
