@@ -7,6 +7,9 @@ const SOURCE_ROOT = join(process.cwd(), 'src', 'lib');
 const ALLOWED_BOUNDARY_IMPORTS: Record<string, string[]> = {
   'src/lib/api/response.ts': ['@/server/services/label-dictionary'],
   'src/lib/auth/config.ts': ['@/server/services/cognito-auth'],
+  // Break-glass step-up re-auth wraps the Cognito auth challenge (same seam as
+  // auth/config.ts). server-only module; security-reviewed 2026-07-03.
+  'src/lib/platform/step-up-mfa.ts': ['@/server/services/cognito-auth'],
   'src/lib/dispensing/prefill-generator.ts': ['@/server/services/prescription-intake-pair'],
   'src/lib/hooks/use-unsaved-changes-guard.ts': [
     '@/components/providers/navigation-confirm-provider',

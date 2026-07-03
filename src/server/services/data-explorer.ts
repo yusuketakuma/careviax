@@ -225,6 +225,11 @@ const DATA_EXPLORER_MODEL_EXCLUSIONS: ReadonlySet<string> = new Set([
   'PatientMcsMessage',
   'HandoffItem',
   'PushSubscription',
+  // Platform-operator console tables have no org_id and are platform-level (not
+  // tenant data). Excluding them keeps org admins from ever seeing operator
+  // identities / break-glass sessions in the tenant Data Explorer.
+  'PlatformOperator',
+  'BreakGlassSession',
 ] as const);
 const GLOBAL_DATA_EXPLORER_MODELS: ReadonlySet<string> = new Set([
   'DrugAlertRule',

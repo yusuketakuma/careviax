@@ -529,6 +529,12 @@ export const API_ROUTE_TEMPLATES = [
   '/api/pharmacy-invoices/:id',
   '/api/pharmacy-invoices/:id/pdf',
   '/api/pharmacy-operating-hours',
+  // Platform operator console (audited break-glass cross-tenant access).
+  '/api/platform/tenants',
+  '/api/platform/break-glass',
+  '/api/platform/break-glass/:id',
+  '/api/platform/tenants/:id/data',
+  '/api/platform/tenants/:id/audit',
   '/api/billing-evidence/analytics',
   '/api/billing-evidence/check',
   '/api/billing-evidence/stats',
