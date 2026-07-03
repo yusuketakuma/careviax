@@ -1,0 +1,29 @@
+{
+  "description": "Files allowed to use raw state/warning-family Tailwind colors because they encode genuine identity (not workflow/state signalling) that cannot map onto the 7 SSOT state/tag tokens. Each entry is file-scoped and ratcheted by line count: adding/removing a raw color line must update expectedCount. New product UI must use state/tag tokens instead of being added here.",
+  "entries": [
+    {
+      "path": "src/lib/constants/soap-options.ts",
+      "classification": "clinical_scale",
+      "reason": "SOAP アセスメントの臨床グラデーションスケール。良し悪しの多段階を色で示す identity で、5+2 個の state/tag トークンには写像できない (SSOT §2 で意図的除外)。",
+      "expectedCount": 12
+    },
+    {
+      "path": "src/lib/patient/status-icon.ts",
+      "classification": "status_enum",
+      "reason": "患者ステータス enum の識別色マップ。12 値のカテゴリ identity で、状態トークンの意味 (blocked/done/confirm/waiting/readonly) とは 1:1 対応しない (SSOT §2 で意図的除外)。",
+      "expectedCount": 6
+    },
+    {
+      "path": "src/lib/collaboration/presence-contract.ts",
+      "classification": "presence_identity",
+      "reason": "協働プレゼンス (誰がどこを見ているか) の人物/ロール識別色。ワークフロー状態ではなく参加者 identity (SSOT §2 で意図的除外)。",
+      "expectedCount": 4
+    },
+    {
+      "path": "src/lib/search/result-builders.ts",
+      "classification": "search_category",
+      "reason": "横断検索の結果カテゴリ (患者/処方/薬剤/施設/報告 等) の識別バッジ色。8 カテゴリの落ち着いた淡色 identity で状態ではない (FEUX-6 判断で identity として許容)。",
+      "expectedCount": 3
+    }
+  ]
+}

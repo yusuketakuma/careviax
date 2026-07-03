@@ -85,6 +85,7 @@
     "format": "git ls-files -- '*.js' '*.jsx' '*.ts' '*.tsx' '*.mjs' '*.cjs' '*.json' '*.md' '*.yml' '*.yaml' '*.css' | grep -v '^.codex/medical-ui-ux-completion-audit.md$' | grep -v '^pnpm-lock.yaml$' | xargs -n 50 prettier --write",
     "format:check": "node tools/scripts/check-format-changed-files.mjs",
     "date-slices:check": "node tools/scripts/check-date-slices.mjs",
+    "colors:check": "node tools/scripts/check-raw-state-colors.mjs",
     "eventbridge-schedules:check": "node tools/scripts/check-eventbridge-schedule-drift.mjs"
   },
   "dependencies": {
