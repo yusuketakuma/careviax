@@ -223,6 +223,8 @@ describe('/api/pca-pumps/[id] PATCH', () => {
         changes: { status: 'maintenance' },
       }),
     });
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
+    expect(pcaPumpMaintenanceEventCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects stale pump updates before maintenance event and audit side effects run', async () => {
