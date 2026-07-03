@@ -34,6 +34,7 @@ import { Badge } from '@/components/ui/badge';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
@@ -1275,7 +1276,19 @@ export function ConferencesContent({
           </div>
         ) : noteViewMode === 'list' ? (
           <div className="space-y-4">
-            {notes.length === 0 ? (
+            {notesQuery.isError ? (
+              <ErrorState
+                variant="server"
+                size="inline"
+                headingLevel={3}
+                title="カンファレンス記録を取得できませんでした"
+                description="通信状態を確認して再試行してください。"
+                action={{
+                  label: '再試行',
+                  onClick: () => void notesQuery.refetch(),
+                }}
+              />
+            ) : notes.length === 0 ? (
               <EmptyState icon={Users} title="カンファレンス記録はまだありません" />
             ) : (
               notes.map((note) => (
@@ -1554,7 +1567,19 @@ export function ConferencesContent({
           <p className="text-sm text-muted-foreground">{activities.length}件</p>
         </div>
         <div className="space-y-4">
-          {activities.length === 0 ? (
+          {activitiesQuery.isError ? (
+            <ErrorState
+              variant="server"
+              size="inline"
+              headingLevel={3}
+              title="地域活動を取得できませんでした"
+              description="通信状態を確認して再試行してください。"
+              action={{
+                label: '再試行',
+                onClick: () => void activitiesQuery.refetch(),
+              }}
+            />
+          ) : activities.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
               地域活動はまだありません
             </div>

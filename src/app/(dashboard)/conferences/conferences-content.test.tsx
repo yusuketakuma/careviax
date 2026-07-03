@@ -670,4 +670,81 @@ describe('ConferencesContent', () => {
 
     expect(screen.getByLabelText('報告書種別')).toBeTruthy();
   });
+
+  it('shows an error state with retry instead of a false empty state when conference notes fail to load', () => {
+    const notesRefetchMock = vi.fn();
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn?: () => Promise<unknown> }) => {
+        const { queryKey } = config;
+        queryConfigs.push(config);
+        if (queryKey[0] === 'conference-notes') {
+          return {
+            data: undefined,
+            isLoading: false,
+            isError: true,
+            refetch: notesRefetchMock,
+          };
+        }
+        if (queryKey[0] === 'conference-notes-calendar') {
+          return { data: { data: [] }, isLoading: false };
+        }
+        if (queryKey[0] === 'community-activities') {
+          return { data: { data: [] }, isLoading: false };
+        }
+        if (queryKey[0] === 'conference-external-professionals') {
+          return { data: { data: [] }, isLoading: false };
+        }
+        if (queryKey[0] === 'conference-prescriber-institution-suggestion') {
+          return { data: { data: null }, isLoading: false };
+        }
+        return { data: undefined, isLoading: false };
+      },
+    );
+
+    render(<ConferencesContent initialFocus="notes" />);
+
+    expect(screen.queryByText('カンファレンス記録はまだありません')).toBeNull();
+    expect(screen.getByText('カンファレンス記録を取得できませんでした')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+
+    expect(notesRefetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows an error state with retry instead of a false empty state when community activities fail to load', () => {
+    const activitiesRefetchMock = vi.fn();
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn?: () => Promise<unknown> }) => {
+        const { queryKey } = config;
+        queryConfigs.push(config);
+        if (queryKey[0] === 'conference-notes' || queryKey[0] === 'conference-notes-calendar') {
+          return { data: { data: [] }, isLoading: false };
+        }
+        if (queryKey[0] === 'community-activities') {
+          return {
+            data: undefined,
+            isLoading: false,
+            isError: true,
+            refetch: activitiesRefetchMock,
+          };
+        }
+        if (queryKey[0] === 'conference-external-professionals') {
+          return { data: { data: [] }, isLoading: false };
+        }
+        if (queryKey[0] === 'conference-prescriber-institution-suggestion') {
+          return { data: { data: null }, isLoading: false };
+        }
+        return { data: undefined, isLoading: false };
+      },
+    );
+
+    render(<ConferencesContent initialFocus="activities" />);
+
+    expect(screen.queryByText('地域活動はまだありません')).toBeNull();
+    expect(screen.getByText('地域活動を取得できませんでした')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+
+    expect(activitiesRefetchMock).toHaveBeenCalledTimes(1);
+  });
 });
