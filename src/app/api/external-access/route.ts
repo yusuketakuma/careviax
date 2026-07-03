@@ -409,7 +409,14 @@ export const GET = withAuthContext(
     );
   },
   {
-    permission: 'canReport',
+    // X01 / CXR2-SEC01 (2026-07-03 human 承認, .agent-loop/BLOCKED.md
+    // X01-external-access-get-canreport): 外部共有grantの org-wide 列挙は
+    // 患者共有ライフサイクルの管理操作であり、発行(POST)と同じく
+    // canManagePatientSharing を要求する。canReport のままだと
+    // pharmacist_trainee/clerk(canManagePatientSharing:false)でも
+    // 全 grant 一覧(共有先・スコープ・自己申告サマリ)を閲覧できてしまうため、
+    // 閲覧もマネジメント権限に限定する(W1-10/F80 の POST ratified パターンを鏡写し)。
+    permission: 'canManagePatientSharing',
     message: '外部共有の閲覧権限がありません',
   },
 );
@@ -660,7 +667,7 @@ export const POST = withAuthContext(
     // pharmacy-contracts)と同様に canManagePatientSharing を要求する。
     // canReport では pharmacist_trainee(canManagePatientSharing:false)が
     // medication_list/allergy_info/visit_schedule のPHIを外部発行できてしまうため、
-    // 発行はマネジメント権限に限定する(閲覧系GETは org-wide アクセスのまま)。
+    // 発行はマネジメント権限に限定する(閲覧系GETも X01 で同権限へ引き上げ済み)。
     permission: 'canManagePatientSharing',
     message: '外部共有の作成権限がありません',
   },

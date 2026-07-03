@@ -276,15 +276,25 @@ describe('/api/external-access GET', () => {
     });
   });
 
-  it.each(['driver', 'external_viewer'])(
-    'rejects %s before listing external sharing metadata',
+  // X01 / CXR2-SEC01 (2026-07-03 human 承認): 外部共有grantの org-wide 列挙は
+  // canManagePatientSharing を要求する管理操作。canManagePatientSharing:false の
+  // ロール(clerk / pharmacist_trainee / driver / external_viewer)は、canReport や
+  // canVisit を持っていてもルートガードで 403 となり、grant 本体・共有先・スコープ・
+  // 自己申告サマリのいずれのメタデータ読み取りにも到達しない(POST の F80 ガードを鏡写し)。
+  it.each(['clerk', 'pharmacist_trainee', 'driver', 'external_viewer'])(
+    'rejects %s at the management-permission guard before listing external sharing metadata',
     async (role) => {
       currentRole.value = role;
 
       const response = await GET(createGetRequest(), routeContext);
 
       expect(response.status).toBe(403);
+      // ルートガードで遮断されるため、grant 列挙・患者名補完・自己申告集計には到達しない。
+      expect(careCaseFindManyMock).not.toHaveBeenCalled();
       expect(externalAccessGrantFindManyMock).not.toHaveBeenCalled();
+      expect(patientFindManyMock).not.toHaveBeenCalled();
+      expect(patientSelfReportFindManyMock).not.toHaveBeenCalled();
+      expect(patientSelfReportGroupByMock).not.toHaveBeenCalled();
       await expect(response.json()).resolves.toMatchObject({
         code: 'AUTH_FORBIDDEN',
         message: '外部共有の閲覧権限がありません',
@@ -292,36 +302,21 @@ describe('/api/external-access GET', () => {
     },
   );
 
-  it('returns an empty grant list for report-only clerks without grant metadata reads', async () => {
-    currentRole.value = 'clerk';
+  it.each(['owner', 'admin'])(
+    'lets %s list external sharing metadata through management access',
+    async (role) => {
+      currentRole.value = role;
 
-    const response = await GET(createGetRequest(), routeContext);
+      const response = await GET(createGetRequest(), routeContext);
 
-    expect(response.status).toBe(200);
-    expectSensitiveNoStore(response);
-    expect(careCaseFindManyMock).not.toHaveBeenCalled();
-    expect(externalAccessGrantFindManyMock).not.toHaveBeenCalled();
-    expect(patientFindManyMock).not.toHaveBeenCalled();
-    expect(patientSelfReportFindManyMock).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toEqual({
-      data: [],
-      hasMore: false,
-      nextCursor: null,
-    });
-  });
-
-  it('lets a pharmacist trainee list visit-scope external sharing metadata through report access', async () => {
-    currentRole.value = 'pharmacist_trainee';
-
-    const response = await GET(createGetRequest(), routeContext);
-
-    expect(response.status).toBe(200);
-    expectSensitiveNoStore(response);
-    expect(externalAccessGrantFindManyMock).toHaveBeenCalledTimes(1);
-    await expect(response.json()).resolves.toMatchObject({
-      data: [expect.objectContaining({ id: 'grant_1' })],
-    });
-  });
+      expect(response.status).toBe(200);
+      expectSensitiveNoStore(response);
+      expect(externalAccessGrantFindManyMock).toHaveBeenCalledTimes(1);
+      await expect(response.json()).resolves.toMatchObject({
+        data: [expect.objectContaining({ id: 'grant_1' })],
+      });
+    },
+  );
 
   // X01: org-wide な grant 列挙(patient_id 無し)経路も、grant 本体・患者名補完・
   // 自己申告サマリの全クエリが org_id で閉じており、他 org の grant は不可視。
