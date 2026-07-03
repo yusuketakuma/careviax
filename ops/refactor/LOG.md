@@ -395,3 +395,27 @@
   (protected-post/patch-delete)を必須検証に含める**。
 - 凍結中の idle recon 成果: R06/R19/R20/R30/R35/R42/R45(codex2)、R09/R10/R12/R14/R15/R22b(codex3)
   の現存確認・スライス案が揃い、FREEZE 解除後のキューに投入。
+
+## 2026-07-04 R19 1baee9ab / R06 a59d9d4a / R18 系 type-only 3連
+
+- diff-review(R19)・CdsAlert(R06) の BE/FE 重複契約を中立モジュールへ(type-only、re-export で
+  consumer 不変)。R06 は CDS 医療安全隣接のため type-only 厳守で実施。committer 全数検査
+  (type-only 例外規定)。R42(VisitVehicleResource、subset/full 分離維持)も同型で進行中。
+
+## 2026-07-04 R15-B1 7d1370c0 / FIX 627c46b4
+
+- R15-B1(codex3): admin 17ファイル57箇所の生 x-org-id → buildOrgHeaders 系へ。opus がヘッダ
+  集合 byte 同値・fail-closed 非発火・条件分岐保存を全数確認。B2(admin 外 20ファイル)進行中。
+- 627c46b4: 私が land した FIX-CPA-MATRIX の 1n literal が typecheck 赤(TS2737) — gate の
+  typecheck 通過**後**に land して再検証を怠った committer ミス。BigInt(1) hotfix。
+  教訓: gate 後の追加 land は当該ステップ(typecheck 等)の部分再実行をセットにする。
+
+## 2026-07-04 ID-2-CP-B 4eae9ffc — dedupe upsert Task の採番完了
+
+- 設計: fable 裁定 Option B(事後埋め型)。upsert select id/display_id → NULL なら同 tx で
+  allocate + CAS updateMany({id, org_id, display_id: null})。count=0 は reread 収束、fail-closed。
+  update branch が display_id を書かない不変条件を test 固定(並行安全性の根拠)。
+- レビュー: opus APPROVE(公開 Tx 契約不変・caller 40+ 戻り値未消費まで確認・189+22 green)。
+- 既存 NULL 行は次回 dedupe touch で自己治癒。race は欠番のみで重複なし(欠番許容設計)。
+- display_id create-path: CP-A/B/C で主要経路完了。残 = CP-D(Patient 系 PHI batch)、
+  HandoffItem(unique 軸未解決)、derived MedicationIssue(凍結)。次フェーズ ID-3(UI 表示置換) recon 開始。
