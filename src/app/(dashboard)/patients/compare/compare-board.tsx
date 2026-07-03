@@ -7,6 +7,7 @@ import { buttonVariants } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
@@ -30,7 +31,7 @@ import {
 
 async function fetchPatientOverview(orgId: string, patientId: string): Promise<PatientOverview> {
   const res = await fetch(buildPatientApiPath(patientId, '/overview'), {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   if (!res.ok) throw new Error('患者情報の取得に失敗しました');
   return res.json();

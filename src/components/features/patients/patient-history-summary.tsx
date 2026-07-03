@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { Clock, FileText, History, Pill } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { OUTCOME_LABELS } from '@/lib/constants/visit';
 import { formatDateLabel as formatDate } from '@/lib/ui/date-format';
@@ -68,7 +69,7 @@ export function PatientHistorySummary({
     queryKey: ['patient-history-summary-prescriptions', orgId, patientId],
     queryFn: async () => {
       const response = await fetch(`${buildPatientApiPath(patientId, '/prescriptions')}?limit=5`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('処方履歴の取得に失敗しました');
       return response.json() as Promise<PatientPrescriptionsResponse>;
@@ -81,7 +82,7 @@ export function PatientHistorySummary({
     queryFn: async () => {
       const params = new URLSearchParams({ patient_id: patientId, limit: '5' });
       const response = await fetch(`/api/visit-records?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('訪問履歴の取得に失敗しました');
       return response.json() as Promise<PatientVisitsResponse>;

@@ -9,6 +9,7 @@ import { PrintPageToolbar } from '@/components/features/workflow/print-page-tool
 import { PrintLayout } from '@/components/features/reports/print-layout';
 import { buttonVariants } from '@/components/ui/button';
 import { Loading } from '@/components/ui/loading';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
@@ -48,7 +49,7 @@ export default function MedicationPrintPage() {
     enabled: Boolean(orgId),
     queryFn: async () => {
       const response = await fetch('/api/me/org', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
         cache: 'no-store',
       });
       if (!response.ok) throw new Error('薬局情報を取得できませんでした');
@@ -62,7 +63,7 @@ export default function MedicationPrintPage() {
     enabled: Boolean(patientId && orgId),
     queryFn: async () => {
       const response = await fetch(buildPatientApiPath(patientId), {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
         cache: 'no-store',
       });
       if (!response.ok) throw new Error('患者情報を取得できませんでした');
@@ -80,7 +81,7 @@ export default function MedicationPrintPage() {
         limit: '200',
       });
       const response = await fetch(`/api/medication-profiles?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
         cache: 'no-store',
       });
       if (!response.ok) throw new Error('服薬一覧を取得できませんでした');

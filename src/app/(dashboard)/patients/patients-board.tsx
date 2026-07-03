@@ -30,6 +30,7 @@ import {
   selectVisibleSafetyTags,
 } from '@/components/features/patients/safety-tag-badge';
 import { ProcessProgressDots } from '@/components/features/workspace/process-chips';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { readApiJson } from '@/lib/api/client-json';
 import { PROCESS_STEPS_9 } from '@/lib/prescription/cycle-workspace';
 import { STATUS_TOKENS, type StatusRole } from '@/lib/constants/status-tokens';
@@ -64,7 +65,7 @@ export async function fetchPatientBoard(
   const params = new URLSearchParams({ scope });
   if (foundationIssue) params.set('foundation_issue', foundationIssue);
   const res = await fetch(`/api/patients/board?${params}`, {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   const json = await readApiJson<{ data: PatientBoardResponse }>(
     res,

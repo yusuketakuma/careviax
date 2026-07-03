@@ -1,4 +1,5 @@
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 
 export const VISIT_SCHEDULE_PAGE_LIMIT = 100;
 
@@ -19,7 +20,7 @@ export async function fetchVisitSchedulesWindow<T>(args: {
       ...(args.statusScope ? { status_scope: args.statusScope } : {}),
     }),
     init: {
-      headers: { 'x-org-id': args.orgId },
+      headers: buildOrgHeaders(args.orgId),
     },
     fetchImpl: args.fetchImpl,
     limit: args.limit ?? VISIT_SCHEDULE_PAGE_LIMIT,

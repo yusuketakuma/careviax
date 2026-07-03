@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Loading } from '@/components/ui/loading';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { cn } from '@/lib/utils';
@@ -61,7 +62,7 @@ export function PatientFieldRevisionTimeline({ patientId }: { patientId: string 
       const response = await fetch(
         `${buildPatientApiPath(patientId, '/field-revisions')}?${params.toString()}`,
         {
-          headers: { 'x-org-id': orgId },
+          headers: buildOrgHeaders(orgId),
         },
       );
       if (!response.ok) {

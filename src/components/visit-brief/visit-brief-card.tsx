@@ -20,6 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { StateBadge } from '@/components/ui/state-badge';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -101,10 +102,7 @@ export function VisitBriefCard({
     }) => {
       const res = await fetch('/api/visit-brief-feedback', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           patient_id: brief.patient.id,
           context: brief.context,

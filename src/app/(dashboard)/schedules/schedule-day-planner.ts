@@ -9,6 +9,7 @@ import type {
   VisitType,
 } from './day-view.shared';
 import { normalizeVehicleResourceSelectValue, toDateKey } from './day-view.shared';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 
 export type ScheduleDayRouteTravelMode = 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
@@ -427,10 +428,7 @@ export async function generateScheduleDayProposals({
 }): Promise<ScheduleDayProposalGenerationResult> {
   const res = await fetchImpl('/api/visit-schedule-proposals', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-org-id': orgId,
-    },
+    headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify(
       buildScheduleDayProposalGenerationPayload({
         resolvedCaseId,

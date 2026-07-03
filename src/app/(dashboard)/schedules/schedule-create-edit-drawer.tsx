@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { messageFromError } from '@/lib/utils/error-message';
 import { requestNavigationConfirmation } from '@/components/providers/navigation-confirm-provider';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
@@ -259,10 +260,7 @@ export function ScheduleCreateEditDrawer({
     mutationFn: async (submitForContact: boolean) => {
       const res = await fetch('/api/visit-schedule-proposals', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(
           buildScheduleCreateEditDrawerPayload({
             form,

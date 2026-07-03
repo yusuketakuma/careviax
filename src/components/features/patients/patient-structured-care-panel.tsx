@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { cn } from '@/lib/utils';
@@ -67,7 +68,7 @@ export function PatientStructuredCarePanel({ patientId }: { patientId: string })
     queryKey: ['patient-structured-care', patientId, orgId],
     queryFn: async () => {
       const response = await fetch(buildPatientApiPath(patientId, '/structured-care'), {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) {
         throw new Error('在宅医療処置の取得に失敗しました');

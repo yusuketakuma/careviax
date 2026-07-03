@@ -24,6 +24,7 @@ import {
 import { Button, buttonVariants } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/loading';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 
@@ -228,7 +229,7 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
     queryKey: ['medication-calendar', orgId, patientId],
     queryFn: async () => {
       const response = await fetch(buildCurrentMedicationProfilesPath(patientId), {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
 
       if (!response.ok) {

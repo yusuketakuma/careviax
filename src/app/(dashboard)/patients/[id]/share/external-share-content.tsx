@@ -253,7 +253,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
     mutationFn: async () => {
       const res = await fetch('/api/external-access', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           patient_id: patientId,
           granted_to_name: grantedToName,

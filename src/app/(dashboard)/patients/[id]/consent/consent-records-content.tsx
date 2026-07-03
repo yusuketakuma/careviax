@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { downscaleImage } from '@/lib/files/downscale-image';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
@@ -261,7 +262,7 @@ async function uploadConsentDocument(args: { file: File; patientId: string; orgI
   const uploadFile = await downscaleImage(args.file);
   const presignResponse = await fetch('/api/files/presigned-upload', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-org-id': args.orgId },
+    headers: buildOrgJsonHeaders(args.orgId),
     body: JSON.stringify({
       purpose: 'consent-document',
       patient_id: args.patientId,
@@ -287,7 +288,7 @@ async function uploadConsentDocument(args: { file: File; patientId: string; orgI
 
   const completeResponse = await fetch('/api/files/complete', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-org-id': args.orgId },
+    headers: buildOrgJsonHeaders(args.orgId),
     body: JSON.stringify({
       file_id: presignJson.data.id,
       etag: uploadResponse.headers.get('etag') ?? undefined,
@@ -329,7 +330,7 @@ function CreateConsentDialog({
     queryKey: ['consent-templates', orgId],
     queryFn: async () => {
       const res = await fetch('/api/templates?template_type=consent_form', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('同意書テンプレートの取得に失敗しました');
       return res.json() as Promise<{
@@ -346,7 +347,7 @@ function CreateConsentDialog({
         : undefined;
       const res = await fetch('/api/consent-records', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           patient_id: patientId,
           ...(data.template_id ? { template_id: data.template_id } : {}),
@@ -585,7 +586,7 @@ function EditConsentDialog({
 
       const res = await fetch(`/api/consent-records/${record.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(body),
       });
       if (!res.ok) {
@@ -679,7 +680,7 @@ function RevokeConsentDialog({
     mutationFn: async () => {
       const res = await fetch(`/api/consent-records/${record.id}/revoke`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ reason: reason || undefined }),
       });
       if (!res.ok) {
@@ -781,7 +782,7 @@ export function ConsentRecordsContent() {
     queryKey: ['consent-records', patientId],
     queryFn: async () => {
       const res = await fetch(`/api/consent-records?patient_id=${patientId}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('同意記録の取得に失敗しました');
       return res.json();

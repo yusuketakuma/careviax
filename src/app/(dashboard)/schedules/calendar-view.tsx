@@ -18,6 +18,7 @@ import {
 import { ja } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { ErrorState } from '@/components/ui/error-state';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import {
@@ -295,10 +296,7 @@ export function CalendarView() {
       if (schedulePreviewRequests.length === 0) return new Map();
       const response = await fetch('/api/visit-schedule-proposals/billing-preview-batch', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ items: schedulePreviewRequests }),
       });
       if (!response.ok) throw new Error('算定プレビューの取得に失敗しました');

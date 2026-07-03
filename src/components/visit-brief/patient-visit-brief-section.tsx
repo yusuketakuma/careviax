@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { VisitBriefCard } from '@/components/visit-brief/visit-brief-card';
 import { ErrorState } from '@/components/ui/error-state';
 import { Loading } from '@/components/ui/loading';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import type { VisitBrief } from '@/types/visit-brief';
@@ -30,7 +31,7 @@ export function PatientVisitBriefSection({
     queryKey: ['patient-visit-brief', patientId, orgId],
     queryFn: async () => {
       const response = await fetch(buildPatientApiPath(patientId, '/visit-brief'), {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) {
         throw new Error('患者要約の取得に失敗しました');

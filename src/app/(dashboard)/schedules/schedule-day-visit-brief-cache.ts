@@ -1,4 +1,5 @@
 import { formatOfflineCacheUpdatedAt, isOfflineCacheFresh } from '@/lib/offline/cache-policy';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
 import type { OfflineVisitBriefCache } from '@/lib/stores/offline-db';
 import {
@@ -218,10 +219,7 @@ async function fetchScheduleDayVisitBriefBatch({
 }): Promise<VisitBriefBatchPayload | null> {
   const res = await fetch('/api/visit-preparations/brief-batch', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-org-id': orgId,
-    },
+    headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify({
       schedule_ids: scheduleIds,
     }),
