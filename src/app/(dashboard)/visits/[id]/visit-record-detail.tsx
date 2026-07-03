@@ -42,6 +42,7 @@ import { PatientHeader } from '@/components/features/patients/patient-header';
 import type { PatientHeaderSummary } from '@/server/services/patient-detail';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { formatFileSize } from '@/lib/files/format-file-size';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { generateCareReportFromVisit } from '@/lib/reports/generate-from-visit-client';
 import { OUTCOME_LABELS } from '@/lib/constants/visit';
@@ -275,18 +276,6 @@ function VisitOutcomeBadge({ status }: { status: string }) {
     return <Badge variant="outline">{label}</Badge>;
   }
   return <StateBadge role={role}>{label}</StateBadge>;
-}
-
-function formatFileSize(sizeBytes: number) {
-  if (sizeBytes >= 1024 * 1024) {
-    return `${(sizeBytes / (1024 * 1024)).toFixed(1)}MB`;
-  }
-
-  if (sizeBytes >= 1024) {
-    return `${Math.round(sizeBytes / 1024)}KB`;
-  }
-
-  return `${sizeBytes}B`;
 }
 
 function formatTimeWindow(value: string | null) {

@@ -5,6 +5,7 @@ import { FileImage, FileText, Paperclip, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { formatFileSize } from '@/lib/files/format-file-size';
 
 export const VISIT_ATTACHMENT_ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf';
 
@@ -21,18 +22,6 @@ type VisitAttachmentsFieldProps = {
   onAddFiles: (files: File[]) => void;
   onRemoveFile: (id: string) => void;
 };
-
-function formatFileSize(sizeBytes: number) {
-  if (sizeBytes >= 1024 * 1024) {
-    return `${(sizeBytes / (1024 * 1024)).toFixed(1)}MB`;
-  }
-
-  if (sizeBytes >= 1024) {
-    return `${Math.round(sizeBytes / 1024)}KB`;
-  }
-
-  return `${sizeBytes}B`;
-}
 
 export function VisitAttachmentsField({
   disabled = false,
@@ -126,14 +115,10 @@ export function VisitAttachmentsField({
                 <div className="min-w-0 space-y-1">
                   <div className="flex items-center gap-2">
                     <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                    <p className="truncate text-sm font-medium text-foreground">
-                      {item.file.name}
-                    </p>
+                    <p className="truncate text-sm font-medium text-foreground">{item.file.name}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <Badge variant="outline">
-                      {item.kind === 'photo' ? '写真' : '添付'}
-                    </Badge>
+                    <Badge variant="outline">{item.kind === 'photo' ? '写真' : '添付'}</Badge>
                     <span>{item.file.type || 'application/octet-stream'}</span>
                     <span>{formatFileSize(item.file.size)}</span>
                   </div>
