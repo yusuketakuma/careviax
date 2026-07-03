@@ -169,6 +169,24 @@ describe('/api/communication-events', () => {
     });
   });
 
+  it('treats omitted optional filters as absent when listing communication events', async () => {
+    const response = (await GET(createGetRequest('')))!;
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(communicationEventFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+        }),
+      }),
+    );
+    const where = communicationEventFindManyMock.mock.calls[0][0].where;
+    expect(where).not.toHaveProperty('patient_id');
+    expect(where).not.toHaveProperty('event_type');
+    expect(where).not.toHaveProperty('AND');
+  });
+
   it.each([
     ['patient_id=', 'patient_id', '患者IDを指定してください'],
     ['patient_id=%20patient_1', 'patient_id', '患者IDの形式が不正です'],

@@ -6,6 +6,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
+import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { createMedicationProfileSchema } from '@/lib/validations/medication';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
@@ -16,34 +17,6 @@ import { withRoutePerformance } from '@/lib/utils/performance';
 import type { Prisma } from '@prisma/client';
 
 const ROUTE = '/api/medication-profiles';
-
-function readStrictOptionalPatientFilter(searchParams: URLSearchParams) {
-  const values = searchParams.getAll('patient_id');
-  if (values.length === 0) return { ok: true as const, value: undefined };
-  if (values.length > 1) {
-    return {
-      ok: false as const,
-      fieldErrors: { patient_id: ['patient_id は1つだけ指定してください'] },
-    };
-  }
-
-  const value = values[0];
-  if (value.trim().length === 0) {
-    return {
-      ok: false as const,
-      fieldErrors: { patient_id: ['患者IDを指定してください'] },
-    };
-  }
-
-  if (value !== value.trim() || value.length > 100) {
-    return {
-      ok: false as const,
-      fieldErrors: { patient_id: ['患者IDの形式が不正です'] },
-    };
-  }
-
-  return { ok: true as const, value };
-}
 
 function readStrictOptionalCurrentFilter(searchParams: URLSearchParams) {
   const values = searchParams.getAll('is_current');
@@ -67,7 +40,10 @@ function readStrictOptionalCurrentFilter(searchParams: URLSearchParams) {
 }
 
 function parseMedicationProfileListFilters(searchParams: URLSearchParams) {
-  const patientResult = readStrictOptionalPatientFilter(searchParams);
+  const patientResult = readStrictOptionalSearchParam(searchParams, 'patient_id', {
+    blank: '患者IDを指定してください',
+    invalid: '患者IDの形式が不正です',
+  });
   if (!patientResult.ok) {
     return {
       ok: false as const,

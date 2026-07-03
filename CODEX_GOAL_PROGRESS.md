@@ -37087,3 +37087,35 @@ Next loop:
   - Claude-assigned BE-3 design memo remains untracked and awaiting
     opus/Claude review/commit.
   - Full `pnpm build` was not run for this narrow logger-convergence slice.
+
+## Medication / Communication Query Helper Convergence - 2026-07-03 19:31 JST
+
+- Scope:
+  - `src/app/api/medication-profiles/route.ts`
+  - `src/app/api/medication-profiles/route.test.ts`
+  - `src/app/api/communication-events/route.ts`
+  - `src/app/api/communication-events/route.test.ts`
+  - `ops/refactor` progress records
+- Status:
+  - Implemented after Claude ACKed path lock
+    `RR-QP-20260703-A`.
+  - Focused validation green; awaiting opus verdict and Claude commit.
+- Fixed:
+  - Medication profiles optional `patient_id` list filter now delegates to the
+    shared `readStrictOptionalSearchParam`.
+  - Communication events optional `patient_id` / `event_type` list filters now
+    delegate to the same shared helper.
+  - Route tests now explicitly prove omitted optional filters stay absent from
+    Prisma `where`, while existing empty, padded, too-long, and duplicate cases
+    preserve no-store validation responses before DB access/assignment scope.
+- Safety:
+  - `is_current` boolean parsing remains route-local.
+  - No API response envelope, pagination, status code, auth/RLS, assignment
+    scope, DB schema, migration, audit, billing, external send, UI, production
+    config, push/deploy, or destructive operation behavior changed.
+- Validation:
+  - Baseline focused tests passed `3` files / `48` tests.
+  - Post-edit focused tests passed `3` files / `50` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped diff-check passed.
+- Remaining:
+  - Send completion report to Claude and await opus verdict / Claude commit.

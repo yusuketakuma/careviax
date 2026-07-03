@@ -100,8 +100,10 @@ Snapshot: 2026-07-02 02:10 JST
   `dashboard/medication-deadlines`, `/api/interventions`,
   `/api/medication-issues`, `/api/residual-medications`, and
   `/api/first-visit-documents`, `/api/medication-cycles`, and
-  `/api/dispense-tasks` now use `src/lib/api/search-params.ts`; continue only
-  where exact semantics match and focused tests lock the response.
+  `/api/dispense-tasks`, `/api/medication-profiles`, and
+  `/api/communication-events` now use `src/lib/api/search-params.ts`; continue
+  only where exact omitted, blank, padded, too-long, duplicate, and
+  field-message semantics match and focused tests lock the response.
 - Response helper/no-store convergence remains a periodic scan target, but no
   new unverified candidate is being edited in this artifact-sync slice.
 - API path/header helper convergence should continue only where exact URL shape

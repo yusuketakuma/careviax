@@ -172,6 +172,25 @@ describe('/api/medication-profiles', () => {
     expect(medicationProfileCreateMock).not.toHaveBeenCalled();
   });
 
+  it('treats omitted optional filters as absent when listing medication profiles', async () => {
+    const response = (await GET(createGetRequest(), emptyRouteContext))!;
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationProfileFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+        }),
+      }),
+    );
+    const where = medicationProfileFindManyMock.mock.calls[0][0].where;
+    expect(where).not.toHaveProperty('patient_id');
+    expect(where).not.toHaveProperty('is_current');
+  });
+
   it('returns a sanitized no-store 500 when medication profile listing fails unexpectedly', async () => {
     const err = new Error('raw medication profile list secret');
     err.name = 'MedicationProfileListSecretError';

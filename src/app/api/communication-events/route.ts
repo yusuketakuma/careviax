@@ -4,6 +4,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
+import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { z } from 'zod';
@@ -59,40 +60,8 @@ type AttachmentValidationSuccess = {
 
 const COMMUNICATION_ATTACHMENT_PURPOSES = new Set(['prescription', 'report', 'visit-photo']);
 
-function readStrictOptionalCommunicationEventFilter(
-  searchParams: URLSearchParams,
-  name: 'patient_id' | 'event_type',
-  messages: { blank: string; invalid: string },
-) {
-  const values = searchParams.getAll(name);
-  if (values.length === 0) return { ok: true as const, value: undefined };
-  if (values.length > 1) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [`${name} は1つだけ指定してください`] },
-    };
-  }
-
-  const value = values[0];
-  if (value.trim().length === 0) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [messages.blank] },
-    };
-  }
-
-  if (value !== value.trim() || value.length > 100) {
-    return {
-      ok: false as const,
-      fieldErrors: { [name]: [messages.invalid] },
-    };
-  }
-
-  return { ok: true as const, value };
-}
-
 function parseCommunicationEventListFilters(searchParams: URLSearchParams) {
-  const patientResult = readStrictOptionalCommunicationEventFilter(searchParams, 'patient_id', {
+  const patientResult = readStrictOptionalSearchParam(searchParams, 'patient_id', {
     blank: '患者IDを指定してください',
     invalid: '患者IDの形式が不正です',
   });
@@ -105,7 +74,7 @@ function parseCommunicationEventListFilters(searchParams: URLSearchParams) {
     };
   }
 
-  const eventTypeResult = readStrictOptionalCommunicationEventFilter(searchParams, 'event_type', {
+  const eventTypeResult = readStrictOptionalSearchParam(searchParams, 'event_type', {
     blank: 'イベントタイプを指定してください',
     invalid: 'イベントタイプの形式が不正です',
   });

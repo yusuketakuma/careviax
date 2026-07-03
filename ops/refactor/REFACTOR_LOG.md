@@ -2427,3 +2427,65 @@ continuity`).
     `2` skipped.
   - gbrain write/readback:
     `projects/careviax/failures/2026-07-02/my-day-task-triage-admin-status-cache`.
+
+## 2026-07-03 19:31 JST - Medication / Communication Query Helper Convergence
+
+- Change ID: `RR-QP-20260703-A-medication-communication-query-helper`.
+- Category: inconsistency / duplicate helper removal / API validation
+  behavior-preserving refactor.
+- Target:
+  - `/api/medication-profiles` optional `patient_id` list filter.
+  - `/api/communication-events` optional `patient_id` and `event_type` list
+    filters.
+- Purpose:
+  - Remove route-local duplicate strict optional query-param readers where the
+    behavior exactly matches `readStrictOptionalSearchParam`.
+- Implementation:
+  - Imported `readStrictOptionalSearchParam` in both routes.
+  - Removed `readStrictOptionalPatientFilter` from medication profiles.
+  - Removed `readStrictOptionalCommunicationEventFilter` from communication
+    events.
+  - Kept medication profiles `is_current` parsing route-local because it is a
+    boolean enum check, not a strict optional string filter.
+  - Added omitted-filter regression tests for both routes so missing values keep
+    producing `undefined` and do not leak `patient_id`, `event_type`, or
+    `is_current` predicates into Prisma `where`.
+- Files changed:
+  - `src/app/api/medication-profiles/route.ts`
+  - `src/app/api/medication-profiles/route.test.ts`
+  - `src/app/api/communication-events/route.ts`
+  - `src/app/api/communication-events/route.test.ts`
+- Deleted code:
+  - Two route-local strict optional string query readers.
+- Shared helper:
+  - `readStrictOptionalSearchParam` from `src/lib/api/search-params.ts`.
+- Behavior change:
+  - None intended.
+  - Existing no-store validation responses for empty, padded, too-long, and
+    duplicate query values remain covered.
+  - Omitted optional filters are now explicitly covered as absent filters.
+- FE/BE alignment impact:
+  - No API path, method, response envelope, status code, pagination, auth/RLS,
+    assignment scope, or DB schema behavior changed.
+- UI layout impact:
+  - None.
+- Performance impact:
+  - No runtime performance claim. The change removes duplicated parsing code
+    only.
+- Validation:
+  - Baseline before edit:
+    `./node_modules/.bin/vitest run src/lib/api/search-params.test.ts src/app/api/medication-profiles/route.test.ts src/app/api/communication-events/route.test.ts --reporter=dot --testTimeout=60000`
+    passed `3` files / `48` tests.
+  - Post-edit focused suite:
+    `./node_modules/.bin/vitest run src/lib/api/search-params.test.ts src/app/api/medication-profiles/route.test.ts src/app/api/communication-events/route.test.ts --reporter=dot --testTimeout=60000`
+    passed `3` files / `50` tests.
+  - `./node_modules/.bin/eslint src/app/api/medication-profiles/route.ts src/app/api/medication-profiles/route.test.ts src/app/api/communication-events/route.ts src/app/api/communication-events/route.test.ts src/lib/api/search-params.test.ts`
+    passed.
+  - `./node_modules/.bin/prettier --check src/app/api/medication-profiles/route.ts src/app/api/medication-profiles/route.test.ts src/app/api/communication-events/route.ts src/app/api/communication-events/route.test.ts src/lib/api/search-params.test.ts`
+    passed.
+  - `git diff --check -- src/app/api/medication-profiles/route.ts src/app/api/medication-profiles/route.test.ts src/app/api/communication-events/route.ts src/app/api/communication-events/route.test.ts src/lib/api/search-params.test.ts`
+    passed.
+- Remaining:
+  - Await opus verdict / Claude commit.
+  - Continue strict optional query-param convergence only where omitted,
+    empty, padded, too-long, and duplicate semantics match exactly.

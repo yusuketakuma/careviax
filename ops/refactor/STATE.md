@@ -606,3 +606,31 @@ re-audits are complete.
     blockers.
 - Memory:
   - `projects/careviax/failures/2026-07-02/my-day-task-triage-admin-status-cache`
+
+## Latest Slice - 2026-07-03 19:31 JST
+
+- Change ID:
+  `RR-QP-20260703-A-medication-communication-query-helper`.
+- Status: implemented and validated; awaiting opus verdict / Claude commit.
+- Files changed:
+  - `src/app/api/medication-profiles/route.ts`
+  - `src/app/api/medication-profiles/route.test.ts`
+  - `src/app/api/communication-events/route.ts`
+  - `src/app/api/communication-events/route.test.ts`
+- Summary:
+  - Replaced route-local strict optional `patient_id` reader in
+    `/api/medication-profiles` with `readStrictOptionalSearchParam`.
+  - Replaced route-local strict optional `patient_id` / `event_type` reader in
+    `/api/communication-events` with `readStrictOptionalSearchParam`.
+  - Left `is_current` boolean parsing in medication profiles route-local because
+    it has boolean-specific semantics.
+  - Added route tests proving omitted optional filters remain absent from Prisma
+    `where` clauses, while existing empty, padded, too-long, and duplicate
+    rejection tests preserve no-store validation responses before DB access.
+- Validation:
+  - Baseline before edit passed `3` files / `48` tests.
+  - Focused post-edit suite passed `3` files / `50` tests.
+  - Scoped ESLint, Prettier check, and diff-check passed.
+- Remaining:
+  - Report the slice to Claude and wait for opus verdict / Claude commit.
+  - Continue avoiding BE-2 care-report projector files.

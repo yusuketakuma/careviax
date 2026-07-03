@@ -3345,3 +3345,38 @@ The latest backend/API slice is `pca-pump-patch-update-claim` at 2026-07-03
   - Browser/E2E smoke was skipped because this backend route/concurrency fix
     changes no DOM layout, navigation, route contract shape, or human workflow
     shape. No DB migration or data mutation was performed.
+
+## Medication / Communication Query Helper Verification
+
+The latest query-param helper convergence slice is
+`RR-QP-20260703-A-medication-communication-query-helper` at 2026-07-03
+19:31 JST.
+
+- Scope:
+  - `/api/medication-profiles` optional `patient_id` list filter.
+  - `/api/communication-events` optional `patient_id` and `event_type` list
+    filters.
+  - No helper implementation change was needed; routes now delegate to
+    `readStrictOptionalSearchParam`.
+- Baseline before edit:
+  - `./node_modules/.bin/vitest run src/lib/api/search-params.test.ts src/app/api/medication-profiles/route.test.ts src/app/api/communication-events/route.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `3` files / `48` tests.
+- Focused regressions after edit:
+  - `./node_modules/.bin/vitest run src/lib/api/search-params.test.ts src/app/api/medication-profiles/route.test.ts src/app/api/communication-events/route.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `3` files / `50` tests.
+  - Coverage: shared helper duplicate/blank/padded/max-length semantics,
+    medication profile omitted/empty/padded/too-long/duplicate filters before DB
+    access, communication event omitted/empty/padded/too-long/duplicate filters
+    before assignment scope.
+- Scoped checks:
+  - `./node_modules/.bin/eslint src/app/api/medication-profiles/route.ts src/app/api/medication-profiles/route.test.ts src/app/api/communication-events/route.ts src/app/api/communication-events/route.test.ts src/lib/api/search-params.test.ts`
+  - Result: passed.
+  - `./node_modules/.bin/prettier --check src/app/api/medication-profiles/route.ts src/app/api/medication-profiles/route.test.ts src/app/api/communication-events/route.ts src/app/api/communication-events/route.test.ts src/lib/api/search-params.test.ts`
+  - Result: passed.
+  - `git diff --check -- src/app/api/medication-profiles/route.ts src/app/api/medication-profiles/route.test.ts src/app/api/communication-events/route.ts src/app/api/communication-events/route.test.ts src/lib/api/search-params.test.ts`
+  - Result: passed.
+- Skipped:
+  - Full typecheck/build/browser smoke were skipped because this slice changes
+    no response shape, DOM, DB query meaning, auth/RLS behavior, external send,
+    migration, production config, or visible UI. The affected validation
+    branches are covered by focused route and helper tests.

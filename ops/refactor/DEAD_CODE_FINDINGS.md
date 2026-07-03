@@ -107,6 +107,31 @@ It replaced silent transient client failure handling with tested safe logging.
     dispense-tasks route coverage for duplicate, blank, padded, max-length, and
     unsupported status rejection.
 
+### `DEAD-QP-007`: Duplicated medication-profiles strict optional patient filter reader
+
+- Type: duplicate code / redundant local helper.
+- Evidence:
+  - `src/app/api/medication-profiles/route.ts`
+- Deleted in latest slice:
+  - Route-local `readStrictOptionalPatientFilter`.
+- Replacement:
+  - `readStrictOptionalSearchParam` in `src/lib/api/search-params.ts`, with
+    medication-profiles route coverage for omitted, duplicate, blank, padded,
+    and max-length rejection. Route-local `is_current` parsing remains because
+    it has boolean-specific semantics.
+
+### `DEAD-QP-008`: Duplicated communication-events strict optional filter reader
+
+- Type: duplicate code / redundant local helper.
+- Evidence:
+  - `src/app/api/communication-events/route.ts`
+- Deleted in latest slice:
+  - Route-local `readStrictOptionalCommunicationEventFilter`.
+- Replacement:
+  - `readStrictOptionalSearchParam` in `src/lib/api/search-params.ts`, with
+    communication-events route coverage for omitted, duplicate, blank, padded,
+    and max-length rejection for `patient_id` / `event_type`.
+
 ## Deletion Rules
 
 Before deleting any code outside this duplicated-helper pattern:
