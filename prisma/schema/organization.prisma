@@ -167,11 +167,11 @@ model ServiceArea {
 ///   care:    CareSiteConfig2024    (types.ts)
 /// DB スキーマを改定ごとに変更する必要がない設計。
 model PharmacySiteInsuranceConfig {
-  id      String       @id @default(cuid())
-  org_id  String
+  id         String       @id @default(cuid())
+  org_id     String
   display_id String?
-  site_id String
-  site    PharmacySite @relation(fields: [site_id], references: [id])
+  site_id    String
+  site       PharmacySite @relation(fields: [site_id], references: [id])
 
   /// 保険種別: medical(医療保険) / care(介護保険)
   insurance_type String // 'medical' | 'care'
