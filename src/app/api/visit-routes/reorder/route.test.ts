@@ -57,6 +57,7 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 }));
 
 import { PATCH as rawPATCH } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 const PATCH = (req: NextRequest) => rawPATCH(req, emptyRouteContext);
@@ -81,11 +82,6 @@ function createMalformedJsonRequest() {
       'x-org-id': 'org_1',
     },
   });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function expectNoWriteAuditOrNotify() {

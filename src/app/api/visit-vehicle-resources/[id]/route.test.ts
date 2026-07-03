@@ -44,6 +44,7 @@ vi.mock('@/lib/utils/logger', () => ({
 }));
 
 import { PATCH } from './route';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 function createPatchRequest(id: string, body: unknown) {
   const req = new NextRequest(
@@ -67,11 +68,6 @@ function createMalformedPatchRequest(id: string) {
     },
   );
   return PATCH(req, { params: Promise.resolve({ id }) });
-}
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 const existingVehicleResource = {

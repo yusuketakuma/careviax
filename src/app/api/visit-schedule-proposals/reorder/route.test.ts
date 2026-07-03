@@ -45,6 +45,7 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 }));
 
 import { PATCH as rawPATCH } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 const PATCH = (req: NextRequest) => rawPATCH(req, emptyRouteContext);
@@ -88,11 +89,6 @@ function buildProposalFixture(overrides?: Record<string, unknown>) {
     proposal_status: 'proposed',
     ...overrides,
   };
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/visit-schedule-proposals/reorder PATCH', () => {

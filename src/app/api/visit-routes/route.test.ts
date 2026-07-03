@@ -46,6 +46,7 @@ vi.mock('@/server/services/visit-route-engine', async (importOriginal) => {
 });
 
 import { POST as rawPOST } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
@@ -86,11 +87,6 @@ function mockRouteContext() {
       },
     }),
   );
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/visit-routes POST', () => {

@@ -35,16 +35,12 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 import { GET } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const ORIGINAL_TZ = process.env.TZ;
 
 function createRequest() {
   return new NextRequest('http://localhost/api/visits/today-preparation');
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function buildSchedule(overrides: Record<string, unknown> = {}) {

@@ -45,6 +45,7 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 }));
 
 import { POST } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 function createReopenRequest(
   body: unknown,
@@ -58,11 +59,6 @@ function createReopenRequest(
       ...headers,
     },
   });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function expectedReopenClaimWhere() {

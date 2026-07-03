@@ -52,6 +52,7 @@ import {
   VisitHandoffMissingDataError,
   VisitHandoffStaleRecordError,
 } from '@/server/services/visit-handoff';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 function createRequest(url: string, body?: unknown) {
   if (body === undefined) {
@@ -115,11 +116,6 @@ function buildVisitRecord(overrides: Record<string, unknown> = {}) {
     },
     ...overrides,
   };
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/visit-records/[id]/handoff', () => {

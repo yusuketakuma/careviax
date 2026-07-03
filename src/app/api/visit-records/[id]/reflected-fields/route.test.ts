@@ -32,6 +32,7 @@ vi.mock('@/server/services/patient-field-revision-list', () => ({
 }));
 
 import { GET } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 function createRequest(url = 'http://localhost/api/visit-records/vr_1/reflected-fields') {
   return new NextRequest(url);
@@ -54,11 +55,6 @@ const accessibleSchedule = {
     backup_pharmacist_id: null,
   },
 };
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
-}
 
 describe('/api/visit-records/[id]/reflected-fields', () => {
   beforeEach(() => {

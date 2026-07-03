@@ -42,6 +42,7 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 }));
 
 import { POST } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 function createRequest(body: unknown) {
   return new NextRequest(
@@ -56,11 +57,6 @@ function createRequest(body: unknown) {
 
 function routeContext(id = 'schedule_1') {
   return { params: Promise.resolve({ id }) };
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/visit-schedules/[id]/conflict-reconfirmation POST', () => {

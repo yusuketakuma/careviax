@@ -87,6 +87,7 @@ vi.mock('@/server/services/billing-evidence', () => ({
 }));
 
 import { GET, PATCH } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 function createRequest(body?: unknown) {
   if (body === undefined) {
@@ -113,11 +114,6 @@ function createMalformedJsonRequest() {
       'x-org-id': 'org_1',
     },
   });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/visit-records/[id]', () => {

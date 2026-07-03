@@ -65,14 +65,10 @@ vi.mock('@/server/services/visit-schedule-billing-preview', () => ({
 }));
 
 import { GET } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 const withAuthRegistrationCalls = [...withAuthContextMock.mock.calls];
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
-}
 
 describe('/api/visit-schedule-proposals/billing-preview GET', () => {
   beforeEach(() => {

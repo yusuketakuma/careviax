@@ -40,6 +40,7 @@ vi.mock('@/server/services/visit-handoff', () => ({
 }));
 
 import { POST } from './route';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 function createRequest(url: string) {
   return new NextRequest(url, { method: 'POST' });
@@ -62,11 +63,6 @@ const accessibleSchedule = {
     backup_pharmacist_id: null,
   },
 };
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
-}
 
 describe('/api/visit-records/[id]/handoff/extract', () => {
   beforeEach(() => {
