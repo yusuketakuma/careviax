@@ -37,41 +37,15 @@ import {
   type JahisSupplementalRecordDbView,
 } from '@/lib/pharmacy/jahis-supplemental-records-view';
 import { SOURCE_LABELS } from '../new/prescription-form.shared';
-import { CYCLE_STATUS_CONFIG } from '../prescription.shared';
+import {
+  CYCLE_STATUS_CONFIG,
+  type InquiryRecord,
+  type PrescriptionLine,
+} from '../prescription.shared';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-type PrescriptionLine = {
-  id: string;
-  line_number: number;
-  drug_name: string;
-  drug_code: string | null;
-  dosage_form: string | null;
-  dose: string;
-  frequency: string;
-  days: number;
-  route: string | null;
-  dispensing_method: string | null;
-  is_generic: boolean;
-  is_generic_name_prescription: boolean | null;
-  packaging_instructions: string | null;
-  notes: string | null;
-};
-
-type InquiryRecord = {
-  id: string;
-  reason: string;
-  inquiry_to_physician: string;
-  inquiry_content: string;
-  result: string | null;
-  proposal_origin: 'post_inquiry' | 'pre_issuance' | null;
-  residual_adjustment: boolean | null;
-  change_detail: string | null;
-  inquired_at: string;
-  resolved_at: string | null;
-};
 
 type PrescriberInstitutionRef = {
   id: string;

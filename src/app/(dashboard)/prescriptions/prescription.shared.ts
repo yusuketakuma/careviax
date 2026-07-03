@@ -14,6 +14,36 @@ type CycleStatusConfig = {
   className?: string;
 };
 
+export type PrescriptionLine = {
+  id: string;
+  line_number: number;
+  drug_name: string;
+  drug_code: string | null;
+  dosage_form: string | null;
+  dose: string;
+  frequency: string;
+  days: number;
+  route: string | null;
+  dispensing_method: string | null;
+  is_generic: boolean;
+  is_generic_name_prescription: boolean | null;
+  packaging_instructions: string | null;
+  notes: string | null;
+};
+
+export type InquiryRecord = {
+  id: string;
+  reason: string;
+  inquiry_to_physician: string;
+  inquiry_content: string;
+  result: string | null;
+  proposal_origin: 'post_inquiry' | 'pre_issuance' | null;
+  residual_adjustment: boolean | null;
+  change_detail: string | null;
+  inquired_at: string;
+  resolved_at: string | null;
+};
+
 export const CYCLE_STATUS_CONFIG: Record<string, CycleStatusConfig> = Object.fromEntries(
   Object.entries(MEDICATION_CYCLE_STATUS_ROLE).map(([status, role]) => {
     const label = CYCLE_STATUS_LABELS[status] ?? status;
