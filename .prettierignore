@@ -1,3 +1,7 @@
 .codex/*.log
 .codex/medical-ui-ux-completion-audit.md
 .codex/postgres-e2e/
+# 生成物: src/tools/rls-gap-ledger.ts が出力する RLS ギャップ台帳。
+# renderRlsGapLedger() の出力とバイト一致を保つため prettier の再整形対象から除外
+# （同期は rls-policy-contract.test.ts が検証、更新は UPDATE_RLS_LEDGER=1）。
+docs/security/rls-gap-ledger.md
