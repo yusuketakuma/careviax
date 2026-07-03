@@ -1,12 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fetchDrugMasterSuggestions } from './drug-master-suggestions';
-
-function jsonResponse(body: unknown, init?: ResponseInit) {
-  return new Response(JSON.stringify(body), {
-    ...init,
-    headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
-  });
-}
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 describe('fetchDrugMasterSuggestions', () => {
   it('skips short queries before making a request', async () => {

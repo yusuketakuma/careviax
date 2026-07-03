@@ -3,12 +3,7 @@ import {
   fetchPatientVisitRecordsWindow,
   VISIT_RECORD_PAGE_LIMIT,
 } from './patient-visit-records.helpers';
-
-function jsonResponse(body: unknown) {
-  return new Response(JSON.stringify(body), {
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 describe('patient-visit-records.helpers', () => {
   it('collects all visit-record pages for a patient', async () => {

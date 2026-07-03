@@ -36,13 +36,7 @@ import {
   setupEvidenceAutoSync,
   syncEvidenceDrafts,
 } from './evidence-drafts';
-
-function jsonResponse(payload: unknown, status = 200) {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 function createDraft(overrides: Record<string, unknown> = {}) {
   return {

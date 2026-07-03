@@ -40,6 +40,7 @@ import { PHOS_API_ROUTES } from '@/phos/infra/api-gateway-routes';
 import { createPhosApiClient } from './client';
 import type { PhosApiClient } from './types';
 import { PhosApiError } from './types';
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 const readyCard = {
   card_id: 'card_1',
@@ -67,14 +68,6 @@ const nextAction = {
   ui_state: ButtonState.ACTIONABLE,
   can_user_handle: true,
 } satisfies NextActionView;
-
-function jsonResponse(body: unknown, init: ResponseInit = {}) {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-    ...init,
-  });
-}
 
 function actionRequest(): ActionRequest {
   return {

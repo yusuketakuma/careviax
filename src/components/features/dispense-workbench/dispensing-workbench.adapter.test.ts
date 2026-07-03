@@ -1,13 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { MOCK_WRITE_NOOP } from './dispensing-workbench.write-types';
-
-function jsonResponse(body: unknown) {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 function expectOrgReadHeaders(init: unknown, orgId: string) {
   expect(init).toMatchObject({

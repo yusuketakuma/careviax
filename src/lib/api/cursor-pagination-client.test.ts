@@ -1,12 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { CURSOR_PAGINATION_PAGE_LIMIT, fetchAllCursorPages } from './cursor-pagination-client';
-
-function jsonResponse(body: unknown) {
-  return new Response(JSON.stringify(body), {
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 describe('cursor-pagination-client', () => {
   it('follows nextCursor and preserves first-page metadata', async () => {

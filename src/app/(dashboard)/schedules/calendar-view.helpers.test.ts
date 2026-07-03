@@ -7,12 +7,7 @@ import {
   sortCalendarSchedules,
   type CalendarVisitSchedule,
 } from './calendar-view.helpers';
-
-function jsonResponse(body: unknown) {
-  return new Response(JSON.stringify(body), {
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 describe('calendar-view.helpers', () => {
   it('sorts schedules by route order, time, and patient name', () => {

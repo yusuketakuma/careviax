@@ -3,12 +3,7 @@ import {
   fetchVisitSchedulesWindow,
   VISIT_SCHEDULE_PAGE_LIMIT,
 } from './visit-schedule-fetch.helpers';
-
-function jsonResponse(body: unknown) {
-  return new Response(JSON.stringify(body), {
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 describe('visit-schedule-fetch.helpers', () => {
   it('collects paginated schedules until all pages are fetched', async () => {

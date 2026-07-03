@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { PatientStructuredCarePanel } from './patient-structured-care-panel';
+import { stubJsonFetch as stubFetch } from '@/test/fetch-test-utils';
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
@@ -26,13 +27,6 @@ function createWrapper() {
   return function Wrapper({ children }: PropsWithChildren) {
     return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
   };
-}
-
-function stubFetch(payload: unknown) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 })),
-  );
 }
 
 describe('PatientStructuredCarePanel', () => {
