@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
     authInterrupts: true,
     preloadEntriesOnStart: false,
     webpackMemoryOptimizations: true,
+    optimizePackageImports: ['lucide-react', 'date-fns', 'recharts'],
   },
   serverExternalPackages: ['@react-pdf/renderer'],
 };
