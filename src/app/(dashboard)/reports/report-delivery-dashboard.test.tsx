@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { stubJsonFetch } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
@@ -287,13 +288,7 @@ describe('ReportDeliveryDashboard', () => {
   it('fetches delivery analytics with the org-header helper and stable query key', async () => {
     const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify({ data: {} }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = stubJsonFetch({ data: {} });
     primeDashboard();
 
     render(<ReportDeliveryDashboard />);
@@ -320,13 +315,7 @@ describe('ReportDeliveryDashboard', () => {
       'x-test-helper': 'buildOrgJsonHeaders',
     };
     vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinelHeaders);
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify({ data: { queued_count: 2 } }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = stubJsonFetch({ data: { queued_count: 2 } });
     primeDashboard();
 
     render(<ReportDeliveryDashboard />);
@@ -373,13 +362,7 @@ describe('ReportDeliveryDashboard', () => {
       'x-test-helper': 'buildOrgJsonHeaders',
     };
     vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinelHeaders);
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify({ data: { queued_count: 1 } }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = stubJsonFetch({ data: { queued_count: 1 } });
     primeDashboard();
 
     render(<ReportDeliveryDashboard />);

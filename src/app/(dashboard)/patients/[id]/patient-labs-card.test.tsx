@@ -4,6 +4,7 @@ import * as React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { PatientLabsCard } from './patient-labs-card';
 
@@ -260,12 +261,7 @@ describe('PatientLabsCard', () => {
     vi.clearAllMocks();
     capturedSelectItems.length = 0;
     capturedSelectTriggers.length = 0;
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ data: [] }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
+    fetchMock.mockResolvedValue(jsonResponse({ data: [] }));
     vi.stubGlobal('fetch', fetchMock);
   });
 

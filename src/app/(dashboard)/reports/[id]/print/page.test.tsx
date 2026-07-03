@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { stubJsonFetch } from '@/test/fetch-test-utils';
 import ReportPrintPage from './page';
 
 const printMock = vi.hoisted(() => vi.fn());
@@ -179,22 +180,17 @@ describe('ReportPrintPage', () => {
 
   it('auto-prints after recording a print-requested audit for an authorized report', async () => {
     mockReportQueries();
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          data: {
-            audited: true,
-            report: {
-              id: 'report_1',
-              report_type: 'physician_report',
-              updated_at: REPORT_UPDATED_AT_ISO,
-              content: physicianContent,
-            },
-          },
-        }),
-      ),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = stubJsonFetch({
+      data: {
+        audited: true,
+        report: {
+          id: 'report_1',
+          report_type: 'physician_report',
+          updated_at: REPORT_UPDATED_AT_ISO,
+          content: physicianContent,
+        },
+      },
+    });
 
     render(<ReportPrintPage />);
 
@@ -236,22 +232,17 @@ describe('ReportPrintPage', () => {
 
   it('posts the print audit request for authorized print URLs', async () => {
     mockReportQueries();
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          data: {
-            audited: true,
-            report: {
-              id: 'report_1',
-              report_type: 'physician_report',
-              updated_at: REPORT_UPDATED_AT_ISO,
-              content: physicianContent,
-            },
-          },
-        }),
-      ),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = stubJsonFetch({
+      data: {
+        audited: true,
+        report: {
+          id: 'report_1',
+          report_type: 'physician_report',
+          updated_at: REPORT_UPDATED_AT_ISO,
+          content: physicianContent,
+        },
+      },
+    });
 
     render(<ReportPrintPage />);
 
@@ -278,22 +269,17 @@ describe('ReportPrintPage', () => {
     const expectedUrl = `/api/care-reports/${encodeURIComponent(hostileReportId)}/print-audit`;
     useParamsMock.mockReturnValue({ id: hostileReportId });
     mockReportQueries('success', { id: hostileReportId });
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          data: {
-            audited: true,
-            report: {
-              id: hostileReportId,
-              report_type: 'physician_report',
-              updated_at: REPORT_UPDATED_AT_ISO,
-              content: physicianContent,
-            },
-          },
-        }),
-      ),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = stubJsonFetch({
+      data: {
+        audited: true,
+        report: {
+          id: hostileReportId,
+          report_type: 'physician_report',
+          updated_at: REPORT_UPDATED_AT_ISO,
+          content: physicianContent,
+        },
+      },
+    });
 
     render(<ReportPrintPage />);
 
@@ -317,22 +303,17 @@ describe('ReportPrintPage', () => {
 
   it('records a fresh print audit before manual print actions', async () => {
     mockReportQueries();
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          data: {
-            audited: true,
-            report: {
-              id: 'report_1',
-              report_type: 'physician_report',
-              updated_at: REPORT_UPDATED_AT_ISO,
-              content: physicianContent,
-            },
-          },
-        }),
-      ),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = stubJsonFetch({
+      data: {
+        audited: true,
+        report: {
+          id: 'report_1',
+          report_type: 'physician_report',
+          updated_at: REPORT_UPDATED_AT_ISO,
+          content: physicianContent,
+        },
+      },
+    });
 
     render(<ReportPrintPage />);
 
@@ -360,22 +341,17 @@ describe('ReportPrintPage', () => {
     const expectedBackHref = buildReportHref(hostileReportId);
     useParamsMock.mockReturnValue({ id: hostileReportId });
     mockReportQueries('success', { id: hostileReportId });
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          data: {
-            audited: true,
-            report: {
-              id: hostileReportId,
-              report_type: 'physician_report',
-              updated_at: REPORT_UPDATED_AT_ISO,
-              content: physicianContent,
-            },
-          },
-        }),
-      ),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = stubJsonFetch({
+      data: {
+        audited: true,
+        report: {
+          id: hostileReportId,
+          report_type: 'physician_report',
+          updated_at: REPORT_UPDATED_AT_ISO,
+          content: physicianContent,
+        },
+      },
+    });
 
     render(<ReportPrintPage />);
 
@@ -403,12 +379,7 @@ describe('ReportPrintPage', () => {
 
   it('blocks manual print when a fresh print audit cannot be recorded', async () => {
     mockReportQueries();
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ code: 'PRINT_AUDIT_FAILED' }), { status: 500 }),
-      );
-    vi.stubGlobal('fetch', fetchMock);
+    stubJsonFetch({ code: 'PRINT_AUDIT_FAILED' }, 500);
 
     render(<ReportPrintPage />);
 
@@ -426,22 +397,16 @@ describe('ReportPrintPage', () => {
 
   it('blocks manual print when a fresh print audit response is not audited', async () => {
     mockReportQueries();
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          data: {
-            audited: false,
-            report: {
-              id: 'report_1',
-              report_type: 'physician_report',
-              content: physicianContent,
-            },
-          },
-        }),
-        { status: 200 },
-      ),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    stubJsonFetch({
+      data: {
+        audited: false,
+        report: {
+          id: 'report_1',
+          report_type: 'physician_report',
+          content: physicianContent,
+        },
+      },
+    });
 
     render(<ReportPrintPage />);
 
@@ -459,12 +424,7 @@ describe('ReportPrintPage', () => {
 
   it('blocks manual print when a fresh print audit success response is malformed', async () => {
     mockReportQueries();
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ data: { audited: true } }), { status: 200 }),
-      );
-    vi.stubGlobal('fetch', fetchMock);
+    stubJsonFetch({ data: { audited: true } });
 
     render(<ReportPrintPage />);
 
@@ -482,22 +442,16 @@ describe('ReportPrintPage', () => {
 
   it('blocks manual print when the fresh print audit response is for another report', async () => {
     mockReportQueries();
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          data: {
-            audited: true,
-            report: {
-              id: 'report_other',
-              report_type: 'physician_report',
-              content: physicianContent,
-            },
-          },
-        }),
-        { status: 200 },
-      ),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    stubJsonFetch({
+      data: {
+        audited: true,
+        report: {
+          id: 'report_other',
+          report_type: 'physician_report',
+          content: physicianContent,
+        },
+      },
+    });
 
     render(<ReportPrintPage />);
 
@@ -515,23 +469,17 @@ describe('ReportPrintPage', () => {
 
   it('blocks manual print when the report changed after preview audit', async () => {
     mockReportQueries();
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          data: {
-            audited: true,
-            report: {
-              id: 'report_1',
-              report_type: 'physician_report',
-              updated_at: '2026-05-12T00:05:00.000Z',
-              content: physicianContent,
-            },
-          },
-        }),
-        { status: 200 },
-      ),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = stubJsonFetch({
+      data: {
+        audited: true,
+        report: {
+          id: 'report_1',
+          report_type: 'physician_report',
+          updated_at: '2026-05-12T00:05:00.000Z',
+          content: physicianContent,
+        },
+      },
+    });
 
     render(<ReportPrintPage />);
 

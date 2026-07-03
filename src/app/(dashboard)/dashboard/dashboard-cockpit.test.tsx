@@ -3,6 +3,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { stubJsonFetch } from '@/test/fetch-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
@@ -191,13 +192,7 @@ describe('DashboardCockpit', () => {
   it('fetches cockpit data with shared org headers and stable scope query keys', async () => {
     const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => {
-      return new Response(JSON.stringify({ data: buildFixture() }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = stubJsonFetch({ data: buildFixture() });
 
     render(<DashboardCockpit />);
 

@@ -5,6 +5,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { PropsWithChildren, ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createJsonFetchMock } from '@/test/fetch-test-utils';
 import { BreakGlassPanel } from './break-glass-panel';
 
 vi.mock('sonner', () => ({
@@ -58,10 +59,7 @@ function createWrapper() {
 }
 
 function stubSessionsFetch(sessions: unknown[]) {
-  const fetchMock = vi.fn(
-    async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      new Response(JSON.stringify({ sessions }), { status: 200 }),
-  );
+  const fetchMock = createJsonFetchMock({ sessions });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
 }

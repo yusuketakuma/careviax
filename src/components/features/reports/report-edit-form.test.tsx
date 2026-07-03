@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { stubJsonFetch } from '@/test/fetch-test-utils';
 import { ReportEditForm } from './report-edit-form';
 import type { CareManagerReportContent, PhysicianReportContent } from '@/types/care-report-content';
 
@@ -144,13 +145,7 @@ describe('ReportEditForm', () => {
   it('encodes hostile report ids as one path segment when saving edited content', async () => {
     useOrgIdMock.mockReturnValue('org_1');
     const reportId = 'report/1?mode=x#frag';
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify({ data: { id: reportId } }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = stubJsonFetch({ data: { id: reportId } });
 
     render(
       <ReportEditForm
