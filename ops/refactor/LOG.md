@@ -144,6 +144,20 @@
 - 備考: dev DB `localhost:5432` は未起動（接続不可）。Patient create-path allocation は今回LOCK外のため follow-up 候補。
 - レビュー: report pending。self-commit なし。
 
+## 2026-07-03 ID-2-W2 report-ready
+
+- 分類: infra/db / display_id prescription-domain wave 2
+- 対象: `prisma/schema/prescription.prisma`, new `20260703152000_add_prescription_display_ids`,
+  `tools/scripts/backfill-display-ids.ts` usage文言, `src/lib/db/display-id.test.ts`, 台帳3ファイル
+- 実施: prescription.prisma の18 org-scoped model へ nullable `display_id` と `@@unique([org_id, display_id])` を追加。
+  migration は既存列非破壊の `ADD COLUMN` + `WHERE display_id IS NOT NULL` partial unique index のみ。
+- backfill: W1 generic script を registry model args で再利用。local e2e dry-run は対象 NULL 1,522 rows・issues 0。
+  apply は1,522 rows backfilled、postChecks は全18 model null 0・duplicate 0・invalid 0・sequenceMismatch 0。
+- seed確認: `pnpm db:e2e:prepare` / W2 apply / `pnpm db:e2e:seed` / post-seed dry-run green。
+- 検証: prisma validate/db:generate green。focused vitest DB込み 29/29 green。scoped eslint/format/diff-check green。
+  `NODE_OPTIONS=--max-old-space-size=12288 pnpm typecheck` と `typecheck:no-unused` green。
+- レビュー: db_steward read-only LOW（`--max-rows` usage ambiguity）は wording 修正済み。self-commit なし。
+
 ## 2026-07-03 DR-DUP1 2e0c7fdb
 
 - 分類: bug/data-integrity / defensive validation

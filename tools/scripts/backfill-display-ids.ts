@@ -168,7 +168,7 @@ const USAGE = [
   '  --models LIST       Comma-separated DisplayId registry models to target',
   '  --apply             Mutate rows and id_sequence; requires --models and --max-rows',
   '  --dry-run           Read-only mode (default)',
-  '  --max-rows N        Maximum rows this run may mutate or preview',
+  '  --max-rows N        Apply fail-fast ceiling; dry-run reports target NULL rows, apply refuses before mutation if rows exceed N',
   '  --batch-size N      Rows per (model, org) transaction batch',
   '  --sample-limit N    Bounded reporting sample size',
   '  --org-id ORG        Optional single tenant/org filter',

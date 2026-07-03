@@ -27,6 +27,8 @@ import {
 const SCHEMA_DIR = 'prisma/schema';
 const PATIENT_DISPLAY_ID_W1_MIGRATION =
   'prisma/migrations/20260703150000_add_patient_display_ids/migration.sql';
+const PRESCRIPTION_DISPLAY_ID_W2_MIGRATION =
+  'prisma/migrations/20260703152000_add_prescription_display_ids/migration.sql';
 const PATIENT_DISPLAY_ID_W1_MODELS = [
   'Patient',
   'Residence',
@@ -47,6 +49,41 @@ const PATIENT_DISPLAY_ID_W1_MODELS = [
   'PatientMedicalProcedure',
   'PatientNarcoticUse',
 ] as const satisfies readonly DisplayIdModel[];
+const PRESCRIPTION_DISPLAY_ID_W2_MODELS = [
+  'MedicationCycle',
+  'CycleTransitionLog',
+  'PrescriptionIntake',
+  'PrescriptionLine',
+  'InquiryRecord',
+  'DispenseTask',
+  'DispenseResult',
+  'DispenseAudit',
+  'DispensingDecision',
+  'SetPlan',
+  'SetBatch',
+  'SetAudit',
+  'SetBatchChangeLog',
+  'PackagingGroup',
+  'CycleHold',
+  'WorkflowException',
+  'QrScanDraft',
+  'JahisSupplementalRecord',
+] as const satisfies readonly DisplayIdModel[];
+const DISPLAY_ID_SCHEMA_WAVES = [
+  {
+    label: 'W1 patient-domain',
+    schemaFile: 'patient.prisma',
+    migrationPath: PATIENT_DISPLAY_ID_W1_MIGRATION,
+    models: PATIENT_DISPLAY_ID_W1_MODELS,
+  },
+  {
+    label: 'W2 prescription-domain',
+    schemaFile: 'prescription.prisma',
+    migrationPath: PRESCRIPTION_DISPLAY_ID_W2_MIGRATION,
+    models: PRESCRIPTION_DISPLAY_ID_W2_MODELS,
+  },
+] as const;
+const DISPLAY_ID_WAVE_MODELS = DISPLAY_ID_SCHEMA_WAVES.flatMap((wave) => wave.models);
 const RUN_ID = randomUUID().replaceAll('-', '').slice(0, 12);
 const databaseUrl = process.env.DISPLAY_ID_DATABASE_URL ?? process.env.DATABASE_URL;
 const shouldRunDbTests =
@@ -219,32 +256,38 @@ describe('display_id registry and format contract', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('declares W1 patient-domain display IDs as nullable tenant-local identifiers', () => {
-    const schema = readFileSync(join(SCHEMA_DIR, 'patient.prisma'), 'utf8');
-    const migration = readFileSync(PATIENT_DISPLAY_ID_W1_MIGRATION, 'utf8');
+  it('declares display ID migration waves as nullable tenant-local identifiers', () => {
+    for (const wave of DISPLAY_ID_SCHEMA_WAVES) {
+      const schema = readFileSync(join(SCHEMA_DIR, wave.schemaFile), 'utf8');
+      const migration = readFileSync(wave.migrationPath, 'utf8');
 
-    for (const model of PATIENT_DISPLAY_ID_W1_MODELS) {
-      expect(getDisplayIdRegistryEntry(model).scope, model).toBe('org');
+      for (const model of wave.models) {
+        expect(getDisplayIdRegistryEntry(model).scope, `${wave.label}:${model}`).toBe('org');
 
-      const block = readModelBlock(schema, model);
-      expect(block, model).toMatch(/\n\s+display_id\s+String\?(?:\s|$)/);
-      expect(block, model).not.toMatch(/\n\s+display_id\s+String\b(?!\?)/);
-      expect(block, model).toContain('@@unique([org_id, display_id])');
+        const block = readModelBlock(schema, model);
+        expect(block, `${wave.label}:${model}`).toMatch(/\n\s+org_id\s+String(?:\s|$)/);
+        expect(block, `${wave.label}:${model}`).toMatch(/\n\s+created_at\s+DateTime(?:\s|$)/);
+        expect(block, `${wave.label}:${model}`).toMatch(/\n\s+display_id\s+String\?(?:\s|$)/);
+        expect(block, `${wave.label}:${model}`).not.toMatch(/\n\s+display_id\s+String\b(?!\?)/);
+        expect(block, `${wave.label}:${model}`).toContain('@@unique([org_id, display_id])');
 
-      expect(migration, model).toContain(`ALTER TABLE "${model}" ADD COLUMN "display_id" TEXT;`);
-      expect(migration, model).toContain(
-        `CREATE UNIQUE INDEX "${model}_org_id_display_id_key" ON "${model}"("org_id", "display_id") WHERE "display_id" IS NOT NULL;`,
-      );
-      expect(migration, model).not.toContain(
-        `ALTER TABLE "${model}" ALTER COLUMN "display_id" SET NOT NULL`,
-      );
-      expect(migration, model).not.toContain(
-        `ON "${model}"("display_id") WHERE "display_id" IS NOT NULL`,
-      );
+        expect(migration, `${wave.label}:${model}`).toContain(
+          `ALTER TABLE "${model}" ADD COLUMN "display_id" TEXT;`,
+        );
+        expect(migration, `${wave.label}:${model}`).toContain(
+          `CREATE UNIQUE INDEX "${model}_org_id_display_id_key" ON "${model}"("org_id", "display_id") WHERE "display_id" IS NOT NULL;`,
+        );
+        expect(migration, `${wave.label}:${model}`).not.toContain(
+          `ALTER TABLE "${model}" ALTER COLUMN "display_id" SET NOT NULL`,
+        );
+        expect(migration, `${wave.label}:${model}`).not.toContain(
+          `ON "${model}"("display_id") WHERE "display_id" IS NOT NULL`,
+        );
+      }
+
+      expect(migration, wave.label).not.toMatch(/\bDROP\b/i);
+      expect(migration, wave.label).not.toMatch(/\bALTER COLUMN\b/i);
     }
-
-    expect(migration).not.toMatch(/\bDROP\b/i);
-    expect(migration).not.toMatch(/\bALTER COLUMN\b/i);
   });
 });
 
@@ -299,7 +342,7 @@ describeDb('display_id allocator integration (local e2e DB)', () => {
     await expect(readSequence(org, 'p')).resolves.toBe(BigInt(5));
   });
 
-  it('keeps W1 patient-domain uniqueness backed by partial DB indexes', async () => {
+  it('keeps migration-wave uniqueness backed by partial DB indexes', async () => {
     const rows = await prisma.$queryRaw<DisplayIdIndexRow[]>`
       SELECT
         index_class.relname AS "indexName",
@@ -319,7 +362,7 @@ describeDb('display_id allocator integration (local e2e DB)', () => {
     `;
     const byIndexName = new Map(rows.map((row) => [row.indexName, row]));
 
-    for (const model of PATIENT_DISPLAY_ID_W1_MODELS) {
+    for (const model of DISPLAY_ID_WAVE_MODELS) {
       const row = byIndexName.get(`${model}_org_id_display_id_key`);
       expect(row, model).toMatchObject({
         tableName: model,

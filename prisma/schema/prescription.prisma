@@ -112,6 +112,7 @@ enum HoldReason {
 model MedicationCycle {
   id                   String                @id @default(cuid())
   org_id               String
+  display_id           String?
   case_id              String
   case_                CareCase              @relation(fields: [case_id], references: [id])
   patient_id           String
@@ -135,6 +136,7 @@ model MedicationCycle {
   packaging_groups         PackagingGroup[]
   cycle_holds              CycleHold[]
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([case_id])
   @@index([overall_status])
@@ -144,6 +146,7 @@ model MedicationCycle {
 model CycleTransitionLog {
   id          String          @id @default(cuid())
   org_id      String
+  display_id  String?
   cycle_id    String
   cycle       MedicationCycle @relation(fields: [cycle_id], references: [id])
   from_status String
@@ -152,6 +155,7 @@ model CycleTransitionLog {
   note        String?
   created_at  DateTime        @default(now())
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([cycle_id, created_at])
 }
@@ -159,6 +163,7 @@ model CycleTransitionLog {
 model PrescriptionIntake {
   id                         String                 @id @default(cuid())
   org_id                     String
+  display_id                 String?
   cycle_id                   String
   cycle                      MedicationCycle        @relation(fields: [cycle_id], references: [id])
   source_type                PrescriptionSourceType
@@ -186,6 +191,7 @@ model PrescriptionIntake {
   lines                      PrescriptionLine[]
   jahis_supplemental_records JahisSupplementalRecord[]
 
+  @@unique([org_id, display_id])
   @@unique([org_id, rx_number])
   @@unique([org_id, source_type, external_prescription_id])
   @@index([org_id])
@@ -197,6 +203,7 @@ model PrescriptionIntake {
 model PrescriptionLine {
   id                                String                    @id @default(cuid())
   org_id                            String
+  display_id                        String?
   intake_id                         String
   intake                            PrescriptionIntake        @relation(fields: [intake_id], references: [id])
   line_number                       Int
@@ -237,6 +244,7 @@ model PrescriptionLine {
   dispensing_decisions DispensingDecision[]
   set_batches          SetBatch[]
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([intake_id])
   @@index([drug_master_id])
@@ -249,6 +257,7 @@ model PrescriptionLine {
 model InquiryRecord {
   id                   String            @id @default(cuid())
   org_id               String
+  display_id           String?
   cycle_id             String
   cycle                MedicationCycle   @relation(fields: [cycle_id], references: [id])
   issue_id             String?
@@ -267,6 +276,7 @@ model InquiryRecord {
   created_at           DateTime          @default(now())
   updated_at           DateTime          @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([cycle_id])
   @@index([issue_id])
@@ -275,6 +285,7 @@ model InquiryRecord {
 model DispenseTask {
   id          String          @id @default(cuid())
   org_id      String
+  display_id  String?
   cycle_id    String
   cycle       MedicationCycle @relation(fields: [cycle_id], references: [id])
   assigned_to String? // User ID
@@ -288,6 +299,7 @@ model DispenseTask {
   audits               DispenseAudit[]
   dispensing_decisions DispensingDecision[]
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([status])
   @@index([org_id, status])
@@ -296,6 +308,7 @@ model DispenseTask {
 model DispenseResult {
   id                 String           @id @default(cuid())
   org_id             String
+  display_id         String?
   task_id            String
   task               DispenseTask     @relation(fields: [task_id], references: [id])
   line_id            String
@@ -313,6 +326,7 @@ model DispenseResult {
   created_at         DateTime         @default(now())
   updated_at         DateTime         @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([org_id, task_id, line_id])
   @@index([org_id])
   @@index([task_id])
@@ -321,6 +335,7 @@ model DispenseResult {
 model DispenseAudit {
   id                        String              @id @default(cuid())
   org_id                    String
+  display_id                String?
   task_id                   String
   task                      DispenseTask        @relation(fields: [task_id], references: [id])
   result                    DispenseAuditResult
@@ -338,6 +353,7 @@ model DispenseAudit {
   created_at                DateTime            @default(now())
   updated_at                DateTime            @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([task_id])
   @@index([org_id, reject_reason_code])
@@ -355,6 +371,7 @@ model DispenseAudit {
 model DispensingDecision {
   id                         String                    @id @default(cuid())
   org_id                     String
+  display_id                 String?
   task_id                    String
   task                       DispenseTask              @relation(fields: [task_id], references: [id])
   line_id                    String
@@ -372,6 +389,7 @@ model DispensingDecision {
   created_at                 DateTime                  @default(now())
   updated_at                 DateTime                  @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([task_id, line_id])
   @@index([org_id])
   @@index([task_id])
@@ -381,6 +399,7 @@ model DispensingDecision {
 model SetPlan {
   id                         String                 @id @default(cuid())
   org_id                     String
+  display_id                 String?
   cycle_id                   String
   cycle                      MedicationCycle        @relation(fields: [cycle_id], references: [id])
   target_period_start        DateTime
@@ -397,6 +416,7 @@ model SetPlan {
   audits      SetAudit[]
   change_logs SetBatchChangeLog[]
 
+  @@unique([org_id, display_id])
   @@unique([org_id, cycle_id, target_period_start, target_period_end, set_method])
   @@index([org_id])
   @@index([cycle_id])
@@ -406,6 +426,7 @@ model SetPlan {
 model SetBatch {
   id                                  String                    @id @default(cuid())
   org_id                              String
+  display_id                          String?
   plan_id                             String
   plan                                SetPlan                   @relation(fields: [plan_id], references: [id])
   line_id                             String
@@ -435,6 +456,7 @@ model SetBatch {
 
   change_logs SetBatchChangeLog[]
 
+  @@unique([org_id, display_id])
   @@unique([org_id, plan_id, line_id, slot, day_number])
   @@index([org_id])
   @@index([plan_id])
@@ -443,6 +465,7 @@ model SetBatch {
 model SetAudit {
   id                        String         @id @default(cuid())
   org_id                    String
+  display_id                String?
   plan_id                   String
   plan                      SetPlan        @relation(fields: [plan_id], references: [id])
   result                    SetAuditResult
@@ -461,6 +484,7 @@ model SetAudit {
   created_at                DateTime       @default(now())
   updated_at                DateTime       @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([plan_id])
 }
@@ -468,6 +492,7 @@ model SetAudit {
 model SetBatchChangeLog {
   id              String    @id @default(cuid())
   org_id          String
+  display_id      String?
   plan_id         String
   plan            SetPlan   @relation(fields: [plan_id], references: [id])
   batch_id        String?
@@ -481,6 +506,7 @@ model SetBatchChangeLog {
   changed_by      String?
   created_at      DateTime  @default(now())
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([plan_id, created_at])
   @@index([batch_id])
@@ -492,6 +518,7 @@ model SetBatchChangeLog {
 model PackagingGroup {
   id         String          @id @default(cuid())
   org_id     String
+  display_id String?
   cycle_id   String
   cycle      MedicationCycle @relation(fields: [cycle_id], references: [id])
   group_key  String
@@ -503,6 +530,7 @@ model PackagingGroup {
   created_at DateTime        @default(now())
   updated_at DateTime        @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([org_id, cycle_id, group_key])
   @@index([org_id, cycle_id])
 }
@@ -512,6 +540,7 @@ model PackagingGroup {
 model CycleHold {
   id            String          @id @default(cuid())
   org_id        String
+  display_id    String?
   cycle_id      String
   cycle         MedicationCycle @relation(fields: [cycle_id], references: [id])
   phase         String
@@ -529,12 +558,14 @@ model CycleHold {
   created_at    DateTime        @default(now())
   updated_at    DateTime        @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id, cycle_id])
 }
 
 model WorkflowException {
   id             String           @id @default(cuid())
   org_id         String
+  display_id     String?
   cycle_id       String?
   cycle          MedicationCycle? @relation(fields: [cycle_id], references: [id])
   patient_id     String?
@@ -548,6 +579,7 @@ model WorkflowException {
   created_at     DateTime         @default(now())
   updated_at     DateTime         @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([patient_id])
   @@index([status])
@@ -562,6 +594,7 @@ enum QrDraftStatus {
 model QrScanDraft {
   id                  String        @id @default(cuid())
   org_id              String
+  display_id          String?
   site_id             String
   patient_id          String?
   scanned_by          String
@@ -580,6 +613,7 @@ model QrScanDraft {
 
   jahis_supplemental_records JahisSupplementalRecord[]
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([org_id, status])
   @@index([org_id, qr_payload_hash])
@@ -590,6 +624,7 @@ model QrScanDraft {
 model JahisSupplementalRecord {
   id                     String              @id @default(cuid())
   org_id                 String
+  display_id             String?
   patient_id             String?
   patient                Patient?            @relation(fields: [patient_id], references: [id], onDelete: SetNull)
   qr_draft_id            String?
@@ -605,6 +640,7 @@ model JahisSupplementalRecord {
   created_at             DateTime            @default(now())
   updated_at             DateTime            @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([patient_id])
   @@index([qr_draft_id])

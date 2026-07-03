@@ -18,7 +18,7 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: `ID-2-W1` patient.prisma display_id 第1波 実装・検証済み、
+- Phase C（実装ループ）: `ID-2-W2` prescription.prisma display_id 第2波 実装・検証済み、
   report/opus verdict 待ち
 
 ## 直近の land（本日・要点）
@@ -34,13 +34,13 @@
 
 ## 進行中 / 凍結
 
-- codex: `ID-1a` / `ID-1b` は land 済み。E1 は基準1 FAIL、E2（明示 tx allocator）正式採用。
-- codex: `ID-2-W1` は report-ready。patient.prisma 18 org-scoped model に nullable display_id +
-  org-scoped unique、partial unique migration、generic backfill script/test、local e2e migrate/seed/backfill 検証済み。
+- codex: `ID-1a` / `ID-1b` / `ID-2-W1` は land 済み。E1 は基準1 FAIL、E2（明示 tx allocator）正式採用。
+- codex: `ID-2-W2` は report-ready。prescription.prisma 18 org-scoped model に nullable display_id +
+  org-scoped unique、partial unique migration、generic backfill script reuse、local e2e migrate/seed/backfill 検証済み。
 - codex: `PERF-03` は read-only recon 後、fable 裁定で `flagged(raw SQL 要設計・低優先)` として据え置き。
 - human-gate 記録: MFA1 / X01 とも RESOLVED 済み。
 
 ## 次の一手
 
-1. codex: `ID-2-W1` report を agmsg 送信し、opus verdict / claude commit を待つ
+1. codex: `ID-2-W2` report を agmsg 送信し、opus verdict / claude commit を待つ
 2. codex: verdict 前の追加編集は指示があるまで行わない
