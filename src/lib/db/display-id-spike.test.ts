@@ -10,6 +10,7 @@ const describeSpike = shouldRunSpike ? describe : describe.skip;
 const SPIKE_TABLE = 'display_id_spike_sequence';
 const PREFIX = 'spk';
 const RUN_ID = randomUUID().replaceAll('-', '').slice(0, 12);
+const touchedOrgIds = new Set<string>();
 
 type SpikePrismaClient = PrismaClient;
 type OperationEvent = {
@@ -29,7 +30,9 @@ function createPrismaClient(): SpikePrismaClient {
 }
 
 function orgId(suffix: string): string {
-  return `spikeorg${RUN_ID}${suffix}`;
+  const value = `spikeorg${RUN_ID}${suffix}`;
+  touchedOrgIds.add(value);
+  return value;
 }
 
 function rowName(suffix: string): string {
@@ -158,10 +161,47 @@ async function readSequence(client: SpikePrismaClient, orgIdValue: string): Prom
   return rows[0]?.next_value ?? null;
 }
 
-async function cleanSpikeData(client: SpikePrismaClient) {
-  await client.packagingMethodMaster.deleteMany({
-    where: { name: { startsWith: rowName('') } },
+async function applySpikeOrgContext(
+  tx: Parameters<Parameters<SpikePrismaClient['$transaction']>[0]>[0],
+  orgIdValue: string,
+) {
+  await tx.$executeRaw`SELECT set_config('app.current_org_id', ${orgIdValue}, true)`;
+  await tx.$executeRaw`SELECT set_config('app.rls_context_applied', 'true', true)`;
+}
+
+async function countPackagingRowsWithOrgContext(
+  client: SpikePrismaClient,
+  orgIdValue: string,
+  nameValue: string,
+): Promise<number> {
+  return client.$transaction(async (tx) => {
+    await applySpikeOrgContext(tx, orgIdValue);
+    return tx.packagingMethodMaster.count({
+      where: { org_id: orgIdValue, name: nameValue },
+    });
   });
+}
+
+async function deletePackagingRowsWithOrgContext(client: SpikePrismaClient, orgIdValue: string) {
+  await client.$transaction(async (tx) => {
+    await applySpikeOrgContext(tx, orgIdValue);
+    await tx.packagingMethodMaster.deleteMany({
+      where: { org_id: orgIdValue, name: { startsWith: rowName('') } },
+    });
+    const remainingRows = await tx.packagingMethodMaster.count({
+      where: { org_id: orgIdValue, name: { startsWith: rowName('') } },
+    });
+    if (remainingRows !== 0) {
+      throw new Error('display-id spike cleanup left PackagingMethodMaster rows behind');
+    }
+  });
+}
+
+async function cleanSpikeData(client: SpikePrismaClient) {
+  for (const orgIdValue of touchedOrgIds) {
+    await deletePackagingRowsWithOrgContext(client, orgIdValue);
+  }
+  touchedOrgIds.clear();
   await client.$executeRaw`
     DELETE FROM display_id_spike_sequence
     WHERE org_id LIKE ${`spikeorg${RUN_ID}%`}
@@ -233,9 +273,9 @@ describeSpike('display_id Prisma extension feasibility spike (ID-1a)', () => {
       }),
     ).rejects.toBe(rollback);
 
-    await expect(
-      prisma.packagingMethodMaster.count({ where: { org_id: org, name: rowName('tx-leak') } }),
-    ).resolves.toBe(0);
+    await expect(countPackagingRowsWithOrgContext(prisma, org, rowName('tx-leak'))).resolves.toBe(
+      0,
+    );
     await expect(readSequence(prisma, org)).resolves.toBe(BigInt(2));
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ model: 'PackagingMethodMaster', operation: 'create' });

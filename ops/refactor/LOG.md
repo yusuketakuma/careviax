@@ -109,7 +109,7 @@
 - 推奨: E1 は不採用。親 create と同一 tx を呼び出し側から渡す E2（明示 `allocateDisplayId(tx, ...)`）へ fallback。
 - 検証: focused vitest（local 5433 e2e DB 明示）4/4 green。env未設定時は4/4 skipを確認。
   scoped eslint/prettier/diff-check green。
-  `pnpm typecheck` / `pnpm typecheck:no-unused` green。
+  `pnpm typecheck` green。`pnpm typecheck:no-unused` は Node 4GB heap OOM、8GB指定で green。
 - レビュー: report pending。self-commit なし。
 
 ## 2026-07-03 DR-DUP1 2e0c7fdb
