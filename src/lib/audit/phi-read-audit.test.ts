@@ -139,7 +139,7 @@ describe('recordPhiReadAuditForRequest', () => {
   it('writes the audit inside an org-scoped transaction with request metadata forwarded', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'audit_1' });
     let capturedRequestContext: unknown;
-    withOrgContextMock.mockImplementation(async (orgId, work, options) => {
+    withOrgContextMock.mockImplementation(async (_orgId, work, options) => {
       capturedRequestContext = options?.requestContext;
       return work({ auditLog: { create } });
     });
