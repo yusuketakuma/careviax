@@ -49,6 +49,7 @@ const {
   billingEvidenceUpsertMock,
   listBillingEvidenceBlockersMock,
   buildPatientStateSnapshotMock,
+  allocateDisplayIdMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   getRequestAuthContextMock: vi.fn(),
@@ -96,6 +97,7 @@ const {
   billingEvidenceUpsertMock: vi.fn(),
   listBillingEvidenceBlockersMock: vi.fn(),
   buildPatientStateSnapshotMock: vi.fn(),
+  allocateDisplayIdMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -116,6 +118,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/display-id', () => ({
+  allocateDisplayId: allocateDisplayIdMock,
 }));
 
 vi.mock('@/lib/auth/request-context', async (importOriginal) => {
@@ -971,7 +977,11 @@ describe('/api/visit-records POST', () => {
     workflowExceptionFindFirstMock.mockResolvedValue(null);
     workflowExceptionCreateMock.mockResolvedValue({ id: 'exception_1' });
     medicationIssueFindFirstMock.mockResolvedValue(null);
-    medicationIssueCreateMock.mockResolvedValue({ id: 'issue_1' });
+    medicationIssueCreateMock.mockResolvedValue({
+      id: 'issue_1',
+      display_id: 'miss0000000001',
+    });
+    allocateDisplayIdMock.mockResolvedValue('miss0000000001');
     tracingReportFindFirstMock.mockResolvedValue(null);
     tracingReportCreateMock.mockResolvedValue({ id: 'tracing_1' });
     communicationRequestFindFirstMock.mockResolvedValue(null);
@@ -2158,12 +2168,20 @@ describe('/api/visit-records POST', () => {
     });
     expect(medicationIssueCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
+        display_id: 'miss0000000001',
         title: 'アムロジピン錠5mg（2149001） の残薬調整',
         description: expect.stringContaining('アムロジピン錠5mg（2149001）'),
         category: 'adherence',
       }),
       select: { id: true },
     });
+    expect(allocateDisplayIdMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        medicationIssue: expect.objectContaining({ create: medicationIssueCreateMock }),
+      }),
+      'MedicationIssue',
+      'org_1',
+    );
     expect(tracingReportCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         patient_id: 'patient_1',
@@ -2326,6 +2344,7 @@ describe('/api/visit-records POST', () => {
     expect(visitRecordCreateMock).not.toHaveBeenCalled();
     expect(residualMedicationDeleteManyMock).not.toHaveBeenCalled();
     expect(residualMedicationCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(taskUpsertMock).not.toHaveBeenCalled();
   });
 
@@ -2369,6 +2388,7 @@ describe('/api/visit-records POST', () => {
       select: { id: true },
     });
     expect(medicationIssueCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(tracingReportCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         patient_id: 'patient_1',
@@ -2428,6 +2448,7 @@ describe('/api/visit-records POST', () => {
     expect(medicationIssueFindFirstMock.mock.calls[0]?.[0].where).not.toHaveProperty('OR');
     expect(medicationIssueCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
+        display_id: 'miss0000000001',
         title: '名称未確定薬 の残薬調整',
       }),
       select: { id: true },

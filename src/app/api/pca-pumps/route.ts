@@ -7,6 +7,7 @@ import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { allocateDisplayId } from '@/lib/db/display-id';
 import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
@@ -145,9 +146,11 @@ async function authenticatedPOST(req: NextRequest) {
     const created = await withOrgContext(
       ctx.orgId,
       async (tx) => {
+        const displayId = await allocateDisplayId(tx, 'PcaPump', ctx.orgId);
         const pump = await tx.pcaPump.create({
           data: {
             org_id: ctx.orgId,
+            display_id: displayId,
             asset_code: parsed.data.asset_code,
             serial_number: parsed.data.serial_number || null,
             model_name: parsed.data.model_name,

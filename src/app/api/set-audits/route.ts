@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { allocateDisplayId } from '@/lib/db/display-id';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -1152,9 +1153,11 @@ async function authenticatedPOST(req: NextRequest) {
             },
           });
 
+          const reworkTaskDisplayId = await allocateDisplayId(tx, 'Task', ctx.orgId);
           await tx.task.create({
             data: {
               org_id: ctx.orgId,
+              display_id: reworkTaskDisplayId,
               title: 'セット再作業（部分承認）',
               description: `セット鑑査で部分承認となりました。承認範囲: ${
                 effectiveApprovedScope ? JSON.stringify(effectiveApprovedScope) : '未指定'

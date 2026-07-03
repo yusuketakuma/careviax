@@ -5,6 +5,7 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { allocateDisplayId } from '@/lib/db/display-id';
 import { withOrgContext } from '@/lib/db/rls';
 import {
   isCompletePassingPcaPumpAccessoryChecklist,
@@ -274,9 +275,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               checklist: parsed.data.accessory_checklist,
             });
           }
+          const maintenanceEventDisplayId = await allocateDisplayId(
+            tx,
+            'PcaPumpMaintenanceEvent',
+            ctx.orgId,
+          );
           await tx.pcaPumpMaintenanceEvent.create({
             data: {
               org_id: ctx.orgId,
+              display_id: maintenanceEventDisplayId,
               pump_id: existing.pump_id,
               rental_id: existing.id,
               event_type: 'return_inspection',

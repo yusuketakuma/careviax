@@ -1,7 +1,6 @@
 import { Prisma } from '@prisma/client';
-import {
-  describeOperationalTask as describeOperationalTaskShared,
-} from '@/lib/tasks/operational-task-presentation';
+import { describeOperationalTask as describeOperationalTaskShared } from '@/lib/tasks/operational-task-presentation';
+import { allocateDisplayId } from '@/lib/db/display-id';
 
 type Tx = {
   task: {
@@ -39,10 +38,7 @@ type ResolveOperationalTaskInput = {
   status?: Extract<TaskStatus, 'completed' | 'cancelled'>;
 };
 
-export async function upsertOperationalTask(
-  tx: Tx,
-  input: UpsertOperationalTaskInput
-) {
+export async function upsertOperationalTask(tx: Tx, input: UpsertOperationalTaskInput) {
   const nextStatus = input.status ?? 'pending';
 
   if (input.dedupeKey) {
@@ -86,9 +82,15 @@ export async function upsertOperationalTask(
     });
   }
 
+  const displayId = await allocateDisplayId(
+    tx as unknown as Prisma.TransactionClient,
+    'Task',
+    input.orgId,
+  );
   return tx.task.create({
     data: {
       org_id: input.orgId,
+      display_id: displayId,
       task_type: input.taskType,
       title: input.title,
       description: input.description ?? null,
@@ -105,10 +107,7 @@ export async function upsertOperationalTask(
   });
 }
 
-export async function resolveOperationalTasks(
-  tx: Tx,
-  input: ResolveOperationalTaskInput
-) {
+export async function resolveOperationalTasks(tx: Tx, input: ResolveOperationalTaskInput) {
   const nextStatus = input.status ?? 'completed';
 
   return tx.task.updateMany({
@@ -119,12 +118,8 @@ export async function resolveOperationalTasks(
       },
       ...(input.dedupeKey ? { dedupe_key: input.dedupeKey } : {}),
       ...(input.taskType ? { task_type: input.taskType } : {}),
-      ...(input.relatedEntityType
-        ? { related_entity_type: input.relatedEntityType }
-        : {}),
-      ...(input.relatedEntityId
-        ? { related_entity_id: input.relatedEntityId }
-        : {}),
+      ...(input.relatedEntityType ? { related_entity_type: input.relatedEntityType } : {}),
+      ...(input.relatedEntityId ? { related_entity_id: input.relatedEntityId } : {}),
     },
     data: {
       status: nextStatus,

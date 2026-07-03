@@ -15,6 +15,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { decodeKeysetCursor, encodeKeysetCursor } from '@/lib/api/keyset-cursor';
 import { formatDateKey } from '@/lib/date-key';
+import { allocateDisplayId } from '@/lib/db/display-id';
 import { isValidDateKey } from '@/lib/validations/date-key';
 import {
   createVisitRecordSchema,
@@ -1408,20 +1409,24 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
 
         const issue =
           existingIssue ??
-          (await tx.medicationIssue.create({
-            data: {
-              org_id: ctx.orgId,
-              patient_id: careCase.patient_id,
-              case_id: schedule.case_id,
-              title: `${drugLabel} の残薬調整`,
-              description: `${drugLabel} に残薬超過（約${candidate.excess_days}日分）があります。処方医への報告と減数調剤可否の確認が必要です。`,
-              status: 'open',
-              priority: candidate.excess_days >= 14 ? 'high' : 'medium',
-              category: 'adherence',
-              identified_by: ctx.userId,
-            },
-            select: { id: true },
-          }));
+          (await (async () => {
+            const displayId = await allocateDisplayId(tx, 'MedicationIssue', ctx.orgId);
+            return tx.medicationIssue.create({
+              data: {
+                org_id: ctx.orgId,
+                display_id: displayId,
+                patient_id: careCase.patient_id,
+                case_id: schedule.case_id,
+                title: `${drugLabel} の残薬調整`,
+                description: `${drugLabel} に残薬超過（約${candidate.excess_days}日分）があります。処方医への報告と減数調剤可否の確認が必要です。`,
+                status: 'open',
+                priority: candidate.excess_days >= 14 ? 'high' : 'medium',
+                category: 'adherence',
+                identified_by: ctx.userId,
+              },
+              select: { id: true },
+            });
+          })());
 
         const existingTracingReport = await tx.tracingReport.findFirst({
           where: {

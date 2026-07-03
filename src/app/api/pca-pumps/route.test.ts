@@ -9,6 +9,7 @@ const {
   auditLogCreateMock,
   withOrgContextMock,
   loggerErrorMock,
+  allocateDisplayIdMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -17,6 +18,7 @@ const {
   auditLogCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   loggerErrorMock: vi.fn(),
+  allocateDisplayIdMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -39,6 +41,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/display-id', () => ({
+  allocateDisplayId: allocateDisplayIdMock,
 }));
 
 vi.mock('@/lib/utils/logger', () => ({
@@ -122,6 +128,7 @@ describe('/api/pca-pumps GET', () => {
     membershipFindFirstMock.mockResolvedValue({ role: 'admin', site_id: null });
     pcaPumpFindManyMock.mockResolvedValue([pumpRecord]);
     pcaPumpCreateMock.mockResolvedValue(pumpRecord);
+    allocateDisplayIdMock.mockResolvedValue('pca0000000001');
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         pcaPump: {
@@ -316,6 +323,7 @@ describe('/api/pca-pumps GET', () => {
     expectNoStore(response);
     expect(membershipFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(pcaPumpCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
@@ -323,6 +331,7 @@ describe('/api/pca-pumps GET', () => {
   it('records created pump maintenance due dates by the local pharmacy calendar day', async () => {
     pcaPumpCreateMock.mockResolvedValue({
       ...pumpRecord,
+      display_id: 'pca0000000001',
       maintenance_due_at: new Date('2026-03-02T15:30:00.000Z'),
     });
 
@@ -336,6 +345,22 @@ describe('/api/pca-pumps GET', () => {
 
     expect(response.status).toBe(201);
     expectNoStore(response);
+    expect(allocateDisplayIdMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pcaPump: expect.objectContaining({ create: pcaPumpCreateMock }),
+        auditLog: expect.objectContaining({ create: auditLogCreateMock }),
+      }),
+      'PcaPump',
+      'org_1',
+    );
+    expect(pcaPumpCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        display_id: 'pca0000000001',
+        asset_code: 'PCA-001',
+        model_name: 'CADD Legacy PCA',
+      }),
+    });
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -351,9 +376,26 @@ describe('/api/pca-pumps GET', () => {
     await expect(response.json()).resolves.toMatchObject({
       data: {
         id: 'pump_1',
+        display_id: 'pca0000000001',
         maintenance_due_at: '2026-03-03',
       },
     });
+  });
+
+  it('rejects invalid PCA pump payloads before allocating display_id', async () => {
+    const response = await POST(
+      createJsonRequest({
+        asset_code: '',
+        model_name: '',
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pcaPumpCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when PCA pump creation fails unexpectedly', async () => {

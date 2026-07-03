@@ -4,6 +4,7 @@ import { type Prisma, type TaskStatus } from '@prisma/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
+import { allocateDisplayId } from '@/lib/db/display-id';
 import { isPrismaErrorCode, isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
@@ -443,9 +444,11 @@ async function authenticatedPOST(req: NextRequest) {
     const task = await withOrgContext(
       ctx.orgId,
       async (tx) => {
+        const displayId = await allocateDisplayId(tx, 'Task', ctx.orgId);
         return tx.task.create({
           data: {
             org_id: ctx.orgId,
+            display_id: displayId,
             task_type: parsed.data.task_type,
             title: parsed.data.title,
             description: parsed.data.description ?? null,

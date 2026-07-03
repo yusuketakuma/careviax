@@ -11,6 +11,7 @@ const {
   pcaPumpMaintenanceEventCreateMock,
   auditLogCreateMock,
   loggerErrorMock,
+  allocateDisplayIdMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -21,6 +22,7 @@ const {
   pcaPumpMaintenanceEventCreateMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   loggerErrorMock: vi.fn(),
+  allocateDisplayIdMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -37,6 +39,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/display-id', () => ({
+  allocateDisplayId: allocateDisplayIdMock,
 }));
 
 vi.mock('@/lib/utils/logger', () => ({
@@ -118,6 +124,7 @@ describe('/api/pca-pumps/[id] PATCH', () => {
     });
     pcaPumpUpdateManyMock.mockResolvedValue({ count: 1 });
     pcaPumpRefetchMock.mockResolvedValue(updatedPumpRecord);
+    allocateDisplayIdMock.mockResolvedValue('pcam0000000001');
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         pcaPump: {
@@ -256,6 +263,7 @@ describe('/api/pca-pumps/[id] PATCH', () => {
       }),
     );
     expect(pcaPumpRefetchMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(pcaPumpMaintenanceEventCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
@@ -298,6 +306,7 @@ describe('/api/pca-pumps/[id] PATCH', () => {
       message: '返却検品が未完了のPCAポンプは利用可能にできません',
     });
     expect(pcaPumpUpdateManyMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(pcaPumpMaintenanceEventCreateMock).not.toHaveBeenCalled();
   });
 
@@ -326,6 +335,7 @@ describe('/api/pca-pumps/[id] PATCH', () => {
     expect(pcaPumpMaintenanceEventCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
+        display_id: 'pcam0000000001',
         pump_id: 'pump_1',
         event_type: 'maintenance_completed',
         result: 'available',
@@ -336,6 +346,15 @@ describe('/api/pca-pumps/[id] PATCH', () => {
         next_maintenance_due_at: new Date('2026-12-31'),
       }),
     });
+    expect(allocateDisplayIdMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pcaPumpMaintenanceEvent: expect.objectContaining({
+          create: pcaPumpMaintenanceEventCreateMock,
+        }),
+      }),
+      'PcaPumpMaintenanceEvent',
+      'org_1',
+    );
   });
 
   it('returns no-store auth failure before parsing PATCH body or writing PCA pump data', async () => {

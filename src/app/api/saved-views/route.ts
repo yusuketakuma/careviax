@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { parseBoundedInteger } from '@/lib/api/pagination';
+import { allocateDisplayId } from '@/lib/db/display-id';
 import { withOrgContext } from '@/lib/db/rls';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -95,9 +96,11 @@ export const POST = withAuthContext(async (req, ctx) => {
   let created: Awaited<ReturnType<typeof prisma.savedView.create>>;
   try {
     created = await withOrgContext(ctx.orgId, async (tx) => {
+      const displayId = await allocateDisplayId(tx, 'SavedView', ctx.orgId);
       const view = await tx.savedView.create({
         data: {
           org_id: ctx.orgId,
+          display_id: displayId,
           user_id: ctx.userId,
           name,
           scope,

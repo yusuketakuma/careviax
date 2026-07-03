@@ -1,9 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { taskUpsertMock, taskCreateMock, taskUpdateManyMock } = vi.hoisted(() => ({
-  taskUpsertMock: vi.fn(),
-  taskCreateMock: vi.fn(),
-  taskUpdateManyMock: vi.fn(),
+const { taskUpsertMock, taskCreateMock, taskUpdateManyMock, allocateDisplayIdMock } = vi.hoisted(
+  () => ({
+    taskUpsertMock: vi.fn(),
+    taskCreateMock: vi.fn(),
+    taskUpdateManyMock: vi.fn(),
+    allocateDisplayIdMock: vi.fn(),
+  }),
+);
+
+vi.mock('@/lib/db/display-id', () => ({
+  allocateDisplayId: allocateDisplayIdMock,
 }));
 
 import {
@@ -23,6 +30,7 @@ const tx = {
 describe('upsertOperationalTask', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    allocateDisplayIdMock.mockResolvedValue('t0000000001');
   });
 
   it('upserts when dedupeKey is provided', async () => {
@@ -36,6 +44,7 @@ describe('upsertOperationalTask', () => {
     });
 
     expect(result).toEqual({ id: 'task-1' });
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(taskUpsertMock).toHaveBeenCalledOnce();
     expect(taskCreateMock).not.toHaveBeenCalled();
     const call = taskUpsertMock.mock.calls[0][0];
@@ -58,9 +67,11 @@ describe('upsertOperationalTask', () => {
     });
 
     expect(result).toEqual({ id: 'task-2' });
+    expect(allocateDisplayIdMock).toHaveBeenCalledWith(tx, 'Task', 'org-1');
     expect(taskCreateMock).toHaveBeenCalledOnce();
     expect(taskUpsertMock).not.toHaveBeenCalled();
     const call = taskCreateMock.mock.calls[0][0];
+    expect(call.data.display_id).toBe('t0000000001');
     expect(call.data.priority).toBe('high');
     expect(call.data.status).toBe('pending');
   });

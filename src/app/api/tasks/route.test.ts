@@ -12,6 +12,7 @@ const {
   taskFindFirstMock,
   taskCreateMock,
   withOrgContextMock,
+  allocateDisplayIdMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
@@ -23,6 +24,7 @@ const {
   taskFindFirstMock: vi.fn(),
   taskCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  allocateDisplayIdMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -53,6 +55,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/display-id', () => ({
+  allocateDisplayId: allocateDisplayIdMock,
 }));
 
 import { GET, POST } from './route';
@@ -103,7 +109,12 @@ describe('/api/tasks', () => {
     userFindManyMock.mockResolvedValue([]);
     membershipFindFirstMock.mockResolvedValue({ user_id: 'user_1' });
     taskFindFirstMock.mockResolvedValue(null);
-    taskCreateMock.mockResolvedValue({ id: 'task_1', title: '折返し対応' });
+    taskCreateMock.mockResolvedValue({
+      id: 'task_1',
+      display_id: 't0000000001',
+      title: '折返し対応',
+    });
+    allocateDisplayIdMock.mockResolvedValue('t0000000001');
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         task: {
@@ -667,9 +678,15 @@ describe('/api/tasks', () => {
       },
       select: { user_id: true },
     });
+    expect(allocateDisplayIdMock).toHaveBeenCalledWith(
+      expect.objectContaining({ task: expect.objectContaining({ create: taskCreateMock }) }),
+      'Task',
+      'org_1',
+    );
     expect(taskCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
+        display_id: 't0000000001',
         task_type: 'patient_self_report_followup',
         title: '患者A: 服薬の困りごと',
         priority: 'high',
@@ -768,6 +785,7 @@ describe('/api/tasks', () => {
     expectSensitiveNoStore(response);
     expect(membershipFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(taskCreateMock).not.toHaveBeenCalled();
   });
 
@@ -799,6 +817,7 @@ describe('/api/tasks', () => {
     });
     expect(membershipFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(taskCreateMock).not.toHaveBeenCalled();
   });
 
@@ -822,6 +841,7 @@ describe('/api/tasks', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: '依頼先スタッフが見つかりません',
     });
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(taskCreateMock).not.toHaveBeenCalled();
   });
 
@@ -833,6 +853,7 @@ describe('/api/tasks', () => {
     expectSensitiveNoStore(response);
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(taskCreateMock).not.toHaveBeenCalled();
   });
 
@@ -847,6 +868,7 @@ describe('/api/tasks', () => {
     });
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(taskCreateMock).not.toHaveBeenCalled();
   });
 
@@ -864,6 +886,7 @@ describe('/api/tasks', () => {
 
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(taskCreateMock).not.toHaveBeenCalled();
   });
 
@@ -886,6 +909,7 @@ describe('/api/tasks', () => {
     expect(response.status).toBe(403);
     expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(taskCreateMock).not.toHaveBeenCalled();
   });
 

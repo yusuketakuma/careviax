@@ -9,6 +9,7 @@ import { conflict, internalError, notFound, success, validationError } from '@/l
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { requireAuthContext } from '@/lib/auth/context';
 import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { allocateDisplayId } from '@/lib/db/display-id';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { withOrgContext } from '@/lib/db/rls';
@@ -106,9 +107,11 @@ export async function POST(req: NextRequest, routeContext: ConflictReconfirmatio
         };
 
         try {
+          const taskDisplayId = await allocateDisplayId(tx, 'Task', ctx.orgId);
           const task = await tx.task.create({
             data: {
               org_id: ctx.orgId,
+              display_id: taskDisplayId,
               task_type: 'staff_work_request_visit',
               title: '訪問予定の患者再確認',
               description: '予定の重なり解消に伴う患者再確認依頼です。',

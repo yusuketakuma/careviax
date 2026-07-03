@@ -9,6 +9,7 @@ const {
   taskFindFirstMock,
   auditLogCreateMock,
   notifyWorkflowMutationMock,
+  allocateDisplayIdMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -17,6 +18,7 @@ const {
   taskFindFirstMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
+  allocateDisplayIdMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -25,6 +27,10 @@ vi.mock('@/lib/auth/context', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/display-id', () => ({
+  allocateDisplayId: allocateDisplayIdMock,
 }));
 
 vi.mock('@/lib/audit/audit-entry', () => ({
@@ -78,9 +84,11 @@ describe('/api/visit-schedules/[id]/conflict-reconfirmation POST', () => {
     });
     taskCreateMock.mockResolvedValue({
       id: 'task_1',
+      display_id: 't0000000001',
       task_type: 'staff_work_request_visit',
       dedupe_key: 'schedule-conflict-reconfirmation:schedule_1:2026-04-09',
     });
+    allocateDisplayIdMock.mockResolvedValue('t0000000001');
     taskFindFirstMock.mockResolvedValue(null);
     auditLogCreateMock.mockResolvedValue(undefined);
     notifyWorkflowMutationMock.mockResolvedValue(undefined);
@@ -121,6 +129,7 @@ describe('/api/visit-schedules/[id]/conflict-reconfirmation POST', () => {
     expect(taskCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
+        display_id: 't0000000001',
         task_type: 'staff_work_request_visit',
         title: '訪問予定の患者再確認',
         description: '予定の重なり解消に伴う患者再確認依頼です。',
@@ -136,6 +145,11 @@ describe('/api/visit-schedules/[id]/conflict-reconfirmation POST', () => {
         },
       }),
     });
+    expect(allocateDisplayIdMock).toHaveBeenCalledWith(
+      expect.objectContaining({ task: expect.objectContaining({ create: taskCreateMock }) }),
+      'Task',
+      'org_1',
+    );
     const taskInput = taskCreateMock.mock.calls[0]?.[0].data;
     expect(JSON.stringify(taskInput)).not.toContain('患者A');
     expect(JSON.stringify(taskInput)).not.toContain('住所');
@@ -183,6 +197,11 @@ describe('/api/visit-schedules/[id]/conflict-reconfirmation POST', () => {
 
     expect(response.status).toBe(200);
     expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).toHaveBeenCalledWith(
+      expect.objectContaining({ task: expect.objectContaining({ create: taskCreateMock }) }),
+      'Task',
+      'org_1',
+    );
     expect(taskFindFirstMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -211,6 +230,7 @@ describe('/api/visit-schedules/[id]/conflict-reconfirmation POST', () => {
       message: '対象日の訪問予定ではありません',
     });
     expect(taskCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
   });
 
   it('rejects locked visit schedule statuses before creating tasks', async () => {
@@ -230,6 +250,7 @@ describe('/api/visit-schedules/[id]/conflict-reconfirmation POST', () => {
       message: '完了済みまたは中止済みの訪問予定には再確認依頼を作成できません',
     });
     expect(taskCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
   });
 
   it('rejects stale reconfirmation requests before task creation or audit writes', async () => {
@@ -248,6 +269,7 @@ describe('/api/visit-schedules/[id]/conflict-reconfirmation POST', () => {
       message: '訪問予定が更新されています。再読み込みしてから再確認依頼を作成してください',
     });
     expect(taskCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });

@@ -1,42 +1,48 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { prismaMock, txMock, withOrgContextMock, authContext, requireAuthContextMock } = vi.hoisted(
-  () => {
-    const authContext = {
-      userId: 'user_1',
-      orgId: 'org_1',
-      role: 'pharmacist',
-      actorPharmacyId: 'org_1',
-      actorSiteId: 'site_1',
-      ipAddress: '127.0.0.1',
-      userAgent: 'vitest',
-    };
+const {
+  prismaMock,
+  txMock,
+  withOrgContextMock,
+  authContext,
+  requireAuthContextMock,
+  allocateDisplayIdMock,
+} = vi.hoisted(() => {
+  const authContext = {
+    userId: 'user_1',
+    orgId: 'org_1',
+    role: 'pharmacist',
+    actorPharmacyId: 'org_1',
+    actorSiteId: 'site_1',
+    ipAddress: '127.0.0.1',
+    userAgent: 'vitest',
+  };
 
-    return {
-      authContext,
-      prismaMock: {
-        savedView: {
-          findMany: vi.fn(),
-          findFirst: vi.fn(),
-          count: vi.fn(),
-        },
+  return {
+    authContext,
+    prismaMock: {
+      savedView: {
+        findMany: vi.fn(),
+        findFirst: vi.fn(),
+        count: vi.fn(),
       },
-      txMock: {
-        savedView: {
-          create: vi.fn(),
-          update: vi.fn(),
-          delete: vi.fn(),
-        },
-        auditLog: {
-          create: vi.fn(),
-        },
+    },
+    txMock: {
+      savedView: {
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
       },
-      withOrgContextMock: vi.fn(),
-      requireAuthContextMock: vi.fn(),
-    };
-  },
-);
+      auditLog: {
+        create: vi.fn(),
+      },
+    },
+    withOrgContextMock: vi.fn(),
+    requireAuthContextMock: vi.fn(),
+    allocateDisplayIdMock: vi.fn(),
+  };
+});
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext:
@@ -52,6 +58,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/display-id', () => ({
+  allocateDisplayId: allocateDisplayIdMock,
 }));
 
 import { DELETE as DELETE_VIEW, PATCH } from './[id]/route';
@@ -110,6 +120,7 @@ describe('/api/saved-views', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({ ctx: authContext });
+    allocateDisplayIdMock.mockResolvedValue('sv0000000001');
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
     txMock.auditLog.create.mockResolvedValue({});
   });
@@ -184,7 +195,9 @@ describe('/api/saved-views', () => {
   it('creates a saved view with resolved sort order and an audit entry', async () => {
     prismaMock.savedView.findFirst.mockResolvedValue(null);
     prismaMock.savedView.count.mockResolvedValue(2);
-    txMock.savedView.create.mockResolvedValue(buildSavedView({ name: '朝の確認', sort_order: 2 }));
+    txMock.savedView.create.mockResolvedValue(
+      buildSavedView({ name: '朝の確認', sort_order: 2, display_id: 'sv0000000001' }),
+    );
 
     const response = await POST(
       jsonRequest('/api/saved-views', 'POST', {
@@ -197,6 +210,7 @@ describe('/api/saved-views', () => {
     );
 
     expect(response.status).toBe(201);
+    expect(allocateDisplayIdMock).toHaveBeenCalledWith(txMock, 'SavedView', 'org_1');
     expect(prismaMock.savedView.findFirst).toHaveBeenCalledWith({
       where: { org_id: 'org_1', user_id: 'user_1', scope: 'schedules', name: '朝の確認' },
       select: { id: true },
@@ -204,6 +218,7 @@ describe('/api/saved-views', () => {
     expect(txMock.savedView.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
+        display_id: 'sv0000000001',
         user_id: 'user_1',
         name: '朝の確認',
         scope: 'schedules',
@@ -221,6 +236,7 @@ describe('/api/saved-views', () => {
         changes: { name: '朝の確認', scope: 'schedules', is_shared: false },
       }),
     });
+    expect(txMock.auditLog.create.mock.calls[0]?.[0].data.changes).not.toHaveProperty('display_id');
   });
 
   it('rejects duplicate names before creating a saved view', async () => {
@@ -236,6 +252,8 @@ describe('/api/saved-views', () => {
     );
 
     expect(response.status).toBe(409);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(txMock.savedView.create).not.toHaveBeenCalled();
     expect(txMock.auditLog.create).not.toHaveBeenCalled();
   });
@@ -259,6 +277,7 @@ describe('/api/saved-views', () => {
       code: 'WORKFLOW_CONFLICT',
       message: '同じ名前の保存ビューが既に存在します',
     });
+    expect(allocateDisplayIdMock).toHaveBeenCalledWith(txMock, 'SavedView', 'org_1');
     expect(txMock.auditLog.create).not.toHaveBeenCalled();
   });
 

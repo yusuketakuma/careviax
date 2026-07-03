@@ -13,6 +13,7 @@ const {
   auditLogCreateMock,
   withOrgContextMock,
   loggerErrorMock,
+  allocateDisplayIdMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -25,6 +26,7 @@ const {
   auditLogCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   loggerErrorMock: vi.fn(),
+  allocateDisplayIdMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -53,6 +55,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/display-id', () => ({
+  allocateDisplayId: allocateDisplayIdMock,
 }));
 
 vi.mock('@/lib/utils/logger', () => ({
@@ -143,7 +149,11 @@ describe('/api/pca-pump-rentals', () => {
     pcaPumpFindFirstMock.mockResolvedValue({ id: 'pump_1', status: 'available' });
     prescriberInstitutionFindFirstMock.mockResolvedValue({ id: 'institution_1' });
     pcaPumpRentalFindManyMock.mockResolvedValue([rentalRecord]);
-    pcaPumpRentalCreateMock.mockResolvedValue(rentalRecord);
+    pcaPumpRentalCreateMock.mockResolvedValue({
+      ...rentalRecord,
+      display_id: 'pcar0000000001',
+    });
+    allocateDisplayIdMock.mockResolvedValue('pcar0000000001');
     pcaPumpRentalAccessoryCreateManyMock.mockResolvedValue({ count: 9 });
     pcaPumpUpdateManyMock.mockResolvedValue({ count: 1 });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -323,6 +333,7 @@ describe('/api/pca-pump-rentals', () => {
     expectNoStore(response);
     expect(membershipFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(pcaPumpFindFirstMock).not.toHaveBeenCalled();
     expect(prescriberInstitutionFindFirstMock).not.toHaveBeenCalled();
     expect(pcaPumpRentalCreateMock).not.toHaveBeenCalled();
@@ -359,6 +370,7 @@ describe('/api/pca-pump-rentals', () => {
     expect(pcaPumpRentalCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
+        display_id: 'pcar0000000001',
         pump_id: 'pump_1',
         institution_id: 'institution_1',
         status: 'active',
@@ -373,6 +385,14 @@ describe('/api/pca-pump-rentals', () => {
         institution: true,
       },
     });
+    expect(allocateDisplayIdMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pcaPumpRental: expect.objectContaining({ create: pcaPumpRentalCreateMock }),
+        pcaPump: expect.objectContaining({ updateMany: pcaPumpUpdateManyMock }),
+      }),
+      'PcaPumpRental',
+      'org_1',
+    );
     expect(pcaPumpUpdateManyMock).toHaveBeenCalledWith({
       where: {
         id: 'pump_1',
@@ -429,6 +449,7 @@ describe('/api/pca-pump-rentals', () => {
       },
     });
     expect(pcaPumpFindFirstMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(pcaPumpRentalCreateMock).not.toHaveBeenCalled();
   });
 
@@ -464,6 +485,7 @@ describe('/api/pca-pump-rentals', () => {
     });
     expect(pcaPumpRentalCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
+        display_id: 'pcar0000000001',
         status: 'returned',
         returned_at: new Date('2026-06-18'),
         return_inspection_status: 'pending',
@@ -497,6 +519,7 @@ describe('/api/pca-pump-rentals', () => {
     );
 
     expect(response.status).toBe(400);
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(pcaPumpRentalCreateMock).not.toHaveBeenCalled();
   });
 
@@ -520,6 +543,7 @@ describe('/api/pca-pump-rentals', () => {
     );
 
     expect(response.status).toBe(400);
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       message: 'このPCAポンプには未完了の貸出があるため登録できません',
     });
@@ -569,6 +593,7 @@ describe('/api/pca-pump-rentals', () => {
 
     expect(response.status).toBe(400);
     expect(withOrgContextMock).toHaveBeenCalledTimes(1);
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(pcaPumpRentalCreateMock).not.toHaveBeenCalled();
     expect(pcaPumpUpdateManyMock).not.toHaveBeenCalled();
   });

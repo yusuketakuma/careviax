@@ -6,6 +6,7 @@ import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { allocateDisplayId } from '@/lib/db/display-id';
 import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
@@ -214,9 +215,11 @@ async function authenticatedPOST(req: NextRequest) {
             }
           }
 
+          const displayId = await allocateDisplayId(tx, 'PcaPumpRental', ctx.orgId);
           const rental = await tx.pcaPumpRental.create({
             data: {
               org_id: ctx.orgId,
+              display_id: displayId,
               pump_id: parsed.data.pump_id,
               institution_id: parsed.data.institution_id,
               status,

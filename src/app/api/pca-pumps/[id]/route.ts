@@ -8,6 +8,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { allocateDisplayId } from '@/lib/db/display-id';
 import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
@@ -178,9 +179,15 @@ async function authenticatedPATCH(req: NextRequest, params: Promise<{ id: string
         if (!pump) return { kind: 'not_found' as const };
 
         if (shouldCreateMaintenanceEvent) {
+          const maintenanceEventDisplayId = await allocateDisplayId(
+            tx,
+            'PcaPumpMaintenanceEvent',
+            ctx.orgId,
+          );
           await tx.pcaPumpMaintenanceEvent.create({
             data: {
               org_id: ctx.orgId,
+              display_id: maintenanceEventDisplayId,
               pump_id: id,
               event_type: maintenanceEvent.event_type,
               result: maintenanceEvent.result,

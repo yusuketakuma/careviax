@@ -13,6 +13,7 @@ const {
   pcaPumpRentalAccessoryUpsertMock,
   openRentalFindFirstMock,
   auditLogCreateMock,
+  allocateDisplayIdMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -25,6 +26,7 @@ const {
   pcaPumpRentalAccessoryUpsertMock: vi.fn(),
   openRentalFindFirstMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
+  allocateDisplayIdMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -44,6 +46,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/display-id', () => ({
+  allocateDisplayId: allocateDisplayIdMock,
 }));
 
 import { PATCH } from './route';
@@ -98,6 +104,7 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
     pcaPumpRentalRefetchMock.mockResolvedValue(updatedRental);
     pcaPumpRentalAccessoryUpsertMock.mockResolvedValue({});
     pcaPumpUpdateMock.mockResolvedValue({ id: 'pump_1', status: 'available' });
+    allocateDisplayIdMock.mockResolvedValue('pcam0000000001');
     let contextCall = 0;
     withOrgContextMock.mockImplementation(async (_orgId, callback) => {
       contextCall += 1;
@@ -142,6 +149,7 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
       message: 'このPCAポンプには未完了の貸出があるため状態を変更できません',
     });
     expect(pcaPumpRentalUpdateManyMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(pcaPumpUpdateMock).not.toHaveBeenCalled();
   });
 
@@ -393,6 +401,7 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
     expect(pcaPumpMaintenanceEventCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
+        display_id: 'pcam0000000001',
         pump_id: 'pump_1',
         rental_id: 'rental_1',
         event_type: 'return_inspection',
@@ -403,6 +412,15 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
         notes: '動作確認済み',
       }),
     });
+    expect(allocateDisplayIdMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pcaPumpMaintenanceEvent: expect.objectContaining({
+          create: pcaPumpMaintenanceEventCreateMock,
+        }),
+      }),
+      'PcaPumpMaintenanceEvent',
+      'org_1',
+    );
     expect(pcaPumpRentalAccessoryUpsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -462,6 +480,7 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
     expect(pcaPumpMaintenanceEventCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
+        display_id: 'pcam0000000001',
         pump_id: 'pump_1',
         rental_id: 'rental_1',
         event_type: 'return_inspection',

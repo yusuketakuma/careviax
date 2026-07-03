@@ -24,6 +24,7 @@ const {
   workflowExceptionCreateMock,
   notifyWorkflowMutationMock,
   createAuditLogEntryMock,
+  allocateDisplayIdMock,
 } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
   authMock: vi.fn(),
@@ -47,6 +48,7 @@ const {
   workflowExceptionCreateMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
+  allocateDisplayIdMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -76,6 +78,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/display-id', () => ({
+  allocateDisplayId: allocateDisplayIdMock,
 }));
 
 vi.mock('@/server/services/workflow-dashboard-cache', () => ({
@@ -216,6 +222,7 @@ describe('/api/set-audits POST', () => {
     visitScheduleUpdateManyMock.mockResolvedValue({ count: 1 });
     visitPreparationUpdateManyMock.mockResolvedValue({ count: 1 });
     taskCreateMock.mockResolvedValue({ id: 'task_1' });
+    allocateDisplayIdMock.mockResolvedValue('t0000000001');
     workflowExceptionCreateMock.mockResolvedValue({ id: 'exception_1' });
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -968,10 +975,16 @@ describe('/api/set-audits POST', () => {
     });
     expect(taskCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
+        display_id: 't0000000001',
         title: 'セット再作業（部分承認）',
         related_entity_id: 'cycle_1',
       }),
     });
+    expect(allocateDisplayIdMock).toHaveBeenCalledWith(
+      expect.objectContaining({ task: expect.objectContaining({ create: taskCreateMock }) }),
+      'Task',
+      'org_1',
+    );
   });
 
   it('rejects partial approval when the approved scope contains an unset or unaudited cell', async () => {
@@ -1026,6 +1039,7 @@ describe('/api/set-audits POST', () => {
     expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
     expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
     expect(visitPreparationUpdateManyMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(taskCreateMock).not.toHaveBeenCalled();
     expect(setAuditCreateMock).not.toHaveBeenCalled();
   });
