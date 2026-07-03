@@ -97,22 +97,26 @@ describe('ClerkSupportContent', () => {
     expect(within(grid).getByText('12')).toBeTruthy();
     expect(within(grid).getByText('8')).toBeTruthy();
 
-    const table = screen.getByTestId('clerk-task-table');
-    expect(within(table).getByText('田中 一郎')).toBeTruthy();
-    expect(within(table).getByRole('link', { name: '候補日時を電話で確認' })).toBeTruthy();
-    expect(within(table).getByText('2026-06-13')).toBeTruthy();
+    // DataTable はデスクトップ表とモバイルカードを同時描画するため、各タスク値は 2 回現れる。
+    // 表示情報(内容 / 患者さん / 次にやること / 期限)の和集合が両ビューで保たれることを確認する。
+    const taskSection = screen.getByTestId('clerk-task-section');
+    expect(within(taskSection).getAllByText('田中 一郎')).toHaveLength(2);
+    expect(within(taskSection).getAllByText('鈴木 修')).toHaveLength(2);
+    expect(within(taskSection).getAllByText('日程確認')).toHaveLength(2);
 
-    // モバイルは横スクロールを避け、同じタスクを縦カードで提示する(同一 source order)。
-    const mobileList = screen.getByTestId('clerk-task-mobile-list');
-    expect(within(mobileList).getByText('鈴木 修')).toBeTruthy();
-    expect(within(mobileList).getByText('日程確認')).toBeTruthy();
-    const mobileLink = within(mobileList).getByRole('link', { name: '候補日時を電話で確認' });
-    expect(mobileLink.getAttribute('href')).toBe('/schedules/proposals?detail=proposal-1');
-    expect(mobileLink.className).toContain('min-h-11');
-    expect(within(mobileList).getByText('2026-06-13')).toBeTruthy();
-    // 期限なしタスクはダッシュで欠落を明示。
-    const intakeCard = within(mobileList).getByTestId('clerk-task-mobile-card-intake-1');
-    expect(within(intakeCard).getByText('—')).toBeTruthy();
+    const nextActionLinks = within(taskSection).getAllByRole('link', {
+      name: '候補日時を電話で確認',
+    });
+    expect(nextActionLinks).toHaveLength(2);
+    for (const link of nextActionLinks) {
+      expect(link.getAttribute('href')).toBe('/schedules/proposals?detail=proposal-1');
+      // coarse 端末の 44px タッチターゲットを両ビューで確保。
+      expect(link.className).toContain('min-h-11');
+    }
+
+    expect(within(taskSection).getAllByText('2026-06-13')).toHaveLength(2);
+    // 期限なしタスク(intake-1)はダッシュで欠落を明示(desktop 表 + mobile カードで 2 回)。
+    expect(within(taskSection).getAllByText('—')).toHaveLength(2);
 
     const consult = screen.getByTestId('clerk-consult-card');
     expect(within(consult).getByText('薬剤師に相談が必要')).toBeTruthy();
@@ -163,11 +167,11 @@ describe('ClerkSupportContent', () => {
     });
 
     render(<ClerkSupportContent />);
-    // CSS hidden は Testing Library 上は可視のため、desktop/mobile を container 別に検証。
-    const table = screen.getByTestId('clerk-task-table');
-    expect(within(table).getByText('いま事務側で止まっている作業はありません。')).toBeTruthy();
-    const mobileList = screen.getByTestId('clerk-task-mobile-list');
-    expect(within(mobileList).getByText('いま事務側で止まっている作業はありません。')).toBeTruthy();
+    // DataTable の空表示はデスクトップ表・モバイルカードの両方に出る(CSS hidden は jsdom 上は可視)。
+    const taskSection = screen.getByTestId('clerk-task-section');
+    expect(
+      within(taskSection).getAllByText('いま事務側で止まっている作業はありません。'),
+    ).toHaveLength(2);
   });
 
   it('fetches the clerk-support dashboard with shared org headers and raw query key', async () => {

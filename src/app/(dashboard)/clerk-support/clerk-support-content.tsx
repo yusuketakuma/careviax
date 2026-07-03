@@ -2,21 +2,19 @@
 
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
+import type { ColumnDef } from '@tanstack/react-table';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
+import { DataTable, type DataTableColumnMeta } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
-import type { ClerkSupportKpis, ClerkSupportResponse } from '@/types/clerk-support';
+import type {
+  ClerkSupportKpis,
+  ClerkSupportResponse,
+  ClerkSupportTask,
+} from '@/types/clerk-support';
 
 /**
  * p0_25「事務サポート」: 事務でできることの件数と着手リスト。
@@ -46,6 +44,49 @@ const KPI_DEFS: Array<{
   { key: 'document_drafts', label: '文書記録' },
   { key: 'reply_pending', label: '返信待ち' },
   { key: 'pharmacist_review', label: '薬剤師確認' },
+];
+
+// デスクトップ表 / モバイルカードを 1 実装に統合(DataTable)。
+// 表示情報は両ビューの和集合(内容 / 患者さん / 次にやること / 期限)を保存する。
+// 次アクションのリンクは coarse 端末でも 44px を確保する(min-h-11、SSOT touch-target)。
+const clerkTaskColumns: ColumnDef<ClerkSupportTask>[] = [
+  {
+    accessorKey: 'kind_label',
+    header: '内容',
+    cell: ({ row }) => (
+      <span className="font-medium text-foreground">{row.original.kind_label}</span>
+    ),
+    meta: { mobileLabel: '内容' } satisfies DataTableColumnMeta<ClerkSupportTask>,
+    size: 112,
+  },
+  {
+    accessorKey: 'patient_name',
+    header: '患者さん',
+    cell: ({ row }) => row.original.patient_name,
+    meta: { mobileLabel: '患者さん' } satisfies DataTableColumnMeta<ClerkSupportTask>,
+  },
+  {
+    accessorKey: 'next_action',
+    header: '次にやること',
+    cell: ({ row }) => (
+      <Link
+        href={row.original.href}
+        className="inline-flex min-h-11 items-center text-sm font-semibold text-primary hover:underline"
+      >
+        {row.original.next_action}
+      </Link>
+    ),
+    meta: { mobileLabel: '次にやること' } satisfies DataTableColumnMeta<ClerkSupportTask>,
+  },
+  {
+    accessorKey: 'due_label',
+    header: '期限',
+    cell: ({ row }) => (
+      <span className="text-sm text-muted-foreground">{row.original.due_label ?? '—'}</span>
+    ),
+    meta: { mobileLabel: '期限' } satisfies DataTableColumnMeta<ClerkSupportTask>,
+    size: 112,
+  },
 ];
 
 export function ClerkSupportContent() {
@@ -111,87 +152,20 @@ export function ClerkSupportContent() {
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+            {/* デスクトップ表とモバイルカードを DataTable(mobileLabel 機構内蔵)へ統合。
+                走査性の zebra stripe / モバイルのラベル付きカードは DataTable が担う。 */}
             <section
               aria-label="事務の作業リスト"
-              className="rounded-lg border border-border/70 bg-card"
+              className="rounded-lg border border-border/70 bg-card p-4"
               data-testid="clerk-task-section"
             >
-              {/* デスクトップ: 走査性重視の表。モバイルは横溢れするため sm 以上で表示。 */}
-              <div className="hidden sm:block" data-testid="clerk-task-table">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-28">内容</TableHead>
-                      <TableHead>患者さん</TableHead>
-                      <TableHead>次にやること</TableHead>
-                      <TableHead className="w-28">期限</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.tasks.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-sm text-muted-foreground">
-                          いま事務側で止まっている作業はありません。
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      data.tasks.map((task) => (
-                        // 医療データテーブルの走査性: 行数が増えても目で追えるよう zebra stripe(SSOT)
-                        <TableRow key={task.id} className="even:bg-muted/30">
-                          <TableCell className="font-medium text-foreground">
-                            {task.kind_label}
-                          </TableCell>
-                          <TableCell>{task.patient_name}</TableCell>
-                          <TableCell>
-                            <Link href={task.href} className="text-primary hover:underline">
-                              {task.next_action}
-                            </Link>
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {task.due_label ?? '—'}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-              {/* モバイル: 同一 source order の縦カード。横スクロールを避け次アクションを明示。 */}
-              <ul
-                className="divide-y divide-border/70 sm:hidden"
-                role="list"
-                data-testid="clerk-task-mobile-list"
-              >
-                {data.tasks.length === 0 ? (
-                  <li className="px-4 py-3 text-sm text-muted-foreground">
-                    いま事務側で止まっている作業はありません。
-                  </li>
-                ) : (
-                  data.tasks.map((task) => (
-                    <li
-                      key={task.id}
-                      className="px-4 py-3"
-                      data-testid={`clerk-task-mobile-card-${task.id}`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium text-foreground">
-                          {task.kind_label}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {task.due_label ?? '—'}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-sm text-foreground">{task.patient_name}</p>
-                      <Link
-                        href={task.href}
-                        className="mt-1 inline-flex min-h-11 items-center text-sm font-semibold text-primary hover:underline"
-                      >
-                        {task.next_action}
-                      </Link>
-                    </li>
-                  ))
-                )}
-              </ul>
+              <DataTable
+                columns={clerkTaskColumns}
+                data={data.tasks}
+                getRowId={(task) => task.id}
+                caption="事務の作業リスト"
+                emptyMessage="いま事務側で止まっている作業はありません。"
+              />
             </section>
 
             <section
