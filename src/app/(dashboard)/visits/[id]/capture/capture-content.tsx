@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import { Button } from '@/components/ui/button';
 import { downscaleImage } from '@/lib/files/downscale-image';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -203,7 +204,7 @@ export function EvidenceCaptureContent({
       // カメラ未起動 → ネイティブカメラ/ファイル選択へフォールバック
       fileInputRef.current?.click();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '写真を保存できませんでした');
+      toast.error(messageFromError(error, '写真を保存できませんでした'));
     } finally {
       setSaving(false);
     }
@@ -217,7 +218,7 @@ export function EvidenceCaptureContent({
     try {
       await persistCapturedImage(file, file.type || 'image/jpeg');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '写真を保存できませんでした');
+      toast.error(messageFromError(error, '写真を保存できませんでした'));
     } finally {
       setSaving(false);
     }

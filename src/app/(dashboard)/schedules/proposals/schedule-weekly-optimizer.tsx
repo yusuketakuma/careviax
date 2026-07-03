@@ -15,6 +15,7 @@ import {
 import { ja } from 'date-fns/locale';
 import { CalendarClock, Car, GripVertical, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import type { ProposalGenerationDiagnosticsCardData } from '@/components/features/visits/visit-proposal-diagnostics-card';
 import {
   AlertDialog,
@@ -834,7 +835,7 @@ export function ScheduleWeeklyOptimizer({
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '候補生成に失敗しました');
+      toast.error(messageFromError(error, '候補生成に失敗しました'));
     },
   });
 
@@ -856,7 +857,7 @@ export function ScheduleWeeklyOptimizer({
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '訪問予定の移動に失敗しました');
+      toast.error(messageFromError(error, '訪問予定の移動に失敗しました'));
     },
   });
 
@@ -923,7 +924,7 @@ export function ScheduleWeeklyOptimizer({
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '集約提案に失敗しました');
+      toast.error(messageFromError(error, '集約提案に失敗しました'));
     },
   });
 
@@ -1075,7 +1076,7 @@ export function ScheduleWeeklyOptimizer({
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'route_order の反映に失敗しました');
+      toast.error(messageFromError(error, 'route_order の反映に失敗しました'));
     },
   });
 

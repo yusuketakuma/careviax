@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import { requestNavigationConfirmation } from '@/components/providers/navigation-confirm-provider';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { Button } from '@/components/ui/button';
@@ -283,7 +284,7 @@ export function ScheduleCreateEditDrawer({
       onSaved?.();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : SCHEDULE_DRAWER_SAVE_ERROR_FALLBACK);
+      toast.error(messageFromError(error, SCHEDULE_DRAWER_SAVE_ERROR_FALLBACK));
     },
   });
 

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useMutation } from '@tanstack/react-query';
 import { Mic, Square } from 'lucide-react';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -364,7 +365,7 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
       toast.success('訪問記録のメモ(S: 患者の訴え)へ追記しました');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '訪問記録への追記に失敗しました');
+      toast.error(messageFromError(error, '訪問記録への追記に失敗しました'));
     },
   });
 

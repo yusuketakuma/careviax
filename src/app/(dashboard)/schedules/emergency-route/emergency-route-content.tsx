@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -720,7 +721,7 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
       toast.success('ルートを再計算しました');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'ルート再計算に失敗しました');
+      toast.error(messageFromError(error, 'ルート再計算に失敗しました'));
     },
   });
 
@@ -764,7 +765,7 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
       void schedulesQuery.refetch();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'ルートの反映に失敗しました');
+      toast.error(messageFromError(error, 'ルートの反映に失敗しました'));
     },
   });
 

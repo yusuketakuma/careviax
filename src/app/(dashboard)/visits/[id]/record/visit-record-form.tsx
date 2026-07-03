@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { japanDateKey } from '@/lib/utils/date-boundary';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import { formatYen } from '@/lib/ui/currency-format';
 import { timeIsoToString } from '@/lib/visits/time-of-day';
 import {
@@ -613,7 +614,7 @@ export function VisitRecordForm({
       return;
     }
 
-    toast.error(error instanceof Error ? error.message : 'オフライン下書きの保存に失敗しました');
+    toast.error(messageFromError(error, 'オフライン下書きの保存に失敗しました'));
   }, []);
 
   const form = useForm<FormValues>({
@@ -886,7 +887,7 @@ export function VisitRecordForm({
           end: current?.end ?? null,
         }));
         if (!options?.silent) {
-          toast.error(error instanceof Error ? error.message : '位置情報を取得できませんでした');
+          toast.error(messageFromError(error, '位置情報を取得できませんでした'));
         }
         return null;
       } finally {

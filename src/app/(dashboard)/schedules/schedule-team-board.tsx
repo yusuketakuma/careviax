@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { AlertTriangle, Car, Lock, Plus, Route, Send } from 'lucide-react';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
@@ -1758,7 +1759,7 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
     },
     onError: (error) => {
       // Make visit schedule status update failures visible with their reason.
-      toast.error(error instanceof Error ? error.message : '訪問予定の更新に失敗しました');
+      toast.error(messageFromError(error, '訪問予定の更新に失敗しました'));
     },
   });
   const taskStatusMutation = useMutation({
@@ -1774,7 +1775,7 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
     },
     onError: (error) => {
       // Make operational task status failures visible to avoid false completion signals.
-      toast.error(error instanceof Error ? error.message : '運用タスクの更新に失敗しました');
+      toast.error(messageFromError(error, '運用タスクの更新に失敗しました'));
     },
   });
   const applyRecommendedVehicleMutation = useMutation({
@@ -1807,7 +1808,7 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
     },
     onError: (error) => {
       // Make vehicle assignment failures visible to avoid phantom route assignments.
-      toast.error(error instanceof Error ? error.message : '車両の割り当てに失敗しました');
+      toast.error(messageFromError(error, '車両の割り当てに失敗しました'));
     },
   });
 

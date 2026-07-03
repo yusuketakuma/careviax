@@ -19,6 +19,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import {
   VisitProposalDiagnosticsCard,
   type ProposalGenerationDiagnosticsCardData,
@@ -1179,7 +1180,7 @@ export function ScheduleProposalsContent({
       await invalidateProposalQueries();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '候補更新に失敗しました');
+      toast.error(messageFromError(error, '候補更新に失敗しました'));
     },
   });
 
@@ -1316,7 +1317,7 @@ export function ScheduleProposalsContent({
       }
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '一括更新に失敗しました');
+      toast.error(messageFromError(error, '一括更新に失敗しました'));
     },
   });
 
@@ -1336,7 +1337,7 @@ export function ScheduleProposalsContent({
       await invalidateProposalQueries();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '候補順の更新に失敗しました');
+      toast.error(messageFromError(error, '候補順の更新に失敗しました'));
     },
   });
 
@@ -1417,7 +1418,7 @@ export function ScheduleProposalsContent({
       }
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '再提案に失敗しました');
+      toast.error(messageFromError(error, '再提案に失敗しました'));
     },
   });
 

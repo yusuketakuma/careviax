@@ -14,6 +14,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { messageFromError } from '@/lib/utils/error-message';
 import { z } from 'zod';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -1010,7 +1011,7 @@ export function PartnerCooperationBillingContent() {
       await invalidateMonth();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '請求候補の生成に失敗しました');
+      toast.error(messageFromError(error, '請求候補の生成に失敗しました'));
     },
   });
 
@@ -1041,9 +1042,7 @@ export function PartnerCooperationBillingContent() {
       await invalidateMonth();
     },
     onError: (error) => {
-      toast.error(
-        error instanceof Error ? error.message : '薬局間月次ドキュメントの作成に失敗しました',
-      );
+      toast.error(messageFromError(error, '薬局間月次ドキュメントの作成に失敗しました'));
     },
   });
 
@@ -1063,9 +1062,7 @@ export function PartnerCooperationBillingContent() {
       await invalidateMonth();
     },
     onError: (error) => {
-      toast.error(
-        error instanceof Error ? error.message : '薬局間月次ドキュメントの更新に失敗しました',
-      );
+      toast.error(messageFromError(error, '薬局間月次ドキュメントの更新に失敗しました'));
     },
   });
 
