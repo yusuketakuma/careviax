@@ -140,6 +140,11 @@ describe('PackagingMethodsContent', () => {
     const fetchMock = stubFetchOk();
     render(<PackagingMethodsContent />);
     // no method loaded → form.id === '' → POST branch (no path segment to encode)
+    fireEvent.change(screen.getByLabelText('名称'), { target: { value: '  新規配薬  ' } });
+    fireEvent.change(screen.getByLabelText('説明'), { target: { value: 'raw description' } });
+    fireEvent.change(screen.getByLabelText('アイコンキー'), { target: { value: 'package' } });
+    fireEvent.change(screen.getByLabelText('表示順'), { target: { value: '7' } });
+
     await latestMutationFn()();
 
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
@@ -151,6 +156,13 @@ describe('PackagingMethodsContent', () => {
     }
     expect(init.method).toBe('POST');
     expect(init.headers).toEqual(buildOrgJsonHeaders('org_1'));
+    expect(JSON.parse(String(init.body))).toEqual({
+      name: '  新規配薬  ',
+      description: 'raw description',
+      icon_key: 'package',
+      sort_order: 7,
+      is_active: true,
+    });
   });
 
   it('update (PATCH) encodes a hostile id via encodePathSegment and uses buildOrgJsonHeaders', async () => {
@@ -171,6 +183,13 @@ describe('PackagingMethodsContent', () => {
     }
     expect(init.method).toBe('PATCH');
     expect(init.headers).toEqual(buildOrgJsonHeaders('org_1'));
+    expect(JSON.parse(String(init.body))).toEqual({
+      name: '一包化',
+      description: '1回ごとの分包',
+      icon_key: 'package',
+      sort_order: 1,
+      is_active: true,
+    });
     expect(buildPackagingMethodApiPath).toHaveBeenCalledWith('a/b c');
   });
 
