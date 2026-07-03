@@ -1,4 +1,4 @@
-import { addDays, differenceInCalendarDays, format, getDay } from 'date-fns';
+import { addDays, differenceInCalendarDays, getDay } from 'date-fns';
 import type { Prisma, VisitPriority, VisitType, VisitAssignmentMode } from '@prisma/client';
 import { buildOperatingCalendarFromDbRows } from '@/lib/calendar/operating-day-adapter';
 import { resolveOperatingState } from '@/lib/calendar/operating-day';
@@ -339,7 +339,7 @@ function operatingDayRejectionDetail(reason: 'holiday' | 'regular_closed') {
 }
 
 function toDateKey(value: Date) {
-  return format(value, 'yyyy-MM-dd');
+  return formatUtcDateKey(value);
 }
 
 function setTime(baseDate: Date, timeLike: Date | null | undefined, fallback: string) {
@@ -928,10 +928,10 @@ function buildReason(args: {
 }) {
   const deadlineSummary = args.visitDeadlineDate
     ? args.deadlineOverdue
-      ? `訪問期限 ${format(args.visitDeadlineDate, 'yyyy-MM-dd')} 超過のため最短候補を配置`
-      : `訪問期限 ${format(args.visitDeadlineDate, 'yyyy-MM-dd')} までに配置`
+      ? `訪問期限 ${formatUtcDateKey(args.visitDeadlineDate)} 超過のため最短候補を配置`
+      : `訪問期限 ${formatUtcDateKey(args.visitDeadlineDate)} までに配置`
     : args.medicationEndDate
-      ? `服薬最終日 ${format(args.medicationEndDate, 'yyyy-MM-dd')} までに配置`
+      ? `服薬最終日 ${formatUtcDateKey(args.medicationEndDate)} までに配置`
       : '服薬期限情報がないため直近日で配置';
   const parts = [deadlineSummary, `ルート順 ${args.routeOrder} を提案`, args.travelSummary];
   if (args.careRelationship === 'primary') {

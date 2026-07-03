@@ -5,6 +5,7 @@
 
 import { differenceInDays } from 'date-fns';
 
+import { formatUtcDateKey } from '@/lib/date-key';
 import { medicationIdentityKey } from '@/lib/prescription/medication-diff';
 
 export interface DateContinuityWarning {
@@ -59,8 +60,8 @@ export function checkDateContinuity(
         drugName: current.drug_name,
         drugCode: current.drug_code,
         type: 'gap',
-        prevEndDate: prev.end_date.toISOString().split('T')[0],
-        currentStartDate: current.start_date.toISOString().split('T')[0],
+        prevEndDate: formatUtcDateKey(prev.end_date),
+        currentStartDate: formatUtcDateKey(current.start_date),
         gapDays,
       });
     }
@@ -72,8 +73,8 @@ export function checkDateContinuity(
         drugName: current.drug_name,
         drugCode: current.drug_code,
         type: 'overlap',
-        prevEndDate: prev.end_date.toISOString().split('T')[0],
-        currentStartDate: current.start_date.toISOString().split('T')[0],
+        prevEndDate: formatUtcDateKey(prev.end_date),
+        currentStartDate: formatUtcDateKey(current.start_date),
         gapDays,
       });
     }

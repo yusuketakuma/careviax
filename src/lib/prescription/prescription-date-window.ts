@@ -1,4 +1,5 @@
 import { formatUtcDateKey } from '@/lib/date-key';
+import { japanDateKey } from '@/lib/utils/date-boundary';
 
 export const DEFAULT_PRESCRIPTION_TIME_ZONE = 'Asia/Tokyo';
 export const PRESCRIPTION_VALID_DAYS_AFTER_ISSUE = 4;
@@ -8,6 +9,10 @@ export type PrescriptionDateWindowResult =
   | { ok: false; reason: 'future_prescribed_date' | 'expiry_exceeded' };
 
 function formatDateKeyInTimeZone(date: Date, timeZone: string) {
+  if (timeZone === DEFAULT_PRESCRIPTION_TIME_ZONE) {
+    return japanDateKey(date);
+  }
+
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone,
     year: 'numeric',

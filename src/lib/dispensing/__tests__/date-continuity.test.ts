@@ -24,6 +24,40 @@ function makeLine(overrides: {
 // ── Tests ──
 
 describe('checkDateContinuity', () => {
+  it('formats warning date keys from UTC date sentinels independently of runtime timezone', () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    try {
+      const prev = [
+        makeLine({
+          id: 'p1',
+          drug_name: 'アムロジピン錠5mg',
+          drug_code: 'YJ001',
+          end_date: new Date('2026-03-28T00:00:00.000Z'),
+        }),
+      ];
+      const current = [
+        makeLine({
+          id: 'c1',
+          drug_name: 'アムロジピン錠5mg',
+          drug_code: 'YJ001',
+          start_date: new Date('2026-04-01T00:00:00.000Z'),
+        }),
+      ];
+
+      expect(checkDateContinuity(current, prev)[0]).toMatchObject({
+        prevEndDate: '2026-03-28',
+        currentStartDate: '2026-04-01',
+      });
+    } finally {
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
+  });
+
   it('returns no warnings when dates are exactly continuous (gap = 0)', () => {
     const prev = [
       makeLine({

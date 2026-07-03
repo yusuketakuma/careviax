@@ -1,5 +1,5 @@
-import { format } from 'date-fns';
 import type { Prisma, PrismaClient } from '@prisma/client';
+import { formatUtcDateKey } from '@/lib/date-key';
 import {
   classifySetBatchPhase,
   deriveListBadge,
@@ -13,6 +13,7 @@ import {
   buildSetPlanAssignmentWhere,
   type PrescriptionAccessContext,
 } from '@/server/services/prescription-access';
+import { japanDateKey } from '@/lib/utils/date-boundary';
 
 /**
  * 調剤ワークベンチ左ペインの患者中心リスト(計画 §11-2 共通行 / §11-3-1)。
@@ -38,7 +39,7 @@ export type DispenseWorkbenchPatientsFilters = {
 const MAX_CYCLES = 500;
 
 function formatDate(value: Date | null | undefined): string | null {
-  return value ? format(value, 'yyyy-MM-dd') : null;
+  return value ? formatUtcDateKey(value) : null;
 }
 
 export async function listDispenseWorkbenchPatients(
@@ -118,7 +119,7 @@ export async function listDispenseWorkbenchPatients(
       overall_status: cycle.overall_status,
       badge: deriveListBadge(cycle.overall_status),
       start_date: formatDate(startDate),
-      registered_date: format(patient.created_at, 'yyyy-MM-dd'),
+      registered_date: japanDateKey(patient.created_at),
       latest_set_plan_id: null,
       latest_set_plan_cycle_id: null,
     });

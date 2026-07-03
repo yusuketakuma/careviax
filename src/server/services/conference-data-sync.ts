@@ -207,11 +207,10 @@ function parseDateFromBody(body?: string) {
 }
 
 // conference_date は実時刻の DateTime、scheduled_date/target_discharge_date は @db.Date sentinel。
-// どちらも JST 民間日で読む必要があるため japanCivilTimeParts で分解する
-// (UTC 深夜 sentinel は +9h しても同一民間日、実時刻は JST の民間日になる)。
+// どちらも JST 民間日で読む必要がある。
+// (UTC 深夜 sentinel は JST でも同一民間日、実時刻は JST の民間日になる)。
 function formatDateKey(value: Date) {
-  const { year, monthIndex, day } = japanCivilTimeParts(value);
-  return `${year}-${`${monthIndex + 1}`.padStart(2, '0')}-${`${day}`.padStart(2, '0')}`;
+  return japanDateKey(value);
 }
 
 function dayCodeFromDate(value: Date) {
