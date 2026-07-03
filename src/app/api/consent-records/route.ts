@@ -10,6 +10,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { prisma } from '@/lib/db/client';
+import { acquireAdvisoryTxLock } from '@/lib/db/advisory-lock';
 import { canAccessCaseScopedPatientResource } from '@/server/services/patient-access';
 import {
   buildAuditedConsentDocumentUrl,
@@ -300,57 +301,55 @@ async function authenticatedPOST(req: NextRequest) {
       }
     }
 
-    // Check for active duplicate
-    const duplicate = await prisma.consentRecord.findFirst({
-      where: {
-        org_id: ctx.orgId,
-        patient_id,
-        consent_type,
-        is_active: true,
-      },
-      select: { id: true },
-    });
-    if (duplicate) {
-      return validationError('この患者にはすでに有効な同意記録が存在します', {
-        consent_type: ['同一種別の有効な同意がすでに存在します'],
-      });
-    }
-
-    const today = new Date(`${obtained_date}T00:00:00.000Z`);
-    const template = template_id
-      ? await prisma.template.findFirst({
-          where: {
-            id: template_id,
-            org_id: ctx.orgId,
-            template_type: 'consent_form',
-          },
-          select: {
-            id: true,
-            version: true,
-          },
-        })
-      : await prisma.template.findFirst({
-          where: {
-            org_id: ctx.orgId,
-            template_type: 'consent_form',
-            is_default: true,
-            OR: [{ effective_from: null }, { effective_from: { lte: today } }],
-            AND: [{ OR: [{ effective_to: null }, { effective_to: { gte: today } }] }],
-          },
-          orderBy: [{ version: 'desc' }, { updated_at: 'desc' }],
-          select: {
-            id: true,
-            version: true,
-          },
-        });
-
-    if (template_id && !template) {
-      return validationError('選択した同意書テンプレートが見つかりません', {
-        template_id: ['有効な同意書テンプレートを選択してください'],
-      });
-    }
-
+    const dedupKey = `${ctx.orgId}:${patient_id}:${consent_type}`;
     const record = await withOrgContext(ctx.orgId, async (tx) => {
+      await acquireAdvisoryTxLock(tx, 'consent_record_active_dedup', dedupKey);
+
+      const duplicate = await tx.consentRecord.findFirst({
+        where: {
+          org_id: ctx.orgId,
+          patient_id,
+          consent_type,
+          is_active: true,
+        },
+        select: { id: true },
+      });
+      if (duplicate) {
+        return { duplicate: true as const };
+      }
+
+      const today = new Date(`${obtained_date}T00:00:00.000Z`);
+      const template = template_id
+        ? await tx.template.findFirst({
+            where: {
+              id: template_id,
+              org_id: ctx.orgId,
+              template_type: 'consent_form',
+            },
+            select: {
+              id: true,
+              version: true,
+            },
+          })
+        : await tx.template.findFirst({
+            where: {
+              org_id: ctx.orgId,
+              template_type: 'consent_form',
+              is_default: true,
+              OR: [{ effective_from: null }, { effective_from: { lte: today } }],
+              AND: [{ OR: [{ effective_to: null }, { effective_to: { gte: today } }] }],
+            },
+            orderBy: [{ version: 'desc' }, { updated_at: 'desc' }],
+            select: {
+              id: true,
+              version: true,
+            },
+          });
+
+      if (template_id && !template) {
+        return { templateMissing: true as const };
+      }
+
       const createdRecord = await tx.consentRecord.create({
         data: {
           org_id: ctx.orgId,
@@ -371,6 +370,16 @@ async function authenticatedPOST(req: NextRequest) {
       await recordConsentRecordCreatedAudit(tx, ctx, createdRecord);
       return createdRecord;
     });
+    if ('duplicate' in record) {
+      return validationError('この患者にはすでに有効な同意記録が存在します', {
+        consent_type: ['同一種別の有効な同意がすでに存在します'],
+      });
+    }
+    if ('templateMissing' in record) {
+      return validationError('選択した同意書テンプレートが見つかりません', {
+        template_id: ['有効な同意書テンプレートを選択してください'],
+      });
+    }
 
     return success(serializeConsentRecordDocumentUrl(record), 201);
   });

@@ -27,7 +27,7 @@
   `pnpm typecheck:no-unused` green。
 - レビュー: opus APPROVE、claude commit 981f1a58。self-commit なし。
 
-## 2026-07-03 MFA1 pending verdict
+## 2026-07-03 MFA1 f7bf2e97
 
 - 分類: auth/security observability / behavior-preserving log convergence
 - 対象: `src/app/api/auth/mfa/recovery/route.ts` + focused route test
@@ -36,7 +36,18 @@
 - 挙動変更: なし。rate-limit、validation、復旧処理、502/503 応答、restore fail-soft 方向は不変。
 - 検証: focused vitest 9/9 green。scoped eslint/prettier/diff-check green。`pnpm typecheck` /
   `pnpm typecheck:no-unused` green。secret/token 非包含 negative assert 追加。
-- レビュー: auth 領域のため opus/Claude verdict 待ち、self-commit なし。
+- レビュー: opus APPROVE、claude commit f7bf2e97。self-commit なし。
+
+## 2026-07-03 F84 pending verdict
+
+- 分類: bug/concurrency / behavior-preserving app-layer serialization
+- 対象: `src/app/api/consent-records/route.ts` + focused route test
+- 実施: active ConsentRecord の `patient_id+consent_type` 重複チェックを advisory lock +
+  tx内再readへ移動。DB migration/partial unique index は追加しない。
+- 挙動変更: なし。既存 400 validation error/message、auth、no-store、audit fail-closed は不変。
+- 検証: baseline focused vitest 13/13 green。post-edit focused vitest 14/14 green。scoped
+  eslint/prettier/diff-check green。`pnpm typecheck` / `pnpm typecheck:no-unused` green。
+- レビュー: opus/Claude verdict 待ち、self-commit なし。
 
 ## 2026-07-03 までのスライス（要約、詳細は archive/ と git log）
 

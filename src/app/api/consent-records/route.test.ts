@@ -15,6 +15,7 @@ const {
   fileAssetFindFirstMock,
   validateOrgReferencesMock,
   consentRecordCreateMock,
+  advisoryLockMock,
   withOrgContextMock,
   recordConsentRecordsViewedAuditMock,
   recordConsentRecordCreatedAuditMock,
@@ -32,6 +33,7 @@ const {
   fileAssetFindFirstMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
   consentRecordCreateMock: vi.fn(),
+  advisoryLockMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   recordConsentRecordsViewedAuditMock: vi.fn(),
   recordConsentRecordCreatedAuditMock: vi.fn(),
@@ -83,6 +85,10 @@ vi.mock('@/lib/api/org-reference', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/advisory-lock', () => ({
+  acquireAdvisoryTxLock: advisoryLockMock,
 }));
 
 vi.mock('@/server/services/consent-record-audit', () => ({
@@ -155,6 +161,7 @@ describe('/api/consent-records', () => {
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
     recordConsentRecordsViewedAuditMock.mockResolvedValue(undefined);
     recordConsentRecordCreatedAuditMock.mockResolvedValue(undefined);
+    advisoryLockMock.mockResolvedValue(undefined);
     consentRecordCreateMock.mockResolvedValue({
       id: 'consent_2',
       patient_id: 'patient_1',
@@ -165,7 +172,11 @@ describe('/api/consent-records', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         consentRecord: {
+          findFirst: consentRecordFindFirstMock,
           create: consentRecordCreateMock,
+        },
+        template: {
+          findFirst: templateFindFirstMock,
         },
       }),
     );
@@ -354,9 +365,15 @@ describe('/api/consent-records', () => {
         document_file_id: null,
       }),
     });
+    expect(advisoryLockMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'consent_record_active_dedup',
+      'org_1:patient_1:external_sharing',
+    );
     expect(recordConsentRecordCreatedAuditMock).toHaveBeenCalledWith(
       expect.objectContaining({
         consentRecord: expect.objectContaining({
+          findFirst: consentRecordFindFirstMock,
           create: consentRecordCreateMock,
         }),
       }),
@@ -418,6 +435,93 @@ describe('/api/consent-records', () => {
       has_document_url: true,
       document_url_redacted: false,
     });
+  });
+
+  it('serializes concurrent active consent creates and lets one request detect the duplicate in-transaction (TOCTOU guard)', async () => {
+    let activeConsentId: string | null = null;
+    let transactionChain = Promise.resolve();
+    const tx = {
+      consentRecord: {
+        findFirst: consentRecordFindFirstMock,
+        create: consentRecordCreateMock,
+      },
+      template: {
+        findFirst: templateFindFirstMock,
+      },
+    };
+    consentRecordFindFirstMock.mockImplementation(async () =>
+      activeConsentId ? { id: activeConsentId } : null,
+    );
+    consentRecordCreateMock.mockImplementation(async ({ data }) => {
+      activeConsentId = 'consent_2';
+      return {
+        id: activeConsentId,
+        patient_id: data.patient_id,
+        consent_type: data.consent_type,
+        document_url: data.document_url,
+        document_file_id: data.document_file_id,
+      };
+    });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) => {
+      const previousTransaction = transactionChain;
+      let releaseTransaction!: () => void;
+      transactionChain = new Promise<void>((resolve) => {
+        releaseTransaction = resolve;
+      });
+      await previousTransaction;
+      try {
+        return await callback(tx);
+      } finally {
+        releaseTransaction();
+      }
+    });
+
+    const payload = {
+      patient_id: 'patient_1',
+      consent_type: 'external_sharing',
+      method: 'paper_scan',
+      obtained_date: '2026-03-29',
+    };
+    const responses = await Promise.all([
+      POST(createRequest('http://localhost/api/consent-records', payload)),
+      POST(createRequest('http://localhost/api/consent-records', payload)),
+    ]);
+    const createdResponse = responses.find((response) => response?.status === 201);
+    const duplicateResponse = responses.find((response) => response?.status === 400);
+
+    expect(createdResponse?.status).toBe(201);
+    expect(duplicateResponse?.status).toBe(400);
+    expectNoStore(duplicateResponse!);
+    await expect(duplicateResponse!.json()).resolves.toMatchObject({
+      message: 'この患者にはすでに有効な同意記録が存在します',
+      details: {
+        consent_type: ['同一種別の有効な同意がすでに存在します'],
+      },
+    });
+    expect(withOrgContextMock).toHaveBeenCalled();
+    expect(advisoryLockMock).toHaveBeenCalledTimes(2);
+    expect(advisoryLockMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'consent_record_active_dedup',
+      'org_1:patient_1:external_sharing',
+    );
+    expect(consentRecordFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        consent_type: 'external_sharing',
+        is_active: true,
+      },
+      select: { id: true },
+    });
+    expect(advisoryLockMock.mock.invocationCallOrder[0]).toBeLessThan(
+      consentRecordFindFirstMock.mock.invocationCallOrder[0],
+    );
+    expect(advisoryLockMock.mock.invocationCallOrder[1]).toBeLessThan(
+      consentRecordFindFirstMock.mock.invocationCallOrder[1],
+    );
+    expect(consentRecordCreateMock).toHaveBeenCalledTimes(1);
+    expect(recordConsentRecordCreatedAuditMock).toHaveBeenCalledTimes(1);
   });
 
   it('rejects external consent document urls before lookups or create side effects', async () => {
