@@ -68,47 +68,86 @@ vi.mock('@/lib/prescriber-institutions/api-paths', async (importActual) => {
   };
 });
 
-vi.mock('@/components/ui/data-table', () => ({
-  DataTable: ({
-    columns,
-    data,
-    errorMessage,
-    onRetry,
-  }: {
-    columns: Array<{
-      id?: string;
-      accessorKey?: string;
-      cell?: (args: { row: { original: unknown } }) => ReactNode;
-    }>;
-    data: unknown[];
-    errorMessage?: string;
-    onRetry?: () => void;
-  }) => (
-    <div>
-      {errorMessage ? (
-        <div role="alert">
-          <p>{errorMessage}</p>
-          {onRetry ? (
-            <button type="button" onClick={onRetry}>
-              再読み込み
-            </button>
+vi.mock('@/components/ui/data-table', async () => {
+  const { useState } = await import('react');
+  return {
+    DataTable: ({
+      columns,
+      data,
+      errorMessage,
+      onRetry,
+      enablePagination,
+      pageSize,
+    }: {
+      columns: Array<{
+        id?: string;
+        accessorKey?: string;
+        cell?: (args: { row: { original: unknown } }) => ReactNode;
+      }>;
+      data: unknown[];
+      errorMessage?: string;
+      onRetry?: () => void;
+      enablePagination?: boolean;
+      pageSize?: number;
+    }) => {
+      // enablePagination 時のみ pageSize でクライアントページングする簡易モック
+      // (実装の DataTable 内部挙動は data-table.test.tsx が担保する)。
+      const [pageIndex, setPageIndex] = useState(0);
+      const size = enablePagination ? (pageSize ?? data.length) : data.length;
+      const pageCount = enablePagination ? Math.max(1, Math.ceil(data.length / size)) : 1;
+      const visible = enablePagination
+        ? data.slice(pageIndex * size, pageIndex * size + size)
+        : data;
+
+      return (
+        <div>
+          {errorMessage ? (
+            <div role="alert">
+              <p>{errorMessage}</p>
+              {onRetry ? (
+                <button type="button" onClick={onRetry}>
+                  再読み込み
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          {visible.map((row, rowIndex) => (
+            <div key={rowIndex}>
+              {columns.map((column, columnIndex) =>
+                column.cell ? (
+                  <div key={`${column.id ?? column.accessorKey ?? columnIndex}`}>
+                    {column.cell({ row: { original: row } })}
+                  </div>
+                ) : null,
+              )}
+            </div>
+          ))}
+          {enablePagination ? (
+            <div>
+              <span>
+                {pageIndex + 1}/{pageCount}ページ
+              </span>
+              <button
+                type="button"
+                onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
+                disabled={pageIndex === 0}
+              >
+                前のページ
+              </button>
+              <button
+                type="button"
+                onClick={() => setPageIndex((current) => Math.min(pageCount - 1, current + 1))}
+                disabled={pageIndex >= pageCount - 1}
+              >
+                次のページ
+              </button>
+            </div>
           ) : null}
         </div>
-      ) : null}
-      {data.map((row, rowIndex) => (
-        <div key={rowIndex}>
-          {columns.map((column, columnIndex) =>
-            column.cell ? (
-              <div key={`${column.id ?? column.accessorKey ?? columnIndex}`}>
-                {column.cell({ row: { original: row } })}
-              </div>
-            ) : null,
-          )}
-        </div>
-      ))}
-    </div>
-  ),
-}));
+      );
+    },
+  };
+});
 
 import {
   InstitutionsContent,
@@ -475,5 +514,32 @@ describe('InstitutionsContent', () => {
       expect(screen.queryByRole('button', { name: '新規登録' })).toBeNull();
       expect(screen.queryByRole('button', { name: '在宅内科クリニック を編集' })).toBeNull();
     });
+  });
+
+  it('paginates the institution table at 50 rows/page (W2-F2) so a 51-row result set needs a 2nd page', async () => {
+    const manyInstitutions = Array.from({ length: 51 }, (_, index) =>
+      institutionFixture(`institution_${index + 1}`),
+    ).map((institution, index) => ({ ...institution, name: `医療機関${index + 1}` }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.startsWith('/api/prescriber-institutions?')) {
+          return new Response(JSON.stringify({ data: manyInstitutions }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    renderContent();
+
+    expect(await screen.findByText('1/2ページ')).toBeTruthy();
+    expect(await screen.findByText('医療機関50')).toBeTruthy();
+    expect(screen.queryByText('医療機関51')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '次のページ' }));
+
+    expect(await screen.findByText('2/2ページ')).toBeTruthy();
+    expect(await screen.findByText('医療機関51')).toBeTruthy();
   });
 });

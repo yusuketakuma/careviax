@@ -39,24 +39,61 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() },
 }));
 
-vi.mock('@/components/ui/data-table', () => ({
-  DataTable: ({
-    data,
-    onSelectionChange,
-  }: {
-    data: Array<{ title: string }>;
-    onSelectionChange?: (rows: Array<{ title: string }>) => void;
-  }) => (
-    <div>
-      {onSelectionChange ? (
-        <button type="button" onClick={() => onSelectionChange(data.slice(0, 2))}>
-          テスト用に2件選択
-        </button>
-      ) : null}
-      <div data-testid="tasks-table">{data.map((item) => item.title).join(',')}</div>
-    </div>
-  ),
-}));
+vi.mock('@/components/ui/data-table', async () => {
+  const { useState } = await import('react');
+  return {
+    DataTable: ({
+      data,
+      onSelectionChange,
+      enablePagination,
+      pageSize,
+    }: {
+      data: Array<{ title: string }>;
+      onSelectionChange?: (rows: Array<{ title: string }>) => void;
+      enablePagination?: boolean;
+      pageSize?: number;
+    }) => {
+      // enablePagination 時のみ pageSize でクライアントページングする簡易モック
+      // (実装の DataTable 内部挙動は data-table.test.tsx が担保する)。
+      const [pageIndex, setPageIndex] = useState(0);
+      const size = enablePagination ? (pageSize ?? data.length) : data.length;
+      const pageCount = enablePagination ? Math.max(1, Math.ceil(data.length / size)) : 1;
+      const visible = enablePagination ? data.slice(pageIndex * size, pageIndex * size + size) : data;
+
+      return (
+        <div>
+          {onSelectionChange ? (
+            <button type="button" onClick={() => onSelectionChange(data.slice(0, 2))}>
+              テスト用に2件選択
+            </button>
+          ) : null}
+          <div data-testid="tasks-table">{visible.map((item) => item.title).join(',')}</div>
+          {enablePagination ? (
+            <div>
+              <span>
+                {pageIndex + 1}/{pageCount}ページ
+              </span>
+              <button
+                type="button"
+                onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
+                disabled={pageIndex === 0}
+              >
+                前のページ
+              </button>
+              <button
+                type="button"
+                onClick={() => setPageIndex((current) => Math.min(pageCount - 1, current + 1))}
+                disabled={pageIndex >= pageCount - 1}
+              >
+                次のページ
+              </button>
+            </div>
+          ) : null}
+        </div>
+      );
+    },
+  };
+});
 
 import { TasksContent } from './tasks-content';
 
@@ -532,5 +569,41 @@ describe('TasksContent', () => {
     expect(screen.queryByText('選択中 2件')).toBeNull();
     expect(screen.queryByRole('button', { name: /選択した2件を完了/ })).toBeNull();
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['tasks', 'org_1'] });
+  });
+
+  it('paginates the task table at 50 rows/page (W2-F2) so a 51-row result set needs a 2nd page', () => {
+    const manyTasks = Array.from({ length: 51 }, (_, index) => ({
+      id: `task_${index + 1}`,
+      task_type: 'visit_preparation',
+      title: `タスク${index + 1}`,
+      description: null,
+      status: 'pending',
+      priority: 'normal',
+      assigned_to: 'user_1',
+      assigned_to_name: '山田 薬剤師',
+      due_date: null,
+      sla_due_at: null,
+      related_entity_type: 'visit_schedule',
+      related_entity_id: 'schedule_1',
+      completed_at: null,
+      created_at: '2026-04-10T08:00:00.000Z',
+    }));
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'staff-workload') {
+        return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+      }
+      return { data: { data: manyTasks }, isLoading: false, isError: false, refetch: vi.fn() };
+    });
+
+    render(<TasksContent />);
+
+    expect(screen.getByText('1/2ページ')).toBeTruthy();
+    expect(screen.getByTestId('tasks-table').textContent).toContain('タスク50');
+    expect(screen.getByTestId('tasks-table').textContent).not.toContain('タスク51');
+
+    fireEvent.click(screen.getByRole('button', { name: '次のページ' }));
+
+    expect(screen.getByText('2/2ページ')).toBeTruthy();
+    expect(screen.getByTestId('tasks-table').textContent).toContain('タスク51');
   });
 });

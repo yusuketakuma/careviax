@@ -352,6 +352,8 @@ export function InstitutionsContent() {
             errorMessage={isError ? '医療機関一覧を取得できませんでした' : undefined}
             emptyMessage="医療機関はまだ登録されていません"
             onRetry={() => void refetch()}
+            enablePagination
+            pageSize={50}
           />
         </CardContent>
       </Card>

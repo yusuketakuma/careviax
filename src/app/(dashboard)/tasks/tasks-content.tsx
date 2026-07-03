@@ -893,6 +893,8 @@ export function TasksContent({
               onSelectionChange={setSelectedTasks}
               getRowId={(row) => row.id}
               getRowA11yLabel={(row) => row.title}
+              enablePagination
+              pageSize={50}
             />
 
             <div className="space-y-3 sm:hidden">

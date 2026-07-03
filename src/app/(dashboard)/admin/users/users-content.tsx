@@ -631,6 +631,8 @@ export function UsersContent() {
               errorMessage={isError ? 'ユーザー一覧を取得できませんでした' : undefined}
               onRetry={() => void refetch()}
               caption="ユーザー一覧"
+              enablePagination
+              pageSize={50}
             />
           </div>
 
