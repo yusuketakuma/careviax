@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const { listContactProfilesMock, listContactProfileSearchSummariesMock } = vi.hoisted(() => ({
   listContactProfilesMock: vi.fn(),
@@ -38,11 +39,6 @@ import { GET } from './route';
 
 function createAuthRequest(url: string) {
   return new NextRequest(url);
-}
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/contact-profiles', () => {

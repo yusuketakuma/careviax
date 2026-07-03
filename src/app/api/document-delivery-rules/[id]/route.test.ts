@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const {
   authMock,
@@ -65,11 +66,6 @@ function createInvalidJsonRequest(url: string) {
     headers: { 'x-org-id': 'org_1', 'content-type': 'application/json' },
     body: 'not-json',
   } satisfies NextRequestInit);
-}
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function expectOrgContextBoundToRequestContext() {

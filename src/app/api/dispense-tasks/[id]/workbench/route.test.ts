@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import type { MemberRole } from '@prisma/client';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   authCtx,
@@ -103,11 +104,6 @@ function createInterruptRequest(body: unknown) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/dispense-tasks/[id]/workbench POST', () => {

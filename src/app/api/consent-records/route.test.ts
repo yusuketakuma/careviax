@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const {
   loggerErrorMock,
@@ -100,11 +101,6 @@ import { GET as rawGET, POST as rawPOST } from './route';
 
 const GET = (req: NextRequest) => rawGET(req);
 const POST = (req: NextRequest) => rawPOST(req);
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
-}
 
 function createRequest(url: string, body?: unknown) {
   return new NextRequest(url, {

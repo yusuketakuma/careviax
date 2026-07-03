@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const HOSTILE_PROPOSAL_ID = 'proposal/1?tab=x#frag';
 
@@ -63,11 +64,6 @@ function createRequest() {
   return new NextRequest('http://localhost/api/dashboard/clerk-support', {
     headers: { 'x-org-id': 'org_1' },
   });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/dashboard/clerk-support', () => {

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const {
   consentRecordFindFirstMock,
@@ -61,11 +62,6 @@ vi.mock('@/server/services/consent-record-audit', () => ({
 }));
 
 import { GET, PATCH } from './route';
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
-}
 
 function createRequest(method: 'GET' | 'PATCH', body?: unknown) {
   return new NextRequest('http://localhost/api/consent-records/consent_1', {

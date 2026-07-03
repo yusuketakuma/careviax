@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import type { MemberRole } from '@prisma/client';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 type TestAuthContext = {
   orgId: string;
@@ -82,11 +83,6 @@ function createMalformedJsonRequest() {
 
 function createGetRequest(url = 'http://localhost/api/dispense-tasks') {
   return new NextRequest(url);
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/dispense-tasks GET', () => {

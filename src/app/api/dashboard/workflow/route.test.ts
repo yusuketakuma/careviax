@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 import { serverCache } from '@/lib/utils/server-cache';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   authContextMock,
@@ -207,11 +208,6 @@ const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 
 function createRequest(headers?: Record<string, string>, search = '') {
   return new NextRequest(`http://localhost/api/dashboard/workflow${search}`, { headers });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/dashboard/workflow GET', () => {

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import type { MemberRole } from '@prisma/client';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const {
   authCtx,
@@ -64,11 +65,6 @@ import { GET } from './route';
 
 function createRequest(query = '') {
   return new NextRequest(`http://localhost/api/dispense-workbench/patients${query}`);
-}
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function cycle(overrides: {

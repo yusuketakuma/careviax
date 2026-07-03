@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const { authMock, membershipFindFirstMock, auditLogCreateMock, findManyMock, loggerErrorMock } =
   vi.hoisted(() => ({
@@ -42,11 +43,6 @@ function GET(req: NextRequest) {
 
 function createRequest(search = '', headers: Record<string, string> = { 'x-org-id': 'org_1' }) {
   return new NextRequest(`http://localhost/api/drug-master-import-logs${search}`, { headers });
-}
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/drug-master-import-logs', () => {
