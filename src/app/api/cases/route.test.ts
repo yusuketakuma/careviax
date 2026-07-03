@@ -83,6 +83,7 @@ describe('/api/cases', () => {
     careCaseFindManyMock.mockResolvedValue([
       {
         id: 'case_1',
+        display_id: 'cc0000000001',
         org_id: 'org_1',
         patient_id: 'patient_1',
         primary_pharmacist_id: 'pharmacist_1',
@@ -99,6 +100,7 @@ describe('/api/cases', () => {
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     careCaseCreateMock.mockResolvedValue({
       id: 'case_2',
+      display_id: 'cc0000000002',
       org_id: 'org_1',
       patient_id: 'patient_1',
       referral_source: '病院A',
@@ -116,6 +118,7 @@ describe('/api/cases', () => {
     careCaseFindManyMock.mockResolvedValueOnce([
       {
         id: 'case_1',
+        display_id: 'cc0000000001',
         org_id: 'org_1',
         patient_id: 'patient_1',
         primary_pharmacist_id: 'pharmacist_1',
@@ -129,6 +132,7 @@ describe('/api/cases', () => {
       },
       {
         id: 'case_0',
+        display_id: 'cc0000000000',
         org_id: 'org_1',
         patient_id: 'patient_1',
         primary_pharmacist_id: null,
@@ -170,6 +174,7 @@ describe('/api/cases', () => {
       data: [
         expect.objectContaining({
           id: 'case_1',
+          display_id: 'cc0000000001',
           primary_pharmacist_name: '担当薬剤師',
         }),
       ],
@@ -177,6 +182,8 @@ describe('/api/cases', () => {
       nextCursor: 'case_1',
     });
     expect(body.data).toHaveLength(1);
+    expect(body.data[0].id).toBe('case_1');
+    expect(body.data[0].display_id).not.toBe(body.data[0].id);
   });
 
   it('does not mark hasMore when cases exactly fill the requested limit', async () => {

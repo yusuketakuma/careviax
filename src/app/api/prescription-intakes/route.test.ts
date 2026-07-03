@@ -2852,6 +2852,7 @@ describe('/api/prescription-intakes GET', () => {
     prescriptionIntakeFindManyMock.mockResolvedValue([
       {
         id: 'intake_2',
+        display_id: 'r0000000002',
         cycle_id: 'cycle_2',
         source_type: 'paper',
         prescribed_date: new Date('2026-03-30T00:00:00.000Z'),
@@ -2863,12 +2864,14 @@ describe('/api/prescription-intakes GET', () => {
         refill_next_dispense_date: null,
         created_at: new Date('2026-03-30T10:00:00.000Z'),
         cycle: {
+          display_id: 'mcyc0000000002',
           overall_status: 'intake',
           patient_id: 'patient_2',
         },
       },
       {
         id: 'intake_1',
+        display_id: 'r0000000001',
         cycle_id: 'cycle_1',
         source_type: 'paper',
         prescribed_date: new Date('2026-03-30T00:00:00.000Z'),
@@ -2880,6 +2883,7 @@ describe('/api/prescription-intakes GET', () => {
         refill_next_dispense_date: null,
         created_at: new Date('2026-03-30T10:00:00.000Z'),
         cycle: {
+          display_id: 'mcyc0000000001',
           overall_status: 'intake',
           patient_id: 'patient_1',
         },
@@ -2927,6 +2931,41 @@ describe('/api/prescription-intakes GET', () => {
       }),
     );
     expect(prescriptionIntakeCountMock).not.toHaveBeenCalled();
+  });
+
+  it('returns additive display ids in the internal paginated response while keeping cursor ids as cuid', async () => {
+    const response = await GET(
+      createGetRequest('http://localhost/api/prescription-intakes?limit=1&include_total=1'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const findManyArgs = prescriptionIntakeFindManyMock.mock.calls[0]?.[0];
+    expect(findManyArgs.select).toEqual(
+      expect.objectContaining({
+        id: true,
+        display_id: true,
+        cycle: expect.objectContaining({
+          select: expect.objectContaining({
+            display_id: true,
+          }),
+        }),
+      }),
+    );
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: [
+        {
+          id: 'intake_2',
+          display_id: 'r0000000002',
+          cycle: {
+            display_id: 'mcyc0000000002',
+          },
+        },
+      ],
+      nextCursor: 'intake_2',
+    });
+    expect(body.nextCursor).not.toBe('r0000000002');
   });
 
   it('passes care tag filters into the paginated query', async () => {
@@ -3161,6 +3200,7 @@ describe('/api/prescription-intakes GET', () => {
     prescriptionIntakeFindManyMock.mockResolvedValueOnce([
       {
         id: 'intake_search_1',
+        display_id: 'r0000000101',
         prescribed_date: new Date('2026-03-30T00:00:00.000Z'),
         prescriber_name: '佐藤 医師',
         prescriber_institution: '旧クリニック名',
@@ -3177,6 +3217,7 @@ describe('/api/prescription-intakes GET', () => {
           },
         ],
         cycle: {
+          display_id: 'mcyc0000000101',
           overall_status: 'intake',
           case_: {
             patient: {
@@ -3188,11 +3229,13 @@ describe('/api/prescription-intakes GET', () => {
       },
       {
         id: 'intake_search_2',
+        display_id: 'r0000000102',
         prescribed_date: new Date('2026-03-29T00:00:00.000Z'),
         prescriber_name: '鈴木 医師',
         prescriber_institution: null,
         prescriber_institution_ref: null,
         cycle: {
+          display_id: 'mcyc0000000102',
           overall_status: 'ready_to_dispense',
           case_: {
             patient: {
@@ -3250,6 +3293,7 @@ describe('/api/prescription-intakes GET', () => {
     );
     expect(findManyArgs.select).toEqual({
       id: true,
+      display_id: true,
       prescribed_date: true,
       prescriber_name: true,
       prescriber_institution: true,
@@ -3260,6 +3304,7 @@ describe('/api/prescription-intakes GET', () => {
       },
       cycle: {
         select: {
+          display_id: true,
           overall_status: true,
           case_: {
             select: {
@@ -3280,12 +3325,14 @@ describe('/api/prescription-intakes GET', () => {
       data: [
         {
           id: 'intake_search_1',
+          display_id: 'r0000000101',
           prescribed_date: '2026-03-30T00:00:00.000Z',
           prescriber_name: '佐藤 医師',
           prescriber_institution: {
             name: '在宅クリニック',
           },
           cycle: {
+            display_id: 'mcyc0000000101',
             overall_status: 'intake',
             case_: {
               patient: {
@@ -3309,11 +3356,13 @@ describe('/api/prescription-intakes GET', () => {
     prescriptionIntakeFindManyMock.mockResolvedValueOnce([
       {
         id: 'intake_search_exact_1',
+        display_id: 'r0000000111',
         prescribed_date: new Date('2026-04-01T00:00:00.000Z'),
         prescriber_name: '佐藤 医師',
         prescriber_institution: null,
         prescriber_institution_ref: null,
         cycle: {
+          display_id: 'mcyc0000000111',
           overall_status: 'intake',
           case_: {
             patient: {
@@ -3341,10 +3390,12 @@ describe('/api/prescription-intakes GET', () => {
       data: [
         {
           id: 'intake_search_exact_1',
+          display_id: 'r0000000111',
           prescribed_date: '2026-04-01T00:00:00.000Z',
           prescriber_name: '佐藤 医師',
           prescriber_institution: null,
           cycle: {
+            display_id: 'mcyc0000000111',
             overall_status: 'intake',
             case_: {
               patient: {

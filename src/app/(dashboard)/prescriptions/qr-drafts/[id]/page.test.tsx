@@ -156,7 +156,7 @@ const baseDraft = {
 let draft = baseDraft;
 let mutationConfigs: MutationConfig[];
 let casesQueryResult: {
-  data?: { data: Array<{ id: string; status: string }> };
+  data?: { data: Array<{ id: string; display_id?: string | null; status: string }> };
   isError?: boolean;
   isLoading?: boolean;
 };
@@ -270,7 +270,9 @@ describe('QrDraftReviewPage case lookup error handling', () => {
       patient_id: 'pt&case_id=case_other',
     };
     casesQueryResult = {
-      data: { data: [{ id: 'case&safe=1', status: 'active' }] },
+      data: {
+        data: [{ id: 'case&safe=1', display_id: 'cc0000000789', status: 'active' }],
+      },
       isError: false,
       isLoading: false,
     };
@@ -281,6 +283,12 @@ describe('QrDraftReviewPage case lookup error handling', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(<QrDraftReviewPage />);
+
+    const option = screen.getByRole('option', {
+      name: 'cc0000000789 (active)',
+    }) as HTMLOptionElement;
+    expect(option.value).toBe('case&safe=1');
+    expect(screen.queryByText(/case&safe/)).toBeNull();
 
     const patientCasesQuery = useQueryMock.mock.calls
       .map(([config]) => config as QueryConfig)
@@ -301,6 +309,7 @@ describe('QrDraftReviewPage case lookup error handling', () => {
     expect(registrationUrl.searchParams.get('qr_draft_id')).toBe('draft&evil=1');
     expect(registrationUrl.searchParams.get('patient_id')).toBe('pt&case_id=case_other');
     expect(registrationUrl.searchParams.get('case_id')).toBe('case&safe=1');
+    expect(registrationUrl.search).not.toContain('cc0000000789');
   });
 
   it('requires adopting a review-required DrugMaster candidate before QR confirmation', async () => {
@@ -324,7 +333,7 @@ describe('QrDraftReviewPage case lookup error handling', () => {
       },
     };
     casesQueryResult = {
-      data: { data: [{ id: 'case_1', status: 'active' }] },
+      data: { data: [{ id: 'case_1', display_id: 'cc0000000789', status: 'active' }] },
       isError: false,
       isLoading: false,
     };
@@ -366,6 +375,8 @@ describe('QrDraftReviewPage case lookup error handling', () => {
       }),
     );
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body.case_id).toBe('case_1');
+    expect(JSON.stringify(body)).not.toContain('cc0000000789');
     expect(body.lines[0]).toEqual(
       expect.objectContaining({
         drug_name: 'アムロジピン錠5mg',

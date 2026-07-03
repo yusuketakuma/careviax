@@ -17,6 +17,7 @@ import { CYCLE_STATUS_CONFIG } from './prescription.shared';
 
 export type PrescriptionIntakeRow = {
   id: string;
+  display_id?: string | null;
   cycle_id: string;
   source_type: string;
   prescribed_date: string;
@@ -27,6 +28,7 @@ export type PrescriptionIntakeRow = {
   refill_next_dispense_date: string | null;
   created_at: string;
   cycle: {
+    display_id?: string | null;
     overall_status: string;
     patient_id: string;
     case_: {

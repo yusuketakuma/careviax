@@ -39,6 +39,7 @@ import {
 import { LoadingButton } from '@/components/ui/loading-button';
 import { cn } from '@/lib/utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { formatDisplayEntityLabel } from '@/lib/display-id/display-labels';
 import { buildQrDraftShortcutLinks, QR_DRAFT_CONFIRM_SUCCESS_HREF } from './page.helpers';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
@@ -167,6 +168,7 @@ interface DraftLine {
 
 interface CaseOption {
   id: string;
+  display_id?: string | null;
   status: string;
 }
 
@@ -810,7 +812,11 @@ export default function QrDraftReviewPage() {
                 <SelectContent>
                   {cases.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
-                      {c.id.slice(0, 8)}… ({c.status})
+                      {formatDisplayEntityLabel(c, {
+                        fallbackFrom: 'start',
+                        fallbackSuffix: '…',
+                      })}{' '}
+                      ({c.status})
                     </SelectItem>
                   ))}
                 </SelectContent>

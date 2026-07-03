@@ -27,6 +27,7 @@ import { isOfflineEncryptionUnavailableError } from '@/lib/offline/crypto';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { messageFromError } from '@/lib/utils/error-message';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { formatDisplayEntityLabel } from '@/lib/display-id/display-labels';
 import { buildDrugMastersApiPath } from '@/lib/drug-masters/api-paths';
 import { downscaleImage } from '@/lib/files/downscale-image';
 import { PatientMcsSummarySection } from '@/components/patient-mcs/patient-mcs-summary-section';
@@ -111,6 +112,7 @@ type SelectedPatientDetail = {
 
 type CaseOption = {
   id: string;
+  display_id?: string | null;
   status: string;
   patient?: {
     residences?: Array<{
@@ -126,6 +128,7 @@ type FacilityBatchEntryDraft = {
   patient_birth_date: string;
   patient_identity_snapshot: PatientIdentitySnapshot;
   case_id: string;
+  case_display_id: string | null;
   case_status: string;
   facility_label: string | null;
   lines: PrescriptionLineInput[];
@@ -709,6 +712,14 @@ export function PrescriptionIntakeForm() {
     enabled: !!orgId && !!selectedPatientId && !!selectedCaseId,
   });
   const latestPreviousIntake = previousPrescriptionsData?.data?.[0] ?? null;
+  const selectedCaseOption =
+    casesData?.data.find((candidate) => candidate.id === selectedCaseId) ?? null;
+  const selectedCaseDisplayLabel = selectedCaseId
+    ? formatDisplayEntityLabel({
+        id: selectedCaseId,
+        display_id: selectedCaseOption?.display_id ?? null,
+      })
+    : '未選択';
 
   const { data: qrDraftData } = useQuery({
     queryKey: ['qr-draft-import', orgId, initialQrDraftId],
@@ -1286,6 +1297,7 @@ export function PrescriptionIntakeForm() {
         patient_birth_date: selectedPatientBirthDate,
         patient_identity_snapshot: identitySnapshot,
         case_id: selectedCaseId,
+        case_display_id: selectedCase?.display_id ?? null,
         case_status: selectedCase?.status ?? 'active',
         facility_label: selectedCase?.patient?.residences?.[0]?.address ? '施設確認済み' : null,
         lines: lines.map((line, index) => ({
@@ -1966,7 +1978,7 @@ export function PrescriptionIntakeForm() {
               <option value="">ケースを選択</option>
               {casesData.data.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.id.slice(-8)} — {c.status}
+                  {formatDisplayEntityLabel(c)} — {c.status}
                 </option>
               ))}
             </select>
@@ -2596,7 +2608,7 @@ export function PrescriptionIntakeForm() {
                   ) : null}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  ケース {selectedCaseId ? `${selectedCaseId.slice(-8)}` : '未選択'} / 明細{' '}
+                  ケース {selectedCaseDisplayLabel} / 明細{' '}
                   {lines.filter((line) => line.drug_name.trim().length > 0).length} 行
                 </p>
               </div>
@@ -2633,8 +2645,12 @@ export function PrescriptionIntakeForm() {
                           </span>
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          ケース {entry.case_id.slice(-8)} / {entry.case_status} /{' '}
-                          {entry.lines.length} 行
+                          ケース{' '}
+                          {formatDisplayEntityLabel({
+                            id: entry.case_id,
+                            display_id: entry.case_display_id,
+                          })}{' '}
+                          / {entry.case_status} / {entry.lines.length} 行
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {entry.facility_label ?? '施設未設定'}

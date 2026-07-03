@@ -92,6 +92,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       cycle: {
         select: {
           id: true,
+          display_id: true,
           overall_status: true,
           patient_id: true,
           case_id: true,

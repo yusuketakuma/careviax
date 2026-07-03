@@ -11,6 +11,7 @@ import { PatientHistoryQuickLinks } from '@/components/features/patients/patient
 import { PatientHistorySummary } from '@/components/features/patients/patient-history-summary';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { formatDisplayEntityLabel } from '@/lib/display-id/display-labels';
 import { buildPrescriptionIntakeApiPath } from '@/lib/prescriptions/api-paths';
 import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
@@ -29,6 +30,7 @@ import {
 
 type IntakeDetail = {
   id: string;
+  display_id: string | null;
   cycle_id: string;
   source_type: string;
   prescribed_date: string;
@@ -53,6 +55,7 @@ type IntakeDetail = {
   lines: PrescriptionLine[];
   cycle: {
     id: string;
+    display_id: string | null;
     overall_status: string;
     patient_id: string;
     case_id: string;
@@ -123,6 +126,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
   };
   const inquiries = data.cycle.inquiries;
   const prescriptionDetailHref = buildPrescriptionHref(data.id);
+  const prescriptionDisplayLabel = formatDisplayEntityLabel(data);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -192,7 +196,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
             分割 {data.split_dispense_current}/{data.split_dispense_total}回
           </span>
         )}
-        <span className="text-[10px]">ID: {data.id.slice(-8)}</span>
+        <span className="text-[10px]">ID: {prescriptionDisplayLabel}</span>
       </div>
 
       <PatientHistoryQuickLinks patientId={patient.id} patientName={patient.name} />

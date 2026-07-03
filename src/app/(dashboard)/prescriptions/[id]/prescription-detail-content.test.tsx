@@ -66,6 +66,7 @@ type QueryConfig = {
 function buildPrescriptionDetail(patientId = 'patient_1') {
   return {
     id: 'intake_1',
+    display_id: null,
     cycle_id: 'cycle_1',
     source_type: 'paper',
     prescribed_date: '2026-06-01T00:00:00.000Z',
@@ -85,6 +86,7 @@ function buildPrescriptionDetail(patientId = 'patient_1') {
     lines: [],
     cycle: {
       id: 'cycle_1',
+      display_id: null,
       overall_status: 'pending',
       patient_id: patientId,
       case_id: 'case_1',
@@ -190,6 +192,34 @@ describe('PrescriptionDetailContent', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     },
   );
+
+  it('uses display_id for visible intake and cycle labels without changing patient identity links', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: {
+        ...buildPrescriptionDetail('patient_1'),
+        id: 'intake_cuid_12345678',
+        display_id: 'r0000000202',
+        cycle_id: 'cycle_cuid_87654321',
+        cycle: {
+          ...buildPrescriptionDetail('patient_1').cycle,
+          id: 'cycle_cuid_87654321',
+          display_id: 'mcyc0000000009',
+        },
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    render(<PrescriptionDetailContent intakeId="intake_cuid_12345678" />);
+
+    expect(screen.queryByText(/受付ID: r0000000202 \/ サイクル: mcyc0000000009/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '田中 一郎 の処方受付の説明' }));
+    expect(screen.getByText(/受付ID: r0000000202 \/ サイクル: mcyc0000000009/)).toBeTruthy();
+    expect(screen.queryByText(/12345678/)).toBeNull();
+    expect(screen.queryByText(/87654321/)).toBeNull();
+    expect(buildPatientHrefMock).toHaveBeenCalledWith('patient_1');
+  });
 
   it('renders all patient detail links through buildPatientHref', () => {
     const hostilePatientId = 'patient/1?x=y#z';

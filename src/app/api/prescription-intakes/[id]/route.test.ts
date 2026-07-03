@@ -142,6 +142,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
   it('keeps PHI-rich prescription detail responses no-store', async () => {
     prescriptionIntakeFindFirstMock.mockResolvedValue({
       id: 'intake_phi_1',
+      display_id: 'r0000000202',
       org_id: 'org_1',
       source_type: 'qr',
       lines: [
@@ -165,6 +166,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
         },
       ],
       cycle: {
+        display_id: 'mcyc0000000009',
         patient_id: 'patient_1',
         case_id: 'case_1',
         case_: {
@@ -193,8 +195,11 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    const findFirstArg = prescriptionIntakeFindFirstMock.mock.calls[0]?.[0];
+    expect(findFirstArg.include.cycle.select.display_id).toBe(true);
     await expect(response.json()).resolves.toMatchObject({
       id: 'intake_phi_1',
+      display_id: 'r0000000202',
       lines: [expect.objectContaining({ drug_name: 'アムロジピン錠5mg' })],
       jahis_supplemental_records: [
         expect.objectContaining({
@@ -203,6 +208,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
         }),
       ],
       cycle: {
+        display_id: 'mcyc0000000009',
         case_: {
           patient: expect.objectContaining({ name: '山田 太郎' }),
         },

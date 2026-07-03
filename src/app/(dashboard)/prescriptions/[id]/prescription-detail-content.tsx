@@ -19,6 +19,7 @@ import {
 import Link from 'next/link';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { formatDisplayEntityLabel } from '@/lib/display-id/display-labels';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildPrescriptionIntakeApiPath } from '@/lib/prescriptions/api-paths';
 import { Badge } from '@/components/ui/badge';
@@ -57,6 +58,7 @@ type PrescriberInstitutionRef = {
 
 type PrescriptionIntakeDetail = {
   id: string;
+  display_id: string | null;
   cycle_id: string;
   source_type: string;
   prescribed_date: string;
@@ -76,6 +78,7 @@ type PrescriptionIntakeDetail = {
   lines: PrescriptionLine[];
   cycle: {
     id: string;
+    display_id: string | null;
     overall_status: string;
     patient_id: string;
     case_id: string;
@@ -269,12 +272,17 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
   const inquiries = data.cycle.inquiries;
   const expiryDate = data.prescription_expiry_date ? parseISO(data.prescription_expiry_date) : null;
   const daysUntilExpiry = expiryDate ? differenceInCalendarDays(expiryDate, new Date()) : null;
+  const prescriptionDisplayLabel = formatDisplayEntityLabel(data);
+  const cycleDisplayLabel = formatDisplayEntityLabel({
+    id: data.cycle_id,
+    display_id: data.cycle.display_id,
+  });
 
   return (
     <PageScaffold>
       <WorkflowPageHeader
         title={`${patient.name} の処方受付`}
-        description={`受付ID: ${intakeId.slice(-8)} / サイクル: ${data.cycle_id.slice(-8)}`}
+        description={`受付ID: ${prescriptionDisplayLabel} / サイクル: ${cycleDisplayLabel}`}
         action={{
           href: '/prescriptions',
           label: '一覧へ戻る',

@@ -244,11 +244,13 @@ function buildPrescriptionIntakeSearchWhere(query: string): Prisma.PrescriptionI
 
 function toPrescriptionSearchResponse(input: {
   id: string;
+  display_id: string | null;
   prescribed_date: Date;
   prescriber_name: string | null;
   prescriber_institution: string | null;
   prescriber_institution_ref: { name: string } | null;
   cycle: {
+    display_id: string | null;
     overall_status: string;
     case_: {
       patient: {
@@ -261,10 +263,12 @@ function toPrescriptionSearchResponse(input: {
   const institutionName = input.prescriber_institution_ref?.name ?? input.prescriber_institution;
   return {
     id: input.id,
+    display_id: input.display_id,
     prescribed_date: input.prescribed_date.toISOString(),
     prescriber_name: input.prescriber_name,
     prescriber_institution: institutionName ? { name: institutionName } : null,
     cycle: {
+      display_id: input.cycle.display_id,
       overall_status: input.cycle.overall_status,
       case_: input.cycle.case_
         ? {
@@ -450,6 +454,7 @@ const authenticatedGET = withAuthContext(
           orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
           select: {
             id: true,
+            display_id: true,
             prescribed_date: true,
             prescriber_name: true,
             prescriber_institution: true,
@@ -460,6 +465,7 @@ const authenticatedGET = withAuthContext(
             },
             cycle: {
               select: {
+                display_id: true,
                 overall_status: true,
                 case_: {
                   select: {
@@ -498,6 +504,7 @@ const authenticatedGET = withAuthContext(
         orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
         select: {
           id: true,
+          display_id: true,
           cycle_id: true,
           source_type: true,
           prescribed_date: true,
@@ -510,6 +517,7 @@ const authenticatedGET = withAuthContext(
           created_at: true,
           cycle: {
             select: {
+              display_id: true,
               overall_status: true,
               patient_id: true,
               case_: {

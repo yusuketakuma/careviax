@@ -559,7 +559,19 @@ describe('buildExternalAccessPayload', () => {
   });
 
   it('limits case-backed payload reads to the stored grant case boundary', async () => {
-    prismaMock.careCase.findMany.mockResolvedValue([{ id: 'case_allowed' }]);
+    prismaMock.patient.findFirst.mockResolvedValueOnce({
+      id: 'patient_1',
+      display_id: 'p0000000999',
+      name: '患者 太郎',
+      birth_date: new Date('1950-01-01T00:00:00.000Z'),
+      gender: 'male',
+      archived_at: null,
+      phone: '090-0000-0000',
+      allergy_info: 'penicillin',
+    });
+    prismaMock.careCase.findMany.mockResolvedValue([
+      { id: 'case_allowed', display_id: 'cc0000000999' },
+    ]);
     prismaMock.visitSchedule.findMany.mockResolvedValue([]);
     prismaMock.careReport.findMany.mockResolvedValue([]);
 
@@ -608,6 +620,10 @@ describe('buildExternalAccessPayload', () => {
       visit_schedule: true,
       care_reports: true,
     });
+    const payloadText = JSON.stringify(payload);
+    expect(payloadText).not.toContain('display_id');
+    expect(payloadText).not.toContain('p0000000999');
+    expect(payloadText).not.toContain('cc0000000999');
   });
 
   it('filters shared upcoming visits from the Japan business date sentinel', async () => {

@@ -219,6 +219,7 @@ describe('PrescriptionInlineDetail', () => {
   function buildDetailData(prescriptionId: string, patientId: string) {
     return {
       id: prescriptionId,
+      display_id: null,
       cycle_id: 'cycle_1',
       source_type: 'paper',
       prescribed_date: '2026-04-20T00:00:00.000Z',
@@ -254,6 +255,7 @@ describe('PrescriptionInlineDetail', () => {
       ],
       cycle: {
         id: 'cycle_1',
+        display_id: null,
         overall_status: 'intake_received',
         patient_id: patientId,
         case_id: 'case_1',
@@ -270,6 +272,41 @@ describe('PrescriptionInlineDetail', () => {
       },
     };
   }
+
+  it('renders the visible prescription label from display_id while keeping href identity as cuid', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: {
+        ...buildDetailData('intake_cuid_12345678', 'patient_1'),
+        display_id: 'r0000000201',
+      },
+      isLoading: false,
+      error: null,
+    });
+    vi.mocked(buildPrescriptionHref).mockClear();
+
+    render(<PrescriptionInlineDetail intakeId="intake_cuid_12345678" />);
+
+    expect(screen.getByText('ID: r0000000201')).toBeTruthy();
+    expect(screen.queryByText('ID: 12345678')).toBeNull();
+    expect(vi.mocked(buildPrescriptionHref).mock.calls).toEqual([['intake_cuid_12345678']]);
+    expect(screen.getByRole('link', { name: /詳細/ }).getAttribute('href')).toBe(
+      '/prescriptions/intake_cuid_12345678',
+    );
+  });
+
+  it('falls back to the existing prescription cuid suffix when display_id is absent', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: buildDetailData('intake_cuid_12345678', 'patient_1'),
+      isLoading: false,
+      error: null,
+    });
+
+    render(<PrescriptionInlineDetail intakeId="intake_cuid_12345678" />);
+
+    expect(screen.getByText('ID: 12345678')).toBeTruthy();
+  });
 
   it('delegates 詳細/全画面表示 to buildPrescriptionHref and 患者 to buildPatientHref (return-value)', () => {
     useOrgIdMock.mockReturnValue('org_1');

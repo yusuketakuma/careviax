@@ -200,7 +200,9 @@ describe('PrescriptionIntakeForm secondary-lookup fetch-error handling', () => {
       key === 'patient_id' ? 'patient_1' : key === 'case_id' ? 'case_1' : '',
     );
     setupQueries({
-      'patient-cases': { data: { data: [{ id: 'case_1', status: 'active' }] } },
+      'patient-cases': {
+        data: { data: [{ id: 'case_1', display_id: 'cc0000000123', status: 'active' }] },
+      },
       'patient-prescriptions': { data: { data: [] } },
     });
     useMutationMock.mockImplementation(
@@ -219,6 +221,12 @@ describe('PrescriptionIntakeForm secondary-lookup fetch-error handling', () => {
     try {
       render(<PrescriptionIntakeForm />);
 
+      const caseOption = screen.getByRole('option', {
+        name: 'cc0000000123 — active',
+      }) as HTMLOptionElement;
+      expect(caseOption.value).toBe('case_1');
+      expect(screen.queryByRole('option', { name: 'case_1 — active' })).toBeNull();
+
       fireEvent.click(screen.getByRole('button', { name: '薬剤候補を選択' }));
       fireEvent.change(screen.getByLabelText('明細行 1 の用量'), { target: { value: '1錠' } });
       fireEvent.change(screen.getByLabelText('明細行 1 の用法'), {
@@ -232,6 +240,8 @@ describe('PrescriptionIntakeForm secondary-lookup fetch-error handling', () => {
       const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(init.headers).toEqual({ 'Content-Type': 'application/json', 'x-org-id': 'org_1' });
       const body = JSON.parse(String(init.body));
+      expect(body.case_id).toBe('case_1');
+      expect(JSON.stringify(body)).not.toContain('cc0000000123');
       expect(body.lines[0]).toEqual(
         expect.objectContaining({
           drug_name: 'アムロジピン錠5mg',
@@ -244,5 +254,55 @@ describe('PrescriptionIntakeForm secondary-lookup fetch-error handling', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it('uses CareCase display_id in facility batch labels while storing the cuid case id', async () => {
+    searchParamsGet.mockImplementation((key: string) =>
+      key === 'patient_id' ? 'patient_1' : key === 'case_id' ? 'case_1' : '',
+    );
+    setupQueries({
+      'selected-patient': {
+        data: {
+          id: 'patient_1',
+          name: '田中 一郎',
+          name_kana: 'タナカ イチロウ',
+          birth_date: '1980-01-01',
+        },
+      },
+      'patient-cases': {
+        data: {
+          data: [
+            {
+              id: 'case_1',
+              display_id: 'cc0000000456',
+              status: 'active',
+              patient: { residences: [{ address: '施設A' }] },
+            },
+          ],
+        },
+      },
+      'patient-prescriptions': { data: { data: [] } },
+    });
+
+    render(<PrescriptionIntakeForm />);
+
+    await waitFor(() =>
+      expect(screen.getByDisplayValue('田中 一郎 (タナカ イチロウ)')).toBeTruthy(),
+    );
+    fireEvent.change(screen.getByLabelText('ソースタイプ'), {
+      target: { value: 'facility_batch' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '薬剤候補を選択' }));
+    fireEvent.change(screen.getByLabelText('明細行 1 の用量'), { target: { value: '1錠' } });
+    fireEvent.change(screen.getByLabelText('明細行 1 の用法'), {
+      target: { value: '1日1回朝食後' },
+    });
+
+    expect(screen.getByText(/ケース cc0000000456 \/ 明細 1 行/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '一括リストへ追加' }));
+
+    expect(screen.getByText(/ケース cc0000000456 \/ active \/ 1 行/)).toBeTruthy();
+    expect(screen.queryByText(/ケース case_1/)).toBeNull();
   });
 });
