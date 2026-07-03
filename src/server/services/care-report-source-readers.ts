@@ -6,6 +6,10 @@ export type CareReportSourceMedicationCycleDb = Pick<
   typeof prisma | Prisma.TransactionClient,
   'medicationCycle'
 >;
+export type CareReportSourceResidualMedicationDb = Pick<
+  typeof prisma | Prisma.TransactionClient,
+  'residualMedication'
+>;
 
 export type CareReportSourcePatient = {
   id: string;
@@ -16,6 +20,13 @@ export type CareReportSourcePatient = {
 
 export type CareReportSourceMedicationCycle = {
   id: string;
+};
+
+export type CareReportSourceResidualMedication = {
+  drug_name: string;
+  remaining_quantity: number;
+  excess_days: number | null;
+  is_reduction_target: boolean;
 };
 
 export async function getCareReportSourcePatient(
@@ -36,5 +47,20 @@ export async function getCareReportSourceMedicationCycle(
     where: { id: args.cycleId, org_id: args.orgId },
     orderBy: { created_at: 'desc' },
     select: { id: true },
+  });
+}
+
+export async function listCareReportSourceResidualMedications(
+  db: CareReportSourceResidualMedicationDb,
+  args: { orgId: string; visitRecordId: string },
+): Promise<CareReportSourceResidualMedication[]> {
+  return db.residualMedication.findMany({
+    where: { org_id: args.orgId, visit_record_id: args.visitRecordId },
+    select: {
+      drug_name: true,
+      remaining_quantity: true,
+      excess_days: true,
+      is_reduction_target: true,
+    },
   });
 }

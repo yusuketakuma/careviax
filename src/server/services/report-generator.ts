@@ -30,6 +30,7 @@ import {
 import {
   getCareReportSourceMedicationCycle,
   getCareReportSourcePatient,
+  listCareReportSourceResidualMedications,
 } from '@/server/services/care-report-source-readers';
 
 // CareReport.report_type は Prisma enum ReportType に対応する。
@@ -266,15 +267,7 @@ export async function generateReportsFromVisit(
   ] = await Promise.all([
     getCareReportSourcePatient(prisma, { orgId, patientId: visitRecord.patient_id }),
     getCareReportSourceMedicationCycle(prisma, { orgId, cycleId: schedule.cycle_id }),
-    prisma.residualMedication.findMany({
-      where: { org_id: orgId, visit_record_id: visitRecordId },
-      select: {
-        drug_name: true,
-        remaining_quantity: true,
-        excess_days: true,
-        is_reduction_target: true,
-      },
-    }),
+    listCareReportSourceResidualMedications(prisma, { orgId, visitRecordId }),
     prisma.careTeamLink.findMany({
       where: { case_id: caseId, org_id: orgId, role: { in: ['physician', 'care_manager'] } },
       select: { role: true, name: true, organization_name: true },
