@@ -1,9 +1,33 @@
+import { formatUtcDateKey } from '@/lib/date-key';
 import type {
   SetRowStatusKey,
   SetSlotKey,
   SetSlotMark,
 } from '@/lib/dispensing/set-workspace-shared';
-import { MAX_SET_PLAN_DAY_COUNT } from '@/lib/set-plan-period';
+import { countInclusiveDateKeys, MAX_SET_PLAN_DAY_COUNT } from '@/lib/set-plan-period';
+
+/**
+ * 対象期間(target_period_start〜end)の内包日数を算出する単一の SSOT。
+ *
+ * target_period_start / target_period_end は SetPlan 作成時に
+ * `new Date('YYYY-MM-DD')`(= UTC 0:00)として保存され、作成時の期間上限
+ * バリデーション(isSetPlanPeriodWithinLimit → countInclusiveDateKeys)も
+ * 同じ UTC 基準の date-key で日数を数えている。導出側(スロット充足・カレンダー
+ * 日数)も同じ UTC date-key ベースで数えることで、
+ *   1. 作成時に検証した日数と完全一致させる(算定・完了判定の一貫性)
+ *   2. ローカル startOfDay + Math.round / Math.floor の混在による丸め方向の
+ *      不一致(DST 跨ぎで round と floor が 1 日ずれる)を根絶する
+ *      — 実行時 TZ がサマータイム地域だと spring-forward の 23h 日で floor は
+ *        1 日過少計上し、セット完了ゲートが実期間より1日短く「完了」扱いに
+ *        なる医療安全上の false-completion を生む。UTC date-key は DST/TZ 非依存。
+ * を保証する。丸めは発生しない(UTC 0:00 同士の差は 86_400_000ms の整数倍)。
+ */
+function inclusiveDayCount(periodStart: Date, periodEnd: Date): number {
+  return Math.min(
+    MAX_SET_PLAN_DAY_COUNT,
+    Math.max(1, countInclusiveDateKeys(formatUtcDateKey(periodStart), formatUtcDateKey(periodEnd))),
+  );
+}
 
 /**
  * new_09_set: SetPlan / SetBatch からの行状態・スロット充足の導出(純関数)。
@@ -26,12 +50,6 @@ export type DerivablePlan = {
   audits: Array<{ result: string }>;
 };
 
-function startOfDay(date: Date): Date {
-  const next = new Date(date);
-  next.setHours(0, 0, 0, 0);
-  return next;
-}
-
 /** 朝/昼/夕 スロットの充足マーク(全日分=✓ / 一部=・ / なし=—) */
 export function deriveSlotMarks(plan: DerivablePlan | null): Record<SetSlotKey, SetSlotMark> {
   const marks: Record<SetSlotKey, SetSlotMark> = {
@@ -40,17 +58,8 @@ export function deriveSlotMarks(plan: DerivablePlan | null): Record<SetSlotKey, 
     evening: 'none',
   };
   if (!plan) return marks;
-  const dayCount = Math.min(
-    MAX_SET_PLAN_DAY_COUNT,
-    Math.max(
-      1,
-      Math.round(
-        (startOfDay(plan.target_period_end).getTime() -
-          startOfDay(plan.target_period_start).getTime()) /
-          86_400_000,
-      ) + 1,
-    ),
-  );
+  // 完了判定の分母は buildCalendarMatrix と同一の UTC 基準 SSOT で数える。
+  const dayCount = inclusiveDayCount(plan.target_period_start, plan.target_period_end);
   for (const slot of SET_SLOT_KEYS) {
     const coveredDays = new Set(
       plan.batches.filter((batch) => batch.slot === slot).map((batch) => batch.day_number),
@@ -206,14 +215,6 @@ function formatDateFromStart(start: Date, offsetDays: number): string {
   return `${year}-${month}-${day}`;
 }
 
-function diffInclusiveDays(start: Date, end: Date): number {
-  const startDay = new Date(start);
-  startDay.setHours(0, 0, 0, 0);
-  const endDay = new Date(end);
-  endDay.setHours(0, 0, 0, 0);
-  return Math.floor((endDay.getTime() - startDay.getTime()) / 86_400_000) + 1;
-}
-
 /**
  * SetBatch フラット配列を 7day(または対象期間日数)× slot のマトリクスへ pivot し、
  * completion_gate(セット完了 / 監査完了の可否)を併せて算出する純関数。
@@ -225,10 +226,9 @@ export function buildCalendarMatrix(args: {
   batches: CalendarPivotBatch[];
 }): CalendarMatrix {
   const { periodStart, periodEnd, lines, batches } = args;
-  const dayCount = Math.min(
-    MAX_SET_PLAN_DAY_COUNT,
-    Math.max(1, diffInclusiveDays(periodStart, periodEnd)),
-  );
+  // deriveSlotMarks と同一の UTC 基準 SSOT。ローカル startOfDay + Math.floor は
+  // DST 跨ぎで1日過少計上し得るため使わない(詳細は inclusiveDayCount のコメント)。
+  const dayCount = inclusiveDayCount(periodStart, periodEnd);
 
   // line_id -> day_number -> slot -> batch の索引を構築。
   const batchIndex = new Map<string, Map<number, Map<CalendarSlotKey, CalendarPivotBatch>>>();
