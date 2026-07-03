@@ -29,6 +29,8 @@ const PATIENT_DISPLAY_ID_W1_MIGRATION =
   'prisma/migrations/20260703150000_add_patient_display_ids/migration.sql';
 const PRESCRIPTION_DISPLAY_ID_W2_MIGRATION =
   'prisma/migrations/20260703152000_add_prescription_display_ids/migration.sql';
+const VISIT_COMMUNICATION_DISPLAY_ID_W3_MIGRATION =
+  'prisma/migrations/20260703153000_add_visit_communication_display_ids/migration.sql';
 const PATIENT_DISPLAY_ID_W1_MODELS = [
   'Patient',
   'Residence',
@@ -69,6 +71,34 @@ const PRESCRIPTION_DISPLAY_ID_W2_MODELS = [
   'QrScanDraft',
   'JahisSupplementalRecord',
 ] as const satisfies readonly DisplayIdModel[];
+const VISIT_DISPLAY_ID_W3_MODELS = [
+  'VisitVehicleResource',
+  'VisitSchedule',
+  'FacilityVisitBatch',
+  'VisitRecord',
+  'VisitHandoffExtraction',
+  'VisitPreparation',
+  'VisitScheduleProposal',
+  'VisitScheduleProposalBatch',
+  'VisitScheduleContactLog',
+  'VisitScheduleOverride',
+] as const satisfies readonly DisplayIdModel[];
+const COMMUNICATION_DISPLAY_ID_W3_MODELS = [
+  'CommunicationEvent',
+  'CommunicationRequest',
+  'CommunicationResponse',
+  'CareReport',
+  'CareReportSendRequest',
+  'DeliveryRecord',
+  'ConferenceNote',
+  'EscalationRule',
+  'ExternalAccessGrant',
+  'TracingReport',
+  'PatientSelfReport',
+  'CommunityActivity',
+  'TaskComment',
+  'HandoffBoard',
+] as const satisfies readonly DisplayIdModel[];
 const DISPLAY_ID_SCHEMA_WAVES = [
   {
     label: 'W1 patient-domain',
@@ -81,6 +111,18 @@ const DISPLAY_ID_SCHEMA_WAVES = [
     schemaFile: 'prescription.prisma',
     migrationPath: PRESCRIPTION_DISPLAY_ID_W2_MIGRATION,
     models: PRESCRIPTION_DISPLAY_ID_W2_MODELS,
+  },
+  {
+    label: 'W3 visit-domain',
+    schemaFile: 'visit.prisma',
+    migrationPath: VISIT_COMMUNICATION_DISPLAY_ID_W3_MIGRATION,
+    models: VISIT_DISPLAY_ID_W3_MODELS,
+  },
+  {
+    label: 'W3 communication-domain',
+    schemaFile: 'communication.prisma',
+    migrationPath: VISIT_COMMUNICATION_DISPLAY_ID_W3_MIGRATION,
+    models: COMMUNICATION_DISPLAY_ID_W3_MODELS,
   },
 ] as const;
 const DISPLAY_ID_WAVE_MODELS = DISPLAY_ID_SCHEMA_WAVES.flatMap((wave) => wave.models);

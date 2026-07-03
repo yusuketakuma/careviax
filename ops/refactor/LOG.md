@@ -158,6 +158,23 @@
   `NODE_OPTIONS=--max-old-space-size=12288 pnpm typecheck` と `typecheck:no-unused` green。
 - レビュー: db_steward read-only LOW（`--max-rows` usage ambiguity）は wording 修正済み。self-commit なし。
 
+## 2026-07-04 ID-2-W3 report-ready
+
+- 分類: infra/db / display_id visit+communication wave 3
+- 対象: `prisma/schema/visit.prisma`, `prisma/schema/communication.prisma`,
+  new `20260703153000_add_visit_communication_display_ids`, `src/lib/db/display-id.test.ts`, 台帳3ファイル
+- 実施: visit.prisma 10 + communication.prisma 14 direct org-scoped model へ nullable `display_id` と
+  `@@unique([org_id, display_id])` を追加。migration は W1/W2 同型の `ADD COLUMN` +
+  `WHERE display_id IS NOT NULL` partial unique index のみ。
+- 方針: `HandoffBoard` は direct org として W3 対象。`HandoffItem` は registry `orgViaParent` /
+  `board_id` 経由で direct `org_id` が無いため W3 generic backfill から除外し W7 残余へ。
+- backfill: local e2e dry-run は対象 NULL 102 rows・issues 0。apply は102 rows backfilled、
+  postChecks は全24 model null 0・duplicate 0・invalid 0・sequenceMismatch 0。seed 後 dry-run も全0。
+- 検証: prisma validate/db:generate green。`pnpm db:e2e:prepare` / W3 apply / `pnpm db:e2e:seed` /
+  post-seed dry-run green。focused DB vitest 29/29 green。scoped eslint/format/diff-check green。
+  `NODE_OPTIONS=--max-old-space-size=12288 pnpm typecheck` と `typecheck:no-unused` green。
+- レビュー: db_steward read-only No Findings。self-commit なし。
+
 ## 2026-07-03 DR-DUP1 2e0c7fdb
 
 - 分類: bug/data-integrity / defensive validation

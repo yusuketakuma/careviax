@@ -55,6 +55,7 @@ enum SelfReportStatus {
 model CommunicationEvent {
   id                  String               @id @default(cuid())
   org_id              String
+  display_id          String?
   patient_id          String?
   case_id             String?
   event_type          String // schedule_change/physician_report/care_manager_report/tracing_report/delivery_failure/resend
@@ -69,6 +70,7 @@ model CommunicationEvent {
   created_at          DateTime             @default(now())
   updated_at          DateTime             @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([patient_id])
   @@index([event_type])
@@ -77,6 +79,7 @@ model CommunicationEvent {
 model CommunicationRequest {
   id                  String        @id @default(cuid())
   org_id              String
+  display_id          String?
   patient_id          String?
   case_id             String?
   request_type        String
@@ -97,6 +100,7 @@ model CommunicationRequest {
 
   responses CommunicationResponse[]
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([status])
   @@index([related_entity_type, related_entity_id])
@@ -105,6 +109,7 @@ model CommunicationRequest {
 model CommunicationResponse {
   id                  String               @id @default(cuid())
   org_id              String
+  display_id          String?
   request_id          String
   request             CommunicationRequest @relation(fields: [request_id], references: [id])
   responder_name      String
@@ -114,6 +119,7 @@ model CommunicationResponse {
   created_at          DateTime             @default(now())
   updated_at          DateTime             @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([org_id, response_intent_key])
   @@index([org_id])
   @@index([request_id])
@@ -122,6 +128,7 @@ model CommunicationResponse {
 model CareReport {
   id                      String              @id @default(cuid())
   org_id                  String
+  display_id              String?
   visit_record_id         String?
   partner_visit_record_id String?
   partner_visit_record    PartnerVisitRecord? @relation("CareReportPartnerVisitRecord", fields: [partner_visit_record_id, org_id], references: [id, org_id])
@@ -147,6 +154,7 @@ model CareReport {
   // so one visit cannot produce duplicate report drafts for the same report_type.
   // Partner-visit source reports are similarly guarded by
   // CareReport_org_partner_visit_report_type_key.
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@unique([org_id, partner_visit_record_id, report_type], map: "CareReport_org_partner_visit_report_type_key")
   @@index([org_id])
@@ -159,6 +167,7 @@ model CareReport {
 model CareReportSendRequest {
   id                   String     @id @default(cuid())
   org_id               String
+  display_id           String?
   report_id            String
   report               CareReport @relation(fields: [report_id, org_id], references: [id, org_id])
   idempotency_key_hash String
@@ -172,6 +181,7 @@ model CareReportSendRequest {
   created_at           DateTime   @default(now())
   updated_at           DateTime   @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([org_id, report_id, idempotency_key_hash], name: "org_report_send_request_idempotency_key", map: "CareReportSendRequest_org_report_idem_key")
   @@index([org_id])
   @@index([org_id, report_id], map: "CareReportSendRequest_org_id_report_id_idx")
@@ -181,6 +191,7 @@ model CareReportSendRequest {
 model DeliveryRecord {
   id                  String               @id @default(cuid())
   org_id              String
+  display_id          String?
   report_id           String
   report              CareReport           @relation(fields: [report_id], references: [id])
   channel             CommunicationChannel
@@ -195,6 +206,7 @@ model DeliveryRecord {
   created_at          DateTime             @default(now())
   updated_at          DateTime             @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([org_id, delivery_intent_key])
   @@index([org_id])
   @@index([status])
@@ -212,6 +224,7 @@ enum ConferenceNoteType {
 model ConferenceNote {
   id                  String             @id @default(cuid())
   org_id              String
+  display_id          String?
   case_id             String?
   patient_id          String?
   facility_id         String?
@@ -231,6 +244,7 @@ model ConferenceNote {
   created_at          DateTime           @default(now())
   updated_at          DateTime           @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([case_id])
   @@index([patient_id])
@@ -242,6 +256,7 @@ model ConferenceNote {
 model EscalationRule {
   id           String   @id @default(cuid())
   org_id       String
+  display_id   String?
   trigger_type String
   condition    Json
   action       String
@@ -250,12 +265,14 @@ model EscalationRule {
   created_at   DateTime @default(now())
   updated_at   DateTime @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
 }
 
 model ExternalAccessGrant {
   id                 String    @id @default(cuid())
   org_id             String
+  display_id         String?
   patient_id         String
   token_hash         String    @unique
   expires_at         DateTime
@@ -268,6 +285,7 @@ model ExternalAccessGrant {
   created_at         DateTime  @default(now())
   updated_at         DateTime  @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([token_hash])
 }
@@ -275,6 +293,7 @@ model ExternalAccessGrant {
 model TracingReport {
   id                String              @id @default(cuid())
   org_id            String
+  display_id        String?
   patient_id        String
   case_id           String?
   issue_id          String?
@@ -288,6 +307,7 @@ model TracingReport {
   created_at        DateTime            @default(now())
   updated_at        DateTime            @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([patient_id])
   @@index([status])
@@ -296,6 +316,7 @@ model TracingReport {
 model PatientSelfReport {
   id                       String           @id @default(cuid())
   org_id                   String
+  display_id               String?
   patient_id               String
   external_access_grant_id String?
   reported_by_name         String
@@ -313,6 +334,7 @@ model PatientSelfReport {
   created_at               DateTime         @default(now())
   updated_at               DateTime         @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([org_id, external_access_grant_id, idempotency_key_hash], name: "org_grant_idempotency_key", map: "PatientSelfReport_org_grant_idem_key")
   @@index([org_id])
   @@index([org_id, external_access_grant_id], map: "PatientSelfReport_org_id_external_access_grant_id_idx")
@@ -323,6 +345,7 @@ model PatientSelfReport {
 model CommunityActivity {
   id                  String   @id @default(cuid())
   org_id              String
+  display_id          String?
   activity_type       String
   title               String
   description         String?
@@ -337,6 +360,7 @@ model CommunityActivity {
   created_at          DateTime @default(now())
   updated_at          DateTime @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([activity_type])
   @@index([activity_date])
@@ -347,6 +371,7 @@ model CommunityActivity {
 model TaskComment {
   id          String   @id @default(cuid())
   org_id      String
+  display_id  String?
   entity_type String // medication_cycle, dispense_task, set_plan, visit_record, care_report
   entity_id   String
   author_id   String
@@ -355,6 +380,7 @@ model TaskComment {
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([entity_type, entity_id])
   @@index([author_id])
@@ -363,11 +389,13 @@ model TaskComment {
 model HandoffBoard {
   id         String        @id @default(cuid())
   org_id     String
+  display_id String?
   shift_date DateTime      @db.Date
   created_by String
   items      HandoffItem[]
   created_at DateTime      @default(now())
 
+  @@unique([org_id, display_id])
   @@unique([org_id, shift_date])
   @@index([org_id])
 }

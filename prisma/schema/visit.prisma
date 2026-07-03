@@ -76,6 +76,7 @@ enum VisitScheduleOverrideStatus {
 model VisitVehicleResource {
   id                         String                 @id @default(cuid())
   org_id                     String
+  display_id                 String?
   org                        Organization           @relation(fields: [org_id], references: [id])
   site_id                    String
   site                       PharmacySite           @relation(fields: [site_id, org_id], references: [id, org_id])
@@ -93,6 +94,7 @@ model VisitVehicleResource {
   visit_schedules          VisitSchedule[]         @relation("VisitScheduleVehicleResource")
   visit_schedule_proposals VisitScheduleProposal[] @relation("VisitScheduleProposalVehicleResource")
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@unique([org_id, vehicle_code])
   @@index([org_id])
@@ -103,6 +105,7 @@ model VisitVehicleResource {
 model VisitSchedule {
   id                            String                @id @default(cuid())
   org_id                        String
+  display_id                    String?
   cycle_id                      String?
   cycle                         MedicationCycle?      @relation(fields: [cycle_id], references: [id])
   case_id                       String
@@ -150,6 +153,7 @@ model VisitSchedule {
   override_request      VisitScheduleOverride?    @relation("OverrideSourceSchedule")
   applied_override      VisitScheduleOverride?    @relation("OverrideReplacementSchedule")
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@index([org_id])
   @@index([scheduled_date])
@@ -167,6 +171,7 @@ model VisitSchedule {
 model FacilityVisitBatch {
   id                  String        @id @default(cuid())
   org_id              String
+  display_id          String?
   facility_id         String // 施設ID
   facility_unit_id    String? // ユニットID（ユニット単位グルーピング時）
   facility_unit       FacilityUnit? @relation(fields: [facility_unit_id], references: [id])
@@ -181,6 +186,7 @@ model FacilityVisitBatch {
 
   visit_schedules VisitSchedule[]
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([scheduled_date])
   @@index([facility_unit_id])
@@ -189,6 +195,7 @@ model FacilityVisitBatch {
 model VisitRecord {
   id                         String        @id @default(cuid())
   org_id                     String
+  display_id                 String?
   schedule_id                String        @unique
   schedule                   VisitSchedule @relation(fields: [schedule_id], references: [id])
   patient_id                 String
@@ -217,6 +224,7 @@ model VisitRecord {
   handoff_extraction    VisitHandoffExtraction?
   partner_visit_records PartnerVisitRecord[]    @relation("PartnerVisitRecordSourceVisit")
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@index([org_id])
   @@index([patient_id])
@@ -227,6 +235,7 @@ model VisitRecord {
 model VisitHandoffExtraction {
   id                             String        @id @default(cuid())
   org_id                         String
+  display_id                     String?
   visit_record_id                String        @unique
   visit_record                   VisitRecord   @relation(fields: [visit_record_id], references: [id], onDelete: Cascade)
   schedule_id                    String        @unique
@@ -243,6 +252,7 @@ model VisitHandoffExtraction {
   created_at                     DateTime      @default(now())
   updated_at                     DateTime      @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([status])
 }
@@ -250,6 +260,7 @@ model VisitHandoffExtraction {
 model VisitPreparation {
   id                          String        @id @default(cuid())
   org_id                      String
+  display_id                  String?
   schedule_id                 String        @unique
   schedule                    VisitSchedule @relation(fields: [schedule_id], references: [id])
   checklist                   Json
@@ -264,6 +275,7 @@ model VisitPreparation {
   created_at                  DateTime      @default(now())
   updated_at                  DateTime      @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([schedule_id])
 }
@@ -271,6 +283,7 @@ model VisitPreparation {
 model VisitScheduleProposal {
   id                            String                      @id @default(cuid())
   org_id                        String
+  display_id                    String?
   proposal_batch_id             String?
   proposal_batch                VisitScheduleProposalBatch? @relation(fields: [proposal_batch_id], references: [id])
   cycle_id                      String?
@@ -314,6 +327,7 @@ model VisitScheduleProposal {
   created_at                    DateTime                    @default(now())
   updated_at                    DateTime                    @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id, case_id], map: "VisitScheduleProposal_id_org_id_case_id_key")
   @@unique([finalized_schedule_id, org_id])
   @@index([org_id, proposal_status])
@@ -328,6 +342,7 @@ model VisitScheduleProposal {
 model VisitScheduleProposalBatch {
   id                  String       @id @default(cuid())
   org_id              String
+  display_id          String?
   org                 Organization @relation(fields: [org_id], references: [id])
   case_id             String
   idempotency_key     String
@@ -338,6 +353,7 @@ model VisitScheduleProposalBatch {
 
   proposals VisitScheduleProposal[]
 
+  @@unique([org_id, display_id])
   @@unique([org_id, idempotency_key])
   @@index([org_id, case_id])
 }
@@ -345,6 +361,7 @@ model VisitScheduleProposalBatch {
 model VisitScheduleContactLog {
   id                  String                @id @default(cuid())
   org_id              String
+  display_id          String?
   proposal_id         String
   proposal            VisitScheduleProposal @relation(fields: [proposal_id], references: [id])
   schedule_id         String?
@@ -364,6 +381,7 @@ model VisitScheduleContactLog {
   created_at          DateTime              @default(now())
   updated_at          DateTime              @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([org_id, idempotency_key])
   @@index([org_id, proposal_id])
   @@index([org_id, schedule_id])
@@ -374,6 +392,7 @@ model VisitScheduleContactLog {
 model VisitScheduleOverride {
   id                      String                      @id @default(cuid())
   org_id                  String
+  display_id              String?
   source_schedule_id      String                      @unique
   source_schedule         VisitSchedule               @relation("OverrideSourceSchedule", fields: [source_schedule_id], references: [id])
   replacement_schedule_id String?                     @unique
@@ -390,5 +409,6 @@ model VisitScheduleOverride {
   created_at              DateTime                    @default(now())
   updated_at              DateTime                    @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id, status])
 }
