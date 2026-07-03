@@ -98,7 +98,10 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
         note: '家族も参加',
       },
     });
-    taskUpsertMock.mockResolvedValue({ id: 'task_mcs_profile' });
+    taskUpsertMock.mockResolvedValue({
+      id: 'task_mcs_profile',
+      display_id: 'task0000000001',
+    });
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_mcs_check_1' });
     communicationEventCreateMock.mockResolvedValue({
       id: 'event_1',
@@ -192,6 +195,10 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
           note: '家族も参加',
         }),
       }),
+      select: {
+        id: true,
+        display_id: true,
+      },
     });
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),

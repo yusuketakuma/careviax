@@ -112,7 +112,7 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
     });
     communicationResponseFindFirstMock.mockResolvedValue(null);
     communicationResponseCreateMock.mockResolvedValue({ id: 'response_1' });
-    taskUpsertMock.mockResolvedValue({ id: 'task_1' });
+    taskUpsertMock.mockResolvedValue({ id: 'task_1', display_id: 'task0000000001' });
     tracingReportFindFirstMock.mockResolvedValue(null);
     tracingReportUpdateManyMock.mockResolvedValue({ count: 1 });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
@@ -198,6 +198,10 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
         related_entity_type: 'patient',
         related_entity_id: 'patient_1',
       }),
+      select: {
+        id: true,
+        display_id: true,
+      },
     });
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -354,6 +358,10 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
         related_entity_type: 'care_report',
         related_entity_id: 'report_1',
       }),
+      select: {
+        id: true,
+        display_id: true,
+      },
     });
   });
 
@@ -436,6 +444,10 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
         related_entity_type: 'tracing_report',
         related_entity_id: 'tracing_1',
       }),
+      select: {
+        id: true,
+        display_id: true,
+      },
     });
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({

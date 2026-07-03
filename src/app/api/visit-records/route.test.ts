@@ -998,7 +998,7 @@ describe('/api/visit-records POST', () => {
     tracingReportCreateMock.mockResolvedValue({ id: 'tracing_1' });
     communicationRequestFindFirstMock.mockResolvedValue(null);
     communicationRequestCreateMock.mockResolvedValue({ id: 'request_1' });
-    taskUpsertMock.mockResolvedValue({ id: 'task_1' });
+    taskUpsertMock.mockResolvedValue({ id: 'task_1', display_id: 'task0000000001' });
     billingEvidenceUpsertMock.mockResolvedValue({ id: 'evidence_1' });
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>

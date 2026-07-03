@@ -101,7 +101,7 @@ describe('/api/consent-records/[id]/revoke', () => {
       id: 'case_1',
       primary_pharmacist_id: 'primary_1',
     });
-    taskUpsertMock.mockResolvedValue({ id: 'task_1' });
+    taskUpsertMock.mockResolvedValue({ id: 'task_1', display_id: 'task0000000001' });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -381,6 +381,10 @@ describe('/api/consent-records/[id]/revoke', () => {
           reason_provided: true,
         }),
       }),
+      select: {
+        id: true,
+        display_id: true,
+      },
     });
     const taskCreate = taskUpsertMock.mock.calls[0][0].create;
     expect(taskCreate.description).not.toContain('patient_1');
@@ -436,6 +440,10 @@ describe('/api/consent-records/[id]/revoke', () => {
           consent_record_id: 'consent_1',
         }),
       }),
+      select: {
+        id: true,
+        display_id: true,
+      },
     });
   });
 

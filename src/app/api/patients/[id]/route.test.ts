@@ -293,7 +293,7 @@ describe('/api/patients/[id]', () => {
     patientSchedulePreferenceUpsertMock.mockResolvedValue({ id: 'schedule_pref_1' });
     patientSchedulePreferenceUpdateManyMock.mockResolvedValue({ count: 1 });
     patientSchedulePreferenceFindUniqueMock.mockResolvedValue(null);
-    taskUpsertMock.mockResolvedValue({ id: 'task_1' });
+    taskUpsertMock.mockResolvedValue({ id: 'task_1', display_id: 'task0000000001' });
     patientMedicalProcedureFindManyMock.mockResolvedValue([]);
     patientNarcoticUseFindManyMock.mockResolvedValue([]);
     patientInsuranceFindFirstMock.mockResolvedValue(null);
