@@ -33,7 +33,7 @@
 
 | 統制項目ID | 統制内容 | PH-OS の実装 | 充足状況 | エビデンス |
 |---|---|---|---|---|
-| MHLW-6.2.1 | 利用者の識別・認証 | Amazon Cognito によるユーザー認証。全アクセスに認証必須（未認証での API アクセスは NextAuth middleware で遮断） | 充足 | `src/lib/auth/middleware.ts` / Cognito User Pool 設定 |
+| MHLW-6.2.1 | 利用者の識別・認証 | Amazon Cognito によるユーザー認証。全アクセスに認証必須（未認証での API アクセスは認可 wrapper で遮断） | 充足 | `src/lib/auth/context.ts`（withAuthContext）/ Cognito User Pool 設定 |
 | MHLW-6.2.2 | アクセス権限の管理 | 7ロール RBAC（SUPER_ADMIN / ORG_ADMIN / PHARMACIST / PHARMACIST_ASSISTANT / DOCTOR / NURSE / CARE_MANAGER）、ロールは Cognito グループで管理 | 充足 | `src/lib/auth/permissions.ts` |
 | MHLW-6.2.3 | 不要なアクセス権の削除 | 退職・異動時の Cognito アカウント無効化手順（C-06 管理者研修参照）。四半期権限棚卸し | 部分充足 | C-06 / IAM 棚卸し手順（整備中） |
 | MHLW-6.2.4 | テナント間データ隔離 | PostgreSQL Row Level Security (RLS) による `org_id` ベースの完全テナント分離。全リクエストで `SET LOCAL app.current_org_id` を実行 | 充足 | `src/lib/db/rls.ts` / `prisma/rls-policies.sql` |
@@ -235,7 +235,7 @@
 | EV-C-05 | 委託先リスク評価 | `docs/compliance/vendor-risk-assessment.md` | 文書 |
 | EV-C-06 | セキュリティ教育計画 | `docs/compliance/security-training.md` | 文書 |
 | EV-C-07 | 本文書（統制マッピング） | `docs/compliance/three-ministry-guideline-mapping.md` | 文書 |
-| EV-SRC-01 | 認証設定 | `src/lib/auth/config.ts` / `src/lib/auth/middleware.ts` | ソースコード |
+| EV-SRC-01 | 認証設定 | `src/lib/auth/config.ts` / `src/lib/auth/context.ts` | ソースコード |
 | EV-SRC-02 | 権限管理 | `src/lib/auth/permissions.ts` | ソースコード |
 | EV-SRC-03 | RLS 設定 | `src/lib/db/rls.ts` / `prisma/rls-policies.sql` | ソースコード |
 | EV-SRC-04 | オフライン暗号化 | `src/lib/stores/offline-db.ts` | ソースコード |

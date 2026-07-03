@@ -50,7 +50,6 @@ const completedVisitStructuredSoap = {
 /* -------------------------------------------------------------------------- */
 
 const {
-  withAuthMock,
   withAuthContextMock,
   requireAuthContextMock,
   runWithRequestAuthContextMock,
@@ -72,22 +71,6 @@ const {
   prismaVisitScheduleFindManyMock,
   prismaVisitScheduleCreateMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(
-    (
-      handler: (
-        req: NextRequest & { orgId: string; userId: string; role?: string },
-      ) => Promise<Response>,
-    ) => {
-      return (req: NextRequest) =>
-        handler(
-          Object.assign(req, {
-            orgId: 'org_1',
-            userId: 'user_1',
-            role: 'pharmacist',
-          }),
-        );
-    },
-  ),
   withAuthContextMock: vi.fn(
     (
       handler: (
@@ -126,10 +109,6 @@ const {
 /* -------------------------------------------------------------------------- */
 /*  Module mocks                                                              */
 /* -------------------------------------------------------------------------- */
-
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
-}));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: vi.fn().mockResolvedValue({ user: { id: 'user_1' } }),

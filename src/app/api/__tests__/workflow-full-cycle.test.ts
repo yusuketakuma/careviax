@@ -142,7 +142,6 @@ const dispenseSafetyChecklist = {
 };
 
 const {
-  withAuthMock,
   withAuthContextMock,
   requireAuthContextMock,
   withOrgContextMock,
@@ -167,22 +166,6 @@ const {
   sendCareReportEmailMock,
   checkDispenseAlertsMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(
-    (
-      handler: (
-        req: NextRequest & { orgId: string; userId: string; role: string },
-      ) => Promise<Response>,
-    ) => {
-      return (req: NextRequest) =>
-        handler(
-          Object.assign(req, {
-            orgId: 'org_1',
-            userId: 'user_1',
-            role: 'pharmacist',
-          }),
-        );
-    },
-  ),
   withAuthContextMock: vi.fn(
     (
       handler: (
@@ -220,10 +203,6 @@ const {
   generateReportsFromVisitMock: vi.fn(),
   sendCareReportEmailMock: vi.fn(),
   checkDispenseAlertsMock: vi.fn(),
-}));
-
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
 }));
 
 vi.mock('@/lib/auth/context', () => ({

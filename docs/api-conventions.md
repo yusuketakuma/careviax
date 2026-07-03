@@ -5,7 +5,6 @@ This document records the current PH-OS API conventions for new and modified Rou
 ## Authentication
 
 - Prefer `withAuthContext(handler, options)` from `src/lib/auth/context.ts` for new and modified Route Handlers.
-- Treat `withAuth(handler, options)` from `src/lib/auth/middleware.ts` as legacy compatibility outside `src/app/api`. Do not add new API Route Handler usage.
 - Use `permission` keys from `src/lib/auth/permissions.ts` for role-gated operations. For "me" routes, omit broad permissions only when every query and mutation is constrained to `ctx.userId`.
 
 ## Request Validation
