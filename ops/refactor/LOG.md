@@ -247,3 +247,30 @@
   JOB1 c025b133 / JOB2 d6cdc59a / CW1 f15f9f98 / BM1 5be6ebca / billing-candidates 9d1567ba
   — 全て opus APPROVE（9d1567ba/b33c71b8 は post-commit 承認）
 - gate: 全量 green（test 13033 / lint / format / colors / typecheck / no-unused / build）
+
+## 2026-07-04 R16-MIN da5889f0 / R16-SWEEP 6f26c04c
+
+- 分類: refactor / JST date-key 収斂（codex2 レーン初仕事）
+- 対象: patient-home-operations(MIN) + prescription-date-window / date-continuity /
+  conference-data-sync / visit-schedule-planner / dispense-workbench-patients(+新規test)(SWEEP)
+- 実施: ローカル TOKYO formatter/toISOString().split を正本 japanDateKey / formatUtcDateKey へ収斂。
+  意図的 semantics 修正1件: workbench registered_date を JST 業務日付へ（表示+ソートのみ、課金非関与を
+  caller 全数 grep で確認）。除外領域(billing/MCS/timeline/export/auth/schema)は list-only。
+- 検証: TZ=UTC / TZ=America/New_York で focused 68 tests green。MIN は Intl 設定 byte-identical 証明。
+- レビュー: MIN=committer 検証 APPROVE、SWEEP=opus APPROVE（同値性を helper 実装まで遡って裏取り）。
+  opus Low: planner:1241-1245 localDateKey は pre-existing・実害なし、将来 sweep 候補（R16 残余に記録）。
+
+## 2026-07-04 R22-EXEC 759b4dbc
+
+- 分類: dead-code removal / 未使用 Yjs 協調編集+room-token チェーン削除（codex3 レーン初仕事）
+- 対象: Yjs client 鎖8+専属テスト、room-token route/service+テスト、package.json(yjs/y-protocols/
+  y-websocket/lib0 除去、lockfile 純transitive -57行)、rate-limit/protected-post matrix、
+  presence.test の cursor-overlay entry、stale docs 5件、【LOCK例外】websocket lambda テスト2件の
+  ローカル token fixture 化（削除 service import の随伴修正、アサーション不変）
+- プロセス: opus 計画審査(PLAN_CHANGES_REQUESTED→HIGH織込み: presence.test の readFileSync ENOENT 回避)
+  → 実装 → opus 実装レビュー APPROVE。UI 到達可能性ゼロを 二重検証（maker rg + opus 独立 rg）。
+- 検証: survivor 11 files/276 tests + websocket 2 files/16 tests green。tree-wide typecheck green
+  (claude 独立実行)。build は land 後に claude が検証。
+- 残: R22b（tools/infra/websocket 一式+infra docs）。
+- 教訓: 全量 gate 中のファイル削除が vitest collection と race → EDIT-FREEZE 運用を導入。
+  opus 計画審査は src/ 境界のみで tools/ の cross-boundary import を見落とし → maker が検出・FYI 即応で解消。
