@@ -5,13 +5,17 @@ const {
   integrationJobCreateMock,
   integrationJobUpdateMock,
   membershipFindManyMock,
-  notificationCreateManyMock,
+  dispatchNotificationEventMock,
+  withOrgContextMock,
+  loggerErrorMock,
 } = vi.hoisted(() => ({
   integrationJobFindFirstMock: vi.fn(),
   integrationJobCreateMock: vi.fn(),
   integrationJobUpdateMock: vi.fn(),
   membershipFindManyMock: vi.fn(),
-  notificationCreateManyMock: vi.fn(),
+  dispatchNotificationEventMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -24,9 +28,25 @@ vi.mock('@/lib/db/client', () => ({
     membership: {
       findMany: membershipFindManyMock,
     },
-    notification: {
-      createMany: notificationCreateManyMock,
-    },
+  },
+}));
+
+vi.mock('@/server/services/notifications', () => ({
+  dispatchNotificationEvent: dispatchNotificationEventMock,
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  // Run the dispatch callback synchronously with a fake tx so the delivery path
+  // is exercised without a real RLS transaction.
+  withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: loggerErrorMock,
   },
 }));
 
@@ -43,7 +63,10 @@ describe('runJob', () => {
     integrationJobCreateMock.mockResolvedValue({ id: 'job_1' });
     integrationJobUpdateMock.mockResolvedValue({ id: 'job_1' });
     membershipFindManyMock.mockResolvedValue([]);
-    notificationCreateManyMock.mockResolvedValue({ count: 0 });
+    dispatchNotificationEventMock.mockResolvedValue([]);
+    withOrgContextMock.mockImplementation((_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+      fn({}),
+    );
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
@@ -133,7 +156,7 @@ describe('runJob', () => {
     });
   });
 
-  it('stores fixed job failure diagnostics and admin notifications without raw provider details', async () => {
+  it('stores fixed job failure diagnostics and dispatches admin notifications without raw provider details', async () => {
     const original = new Error('患者A provider token=secret db_password=value');
     const fn = vi.fn().mockRejectedValue(original);
     membershipFindManyMock.mockResolvedValue([
@@ -166,25 +189,84 @@ describe('runJob', () => {
       ]),
     );
 
-    expect(notificationCreateManyMock).toHaveBeenCalledWith({
-      data: [
-        expect.objectContaining({
-          org_id: 'org_1',
-          user_id: 'admin_1',
-          message: 'ジョブ「test_job」が3回リトライ後に失敗しました: ジョブの実行に失敗しました',
-        }),
-        expect.objectContaining({
-          org_id: 'org_1',
-          user_id: 'owner_1',
-          message: 'ジョブ「test_job」が3回リトライ後に失敗しました: ジョブの実行に失敗しました',
-        }),
-      ],
-      skipDuplicates: true,
-    });
-    const serializedNotifications = JSON.stringify(notificationCreateManyMock.mock.calls);
+    // Delivery is routed through the shared pipeline (in-app + web-push) inside an
+    // org-scoped RLS transaction, with admins as explicit recipients.
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
+    expect(dispatchNotificationEventMock).toHaveBeenCalledTimes(1);
+    expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        eventType: 'job_execution_failed',
+        type: 'urgent',
+        title: 'ジョブ実行失敗',
+        message: 'ジョブ「test_job」が3回リトライ後に失敗しました: ジョブの実行に失敗しました',
+        link: '/admin/jobs',
+        explicitUserIds: ['admin_1', 'owner_1'],
+      }),
+    );
+    const serializedNotifications = JSON.stringify(dispatchNotificationEventMock.mock.calls);
     expect(serializedNotifications).not.toContain('token=secret');
     expect(serializedNotifications).not.toContain('db_password=value');
     expect(serializedNotifications).not.toContain('患者A');
+  });
+
+  it('dispatches per-org when admins span multiple organizations', async () => {
+    const original = new Error('upstream-failure');
+    const fn = vi.fn().mockRejectedValue(original);
+    membershipFindManyMock.mockResolvedValue([
+      { user_id: 'admin_1', org_id: 'org_1' },
+      { user_id: 'admin_2', org_id: 'org_2' },
+      { user_id: 'owner_1', org_id: 'org_1' },
+    ]);
+
+    await expect(runJob('test_job', fn)).rejects.toBe(original);
+
+    expect(dispatchNotificationEventMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_2', expect.any(Function));
+    expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', explicitUserIds: ['admin_1', 'owner_1'] }),
+    );
+    expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_2', explicitUserIds: ['admin_2'] }),
+    );
+  });
+
+  it('emits a structured job-failure log for CloudWatch on the failure path', async () => {
+    const original = new Error('upstream-failure token=secret');
+    const fn = vi.fn().mockRejectedValue(original);
+
+    await expect(runJob('test_job', fn, 'org_1')).rejects.toBe(original);
+
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'job.execution_failed',
+        jobType: 'test_job',
+        operation: 'run_job',
+        code: 'JOB_RETRIES_EXHAUSTED',
+        orgId: 'org_1',
+      }),
+      original,
+    );
+  });
+
+  it('continues (throws the original error) even when notification dispatch fails', async () => {
+    const original = new Error('upstream-failure');
+    const fn = vi.fn().mockRejectedValue(original);
+    membershipFindManyMock.mockResolvedValue([{ user_id: 'admin_1', org_id: 'org_1' }]);
+    dispatchNotificationEventMock.mockRejectedValue(new Error('web-push transport down'));
+
+    await expect(runJob('test_job', fn, 'org_1')).rejects.toBe(original);
+
+    expect(fn).toHaveBeenCalledTimes(4);
+    expect(dispatchNotificationEventMock).toHaveBeenCalledTimes(1);
+    expect(integrationJobUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'job_1' },
+      data: expect.objectContaining({ status: 'failed' }),
+    });
   });
 
   it('preserves the ORIGINAL error when the cleanup status update itself fails', async () => {

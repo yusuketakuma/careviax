@@ -171,6 +171,26 @@
         "check": "auditArchive"
       },
       "alarmDescription": "Audit archive lifecycle policy is missing or misconfigured."
+    },
+    {
+      "name": "ph-os-job-execution-failed",
+      "metric": "JobExecutionFailedCount",
+      "namespace": "PH-OS/Application",
+      "comparisonOperator": "GreaterThanOrEqualToThreshold",
+      "threshold": 1,
+      "evaluationPeriods": 1,
+      "periodSeconds": 300,
+      "statistic": "Sum",
+      "alarmDescription": "A background job exhausted all retries and failed permanently. Derived from the job.execution_failed structured log via the CloudWatch Logs metric filter below (declaration only; apply as an operational step).",
+      "metricFilter": {
+        "logGroupName": "/ph-os/application",
+        "filterName": "ph-os-job-execution-failed",
+        "filterPattern": "{ $.event = \"job.execution_failed\" }",
+        "metricNamespace": "PH-OS/Application",
+        "metricName": "JobExecutionFailedCount",
+        "metricValue": "1",
+        "defaultValue": 0
+      }
     }
   ]
 }

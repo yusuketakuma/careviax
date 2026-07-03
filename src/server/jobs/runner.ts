@@ -1,11 +1,21 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
+import { withOrgContext } from '@/lib/db/rls';
+import { logger } from '@/lib/utils/logger';
+import { dispatchNotificationEvent } from '@/server/services/notifications';
 
 const MAX_RETRIES = 3;
 const JOB_EXECUTION_FAILED_MESSAGE = 'Job execution failed';
 const JOB_CLEANUP_FAILED_MESSAGE = 'Job cleanup failed';
 const JOB_EXECUTION_FAILED_NOTIFICATION_MESSAGE = 'ジョブの実行に失敗しました';
+// Structured-log event name for permanent job failures. Kept stable because the
+// CloudWatch Logs metric filter in tools/infra/cloudwatch-alarms.json keys off it.
+const JOB_EXECUTION_FAILED_LOG_EVENT = 'job.execution_failed';
+// Notification event type used to route admin-facing job-failure alerts through the
+// shared delivery pipeline (in-app + web-push). No notificationRule config is
+// required: recipients are supplied explicitly as admin/owner user ids per org.
+const JOB_FAILURE_NOTIFICATION_EVENT_TYPE = 'job_execution_failed';
 const DEFAULT_JOB_STALE_LOCK_MS = 6 * 60 * 60 * 1000;
 const MAX_JOB_STALE_LOCK_MS = 24 * 60 * 60 * 1000;
 type RunJobResult =
@@ -126,6 +136,21 @@ async function runJobOnce(
         // Intentionally NOT overwriting lastError — caller must see the original failure.
       }
 
+      // Structured failure log for CloudWatch. Emitted before notification so the
+      // metric fires even if the human-reach delivery below fails. Raw error detail
+      // is intentionally omitted — logger only records the sanitized error name.
+      logger.error(
+        {
+          event: JOB_EXECUTION_FAILED_LOG_EVENT,
+          jobType,
+          operation: 'run_job',
+          code: 'JOB_RETRIES_EXHAUSTED',
+          attempt: attempt + 1,
+          ...(orgId ? { orgId } : {}),
+        },
+        error,
+      );
+
       // Notify admin users about the failure (already self-protected internally).
       await notifyAdminsOfJobFailure(jobType, orgId);
     }
@@ -154,7 +179,15 @@ export async function runJob(
 }
 
 /**
- * Create notifications for all admin users when a job permanently fails.
+ * Notify admin/owner users when a job permanently fails.
+ *
+ * Routes through {@link dispatchNotificationEvent} so the failure reaches a human
+ * off-dashboard: it persists the in-app notification AND fans out to web-push
+ * subscriptions (the shared pipeline's real delivery path). Admins are supplied as
+ * explicit recipients per org, so no notificationRule config is required.
+ *
+ * Best-effort: any delivery error is swallowed (logged) and never masks the
+ * original job failure the caller must surface.
  */
 async function notifyAdminsOfJobFailure(jobType: string, orgId?: string) {
   try {
@@ -170,21 +203,45 @@ async function notifyAdminsOfJobFailure(jobType: string, orgId?: string) {
       where: membershipFilter,
       select: { user_id: true, org_id: true },
     });
+    if (adminMemberships.length === 0) {
+      return;
+    }
+
     const dedupeKey = `job-failure:${jobType}:${new Date().toISOString().slice(0, 10)}`;
     const message = `ジョブ「${jobType}」が${MAX_RETRIES}回リトライ後に失敗しました: ${JOB_EXECUTION_FAILED_NOTIFICATION_MESSAGE}`;
 
-    await prisma.notification.createMany({
-      data: adminMemberships.map((m) => ({
-        org_id: m.org_id,
-        user_id: m.user_id,
-        type: 'urgent' as const,
-        title: 'ジョブ実行失敗',
-        message,
-        link: '/admin/jobs',
-        dedupe_key: dedupeKey,
-      })),
-      skipDuplicates: true,
-    });
+    // Group admins by org: dispatch + web-push run inside a single org's RLS scope.
+    const adminUserIdsByOrg = new Map<string, string[]>();
+    for (const membership of adminMemberships) {
+      const existing = adminUserIdsByOrg.get(membership.org_id);
+      if (existing) {
+        existing.push(membership.user_id);
+      } else {
+        adminUserIdsByOrg.set(membership.org_id, [membership.user_id]);
+      }
+    }
+
+    for (const [dispatchOrgId, adminUserIds] of adminUserIdsByOrg) {
+      try {
+        await withOrgContext(dispatchOrgId, (tx) =>
+          dispatchNotificationEvent(tx, {
+            orgId: dispatchOrgId,
+            eventType: JOB_FAILURE_NOTIFICATION_EVENT_TYPE,
+            type: 'urgent',
+            title: 'ジョブ実行失敗',
+            message,
+            link: '/admin/jobs',
+            explicitUserIds: adminUserIds,
+            dedupeKey,
+          }),
+        );
+      } catch {
+        // One org's delivery failure must not block the others or the caller.
+        console.error(
+          `[runner] Failed to deliver job-failure notification for org ${dispatchOrgId}: ${jobType}`,
+        );
+      }
+    }
   } catch {
     // Notification failure should not mask the original job error
     console.error(`[runner] Failed to notify admins about job failure: ${jobType}`);
