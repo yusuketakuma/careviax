@@ -3,6 +3,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { withOrgContext } from '@/lib/db/rls';
+import { acquireAdvisoryTxLock } from '@/lib/db/advisory-lock';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -101,20 +102,27 @@ export const POST = withAuthContext(
     });
     if (!refResult.ok) return refResult.response;
 
-    const existing = await prisma.businessHoliday.findFirst({
-      where: {
-        org_id: ctx.orgId,
-        date: new Date(parsed.data.date),
-        site_id: parsed.data.site_id ?? null,
-        holiday_type: parsed.data.holiday_type,
-      },
-      select: { id: true },
-    });
-    if (existing) {
-      return validationError('同じ日の休日設定が既に存在します');
-    }
+    // 一意性 (org, date, site, holiday_type) は DB partial-unique 未整備のため、
+    // tx 内で advisory lock → 再存在チェック → create の順に直列化して
+    // 同時作成でも重複行が生まれない形にする（本質解決は W1-7 の DB 制約）。
+    const dedupKey = `${ctx.orgId}:${parsed.data.site_id ?? ''}:${parsed.data.date}:${parsed.data.holiday_type}`;
 
-    const holiday = await withOrgContext(ctx.orgId, async (tx) => {
+    const result = await withOrgContext(ctx.orgId, async (tx) => {
+      await acquireAdvisoryTxLock(tx, 'business_holiday_dedup', dedupKey);
+
+      const existing = await tx.businessHoliday.findFirst({
+        where: {
+          org_id: ctx.orgId,
+          date: new Date(parsed.data.date),
+          site_id: parsed.data.site_id ?? null,
+          holiday_type: parsed.data.holiday_type,
+        },
+        select: { id: true },
+      });
+      if (existing) {
+        return { duplicate: true as const };
+      }
+
       const created = await tx.businessHoliday.create({
         data: {
           org_id: ctx.orgId,
@@ -138,10 +146,14 @@ export const POST = withAuthContext(
         },
       });
 
-      return created;
+      return { duplicate: false as const, holiday: created };
     });
 
-    return success(holiday, 201);
+    if (result.duplicate) {
+      return validationError('同じ日の休日設定が既に存在します');
+    }
+
+    return success(result.holiday, 201);
   },
   {
     permission: 'canAdmin',

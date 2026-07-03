@@ -4,6 +4,7 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { requireAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
+import { acquireAdvisoryTxLock } from '@/lib/db/advisory-lock';
 import { prisma } from '@/lib/db/client';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { toPrismaJsonInput } from '@/lib/db/json';
@@ -70,44 +71,53 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   });
   if (!site) return notFound('薬局情報が見つかりません');
 
-  const existing = await prisma.pharmacySiteInsuranceConfig.findFirst({
-    where: {
-      org_id: ctx.orgId,
-      site_id: siteId,
-      insurance_type: parsed.data.insurance_type,
-      revision_code: parsed.data.revision_code,
-    },
-    select: { id: true },
-  });
-  if (existing) {
-    return validationError('同じ保険種別・改定年度の設定が既に存在します');
-  }
-
   const nextStart = new Date(parsed.data.effective_from);
   const nextEnd = parsed.data.effective_to ? new Date(parsed.data.effective_to) : null;
-  const overlappingConfigs = await prisma.pharmacySiteInsuranceConfig.findMany({
-    where: {
-      org_id: ctx.orgId,
-      site_id: siteId,
-      insurance_type: parsed.data.insurance_type,
-    },
-  });
-  const overlapping = overlappingConfigs.filter((config) =>
-    rangesOverlap({
-      nextStart,
-      nextEnd,
-      currentStart: config.effective_from,
-      currentEnd: config.effective_to,
-    }),
-  );
-  if (overlapping.length > 0 && !parsed.data.auto_close_overlaps) {
-    return validationError('同一保険種別で適用期間が重複する設定は登録できません');
-  }
-  if (overlapping.some((config) => config.effective_from.getTime() >= nextStart.getTime())) {
-    return validationError('開始日以降に重複する設定があるため自動で置き換えできません');
-  }
 
-  const config = await withOrgContext(ctx.orgId, async (tx) => {
+  // revision_code の一意性 / 適用期間 overlap は DB partial-unique + exclusion 未整備。
+  // tx 内で advisory lock（org+site+insurance_type 単位）→ 再 read → 検証 → 期間クローズ + create
+  // の順で直列化し、同時作成でも重複行・期間 overlap が生まれない形にする
+  // （本質解決は W1-7 の DB 制約: revision_code partial-unique + period exclusion constraint）。
+  const dedupKey = `${ctx.orgId}:${siteId}:${parsed.data.insurance_type}`;
+
+  const result = await withOrgContext(ctx.orgId, async (tx) => {
+    await acquireAdvisoryTxLock(tx, 'insurance_config_dedup', dedupKey);
+
+    const existing = await tx.pharmacySiteInsuranceConfig.findFirst({
+      where: {
+        org_id: ctx.orgId,
+        site_id: siteId,
+        insurance_type: parsed.data.insurance_type,
+        revision_code: parsed.data.revision_code,
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      return { error: 'duplicate_revision' as const };
+    }
+
+    const overlappingConfigs = await tx.pharmacySiteInsuranceConfig.findMany({
+      where: {
+        org_id: ctx.orgId,
+        site_id: siteId,
+        insurance_type: parsed.data.insurance_type,
+      },
+    });
+    const overlapping = overlappingConfigs.filter((config) =>
+      rangesOverlap({
+        nextStart,
+        nextEnd,
+        currentStart: config.effective_from,
+        currentEnd: config.effective_to,
+      }),
+    );
+    if (overlapping.length > 0 && !parsed.data.auto_close_overlaps) {
+      return { error: 'overlap' as const };
+    }
+    if (overlapping.some((config) => config.effective_from.getTime() >= nextStart.getTime())) {
+      return { error: 'overlap_after_start' as const };
+    }
+
     if (overlapping.length > 0) {
       await tx.pharmacySiteInsuranceConfig.updateMany({
         where: {
@@ -143,8 +153,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
     });
 
-    return created;
+    return { config: created };
   });
 
-  return success({ data: config }, 201);
+  if ('error' in result) {
+    switch (result.error) {
+      case 'duplicate_revision':
+        return validationError('同じ保険種別・改定年度の設定が既に存在します');
+      case 'overlap':
+        return validationError('同一保険種別で適用期間が重複する設定は登録できません');
+      case 'overlap_after_start':
+        return validationError('開始日以降に重複する設定があるため自動で置き換えできません');
+    }
+  }
+
+  return success({ data: result.config }, 201);
 }

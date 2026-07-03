@@ -13,6 +13,7 @@ const {
   careCaseFindFirstMock,
   findLatestPrescriberInstitutionSuggestionMock,
   pickCommunicationRecipientCandidateMock,
+  advisoryLockMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   communicationRequestFindManyMock: vi.fn(),
@@ -26,6 +27,7 @@ const {
   careCaseFindFirstMock: vi.fn(),
   findLatestPrescriberInstitutionSuggestionMock: vi.fn(),
   pickCommunicationRecipientCandidateMock: vi.fn(),
+  advisoryLockMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -70,6 +72,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/advisory-lock', () => ({
+  acquireAdvisoryTxLock: advisoryLockMock,
 }));
 
 vi.mock('@/lib/prescriptions/prescriber-institutions', () => ({
@@ -138,9 +144,12 @@ describe('/api/communication-requests', () => {
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
     findLatestPrescriberInstitutionSuggestionMock.mockResolvedValue(null);
     pickCommunicationRecipientCandidateMock.mockResolvedValue(null);
+    advisoryLockMock.mockResolvedValue(undefined);
+    // reply/queue dedup の存在チェックは tx 内で行うため、tx クライアントにも findFirst を提供する。
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         communicationRequest: {
+          findFirst: communicationRequestFindFirstMock,
           create: communicationRequestCreateMock,
         },
       }),
@@ -352,6 +361,42 @@ describe('/api/communication-requests', () => {
         role: 'pharmacist',
       },
     });
+  });
+
+  it('detects a concurrently-created reply request inside the transaction and skips insert (TOCTOU guard)', async () => {
+    // レース: tx 外の dedup 窓を塞ぎ、advisory lock 取得後の tx 内 re-read で既存の
+    // open reply が見つかった場合は create せず 409 を返す。X06 の回帰確認。
+    communicationRequestFindFirstMock.mockResolvedValueOnce({
+      id: 'request_racing',
+      status: 'sent',
+    });
+
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        request_type: 'care_report_reply_request',
+        recipient_role: 'care_manager',
+        related_entity_type: 'care_report',
+        related_entity_id: 'report_1',
+        subject: '返信依頼',
+        content: '報告書の確認をお願いします',
+        status: 'sent',
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'この相手への返信依頼は既に起票されています',
+      details: { request_id: 'request_racing', status: 'sent' },
+    });
+    // advisory lock は tx 内・re-read 前に取得され、dedup は tx クライアント上で行われる。
+    expect(withOrgContextMock).toHaveBeenCalled();
+    expect(advisoryLockMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'communication_request_reply_dedup',
+      expect.any(String),
+    );
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
   });
 
   it('normalizes request identity and text fields before assignment checks and persistence', async () => {
@@ -656,7 +701,13 @@ describe('/api/communication-requests', () => {
       }),
       select: { id: true, status: true },
     });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    // dedup チェックは tx 内で advisory lock 取得後に行われるため withOrgContext は呼ばれる。
+    expect(withOrgContextMock).toHaveBeenCalled();
+    expect(advisoryLockMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'communication_request_reply_dedup',
+      expect.any(String),
+    );
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();
   });
 
@@ -699,7 +750,13 @@ describe('/api/communication-requests', () => {
       }),
       select: { id: true, status: true },
     });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    // dedup チェックは tx 内で advisory lock 取得後に行われるため withOrgContext は呼ばれる。
+    expect(withOrgContextMock).toHaveBeenCalled();
+    expect(advisoryLockMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'communication_request_reply_dedup',
+      expect.any(String),
+    );
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();
   });
 
@@ -779,7 +836,13 @@ describe('/api/communication-requests', () => {
       }),
       orderBy: [{ requested_at: 'desc' }, { id: 'desc' }],
     });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    // queue draft の再利用判定も tx 内で advisory lock 取得後に行われる。
+    expect(withOrgContextMock).toHaveBeenCalled();
+    expect(advisoryLockMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'communication_request_queue_dedup',
+      expect.any(String),
+    );
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();
   });
 

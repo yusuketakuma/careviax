@@ -1,6 +1,7 @@
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
+import { acquireAdvisoryTxLock } from '@/lib/db/advisory-lock';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeJsonInput } from '@/lib/db/json';
 import { isPrismaErrorCode } from '@/lib/db/prisma-errors';
@@ -538,73 +539,101 @@ const authenticatedPOST = withAuthContext(
         : {}),
     });
 
-    if (
+    const wantsReplyDedup = Boolean(
       related_entity_type &&
       related_entity_id &&
-      DUPLICATE_GUARDED_REPLY_REQUEST_TYPES.has(request_type)
-    ) {
-      const existingOpenRequest = await prisma.communicationRequest.findFirst({
-        where: {
-          org_id: ctx.orgId,
-          request_type,
-          patient_id: effectivePatientId,
-          case_id: effectiveCaseId,
-          recipient_role: effectiveRecipientRole,
-          related_entity_type,
-          related_entity_id,
-          status: { in: ACTIVE_REPLY_REQUEST_STATUSES },
-        },
-        select: {
-          id: true,
-          status: true,
-        },
-      });
+      DUPLICATE_GUARDED_REPLY_REQUEST_TYPES.has(request_type),
+    );
+    const wantsQueueDedup = isCommunicationQueueDraftRequest({
+      contextSnapshot: effectiveContextSnapshot,
+      relatedEntityType: related_entity_type,
+      relatedEntityId: related_entity_id,
+      status,
+    });
 
-      if (existingOpenRequest) {
-        return conflict('この相手への返信依頼は既に起票されています', {
-          request_id: existingOpenRequest.id,
-          status: existingOpenRequest.status,
-        });
-      }
-    }
-
-    if (
-      isCommunicationQueueDraftRequest({
-        contextSnapshot: effectiveContextSnapshot,
-        relatedEntityType: related_entity_type,
-        relatedEntityId: related_entity_id,
-        status,
-      })
-    ) {
-      const existingDraft = await prisma.communicationRequest.findFirst({
-        where: {
-          org_id: ctx.orgId,
-          request_type,
-          patient_id: effectivePatientId,
-          case_id: effectiveCaseId,
-          template_key: template_key ?? null,
-          recipient_role: effectiveRecipientRole,
-          related_entity_type: related_entity_type ?? null,
-          related_entity_id: related_entity_id ?? null,
-          status: { in: ACTIVE_REPLY_REQUEST_STATUSES },
-          context_snapshot: { path: ['source'], equals: COMMUNICATION_QUEUE_SOURCE },
-        },
-        select: reusableCommunicationRequestSelect,
-        orderBy: [{ requested_at: 'desc' }, { id: 'desc' }],
-      });
-
-      if (existingDraft) {
-        return success({
-          data: existingDraft,
-          reused_existing_draft: true,
-        });
-      }
-    }
-
+    // reply/queue の dedup は tx 外 read→create の TOCTOU だった。DB partial-unique が
+    // 未整備なため、dedup キー単位で advisory lock を取得 → tx 内で再 read → create の順に
+    // 直列化し、同時起票でも重複依頼 / 重複 draft が生まれない形にする
+    // （本質解決は W1-7 の DB 制約: active reply 一意 / queue draft 一意の partial-unique index）。
     const result = await withOrgContext(
       ctx.orgId,
       async (tx) => {
-        return tx.communicationRequest.create({
+        if (wantsReplyDedup) {
+          await acquireAdvisoryTxLock(
+            tx,
+            'communication_request_reply_dedup',
+            [
+              ctx.orgId,
+              request_type,
+              effectivePatientId ?? '',
+              effectiveCaseId ?? '',
+              effectiveRecipientRole ?? '',
+              related_entity_type ?? '',
+              related_entity_id ?? '',
+            ].join(' '),
+          );
+
+          const existingOpenRequest = await tx.communicationRequest.findFirst({
+            where: {
+              org_id: ctx.orgId,
+              request_type,
+              patient_id: effectivePatientId,
+              case_id: effectiveCaseId,
+              recipient_role: effectiveRecipientRole,
+              related_entity_type,
+              related_entity_id,
+              status: { in: ACTIVE_REPLY_REQUEST_STATUSES },
+            },
+            select: {
+              id: true,
+              status: true,
+            },
+          });
+
+          if (existingOpenRequest) {
+            return { conflict: existingOpenRequest };
+          }
+        }
+
+        if (wantsQueueDedup) {
+          await acquireAdvisoryTxLock(
+            tx,
+            'communication_request_queue_dedup',
+            [
+              ctx.orgId,
+              request_type,
+              effectivePatientId ?? '',
+              effectiveCaseId ?? '',
+              template_key ?? '',
+              effectiveRecipientRole ?? '',
+              related_entity_type ?? '',
+              related_entity_id ?? '',
+            ].join(' '),
+          );
+
+          const existingDraft = await tx.communicationRequest.findFirst({
+            where: {
+              org_id: ctx.orgId,
+              request_type,
+              patient_id: effectivePatientId,
+              case_id: effectiveCaseId,
+              template_key: template_key ?? null,
+              recipient_role: effectiveRecipientRole,
+              related_entity_type: related_entity_type ?? null,
+              related_entity_id: related_entity_id ?? null,
+              status: { in: ACTIVE_REPLY_REQUEST_STATUSES },
+              context_snapshot: { path: ['source'], equals: COMMUNICATION_QUEUE_SOURCE },
+            },
+            select: reusableCommunicationRequestSelect,
+            orderBy: [{ requested_at: 'desc' }, { id: 'desc' }],
+          });
+
+          if (existingDraft) {
+            return { reusedDraft: existingDraft };
+          }
+        }
+
+        const created = await tx.communicationRequest.create({
           data: {
             org_id: ctx.orgId,
             patient_id: effectivePatientId,
@@ -623,11 +652,25 @@ const authenticatedPOST = withAuthContext(
             due_date: due_date ? new Date(due_date) : null,
           },
         });
+        return { created };
       },
       { requestContext: ctx },
     );
 
-    return success({ data: result }, 201);
+    if ('conflict' in result && result.conflict) {
+      return conflict('この相手への返信依頼は既に起票されています', {
+        request_id: result.conflict.id,
+        status: result.conflict.status,
+      });
+    }
+    if ('reusedDraft' in result) {
+      return success({
+        data: result.reusedDraft,
+        reused_existing_draft: true,
+      });
+    }
+
+    return success({ data: result.created }, 201);
   },
   {
     permission: 'canReport',

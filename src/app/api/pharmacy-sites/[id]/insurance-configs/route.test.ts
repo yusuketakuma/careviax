@@ -9,6 +9,7 @@ const {
   insuranceConfigUpdateManyMock,
   insuranceConfigCreateMock,
   auditLogCreateMock,
+  advisoryLockMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -18,6 +19,7 @@ const {
   insuranceConfigUpdateManyMock: vi.fn(),
   insuranceConfigCreateMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
+  advisoryLockMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -39,6 +41,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/advisory-lock', () => ({
+  acquireAdvisoryTxLock: advisoryLockMock,
 }));
 
 import { GET, POST } from './route';
@@ -88,9 +94,13 @@ describe('/api/pharmacy-sites/[id]/insurance-configs', () => {
     });
     insuranceConfigUpdateManyMock.mockResolvedValue({ count: 0 });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
+    advisoryLockMock.mockResolvedValue(undefined);
+    // dedup / overlap の read は tx 内で行うため、tx クライアントにも findFirst/findMany を提供する。
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         pharmacySiteInsuranceConfig: {
+          findFirst: insuranceConfigFindFirstMock,
+          findMany: insuranceConfigFindManyMock,
           updateMany: insuranceConfigUpdateManyMock,
           create: insuranceConfigCreateMock,
         },
@@ -358,5 +368,39 @@ describe('/api/pharmacy-sites/[id]/insurance-configs', () => {
         config: { home_comprehensive_level: 'level_2' },
       }),
     });
+  });
+
+  it('detects a concurrently-created duplicate revision inside the transaction and skips insert (TOCTOU guard)', async () => {
+    // 同時作成レース: advisory lock 取得後の tx 内 re-read で同一 revision_code の
+    // 行が見つかった場合は create せず 400 を返す。tx 外 read→create の窓を塞いだ回帰確認。
+    insuranceConfigFindFirstMock.mockResolvedValue({ id: 'config_existing' });
+
+    const response = (await POST(
+      createPostRequest({
+        insurance_type: 'care',
+        revision_code: '2024',
+        effective_from: '2024-04-01',
+        effective_to: null,
+        config: {},
+      }),
+      {
+        params: Promise.resolve({ id: 'site_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '同じ保険種別・改定年度の設定が既に存在します',
+    });
+    // advisory lock は org+site+insurance_type 単位で tx 内・re-read 前に取得される。
+    expect(advisoryLockMock).toHaveBeenCalledTimes(1);
+    expect(advisoryLockMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'insurance_config_dedup',
+      'org_1:site_1:care',
+    );
+    expect(insuranceConfigCreateMock).not.toHaveBeenCalled();
+    expect(insuranceConfigUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 });

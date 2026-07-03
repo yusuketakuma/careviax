@@ -7,6 +7,7 @@ const {
   businessHolidayCreateMock,
   auditLogCreateMock,
   validateOrgReferencesMock,
+  advisoryLockMock,
   withOrgContextMock,
   withAuthContextOptions,
 } = vi.hoisted(() => ({
@@ -15,6 +16,7 @@ const {
   businessHolidayCreateMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
+  advisoryLockMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   withAuthContextOptions: [] as unknown[],
 }));
@@ -52,6 +54,10 @@ vi.mock('@/lib/api/org-reference', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/advisory-lock', () => ({
+  acquireAdvisoryTxLock: advisoryLockMock,
 }));
 
 import { GET as rawGET, POST as rawPOST } from './route';
@@ -94,9 +100,12 @@ describe('/api/business-holidays', () => {
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
     businessHolidayCreateMock.mockResolvedValue({ id: 'holiday_2', name: '臨時休業' });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
+    advisoryLockMock.mockResolvedValue(undefined);
+    // dedup の存在チェックは tx 内で行うため、tx クライアントにも findFirst を提供する。
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         businessHoliday: {
+          findFirst: businessHolidayFindFirstMock,
           create: businessHolidayCreateMock,
         },
         auditLog: {
@@ -227,8 +236,40 @@ describe('/api/business-holidays', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expect(advisoryLockMock).toHaveBeenCalled();
     expect(businessHolidayCreateMock).toHaveBeenCalled();
     expect(auditLogCreateMock).toHaveBeenCalled();
+  });
+
+  it('serializes duplicate creation inside the transaction and skips the insert (TOCTOU guard)', async () => {
+    // 同時作成レース: advisory lock 取得後の tx 内再チェックで既存行が見つかった場合は
+    // create せず 400 を返す。tx 外 read→create の窓を塞いだことの回帰確認。
+    businessHolidayFindFirstMock.mockResolvedValue({ id: 'holiday_existing' });
+
+    const response = (await POST(
+      createPostRequest({
+        date: '2026-03-30',
+        name: '臨時休業',
+        holiday_type: 'site_closure',
+        is_closed: true,
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '同じ日の休日設定が既に存在します',
+    });
+    // advisory lock は tx 内・存在チェック前に取得されている。
+    expect(advisoryLockMock).toHaveBeenCalledTimes(1);
+    expect(advisoryLockMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'business_holiday_dedup',
+      'org_1::2026-03-30:site_closure',
+    );
+    // 存在チェックは prisma ではなく tx クライアント上で行われる。
+    expect(businessHolidayFindFirstMock).toHaveBeenCalled();
+    expect(businessHolidayCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object create payloads before reference validation or duplicate lookup', async () => {
