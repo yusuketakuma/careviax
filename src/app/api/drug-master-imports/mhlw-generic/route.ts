@@ -21,6 +21,7 @@ import {
   isAllowedImportSourceUrl,
 } from '@/server/services/drug-master-import/shared';
 import { invalidateDrugMasterSearchCache } from '@/server/services/drug-master-search-cache';
+import { invalidateDrugMasterDetailCache } from '@/server/services/drug-master-detail-cache';
 import { projectDrugMasterImportLogMetadata } from '../import-log-response';
 
 const requestSchema = z.object({
@@ -111,6 +112,7 @@ async function authenticatedPOST(req: NextRequest) {
     return importResult;
   });
   invalidateDrugMasterSearchCache();
+  invalidateDrugMasterDetailCache();
 
   return success(
     {

@@ -16,6 +16,7 @@ import {
   isAllowedImportSourceUrl,
 } from '@/server/services/drug-master-import/shared';
 import { invalidateDrugMasterSearchCache } from '@/server/services/drug-master-search-cache';
+import { invalidateDrugMasterDetailCache } from '@/server/services/drug-master-detail-cache';
 import { projectDrugMasterImportLogMetadata } from '../import-log-response';
 
 const requestSchema = z.object({
@@ -59,6 +60,7 @@ async function authenticatedPOST(req: NextRequest) {
 
   const result = await runWithRequestAuthContext(ctx, () => importHotMaster(prisma, importOptions));
   invalidateDrugMasterSearchCache();
+  invalidateDrugMasterDetailCache();
   return success(
     {
       data: {

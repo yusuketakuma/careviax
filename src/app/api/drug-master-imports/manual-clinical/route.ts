@@ -13,6 +13,7 @@ import {
   manualClinicalRuleBundleSchema,
 } from '@/server/services/drug-master-import/manual';
 import { invalidateDrugMasterSearchCache } from '@/server/services/drug-master-search-cache';
+import { invalidateDrugMasterDetailCache } from '@/server/services/drug-master-detail-cache';
 import { projectDrugMasterImportLogMetadata } from '../import-log-response';
 
 const ROUTE = '/api/drug-master-imports/manual-clinical';
@@ -41,6 +42,7 @@ async function authenticatedPOST(req: NextRequest) {
     }),
   );
   invalidateDrugMasterSearchCache();
+  invalidateDrugMasterDetailCache();
   return success(
     {
       data: {

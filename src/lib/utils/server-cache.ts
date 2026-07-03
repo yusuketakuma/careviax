@@ -12,7 +12,7 @@ type CacheEntry<T> = {
 
 const DEFAULT_MAX_ENTRIES = 50;
 
-class ServerCache {
+export class ServerCache {
   private store = new Map<string, CacheEntry<unknown>>();
   private maxEntries: number;
 
@@ -96,4 +96,28 @@ const globalForCache = globalThis as unknown as { __serverCache?: ServerCache };
 export const serverCache = globalForCache.__serverCache ?? new ServerCache();
 if (process.env.NODE_ENV !== 'production') {
   globalForCache.__serverCache = serverCache;
+}
+
+/**
+ * Creates (or reuses, in dev, across HMR reloads) an independent named
+ * ServerCache instance with its own Map and capacity — for callers that
+ * must NOT share the default `serverCache` singleton's Map/cap (e.g. a
+ * higher-churn cache with a different capacity requirement).
+ */
+const globalForNamedCaches = globalThis as unknown as {
+  __namedServerCaches?: Map<string, ServerCache>;
+};
+
+export function createServerCache(name: string, maxEntries = DEFAULT_MAX_ENTRIES): ServerCache {
+  if (!globalForNamedCaches.__namedServerCaches) {
+    globalForNamedCaches.__namedServerCaches = new Map();
+  }
+  const existing = globalForNamedCaches.__namedServerCaches.get(name);
+  if (existing) return existing;
+
+  const cache = new ServerCache(maxEntries);
+  if (process.env.NODE_ENV !== 'production') {
+    globalForNamedCaches.__namedServerCaches.set(name, cache);
+  }
+  return cache;
 }

@@ -37,6 +37,7 @@ vi.mock('@/lib/utils/logger', () => ({
   logger: { error: loggerErrorMock },
 }));
 
+import { drugMasterDetailCache } from '@/server/services/drug-master-detail-cache';
 import { GET } from './route';
 
 function createRequest(headers: Record<string, string> = { 'x-org-id': 'org_1' }) {
@@ -55,6 +56,7 @@ function expectNoStore(response: Response) {
 describe('/api/drug-masters/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    drugMasterDetailCache.clear();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist', site_id: null });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });

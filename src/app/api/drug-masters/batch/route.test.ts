@@ -29,6 +29,7 @@ vi.mock('@/lib/utils/logger', () => ({
   logger: { error: loggerErrorMock },
 }));
 
+import { drugMasterDetailCache } from '@/server/services/drug-master-detail-cache';
 import { POST } from './route';
 
 function createRequest(body: unknown) {
@@ -55,6 +56,7 @@ function expectNoStore(response: Response) {
 describe('/api/drug-masters/batch', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    drugMasterDetailCache.clear();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist', site_id: null });
     drugMasterFindManyMock.mockResolvedValue([

@@ -8,6 +8,11 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
+import {
+  buildDrugMasterBatchCacheKey,
+  DRUG_MASTER_DETAIL_CACHE_TTL_MS,
+  drugMasterDetailCache,
+} from '@/server/services/drug-master-detail-cache';
 import { z } from 'zod';
 
 const ROUTE = '/api/drug-masters/batch';
@@ -38,6 +43,40 @@ function buildDrugMasterBatchWhere(yjCodes: string[], drugMasterIds: string[]) {
   return { yj_code: { in: yjCodes } };
 }
 
+async function fetchDrugMasterBatch(yjCodes: string[], drugMasterIds: string[]) {
+  const drugs = await prisma.drugMaster.findMany({
+    where: buildDrugMasterBatchWhere(yjCodes, drugMasterIds),
+    select: {
+      id: true,
+      yj_code: true,
+      drug_name: true,
+      dosage_form: true,
+      drug_price: true,
+      unit: true,
+      is_generic: true,
+      is_narcotic: true,
+      is_psychotropic: true,
+      is_high_risk: true,
+      is_lasa_risk: true,
+      tall_man_name: true,
+      lasa_group_key: true,
+      max_administration_days: true,
+      therapeutic_category: true,
+    },
+  });
+
+  const byYjCode: Record<string, (typeof drugs)[number]> = {};
+  const byDrugMasterId: Record<string, (typeof drugs)[number]> = {};
+  for (const drug of drugs) {
+    byYjCode[drug.yj_code] = drug;
+    byDrugMasterId[drug.id] = drug;
+  }
+
+  return { ...byYjCode, by_drug_master_id: byDrugMasterId };
+}
+
+type DrugMasterBatchResponseBody = Awaited<ReturnType<typeof fetchDrugMasterBatch>>;
+
 async function authenticatedPOST(req: NextRequest) {
   const authResult = await requireAuthContext(req);
   if ('response' in authResult) return authResult.response;
@@ -59,37 +98,18 @@ async function authenticatedPOST(req: NextRequest) {
     });
   }
 
-  const drugs = await runWithRequestAuthContext(ctx, () =>
-    prisma.drugMaster.findMany({
-      where: buildDrugMasterBatchWhere(yjCodes, drugMasterIds),
-      select: {
-        id: true,
-        yj_code: true,
-        drug_name: true,
-        dosage_form: true,
-        drug_price: true,
-        unit: true,
-        is_generic: true,
-        is_narcotic: true,
-        is_psychotropic: true,
-        is_high_risk: true,
-        is_lasa_risk: true,
-        tall_man_name: true,
-        lasa_group_key: true,
-        max_administration_days: true,
-        therapeutic_category: true,
-      },
-    }),
-  );
-
-  const byYjCode: Record<string, (typeof drugs)[number]> = {};
-  const byDrugMasterId: Record<string, (typeof drugs)[number]> = {};
-  for (const drug of drugs) {
-    byYjCode[drug.yj_code] = drug;
-    byDrugMasterId[drug.id] = drug;
+  const cacheKey = buildDrugMasterBatchCacheKey(yjCodes, drugMasterIds);
+  const cached = drugMasterDetailCache.get<DrugMasterBatchResponseBody>(cacheKey);
+  if (cached !== undefined) {
+    return success(cached);
   }
 
-  return success({ ...byYjCode, by_drug_master_id: byDrugMasterId });
+  const responseBody = await runWithRequestAuthContext(ctx, () =>
+    fetchDrugMasterBatch(yjCodes, drugMasterIds),
+  );
+  drugMasterDetailCache.set(cacheKey, responseBody, DRUG_MASTER_DETAIL_CACHE_TTL_MS);
+
+  return success(responseBody);
 }
 
 export async function POST(req: NextRequest) {

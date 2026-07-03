@@ -8,6 +8,11 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
+import {
+  buildDrugMasterDetailCacheKey,
+  DRUG_MASTER_DETAIL_CACHE_TTL_MS,
+  drugMasterDetailCache,
+} from '@/server/services/drug-master-detail-cache';
 
 const ROUTE = '/api/drug-masters/[id]';
 
@@ -28,6 +33,48 @@ function sortInteractionsBySafetyPriority<TInteraction extends { severity: strin
   });
 }
 
+async function fetchDrugMasterDetail(id: string) {
+  const drug = await prisma.drugMaster.findUnique({
+    where: { id },
+    include: {
+      package_inserts: {
+        orderBy: { revised_at: 'desc' },
+        take: 1,
+        select: {
+          id: true,
+          contraindications: true,
+          interactions: true,
+          adverse_effects: true,
+          dosage_adjustment_renal: true,
+          precautions_elderly: true,
+          document_version: true,
+          revised_at: true,
+        },
+      },
+      interactions_as_a: {
+        include: {
+          drug_b: { select: { id: true, drug_name: true, yj_code: true } },
+        },
+      },
+      interactions_as_b: {
+        include: {
+          drug_a: { select: { id: true, drug_name: true, yj_code: true } },
+        },
+      },
+    },
+  });
+
+  if (!drug) return null;
+
+  return {
+    ...drug,
+    interactions_as_a: sortInteractionsBySafetyPriority(drug.interactions_as_a),
+    interactions_as_b: sortInteractionsBySafetyPriority(drug.interactions_as_b),
+  };
+}
+
+type DrugMasterDetail = NonNullable<Awaited<ReturnType<typeof fetchDrugMasterDetail>>>;
+
 async function authenticatedGET(req: NextRequest, params: Promise<{ id: string }>) {
   const authResult = await requireAuthContext(req);
   if ('response' in authResult) return authResult.response;
@@ -38,43 +85,18 @@ async function authenticatedGET(req: NextRequest, params: Promise<{ id: string }
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('医薬品IDが不正です');
 
-    const drug = await prisma.drugMaster.findUnique({
-      where: { id },
-      include: {
-        package_inserts: {
-          orderBy: { revised_at: 'desc' },
-          take: 1,
-          select: {
-            id: true,
-            contraindications: true,
-            interactions: true,
-            adverse_effects: true,
-            dosage_adjustment_renal: true,
-            precautions_elderly: true,
-            document_version: true,
-            revised_at: true,
-          },
-        },
-        interactions_as_a: {
-          include: {
-            drug_b: { select: { id: true, drug_name: true, yj_code: true } },
-          },
-        },
-        interactions_as_b: {
-          include: {
-            drug_a: { select: { id: true, drug_name: true, yj_code: true } },
-          },
-        },
-      },
-    });
+    const cacheKey = buildDrugMasterDetailCacheKey(id);
+    const cached = drugMasterDetailCache.get<DrugMasterDetail>(cacheKey);
+    if (cached !== undefined) {
+      return success(cached);
+    }
 
+    const drug = await fetchDrugMasterDetail(id);
     if (!drug) return notFound('医薬品が見つかりません');
 
-    return success({
-      ...drug,
-      interactions_as_a: sortInteractionsBySafetyPriority(drug.interactions_as_a),
-      interactions_as_b: sortInteractionsBySafetyPriority(drug.interactions_as_b),
-    });
+    drugMasterDetailCache.set(cacheKey, drug, DRUG_MASTER_DETAIL_CACHE_TTL_MS);
+
+    return success(drug);
   });
 }
 
