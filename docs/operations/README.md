@@ -8,4 +8,5 @@
 - `pmda-onboarding-runbook.md` : PMDA onboarding runbook
 - `target-pharmacy-onboarding-checklist.md` : target pharmacy onboarding checklist
 - `webhook-secret-backfill-runbook.md` : encrypted webhook signing-secret backfill and contract plan
+- `production-migration-runbook.md` : approved manual `prisma migrate deploy` procedure for production RDS, the `deploy-production` gap it fills, and a proposed (not-yet-enabled) CI diff
 - `git-hooks.md` : opt-in pre-commit フック（staged ファイル限定の eslint/prettier）の導入手順
