@@ -6,6 +6,7 @@ import { formatOptionalDate } from '@/lib/patient/home-visit-intake';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { resolvePatientMcsOpenTargets } from '@/lib/patient-mcs/source';
 import { formatYen } from '@/lib/format/currency';
+import { japanDateKey } from '@/lib/utils/date-boundary';
 import { listPatientBillingCaseRefs } from '@/server/services/patient-detail-billing-refs';
 import { buildPatientDetailWhere } from '@/server/services/patient-detail-scope';
 import type {
@@ -36,22 +37,8 @@ function toIso(value: Date | null | undefined) {
   return value ? value.toISOString() : null;
 }
 
-const TOKYO_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'Asia/Tokyo',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-});
-
 function formatDate(value: Date | null | undefined) {
   return value ? formatOptionalDate(formatUtcDateKey(value)) : '未設定';
-}
-
-function formatTokyoDateKey(value: Date) {
-  const parts = Object.fromEntries(
-    TOKYO_DATE_FORMATTER.formatToParts(value).map((part) => [part.type, part.value]),
-  );
-  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 function formatCurrency(value: number | null | undefined) {
@@ -1333,7 +1320,7 @@ function buildConferenceItem(args: {
   const syncedActionTaskCount = Math.min(actionItemSummary.total, syncSummary?.tasks_created ?? 0);
   const convertedActionItemCount = Math.max(actionItemSummary.converted, syncedActionTaskCount);
   const openActionItemCount = Math.max(0, actionItemSummary.total - convertedActionItemCount);
-  const todayTokyoKey = formatTokyoDateKey(new Date());
+  const todayTokyoKey = japanDateKey(new Date());
   const conferenceUpcoming = Boolean(upcomingNote);
   const reportDraftCount = new Set([
     ...(syncSummary?.report_draft_ids ?? []),
@@ -1343,7 +1330,7 @@ function buildConferenceItem(args: {
   const reportMissing = Boolean(dueWorkNote && !hasConferenceReportDraft(dueWorkNote));
   const followUpOpen = Boolean(note?.follow_up_date && !note.follow_up_completed);
   const followUpOverdue = Boolean(
-    followUpOpen && note?.follow_up_date && formatTokyoDateKey(note.follow_up_date) < todayTokyoKey,
+    followUpOpen && note?.follow_up_date && japanDateKey(note.follow_up_date) < todayTokyoKey,
   );
   const alerts = compact([
     !note && 'カンファレンス予定・記録が未登録です',
