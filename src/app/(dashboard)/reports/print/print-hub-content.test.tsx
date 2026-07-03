@@ -438,6 +438,61 @@ describe('PrintHubContent', () => {
     expect(calledUrls).not.toContain('%25');
   });
 
+  it('scopes /api/set-plans to patient_id when the print hub is opened for a known patient', async () => {
+    setPrintSearchParams({ type: 'set_instruction', patient_id: 'patient_1' });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/set-plans?patient_id=patient_1') {
+        expect(init?.headers).toEqual(buildOrgHeaders('org_1'));
+        return new Response(JSON.stringify(setPlansResponse('patient_1')), { status: 200 });
+      }
+      if (url === '/api/patients/patient_1/prescriptions?limit=20') {
+        expect(init?.headers).toEqual(buildOrgHeaders('org_1'));
+        return new Response(JSON.stringify(prescriptionsResponse('patient_1')), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPrintHubContent();
+
+    await screen.findByTestId('print-target-set_instruction');
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/set-plans?patient_id=patient_1', {
+        headers: buildOrgHeaders('org_1'),
+      }),
+    );
+    // 絞り込みパラメータを付与しても pickPrintSetPlan の選択結果(唯一の候補)は不変。
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/set-plans', {
+      headers: buildOrgHeaders('org_1'),
+    });
+  });
+
+  it('does not scope /api/set-plans when no patient is known (org-wide sidebar entry)', async () => {
+    setPrintSearchParams({ type: 'set_instruction' });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/set-plans') {
+        expect(init?.headers).toEqual(buildOrgHeaders('org_1'));
+        return new Response(JSON.stringify(setPlansResponse('patient_1')), { status: 200 });
+      }
+      if (url === '/api/patients/patient_1/prescriptions?limit=20') {
+        return new Response(JSON.stringify(prescriptionsResponse('patient_1')), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPrintHubContent();
+
+    await screen.findByTestId('print-target-set_instruction');
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/set-plans', {
+        headers: buildOrgHeaders('org_1'),
+      }),
+    );
+  });
+
   it('loads prescriptions through the shared patient API path helper', async () => {
     setPrintSearchParams({ type: 'set_instruction' });
     vi.mocked(buildPatientApiPath).mockImplementationOnce(

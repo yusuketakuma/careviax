@@ -120,9 +120,17 @@ function usePrintHubData(
   const needsFirstVisitDocuments = documentType === 'first_visit_documents';
 
   const setPlansQuery = useQuery({
-    queryKey: ['print-hub-set-plans', orgId],
+    queryKey: ['print-hub-set-plans', orgId, explicitPatientId],
     queryFn: async () => {
-      const res = await fetch('/api/set-plans', { headers: buildOrgHeaders(orgId) });
+      // explicitPatientId が既知(例: 患者文書パネルからの遷移)の場合のみ
+      // /api/set-plans を patient_id で絞り込む。pickPrintSetPlan は常に
+      // その患者の候補のみで選択するため、絞り込みで選択結果は変わらない。
+      // explicitPatientId が無い場合(サイドバーからの汎用遷移)は組織全体から
+      // 最適な1件を選ぶ既存動作を維持するため絞り込みを付与しない。
+      const url = explicitPatientId
+        ? `/api/set-plans?patient_id=${encodeURIComponent(explicitPatientId)}`
+        : '/api/set-plans';
+      const res = await fetch(url, { headers: buildOrgHeaders(orgId) });
       if (!res.ok) throw new Error('セットプランの取得に失敗しました');
       return res.json() as Promise<SetPlansResponse>;
     },
