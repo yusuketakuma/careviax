@@ -132,6 +132,7 @@ enum PharmacyInvoiceDocumentKind {
 model PartnerPharmacy {
   id                 String                @id @default(cuid())
   org_id             String
+  display_id         String?
   org                Organization          @relation(fields: [org_id], references: [id])
   pharmacy_code      String?
   name               String
@@ -154,6 +155,7 @@ model PartnerPharmacy {
   visit_requests        PharmacyVisitRequest[]
   partner_visit_records PartnerVisitRecord[]
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@unique([org_id, pharmacy_code])
   @@index([org_id])
@@ -163,6 +165,7 @@ model PartnerPharmacy {
 model PharmacyPartnership {
   id                  String                    @id @default(cuid())
   org_id              String
+  display_id          String?
   org                 Organization              @relation(fields: [org_id], references: [id])
   base_site_id        String
   base_site           PharmacySite              @relation("BaseSitePharmacyPartnerships", fields: [base_site_id, org_id], references: [id, org_id])
@@ -187,6 +190,7 @@ model PharmacyPartnership {
   visit_requests PharmacyVisitRequest[]
   contracts      PharmacyContract[]
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@index([org_id])
   @@index([org_id, base_site_id])
@@ -197,6 +201,7 @@ model PharmacyPartnership {
 model PatientShareCase {
   id                             String                 @id @default(cuid())
   org_id                         String
+  display_id                     String?
   org                            Organization           @relation(fields: [org_id], references: [id])
   partnership_id                 String
   partnership                    PharmacyPartnership    @relation(fields: [partnership_id, org_id], references: [id, org_id])
@@ -231,6 +236,7 @@ model PatientShareCase {
   partner_visit_records PartnerVisitRecord[]
   message_threads       PharmacyCooperationMessageThread[]
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@index([org_id])
   @@index([org_id, partnership_id])
@@ -242,6 +248,7 @@ model PatientShareCase {
 model PatientShareConsent {
   id                String           @id @default(cuid())
   org_id            String
+  display_id        String?
   org               Organization     @relation(fields: [org_id], references: [id])
   share_case_id     String
   share_case        PatientShareCase @relation(fields: [share_case_id, org_id], references: [id, org_id], onDelete: Cascade)
@@ -259,6 +266,7 @@ model PatientShareConsent {
   created_at        DateTime         @default(now())
   updated_at        DateTime         @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@index([org_id])
   @@index([org_id, share_case_id])
@@ -270,6 +278,7 @@ model PatientShareConsent {
 model PatientLink {
   id                       String            @id @default(cuid())
   org_id                   String
+  display_id               String?
   org                      Organization      @relation(fields: [org_id], references: [id])
   share_case_id            String
   share_case               PatientShareCase  @relation(fields: [share_case_id, org_id], references: [id, org_id], onDelete: Cascade)
@@ -286,6 +295,7 @@ model PatientLink {
   created_at               DateTime          @default(now())
   updated_at               DateTime          @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@unique([share_case_id, org_id])
   @@index([org_id])
@@ -296,6 +306,7 @@ model PatientLink {
 model PatientShareCorrectionRequest {
   id             String                            @id @default(cuid())
   org_id         String
+  display_id     String?
   org            Organization                      @relation(fields: [org_id], references: [id])
   share_case_id  String
   share_case     PatientShareCase                  @relation(fields: [share_case_id, org_id], references: [id, org_id], onDelete: Cascade)
@@ -315,6 +326,7 @@ model PatientShareCorrectionRequest {
   created_at     DateTime                          @default(now())
   updated_at     DateTime                          @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@index([org_id])
   @@index([org_id, share_case_id])
@@ -325,6 +337,7 @@ model PatientShareCorrectionRequest {
 model PharmacyVisitRequest {
   id                    String                     @id @default(cuid())
   org_id                String
+  display_id            String?
   org                   Organization               @relation(fields: [org_id], references: [id])
   share_case_id         String
   share_case            PatientShareCase           @relation(fields: [share_case_id, org_id], references: [id, org_id])
@@ -359,6 +372,7 @@ model PharmacyVisitRequest {
   partner_visit_records PartnerVisitRecord[]
   message_threads       PharmacyCooperationMessageThread[]
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@index([org_id])
   @@index([org_id, share_case_id])
@@ -371,6 +385,7 @@ model PharmacyVisitRequest {
 model PharmacyCooperationMessageThread {
   id               String                                 @id @default(cuid())
   org_id           String
+  display_id       String?
   org              Organization                           @relation(fields: [org_id], references: [id])
   share_case_id    String
   share_case       PatientShareCase                       @relation(fields: [share_case_id, org_id], references: [id, org_id], onDelete: Cascade)
@@ -384,6 +399,7 @@ model PharmacyCooperationMessageThread {
   updated_at       DateTime                               @updatedAt
   messages         PharmacyCooperationMessage[]
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@index([org_id])
   @@index([org_id, share_case_id])
@@ -394,6 +410,7 @@ model PharmacyCooperationMessageThread {
 model PharmacyCooperationMessage {
   id             String                               @id @default(cuid())
   org_id         String
+  display_id     String?
   org            Organization                         @relation(fields: [org_id], references: [id])
   thread_id      String
   thread         PharmacyCooperationMessageThread     @relation(fields: [thread_id, org_id], references: [id, org_id], onDelete: Cascade)
@@ -403,6 +420,7 @@ model PharmacyCooperationMessage {
   created_at     DateTime                             @default(now())
   updated_at     DateTime                             @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@index([org_id])
   @@index([org_id, thread_id, created_at])
@@ -412,6 +430,7 @@ model PharmacyCooperationMessage {
 model PartnerVisitRecord {
   id                         String                   @id @default(cuid())
   org_id                     String
+  display_id                 String?
   org                        Organization             @relation(fields: [org_id], references: [id])
   visit_request_id           String
   visit_request              PharmacyVisitRequest     @relation(fields: [visit_request_id, org_id], references: [id, org_id])
@@ -442,6 +461,7 @@ model PartnerVisitRecord {
   billing_candidates VisitBillingCandidate[]
   physician_reports  CareReport[]            @relation("CareReportPartnerVisitRecord")
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@unique([org_id, visit_request_id, revision_no])
   @@index([org_id])
@@ -454,6 +474,7 @@ model PartnerVisitRecord {
 model ClaimCooperationNote {
   id                       String             @id @default(cuid())
   org_id                   String
+  display_id               String?
   org                      Organization       @relation(fields: [org_id], references: [id])
   partner_visit_record_id  String
   partner_visit_record     PartnerVisitRecord @relation(fields: [partner_visit_record_id, org_id], references: [id, org_id])
@@ -469,6 +490,7 @@ model ClaimCooperationNote {
   created_at               DateTime           @default(now())
   updated_at               DateTime           @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@unique([partner_visit_record_id, org_id])
   @@index([org_id])
@@ -479,6 +501,7 @@ model ClaimCooperationNote {
 model PharmacyContract {
   id                  String                 @id @default(cuid())
   org_id              String
+  display_id          String?
   org                 Organization           @relation(fields: [org_id], references: [id])
   partnership_id      String
   partnership         PharmacyPartnership    @relation(fields: [partnership_id, org_id], references: [id, org_id])
@@ -502,6 +525,7 @@ model PharmacyContract {
   invoices  PharmacyInvoice[]
   documents ContractDocument[]
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@index([org_id])
   @@index([org_id, partnership_id])
@@ -512,6 +536,7 @@ model PharmacyContract {
 model PharmacyContractVersion {
   id                  String           @id @default(cuid())
   org_id              String
+  display_id          String?
   org                 Organization     @relation(fields: [org_id], references: [id])
   contract_id         String
   contract            PharmacyContract @relation(fields: [contract_id, org_id], references: [id, org_id], onDelete: Cascade)
@@ -533,6 +558,7 @@ model PharmacyContractVersion {
   billing_candidates VisitBillingCandidate[]
   documents          ContractDocument[]
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@unique([org_id, contract_id, version_no])
   @@index([org_id])
@@ -543,6 +569,7 @@ model PharmacyContractVersion {
 model PharmacyContractFeeRule {
   id                  String                  @id @default(cuid())
   org_id              String
+  display_id          String?
   org                 Organization            @relation(fields: [org_id], references: [id])
   contract_version_id String
   contract_version    PharmacyContractVersion @relation(fields: [contract_version_id, org_id], references: [id, org_id], onDelete: Cascade)
@@ -557,6 +584,7 @@ model PharmacyContractFeeRule {
   created_at          DateTime                @default(now())
   updated_at          DateTime                @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@index([org_id])
   @@index([org_id, contract_version_id])
@@ -567,6 +595,7 @@ model PharmacyContractFeeRule {
 model VisitBillingCandidate {
   id                      String                   @id @default(cuid())
   org_id                  String
+  display_id              String?
   org                     Organization             @relation(fields: [org_id], references: [id])
   partner_visit_record_id String
   partner_visit_record    PartnerVisitRecord       @relation(fields: [partner_visit_record_id, org_id], references: [id, org_id])
@@ -584,6 +613,7 @@ model VisitBillingCandidate {
 
   invoice_items PharmacyInvoiceItem[]
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@unique([org_id, partner_visit_record_id])
   @@index([org_id])
@@ -595,6 +625,7 @@ model VisitBillingCandidate {
 model PharmacyInvoice {
   id                    String                      @id @default(cuid())
   org_id                String
+  display_id            String?
   org                   Organization                @relation(fields: [org_id], references: [id])
   contract_id           String
   contract              PharmacyContract            @relation(fields: [contract_id, org_id], references: [id, org_id])
@@ -620,6 +651,7 @@ model PharmacyInvoice {
 
   items PharmacyInvoiceItem[]
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@unique([org_id, invoice_no])
   @@index([org_id])
@@ -632,6 +664,7 @@ model PharmacyInvoice {
 model PharmacyInvoiceItem {
   id                         String                 @id @default(cuid())
   org_id                     String
+  display_id                 String?
   org                        Organization           @relation(fields: [org_id], references: [id])
   invoice_id                 String
   invoice                    PharmacyInvoice        @relation(fields: [invoice_id, org_id], references: [id, org_id], onDelete: Cascade)
@@ -647,6 +680,7 @@ model PharmacyInvoiceItem {
   created_at                 DateTime               @default(now())
   updated_at                 DateTime               @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@unique([org_id, visit_billing_candidate_id])
   @@index([org_id])
@@ -658,6 +692,7 @@ model PharmacyInvoiceItem {
 model ContractDocument {
   id            String                   @id @default(cuid())
   org_id        String
+  display_id    String?
   org           Organization             @relation(fields: [org_id], references: [id])
   contract_id   String
   contract      PharmacyContract         @relation(fields: [contract_id, org_id], references: [id, org_id], onDelete: Cascade)
@@ -672,6 +707,7 @@ model ContractDocument {
   created_at    DateTime                 @default(now())
   updated_at    DateTime                 @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@index([org_id])
   @@index([org_id, contract_id])

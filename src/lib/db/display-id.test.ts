@@ -33,6 +33,8 @@ const VISIT_COMMUNICATION_DISPLAY_ID_W3_MIGRATION =
   'prisma/migrations/20260703153000_add_visit_communication_display_ids/migration.sql';
 const ORGANIZATION_DISPLAY_ID_W4_MIGRATION =
   'prisma/migrations/20260703154000_add_organization_display_ids/migration.sql';
+const PHARMACY_PARTNERSHIP_DISPLAY_ID_W5_MIGRATION =
+  'prisma/migrations/20260703155000_add_pharmacy_partnership_display_ids/migration.sql';
 const PATIENT_DISPLAY_ID_W1_MODELS = [
   'Patient',
   'Residence',
@@ -118,6 +120,26 @@ const ORGANIZATION_DISPLAY_ID_W4_MODELS = [
   'ExternalProfessional',
   'PrescriberInstitution',
 ] as const satisfies readonly DisplayIdModel[];
+const PHARMACY_PARTNERSHIP_DISPLAY_ID_W5_MODELS = [
+  'PartnerPharmacy',
+  'PharmacyPartnership',
+  'PatientShareCase',
+  'PatientShareConsent',
+  'PatientLink',
+  'PatientShareCorrectionRequest',
+  'PharmacyVisitRequest',
+  'PharmacyCooperationMessageThread',
+  'PharmacyCooperationMessage',
+  'PartnerVisitRecord',
+  'ClaimCooperationNote',
+  'PharmacyContract',
+  'PharmacyContractVersion',
+  'PharmacyContractFeeRule',
+  'VisitBillingCandidate',
+  'PharmacyInvoice',
+  'PharmacyInvoiceItem',
+  'ContractDocument',
+] as const satisfies readonly DisplayIdModel[];
 const DISPLAY_ID_SCHEMA_WAVES = [
   {
     label: 'W1 patient-domain',
@@ -148,6 +170,12 @@ const DISPLAY_ID_SCHEMA_WAVES = [
     schemaFile: 'organization.prisma',
     migrationPath: ORGANIZATION_DISPLAY_ID_W4_MIGRATION,
     models: ORGANIZATION_DISPLAY_ID_W4_MODELS,
+  },
+  {
+    label: 'W5 pharmacy-partnership-domain',
+    schemaFile: 'pharmacy-partnership.prisma',
+    migrationPath: PHARMACY_PARTNERSHIP_DISPLAY_ID_W5_MIGRATION,
+    models: PHARMACY_PARTNERSHIP_DISPLAY_ID_W5_MODELS,
   },
 ] as const;
 const DISPLAY_ID_WAVE_MODELS = DISPLAY_ID_SCHEMA_WAVES.flatMap((wave) => wave.models);
@@ -183,6 +211,29 @@ function readModelBlock(schema: string, model: string): string {
   const match = new RegExp(`^model ${model} \\{[\\s\\S]*?^\\}`, 'm').exec(schema);
   if (!match) throw new Error(`Missing Prisma model block: ${model}`);
   return match[0];
+}
+
+function readModelNames(schema: string): string[] {
+  const modelNames: string[] = [];
+  const modelPattern = /^model\s+(\w+)\s*\{/gm;
+  let match: RegExpExecArray | null;
+  while ((match = modelPattern.exec(schema)) !== null) {
+    if (match[1]) modelNames.push(match[1]);
+  }
+  return modelNames;
+}
+
+function collectDirectOrgScopedModels(schema: string): string[] {
+  return readModelNames(schema)
+    .filter((model) => {
+      const block = readModelBlock(schema, model);
+      return (
+        /\n\s+org_id\s+String(?:\s|$)/.test(block) &&
+        /\n\s+created_at\s+DateTime(?:\s|$)/.test(block) &&
+        block.includes('@@unique([id, org_id])')
+      );
+    })
+    .sort();
 }
 
 function collectSourceFiles(root: string): string[] {
@@ -355,6 +406,13 @@ describe('display_id registry and format contract', () => {
       expect(migration, wave.label).not.toMatch(/\bDROP\b/i);
       expect(migration, wave.label).not.toMatch(/\bALTER COLUMN\b/i);
     }
+  });
+
+  it('keeps the W5 pharmacy-partnership wave aligned with direct org-scoped models', () => {
+    const schema = readFileSync(join(SCHEMA_DIR, 'pharmacy-partnership.prisma'), 'utf8');
+    expect(collectDirectOrgScopedModels(schema)).toEqual(
+      [...PHARMACY_PARTNERSHIP_DISPLAY_ID_W5_MODELS].sort(),
+    );
   });
 });
 
