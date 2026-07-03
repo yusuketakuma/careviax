@@ -200,6 +200,33 @@
 - opus follow-up: M-1（`User` は registry scope='org' だが波計画 global(W6)、`CXR2-RLS02` design 判定で確定）と
   L-1（org-scoped registry model の wave 網羅 completeness assertion）を BACKLOG `ID-2-UR` に登録。
 
+## 2026-07-04 ID-2-W5 report-ready
+
+- 分類: infra/db / display_id pharmacy-partnership wave 5
+- 対象: `prisma/schema/pharmacy-partnership.prisma`, new
+  `20260703155000_add_pharmacy_partnership_display_ids`, `src/lib/db/display-id.test.ts`,
+  台帳3ファイル
+- 実施: pharmacy-partnership.prisma の direct org-scoped 18 model へ nullable `display_id` と
+  `@@unique([org_id, display_id])` を追加。migration は W1-W4 同型の `ADD COLUMN` +
+  `WHERE display_id IS NOT NULL` partial unique index のみ。
+- 方針: `PatientShareCase` 等の cross-org 共有系も display_id は row の `org_id` による自org採番。
+  相手org向け/外部向け番号としては扱わず、既存 `invoice_no` 等の業務番号も置換しない。
+- gate強化: W5 wave list に加え、`pharmacy-partnership.prisma` の direct org-scoped model 集合と
+  W5 list が一致する completeness guard を追加。
+- backfill: local e2e dry-run は対象 NULL 32 rows・issues 0。apply は32 rows backfilled、
+  postChecks は全18 model null 0・duplicate 0・invalid 0・sequenceMismatch 0。seed 再実行後の
+  final dry-run も全18 model null 0・duplicate 0・invalid 0・sequenceMismatch 0。
+- 検証: prisma validate/db:generate green。`pnpm db:e2e:prepare` / W5 dry-run / W5 apply /
+  `pnpm db:e2e:seed` / final dry-run green。focused DB vitest 30/30 green。
+  scoped eslint/format/diff-check green。`NODE_OPTIONS=--max-old-space-size=12288 pnpm typecheck`
+  と `typecheck:no-unused` green。
+- レビュー: migration_planner read-only No Findings。test_architect read-only は W5 completeness guard
+  追加を推奨、対応済み。opus 独立レビュー APPROVE（findings ゼロ。cross-org は単一org所有設計
+  =第2オーナー列皆無・全relation [id, org_id] 参照で display_id 意味論の破綻なしを実証）。
+- land: `86d9d273`。全量 gate: test は 13054 passed / 実失敗 0（唯一の Failed Suite は並行 R22-EXEC の
+  ファイル削除と vitest collection の race による spurious ENOENT。W5 非起因）。lint green。
+- 運用改善: 以後の全量 gate は EDIT-FREEZE broadcast → 全レーン ACK → gate 実行に変更（race 再発防止）。
+
 ## 2026-07-03 DR-DUP1 2e0c7fdb
 
 - 分類: bug/data-integrity / defensive validation

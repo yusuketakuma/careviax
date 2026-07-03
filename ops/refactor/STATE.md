@@ -18,8 +18,9 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: `ID-2-W4` organization display_id 第4波 land 済み(7e18fcb2)。
-  次波は `ID-2-W5`（pharmacy-partnership ドメイン org-scoped model）
+- Phase C（実装ループ）: 3レーン並行体制（2026-07-04〜）。codex(xhigh)=DB/schema、
+  codex2(high)=BE services、codex3(medium)=cleanup。`ID-2-W5` land 済み(86d9d273)、
+  次は `ID-2-W6`。codex2=R16-SWEEP stage2 実装中、codex3=R22-EXEC 実装中。
 
 ## 直近の land（本日・要点）
 
@@ -28,7 +29,8 @@
   PERF-01(981f1a58) / MFA1(f7bf2e97) / F84(c22c7fe3) / CE17(5205fc48) / R07(f3733036) /
   DR-DUP1(2e0c7fdb) / PERF-02(60469cd1) / CE20(66d65f99) / ID-1b(0a3b910c, e2a8b414)
   / ID-2-W1(898c0d6a) / ID-2-W2(90a1276e) / ID-2-W3(8c7e34e7) / ID-2-W4(7e18fcb2)
-  / FIX-CATALOG-IDSEQ(a42065fa) — 全 opus/committer APPROVE
+  / FIX-CATALOG-IDSEQ(a42065fa) / R21-SONNER1(68688360) / ID-2-W5(86d9d273) — 全 opus/committer APPROVE
+- codex2 lane: R16-MIN(da5889f0) — committer 検証 APPROVE（Intl 設定 byte-identical 証明）
 - claude/opus lane: X01(e02cec50) / CE19(2136c93a) / N18(ad0ff309) / R03(3b31cec1) /
   A1-CRC(eebda8c3) land
 - 全量 gate green: test 13035 passed（2026-07-03 夜、F84/CE19/N18/R03後）
@@ -36,6 +38,7 @@
 ## 進行中 / 凍結
 
 - codex: `ID-1a` / `ID-1b` / `ID-2-W1` / `ID-2-W2` / `ID-2-W3` / `ID-2-W4` は land 済み。
+  `ID-2-W5` も land 済み(86d9d273)。
   E1 は基準1 FAIL、E2（明示 tx allocator）正式採用。
 - W4 land 時に既存欠陥 FIX-CATALOG-IDSEQ(a42065fa) を併せて解消（`IdSequence` が
   data-explorer カバレッジカタログ未分類でフル `pnpm test` が赤だった。db:generate 鮮度更新で顕在化）。
@@ -46,5 +49,7 @@
 
 ## 次の一手
 
-1. codex: `ID-2-W5`（pharmacy-partnership ドメイン org-scoped model の display_id 波）を LOCK 割当予定
-2. codex: `R21-SONNER1`（test-only mock helper）は W4 land 後に LOCK 付与
+1. codex: `ID-2-W6`（admin+drug+platform 波、設計判断込み: User 帰属提案 / DrugAlertRule hybrid RLS / platform 表の帰属）
+2. codex2: R16-SWEEP stage2 実装→report、codex3: R22-EXEC 実装→report
+3. 運用: 全量 gate は EDIT-FREEZE broadcast → 全レーン ACK → 実行（race 防止）
+4. 運用: W6 以降の ops/refactor 台帳更新は claude が引き取り、codex は report note に留める
