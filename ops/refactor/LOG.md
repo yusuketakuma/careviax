@@ -97,6 +97,21 @@
   `pnpm typecheck` green。
 - レビュー: opus APPROVE、claude commit 66d65f99。self-commit なし。
 
+## 2026-07-03 ID-1a report-ready
+
+- 分類: design-spike / Prisma query extension tx feasibility
+- 対象: `src/lib/db/display-id-spike.test.ts` + 台帳3ファイル
+- 実施: 既存 `PackagingMethodMaster.description` を display_id surrogate とし、実DB disposable
+  `display_id_spike_sequence` で Prisma 7.8 `query.$allModels.create/createMany` hook の挙動を検証。
+  schema/migration は変更なし。
+- 判定: 基準1 FAIL（interactive tx rollback 後、親行は0件だが sequence `next_value=2` が残り別接続漏れを実証）。
+  基準2 非tx create PASS、基準3 createMany 注入 PASS、基準4 withOrgContext session 変数非干渉 PASS。
+- 推奨: E1 は不採用。親 create と同一 tx を呼び出し側から渡す E2（明示 `allocateDisplayId(tx, ...)`）へ fallback。
+- 検証: focused vitest（local 5433 e2e DB 明示）4/4 green。env未設定時は4/4 skipを確認。
+  scoped eslint/prettier/diff-check green。
+  `pnpm typecheck` / `pnpm typecheck:no-unused` green。
+- レビュー: report pending。self-commit なし。
+
 ## 2026-07-03 DR-DUP1 2e0c7fdb
 
 - 分類: bug/data-integrity / defensive validation

@@ -18,7 +18,7 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: `CE20` land 済み。次割当 `ID-1` spike 待機中
+- Phase C（実装ループ）: `ID-1a` feasibility spike 実装・検証済み、report/opus verdict 待ち
 
 ## 直近の land（本日・要点）
 
@@ -35,11 +35,12 @@
 
 - codex: `PERF-02` は opus APPROVE、60469cd1 で land 済み。
 - codex: `CE20` は opus APPROVE、66d65f99 で land 済み。
+- codex: `ID-1a` は Prisma extension 採番 spike 4/4 green。判定は E1 基準1 FAIL（tx rollback から
+  sequence upsert が漏れる）/ 基準2-4 PASS。E2 推奨で report 待ち。
 - codex: `PERF-03` は read-only recon 後、fable 裁定で `flagged(raw SQL 要設計・低優先)` として据え置き。
-- codex: 次割当候補 `ID-1`（display_id 採番基盤）待機。`docs/design/display-id-design.md` 先読み済み。
 - human-gate 記録: MFA1 / X01 とも RESOLVED 済み。
 
 ## 次の一手
 
-1. codex: `ID-1` 割当が来たら LOCK 範囲確認→spike/実装
-2. codex: standby 中は read-only recon のみに留める
+1. codex: `ID-1a` report を agmsg 送信し、opus verdict / claude commit を待つ
+2. codex: verdict 前の追加編集は指示があるまで行わない

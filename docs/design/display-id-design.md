@@ -1,6 +1,6 @@
 # 業務ID（display_id）設計文書
 
-- 状態: \***\*ラティファイ済（2026-07-03 fable、ユーザー承認パラメータ準拠）** — 改訂2版。opus critic 2巡（CHANGES_REQUESTED→C1/M1/M2/M3+m1-m4 全解消→APPROVE）。実装順: ID-1 先頭の feasibility spike の結果で E1(extension)/E2(明示採番) を fable が確定する\*\* — 方式・採番・範囲・フォーマットはユーザーラティファイ済（2026-07-03）。critic レビュー（CHANGES_REQUESTED）の裁定を反映: C1=Setting を対象から除外（対象 138 + 除外 1）/ M1=extension 自動付与は feasibility spike を必須ゲートとし、失敗時はリポジトリ層明示採番へ fallback（§4）/ M2=IdSequence は RLS 非対象の内部テーブル（§3.1）/ M3=外部露出ポリシー新設（§7）/ minor m1-m4。§11 の未決事項（表示幅・コピーUI・グローバル検索・超高頻度表の性能影響）は fable ラティファイ時に判断する。
+- 状態: \***\*ラティファイ済（2026-07-03 fable、ユーザー承認パラメータ準拠）** — 改訂2版。opus critic 2巡（CHANGES_REQUESTED→C1/M1/M2/M3+m1-m4 全解消→APPROVE）。実装順: ID-1a spike 完了(2026-07-03、src/lib/db/display-id-spike.test.ts に恒久化)。判定=基準1 FAIL(hook params に tx client 参照なし・採番が root 接続へ leak することを実DBで実証)/基準2-4 PASS → **E2(リポジトリ層明示採番 allocateDisplayId(tx, model, orgId))を正式採用**(fable 確定)。E1 の将来再検討は非公式 API(getExtensionContext 等)の調査が前提\*\* — 方式・採番・範囲・フォーマットはユーザーラティファイ済（2026-07-03）。critic レビュー（CHANGES_REQUESTED）の裁定を反映: C1=Setting を対象から除外（対象 138 + 除外 1）/ M1=extension 自動付与は feasibility spike を必須ゲートとし、失敗時はリポジトリ層明示採番へ fallback（§4）/ M2=IdSequence は RLS 非対象の内部テーブル（§3.1）/ M3=外部露出ポリシー新設（§7）/ minor m1-m4。§11 の未決事項（表示幅・コピーUI・グローバル検索・超高頻度表の性能影響）は fable ラティファイ時に判断する。
 - 対象: Prisma 139 モデル中 **138 モデル**（Setting は §2 の裁定で除外）。DB 主キー cuid は不変のまま、`display_id` カラムを追加して UI/検索/帳票で使用する
 - 関連:
   - `docs/design/api-versioning-decision.md`（決定文書スタイルの範）
