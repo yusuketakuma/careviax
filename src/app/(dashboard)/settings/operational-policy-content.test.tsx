@@ -131,14 +131,27 @@ function buildCockpitFixture(): DashboardCockpitResponse {
 function mockQueries({
   policy = buildPolicyFixture(),
   cockpit = buildCockpitFixture(),
+  cockpitError = false,
+  cockpitRefetch = vi.fn(),
 }: {
   policy?: OperationalPolicyResponse;
   cockpit?: DashboardCockpitResponse | null;
+  cockpitError?: boolean;
+  cockpitRefetch?: () => void;
 } = {}) {
   useQueryMock.mockImplementation((options: { queryKey: unknown[] }) => {
     const key = options.queryKey[0];
     if (key === 'operational-policy') {
       return { data: policy, isLoading: false, isError: false, error: null, refetch: vi.fn() };
+    }
+    if (cockpitError) {
+      return {
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: new Error('当日の優先タスク取得に失敗しました'),
+        refetch: cockpitRefetch,
+      };
     }
     return { data: cockpit, isLoading: false, isError: false, error: null, refetch: vi.fn() };
   });
@@ -266,6 +279,43 @@ describe('OperationalPolicyContent', () => {
     expect(within(inventory).getByRole('heading', { name: 'オフライン・連携' })).toBeTruthy();
     expect(within(inventory).getByText('セッションタイムアウト・警告時刻')).toBeTruthy();
     expect(within(inventory).getByText('Webhook 再送・同時実行・タイムアウト')).toBeTruthy();
+  });
+
+  it('shows an explicit failure state (not a false "no blocked work" claim) when the cockpit rail query errors', () => {
+    const cockpitRefetch = vi.fn();
+    mockQueries({ cockpitError: true, cockpitRefetch });
+    render(<OperationalPolicyContent />);
+
+    // Primary strip: 「止まっている理由」欄は偽の空表示ではなく取得失敗を明示する
+    const primaryStrip = screen.getByTestId('policy-primary-strip');
+    const blockedSummary = within(primaryStrip).getByTestId('policy-blocked-summary');
+    expect(within(blockedSummary).queryByText('いま期限で止まっている作業はありません。')).toBe(
+      null,
+    );
+    expect(within(blockedSummary).getByText(/取得に失敗しました/)).toBeTruthy();
+    expect(within(blockedSummary).getByText('—')).toBeTruthy();
+
+    // 「次にやること」も偽の「今日の予定を確認する」ではなく再試行を促す
+    expect(within(primaryStrip).queryByText('今日の予定を確認する')).toBe(null);
+    expect(within(primaryStrip).getByRole('button', { name: '再試行する' })).toBeTruthy();
+    expect(within(primaryStrip).getByText(/当日の優先タスクを取得できませんでした/)).toBeTruthy();
+
+    // 右レール(補助パネル)側も同様に取得失敗を明示し、偽の「ありません」を出さない
+    expect(screen.queryByText('止まっている作業はありません')).toBe(null);
+    const rail = screen.getByTestId('workspace-action-rail');
+    expect(within(rail).getByText(/取得に失敗しました/)).toBeTruthy();
+
+    fireEvent.click(within(primaryStrip).getByRole('button', { name: '再試行する' }));
+    expect(cockpitRefetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the cockpit rail as usual when the cockpit query succeeds (no regression from the error handling)', () => {
+    mockQueries();
+    render(<OperationalPolicyContent />);
+
+    const primaryStrip = screen.getByTestId('policy-primary-strip');
+    expect(within(primaryStrip).queryByText(/取得に失敗しました/)).toBe(null);
+    expect(within(primaryStrip).getByText(/ご家族の同意待ち/)).toBeTruthy();
   });
 
   it('confirms the impact scope before saving a toggle change', () => {

@@ -259,11 +259,13 @@ function PolicyPrimaryStrip({
   changeLogCount,
   nextAction,
   blockedReasons,
+  cockpitError,
 }: {
   lockedCount: number;
   changeLogCount: number;
   nextAction: NextActionPanelProps;
   blockedReasons: BlockedReason[];
+  cockpitError: boolean;
 }) {
   const topBlockedReason = blockedReasons[0] ?? null;
 
@@ -287,8 +289,13 @@ function PolicyPrimaryStrip({
           </div>
         </div>
 
-        <div className="flex gap-3 p-3.5">
-          {topBlockedReason ? (
+        <div className="flex gap-3 p-3.5" data-testid="policy-blocked-summary">
+          {cockpitError ? (
+            <AlertTriangle
+              className="mt-0.5 size-5 shrink-0 text-state-blocked"
+              aria-hidden="true"
+            />
+          ) : topBlockedReason ? (
             <AlertTriangle
               className="mt-0.5 size-5 shrink-0 text-state-confirm"
               aria-hidden="true"
@@ -298,15 +305,24 @@ function PolicyPrimaryStrip({
           )}
           <div className="min-w-0">
             <p className="text-sm font-bold text-foreground">止まっている理由</p>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              {topBlockedReason
-                ? `${topBlockedReason.label}${topBlockedReason.ageLabel ? ` / ${topBlockedReason.ageLabel}` : ''}`
-                : 'いま期限で止まっている作業はありません。'}
+            <p
+              className={cn(
+                'mt-1 text-xs leading-5',
+                cockpitError ? 'font-semibold text-state-blocked' : 'text-muted-foreground',
+              )}
+            >
+              {cockpitError
+                ? '取得に失敗しました。「止まっている作業はありません」ではありません。再試行してください。'
+                : topBlockedReason
+                  ? `${topBlockedReason.label}${topBlockedReason.ageLabel ? ` / ${topBlockedReason.ageLabel}` : ''}`
+                  : 'いま期限で止まっている作業はありません。'}
             </p>
             <p className="mt-2 text-xs font-semibold text-muted-foreground">
-              {blockedReasons.length > 0
-                ? `${blockedReasons.length}件を補助パネルで確認`
-                : '補助パネルに根拠を保持'}
+              {cockpitError
+                ? '—'
+                : blockedReasons.length > 0
+                  ? `${blockedReasons.length}件を補助パネルで確認`
+                  : '補助パネルに根拠を保持'}
             </p>
           </div>
         </div>
@@ -519,7 +535,8 @@ export function OperationalPolicyContent() {
   });
 
   const data = policyQuery.data ?? null;
-  const cockpit = cockpitQuery.data ?? null;
+  const cockpitError = cockpitQuery.isError;
+  const cockpit = cockpitError ? null : (cockpitQuery.data ?? null);
   const canEdit = data?.can_edit ?? false;
   const lockedCount = data?.locked_items.length ?? 0;
 
@@ -541,21 +558,28 @@ export function OperationalPolicyContent() {
         (visit) => visit.time_start && visit.patient_name === topAudit.patient_name,
       ) ?? null)
     : null;
-  const nextAction: NextActionPanelProps = topAudit
+  const nextAction: NextActionPanelProps = cockpitError
     ? {
-        actionLabel: topAudit.due_at
-          ? `${topAudit.has_narcotic ? '麻薬監査' : '監査'}を開始 — ${formatTimeOfDay(topAudit.due_at)}期限`
-          : `${topAudit.has_narcotic ? '麻薬監査' : '監査'}を開始する`,
-        description: auditVisit?.time_start
-          ? `${formatTimeOfDay(auditVisit.time_start)}訪問(${topAudit.patient_name}様)の持参薬です。完了で午後の予定がすべて確定します。`
-          : `${topAudit.patient_name}様の監査が待ちです。完了で次の工程が動き出します。`,
-        actionHref: '/audit',
+        actionLabel: '再試行する',
+        description:
+          '当日の優先タスクを取得できませんでした(取得失敗)。「止まっている作業はありません」ではありません。',
+        onAction: () => void cockpitQuery.refetch(),
       }
-    : {
-        actionLabel: '今日の予定を確認する',
-        description: 'いま期限で止まっている作業はありません。',
-        actionHref: '/schedules',
-      };
+    : topAudit
+      ? {
+          actionLabel: topAudit.due_at
+            ? `${topAudit.has_narcotic ? '麻薬監査' : '監査'}を開始 — ${formatTimeOfDay(topAudit.due_at)}期限`
+            : `${topAudit.has_narcotic ? '麻薬監査' : '監査'}を開始する`,
+          description: auditVisit?.time_start
+            ? `${formatTimeOfDay(auditVisit.time_start)}訪問(${topAudit.patient_name}様)の持参薬です。完了で午後の予定がすべて確定します。`
+            : `${topAudit.patient_name}様の監査が待ちです。完了で次の工程が動き出します。`,
+          actionHref: '/audit',
+        }
+      : {
+          actionLabel: '今日の予定を確認する',
+          description: 'いま期限で止まっている作業はありません。',
+          actionHref: '/schedules',
+        };
   const blockedReasons: BlockedReason[] = (cockpit?.blocked_reasons ?? []).map((reason) => ({
     id: reason.id,
     label: reason.label,
@@ -619,6 +643,7 @@ export function OperationalPolicyContent() {
               changeLogCount={data.change_log_count_this_month}
               nextAction={nextAction}
               blockedReasons={blockedReasons}
+              cockpitError={cockpitError}
             />
 
             <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -797,7 +822,11 @@ export function OperationalPolicyContent() {
               <WorkspaceActionRail
                 nextAction={nextAction}
                 blockedReasons={blockedReasons}
-                blockedReasonsEmptyLabel="止まっている作業はありません"
+                blockedReasonsEmptyLabel={
+                  cockpitError
+                    ? '取得に失敗しました(取得エラー)。再試行してください。'
+                    : '止まっている作業はありません'
+                }
                 evidence={evidence}
                 evidenceOpenLabel="開く"
               />
