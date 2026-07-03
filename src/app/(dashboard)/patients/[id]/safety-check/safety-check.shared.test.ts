@@ -63,7 +63,11 @@ describe('mapIssueToConcernCategory', () => {
     ).toBe('dose');
     expect(
       mapIssueToConcernCategory(
-        buildIssue({ category: 'other', title: 'お薬カレンダー設置', description: '次回訪問で設置' }),
+        buildIssue({
+          category: 'other',
+          title: 'お薬カレンダー設置',
+          description: '次回訪問で設置',
+        }),
       ),
     ).toBeNull();
   });
@@ -71,7 +75,11 @@ describe('mapIssueToConcernCategory', () => {
   it('category 未設定でも説明文の腎機能キーワードで dose を拾う', () => {
     expect(
       mapIssueToConcernCategory(
-        buildIssue({ category: null, title: '確認事項', description: '腎機能低下のため減量を検討' }),
+        buildIssue({
+          category: null,
+          title: '確認事項',
+          description: '腎機能低下のため減量を検討',
+        }),
       ),
     ).toBe('dose');
   });
@@ -92,6 +100,14 @@ describe('mapAlertToConcernCategory', () => {
     expect(mapAlertToConcernCategory('allergy_cross')).toBe('adverse');
     expect(mapAlertToConcernCategory('monitoring')).toBe('adverse');
     expect(mapAlertToConcernCategory('duplicate')).toBe('duplicate');
+  });
+
+  it('X05: 添付文書 alert の切り捨て marker を対応する分類へ写す', () => {
+    expect(mapAlertToConcernCategory('package_insert_contraindication_truncated')).toBe(
+      'interaction',
+    );
+    expect(mapAlertToConcernCategory('package_insert_elderly_truncated')).toBe('dose');
+    expect(mapAlertToConcernCategory('package_insert_adverse_effect_truncated')).toBe('adverse');
   });
 
   it('調剤運用系の種別は対象外として null を返す', () => {

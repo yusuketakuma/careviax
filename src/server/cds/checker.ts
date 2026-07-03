@@ -2,7 +2,7 @@ import { formatDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 import { medicationIdentityKey } from '@/lib/prescription/medication-diff';
-import { Prisma, type LabAnalyteCode } from '@prisma/client';
+import { Prisma, type LabAnalyteCode, type PatientConditionType } from '@prisma/client';
 import { differenceInYears } from 'date-fns';
 
 export type CdsAlert = {
@@ -164,6 +164,122 @@ function buildPrescriptionLineDrugIdentityMismatchAlert(
       recommendation: '処方行のdrug_master_id/source_drug_code/drug_codeの整合性を確認してください',
     },
   };
+}
+
+// X02: 処方行の医薬品コードが未解決だとアレルギー交差チェックはコード/薬効分類で
+// 照合できず、name-based 照合しか行えない。無言スキップ（allergy-clean 扱い）は
+// false-negative を生むため、「照合未完了（要確認）」を明示するシグナルを出す。
+function buildAllergyCrossCheckIncompleteAlert(line: PrescriptionLine): CdsAlert {
+  return {
+    type: 'cds_data_quality',
+    severity: 'warning',
+    message: `アレルギー照合未完了（要確認）: ${line.drug_name}は医薬品コード未解決のためアレルギー交差チェックを完了できません`,
+    details: {
+      source: 'allergy_cross_check',
+      section: 'アレルギー交差チェック',
+      line_id: line.id,
+      drug_master_id: line.drug_master_id,
+      drug_display_name: line.drug_name,
+      unresolved: 'drug_code',
+      recommendation:
+        '処方行の医薬品コード（drug_master_id/drug_code）を解決し、アレルギー交差チェックを手動で確認してください',
+    },
+  };
+}
+
+// CXR1-MSR01: legacy な string / 非構造 object 形式の allergy_info は交差チェックに
+// 使えない。無言で allergy-clean 扱いにすると、他コードが allergy-present とみなす
+// 患者で false-negative になるため、「アレルギー情報が未構造化（要確認）」を明示する。
+function buildAllergyInfoUnstructuredAlert(): CdsAlert {
+  return {
+    type: 'cds_data_quality',
+    severity: 'warning',
+    message:
+      'アレルギー情報形式確認（要確認）: 患者アレルギー情報が未構造化のためアレルギー交差チェックを完了できません',
+    details: {
+      source: 'allergy_info_format',
+      section: '患者アレルギー情報',
+      recommendation:
+        '患者アレルギー情報を構造化形式（drug_name/drug_code/therapeutic_category 等）で登録し直し、アレルギー交差チェックを手動で確認してください',
+    },
+  };
+}
+
+// F81 + X03: 医薬品コード/マスターが未解決の薬剤は、相互作用・重複などの
+// コードベース CDS チェック（yj_code 照合）から無言で除外される。無言スキップは
+// 「チェック済み・問題なし」に見えてしまい false-negative を生むため、
+// 「未解決のため照合不能な薬剤が N 件ある」旨の data-quality 警告を明示する。
+// - unresolvedCurrentMeds: DrugMaster に解決できない現行薬（drug_master_id=null 含む）。
+//   checkInteractions は解決できない現行薬を無言スキップするため相互作用照合から漏れる。
+// - unresolvedPrescriptionLines: drug_code 未解決の処方行。コードベースの全チェックから漏れる。
+function buildCdsIdentityUnresolvedAlert(args: {
+  unresolvedPrescriptionLines: PrescriptionLine[];
+  unresolvedCurrentMeds: CurrentMed[];
+}): CdsAlert {
+  const lineCount = args.unresolvedPrescriptionLines.length;
+  const medCount = args.unresolvedCurrentMeds.length;
+  const total = lineCount + medCount;
+  const breakdown: string[] = [];
+  if (lineCount > 0) breakdown.push(`処方${lineCount}件`);
+  if (medCount > 0) breakdown.push(`併用薬${medCount}件`);
+  return {
+    type: 'cds_data_quality',
+    severity: 'warning',
+    message: `CDS照合未完了（要確認）: 医薬品コード未解決のため相互作用・重複などのコードベースCDSチェックを完了できない薬剤が${total}件あります（${breakdown.join(
+      ' / ',
+    )}）`,
+    details: {
+      source: 'cds_identity_unresolved',
+      section: '医薬品コード照合',
+      unresolved_prescription_line_count: lineCount,
+      unresolved_current_med_count: medCount,
+      unresolved_prescription_line_ids: args.unresolvedPrescriptionLines.map((line) => line.id),
+      unresolved_current_med_ids: args.unresolvedCurrentMeds.map((med) => med.id),
+      recommendation:
+        '未解決の処方行/併用薬の医薬品コード（drug_master_id/drug_code）を解決し、相互作用・重複などのCDSチェックを手動で確認してください',
+    },
+  };
+}
+
+// allergy_info を交差チェック可能な entry 配列に正規化する。
+// - 配列: 各要素を検査（構造化 object のみ採用）
+// - 単一 object: 認識可能なフィールドがあれば 1 entry として採用
+// - それ以外の非空値（legacy free-text string 等）: unstructured=true（要確認シグナル）
+// 空配列・空文字列は「アレルギー無し」を意味するので unstructured にはしない。
+function coerceAllergyEntry(value: unknown): AllergyEntry | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const obj = value as Record<string, unknown>;
+  const hasRecognizedField =
+    typeof obj.drug_name === 'string' ||
+    typeof obj.drug_code === 'string' ||
+    typeof obj.therapeutic_category === 'string' ||
+    typeof obj.substance === 'string';
+  return hasRecognizedField ? (obj as AllergyEntry) : null;
+}
+
+function isNonEmptyAllergyValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (typeof value === 'object') return Object.keys(value as object).length > 0;
+  return true; // number / boolean 等の非空値
+}
+
+function normalizeAllergyInfo(allergyInfo: Prisma.JsonValue): {
+  entries: AllergyEntry[];
+  unstructured: boolean;
+} {
+  const rawItems = Array.isArray(allergyInfo) ? allergyInfo : [allergyInfo];
+  const entries: AllergyEntry[] = [];
+  let unstructured = false;
+  for (const item of rawItems) {
+    const entry = coerceAllergyEntry(item);
+    if (entry) {
+      entries.push(entry);
+    } else if (isNonEmptyAllergyValue(item)) {
+      unstructured = true;
+    }
+  }
+  return { entries, unstructured };
 }
 
 function uniqueNonEmpty(values: Array<string | null | undefined>) {
@@ -705,6 +821,91 @@ type PatientForChecks = {
   allergy_info: Prisma.JsonValue | null;
 };
 
+// X05: 添付文書 alert の臨床重要度ランク（大きいほど重要 = 重大 > 注意 > 情報）。
+// severity は添付文書取込データ由来の自由形式文字列のため、既知の重大/注意マーカーを
+// マップする。未知/未設定は情報（最低ランク）扱い。切り捨て時に重要項目を優先的に残す
+// ためだけに使い、表示 alert 自体の severity は据え置く（誤った critical 昇格を避ける）。
+function packageInsertSeverityRank(entry: PackageInsertTextEntry): number {
+  const raw = entry.severity?.trim().toLowerCase();
+  if (!raw) return 0;
+  // 重大（serious / 重大 / 警告 / 禁忌 / critical）
+  if (
+    raw.includes('serious') ||
+    raw.includes('重大') ||
+    raw.includes('critical') ||
+    raw.includes('warning') ||
+    raw.includes('警告') ||
+    raw.includes('禁忌') ||
+    raw.includes('danger') ||
+    raw.includes('severe') ||
+    raw.includes('high')
+  ) {
+    return 2;
+  }
+  // 注意（caution / 注意 / 慎重）
+  if (
+    raw.includes('caution') ||
+    raw.includes('注意') ||
+    raw.includes('慎重') ||
+    raw.includes('moderate')
+  ) {
+    return 1;
+  }
+  return 0;
+}
+
+// X05: 添付文書 alert が unsorted のまま slice(0, N) で切り捨てられると、重大な項目が
+// 後方に居た場合に無言で落ちる（false-negative）。臨床重要度降順 → 決定的 tie-break
+// （元の順序）で整列してから上限件数で制限し、切り捨てが起きた件数を返す。
+function rankAndLimitPackageInsertEntries(
+  entries: PackageInsertTextEntry[],
+  limit: number,
+): { shown: PackageInsertTextEntry[]; hiddenCount: number } {
+  const sorted = entries
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) => {
+      const rankDiff = packageInsertSeverityRank(b.entry) - packageInsertSeverityRank(a.entry);
+      if (rankDiff !== 0) return rankDiff;
+      // 決定的 tie-break: 元の出現順を維持（同一入力で常に同一結果）。
+      return a.index - b.index;
+    })
+    .map((item) => item.entry);
+  const shown = sorted.slice(0, Math.max(0, limit));
+  return { shown, hiddenCount: Math.max(0, sorted.length - shown.length) };
+}
+
+// X05: 切り捨てが起きたことを件数で明示する counted-list 契約の marker alert。
+// 「N 件中 M 件のみ表示、残りは未表示（要確認）」を出し、隠れた項目に重大な禁忌等が
+// 含まれうる旨を fail-open に surface する（無言で落とさない）。
+function buildPackageInsertTruncationAlert(args: {
+  type:
+    | 'package_insert_contraindication_truncated'
+    | 'package_insert_adverse_effect_truncated'
+    | 'package_insert_elderly_truncated';
+  section: string;
+  sectionKey: 'contraindication' | 'adverse_effect' | 'elderly';
+  drugName: string;
+  drugCode: string;
+  shownCount: number;
+  hiddenCount: number;
+}): CdsAlert {
+  const totalCount = args.shownCount + args.hiddenCount;
+  return {
+    type: args.type,
+    severity: 'warning',
+    message: `【${args.section}】${args.drugName}: 重要度上位${args.shownCount}件を表示、他${args.hiddenCount}件は未表示（全${totalCount}件、要確認）`,
+    details: {
+      drug_code: args.drugCode,
+      section: args.sectionKey,
+      truncated: true,
+      shown_count: args.shownCount,
+      hidden_count: args.hiddenCount,
+      total_count: totalCount,
+      recommendation: '添付文書で未表示の項目（重大な項目を含みうる）を確認してください',
+    },
+  };
+}
+
 async function checkPackageInsertAudit(
   prescriptionLines: PrescriptionLine[],
   patient: PatientForChecks | null,
@@ -748,13 +949,27 @@ async function checkPackageInsertAudit(
         }),
       );
     }
-    for (const item of contraindications.entries.slice(0, 3)) {
+    const contraindicationsLimited = rankAndLimitPackageInsertEntries(contraindications.entries, 3);
+    for (const item of contraindicationsLimited.shown) {
       alerts.push({
         type: 'package_insert_contraindication',
         severity: 'info',
         message: `【禁忌】${drugName}: ${item.text.slice(0, 100)}`,
         details: { drug_code: line.drug_code, section: 'contraindication' },
       });
+    }
+    if (contraindicationsLimited.hiddenCount > 0) {
+      alerts.push(
+        buildPackageInsertTruncationAlert({
+          type: 'package_insert_contraindication_truncated',
+          section: '禁忌',
+          sectionKey: 'contraindication',
+          drugName,
+          drugCode: line.drug_code,
+          shownCount: contraindicationsLimited.shown.length,
+          hiddenCount: contraindicationsLimited.hiddenCount,
+        }),
+      );
     }
 
     const adverseEffects = readPackageInsertTextEntries(pi.adverse_effects);
@@ -772,13 +987,27 @@ async function checkPackageInsertAudit(
     const seriousAdverseEffects = adverseEffects.entries.filter(
       (item) => item.severity === 'serious' || item.severity === '重大',
     );
-    for (const item of seriousAdverseEffects.slice(0, 2)) {
+    const seriousAdverseEffectsLimited = rankAndLimitPackageInsertEntries(seriousAdverseEffects, 2);
+    for (const item of seriousAdverseEffectsLimited.shown) {
       alerts.push({
         type: 'package_insert_adverse_effect',
         severity: 'info',
         message: `【重大な副作用】${drugName}: ${item.text.slice(0, 100)}`,
         details: { drug_code: line.drug_code, section: 'adverse_effect' },
       });
+    }
+    if (seriousAdverseEffectsLimited.hiddenCount > 0) {
+      alerts.push(
+        buildPackageInsertTruncationAlert({
+          type: 'package_insert_adverse_effect_truncated',
+          section: '重大な副作用',
+          sectionKey: 'adverse_effect',
+          drugName,
+          drugCode: line.drug_code,
+          shownCount: seriousAdverseEffectsLimited.shown.length,
+          hiddenCount: seriousAdverseEffectsLimited.hiddenCount,
+        }),
+      );
     }
 
     if (patientAge !== null && patientAge >= 65) {
@@ -794,13 +1023,30 @@ async function checkPackageInsertAudit(
           }),
         );
       }
-      for (const item of elderlyPrecautions.entries.slice(0, 2)) {
+      const elderlyPrecautionsLimited = rankAndLimitPackageInsertEntries(
+        elderlyPrecautions.entries,
+        2,
+      );
+      for (const item of elderlyPrecautionsLimited.shown) {
         alerts.push({
           type: 'package_insert_elderly',
           severity: 'warning',
           message: `【高齢者注意】${drugName}（${patientAge}歳）: ${item.text.slice(0, 100)}`,
           details: { drug_code: line.drug_code, section: 'elderly', patient_age: patientAge },
         });
+      }
+      if (elderlyPrecautionsLimited.hiddenCount > 0) {
+        alerts.push(
+          buildPackageInsertTruncationAlert({
+            type: 'package_insert_elderly_truncated',
+            section: '高齢者注意',
+            sectionKey: 'elderly',
+            drugName,
+            drugCode: line.drug_code,
+            shownCount: elderlyPrecautionsLimited.shown.length,
+            hiddenCount: elderlyPrecautionsLimited.hiddenCount,
+          }),
+        );
       }
     }
   }
@@ -890,9 +1136,15 @@ async function checkAllergyReactions(
 
   if (!patient?.allergy_info) return alerts;
 
-  const allergyEntries = (
-    Array.isArray(patient.allergy_info) ? patient.allergy_info : []
-  ) as AllergyEntry[];
+  // CXR1-MSR01: legacy string / 非構造 object も無視せず正規化し、構造化できない場合は
+  // 「要確認」シグナルを出す（allergy-clean へ倒さない）。
+  const { entries: allergyEntries, unstructured: allergyInfoUnstructured } = normalizeAllergyInfo(
+    patient.allergy_info,
+  );
+
+  if (allergyInfoUnstructured) {
+    alerts.push(buildAllergyInfoUnstructuredAlert());
+  }
 
   if (allergyEntries.length === 0) return alerts;
 
@@ -925,13 +1177,18 @@ async function checkAllergyReactions(
 
   const reportedMalformedRuleIds = new Set<string>();
   for (const line of prescriptionLines) {
-    if (!line.drug_code) continue;
-    const drugInfo = drugByCode.get(line.drug_code);
+    // X02: drug_code 未解決の処方行を無言スキップしない。コード/薬効分類での照合は
+    // できないが、name-based 照合は依然有効なので実行し、加えて「照合未完了（要確認）」
+    // を明示する（allergy-clean に倒さない）。
+    if (!line.drug_code) {
+      alerts.push(buildAllergyCrossCheckIncompleteAlert(line));
+    }
+    const drugInfo = line.drug_code ? drugByCode.get(line.drug_code) : undefined;
 
     // Check against allergy entries
     for (const allergy of allergyEntries) {
       const allergyDrugCode = allergy.drug_code?.trim();
-      if (allergyDrugCode && allergyDrugCode === line.drug_code) {
+      if (allergyDrugCode && line.drug_code && allergyDrugCode === line.drug_code) {
         alerts.push({
           type: 'allergy_cross',
           severity: allergyAlertSeverity(allergy.severity),
@@ -982,8 +1239,11 @@ async function checkAllergyReactions(
       }
     }
 
-    // Check against DrugAlertRule allergy_cross rules
+    // Check against DrugAlertRule allergy_cross rules.
+    // ルール照合は yj_code / 薬効分類ベースのため、drug_code 未解決行では実行しない
+    // （name-based 照合と「照合未完了」シグナルは上で済ませている）。
     for (const rule of allergyRules) {
+      if (!line.drug_code) continue;
       const conditionMatch = matchesAlertRuleCondition(
         rule.condition,
         line.drug_code,
@@ -1399,23 +1659,35 @@ async function checkElderlyPIM(
 // 9. Renal dose adjustment alert (NEW)
 // ---------------------------------------------------------------------------
 
+// X04: eGFR/腎機能が未記録の患者では腎機能用量チェックを実施できない。無言で
+// 「該当なし（clean）」に倒すと、実際には腎排泄型薬剤で減量が必要でも見落とされ
+// false-negative を生む。腎機能用量調整データを持つ薬剤が処方されているのに eGFR が
+// 未記録の場合は「腎機能未記録のため用量チェック未実施（要確認）」を明示する。
+function buildRenalFunctionUnrecordedCoverageNotice(
+  lines: Array<Pick<PrescriptionLine, 'drug_name' | 'drug_code'>>,
+): CdsAlert {
+  return {
+    type: 'cds_data_quality',
+    severity: 'warning',
+    message: `腎機能用量チェック未完了（要確認）: eGFR/腎機能が未記録のため、腎機能用量調整対象${lines.length}剤の用量チェックを実施できません`,
+    details: {
+      source: 'renal_dose_coverage',
+      section: '腎機能用量調整',
+      unchecked_drug_count: lines.length,
+      unchecked_drug_names: lines.map((line) => line.drug_name),
+      unchecked_drug_codes: lines.map((line) => line.drug_code),
+      recommendation:
+        '直近のeGFR/血清クレアチニン検査値を登録し、腎排泄型薬剤の用量を添付文書の腎機能別用量調整欄と手動で照合してください',
+    },
+  };
+}
+
 async function checkRenalDoseAdjustment(
   prescriptionLines: PrescriptionLine[],
   patientId: string,
   orgId: string,
 ): Promise<CdsAlert[]> {
   const alerts: CdsAlert[] = [];
-
-  // Fetch latest eGFR from PatientLabObservation
-  const latestEgfr = await prisma.patientLabObservation.findFirst({
-    where: { patient_id: patientId, org_id: orgId, analyte_code: 'egfr' },
-    orderBy: { measured_at: 'desc' },
-    select: { value_numeric: true },
-  });
-
-  const egfr = latestEgfr?.value_numeric ?? null;
-
-  if (egfr === null) return alerts;
 
   // Fetch DrugPackageInsert with dosage_adjustment_renal for prescribed drugs
   const drugCodes = prescriptionLines
@@ -1436,6 +1708,29 @@ async function checkRenalDoseAdjustment(
 
   // Map by yj_code for quick lookup
   const insertByCode = new Map(packageInserts.map((pi) => [pi.drug_master.yj_code, pi]));
+
+  // 腎機能用量調整データを持つ薬剤が処方されているか（eGFR 未記録時の coverage 判定用）。
+  const renalRelevantLines = prescriptionLines.filter(
+    (line) => line.drug_code !== null && insertByCode.has(line.drug_code),
+  );
+
+  // Fetch latest eGFR from PatientLabObservation
+  const latestEgfr = await prisma.patientLabObservation.findFirst({
+    where: { patient_id: patientId, org_id: orgId, analyte_code: 'egfr' },
+    orderBy: { measured_at: 'desc' },
+    select: { value_numeric: true },
+  });
+
+  const egfr = latestEgfr?.value_numeric ?? null;
+
+  // X04: eGFR 未記録時は無言 clean に倒さず、腎機能用量調整対象薬があれば
+  // 「未チェック（要確認）」を明示する（対象薬が無ければ宣言対象が無いので何もしない）。
+  if (egfr === null) {
+    if (renalRelevantLines.length > 0) {
+      alerts.push(buildRenalFunctionUnrecordedCoverageNotice(renalRelevantLines));
+    }
+    return alerts;
+  }
 
   for (const line of prescriptionLines) {
     if (!line.drug_code) continue;
@@ -1625,6 +1920,132 @@ async function checkMonitoringAlerts(
 }
 
 // ---------------------------------------------------------------------------
+// 11. 病名／問題リスト（PatientCondition）ベースの禁忌クロスチェック（F82）
+// ---------------------------------------------------------------------------
+//
+// 【設計メモ / F82】
+// 患者の病名／問題リスト（PatientCondition: 緑内障・重症筋無力症・前立腺肥大症・
+// 気管支喘息 等）は、これまで CDS のどのチェックにも渡されておらず、「病名禁忌」
+// （当該疾患を持つ患者に禁忌の薬剤）が体系的に照合されていなかった。添付文書の
+// 禁忌欄（DrugPackageInsert.contraindications）は checkPackageInsertAudit で info
+// として一覧表示されるだけで、「この患者が実際にその病名を持つ」という患者固有の
+// 突合は無く、病名禁忌アラートは一切上がらなかった。
+//
+// 権威ある病名禁忌マスタ（疾患コード × 薬剤の構造化データ）の新設は新機能級
+// （新 AlertType + DB migration）であり、本レーンの範囲外。そこで、DB スキーマを
+// 変えずに既存データ（PatientCondition.name ＋ 添付文書禁忌欄の自由テキスト）だけで
+// 実現できる暫定の安全側改善として、次の2段構えを実装する:
+//
+//  (1) fail-close の網羅性宣言（常時）: 患者に有効な病名／問題があり、かつ処方が
+//      ある場合、「病名ベース禁忌チェックは名称照合のみで網羅的でない（要手動確認）」
+//      という data-quality（coverage）シグナルを必ず1件出す。これにより「病名禁忌
+//      アラートが無い＝チェック済みで問題なし」という誤読（false-negative の安心）を
+//      防ぐ。X04（腎機能 coverage notice）と同じ思想。
+//
+//  (2) fail-safe の best-effort surfacing（付加のみ）: 添付文書の禁忌欄テキストに
+//      患者の病名／問題名（2文字以上）が含まれていれば、`condition_contraindication`
+//      critical アラートを追加する。名称照合ゆえ false-positive はありうるが、本
+//      チェックはアラートを「追加」するだけで既存チェックを抑制せず、取りこぼし
+//      （同義語・表記ゆれ等の false-negative）は上記(1)の coverage notice が担保する。
+
+type PatientConditionForCds = {
+  name: string;
+  condition_type: PatientConditionType;
+};
+
+function buildConditionContraindicationCoverageNotice(
+  conditions: PatientConditionForCds[],
+): CdsAlert {
+  return {
+    type: 'cds_data_quality',
+    severity: 'warning',
+    message:
+      '病名禁忌チェック未完了（要確認）: 病名／問題リストに基づく禁忌チェックは名称照合のみで網羅的ではありません。添付文書の禁忌欄と手動で照合してください',
+    details: {
+      source: 'condition_contraindication_coverage',
+      section: '病名禁忌クロスチェック',
+      condition_count: conditions.length,
+      condition_names: conditions.map((condition) => condition.name),
+      recommendation:
+        '患者の病名／問題（緑内障・重症筋無力症・前立腺肥大症 等）と各薬剤の添付文書禁忌欄を手動で照合してください',
+    },
+  };
+}
+
+async function checkConditionContraindications(
+  prescriptionLines: PrescriptionLine[],
+  conditions: PatientConditionForCds[],
+): Promise<CdsAlert[]> {
+  // 病名／問題が無い、または処方が無い場合は宣言対象が無いので何もしない。
+  if (conditions.length === 0 || prescriptionLines.length === 0) return [];
+
+  const alerts: CdsAlert[] = [];
+
+  // (1) fail-close: 病名禁忌ドメインは体系的に照合していない旨を必ず宣言する。
+  alerts.push(buildConditionContraindicationCoverageNotice(conditions));
+
+  // (2) fail-safe best-effort: 添付文書の禁忌欄テキストに病名が含まれれば surface。
+  const drugCodes = prescriptionLines
+    .map((l) => l.drug_code)
+    .filter((c): c is string => c !== null);
+
+  if (drugCodes.length === 0) return alerts;
+
+  const packageInserts = await prisma.drugPackageInsert.findMany({
+    where: {
+      drug_master: { yj_code: { in: drugCodes } },
+      contraindications: { not: Prisma.JsonNull },
+    },
+    include: {
+      drug_master: { select: { yj_code: true, drug_name: true } },
+    },
+  });
+
+  if (packageInserts.length === 0) return alerts;
+
+  const insertByCode = new Map(packageInserts.map((pi) => [pi.drug_master.yj_code, pi]));
+
+  // 1文字病名（"癌" 等）の暴発を避けるため 2 文字以上のみ名称照合の対象にする。
+  const matchableConditions = conditions.filter((condition) => condition.name.trim().length >= 2);
+
+  const seen = new Set<string>();
+  for (const line of prescriptionLines) {
+    if (!line.drug_code) continue;
+    const pi = insertByCode.get(line.drug_code);
+    if (!pi?.contraindications) continue;
+
+    const contraindications = readPackageInsertTextEntries(pi.contraindications);
+    for (const entry of contraindications.entries) {
+      for (const condition of matchableConditions) {
+        const conditionName = condition.name.trim();
+        if (!entry.text.includes(conditionName)) continue;
+
+        const dedupeKey = `${line.drug_code}::${conditionName}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+
+        alerts.push({
+          type: 'condition_contraindication',
+          severity: 'critical',
+          message: `病名禁忌の可能性（要確認）: ${line.drug_name} — 患者の病名「${conditionName}」が添付文書の禁忌欄に該当します`,
+          details: {
+            source: 'condition_contraindication',
+            drug_code: line.drug_code,
+            prescribed_drug: line.drug_name,
+            condition_name: conditionName,
+            condition_type: condition.condition_type,
+            matched_contraindication: entry.text.slice(0, 100),
+            recommendation: '当該病名に対する禁忌／慎重投与の該当可否を添付文書で確認してください',
+          },
+        });
+      }
+    }
+  }
+
+  return alerts;
+}
+
+// ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
 
@@ -1642,6 +2063,7 @@ async function checkMonitoringAlerts(
  *   8. Elderly PIM (potentially inappropriate medications)
  *   9. Renal dose adjustment
  *  10. PT-INR / K monitoring
+ *  11. 病名／問題リスト（PatientCondition）禁忌クロスチェック（coverage notice + best-effort）
  */
 export async function checkDispenseAlerts(
   orgId: string,
@@ -1706,6 +2128,12 @@ export async function checkDispenseAlerts(
     select: { birth_date: true, allergy_info: true },
   });
 
+  // F82: 有効な病名／問題リストを取得（病名禁忌クロスチェック用）。
+  const patientConditions = (await prisma.patientCondition.findMany({
+    where: { patient_id: patientId, org_id: orgId, is_active: true },
+    select: { name: true, condition_type: true },
+  })) as PatientConditionForCds[];
+
   // Resolve PrescriptionLine identity master-first for all checks.
   const {
     lines: cdsPrescriptionLines,
@@ -1713,9 +2141,22 @@ export async function checkDispenseAlerts(
     dataQualityAlerts: prescriptionLineIdentityAlerts,
   } = await resolvePrescriptionLineDrugIdentitiesForCds(prescriptionLines);
 
+  // F81 + X03: identity-unresolved の薬剤を検出し、コードベース CDS チェック未完了を
+  // 明示する data-quality 警告を出す（無言スキップ＝allergy/interaction-clean へ倒さない）。
+  // - 現行薬: DrugMaster に解決できないもの（checkInteractions が無言スキップする集合）。
+  // - 処方行: master-first 解決後も drug_code が未解決のもの。
+  const unresolvedCurrentMeds = currentMeds.filter((med) => !masterByMedId.has(med.id));
+  const unresolvedPrescriptionLines = cdsPrescriptionLines.filter((line) => !line.drug_code);
+  const identityUnresolvedAlerts =
+    prescriptionLines.length > 0 &&
+    (unresolvedCurrentMeds.length > 0 || unresolvedPrescriptionLines.length > 0)
+      ? [buildCdsIdentityUnresolvedAlert({ unresolvedPrescriptionLines, unresolvedCurrentMeds })]
+      : [];
+
   // Run all checks in parallel
   const results = await Promise.all([
     Promise.resolve(prescriptionLineIdentityAlerts),
+    Promise.resolve(identityUnresolvedAlerts),
     managedAlertStates.get('interaction')
       ? checkInteractions(cdsPrescriptionLines, currentMeds, masterByMedId)
       : Promise.resolve([]),
@@ -1746,6 +2187,8 @@ export async function checkDispenseAlerts(
     checkPackageInsertAudit(cdsPrescriptionLines, patient),
     // PT-INR / K monitoring — always enabled
     checkMonitoringAlerts(cdsPrescriptionLines, patientId, orgId, drugMasterMap),
+    // 病名／問題リスト禁忌クロスチェック（F82）— always enabled（安全側 coverage）
+    checkConditionContraindications(cdsPrescriptionLines, patientConditions),
   ]);
 
   return results.flat();

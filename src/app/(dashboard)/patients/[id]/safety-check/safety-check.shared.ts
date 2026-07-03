@@ -126,14 +126,20 @@ export function mapAlertToConcernCategory(alertType: string): ConcernCategory | 
   switch (alertType) {
     case 'interaction':
     case 'package_insert_contraindication':
+    // X05: 禁忌の切り捨て marker も飲み合わせ列に surface（未表示の禁忌を要確認へ）。
+    case 'package_insert_contraindication_truncated':
       return 'interaction';
     case 'renal_dose':
     case 'pim_elderly':
     case 'package_insert_elderly':
+    // X05: 高齢者注意の切り捨て marker も用量確認列に surface。
+    case 'package_insert_elderly_truncated':
     case 'max_days':
     case 'do_prescription':
       return 'dose';
     case 'package_insert_adverse_effect':
+    // X05: 重大な副作用の切り捨て marker も副作用列に surface。
+    case 'package_insert_adverse_effect_truncated':
     case 'allergy_cross':
     case 'monitoring':
       return 'adverse';
@@ -201,9 +207,7 @@ const SAFETY_STEP_DEFS: ReadonlyArray<Pick<SafetyStep, 'id' | 'label'>> = [
 ];
 
 /** 「確認の流れ」4 ステップの進行状態を課題 status から導出する。 */
-export function deriveSafetySteps(
-  issues: Array<Pick<SafetyIssueRecord, 'status'>>,
-): SafetyStep[] {
+export function deriveSafetySteps(issues: Array<Pick<SafetyIssueRecord, 'status'>>): SafetyStep[] {
   const hasAnyIssue = issues.length > 0;
   const anyConsulted = issues.some(
     (issue) => issue.status === 'in_progress' || isClosedIssue(issue),
