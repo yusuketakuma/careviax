@@ -14,12 +14,15 @@ import {
 } from '@/lib/offline/crypto';
 import { VisitStatus, VisitStep, type VisitModeView } from '@/phos/contracts/phos_contracts';
 import {
+  discardStuckPhosOfflineEvidence,
   enqueuePhosOfflineEvidence,
   listPhosPendingEvidence,
   MAX_OFFLINE_EVIDENCE_FILE_SIZE_BYTES,
   MAX_OFFLINE_EVIDENCE_QUEUE_BYTES,
+  MAX_RETRIES,
   PHOS_OFFLINE_EVIDENCE_REPLAY_BATCH_SIZE,
   phosOfflineEvidenceDb,
+  resetStuckPhosOfflineEvidence,
   retryPhosOfflineEvidenceUploads,
 } from './offlineEvidenceQueue';
 import type { PhosApiClient } from './types';
@@ -750,5 +753,132 @@ describe('PH-OS offline evidence queue', () => {
       retry_count: 1,
       last_error: 'EVIDENCE_UPLOAD_RETRY_FAILED',
     });
+  });
+
+  async function enqueueStuckBlockingEvidence(overrides?: {
+    packet_id?: string;
+    card_id?: string;
+    evidence_key?: string;
+  }): Promise<{ id: number; sha256: string }> {
+    const evidence = imageEvidence([13, 14, 15]);
+    const { queue_id } = await enqueuePhosOfflineEvidence({
+      card_id: overrides?.card_id ?? 'card_1',
+      packet_id: overrides?.packet_id ?? 'packet_1',
+      evidence_key: overrides?.evidence_key ?? 'stuck_photo',
+      label: '必須写真',
+      evidence_type: 'PHOTO',
+      file_name: 'stuck.jpg',
+      mime_type: 'image/jpeg',
+      sha256: evidence.sha256,
+      offline_op_class: 'BLOCKING',
+      file: evidence.file,
+    });
+    const id = queue_id as number;
+    // MAX_RETRIES に到達した「永続スキップ」状態を再現する
+    await phosOfflineEvidenceDb.pendingEvidence.update(id, {
+      retry_count: MAX_RETRIES,
+      last_error: 'EVIDENCE_UPLOAD_RETRY_FAILED',
+    });
+    return { id, sha256: evidence.sha256 };
+  }
+
+  it('requeues retry-exhausted evidence so a maxed-out BLOCKING record stops blocking completion', async () => {
+    const { id } = await enqueueStuckBlockingEvidence();
+    const client = retryClient();
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(null, { status: 200 }));
+
+    // stuck レコードは replay から永続スキップされ、BLOCKING として残り続ける
+    await expect(retryPhosOfflineEvidenceUploads({ client, fetchImpl })).resolves.toEqual({
+      synced: 0,
+      failed: 0,
+      verified_visits: [],
+    });
+    expect(client.presignEvidenceUpload).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(await listPhosPendingEvidence('packet_1')).toHaveLength(1);
+
+    // 再試行導線: retry_count をリセットして再送対象へ戻す
+    await expect(resetStuckPhosOfflineEvidence('packet_1')).resolves.toBe(1);
+    const requeued = await phosOfflineEvidenceDb.pendingEvidence.get(id);
+    expect(requeued?.retry_count).toBe(0);
+    expect(requeued?.last_error).toBeUndefined();
+
+    // リセット後の replay で同期され、BLOCKING がクリアされる → 完了ブロック解消
+    await expect(retryPhosOfflineEvidenceUploads({ client, fetchImpl })).resolves.toMatchObject({
+      synced: 1,
+      failed: 0,
+    });
+    expect(await phosOfflineEvidenceDb.pendingEvidence.count()).toBe(0);
+    expect(await listPhosPendingEvidence('packet_1')).toEqual([]);
+  });
+
+  it('scopes retry reset to the requested packet and leaves other packets stuck', async () => {
+    await enqueueStuckBlockingEvidence({ packet_id: 'packet_1', evidence_key: 'stuck_a' });
+    const other = await enqueueStuckBlockingEvidence({
+      packet_id: 'packet_2',
+      card_id: 'card_2',
+      evidence_key: 'stuck_b',
+    });
+
+    await expect(resetStuckPhosOfflineEvidence('packet_1')).resolves.toBe(1);
+
+    const otherRecord = await phosOfflineEvidenceDb.pendingEvidence.get(other.id);
+    expect(otherRecord?.retry_count).toBe(MAX_RETRIES);
+  });
+
+  it('resets every stuck packet when no packet id is provided', async () => {
+    await enqueueStuckBlockingEvidence({ packet_id: 'packet_1', evidence_key: 'stuck_a' });
+    await enqueueStuckBlockingEvidence({
+      packet_id: 'packet_2',
+      card_id: 'card_2',
+      evidence_key: 'stuck_b',
+    });
+
+    await expect(resetStuckPhosOfflineEvidence()).resolves.toBe(2);
+    const stillStuck = await phosOfflineEvidenceDb.pendingEvidence
+      .where('retry_count')
+      .aboveOrEqual(MAX_RETRIES)
+      .count();
+    expect(stillStuck).toBe(0);
+  });
+
+  it('refuses to discard evidence without explicit acknowledgement', async () => {
+    await enqueueStuckBlockingEvidence();
+
+    await expect(
+      discardStuckPhosOfflineEvidence({
+        packet_id: 'packet_1',
+        evidence_key: 'stuck_photo',
+        acknowledged: false,
+      }),
+    ).rejects.toThrow('requires explicit acknowledgement');
+    expect(await phosOfflineEvidenceDb.pendingEvidence.count()).toBe(1);
+  });
+
+  it('discards an unrecoverable evidence record only on explicit acknowledgement and audits it', async () => {
+    await enqueueStuckBlockingEvidence();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await expect(
+      discardStuckPhosOfflineEvidence({
+        packet_id: 'packet_1',
+        evidence_key: 'stuck_photo',
+        acknowledged: true,
+      }),
+    ).resolves.toBe(true);
+    expect(await phosOfflineEvidenceDb.pendingEvidence.count()).toBe(0);
+    expect(warn).toHaveBeenCalledWith(
+      '[phos-offline-evidence] discarded unrecoverable evidence',
+      expect.objectContaining({ packet_id: 'packet_1', evidence_key: 'stuck_photo' }),
+    );
+
+    // 対象が無い場合は破棄せず false を返す
+    await expect(
+      discardStuckPhosOfflineEvidence({
+        packet_id: 'packet_1',
+        evidence_key: 'missing_photo',
+        acknowledged: true,
+      }),
+    ).resolves.toBe(false);
   });
 });

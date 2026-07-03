@@ -13,7 +13,7 @@ import {
 import type { PhosApiClient } from './types';
 import { createPhosRequestAbort } from './request-timeout';
 
-const MAX_RETRIES = 3;
+export const MAX_RETRIES = 3;
 const UNREADABLE_EVIDENCE_PAYLOAD_ERROR = 'EVIDENCE_PAYLOAD_UNREADABLE';
 const UNREADABLE_EVIDENCE_LABEL = '未同期証跡（復旧が必要）';
 const DEFAULT_EVIDENCE_UPLOAD_TIMEOUT_MS = 30_000;
@@ -443,4 +443,81 @@ export async function retryPhosOfflineEvidenceUploads(input: {
   });
   activeEvidenceUploadReplay = replay;
   return replay;
+}
+
+/**
+ * リトライ上限(MAX_RETRIES)に達して replay から永続的にスキップされる未同期証跡を
+ * 再送対象へ戻す(利用者の「再試行」操作用)。
+ *
+ * MAX_RETRIES に達した BLOCKING 証跡は listPhosPendingEvidence 経由で blockingUnsyncedCount に
+ * 加算され、canCompleteVisit が 0 を要求するため、その端末の訪問完了(COMPLETE_VISIT)を
+ * 恒久ブロックする。医療データのため破棄はせず、retry_count をリセットして次回 replay で
+ * 再試行できるようにすることで stuck を解消する。
+ *
+ * @param packet_id 指定時はその訪問のみ、省略時は全 stuck レコードが対象。
+ * @returns 再送対象へ戻した件数。
+ */
+export async function resetStuckPhosOfflineEvidence(packet_id?: string): Promise<number> {
+  const stuckRecords = await phosOfflineEvidenceDb.pendingEvidence
+    .where('retry_count')
+    .aboveOrEqual(MAX_RETRIES)
+    .toArray();
+  const targets = stuckRecords.filter(
+    (record) =>
+      record.id !== undefined && (packet_id === undefined || record.packet_id === packet_id),
+  );
+  await Promise.all(
+    targets.map((record) =>
+      phosOfflineEvidenceDb.pendingEvidence.update(record.id!, {
+        retry_count: 0,
+        last_error: undefined,
+      }),
+    ),
+  );
+  return targets.length;
+}
+
+export type PhosOfflineEvidenceDiscardInput = {
+  packet_id: string;
+  evidence_key: string;
+  /** 確認ダイアログ相当の明示同意。true 以外では破棄しない(fail-closed)。 */
+  acknowledged: boolean;
+};
+
+/**
+ * 復旧不能な未同期証跡を、利用者の明示操作でのみ破棄する(dead-letter)。
+ *
+ * 医療データを勝手に破棄しないため、acknowledged=true(確認ダイアログ相当)を必須とする。
+ * 破棄は取消不能なので、監査可能な構造化ログを残す。PHI は暗号化 payload に閉じているため、
+ * ログには識別子・retry_count・last_error のみを出力し、患者データ本体は出力しない。
+ *
+ * @returns 破棄した場合 true、対象レコードが存在しない場合 false。
+ */
+export async function discardStuckPhosOfflineEvidence(
+  input: PhosOfflineEvidenceDiscardInput,
+): Promise<boolean> {
+  if (input.acknowledged !== true) {
+    throw new Error('PH-OS offline evidence discard requires explicit acknowledgement');
+  }
+  const record = await phosOfflineEvidenceDb.pendingEvidence
+    .where('packet_id')
+    .equals(input.packet_id)
+    .and((candidate) => candidate.evidence_key === input.evidence_key)
+    .first();
+  if (!record || record.id === undefined) return false;
+
+  // 破棄は取消不能。PHI を含めず識別子のみ監査ログに残す。
+  console.warn('[phos-offline-evidence] discarded unrecoverable evidence', {
+    packet_id: record.packet_id,
+    card_id: record.card_id,
+    evidence_key: record.evidence_key,
+    offline_op_class: record.offline_op_class,
+    retry_count: record.retry_count,
+    last_error: record.last_error,
+    created_at: record.created_at,
+    discarded_at: new Date().toISOString(),
+  });
+
+  await phosOfflineEvidenceDb.pendingEvidence.delete(record.id);
+  return true;
 }
