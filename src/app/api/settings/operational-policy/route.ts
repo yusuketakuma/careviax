@@ -8,6 +8,7 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { hasPermission } from '@/lib/auth/permissions';
+import { japanDateKey, japanMonthInstantRange } from '@/lib/utils/date-boundary';
 
 /**
  * new_14_settings(薬局運用ポリシー)用 API。
@@ -65,9 +66,9 @@ function parseStoredPolicy(value: Prisma.JsonValue | undefined): OperationalPoli
 }
 
 async function loadPolicyContext(orgId: string, userId: string) {
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
+  // created_at(AuditLog, 実時刻)を JST 民間月で数える。setDate(1)+setHours のローカル月初だと
+  // UTC prod で JST 月初/月末の変更が隣月にずれる。
+  const monthStart = japanMonthInstantRange(japanDateKey().slice(0, 7)).gte;
 
   const [organization, membership, firstSite, settingRow, changeLogCount] = await Promise.all([
     prisma.organization.findFirst({ where: { id: orgId }, select: { name: true } }),

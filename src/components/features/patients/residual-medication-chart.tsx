@@ -2,9 +2,8 @@
 
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { japanDateKey } from '@/lib/utils/date-boundary';
 import { ErrorState } from '@/components/ui/error-state';
 
 type ResidualRecord = {
@@ -40,10 +39,11 @@ export function ResidualMedicationChart({ patientId }: { patientId: string }) {
   const chartData = useMemo<ChartDataPoint[]>(() => {
     if (!data?.data) return [];
 
-    // Group by date (yyyy-MM-dd)
+    // JST 業務日(yyyy-MM-dd)でグルーピング。created_at は実時刻の DateTime なので UTC 日付
+    // (slice(0,10))で束ねると JST 00:00-08:59 の記録が前日に混ざり、減数調剤トレンドがずれる。
     const grouped = new Map<string, { totalExcessDays: number; count: number }>();
     for (const r of data.data) {
-      const dateKey = r.created_at.slice(0, 10);
+      const dateKey = japanDateKey(new Date(r.created_at));
       const existing = grouped.get(dateKey) ?? { totalExcessDays: 0, count: 0 };
       existing.totalExcessDays += r.excess_days ?? 0;
       existing.count++;
@@ -54,7 +54,8 @@ export function ResidualMedicationChart({ patientId }: { patientId: string }) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, vals]) => ({
         date,
-        label: format(new Date(date), 'MM/dd', { locale: ja }),
+        // date は 'YYYY-MM-DD'。TZ 依存を避けるため new Date() を介さず文字列から MM/dd を作る。
+        label: `${date.slice(5, 7)}/${date.slice(8, 10)}`,
         ...vals,
       }));
   }, [data]);

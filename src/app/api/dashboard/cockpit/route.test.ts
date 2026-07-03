@@ -424,7 +424,36 @@ describe('/api/dashboard/cockpit', () => {
       expect(visitWhere?.scheduled_date.gte.toISOString()).toBe('2026-06-12T00:00:00.000Z');
       expect(visitWhere?.scheduled_date.lt.toISOString()).toBe('2026-06-13T00:00:00.000Z');
 
-      // 繰越タスク(created_at, 実時刻)はローカル深夜(JST 0:00 = 前日 15:00Z)のまま
+      // 繰越タスク(created_at, 実時刻)は JST 当日開始の実時刻(JST 0:00 = 前日 15:00Z)
+      const taskWhere = taskCountMock.mock.calls.at(-1)?.[0]?.where;
+      expect(taskWhere?.created_at.lt.toISOString()).toBe('2026-06-11T15:00:00.000Z');
+    } finally {
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
+  });
+
+  it('UTC ランタイム(prod)の JST 早朝でも繰越タスクは JST 当日開始の実時刻で数える(CE03)', async () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'UTC';
+    try {
+      // JST 2026-06-12 08:00(UTC では 2026-06-11T23:00Z)。
+      // 旧実装(setHours ローカル深夜)は UTC 深夜 2026-06-11T00:00Z を境界にし、
+      // JST 当日早朝に作られたタスクを繰越に誤カウントしていた。
+      vi.setSystemTime(new Date('2026-06-11T23:00:00Z'));
+
+      const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+      expect(response.status).toBe(200);
+
+      // @db.Date(scheduled_date)は JST 当日の UTC 深夜レンジ
+      const visitWhere = visitScheduleFindManyMock.mock.calls.at(-1)?.[0]?.where;
+      expect(visitWhere?.scheduled_date.gte.toISOString()).toBe('2026-06-12T00:00:00.000Z');
+      expect(visitWhere?.scheduled_date.lt.toISOString()).toBe('2026-06-13T00:00:00.000Z');
+
+      // created_at(実時刻)は JST 当日開始の実時刻(= 2026-06-11T15:00Z)。旧実装は 2026-06-11T00:00Z。
       const taskWhere = taskCountMock.mock.calls.at(-1)?.[0]?.where;
       expect(taskWhere?.created_at.lt.toISOString()).toBe('2026-06-11T15:00:00.000Z');
     } finally {

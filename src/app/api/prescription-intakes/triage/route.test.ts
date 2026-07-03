@@ -472,6 +472,41 @@ describe('/api/prescription-intakes/triage', () => {
     expect(faxRow.auto_read_percent).toBeNull();
   });
 
+  it('UTC ランタイムの JST 早朝でも new_today_count と破棄ログ月境界を JST で数える', async () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'UTC';
+    try {
+      // JST 2026-06-12 08:00(UTC では 2026-06-11T23:00Z)。
+      vi.setSystemTime(new Date('2026-06-11T23:00:00Z'));
+      intakeFindManyMock.mockResolvedValue([
+        // JST 2026-06-12 07:00 → 当日
+        buildIntake({ id: 'intake_today', createdAt: new Date('2026-06-11T22:00:00Z') }),
+        // JST 2026-06-11 14:00 → 前日。ローカル(UTC)todayStart だと当日に誤カウントされる。
+        buildIntake({
+          id: 'intake_yesterday',
+          patientId: 'p_y',
+          createdAt: new Date('2026-06-11T05:00:00Z'),
+        }),
+      ]);
+      qrDraftCountMock.mockResolvedValue(0);
+
+      const res = await GET(createRequest(), { params: Promise.resolve({}) });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.new_today_count).toBe(1);
+
+      // 破棄ログは JST 民間月(2026-06)の月初実時刻 = 2026-05-31T15:00Z で数える
+      const countWhere = qrDraftCountMock.mock.calls.at(-1)?.[0]?.where;
+      expect(countWhere.updated_at.gte.toISOString()).toBe('2026-05-31T15:00:00.000Z');
+    } finally {
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
+  });
+
   it('不正な limit はバリデーションエラー', async () => {
     const res = await GET(createRequest('?limit=999'), { params: Promise.resolve({}) });
     expect(res.status).toBe(400);

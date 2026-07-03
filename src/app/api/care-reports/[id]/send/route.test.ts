@@ -3570,72 +3570,84 @@ describe('/api/care-reports/[id]/send POST', () => {
   });
 
   it('refreshes billing evidence for same-month visits when sending a conference-generated report', async () => {
-    careReportFindFirstMock.mockResolvedValue({
-      id: 'report_1',
-      patient_id: 'patient_1',
-      case_id: 'case_1',
-      status: 'confirmed',
-      visit_record_id: null,
-      content: {
-        conference_note_id: 'note_conf_1',
-      },
-      report_type: 'physician_report',
-      pdf_url: 'https://example.com/report.pdf',
-      updated_at: REPORT_UPDATED_AT,
-    });
-    txMock.conferenceNote.findFirst.mockResolvedValue({
-      case_id: 'case_1',
-      conference_date: new Date('2026-03-18T10:00:00.000Z'),
-    });
-    txMock.visitRecord.findMany.mockResolvedValue([{ id: 'visit_1' }, { id: 'visit_2' }]);
-
-    const response = await POST(
-      createRequest({
-        channel: 'fax',
-        recipient_name: '山田 太郎',
-        recipient_contact: '03-1234-5678',
-        recipient_role: 'physician',
-        safety_ack: true,
-      }),
-      { params: Promise.resolve({ id: 'report_1' }) },
-    );
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(200);
-    expect(txMock.conferenceNote.findFirst).toHaveBeenCalledWith({
-      where: {
-        id: 'note_conf_1',
-        org_id: 'org_1',
-      },
-      select: {
-        case_id: true,
-        conference_date: true,
-      },
-    });
-    expect(txMock.visitRecord.findMany).toHaveBeenCalledWith({
-      where: {
-        org_id: 'org_1',
+    const originalTimezone = process.env.TZ;
+    // UTC ランタイム(prod)でも conference_date の JST 民間月で絞れることを固定(CE10)。
+    process.env.TZ = 'UTC';
+    try {
+      careReportFindFirstMock.mockResolvedValue({
+        id: 'report_1',
         patient_id: 'patient_1',
-        visit_date: {
-          gte: new Date('2026-02-28T15:00:00.000Z'),
-          lte: new Date('2026-03-31T14:59:59.999Z'),
+        case_id: 'case_1',
+        status: 'confirmed',
+        visit_record_id: null,
+        content: {
+          conference_note_id: 'note_conf_1',
         },
-        schedule: {
-          case_id: 'case_1',
+        report_type: 'physician_report',
+        pdf_url: 'https://example.com/report.pdf',
+        updated_at: REPORT_UPDATED_AT,
+      });
+      txMock.conferenceNote.findFirst.mockResolvedValue({
+        case_id: 'case_1',
+        conference_date: new Date('2026-03-18T10:00:00.000Z'),
+      });
+      txMock.visitRecord.findMany.mockResolvedValue([{ id: 'visit_1' }, { id: 'visit_2' }]);
+
+      const response = await POST(
+        createRequest({
+          channel: 'fax',
+          recipient_name: '山田 太郎',
+          recipient_contact: '03-1234-5678',
+          recipient_role: 'physician',
+          safety_ack: true,
+        }),
+        { params: Promise.resolve({ id: 'report_1' }) },
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(200);
+      expect(txMock.conferenceNote.findFirst).toHaveBeenCalledWith({
+        where: {
+          id: 'note_conf_1',
+          org_id: 'org_1',
         },
-      },
-      select: {
-        id: true,
-      },
-    });
-    expect(upsertBillingEvidenceForVisitMock).toHaveBeenCalledTimes(2);
-    expect(upsertBillingEvidenceForVisitMock).toHaveBeenNthCalledWith(1, txMock, {
-      orgId: 'org_1',
-      visitRecordId: 'visit_1',
-    });
-    expect(upsertBillingEvidenceForVisitMock).toHaveBeenNthCalledWith(2, txMock, {
-      orgId: 'org_1',
-      visitRecordId: 'visit_2',
-    });
+        select: {
+          case_id: true,
+          conference_date: true,
+        },
+      });
+      expect(txMock.visitRecord.findMany).toHaveBeenCalledWith({
+        where: {
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          visit_date: {
+            // JST 2026-03 の実時刻レンジ(半開区間)。conference_date=2026-03-18T10:00Z(JST 19:00)。
+            gte: new Date('2026-02-28T15:00:00.000Z'),
+            lt: new Date('2026-03-31T15:00:00.000Z'),
+          },
+          schedule: {
+            case_id: 'case_1',
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+      expect(upsertBillingEvidenceForVisitMock).toHaveBeenCalledTimes(2);
+      expect(upsertBillingEvidenceForVisitMock).toHaveBeenNthCalledWith(1, txMock, {
+        orgId: 'org_1',
+        visitRecordId: 'visit_1',
+      });
+      expect(upsertBillingEvidenceForVisitMock).toHaveBeenNthCalledWith(2, txMock, {
+        orgId: 'org_1',
+        visitRecordId: 'visit_2',
+      });
+    } finally {
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
   });
 });

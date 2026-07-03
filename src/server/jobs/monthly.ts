@@ -1,6 +1,6 @@
-import { startOfMonth, subMonths, endOfMonth } from 'date-fns';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
+import { japanDateKey, japanMonthInstantRange } from '@/lib/utils/date-boundary';
 import { runJob } from './runner';
 
 function parseConferenceSections(structuredContent: unknown) {
@@ -23,10 +23,11 @@ function parseSectionLines(body?: string) {
     .filter((line) => line.length > 0);
 }
 
-function formatMonthKey(value: Date) {
-  const year = value.getFullYear();
-  const month = `${value.getMonth() + 1}`.padStart(2, '0');
-  return `${year}-${month}`;
+/** 「JST 業務日での先月」の月キー 'YYYY-MM' を返す(ランタイム TZ 非依存)。 */
+function previousJapanMonthKey(now: Date = new Date()): string {
+  const [year, month] = japanDateKey(now).slice(0, 7).split('-').map(Number);
+  const prev = new Date(Date.UTC(year, month - 2, 1));
+  return `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
 /**
@@ -34,13 +35,13 @@ function formatMonthKey(value: Date) {
  */
 export async function generateMonthlyVisitReport() {
   return runJob('monthly_visit_report', async () => {
-    const lastMonth = subMonths(new Date(), 1);
-    const monthStart = startOfMonth(lastMonth);
-    const monthEnd = endOfMonth(lastMonth);
+    // visit_date は実時刻の DateTime。JST 民間月の実時刻レンジ(半開区間)で集計する。
+    const monthKey = previousJapanMonthKey();
+    const { gte: monthStart, lt: monthEndExclusive } = japanMonthInstantRange(monthKey);
 
     const visitRecords = await prisma.visitRecord.findMany({
       where: {
-        visit_date: { gte: monthStart, lte: monthEnd },
+        visit_date: { gte: monthStart, lt: monthEndExclusive },
         outcome_status: 'completed',
       },
       select: {
@@ -127,7 +128,7 @@ export async function generateMonthlyVisitReport() {
 
     return {
       processedCount: totalPatients,
-      month: monthStart.toISOString().slice(0, 7),
+      month: monthKey,
       patientSummaries,
     };
   });
@@ -141,14 +142,14 @@ export async function generateMonthlyVisitReport() {
  */
 export async function generateMonthlyMetrics() {
   return runJob('monthly_metrics', async () => {
-    const lastMonth = subMonths(new Date(), 1);
-    const monthStart = startOfMonth(lastMonth);
-    const monthEnd = endOfMonth(lastMonth);
+    // prescribed_date / visit_date は実時刻の DateTime。JST 民間月の実時刻レンジ(半開区間)で集計する。
+    const monthKey = previousJapanMonthKey();
+    const { gte: monthStart, lt: monthEndExclusive } = japanMonthInstantRange(monthKey);
 
     // Prescription concentration: count prescriptions grouped by prescriber institution
     const prescriptionIntakes = await prisma.prescriptionIntake.findMany({
       where: {
-        prescribed_date: { gte: monthStart, lte: monthEnd },
+        prescribed_date: { gte: monthStart, lt: monthEndExclusive },
       },
       select: {
         org_id: true,
@@ -177,7 +178,7 @@ export async function generateMonthlyMetrics() {
     const visitCounts = await prisma.visitRecord.groupBy({
       by: ['org_id'],
       where: {
-        visit_date: { gte: monthStart, lte: monthEnd },
+        visit_date: { gte: monthStart, lt: monthEndExclusive },
         outcome_status: 'completed',
       },
       _count: true,
@@ -190,7 +191,7 @@ export async function generateMonthlyMetrics() {
 
     return {
       processedCount: metricsCount,
-      month: monthStart.toISOString().slice(0, 7),
+      month: monthKey,
       concentrationRates,
       homeVisitCounts,
     };
@@ -199,17 +200,16 @@ export async function generateMonthlyMetrics() {
 
 export async function aggregateConferenceQualityIndicators() {
   return runJob('conference_quality_metrics', async () => {
-    const lastMonth = subMonths(new Date(), 1);
-    const monthStart = startOfMonth(lastMonth);
-    const monthEnd = endOfMonth(lastMonth);
-    const monthKey = formatMonthKey(monthStart);
+    // conference_date は実時刻の DateTime。JST 民間月の実時刻レンジ(半開区間)で集計する。
+    const monthKey = previousJapanMonthKey();
+    const { gte: monthStart, lt: monthEndExclusive } = japanMonthInstantRange(monthKey);
 
     const notes = await prisma.conferenceNote.findMany({
       where: {
         note_type: 'death_conference',
         conference_date: {
           gte: monthStart,
-          lte: monthEnd,
+          lt: monthEndExclusive,
         },
       },
       select: {

@@ -1,5 +1,6 @@
 import { addDays, subDays } from 'date-fns';
 import { prisma } from '@/lib/db/client';
+import { japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { withOrgContext } from '@/lib/db/rls';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import {
@@ -1557,6 +1558,10 @@ async function syncMedicationProfiles(
   }
   const incomingKeys = new Set<string>();
   const profilesToCreate: Prisma.MedicationProfileCreateManyInput[] = [];
+  // start_date/end_date は 'YYYY-MM-DD' の UTC 深夜 sentinel(new Date('YYYY-MM-DD') 規約)で
+  // 保存される日付フィールド。実時刻 new Date() を入れると UTC prod の JST 早朝で前日にずれるため、
+  // JST 業務日の UTC 深夜 sentinel を使う。
+  const todayDateSentinel = utcDateFromLocalKey(japanDateKey());
 
   // 新規処方の各行を upsert
   for (const line of intakeLines) {
@@ -1572,7 +1577,7 @@ async function syncMedicationProfiles(
       ? typeof line.start_date === 'string'
         ? new Date(line.start_date)
         : line.start_date
-      : new Date();
+      : todayDateSentinel;
 
     if (existing) {
       const shouldRefreshDrugMasterId =
@@ -1637,7 +1642,7 @@ async function syncMedicationProfiles(
   if (idsToDiscontinue.length > 0) {
     const result = await prisma.medicationProfile.updateMany({
       where: { id: { in: idsToDiscontinue }, org_id: orgId },
-      data: { is_current: false, end_date: new Date() },
+      data: { is_current: false, end_date: todayDateSentinel },
     });
     discontinued = result.count;
   }

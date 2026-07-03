@@ -10,6 +10,12 @@ import {
   resolveOperationalTasks,
 } from '@/server/services/operational-tasks';
 import { allocateProposalRouteOrders } from '@/lib/visit-schedule-proposals/route-order';
+import {
+  addUtcDays,
+  japanCivilTimeParts,
+  japanDateKey,
+  utcDateFromLocalKey,
+} from '@/lib/utils/date-boundary';
 
 type TransactionClient = {
   billingCandidate: ConferenceSyncTransactionClient['billingCandidate'];
@@ -200,19 +206,20 @@ function parseDateFromBody(body?: string) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+// conference_date は実時刻の DateTime、scheduled_date/target_discharge_date は @db.Date sentinel。
+// どちらも JST 民間日で読む必要があるため japanCivilTimeParts で分解する
+// (UTC 深夜 sentinel は +9h しても同一民間日、実時刻は JST の民間日になる)。
 function formatDateKey(value: Date) {
-  const year = value.getUTCFullYear();
-  const month = `${value.getUTCMonth() + 1}`.padStart(2, '0');
-  const day = `${value.getUTCDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const { year, monthIndex, day } = japanCivilTimeParts(value);
+  return `${year}-${`${monthIndex + 1}`.padStart(2, '0')}-${`${day}`.padStart(2, '0')}`;
 }
 
 function dayCodeFromDate(value: Date) {
-  return ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'][value.getUTCDay()] ?? 'MO';
+  return ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'][japanCivilTimeParts(value).weekday] ?? 'MO';
 }
 
 function weekOfMonthFromDate(value: Date) {
-  return Math.min(5, Math.max(1, Math.ceil(value.getUTCDate() / 7)));
+  return Math.min(5, Math.max(1, Math.ceil(japanCivilTimeParts(value).day / 7)));
 }
 
 function deriveRecurringVisitRule(source: string, anchorDate: Date, fallbackRule?: string | null) {
@@ -695,18 +702,11 @@ async function syncServiceManagerUsage(
 
       if (suggestedRecurrenceRule) {
         const dedupeKey = `conference-recurrence-proposal:${note.id}`;
-        const proposedDate = new Date(note.conference_date);
-        proposedDate.setUTCDate(proposedDate.getUTCDate() + 7);
-        const proposedDateOnly = new Date(
-          Date.UTC(
-            proposedDate.getUTCFullYear(),
-            proposedDate.getUTCMonth(),
-            proposedDate.getUTCDate(),
-            12,
-            0,
-            0,
-            0,
-          ),
+        // 会議日(実時刻)の JST 民間日 +7 日を @db.Date sentinel(UTC 深夜)で提案する。
+        // getUTCDate ベースだと JST 00:00-08:59 の会議で 1 日前へずれる。
+        const proposedDateOnly = addUtcDays(
+          utcDateFromLocalKey(japanDateKey(note.conference_date)),
+          7,
         );
 
         const existingProposal = await tx.visitScheduleProposal.findFirst({

@@ -485,4 +485,37 @@ describe('home-care-ops', () => {
       ]),
     );
   });
+
+  it('splits @db.Date (scheduled_date) and instant (expires_at) day windows on a UTC runtime (N19)', async () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'UTC';
+    vi.useFakeTimers();
+    try {
+      // JST 2026-06-12 08:00(UTC では 2026-06-11T23:00Z)。startOfDay(new Date()) 単一値だと
+      // どちらも 2026-06-11T00:00Z になり、JST 当日早朝(00:00-09:00)の期限/予定を取りこぼす。
+      vi.setSystemTime(new Date('2026-06-11T23:00:00Z'));
+
+      const patientId = 'patient_1';
+      const db = makePatientSummaryDb(patientId);
+      await getPatientHomeCareFeatureSummary(
+        db as unknown as Parameters<typeof getPatientHomeCareFeatureSummary>[0],
+        { orgId: 'org_1', patientId },
+      );
+
+      // @db.Date(scheduled_date): JST 当日の UTC 深夜 sentinel
+      const visitWhere = db.visitSchedule.findMany.mock.calls.at(-1)?.[0]?.where;
+      expect(visitWhere.scheduled_date.gte.toISOString()).toBe('2026-06-12T00:00:00.000Z');
+
+      // 実時刻(expires_at): JST 当日開始の実時刻(= 2026-06-11T15:00Z)
+      const grantWhere = db.externalAccessGrant.findMany.mock.calls.at(-1)?.[0]?.where;
+      expect(grantWhere.expires_at.gte.toISOString()).toBe('2026-06-11T15:00:00.000Z');
+    } finally {
+      vi.useRealTimers();
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
+  });
 });

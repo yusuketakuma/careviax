@@ -1,5 +1,5 @@
-import { addDays, startOfDay } from 'date-fns';
 import { formatDateKey } from '@/lib/date-key';
+import { addUtcDays, japanDayInstantRange, todayUtcRange } from '@/lib/utils/date-boundary';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
@@ -441,9 +441,16 @@ export async function getHomeCareFeatureSummary(
   db: DbClient,
   args: { orgId: string },
 ): Promise<HomeCareFeatureSummary> {
-  const today = startOfDay(new Date());
-  const upcomingWindow = addDays(today, 7);
-  const shortWindow = addDays(today, 3);
+  const now = new Date();
+  // @db.Date カラム(scheduled_date / businessHoliday.date / pharmacistShift.date)用:
+  // JST 業務日の UTC 深夜 sentinel。
+  const todayDateOnly = todayUtcRange(now).gte;
+  const upcomingWindowDateOnly = addUtcDays(todayDateOnly, 7);
+  const shortWindowDateOnly = addUtcDays(todayDateOnly, 3);
+  // 実時刻 DateTime カラム(expires_at / expiry_date / refill_next_dispense_date /
+  // prescription_expiry_date)用: JST 業務日の開始瞬間。UTC prod で startOfDay を使うと 9h ずれる。
+  const todayInstant = japanDayInstantRange(now).gte;
+  const upcomingWindowInstant = addUtcDays(todayInstant, 7);
 
   const activeCases = await db.careCase.findMany({
     where: {
@@ -549,8 +556,8 @@ export async function getHomeCareFeatureSummary(
             org_id: args.orgId,
             case_id: { in: caseIds },
             scheduled_date: {
-              gte: today,
-              lte: upcomingWindow,
+              gte: todayDateOnly,
+              lte: upcomingWindowDateOnly,
             },
             schedule_status: { in: [...OPEN_SCHEDULE_STATUSES] },
           },
@@ -638,7 +645,7 @@ export async function getHomeCareFeatureSummary(
       where: {
         org_id: args.orgId,
         revoked_at: null,
-        expires_at: { gte: today },
+        expires_at: { gte: todayInstant },
       },
       select: {
         id: true,
@@ -662,8 +669,8 @@ export async function getHomeCareFeatureSummary(
       where: {
         org_id: args.orgId,
         date: {
-          gte: today,
-          lte: shortWindow,
+          gte: todayDateOnly,
+          lte: shortWindowDateOnly,
         },
         is_closed: true,
       },
@@ -676,8 +683,8 @@ export async function getHomeCareFeatureSummary(
       where: {
         org_id: args.orgId,
         date: {
-          gte: today,
-          lte: shortWindow,
+          gte: todayDateOnly,
+          lte: shortWindowDateOnly,
         },
         available: true,
         user: {
@@ -711,7 +718,7 @@ export async function getHomeCareFeatureSummary(
             consent_type: 'visit_medication_management',
             is_active: true,
             revoked_date: null,
-            OR: [{ expiry_date: null }, { expiry_date: { gte: today } }],
+            OR: [{ expiry_date: null }, { expiry_date: { gte: todayInstant } }],
           },
           select: {
             patient_id: true,
@@ -724,10 +731,10 @@ export async function getHomeCareFeatureSummary(
           {
             source_type: 'refill',
             refill_remaining_count: { gt: 0 },
-            refill_next_dispense_date: { gte: today, lte: upcomingWindow },
+            refill_next_dispense_date: { gte: todayInstant, lte: upcomingWindowInstant },
           },
           {
-            prescription_expiry_date: { gte: today, lte: addDays(today, 5) },
+            prescription_expiry_date: { gte: todayInstant, lte: addUtcDays(todayInstant, 5) },
           },
         ],
       },
@@ -1066,7 +1073,10 @@ export async function getPatientHomeCareFeatureSummary(
   db: DbClient,
   args: { orgId: string; patientId: string },
 ): Promise<HomeCareFeatureSummary> {
-  const today = startOfDay(new Date());
+  const now = new Date();
+  // @db.Date(scheduled_date)用の UTC 深夜 sentinel と、実時刻カラム用の JST 開始瞬間を分ける。
+  const todayDateOnly = todayUtcRange(now).gte;
+  const todayInstant = japanDayInstantRange(now).gte;
   const activeCases = await db.careCase.findMany({
     where: {
       org_id: args.orgId,
@@ -1184,7 +1194,7 @@ export async function getPatientHomeCareFeatureSummary(
           where: {
             org_id: args.orgId,
             case_id: { in: caseIds },
-            scheduled_date: { gte: today },
+            scheduled_date: { gte: todayDateOnly },
             schedule_status: { in: [...OPEN_SCHEDULE_STATUSES] },
           },
           select: {
@@ -1230,7 +1240,7 @@ export async function getPatientHomeCareFeatureSummary(
         org_id: args.orgId,
         patient_id: args.patientId,
         revoked_at: null,
-        expires_at: { gte: today },
+        expires_at: { gte: todayInstant },
       },
       select: { id: true },
     }),
@@ -1241,7 +1251,7 @@ export async function getPatientHomeCareFeatureSummary(
         consent_type: 'visit_medication_management',
         is_active: true,
         revoked_date: null,
-        OR: [{ expiry_date: null }, { expiry_date: { gte: today } }],
+        OR: [{ expiry_date: null }, { expiry_date: { gte: todayInstant } }],
       },
       select: { id: true },
     }),

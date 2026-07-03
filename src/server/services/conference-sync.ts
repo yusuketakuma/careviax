@@ -6,6 +6,7 @@ import {
 } from '@/lib/conferences/conference-report-disclosure';
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { logger } from '@/lib/utils/logger';
+import { addUtcDays, japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { billingMonthForJapanTimestamp } from './billing-evidence/core';
 
 type ReportType =
@@ -786,18 +787,14 @@ export class ConferenceSyncService {
 
     // Prefer a discharge-anchored first-visit proposal when the note records
     // an explicit discharge date. Otherwise, keep the previous short-horizon default.
-    const proposedDate = targetDischargeDate ? new Date(targetDischargeDate) : new Date();
-    proposedDate.setDate(proposedDate.getDate() + (targetDischargeDate ? 3 : 7));
-    const proposedDateOnly = new Date(
-      Date.UTC(
-        proposedDate.getUTCFullYear(),
-        proposedDate.getUTCMonth(),
-        proposedDate.getUTCDate(),
-        12,
-        0,
-        0,
-        0,
-      ),
+    // 起点は退院日(あれば)/現在日時のいずれも JST 民間日で読み、+3/+7 日を @db.Date sentinel
+    // (UTC 深夜)で保存する。getUTCDate / setDate ベースだと UTC prod の JST 早朝で 1 日ずれる。
+    const baseDateKey = targetDischargeDate
+      ? japanDateKey(targetDischargeDate)
+      : japanDateKey(new Date());
+    const proposedDateOnly = addUtcDays(
+      utcDateFromLocalKey(baseDateKey),
+      targetDischargeDate ? 3 : 7,
     );
 
     const dedupeKey = `conference-visit-proposal:${note.id}`;

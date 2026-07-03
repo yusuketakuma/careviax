@@ -3,6 +3,7 @@ import type { AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
+import { japanDateKey } from '@/lib/utils/date-boundary';
 
 export type NavBadgePayload = {
   audit?: number;
@@ -16,14 +17,6 @@ type HandoffBadgeItemSummary = {
   consult_status?: string | null;
   recipient_user_id?: string | null;
 };
-
-function todayDateKey(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
 
 function toDateOnly(dateStr: string): Date {
   return new Date(`${dateStr}T00:00:00.000Z`);
@@ -42,9 +35,7 @@ function isActionableHandoffItem(item: HandoffBadgeItemSummary, viewerUserId: st
   }
   const isMessage = item.recipient_user_id != null;
   if (isMessage) {
-    return (
-      item.recipient_user_id === viewerUserId && !(item.read_by ?? []).includes(viewerUserId)
-    );
+    return item.recipient_user_id === viewerUserId && !(item.read_by ?? []).includes(viewerUserId);
   }
   return false;
 }
@@ -78,7 +69,9 @@ export async function countDispenseAuditBadge(ctx: AuthContext): Promise<number 
 export async function countHandoffBadge(ctx: AuthContext): Promise<number | undefined> {
   if (!hasPermission(ctx.role, 'canReport')) return undefined;
 
-  const shiftDate = toDateOnly(todayDateKey());
+  // handoff board 生成側(handoff-board/route.ts)と同じ JST 業務日で shift_date を合わせる。
+  // サーバーローカル日付だと UTC prod の JST 早朝で前日ボードを数えてしまう。
+  const shiftDate = toDateOnly(japanDateKey());
   return withOrgContext(
     ctx.orgId,
     (tx) =>
@@ -93,10 +86,7 @@ export async function countHandoffBadge(ctx: AuthContext): Promise<number | unde
             {
               AND: [
                 {
-                  OR: [
-                    { lifecycle_status: { not: null } },
-                    { consult_status: { not: null } },
-                  ],
+                  OR: [{ lifecycle_status: { not: null } }, { consult_status: { not: null } }],
                 },
                 {
                   OR: [{ created_by: ctx.userId }, { NOT: { read_by: { has: ctx.userId } } }],

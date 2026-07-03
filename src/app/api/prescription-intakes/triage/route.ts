@@ -5,6 +5,11 @@ import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
+import {
+  japanDateKey,
+  japanDayInstantRange,
+  japanMonthInstantRange,
+} from '@/lib/utils/date-boundary';
 import type {
   IntakeTriageActionKey,
   IntakeTriageDuplicateNotice,
@@ -188,9 +193,10 @@ const authenticatedGET = withAuthContext(
     const limit = parsedQuery.data.limit ?? QUEUE_FETCH_LIMIT;
 
     const now = new Date();
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    // received_at(=created_at)/ updated_at は実時刻の DateTime。JST 業務日/民間月の開始瞬間で
+    // 比較する。setHours / new Date(getFullYear, getMonth) のローカル境界だと UTC prod で 9h ずれる。
+    const todayStart = japanDayInstantRange(now).gte;
+    const monthStart = japanMonthInstantRange(japanDateKey(now).slice(0, 7)).gte;
 
     const { intakes, qrDrafts, discardCount, latestSchemaVersion } = await withOrgContext(
       ctx.orgId,

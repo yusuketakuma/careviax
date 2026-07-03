@@ -215,6 +215,40 @@ describe('/api/admin/staff-metrics GET', () => {
     });
   });
 
+  it('splits instant (visit_date/created_at) and @db.Date (shift date) month windows on a UTC runtime (CE15)', async () => {
+    const savedTimeZone = process.env.TZ;
+    process.env.TZ = 'UTC';
+    try {
+      const response = await GET(
+        createRequest('http://localhost/api/admin/staff-metrics?month=2026-03'),
+        emptyRouteContext,
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(200);
+
+      // 実時刻カラムは JST 民間月の実時刻レンジ(JST 03/01 00:00 = 02/28 15:00Z)
+      const visitWhere = visitRecordFindManyMock.mock.calls.at(-1)?.[0]?.where;
+      expect(visitWhere.visit_date.gte.toISOString()).toBe('2026-02-28T15:00:00.000Z');
+      expect(visitWhere.visit_date.lt.toISOString()).toBe('2026-03-31T15:00:00.000Z');
+
+      const reportWhere = careReportFindManyMock.mock.calls.at(-1)?.[0]?.where;
+      expect(reportWhere.created_at.gte.toISOString()).toBe('2026-02-28T15:00:00.000Z');
+      expect(reportWhere.created_at.lt.toISOString()).toBe('2026-03-31T15:00:00.000Z');
+
+      // @db.Date(shift date)は UTC 深夜 sentinel の月レンジ
+      const shiftWhere = pharmacistShiftFindManyMock.mock.calls.at(-1)?.[0]?.where;
+      expect(shiftWhere.date.gte.toISOString()).toBe('2026-03-01T00:00:00.000Z');
+      expect(shiftWhere.date.lt.toISOString()).toBe('2026-04-01T00:00:00.000Z');
+    } finally {
+      if (savedTimeZone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = savedTimeZone;
+      }
+    }
+  });
+
   it('counts shift days by the local pharmacy calendar day', async () => {
     visitRecordFindManyMock.mockResolvedValue([]);
     careReportFindManyMock.mockResolvedValue([]);

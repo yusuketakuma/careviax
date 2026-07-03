@@ -8,7 +8,7 @@ import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { formatNullableDateKey } from '@/lib/date-key';
-import { todayUtcRange } from '@/lib/utils/date-boundary';
+import { japanDayInstantRange, todayUtcRange } from '@/lib/utils/date-boundary';
 import { extractPackagingInstructionTags } from '@/lib/dispensing/packaging';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import { serverCache } from '@/lib/utils/server-cache';
@@ -194,9 +194,8 @@ async function authenticatedGET(req: NextRequest) {
             : 'mine';
     // scheduled_date(@db.Date)比較用: ローカル日付の UTC 深夜レンジ
     const todayRange = todayUtcRange(now);
-    // created_at(DateTime, 実時刻)比較用: 従来どおりローカル深夜
-    const localTodayStart = new Date(now);
-    localTodayStart.setHours(0, 0, 0, 0);
+    // created_at(DateTime, 実時刻)比較用: JST 当日開始の実時刻(UTC prod でも取りこぼさない)
+    const todayInstantStart = japanDayInstantRange(now).gte;
 
     const assignmentScope = await resolveDashboardAssignmentScope({
       db: prisma,
@@ -340,7 +339,7 @@ async function authenticatedGET(req: NextRequest) {
         where: {
           org_id: ctx.orgId,
           status: { in: ['pending', 'in_progress'] },
-          created_at: { lt: localTodayStart },
+          created_at: { lt: todayInstantStart },
           ...buildDashboardTaskAssignmentWhere(assignmentScope),
         },
       }),

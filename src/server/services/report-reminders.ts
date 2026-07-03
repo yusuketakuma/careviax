@@ -1,7 +1,8 @@
 import { createHash } from 'crypto';
-import { addDays, differenceInCalendarDays, startOfMonth, subMonths } from 'date-fns';
+import { addDays, differenceInCalendarDays } from 'date-fns';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { japanDateKey, japanMonthInstantRange } from '@/lib/utils/date-boundary';
 import { REPORT_TYPE_LABELS } from '@/lib/constants/status-labels';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { maskContactValueForAudit } from '@/lib/privacy/contact-mask';
@@ -19,10 +20,19 @@ type DeliveryAnalyticsOptions = {
   now?: Date;
 };
 
+/**
+ * 実時刻の DateTime(created_at / sent_at)を JST 民間月キー 'YYYY-MM' に落とす。
+ * サーバーローカルの getMonth だと UTC prod で JST 月初/月末の配信を隣月へずらす。
+ */
 function formatMonth(value: Date) {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  return `${year}-${month}`;
+  return japanDateKey(value).slice(0, 7);
+}
+
+/** 月キー 'YYYY-MM' を delta か月ずらした月キーを返す(UTC 基準、ランタイム TZ 非依存)。 */
+function shiftMonthKey(monthKey: string, delta: number) {
+  const [year, month] = monthKey.split('-').map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1 + delta, 1));
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
 function buildLegacyReportResponseReminderTaskKey(deliveryId: string) {
@@ -110,7 +120,7 @@ type ReminderGroup = {
 
 function createReminderGroup(delivery: ReminderDelivery, now: Date): ReminderGroup | null {
   if (!delivery.sent_at) return null;
-  const reportMonth = formatMonth(startOfMonth(delivery.report.created_at));
+  const reportMonth = formatMonth(delivery.report.created_at);
   const dedupeKey = buildReportResponseReminderTaskKey({
     patientId: delivery.report.patient_id,
     reportMonth,
@@ -159,8 +169,12 @@ export async function getCareReportDeliveryAnalytics(
   const now = options.now ?? new Date();
   const overdueDays = options.overdueDays ?? 7;
   const months = options.months ?? 6;
-  const currentMonth = startOfMonth(now);
-  const rangeStart = startOfMonth(subMonths(currentMonth, months - 1));
+  // JST 民間月でトレンドを組む(created_at は実時刻の DateTime)。
+  const currentMonthKey = formatMonth(now);
+  const trendMonthKeys = Array.from({ length: months }, (_, index) =>
+    shiftMonthKey(currentMonthKey, -(months - 1 - index)),
+  );
+  const rangeStart = japanMonthInstantRange(trendMonthKeys[0]).gte;
 
   const deliveries = await db.deliveryRecord.findMany({
     where: {
@@ -215,9 +229,8 @@ export async function getCareReportDeliveryAnalytics(
   const patientNameById = new Map(patients.map((patient) => [patient.id, patient.name]));
 
   const monthlyTrend = Array.from({ length: months }, (_, index) => {
-    const month = startOfMonth(subMonths(currentMonth, months - index - 1));
     return {
-      month: formatMonth(month),
+      month: trendMonthKeys[index],
       attempted_count: 0,
       success_count: 0,
       failed_count: 0,
@@ -274,7 +287,7 @@ export async function getCareReportDeliveryAnalytics(
     if (delivery.status === 'draft') continue;
 
     const deliveryDate = delivery.sent_at ?? delivery.created_at;
-    const monthKey = formatMonth(startOfMonth(deliveryDate));
+    const monthKey = formatMonth(deliveryDate);
     const monthBucket = monthlyByMonth.get(monthKey);
     const isSuccess = delivery.status !== 'failed';
     const isConfirmed = delivery.status === 'confirmed';
@@ -325,7 +338,6 @@ export async function getCareReportDeliveryAnalytics(
         : Math.round((bucket.confirmed_count / bucket.attempted_count) * 100);
   }
 
-  const currentMonthKey = formatMonth(currentMonth);
   const currentMonthBucket =
     monthlyByMonth.get(currentMonthKey) ?? monthlyTrend[monthlyTrend.length - 1];
 

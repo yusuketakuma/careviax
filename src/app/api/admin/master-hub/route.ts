@@ -1,9 +1,10 @@
-import { format, startOfMonth } from 'date-fns';
+import { format } from 'date-fns';
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { internalError, success } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
+import { japanDateKey, japanMonthInstantRange } from '@/lib/utils/date-boundary';
 import { buildTodayOpsRail } from '@/server/services/today-ops-rail';
 import type { MasterHubCard, MasterHubResponse } from '@/types/master-hub';
 
@@ -88,7 +89,9 @@ function daysUntil(target: Date, now: Date): number {
 const authenticatedGET = withAuthContext(
   async (_req, ctx) => {
     const now = new Date();
-    const monthStart = startOfMonth(now);
+    // changeLogMonthCount は AuditLog.created_at(実時刻)を JST 民間月で数える。
+    // startOfMonth(now)(ローカル月初)だと UTC prod で JST 月境界の変更が隣月へずれる。
+    const monthStart = japanMonthInstantRange(japanDateKey(now).slice(0, 7)).gte;
 
     const data = await withOrgContext(ctx.orgId, async (tx) => {
       const [

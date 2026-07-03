@@ -142,6 +142,58 @@ describe('report-reminders service', () => {
     );
   });
 
+  it('buckets month-boundary deliveries and the query window by JST months on a UTC runtime (N24)', async () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'UTC';
+    try {
+      deliveryRecordFindManyMock.mockResolvedValue([
+        {
+          id: 'delivery_boundary',
+          channel: 'fax',
+          recipient_name: '在宅主治医A',
+          recipient_contact: '03-1111-2222',
+          status: 'confirmed',
+          // UTC 2026-02-28T16:00Z = JST 2026-03-01 01:00 → JST 月は 2026-03。
+          // サーバーローカル(UTC)の getMonth だと 2026-02 に誤配分される。
+          sent_at: new Date('2026-02-28T16:30:00.000Z'),
+          created_at: new Date('2026-02-28T16:00:00.000Z'),
+          report: {
+            id: 'report_boundary',
+            patient_id: 'patient_1',
+            report_type: 'physician_report',
+            created_by: 'user_1',
+          },
+        },
+      ]);
+      patientFindManyMock.mockResolvedValue([{ id: 'patient_1', name: '山田 太郎' }]);
+
+      const result = await getCareReportDeliveryAnalytics('org_1', {
+        months: 6,
+        now: new Date('2026-03-12T00:00:00.000Z'),
+      });
+
+      // クエリ下限は最古 JST 月(2025-10)の JST 月初実時刻 = 2025-09-30T15:00Z
+      const where = deliveryRecordFindManyMock.mock.calls.at(-1)?.[0]?.where;
+      expect(where.OR[0].created_at.gte.toISOString()).toBe('2025-09-30T15:00:00.000Z');
+
+      // 月境界配信は JST 月 2026-03 のバケットに入る
+      const marchBucket = result.monthly_trend.find(
+        (bucket: { month: string }) => bucket.month === '2026-03',
+      );
+      expect(marchBucket?.attempted_count).toBe(1);
+      const febBucket = result.monthly_trend.find(
+        (bucket: { month: string }) => bucket.month === '2026-02',
+      );
+      expect(febBucket?.attempted_count).toBe(0);
+    } finally {
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
+  });
+
   it('uses an injected scoped database client for analytics reads', async () => {
     const scopedDb = {
       deliveryRecord: {

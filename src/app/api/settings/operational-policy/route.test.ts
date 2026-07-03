@@ -151,4 +151,30 @@ describe('/api/settings/operational-policy PATCH', () => {
       }),
     );
   });
+
+  it('counts the operational-policy change log by the JST month on a UTC runtime (CXR2-TZ01)', async () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'UTC';
+    vi.useFakeTimers();
+    try {
+      // JST 2026-07-01 05:00(UTC では 2026-06-30T20:00Z)。ローカル月初だと 6 月扱いになるが、
+      // JST 月初は 2026-07-01 なので下限は JST 7 月初の実時刻 = 2026-06-30T15:00Z。
+      vi.setSystemTime(new Date('2026-06-30T20:00:00Z'));
+
+      const response = await PATCH(createPatchRequest({ quiet_hours: false }), {
+        params: Promise.resolve({}),
+      });
+      expect(response.status).toBe(200);
+
+      const where = auditLogCountMock.mock.calls.at(-1)?.[0]?.where;
+      expect(where.created_at.gte.toISOString()).toBe('2026-06-30T15:00:00.000Z');
+    } finally {
+      vi.useRealTimers();
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
+  });
 });

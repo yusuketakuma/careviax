@@ -10,7 +10,7 @@ import {
   QualificationCheckAdapterError,
   type QualificationCheckResult,
 } from '@/server/adapters/qualification-check';
-import { format } from 'date-fns';
+import { japanDateKey } from '@/lib/utils/date-boundary';
 import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { resolvePatientInsurance } from '@/server/services/patient-insurance';
@@ -178,7 +178,8 @@ async function authenticatedPOST(
 
     const result = await adapter.checkInsurance({
       insuranceNumber: insuranceNumber ?? undefined,
-      asOfDate: format(new Date(), 'yyyy-MM-dd'),
+      // 資格確認の基準日は JST 業務日。runtime-local format だと UTC prod の JST 早朝で前日になる。
+      asOfDate: japanDateKey(),
     });
 
     await notifyWebhookEventForOrg(ctx.orgId, 'qualification.checked', {

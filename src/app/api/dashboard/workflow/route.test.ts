@@ -791,6 +791,32 @@ describe('/api/dashboard/workflow GET', () => {
     expect(conferenceNoteFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('flags overdue 連携依頼 against the day sentinel, not the current instant (CE07)', async () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'UTC';
+    vi.useFakeTimers();
+    try {
+      // JST 2026-06-12 08:00(UTC では 2026-06-11T23:00Z)。due_date は YYYY-MM-DD の
+      // UTC 深夜 sentinel で保存されるため、当日期限の依頼を new Date()(実時刻)と比べると
+      // JST 09:00 以降に当日誤検知していた。当日 sentinel と比較すべき。
+      vi.setSystemTime(new Date('2026-06-11T23:00:00Z'));
+
+      const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
+      expect(response.status).toBe(200);
+
+      // 2 回目の communicationRequest.count が overdue 判定
+      const overdueWhere = communicationRequestCountMock.mock.calls[1]?.[0]?.where;
+      expect(overdueWhere?.due_date.lt.toISOString()).toBe('2026-06-11T00:00:00.000Z');
+    } finally {
+      vi.useRealTimers();
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
+  });
+
   it('works when called directly without a routeContext argument', async () => {
     const response = await rawGET(createRequest({ 'x-org-id': 'org_1' }));
 

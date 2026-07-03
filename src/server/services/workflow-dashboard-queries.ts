@@ -496,7 +496,9 @@ export async function fetchWorkflowCoreData(
         org_id: orgId,
         ...buildNullableCaseBackedScope(assignmentScope),
         status: { notIn: ['closed', 'cancelled', 'responded'] },
-        due_date: { lt: new Date() },
+        // due_date は YYYY-MM-DD の日付のみ(UTC 深夜 sentinel)で保存されるため、
+        // 実時刻 new Date() ではなく当日 sentinel `today` と比較する(JST 09:00 以降の当日誤検知を防ぐ)。
+        due_date: { lt: today },
       },
     }),
     prisma.task.groupBy({

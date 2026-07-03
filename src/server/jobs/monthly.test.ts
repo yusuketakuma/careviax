@@ -104,4 +104,28 @@ describe('aggregateConferenceQualityIndicators', () => {
       }),
     );
   });
+
+  it('windows the previous JST month even when the UTC month differs, on a UTC runtime (CXR2-TZ02)', async () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'UTC';
+    try {
+      // UTC 2026-06-30T20:00Z = JST 2026-07-01 05:00。JST の「先月」は 2026-06。
+      // サーバーローカル(UTC)だと現在月が 6 月扱いになり、先月を 2026-05 と誤算していた。
+      vi.setSystemTime(new Date('2026-06-30T20:00:00.000Z'));
+
+      const result = await aggregateConferenceQualityIndicators();
+      expect(result).toMatchObject({ month: '2026-06' });
+
+      // conference_date(実時刻)は JST 2026-06 の実時刻レンジ(半開区間)
+      const where = conferenceNoteFindManyMock.mock.calls.at(-1)?.[0]?.where;
+      expect(where.conference_date.gte.toISOString()).toBe('2026-05-31T15:00:00.000Z');
+      expect(where.conference_date.lt.toISOString()).toBe('2026-06-30T15:00:00.000Z');
+    } finally {
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
+  });
 });

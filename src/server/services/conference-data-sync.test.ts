@@ -238,7 +238,7 @@ describe('ConferenceDataSyncService', () => {
           OR: [
             {
               pharmacist_id: 'pharmacist_1',
-              scheduled_date: new Date('2026-04-08T12:00:00.000Z'),
+              scheduled_date: new Date('2026-04-08T00:00:00.000Z'),
             },
           ],
         }),
@@ -251,7 +251,7 @@ describe('ConferenceDataSyncService', () => {
           OR: [
             {
               proposed_pharmacist_id: 'pharmacist_1',
-              proposed_date: new Date('2026-04-08T12:00:00.000Z'),
+              proposed_date: new Date('2026-04-08T00:00:00.000Z'),
             },
           ],
         }),
@@ -260,10 +260,75 @@ describe('ConferenceDataSyncService', () => {
     expect(tx.visitScheduleProposal.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         proposed_pharmacist_id: 'pharmacist_1',
-        proposed_date: new Date('2026-04-08T12:00:00.000Z'),
+        // JST 民間日(2026-04-01)+7 の @db.Date sentinel(UTC 深夜)。
+        proposed_date: new Date('2026-04-08T00:00:00.000Z'),
         route_order: 7,
       }),
       select: { id: true },
     });
+  });
+
+  it('derives the +7 recurrence proposal date from the JST civil day of a late-UTC conference note (CE16)', async () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'UTC';
+    try {
+      const tx = createTx();
+      const note: PersistedConferenceNote = {
+        ...baseNote,
+        case_id: 'case_1',
+        note_type: 'service_manager',
+        // UTC 2026-04-01T20:00Z = JST 2026-04-02 05:00。getUTCDate ベースだと 04-01 起点で
+        // +7 が 04-08 に前倒しされる。JST 民間日 04-02 起点なら 04-09 が正しい。
+        conference_date: new Date('2026-04-01T20:00:00Z'),
+        structured_content: {
+          sections: [
+            {
+              key: 'service_adjustments',
+              label: 'サービス調整',
+              body: '月2回へ訪問頻度を変更',
+            },
+          ],
+        },
+      };
+      tx.careCase.findFirst.mockResolvedValue({
+        id: 'case_1',
+        patient_id: 'patient_1',
+        primary_pharmacist_id: 'pharmacist_1',
+        required_visit_support: null,
+      });
+      tx.visitSchedule.findFirst.mockResolvedValue({
+        id: 'schedule_1',
+        cycle_id: 'cycle_1',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        priority: 'normal',
+        scheduled_date: new Date('2026-04-01T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        medication_end_date: null,
+        visit_deadline_date: null,
+        route_order: 2,
+        recurrence_rule: null,
+      });
+      tx.visitSchedule.findMany.mockResolvedValue([]);
+      tx.visitScheduleProposal.findFirst.mockResolvedValue(null);
+      tx.visitScheduleProposal.findMany.mockResolvedValue([]);
+      tx.visitScheduleProposal.create.mockResolvedValue({ id: 'proposal_1' });
+
+      await ConferenceDataSyncService.syncSavedNote(tx, 'org_1', 'user_1', note);
+
+      expect(tx.visitScheduleProposal.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          proposed_date: new Date('2026-04-09T00:00:00.000Z'),
+        }),
+        select: { id: true },
+      });
+    } finally {
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
   });
 });

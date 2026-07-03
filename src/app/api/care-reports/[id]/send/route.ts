@@ -32,6 +32,7 @@ import {
   resolveEmailDeliveryFailureReason,
 } from '@/lib/reports/delivery-failure-reasons';
 import { upsertBillingEvidenceForVisit } from '@/server/services/billing-evidence';
+import { japanDateKey, japanMonthInstantRange } from '@/lib/utils/date-boundary';
 import { resolveOperationalTasks } from '@/server/services/operational-tasks';
 import { sendCareReportEmail } from '@/server/services/report-delivery';
 import { learnContactProfileFromCommunication } from '@/lib/contact-profiles';
@@ -1712,27 +1713,18 @@ async function finalizeReportDelivery(args: {
           });
 
           if (conferenceNote?.case_id) {
-            const monthStart = new Date(
-              conferenceNote.conference_date.getFullYear(),
-              conferenceNote.conference_date.getMonth(),
-              1,
-            );
-            const monthEnd = new Date(
-              conferenceNote.conference_date.getFullYear(),
-              conferenceNote.conference_date.getMonth() + 1,
-              0,
-              23,
-              59,
-              59,
-              999,
-            );
+            // conference_date / visit_date は実時刻の DateTime。サーバーローカル月境界だと
+            // UTC prod で JST 月初/月末の訪問を取りこぼす/隣月へずらすため、JST 民間月の
+            // 実時刻レンジ(半開区間 gte/lt)で絞り込む。
+            const conferenceMonthKey = japanDateKey(conferenceNote.conference_date).slice(0, 7);
+            const conferenceMonthRange = japanMonthInstantRange(conferenceMonthKey);
             const relatedVisitRecords = await tx.visitRecord.findMany({
               where: {
                 org_id: ctx.orgId,
                 patient_id: report.patient_id,
                 visit_date: {
-                  gte: monthStart,
-                  lte: monthEnd,
+                  gte: conferenceMonthRange.gte,
+                  lt: conferenceMonthRange.lt,
                 },
                 schedule: {
                   case_id: conferenceNote.case_id,

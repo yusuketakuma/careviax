@@ -171,4 +171,37 @@ describe('nav badge service', () => {
     ).resolves.toBeUndefined();
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
+
+  it('counts the JST business-day board even on a UTC runtime at JST early morning (N30)', async () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'UTC';
+    vi.useFakeTimers();
+    try {
+      // JST 2026-06-12 08:00(UTC では 2026-06-11T23:00Z)。サーバーローカル日付だと前日
+      // 2026-06-11 のボードを数えてしまう。JST 業務日 2026-06-12 のボードを数えるべき。
+      vi.setSystemTime(new Date('2026-06-11T23:00:00Z'));
+
+      const count = vi.fn().mockResolvedValue(3);
+      withOrgContextMock.mockImplementationOnce(
+        async (_orgId: string, fn: (tx: unknown) => unknown) =>
+          fn({
+            handoffItem: {
+              count,
+            },
+          }),
+      );
+
+      await countHandoffBadge(pharmacistCtx);
+
+      const shiftDate = count.mock.calls.at(-1)?.[0]?.where?.board?.shift_date as Date;
+      expect(shiftDate.toISOString()).toBe('2026-06-12T00:00:00.000Z');
+    } finally {
+      vi.useRealTimers();
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
+  });
 });

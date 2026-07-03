@@ -77,4 +77,41 @@ describe('ResidualMedicationChart', () => {
 
     vi.clearAllMocks();
   });
+
+  it('buckets a JST-early-morning record by its JST civil day, not the UTC calendar day (CE09)', () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'UTC';
+    try {
+      useOrgIdMock.mockReturnValue('org_1');
+      useQueryMock.mockReturnValue({
+        data: {
+          data: [
+            {
+              id: 'r1',
+              drug_name: '薬A',
+              excess_days: 3,
+              // JST 2026-06-12 08:00 = UTC 2026-06-11T23:00Z。UTC 日付束ねだと 06/11 に誤混入。
+              created_at: '2026-06-11T23:00:00.000Z',
+            },
+          ],
+        },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      });
+
+      const { container } = render(<ResidualMedicationChart patientId="pt_1" />);
+
+      const labels = Array.from(container.querySelectorAll('text')).map((t) => t.textContent);
+      expect(labels).toContain('06/12');
+      expect(labels).not.toContain('06/11');
+    } finally {
+      vi.clearAllMocks();
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
+  });
 });

@@ -1721,6 +1721,66 @@ describe('createPrescriptionIntake', () => {
     expect(result.profileSyncResult).toEqual({ created: 1, updated: 0, discontinued: 1 });
   });
 
+  it('stores discontinued end_date and fallback start_date as the JST civil-date UTC-midnight sentinel on a UTC runtime (CE08)', async () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'UTC';
+    vi.useFakeTimers();
+    try {
+      // JST 2026-06-12 08:00(UTC では 2026-06-11T23:00Z)。実時刻 new Date() を入れると
+      // UTC 深夜 sentinel が前日(2026-06-11)にずれるため、JST 業務日の sentinel を使う。
+      vi.setSystemTime(new Date('2026-06-11T23:00:00Z'));
+
+      prismaMock.prescriptionIntake.findFirst.mockResolvedValue(null);
+      prismaMock.medicationProfile.findMany.mockResolvedValue([
+        {
+          id: 'profile_to_discontinue',
+          drug_master_id: 'drug_master_old',
+          drug_name: '旧薬',
+          dose: '1錠',
+          frequency: '1日1回朝食後',
+          source: 'prescription',
+        },
+      ]);
+      prismaMock.drugMaster.findMany.mockResolvedValue([]);
+      prismaMock.medicationProfile.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await runPrescriptionIntakePostCreateHooks({
+        cycleId: 'cycle_1',
+        intakeId: 'intake_1',
+        patientId: 'patient_1',
+        orgId: 'org_1',
+        lines: [
+          {
+            drug_name: '新薬',
+            drug_code: 'YJ_NEW',
+            dose: '2錠',
+            frequency: '1日1回朝食後',
+          },
+        ],
+        prescriberName: '処方医A',
+        sourceType: 'qr_scan',
+      });
+
+      const discontinueCall = prismaMock.medicationProfile.updateMany.mock.calls.find(
+        (call) => call[0]?.data?.is_current === false,
+      );
+      expect((discontinueCall?.[0]?.data?.end_date as Date).toISOString()).toBe(
+        '2026-06-12T00:00:00.000Z',
+      );
+
+      const createdData = prismaMock.medicationProfile.createMany.mock.calls.at(-1)?.[0]?.data;
+      expect((createdData?.[0]?.start_date as Date).toISOString()).toBe('2026-06-12T00:00:00.000Z');
+      expect(result.profileSyncResult).toEqual({ created: 1, updated: 0, discontinued: 1 });
+    } finally {
+      vi.useRealTimers();
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
+  });
+
   it('does not keep a master-linked medication profile current by unresolved same-name fallback', async () => {
     prismaMock.prescriptionIntake.findFirst.mockResolvedValue(null);
     prismaMock.medicationProfile.findMany.mockResolvedValue([

@@ -2,41 +2,39 @@ import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { formatDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
+import { japanDateKey, japanMonthInstantRange, utcMonthDateRange } from '@/lib/utils/date-boundary';
 
 const KPI_ROLES = ['owner', 'admin', 'pharmacist', 'pharmacist_trainee'] as const;
 
+/**
+ * 対象月(YYYY-MM)を解決して列型別のレンジを返す。
+ * - visit_date / created_at(実時刻 DateTime): JST 民間月の実時刻レンジ(japanMonthInstantRange)
+ * - pharmacistShift.date(@db.Date): UTC 深夜 sentinel の月レンジ(utcMonthDateRange)
+ * 単一のサーバーローカル月境界を両方に流用すると UTC prod で月境界レコードを取りこぼす/隣月へずらす。
+ */
 function parseMonthRange(month: string | null) {
+  let label: string;
   if (month === null) {
-    const now = new Date();
-    return {
-      start: new Date(now.getFullYear(), now.getMonth(), 1),
-      end: new Date(now.getFullYear(), now.getMonth() + 1, 1),
-      label: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
-    };
-  }
-
-  const normalizedMonth = month.trim();
-  const match = normalizedMonth.match(/^(\d{4})-(\d{2})$/);
-  if (!match) {
-    return null;
-  }
-
-  const year = Number(match[1]);
-  const monthNumber = Number(match[2]);
-  if (monthNumber < 1 || monthNumber > 12) {
-    return null;
-  }
-
-  const monthIndex = monthNumber - 1;
-  const start = new Date(year, monthIndex, 1);
-  if (start.getFullYear() !== year || start.getMonth() !== monthIndex) {
-    return null;
+    label = japanDateKey().slice(0, 7);
+  } else {
+    const normalizedMonth = month.trim();
+    const match = normalizedMonth.match(/^(\d{4})-(\d{2})$/);
+    if (!match) {
+      return null;
+    }
+    const year = Number(match[1]);
+    const monthNumber = Number(match[2]);
+    // 先頭ゼロの非現実的な年(例: 0001)を除外する。
+    if (year < 100 || monthNumber < 1 || monthNumber > 12) {
+      return null;
+    }
+    label = normalizedMonth;
   }
 
   return {
-    start,
-    end: new Date(year, monthIndex + 1, 1),
-    label: normalizedMonth,
+    instant: japanMonthInstantRange(label),
+    dateOnly: utcMonthDateRange(label),
+    label,
   };
 }
 
@@ -115,8 +113,8 @@ export const GET = withAuthContext(
             in: userIds,
           },
           visit_date: {
-            gte: range.start,
-            lt: range.end,
+            gte: range.instant.gte,
+            lt: range.instant.lt,
           },
         },
         select: {
@@ -137,8 +135,8 @@ export const GET = withAuthContext(
             in: userIds,
           },
           created_at: {
-            gte: range.start,
-            lt: range.end,
+            gte: range.instant.gte,
+            lt: range.instant.lt,
           },
           visit_record_id: {
             not: null,
@@ -156,8 +154,8 @@ export const GET = withAuthContext(
             in: userIds,
           },
           date: {
-            gte: range.start,
-            lt: range.end,
+            gte: range.dateOnly.gte,
+            lt: range.dateOnly.lt,
           },
           available: true,
         },

@@ -11,6 +11,7 @@ type ConferenceSyncInternals = {
   buildBillingEvidenceDetails: (...args: unknown[]) => Promise<EvidenceDetails>;
   registerBillingCandidate: (...args: unknown[]) => Promise<{ id: string } | null>;
   generateReportDraft: (...args: unknown[]) => Promise<string[]>;
+  proposeVisitSchedule: (...args: unknown[]) => Promise<{ id: string } | null>;
 };
 
 const internals = ConferenceSyncService as unknown as ConferenceSyncInternals;
@@ -226,5 +227,59 @@ describe('ConferenceSyncService', () => {
         }),
       }),
     });
+  });
+
+  it('derives the no-discharge +7 visit proposal date from the JST civil day on a UTC runtime (N26)', async () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'UTC';
+    vi.useFakeTimers();
+    try {
+      // JST 2026-06-12 08:00(UTC では 2026-06-11T23:00Z)。new Date()+getUTCDate ベースだと
+      // 06-11 起点で +7 が 06-18 になる。JST 民間日 06-12 起点なら 06-19 が正しい。
+      vi.setSystemTime(new Date('2026-06-11T23:00:00Z'));
+
+      const createMock = vi.fn().mockResolvedValue({ id: 'proposal_1' });
+      const tx = {
+        visitScheduleProposal: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: createMock,
+        },
+      };
+
+      const proposal = await internals.proposeVisitSchedule(
+        tx,
+        'org_1',
+        {
+          id: 'note_1',
+          case_id: 'case_1',
+          patient_id: 'patient_1',
+          note_type: 'pre_discharge',
+          title: '退院前会議',
+          participants: [],
+          structured_content: {
+            sections: [{ key: 'next_visit_plan', label: '次回訪問予定', body: '週1回で継続' }],
+          },
+          metadata: {},
+          action_items: [],
+        },
+        'pharmacist_1',
+      );
+
+      expect(proposal).toEqual({ id: 'proposal_1' });
+      expect(createMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            proposed_date: new Date('2026-06-19T00:00:00.000Z'),
+          }),
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
   });
 });

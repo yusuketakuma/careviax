@@ -223,6 +223,33 @@ describe('/api/patients/[id]/qualification-check POST', () => {
     expect(serializedBody).not.toContain('secret');
   });
 
+  it('uses the JST business day as asOfDate even on a UTC runtime at JST early morning', async () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'UTC';
+    vi.useFakeTimers();
+    try {
+      // JST 2026-06-12 08:00(UTC では 2026-06-11T23:00Z)。runtime-local だと前日 2026-06-11 になる。
+      vi.setSystemTime(new Date('2026-06-11T23:00:00Z'));
+
+      const response = await POST(createRequest(), {
+        params: Promise.resolve({ id: 'patient_1' }),
+      });
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(200);
+
+      expect(checkInsuranceMock).toHaveBeenCalledWith(
+        expect.objectContaining({ asOfDate: '2026-06-12' }),
+      );
+    } finally {
+      vi.useRealTimers();
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
+  });
+
   it('rejects archived patients before insurance resolution, external checks, or webhooks', async () => {
     patientFindFirstMock.mockResolvedValue({
       id: 'patient_1',

@@ -173,6 +173,28 @@ describe('/api/admin/master-hub', () => {
     });
   });
 
+  it('counts the master change log by the JST month on a UTC runtime (master-hub)', async () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'UTC';
+    try {
+      // JST 2026-06-12 08:00(UTC では 2026-06-11T23:00Z)。JST 民間月 2026-06 の月初実時刻は
+      // 2026-05-31T15:00Z。startOfMonth(now)(ローカル月初)だと 2026-06-01T00:00Z にずれる。
+      vi.setSystemTime(new Date('2026-06-11T23:00:00Z'));
+
+      const response = await GET(createRequest(), emptyRouteContext);
+      expect(response.status).toBe(200);
+
+      const where = tx.auditLog.count.mock.calls.at(-1)?.[0]?.where;
+      expect(where.created_at.gte.toISOString()).toBe('2026-05-31T15:00:00.000Z');
+    } finally {
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
+  });
+
   it('marks an expired vehicle inspection as blocked freshness instead of due soon', async () => {
     tx.visitVehicleResource.findMany.mockResolvedValueOnce([
       {
