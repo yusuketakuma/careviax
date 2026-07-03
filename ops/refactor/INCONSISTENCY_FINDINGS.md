@@ -84,7 +84,10 @@ Snapshot: 2026-07-02 02:10 JST
   fallback. Presence heartbeat client delivery failures now use a throttled
   safe warning while preserving best-effort client behavior. Collaboration
   room-token transient failures now use the same safe warning pattern while
-  preserving retry/access-denied classification.
+  preserving retry/access-denied classification. CloudWatch metric-emission
+  failures now use the shared safe error logger while preserving fail-soft
+  caller behavior, batching, request shape, and non-recursive logging; AWS SDK
+  error details are constrained to the `error_name` field.
 - `INC-PRIV-001`: persisted failure messages that flow back through authorized
   patient APIs should not contain unnecessary patient-name-bearing text.
   Patient MCS identity conflict `last_sync_error` now uses fixed

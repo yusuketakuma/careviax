@@ -1,6 +1,6 @@
 # Refactor State
 
-Snapshot: 2026-07-03 20:05 JST
+Snapshot: 2026-07-03 20:20 JST
 
 ## Phase
 
@@ -12,7 +12,7 @@ Snapshot: 2026-07-03 20:05 JST
 
 ## Last Change ID
 
-- `RR-QP-20260703-C-billing-candidates-query-helper`
+- `RR-OBS-20260703-CW1-cloudwatch-safe-log`
 
 ## Build State
 
@@ -21,16 +21,15 @@ Snapshot: 2026-07-03 20:05 JST
   2026-07-03: test `13017` passed (`1302` files), lint `0` errors, colors,
   format, typecheck, typecheck:no-unused, and build all green.
 - Current narrow slice evidence:
-  - Baseline billing-candidates route plus shared helper suite passed `2`
-    files / `42` tests.
-  - Focused billing-candidates route plus shared helper suite passed `2`
-    files / `44` tests.
+  - Baseline CloudWatch plus shared logger suite passed `2` files / `14`
+    tests.
+  - Focused CloudWatch plus shared logger suite passed `2` files / `14` tests.
   - `pnpm typecheck`: passed.
   - `pnpm typecheck:no-unused`: passed.
   - Scoped ESLint, scoped Prettier check, and scoped diff-check passed.
-  - Full build was not run for this narrow query-helper convergence slice; the
+  - Full build was not run for this narrow observability slice; the
     immediately preceding Claude full gate was green.
-  - `pnpm build` was not run for this narrow query-helper convergence slice.
+  - `pnpm build` was not run for this narrow observability slice.
 - Previous narrow slice evidence:
   - Focused patient-detail suite passed `1` file / `70` tests.
   - `pnpm typecheck`: passed.
@@ -48,6 +47,15 @@ Snapshot: 2026-07-03 20:05 JST
 ## Current Worktree
 
 - Preserve unrelated dirty files if any appear.
+- Latest observability slice changed only `src/lib/aws/cloudwatch.ts`,
+  `src/lib/aws/cloudwatch.test.ts`, and progress ledgers under Claude ACKed
+  lock `RR-OBS-20260703-CW1`. It replaces the fixed direct `console.error`
+  metric-emission failure path with shared safe `logger.error` context while
+  preserving fail-soft behavior, batching, regional client caching, AWS request
+  shape, and non-recursive logging. Focused CloudWatch/logger tests,
+  `pnpm typecheck`, `pnpm typecheck:no-unused`, scoped ESLint, scoped
+  Prettier, and diff-check passed. Full build was not run for this narrow
+  slice. Await Claude/opus verdict; do not self-commit.
 - Latest query-helper slice changed only
   `src/app/api/billing-candidates/route.ts`,
   `src/app/api/billing-candidates/route.test.ts`, and progress ledgers. It

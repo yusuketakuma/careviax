@@ -6,10 +6,10 @@ import {
 } from '@aws-sdk/client-cloudwatch';
 
 import { awsClientConfig, withAwsClientTimeout } from '@/lib/aws/client-timeout';
+import { logger } from '@/lib/utils/logger';
 
 const NAMESPACE = 'PH-OS/Application';
 const DEFAULT_AWS_REGION = 'ap-northeast-1';
-const CLOUDWATCH_METRIC_EMISSION_FAILED_MESSAGE = 'CloudWatch metric emission failed';
 
 const cloudWatchClients = new Map<string, CloudWatchClient>();
 
@@ -36,9 +36,16 @@ export async function putMetrics(metrics: MetricDatum[]): Promise<void> {
     const batch = metrics.slice(offset, offset + BATCH_SIZE);
     try {
       await getClient().send(new PutMetricDataCommand({ Namespace: NAMESPACE, MetricData: batch }));
-    } catch {
+    } catch (error) {
       // Metric emission must never break the application
-      console.error('[cloudwatch] putMetrics failed', CLOUDWATCH_METRIC_EMISSION_FAILED_MESSAGE);
+      logger.error(
+        {
+          event: 'cloudwatch.metric_emission_failed',
+          operation: 'put_metrics',
+          externalProvider: 'cloudwatch',
+        },
+        error,
+      );
     }
   }
 }

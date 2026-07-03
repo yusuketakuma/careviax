@@ -98,7 +98,7 @@ describe('cloudwatch metrics helper', () => {
     expect(cloudWatchSendMock).toHaveBeenCalledTimes(2);
   });
 
-  it('swallows CloudWatch send errors so metrics do not break callers', async () => {
+  it('logs CloudWatch send errors through the safe logger without breaking callers', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const { StandardUnit, putMetrics } = await import('./cloudwatch');
     cloudWatchSendMock.mockRejectedValue(
@@ -109,11 +109,20 @@ describe('cloudwatch metrics helper', () => {
       putMetrics([{ MetricName: 'Failing', Value: 1, Unit: StandardUnit.Count }]),
     ).resolves.toBeUndefined();
 
-    expect(errorSpy).toHaveBeenCalledWith(
-      '[cloudwatch] putMetrics failed',
-      'CloudWatch metric emission failed',
-    );
-    const logged = JSON.stringify(errorSpy.mock.calls);
+    expect(cloudWatchSendMock).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const entry = JSON.parse(String(errorSpy.mock.calls[0]?.[0])) as Record<string, unknown>;
+    expect(entry).toMatchObject({
+      level: 'error',
+      message: 'cloudwatch.metric_emission_failed',
+      event: 'cloudwatch.metric_emission_failed',
+      operation: 'put_metrics',
+      externalProvider: 'cloudwatch',
+      error_name: 'Error',
+    });
+    expect(entry).not.toHaveProperty('stack');
+    expect(entry).not.toHaveProperty('error_message');
+    const logged = JSON.stringify(entry);
     expect(logged).not.toContain('token=secret');
     expect(logged).not.toContain('db_password=value');
     expect(logged).not.toContain('cloudwatch down');

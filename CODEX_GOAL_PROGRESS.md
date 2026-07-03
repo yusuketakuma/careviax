@@ -77,6 +77,38 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Continue scanning for the next exact behavior-preserving backend/API
     convergence candidate after this slice is committed.
 
+### Observability: CloudWatch Metric Failure Safe Logger - 2026-07-03 20:20 JST
+
+- Scope:
+  - Continued the behavior-preserving observability convergence under Claude
+    ACKed lock `RR-OBS-20260703-CW1`.
+  - Replaced the fixed direct `console.error` in
+    `src/lib/aws/cloudwatch.ts` metric-emission failure handling with the
+    shared safe logger.
+- Fixed:
+  - `putMetrics()` now logs CloudWatch send failures as
+    `cloudwatch.metric_emission_failed` with safe context fields
+    `operation: 'put_metrics'`, `externalProvider: 'cloudwatch'`, and
+    `error_name` metadata only.
+  - The focused test now proves the failure stays fail-soft for callers, the
+    AWS SDK error message/token/password text is not logged, no stack or
+    `error_message` is emitted, and CloudWatch send is called only once so the
+    logger path does not recurse into metric emission.
+- Safety:
+  - Preserved empty-metric no-op behavior, batching, regional client caching,
+    AWS `PutMetricDataCommand` request shape, and metric failure swallowing.
+  - No auth, authorization, RLS, PHI, billing, DB schema, migration,
+    production config, push, deploy, or destructive operation changed.
+- Validation:
+  - Baseline focused suite passed `2` files / `14` tests:
+    `./node_modules/.bin/vitest run src/lib/aws/cloudwatch.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`.
+  - Post-edit focused suite passed `2` files / `14` tests.
+  - Scoped ESLint, scoped Prettier check, scoped `git diff --check`,
+    `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- Remaining:
+  - Full build was not run for this narrow observability slice.
+  - Await Claude/opus verdict; this slice is intentionally not self-committed.
+
 ### Backend: PCA Pump Patch Update Claim - 2026-07-03 01:19 JST
 
 - Scope:

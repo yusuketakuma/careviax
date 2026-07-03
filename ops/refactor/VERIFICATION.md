@@ -3526,3 +3526,43 @@ The latest query-param helper convergence slice is
     DB schema, migration, auth/RLS behavior, external send trigger condition,
     billing generation flow, or visible UI. The affected route validation
     branches are covered by focused route/helper tests and typecheck.
+
+## CloudWatch Metric Failure Safe Logger Verification
+
+The latest observability slice is
+`RR-OBS-20260703-CW1-cloudwatch-safe-log` at 2026-07-03 20:20 JST.
+
+- Scope:
+  - `src/lib/aws/cloudwatch.ts`
+  - `src/lib/aws/cloudwatch.test.ts`
+  - The shared logger implementation was not changed; logger tests were run as
+    a contract backstop.
+- Baseline before edit:
+  - `./node_modules/.bin/vitest run src/lib/aws/cloudwatch.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `14` tests.
+- Focused regressions after edit:
+  - `./node_modules/.bin/vitest run src/lib/aws/cloudwatch.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`
+  - Result: passed, `2` files / `14` tests.
+  - Coverage: CloudWatch send failure remains fail-soft, the safe logger emits
+    `cloudwatch.metric_emission_failed` with `operation: 'put_metrics'`,
+    `externalProvider: 'cloudwatch'`, and `error_name: 'Error'`, raw AWS error
+    message/token/password text is not logged, no `stack` or `error_message`
+    field is emitted, and the failing send is attempted only once so the logger
+    path is not recursive.
+- Scoped checks:
+  - `./node_modules/.bin/eslint --max-warnings=0 src/lib/aws/cloudwatch.ts src/lib/aws/cloudwatch.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`
+  - Result: passed.
+  - `./node_modules/.bin/prettier --check src/lib/aws/cloudwatch.ts src/lib/aws/cloudwatch.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`
+  - Result: passed.
+  - `git diff --check -- src/lib/aws/cloudwatch.ts src/lib/aws/cloudwatch.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`
+  - Result: passed.
+- Typecheck:
+  - `pnpm typecheck`
+  - Result: passed.
+  - `pnpm typecheck:no-unused`
+  - Result: passed.
+- Skipped:
+  - Full build/browser smoke were skipped because this slice changes no DOM,
+    route contract, DB schema, migration, auth/RLS behavior, external send
+    trigger condition, or job execution outcome. The affected best-effort
+    metric failure branch is covered by focused unit tests and typecheck.

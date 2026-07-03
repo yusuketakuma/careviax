@@ -2711,3 +2711,57 @@ continuity`).
   - `pnpm typecheck:no-unused` passed.
 - Remaining:
   - Full build was not run for this narrow helper-convergence slice.
+
+## 2026-07-03 20:20 JST - CloudWatch Metric Failure Safe Logger
+
+- Change ID: `RR-OBS-20260703-CW1-cloudwatch-safe-log`.
+- Category: maintainability / observability safe-log convergence.
+- Target:
+  - `src/lib/aws/cloudwatch.ts` metric-emission failure handling.
+- Purpose:
+  - Replace the fixed direct `console.error` in the best-effort CloudWatch
+    metric path with the shared safe logger while preserving fail-soft
+    semantics for callers.
+- Implementation:
+  - Imported the shared `logger` and changed the `putMetrics()` send-failure
+    catch block to emit `cloudwatch.metric_emission_failed` with safe context:
+    `operation: 'put_metrics'` and `externalProvider: 'cloudwatch'`.
+  - Kept AWS SDK error details on the shared logger's allowlisted
+    `error_name` contract only.
+  - Strengthened the focused CloudWatch test to prove caller-visible
+    fail-soft behavior, no raw AWS error text/token/password leakage, no stack
+    or `error_message` field, and no recursive CloudWatch emission.
+- Files changed:
+  - `src/lib/aws/cloudwatch.ts`
+  - `src/lib/aws/cloudwatch.test.ts`
+- Behavior change:
+  - No caller-visible behavior change intended.
+  - Empty metric no-op behavior, batching, regional client caching, AWS
+    `PutMetricDataCommand` request shape, and metric failure swallowing are
+    unchanged.
+- FE/BE alignment impact:
+  - No API response envelope, route, UI, DB schema, migration, billing, auth,
+    RLS, external-send trigger condition, production config, push/deploy, or
+    destructive operation behavior changed.
+- UI layout impact:
+  - None.
+- Performance impact:
+  - No runtime performance claim.
+- Validation:
+  - Baseline before edit:
+    `./node_modules/.bin/vitest run src/lib/aws/cloudwatch.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`
+    passed `2` files / `14` tests.
+  - Post-edit focused suite:
+    `./node_modules/.bin/vitest run src/lib/aws/cloudwatch.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`
+    passed `2` files / `14` tests.
+  - `./node_modules/.bin/eslint --max-warnings=0 src/lib/aws/cloudwatch.ts src/lib/aws/cloudwatch.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`
+    passed.
+  - `./node_modules/.bin/prettier --check src/lib/aws/cloudwatch.ts src/lib/aws/cloudwatch.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`
+    passed.
+  - `git diff --check -- src/lib/aws/cloudwatch.ts src/lib/aws/cloudwatch.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`
+    passed.
+  - `pnpm typecheck` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Remaining:
+  - Full build was not run for this narrow observability slice.
+  - Await Claude/opus verdict; this slice is intentionally not self-committed.
