@@ -15,6 +15,7 @@ import {
 import { NotificationBell } from '@/components/features/notifications/notification-bell';
 import { OfflineDraftIndicator } from '@/components/features/offline/offline-draft-indicator';
 import { Button } from '@/components/ui/button';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -139,7 +140,7 @@ export function AppHeader() {
             method: 'PATCH',
             headers: {
               'Content-Type': 'application/json',
-              ...(orgId ? { 'x-org-id': orgId } : {}),
+              ...(orgId ? buildOrgHeaders(orgId) : {}),
             },
             body: JSON.stringify({ care_mode: mode }),
           });

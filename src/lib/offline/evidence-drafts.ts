@@ -1,6 +1,7 @@
 'use client';
 
 import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { offlineDb, type OfflineEvidenceDraft } from '@/lib/stores/offline-db';
 import { createFetchTimeout } from '@/lib/utils/abort-timeout';
@@ -218,7 +219,7 @@ async function uploadEvidenceDraft(
   visitRecordId: string,
   orgId: string,
 ): Promise<void> {
-  const jsonHeaders = { 'Content-Type': 'application/json', 'x-org-id': orgId };
+  const jsonHeaders = buildOrgJsonHeaders(orgId);
   const visitRecordPathId = encodePathSegment(visitRecordId);
   let fileAssetId =
     draft.uploadedVisitRecordId === visitRecordId ? (draft.uploadedFileAssetId ?? null) : null;
@@ -282,7 +283,7 @@ async function uploadEvidenceDraft(
 
   // 4. 訪問記録 attachments へ紐づけ(既存添付とマージ、楽観ロック version 必須)
   const detailRes = await fetchEvidenceSync(`/api/visit-records/${visitRecordPathId}`, {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   const detail = await detailRes.json().catch(() => null);
   if (!detailRes.ok || typeof detail?.version !== 'number') {
@@ -320,7 +321,7 @@ async function syncEvidenceDraftsOnce(config: EvidenceSyncConfig): Promise<Evide
   );
   if (drafts.length === 0) return result;
 
-  const headers = { 'x-org-id': config.orgId };
+  const headers = buildOrgHeaders(config.orgId);
   const recordIdByScheduleId = new Map<string, string | null>();
 
   for (const draft of drafts) {

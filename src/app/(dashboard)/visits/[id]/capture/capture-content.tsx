@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { messageFromError } from '@/lib/utils/error-message';
 import { Button } from '@/components/ui/button';
 import { downscaleImage } from '@/lib/files/downscale-image';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   saveEvidenceDraft,
@@ -67,7 +68,7 @@ export function EvidenceCaptureContent({
     enabled: !!orgId && !!visitId,
     initialData: initialPatientContext ?? undefined,
     queryFn: async () => {
-      const headers = { 'x-org-id': orgId };
+      const headers = buildOrgHeaders(orgId);
       const scheduleRes = await fetch(`/api/visit-schedules/${visitId}`, { headers });
       if (scheduleRes.ok) {
         const context = resolveCapturePatientContext(await scheduleRes.json());

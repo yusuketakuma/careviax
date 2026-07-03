@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
@@ -44,7 +45,7 @@ type VisitRecordListResponse = {
 export async function fetchVisitRecordsWithAttachments(
   orgId: string,
 ): Promise<VisitRecordDetailForEvidence[]> {
-  const headers = { 'x-org-id': orgId };
+  const headers = buildOrgHeaders(orgId);
   const listRes = await fetch(
     `/api/visit-records?limit=${MAX_RECORDS_FOR_ATTACHMENTS}&include_attachments=true&view=evidence_gallery`,
     {

@@ -13,6 +13,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 import { timeIsoToMinutes } from '@/lib/visits/time-of-day';
@@ -197,10 +198,7 @@ async function createConflictReconfirmationTask(args: {
     `/api/visit-schedules/${encodeURIComponent(args.scheduleId)}/conflict-reconfirmation`,
     {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-org-id': args.orgId,
-      },
+      headers: buildOrgJsonHeaders(args.orgId),
       body: JSON.stringify({
         target_date: args.targetDate,
         ...(args.planId ? { plan_id: args.planId } : {}),
@@ -280,7 +278,7 @@ export function ConflictResolutionContent({ initialDate }: { initialDate?: strin
   const pharmacistsQuery = useQuery({
     queryKey: ['pharmacists', orgId, 'conflicts'],
     queryFn: async () => {
-      const res = await fetch('/api/pharmacists', { headers: { 'x-org-id': orgId } });
+      const res = await fetch('/api/pharmacists', { headers: buildOrgHeaders(orgId) });
       if (!res.ok) throw new Error('薬剤師一覧の取得に失敗しました');
       return res.json() as Promise<{ data: Pharmacist[] }>;
     },

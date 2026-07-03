@@ -1,6 +1,7 @@
 'use client';
 
 import { normalizeRealtimeEventPayload } from '@/lib/realtime/events';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { logger } from '@/lib/utils/logger';
 
 type RealtimeListener = (event: unknown) => void;
@@ -137,7 +138,7 @@ async function connectSharedStream(stream: SharedRealtimeStream) {
 
   try {
     const response = await fetch(buildStreamUrl(stream), {
-      headers: { 'x-org-id': stream.orgId },
+      headers: buildOrgHeaders(stream.orgId),
       signal: controller.signal,
     });
 

@@ -34,6 +34,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { cn } from '@/lib/utils';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
@@ -141,7 +142,7 @@ export default function QRScanPage() {
         const res = await fetch(
           `/api/patients?view=match&archive_status=active&q=${encodeURIComponent(q)}&limit=10`,
           {
-            headers: orgId ? { 'x-org-id': orgId } : undefined,
+            headers: orgId ? buildOrgHeaders(orgId) : undefined,
           },
         );
         if (!res.ok) throw new Error('患者検索に失敗しました');
@@ -366,10 +367,7 @@ export default function QRScanPage() {
 
       const res = await fetch('/api/qr-scan-drafts', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(orgId ? { 'x-org-id': orgId } : {}),
-        },
+        headers: orgId ? buildOrgJsonHeaders(orgId) : { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
 

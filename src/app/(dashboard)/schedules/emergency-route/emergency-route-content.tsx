@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 import type { VisitRoutePlan } from '@/types/visit-route';
@@ -163,7 +164,7 @@ function scenarioLabel(scenarioId: ScenarioId) {
 }
 
 function routeIdHeaders(orgId: string) {
-  return { 'Content-Type': 'application/json', 'x-org-id': orgId } as const;
+  return buildOrgJsonHeaders(orgId);
 }
 
 async function computeRoutePlan(args: {

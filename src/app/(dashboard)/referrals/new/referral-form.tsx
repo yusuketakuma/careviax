@@ -6,6 +6,7 @@ import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { createPatientSchema } from '@/lib/validations/patient';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -205,7 +206,7 @@ export function ReferralForm() {
         try {
           res = await fetch('/api/referrals', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+            headers: buildOrgJsonHeaders(orgId),
             body: JSON.stringify(payload),
           });
         } catch {

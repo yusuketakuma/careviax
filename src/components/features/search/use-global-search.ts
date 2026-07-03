@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MemberRole } from '@prisma/client';
 import { readApiJson } from '@/lib/api/client-json';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { hasPermission } from '@/lib/auth/permission-matrix';
 import { ACTIVE_PALETTE_CATEGORIES, type PaletteCategory } from '@/lib/search/categories';
 import type { SearchResultRow } from '@/lib/search/result-builders';
@@ -91,7 +92,7 @@ async function fetchCategory(
     bestEffortNote: category.bestEffortNote,
   };
   try {
-    const headers: HeadersInit = orgId ? { 'x-org-id': orgId } : {};
+    const headers: HeadersInit = orgId ? buildOrgHeaders(orgId) : {};
     const res = await fetch(category.endpoint(query), { headers, signal });
     // fail-closed parse(403/非 2xx/malformed は throw)。
     const parsed = await readApiJson(res, {

@@ -6,6 +6,7 @@ import { RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import {
@@ -27,7 +28,7 @@ export function VisitReflectedFieldsCard({ recordId }: { recordId: string }) {
     queryKey: ['visit-reflected-fields', recordId, orgId],
     queryFn: async () => {
       const res = await fetch(`/api/visit-records/${recordId}/reflected-fields`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
         throw new Error('反映項目の取得に失敗しました');

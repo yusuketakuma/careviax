@@ -2,6 +2,7 @@
 
 import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
 import { readJsonResponseBody } from '@/lib/api/response-body';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { parseJsonOrNull, readJsonObject } from '@/lib/db/json';
 import { offlineDb, type OfflineSyncQueue } from './offline-db';
 
@@ -303,10 +304,7 @@ async function processSyncQueueOnce(config: SyncConfig): Promise<{
 
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': config.orgId,
-        },
+        headers: buildOrgJsonHeaders(config.orgId),
         body: payload.body,
       });
 
@@ -589,10 +587,7 @@ export async function overwriteVisitRecordConflict(
   const endpoint = config.endpoints.visit_record ?? DEFAULT_ENDPOINTS.visit_record;
   const res = await fetch(endpoint, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-org-id': config.orgId,
-    },
+    headers: buildOrgJsonHeaders(config.orgId),
     body: JSON.stringify({
       ...payload,
       conflict_resolution: 'overwrite',
