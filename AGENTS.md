@@ -16,15 +16,16 @@ Work in YOLO mode.
 Use Ralph-loop execution.
 Do not stop until the concrete task is actually complete or an explicit blocker is proven.
 
-## Current Operating Mode - Codex-only (2026-06-26 JST)
+## Current Operating Mode — SSOT pointer
 
-The user has switched this worktree to **Codex-only operation**.
+**現行の運用体制は `ops/refactor/STATE.md` が唯一の正（SSOT）。** このファイルや他の文書に
+残る体制記述（Codex-only / agmsg 双方向ループ等）は歴史的記録であり、矛盾時は STATE.md に従う。
 
-- Do not route new work to Claude, spawn Claude, require Claude ACK/review, or wait on Claude gates.
-- Treat the older Claude/Codex agmsg protocol below as historical unless the user explicitly re-enables multi-agent operation.
-- Use agmsg only for one-time pause/handoff notices to any already-running Claude session; agmsg is no longer a completion gate.
-- Preserve all pre-existing dirty/user/Claude changes. Before claiming a file, inspect `git status --short --untracked-files=all` and the file diff.
-- For high-risk medical, patient, audit, auth, RLS, DB, or permission changes, use Codex subagents/independent review plus real validation instead of Claude mutual review.
+2026-07-03 確定の骨子（詳細・更新は STATE.md）: fable(Claude main)=全体指揮・commit、
+実装=codex(BE強い)/opus/sonnet/haiku、レビュー=opus 独立必須。LOCK宣言→ACK→実装→report→
+verdict→claude commit。billing/算定/PHI隣接/authorization は self-commit 禁止。
+Preserve all pre-existing dirty/user/Claude changes: before claiming a file, inspect
+`git status --short --untracked-files=all` and the file diff.
 
 ## Ralph-loop
 

@@ -1,3 +1,6 @@
+> **【2026-07-03 以降の注意】現行の運用体制は `ops/refactor/STATE.md` が SSOT。**
+> 本ディレクトリの記述（rev8 等の体制説明）は歴史的記録であり、矛盾時は STATE.md に従う。
+
 # Agent Loop — Operator Guide
 
 > Current mode (2026-06-26 JST, rev8): **Claude + Codex implementation-only PARALLEL mode** for **careviax (PH-OS Pharmacy)** — re-enabled by the user. The intervening rev3/rev5/rev7 "Codex-only" banners were written by a stale codex-bridge/remote auto-restore process (NOT user intent); Codex killed it and switched delivery monitor→turn on 2026-06-26 ~01:16Z, so this banner now persists.
