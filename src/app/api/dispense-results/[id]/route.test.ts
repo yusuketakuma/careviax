@@ -263,8 +263,17 @@ describe('/api/dispense-results/[id]', () => {
     expect(JSON.stringify(body)).not.toContain('raw dispense result detail');
   });
 
-  it('rejects result updates when the caller lacks dispense permission', async () => {
-    membershipFindFirstMock.mockResolvedValueOnce({ role: 'driver' });
+  // POST /api/dispense-results と同一の canDispense ゲートを PATCH にも必須化した
+  // (F-20260625-dispense-results-patch-authz)。canDispense を持たないロールは、
+  // たとえ組織横断参照(clerk 等)であっても算定/臨床フィールドの修正を 403 で拒否する。
+  it.each([
+    // clerk は ORG_WIDE_ACCESS_ROLES に属し担当割当スコープを迂回するため、
+    // 権限ゲートだけがこの編集を止められる回帰の要。
+    { role: 'clerk' as const },
+    { role: 'driver' as const },
+    { role: 'external_viewer' as const },
+  ])('rejects result updates when %s lacks dispense permission', async ({ role }) => {
+    membershipFindFirstMock.mockResolvedValueOnce({ role });
 
     const response = (await PATCH(
       createRequest('http://localhost/api/dispense-results/result_1', {
@@ -282,6 +291,37 @@ describe('/api/dispense-results/[id]', () => {
     expect(dispenseResultFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
+
+  it.each([{ role: 'owner' as const }, { role: 'admin' as const }])(
+    'allows %s with dispense permission to patch after a rejected audit',
+    async ({ role }) => {
+      membershipFindFirstMock.mockResolvedValueOnce({ role });
+
+      const response = (await PATCH(
+        createRequest('http://localhost/api/dispense-results/result_1', {
+          special_notes: '再調剤メモ',
+        }),
+        {
+          params: Promise.resolve({ id: 'result_1' }),
+        },
+      ))!;
+
+      expect(response.status).toBe(200);
+      expect(withOrgContextMock).toHaveBeenCalled();
+      expect(dispenseResultUpdateManyMock).toHaveBeenCalledWith({
+        where: { id: 'result_1', org_id: 'org_1', version: 1 },
+        data: expect.objectContaining({
+          special_notes: '再調剤メモ',
+          version: { increment: 1 },
+        }),
+      });
+      expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+        orgId: 'org_1',
+        eventType: 'cycle_transition',
+        payload: { source: 'dispense_results_rework', result_id: 'result_1' },
+      });
+    },
+  );
 
   it('patches a dispense result only after a rejected audit and resets statuses', async () => {
     visitScheduleFindManyMock.mockResolvedValue([

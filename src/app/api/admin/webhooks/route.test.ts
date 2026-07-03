@@ -82,6 +82,11 @@ function createGetRequest(search = '') {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function createMalformedJsonRequest() {
   return new NextRequest('http://localhost/api/admin/webhooks', {
     method: 'POST',
@@ -298,6 +303,7 @@ describe('/api/admin/webhooks', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(isAllowedWebhookUrlMock).toHaveBeenCalledWith(
       'https://partner.example.com/hooks/careviax',
     );
@@ -357,6 +363,7 @@ describe('/api/admin/webhooks', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(503);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       error: 'Webhook secret 暗号化キーが設定されていません',
       code: 'WEBHOOK_SECRET_ENCRYPTION_UNAVAILABLE',

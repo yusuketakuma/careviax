@@ -36,6 +36,8 @@ describe('/api/me/mfa/setup POST', () => {
     const response = await POST(new NextRequest('http://localhost/api/me/mfa/setup'));
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       secretCode: 'ABC123',
       otpauthUri: expect.stringContaining('otpauth://totp/PH-OS:user%40example.com'),

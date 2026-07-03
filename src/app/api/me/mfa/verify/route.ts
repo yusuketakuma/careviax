@@ -1,5 +1,6 @@
 import { auth, getAuthAccessToken } from '@/lib/auth/config';
 import { externalError, success, unauthorized, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { verifyTotpForAccessToken } from '@/server/services/cognito-auth';
 import { issueMfaRecoveryCodes } from '@/server/services/mfa-recovery';
 import { prisma } from '@/lib/db/client';
@@ -34,17 +35,17 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   const accessToken = await getAuthAccessToken(req);
   if (!session || !accessToken) {
-    return unauthorized();
+    return withSensitiveNoStore(await unauthorized());
   }
 
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) {
-    return validationError('リクエストボディが不正です');
+    return withSensitiveNoStore(validationError('リクエストボディが不正です'));
   }
 
   const code = typeof payload?.code === 'string' ? payload.code.trim() : '';
   if (!code) {
-    return validationError('確認コードを入力してください');
+    return withSensitiveNoStore(validationError('確認コードを入力してください'));
   }
 
   const userId = await resolveCurrentUserId(session);
@@ -56,14 +57,18 @@ export async function POST(req: NextRequest) {
       deviceName: 'PH-OS TOTP',
     });
   } catch {
-    return externalError('EXTERNAL_MFA_VERIFY_FAILED', '確認コードが正しくありません', 400);
+    return withSensitiveNoStore(
+      await externalError('EXTERNAL_MFA_VERIFY_FAILED', '確認コードが正しくありません', 400),
+    );
   }
 
   if (!userId) {
-    return externalError('AUTH_USER_NOT_FOUND', 'ユーザー情報の取得に失敗しました', 404);
+    return withSensitiveNoStore(
+      await externalError('AUTH_USER_NOT_FOUND', 'ユーザー情報の取得に失敗しました', 404),
+    );
   }
 
   const recoveryCodes = await issueMfaRecoveryCodes(userId);
 
-  return success({ ok: true, recoveryCodes });
+  return withSensitiveNoStore(success({ ok: true, recoveryCodes }));
 }

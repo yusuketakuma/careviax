@@ -2,6 +2,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { compatibilityError, success, validationCompatibilityError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { z } from 'zod';
@@ -85,23 +86,27 @@ export const POST = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) {
-      return validationCompatibilityError('リクエストボディが不正です');
+      return withSensitiveNoStore(validationCompatibilityError('リクエストボディが不正です'));
     }
 
     const parsed = createWebhookSchema.safeParse(payload);
     if (!parsed.success) {
-      return validationCompatibilityError('入力値が不正です', parsed.error.flatten().fieldErrors);
+      return withSensitiveNoStore(
+        validationCompatibilityError('入力値が不正です', parsed.error.flatten().fieldErrors),
+      );
     }
 
     const { url, events } = parsed.data;
 
     if (hasWebhookUrlCredentials(url)) {
-      return validationCompatibilityError('WebhookのURLにユーザー情報は含められません');
+      return withSensitiveNoStore(
+        validationCompatibilityError('WebhookのURLにユーザー情報は含められません'),
+      );
     }
 
     if (!(await isAllowedWebhookUrl(url))) {
-      return validationCompatibilityError(
-        'WebhookのURLはHTTPS公開エンドポイントである必要があります',
+      return withSensitiveNoStore(
+        validationCompatibilityError('WebhookのURLはHTTPS公開エンドポイントである必要があります'),
       );
     }
 
@@ -110,10 +115,12 @@ export const POST = withAuthContext(
     try {
       encryptedSecret = await encryptWebhookSecret(secret);
     } catch {
-      return compatibilityError(
-        'WEBHOOK_SECRET_ENCRYPTION_UNAVAILABLE',
-        'Webhook secret 暗号化キーが設定されていません',
-        503,
+      return withSensitiveNoStore(
+        compatibilityError(
+          'WEBHOOK_SECRET_ENCRYPTION_UNAVAILABLE',
+          'Webhook secret 暗号化キーが設定されていません',
+          503,
+        ),
       );
     }
 
@@ -151,7 +158,7 @@ export const POST = withAuthContext(
       };
     });
 
-    return success({ data: registration }, 201);
+    return withSensitiveNoStore(success({ data: registration }, 201));
   },
   { permission: 'canAdmin', message: 'Webhook 登録権限がありません' },
 );

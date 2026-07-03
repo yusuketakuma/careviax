@@ -655,7 +655,13 @@ export const POST = withAuthContext(
     );
   },
   {
-    permission: 'canReport',
+    // 外部共有grantの発行は患者共有ライフサイクルの管理操作であり、
+    // 他の患者共有系ルート(patient-share-cases / pharmacy-partnerships /
+    // pharmacy-contracts)と同様に canManagePatientSharing を要求する。
+    // canReport では pharmacist_trainee(canManagePatientSharing:false)が
+    // medication_list/allergy_info/visit_schedule のPHIを外部発行できてしまうため、
+    // 発行はマネジメント権限に限定する(閲覧系GETは org-wide アクセスのまま)。
+    permission: 'canManagePatientSharing',
     message: '外部共有の作成権限がありません',
   },
 );

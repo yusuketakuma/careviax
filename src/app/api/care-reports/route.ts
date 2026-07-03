@@ -679,11 +679,24 @@ async function authenticatedGET(req: NextRequest) {
 
     const accessScope = await getCareReportAccessScope(prisma, ctx.orgId, ctx);
     const accessWhere = buildCareReportAccessWhere(accessScope);
+    // 明示的な patient_id(患者詳細コンテキスト)と q(氏名/カナ検索)の両方が指定された場合、
+    // 素朴なオブジェクトスプレッドでは後勝ちで patient_id が matchedPatientIds に
+    // 上書きされ、同名別患者の報告書が混入する(F88)。明示 patient_id を優先しつつ
+    // 検索結果集合との積(intersection)を取り、明示患者が検索にヒットしない場合は
+    // 空集合(patient_id in [])に閉じて他患者の報告書を返さない。
+    const patientIdWhere: Prisma.CareReportWhereInput = patientId
+      ? query
+        ? matchedPatientIds.includes(patientId)
+          ? { patient_id: patientId }
+          : { patient_id: { in: [] } }
+        : { patient_id: patientId }
+      : query
+        ? { patient_id: { in: matchedPatientIds } }
+        : {};
     const where: Prisma.CareReportWhereInput = {
       org_id: ctx.orgId,
-      ...(patientId ? { patient_id: patientId } : {}),
+      ...patientIdWhere,
       ...(visitRecordId ? { visit_record_id: visitRecordId } : {}),
-      ...(query ? { patient_id: { in: matchedPatientIds } } : {}),
       ...(status ? { status } : {}),
       ...(reportType ? { report_type: reportType } : {}),
       ...(dateFrom || dateTo

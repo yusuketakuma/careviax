@@ -54,13 +54,21 @@ vi.mock('@/lib/auth/context', () => ({
     options?: { permission?: string; message?: string },
   ) => {
     const permissionsByRole: Record<string, Record<string, boolean>> = {
-      owner: { canReport: true, canSendCareReport: true },
-      admin: { canReport: true, canSendCareReport: true },
-      pharmacist: { canReport: true, canSendCareReport: true },
-      pharmacist_trainee: { canReport: true, canSendCareReport: false },
-      clerk: { canReport: true, canSendCareReport: false },
-      driver: { canReport: false, canSendCareReport: false },
-      external_viewer: { canReport: false, canSendCareReport: false },
+      owner: { canReport: true, canSendCareReport: true, canManagePatientSharing: true },
+      admin: { canReport: true, canSendCareReport: true, canManagePatientSharing: true },
+      pharmacist: { canReport: true, canSendCareReport: true, canManagePatientSharing: true },
+      pharmacist_trainee: {
+        canReport: true,
+        canSendCareReport: false,
+        canManagePatientSharing: false,
+      },
+      clerk: { canReport: true, canSendCareReport: false, canManagePatientSharing: false },
+      driver: { canReport: false, canSendCareReport: false, canManagePatientSharing: false },
+      external_viewer: {
+        canReport: false,
+        canSendCareReport: false,
+        canManagePatientSharing: false,
+      },
     };
 
     return (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
@@ -313,6 +321,33 @@ describe('/api/external-access GET', () => {
     await expect(response.json()).resolves.toMatchObject({
       data: [expect.objectContaining({ id: 'grant_1' })],
     });
+  });
+
+  // X01: org-wide な grant 列挙(patient_id 無し)経路も、grant 本体・患者名補完・
+  // 自己申告サマリの全クエリが org_id で閉じており、他 org の grant は不可視。
+  it('scopes the org-wide grant enumeration to the caller org so other-org grants are invisible', async () => {
+    currentRole.value = 'pharmacist';
+
+    const response = await GET(createGetRequest(), routeContext);
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    // 列挙本体は org_id + revoked_at:null のみで他 org を含めない。
+    expect(externalAccessGrantFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { org_id: 'org_1', revoked_at: null },
+      }),
+    );
+    // 患者名の補完も呼び出し org に限定する。
+    expect(patientFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ org_id: 'org_1' }),
+      }),
+    );
+    // 自己申告サマリの集計も org スコープ。
+    for (const call of patientSelfReportGroupByMock.mock.calls) {
+      expect(call[0].where).toMatchObject({ org_id: 'org_1' });
+    }
   });
 
   it.each([
@@ -791,7 +826,10 @@ describe('/api/external-access POST', () => {
     expect(sendSmsMock).not.toHaveBeenCalled();
   });
 
-  it('allows a pharmacist trainee to create a medication-list grant through per-scope validation', async () => {
+  // F80: 外部共有grantの発行は canManagePatientSharing を要求する管理操作。
+  // canVisit を持つ pharmacist_trainee でも、per-scope 検証に到達する前に
+  // ルートガードで 403 となり、medication_list のPHIを外部発行できない。
+  it('rejects a pharmacist trainee from issuing a grant at the management-permission guard before scope validation or side effects', async () => {
     currentRole.value = 'pharmacist_trainee';
 
     const response = await POST(
@@ -806,27 +844,23 @@ describe('/api/external-access POST', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(201);
-    expect(validateExternalAccessScopeForRoleMock).toHaveBeenCalledWith(
-      { medication_list: true },
-      'pharmacist_trainee',
-    );
-    expect(createMock).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        scope: { medication_list: true },
-      }),
-      select: expect.any(Object),
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '外部共有の作成権限がありません',
     });
+    // ルートガードで遮断されるため、per-scope 検証・患者照合・grant作成には到達しない。
+    expect(validateExternalAccessScopeForRoleMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createMock).not.toHaveBeenCalled();
+    expect(issueExternalAccessTokenMock).not.toHaveBeenCalled();
+    expect(sendSmsMock).not.toHaveBeenCalled();
   });
 
-  it('rejects a clerk medication-list grant after scope validation and before side effects', async () => {
+  it('rejects a clerk from issuing a grant at the management-permission guard before scope validation or side effects', async () => {
     currentRole.value = 'clerk';
-    validateExternalAccessScopeForRoleMock.mockReturnValue({
-      ok: false,
-      kind: 'permission',
-      message: 'この共有範囲を発行する権限がありません',
-      details: { denied_scope_keys: ['medication_list'] },
-    });
 
     const response = await POST(
       createRequest({
@@ -841,10 +875,12 @@ describe('/api/external-access POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
-    expect(validateExternalAccessScopeForRoleMock).toHaveBeenCalledWith(
-      { medication_list: true },
-      'clerk',
-    );
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '外部共有の作成権限がありません',
+    });
+    // clerk も canManagePatientSharing:false のためルートガードで遮断。
+    expect(validateExternalAccessScopeForRoleMock).not.toHaveBeenCalled();
     expect(validateOrgReferencesMock).not.toHaveBeenCalled();
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(createMock).not.toHaveBeenCalled();

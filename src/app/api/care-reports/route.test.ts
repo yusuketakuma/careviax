@@ -259,6 +259,48 @@ describe('/api/care-reports GET', () => {
     );
   });
 
+  it('does not let a q name-search override an explicit patient_id with same-name other patients (F88)', async () => {
+    // 患者詳細コンテキスト(patient_id=patient_A)で同名検索(q=山田)しても、
+    // 検索にヒットした同名別患者(patient_B)の報告書を返さない。
+    // 明示患者が検索集合に含まれない場合は空集合(patient_id in [])に閉じる。
+    patientFindManyMock.mockResolvedValue([
+      { id: 'patient_B', name: '山田 太郎', name_kana: 'ヤマダ タロウ' },
+    ]);
+    careReportFindManyMock.mockResolvedValue([]);
+
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports?patient_id=patient_A&q=山田'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const whereArg = careReportFindManyMock.mock.calls.at(-1)?.[0]?.where;
+    expect(whereArg).toMatchObject({ org_id: 'org_1' });
+    // 別患者(patient_B)へスコープを広げず、明示患者は検索にヒットしないため空集合。
+    expect(whereArg?.patient_id).toEqual({ in: [] });
+  });
+
+  it('keeps the explicit patient_id scope when the q name-search also matches that patient (F88)', async () => {
+    patientFindManyMock.mockResolvedValue([
+      { id: 'patient_1', name: '山田 太郎', name_kana: 'ヤマダ タロウ' },
+    ]);
+
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports?patient_id=patient_1&q=山田'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(careReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+        }),
+      }),
+    );
+  });
+
   it('supports extended report search filters and enriches delivery summary', async () => {
     const response = await getCareReports(
       createAuthenticatedRequest(

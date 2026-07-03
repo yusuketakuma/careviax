@@ -134,6 +134,8 @@ describe('/api/me/mfa/verify POST', () => {
     const response = await POST(createRequest({ code: '123456' }));
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(verifyTotpForAccessTokenMock).toHaveBeenCalledWith({
       accessToken: 'access-token',
       code: '123456',
