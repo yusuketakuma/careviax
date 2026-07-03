@@ -150,6 +150,7 @@ model VisitSchedule {
   override_request      VisitScheduleOverride?    @relation("OverrideSourceSchedule")
   applied_override      VisitScheduleOverride?    @relation("OverrideReplacementSchedule")
 
+  @@unique([id, org_id])
   @@index([org_id])
   @@index([scheduled_date])
   @@index([pharmacist_id])
@@ -302,8 +303,8 @@ model VisitScheduleProposal {
   patient_contacted_at          DateTime?
   confirmed_by                  String?
   confirmed_at                  DateTime?
-  finalized_schedule_id         String?                     @unique
-  finalized_schedule            VisitSchedule?              @relation("ProposalFinalizedSchedule", fields: [finalized_schedule_id], references: [id])
+  finalized_schedule_id         String?
+  finalized_schedule            VisitSchedule?              @relation("ProposalFinalizedSchedule", fields: [finalized_schedule_id, org_id], references: [id, org_id], onDelete: Restrict, onUpdate: Cascade)
   reschedule_source_schedule_id String?
   reschedule_source_schedule    VisitSchedule?              @relation("ProposalRescheduleSource", fields: [reschedule_source_schedule_id], references: [id])
   reproposal_source_proposal_id String?
@@ -314,6 +315,7 @@ model VisitScheduleProposal {
   updated_at                    DateTime                    @updatedAt
 
   @@unique([id, org_id, case_id], map: "VisitScheduleProposal_id_org_id_case_id_key")
+  @@unique([finalized_schedule_id, org_id])
   @@index([org_id, proposal_status])
   @@index([case_id, proposed_date])
   @@index([site_id, proposed_date])

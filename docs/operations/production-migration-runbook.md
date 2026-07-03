@@ -111,6 +111,18 @@ DIRECT_URL='<production direct database url>' \
 pnpm --config.verify-deps-before-run=false db:verify-ph-os-audit-migration
 ```
 
+**index 追加のみの migration（`CREATE INDEX`、データ変更なし）を対象テーブルの行数が
+大きい本番環境へ適用する場合の注意**: `prisma migrate deploy` はトランザクション内で
+`CREATE INDEX` を実行するため、対象テーブルへの書き込みロックが取得され、実行完了まで
+書き込みがブロックされる。行数が大きいテーブル（例: `PrescriptionIntake` /
+`MedicationCycle` / `DispenseTask` など運用が進んだ後の本番）では、`migrate deploy`
+とは別に、当該 index を含む migration の SQL を手動抽出して
+`CREATE INDEX CONCURRENTLY`（トランザクション外・ロックなし）で個別適用し、
+`prisma migrate resolve --applied <migration_name>` で適用済みとしてマークする運用を
+検討する（`20260703094500_add_prescription_workflow_composite_indexes` は本 runbook
+作成時点ではテーブル行数が小さいため通常の `migrate deploy` で問題ないが、将来行数が
+増えた場合の再適用や同種 migration ではこの手順を参照すること）。
+
 ### 2.5 適用後の確認クエリ
 
 ```sql
@@ -156,6 +168,37 @@ SELECT COUNT(*) FROM "<対象テーブル>";
   インフラ責任者と個別調整。本ドキュメントの範囲外）。
 - ロールバック後は §2.5 の確認クエリと同等の整合性チェックを実施し、
   `docs/phase5-rollback-playbook.md` のインシデント記録テンプレートに準じて記録する。
+
+### 3.1 個別 migration ロールバック SQL
+
+DOWN migration は管理しないため、問題時は下記の forward-fix migration を新規作成して
+`migrate deploy` する（本節は各構造変更 migration の巻き戻し SQL を集約する）。
+
+#### `20260703093000_harden_visit_schedule_proposal_finalized_tenant_fk`（W1-12f）
+
+`VisitScheduleProposal.finalized_schedule_id` を単列 FK/UNIQUE から
+複合 FK `(finalized_schedule_id, org_id) -> VisitSchedule(id, org_id)` + 複合 UNIQUE へ移行。
+巻き戻す場合（旧・単列 FK/UNIQUE へ戻す）:
+
+```sql
+-- forward-fix rollback: revert composite tenant-scoped FK/UNIQUE to the prior single-column form
+ALTER TABLE "VisitScheduleProposal"
+  DROP CONSTRAINT "VisitScheduleProposal_finalized_schedule_id_org_id_fkey";
+DROP INDEX "VisitScheduleProposal_finalized_schedule_id_org_id_key";
+DROP INDEX "VisitSchedule_id_org_id_key";
+CREATE UNIQUE INDEX "VisitScheduleProposal_finalized_schedule_id_key"
+  ON "VisitScheduleProposal"("finalized_schedule_id");
+ALTER TABLE "VisitScheduleProposal"
+  ADD CONSTRAINT "VisitScheduleProposal_finalized_schedule_id_fkey"
+  FOREIGN KEY ("finalized_schedule_id") REFERENCES "VisitSchedule"("id")
+  ON DELETE SET NULL ON UPDATE CASCADE;
+```
+
+併せて `prisma/schema/visit.prisma` の `VisitSchedule @@unique([id, org_id])` と
+`VisitScheduleProposal.finalized_schedule` の複合リレーション/`@@unique([finalized_schedule_id, org_id])`
+を元の単列 `@unique` + `references: [id]` に戻すこと（同 SQL は migration 冒頭コメントにも記載）。
+注意: 巻き戻すと DB レベルの cross-tenant 参照防御が失われ、アプリ層 `withOrgContext` のみの
+防御に戻る。恒久ロールバックは避け、前方修正を優先する。
 
 ---
 

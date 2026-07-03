@@ -138,6 +138,7 @@ model MedicationCycle {
   @@index([org_id])
   @@index([case_id])
   @@index([overall_status])
+  @@index([org_id, overall_status])
 }
 
 model CycleTransitionLog {
@@ -190,6 +191,7 @@ model PrescriptionIntake {
   @@index([org_id])
   @@index([cycle_id])
   @@index([prescriber_institution_id])
+  @@index([org_id, created_at])
 }
 
 model PrescriptionLine {
@@ -288,6 +290,7 @@ model DispenseTask {
 
   @@index([org_id])
   @@index([status])
+  @@index([org_id, status])
 }
 
 model DispenseResult {
