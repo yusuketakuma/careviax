@@ -19,8 +19,9 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: 3レーン並行体制（2026-07-04〜）。codex(xhigh)=DB/schema、
-  codex2(high)=BE services、codex3(medium)=cleanup。schema 波は W6(d2bcde00) まで land、
-  W7(最終波+HandoffItem 親経由)実装中。codex2=R17-SWEEP、codex3=R23-EXEC 実装中。
+  codex2(high)=BE services、codex3(medium)=cleanup。**display_id schema 波 W1-W7 完遂**
+  (W7=483750cb)、全量 gate ALL GREEN(test 12995)。現在: codex=ID-2-CP-A(create-path 第1弾)、
+  codex2=R24-B1(cursor page 収斂)、codex3=R23-B4(admin 35 hits)。
 
 ## 直近の land（本日・要点）
 
@@ -50,8 +51,8 @@
 
 ## 次の一手
 
-1. codex: `ID-2-W7`（最終 schema 波: medication/pca-pump/core-task/saved-view + HandoffItem 親経由 backfill + DEFERRED 注記分離）→ 次は ID-2-CP（create-path 統合）
-2. codex2: `R17-SWEEP`（truncated-list envelope 収斂、byte-preserving のみ）
-3. codex3: `R23-EXEC`（messageFromError helper + 第1バッチ10ファイル）
-4. claude: W7/R23/R17 の verdict→commit 後、EDIT-FREEZE → 全量 gate（build 込み）
-5. 運用: 台帳更新は claude 専任。全量 gate は EDIT-FREEZE broadcast → 全レーン ACK → 実行
+1. codex: `ID-2-CP-A`（SavedView/MedicationIssue/Task/PCA の create へ same-tx allocateDisplayId 配線。HandoffItem 配線禁止=unique 軸未解決）
+2. codex2: `R24-B1`（4 route の buildCursorPage 収斂、full-key-order assert）
+3. codex3: `R23-B4`（admin 5 files 35 hits）→ B5
+4. schema 波後の残プログラム: ID-2-CP-B以降(重量 create/createMany/upsert) → ID-3(UI 表示/検索の slice(-8) 置換) → ID-2-OPS(本番 CONCURRENTLY 手順)
+5. 運用: 台帳=claude 専任、全量 gate=EDIT-FREEZE→ACK→直列実行(初適用で race ゼロ実証済み)
