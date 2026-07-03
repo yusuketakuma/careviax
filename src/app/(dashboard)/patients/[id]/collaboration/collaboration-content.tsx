@@ -140,7 +140,7 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
               detail={
                 overviewQuery.error instanceof Error ? overviewQuery.error.message : undefined
               }
-              action={{ label: '再試行', onClick: () => void overviewQuery.refetch() }}
+              onRetry={() => void overviewQuery.refetch()}
             />
           </div>
         ) : (

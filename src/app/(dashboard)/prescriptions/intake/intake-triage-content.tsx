@@ -384,7 +384,7 @@ export function IntakeTriageContent() {
               title="取込キューを表示できません"
               description="取込キューの取得に失敗しました。再試行してください。"
               detail={triageQuery.error instanceof Error ? triageQuery.error.message : undefined}
-              action={{ label: '再試行', onClick: () => void triageQuery.refetch() }}
+              onRetry={() => void triageQuery.refetch()}
             />
           </div>
         ) : (

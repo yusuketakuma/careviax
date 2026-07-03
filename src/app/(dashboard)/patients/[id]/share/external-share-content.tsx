@@ -532,7 +532,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
           title="共有状況を表示できません"
           description="共有状況の取得に失敗しました。再試行してください。"
           detail={overviewQuery.error instanceof Error ? overviewQuery.error.message : undefined}
-          action={{ label: '再試行', onClick: () => void overviewQuery.refetch() }}
+          onRetry={() => void overviewQuery.refetch()}
           live="polite"
         />
       </div>

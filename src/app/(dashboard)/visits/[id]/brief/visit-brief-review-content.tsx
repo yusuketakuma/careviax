@@ -153,12 +153,9 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
           variant="server"
           title="訪問前まとめを表示できません"
           description="訪問前まとめの取得に失敗しました。再試行してください。"
-          action={{
-            label: '再試行',
-            onClick: () => {
-              void patientQuery.refetch();
-              void briefQuery.refetch();
-            },
+          onRetry={() => {
+            void patientQuery.refetch();
+            void briefQuery.refetch();
           }}
         />
       </div>

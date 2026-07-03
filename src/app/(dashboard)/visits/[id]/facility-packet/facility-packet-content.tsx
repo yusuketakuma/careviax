@@ -81,7 +81,7 @@ export function FacilityPacketContent({ scheduleId }: { scheduleId: string }) {
           variant="server"
           title="施設訪問パケットを表示できません"
           description="施設訪問パケットの取得に失敗しました。再試行してください。"
-          action={{ label: '再試行', onClick: () => void preparationQuery.refetch() }}
+          onRetry={() => void preparationQuery.refetch()}
         />
       </div>
     );

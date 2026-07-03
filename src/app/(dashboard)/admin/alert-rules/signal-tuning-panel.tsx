@@ -148,7 +148,7 @@ export function SignalTuningPanel() {
             ? rulesQuery.error.message
             : 'アラートルールの取得に失敗しました'
         }
-        action={{ label: '再試行', onClick: () => void rulesQuery.refetch() }}
+        onRetry={() => void rulesQuery.refetch()}
         live="polite"
       />
     );

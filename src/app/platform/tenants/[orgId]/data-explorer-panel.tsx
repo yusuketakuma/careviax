@@ -114,7 +114,7 @@ function ModelRows({ orgId, tableName }: { orgId: string; tableName: string }) {
           variant="server"
           title="データを取得できませんでした"
           description="対象モデルの参照権限、またはブレークグラスセッションの有効期限を確認してください。"
-          action={{ label: '再試行', onClick: () => refetch() }}
+          onRetry={() => refetch()}
         />
       ) : (
         <>
@@ -211,7 +211,7 @@ export function DataExplorerPanel({ orgId }: { orgId: string }) {
           <ErrorState
             variant="server"
             title="モデル一覧を取得できませんでした"
-            action={{ label: '再試行', onClick: () => modelsQuery.refetch() }}
+            onRetry={() => modelsQuery.refetch()}
           />
         ) : (
           <div className="space-y-1.5">

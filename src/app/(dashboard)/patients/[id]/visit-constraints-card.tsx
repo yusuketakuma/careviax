@@ -240,7 +240,7 @@ export function VisitConstraintsCard({ patientId, orgId }: { patientId: string; 
             title="訪問条件を表示できません"
             description="訪問希望曜日、連絡可能時間、位置情報の取得に失敗しました。再試行してください。"
             detail="未設定として保存すると既存の訪問条件を上書きする可能性があるため、取得できるまで編集を停止しています。"
-            action={{ label: '再試行', onClick: () => void refetch() }}
+            onRetry={() => void refetch()}
             headingLevel={3}
           />
         ) : (

@@ -195,7 +195,7 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
           variant="server"
           title="残薬調整を表示できません"
           description="残薬データの取得に失敗しました。再試行してください。"
-          action={{ label: '再試行', onClick: () => void residualQuery.refetch() }}
+          onRetry={() => void residualQuery.refetch()}
         />
       </div>
     );

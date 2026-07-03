@@ -180,7 +180,7 @@ export function CapacityContent() {
           variant="server"
           title="キャパシティを表示できません"
           description="集計の取得に失敗しました。再試行してください。"
-          action={{ label: '再試行', onClick: () => void capacityQuery.refetch() }}
+          onRetry={() => void capacityQuery.refetch()}
         />
       </div>
     );

@@ -359,7 +359,7 @@ export function AuditLogsContent() {
               variant="server"
               title="監査ログを取得できませんでした"
               description="時間をおいて再試行してください。解消しない場合は管理者に連絡してください。"
-              action={{ label: '再試行', onClick: () => refetch() }}
+              onRetry={() => refetch()}
             />
           ) : !isLoading && logs.length === 0 ? (
             <EmptyState

@@ -363,7 +363,7 @@ export default function ServiceAreasPage() {
                     ? areasQuery.error.message
                     : '訪問エリアの取得に失敗しました'
                 }
-                action={{ label: '再試行', onClick: () => void areasQuery.refetch() }}
+                onRetry={() => void areasQuery.refetch()}
                 live="polite"
               />
             ) : areasQuery.isPending ? (

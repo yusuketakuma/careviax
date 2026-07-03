@@ -481,7 +481,7 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
             size="inline"
             title="患者安全情報を表示できません"
             description="患者安全情報を読み込めませんでした。アレルギー・ハイリスク情報が表示されていない可能性があります。再試行してください。"
-            action={{ label: '再試行', onClick: () => void patientQuery.refetch() }}
+            onRetry={() => void patientQuery.refetch()}
           />
         </div>
       ) : patientName ? (
@@ -510,7 +510,7 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
               title="薬の安全チェックを表示できません"
               description="服薬課題の取得に失敗しました。再試行してください。"
               detail={issuesQuery.error instanceof Error ? issuesQuery.error.message : undefined}
-              action={{ label: '再試行', onClick: () => void issuesQuery.refetch() }}
+              onRetry={() => void issuesQuery.refetch()}
             />
           </div>
         ) : (

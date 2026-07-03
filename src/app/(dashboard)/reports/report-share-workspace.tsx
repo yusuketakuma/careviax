@@ -649,7 +649,7 @@ export function ReportShareWorkspace() {
             title="オペレーション情報を表示できません"
             description="止まっている理由の取得に失敗しました。再試行してください。"
             detail={cockpitQuery.error instanceof Error ? cockpitQuery.error.message : undefined}
-            action={{ label: '再試行', onClick: () => void cockpitQuery.refetch() }}
+            onRetry={() => void cockpitQuery.refetch()}
           />
         )}
       </div>
@@ -696,7 +696,7 @@ export function ReportShareWorkspace() {
               detail={
                 workspaceQuery.error instanceof Error ? workspaceQuery.error.message : undefined
               }
-              action={{ label: '再試行', onClick: () => void workspaceQuery.refetch() }}
+              onRetry={() => void workspaceQuery.refetch()}
             />
           </div>
         ) : (

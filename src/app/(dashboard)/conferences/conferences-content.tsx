@@ -1287,10 +1287,7 @@ export function ConferencesContent({
                 headingLevel={3}
                 title="カンファレンス記録を取得できませんでした"
                 description="通信状態を確認して再試行してください。"
-                action={{
-                  label: '再試行',
-                  onClick: () => void notesQuery.refetch(),
-                }}
+                onRetry={() => void notesQuery.refetch()}
               />
             ) : notes.length === 0 ? (
               <EmptyState icon={Users} title="カンファレンス記録はまだありません" />
@@ -1383,7 +1380,7 @@ export function ConferencesContent({
                 headingLevel={3}
                 title="カレンダーを取得できませんでした"
                 description="カンファレンス記録のカレンダー表示を取得できませんでした。通信状態を確認して再試行してください。"
-                action={{ label: '再試行', onClick: () => void conferenceCalendarQuery.refetch() }}
+                onRetry={() => void conferenceCalendarQuery.refetch()}
               />
             ) : (
               <div className="overflow-hidden rounded-lg border border-border">
@@ -1589,10 +1586,7 @@ export function ConferencesContent({
               headingLevel={3}
               title="地域活動を取得できませんでした"
               description="通信状態を確認して再試行してください。"
-              action={{
-                label: '再試行',
-                onClick: () => void activitiesQuery.refetch(),
-              }}
+              onRetry={() => void activitiesQuery.refetch()}
             />
           ) : activities.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">

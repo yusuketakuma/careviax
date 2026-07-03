@@ -210,7 +210,7 @@ export function PackagingMethodsContent() {
                   ? methodsQuery.error.message
                   : '配薬方法マスターの取得に失敗しました'
               }
-              action={{ label: '再試行', onClick: () => void methodsQuery.refetch() }}
+              onRetry={() => void methodsQuery.refetch()}
               live="polite"
             />
           ) : methodsQuery.isPending ? (

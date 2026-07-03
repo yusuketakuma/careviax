@@ -1100,7 +1100,7 @@ function QueryFallback({
         title="薬局間協力ワークフローを表示できません"
         description="状態一覧の取得に失敗しました。再試行してください。"
         detail={fallbackDetail}
-        action={{ label: '再試行', onClick: onRetry }}
+        onRetry={onRetry}
       />
     );
   }

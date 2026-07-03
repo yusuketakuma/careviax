@@ -126,7 +126,7 @@ export function ClerkSupportContent() {
             variant="server"
             title="事務サポートを表示できません"
             description="集計の取得に失敗しました。再試行してください。"
-            action={{ label: '再試行', onClick: () => void query.refetch() }}
+            onRetry={() => void query.refetch()}
           />
         </div>
       ) : (

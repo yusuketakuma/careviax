@@ -110,7 +110,7 @@ export function TenantDirectoryContent() {
             variant="server"
             title="テナント一覧を取得できませんでした"
             description="時間をおいて再試行してください。解消しない場合はシステム管理者に連絡してください。"
-            action={{ label: '再試行', onClick: () => refetch() }}
+            onRetry={() => refetch()}
           />
         ) : (
           <DataTable

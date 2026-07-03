@@ -4319,7 +4319,7 @@ export function CardWorkspace({
         title="患者情報を表示できません"
         description="患者情報の取得に失敗しました。再試行してください。"
         detail={error instanceof Error ? error.message : undefined}
-        action={{ label: '再試行', onClick: () => void refetchPatient() }}
+        onRetry={() => void refetchPatient()}
       />
     ) : (
       <EmptyState

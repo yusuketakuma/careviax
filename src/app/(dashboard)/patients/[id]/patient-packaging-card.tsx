@@ -174,7 +174,7 @@ export function PatientPackagingCard({ patientId, orgId }: { patientId: string; 
             title="配薬設定を表示できません"
             description="患者固有の配薬方法と特記事項の取得に失敗しました。再試行してください。"
             detail="未設定として保存すると既存情報を上書きする可能性があるため、取得できるまで編集を停止しています。"
-            action={{ label: '再試行', onClick: () => void refetch() }}
+            onRetry={() => void refetch()}
             headingLevel={3}
           />
         ) : (

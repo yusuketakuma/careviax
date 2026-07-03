@@ -477,7 +477,7 @@ function PanelBody({
         size="inline"
         title={errorTitle}
         description="データの取得に失敗しました。再試行してください。"
-        action={{ label: '再試行', onClick: onRetry }}
+        onRetry={onRetry}
         live="polite"
       />
     );

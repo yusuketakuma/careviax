@@ -416,7 +416,7 @@ export function ConflictResolutionContent({ initialDate }: { initialDate?: strin
           variant="server"
           title="重なりを表示できません"
           description="対象日の訪問予定の取得に失敗しました。再試行してください。"
-          action={{ label: '再試行', onClick: () => void schedulesQuery.refetch() }}
+          onRetry={() => void schedulesQuery.refetch()}
         />
       </div>
     );
@@ -433,7 +433,7 @@ export function ConflictResolutionContent({ initialDate }: { initialDate?: strin
           variant="server"
           title="薬剤師一覧を取得できませんでした"
           description="薬剤師名と代替担当候補を確認できないため、重なり判定を表示できません。通信状態を確認して再試行してください。"
-          action={{ label: '再試行', onClick: () => void pharmacistsQuery.refetch() }}
+          onRetry={() => void pharmacistsQuery.refetch()}
         />
       </div>
     );

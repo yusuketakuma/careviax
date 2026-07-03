@@ -101,7 +101,7 @@ export function SelectSiteContent() {
             variant="server"
             title="薬局一覧を表示できません"
             description="所属薬局の取得に失敗しました。再試行してください。"
-            action={{ label: '再試行', onClick: () => void sitesQuery.refetch() }}
+            onRetry={() => void sitesQuery.refetch()}
           />
         </div>
       ) : sites.length === 0 ? (

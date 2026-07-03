@@ -120,7 +120,7 @@ export function OperationsInsightsContent() {
             variant="server"
             title="運用分析を表示できません"
             description="集計の取得に失敗しました。再試行してください。"
-            action={{ label: '再試行', onClick: () => void insightsQuery.refetch() }}
+            onRetry={() => void insightsQuery.refetch()}
           />
         </div>
       ) : (

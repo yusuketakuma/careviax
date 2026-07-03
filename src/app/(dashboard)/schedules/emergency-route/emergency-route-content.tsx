@@ -790,7 +790,7 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
           variant="server"
           title="緊急ルートを表示できません"
           description="対象日の訪問予定の取得に失敗しました。再試行してください。"
-          action={{ label: '再試行', onClick: () => void schedulesQuery.refetch() }}
+          onRetry={() => void schedulesQuery.refetch()}
         />
       </div>
     );

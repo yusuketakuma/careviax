@@ -1947,7 +1947,7 @@ export function ScheduleProposalsContent({
             title="訪問候補を表示できません"
             description="訪問候補、患者連絡待ち、差替候補の取得に失敗しました。通信状態を確認して再試行してください。"
             detail="取得失敗時は、候補がないものとして扱わず、承認・却下・日時確定の操作を停止しています。"
-            action={{ label: '再試行', onClick: () => void proposalsQuery.refetch() }}
+            onRetry={() => void proposalsQuery.refetch()}
             headingLevel={3}
           />
         ) : (

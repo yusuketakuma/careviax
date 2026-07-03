@@ -117,7 +117,7 @@ export function AuditLogPanel({ orgId }: { orgId: string }) {
             variant="server"
             title="監査ログを取得できませんでした"
             description="時間をおいて再試行してください。"
-            action={{ label: '再試行', onClick: () => refetch() }}
+            onRetry={() => refetch()}
           />
         ) : (
           <>

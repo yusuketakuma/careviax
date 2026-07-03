@@ -34,7 +34,7 @@ export function TenantDetailContent({ orgId }: { orgId: string }) {
         variant="server"
         title="テナント情報を取得できませんでした"
         description="時間をおいて再試行してください。"
-        action={{ label: '再試行', onClick: () => refetch() }}
+        onRetry={() => refetch()}
       />
     );
   }

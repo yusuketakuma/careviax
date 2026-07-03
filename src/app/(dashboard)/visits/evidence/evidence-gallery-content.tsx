@@ -316,7 +316,7 @@ export function EvidenceGalleryContent() {
                 size="inline"
                 title="画像・証跡を取得できませんでした"
                 description="時間をおいて再試行してください。"
-                action={{ label: '再試行', onClick: () => refetch() }}
+                onRetry={() => refetch()}
               />
             ) : visibleItems.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-10 text-center">

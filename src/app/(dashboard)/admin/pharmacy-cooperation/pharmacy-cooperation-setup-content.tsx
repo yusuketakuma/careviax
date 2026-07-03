@@ -492,7 +492,7 @@ function QueryError({
       title="薬局間協力設定を表示できません"
       description="マスタ一覧の取得に失敗しました。"
       detail={error instanceof Error ? error.message : undefined}
-      action={{ label: '再試行', onClick: refetch }}
+      onRetry={refetch}
     />
   );
 }

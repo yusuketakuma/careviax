@@ -1335,7 +1335,7 @@ function VisitHandoffConfirmationWorkspace({
             detail={
               visitHandoffQuery.error instanceof Error ? visitHandoffQuery.error.message : undefined
             }
-            action={{ label: '再試行', onClick: () => void visitHandoffQuery.refetch() }}
+            onRetry={() => void visitHandoffQuery.refetch()}
           />
         ) : visitRecordId && visitHandoffQuery.data ? (
           <HandoffConfirmPanel
@@ -1456,7 +1456,7 @@ export function HandoffWorkspace() {
             variant="server"
             title="稼働状況を取得できませんでした"
             description="次にやることと止まっている理由を表示できていません。問題なしではなく取得エラーです。再試行してください。"
-            action={{ label: '再試行', onClick: () => void cockpitQuery.refetch() }}
+            onRetry={() => void cockpitQuery.refetch()}
           />
         )}
       </div>
@@ -1514,7 +1514,7 @@ export function HandoffWorkspace() {
               title="ハンドオフを表示できません"
               description="ハンドオフボードの取得に失敗しました。再試行してください。"
               detail={boardQuery.error instanceof Error ? boardQuery.error.message : undefined}
-              action={{ label: '再試行', onClick: () => void boardQuery.refetch() }}
+              onRetry={() => void boardQuery.refetch()}
             />
           </div>
         ) : (

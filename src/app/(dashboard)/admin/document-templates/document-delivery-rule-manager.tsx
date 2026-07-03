@@ -356,7 +356,7 @@ export function DocumentDeliveryRuleManager() {
                   ? rulesQuery.error.message
                   : '文書送達ルールの取得に失敗しました'
               }
-              action={{ label: '再試行', onClick: () => void rulesQuery.refetch() }}
+              onRetry={() => void rulesQuery.refetch()}
               live="polite"
             />
           ) : rulesQuery.isPending ? (

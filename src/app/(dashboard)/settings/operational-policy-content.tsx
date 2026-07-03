@@ -634,7 +634,7 @@ export function OperationalPolicyContent() {
               title="設定を表示できません"
               description="運用ポリシーの取得に失敗しました。再試行してください。"
               detail={policyQuery.error instanceof Error ? policyQuery.error.message : undefined}
-              action={{ label: '再試行', onClick: () => void policyQuery.refetch() }}
+              onRetry={() => void policyQuery.refetch()}
             />
           </div>
         ) : (

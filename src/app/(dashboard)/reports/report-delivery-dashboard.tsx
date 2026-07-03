@@ -183,7 +183,7 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
           title="送達分析を表示できません"
           description="報告書の送達傾向と未確認フォロー対象の取得に失敗しました。再試行してください。"
           detail="取得失敗時は、未確認報告がないものとして扱わず、リマインド起票も停止しています。"
-          action={{ label: '再試行', onClick: () => void refetch() }}
+          onRetry={() => void refetch()}
           headingLevel={3}
         />
       ) : (

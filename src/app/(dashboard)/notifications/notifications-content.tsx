@@ -248,7 +248,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
             title="お知らせを表示できません"
             description="急ぎの確認、返信待ち、未読件数の取得に失敗しました。再試行してください。"
             detail="取得失敗を「お知らせなし」と区別するため、一覧の操作を停止しています。"
-            action={{ label: '再試行', onClick: () => void refetch() }}
+            onRetry={() => void refetch()}
             headingLevel={3}
           />
         ) : null}

@@ -1346,7 +1346,7 @@ function TeamGanttCard({
             size="inline"
             title="リスク情報を取得できませんでした"
             description="麻薬監査、期限超過、止まっている理由を表示できていません。リスクなしではなく取得エラーです。再試行してください。"
-            action={{ label: '再試行', onClick: onRetryCockpit }}
+            onRetry={onRetryCockpit}
           />
         </div>
       ) : null}
@@ -1859,7 +1859,7 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
             variant="server"
             title="稼働状況を取得できませんでした"
             description="次にやることと止まっている理由を表示できていません。問題なしではなく取得エラーです。再試行してください。"
-            action={{ label: '再試行', onClick: () => void cockpitQuery.refetch() }}
+            onRetry={() => void cockpitQuery.refetch()}
           />
         )}
       </div>
@@ -1905,7 +1905,7 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
                 title="スケジュールを表示できません"
                 description="全員スケジュールの取得に失敗しました。再試行してください。"
                 detail={boardQuery.error instanceof Error ? boardQuery.error.message : undefined}
-                action={{ label: '再試行', onClick: () => void boardQuery.refetch() }}
+                onRetry={() => void boardQuery.refetch()}
               />
             </div>
           ) : (

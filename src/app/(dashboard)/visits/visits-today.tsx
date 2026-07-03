@@ -318,7 +318,7 @@ export function VisitsToday() {
               title="本日の訪問を表示できません"
               description="訪問準備の集計取得に失敗しました。再試行してください。"
               detail={boardQuery.error instanceof Error ? boardQuery.error.message : undefined}
-              action={{ label: '再試行', onClick: () => void boardQuery.refetch() }}
+              onRetry={() => void boardQuery.refetch()}
             />
           </div>
         ) : (

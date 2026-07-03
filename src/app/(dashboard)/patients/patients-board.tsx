@@ -845,7 +845,7 @@ export function PatientsBoard() {
               title="患者一覧を表示できません"
               description="患者カードの集計取得に失敗しました。再試行してください。"
               detail={boardQuery.error instanceof Error ? boardQuery.error.message : undefined}
-              action={{ label: '再試行', onClick: () => void boardQuery.refetch() }}
+              onRetry={() => void boardQuery.refetch()}
             />
           </div>
         ) : (

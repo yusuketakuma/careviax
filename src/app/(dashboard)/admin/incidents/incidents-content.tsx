@@ -217,7 +217,7 @@ export function IncidentsContent() {
           variant="server"
           title="ヒヤリハット記録を表示できません"
           description="記録の取得に失敗しました。再試行してください。"
-          action={{ label: '再試行', onClick: () => void reportsQuery.refetch() }}
+          onRetry={() => void reportsQuery.refetch()}
         />
       </div>
     );

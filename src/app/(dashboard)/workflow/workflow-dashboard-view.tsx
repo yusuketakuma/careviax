@@ -266,7 +266,7 @@ export function WorkflowDashboardView({
         title="ワークフローダッシュボードを表示できません"
         description="主業務フロー、連絡キュー、例外対応の取得に失敗しました。再試行してください。"
         detail="取得失敗時は、滞留や例外がないものとして扱わず、操作入口の表示を停止しています。"
-        action={{ label: '再試行', onClick: () => void refetch() }}
+        onRetry={() => void refetch()}
         headingLevel={2}
       />
     );

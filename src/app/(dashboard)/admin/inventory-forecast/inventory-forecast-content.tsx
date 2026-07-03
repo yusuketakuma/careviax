@@ -224,7 +224,7 @@ export function InventoryForecastContent() {
           variant="server"
           title="在庫予測を表示できません"
           description="集計の取得に失敗しました。再試行してください。"
-          action={{ label: '再試行', onClick: () => void forecastQuery.refetch() }}
+          onRetry={() => void forecastQuery.refetch()}
         />
       </div>
     );

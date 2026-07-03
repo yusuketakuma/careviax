@@ -298,7 +298,7 @@ export function CommunicationRequestsContent({
             title="依頼一覧を表示できません"
             description="返信待ち、対応中、患者文脈の依頼取得に失敗しました。通信状態を確認して再試行してください。"
             detail="取得失敗時は、返信待ちがないものとして扱わず、対応済み操作を停止しています。"
-            action={{ label: '再試行', onClick: () => void refetch() }}
+            onRetry={() => void refetch()}
             headingLevel={3}
           />
         ) : isInitialLoading ? (

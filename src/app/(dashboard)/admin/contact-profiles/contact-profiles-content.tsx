@@ -294,7 +294,7 @@ export function ContactProfilesContent() {
                 size="inline"
                 title="送付先を取得できませんでした"
                 description="時間をおいて再試行してください。"
-                action={{ label: '再試行', onClick: () => profilesQuery.refetch() }}
+                onRetry={() => profilesQuery.refetch()}
               />
             ) : profilesQuery.isLoading ? (
               <p className="rounded-lg border border-dashed border-border/70 px-4 py-8 text-sm text-muted-foreground">

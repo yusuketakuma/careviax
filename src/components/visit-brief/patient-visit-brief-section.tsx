@@ -49,7 +49,7 @@ export function PatientVisitBriefSection({
         headingLevel={3}
         title="訪問前要約を読み込めませんでした"
         description="患者の訪問前要約を取得できませんでした。通信状態を確認して再試行してください。"
-        action={{ label: '再試行', onClick: () => void refetchVisitBrief() }}
+        onRetry={() => void refetchVisitBrief()}
       />
     );
   }

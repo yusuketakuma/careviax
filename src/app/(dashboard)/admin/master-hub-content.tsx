@@ -212,7 +212,7 @@ export function MasterHubContent() {
               title="マスターを表示できません"
               description="マスター鮮度の集計取得に失敗しました。再試行してください。"
               detail={hubQuery.error instanceof Error ? hubQuery.error.message : undefined}
-              action={{ label: '再試行', onClick: () => void hubQuery.refetch() }}
+              onRetry={() => void hubQuery.refetch()}
             />
           </div>
         ) : (

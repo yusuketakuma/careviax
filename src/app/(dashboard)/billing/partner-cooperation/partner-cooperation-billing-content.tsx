@@ -1231,7 +1231,7 @@ export function PartnerCooperationBillingContent() {
             title="薬局間協力の月次集計を表示できません"
             description="対象月の集計取得に失敗しました。再試行してください。"
             detail={safeErrorDetail()}
-            action={{ label: '再試行', onClick: () => void summaryQuery.refetch() }}
+            onRetry={() => void summaryQuery.refetch()}
           />
         ) : (
           <SummaryGrid summary={summary} />
@@ -1267,7 +1267,7 @@ export function PartnerCooperationBillingContent() {
             title="薬局間協力の請求候補を表示できません"
             description="候補一覧の取得に失敗しました。再試行してください。"
             detail={safeErrorDetail()}
-            action={{ label: '再試行', onClick: () => void candidatesQuery.refetch() }}
+            onRetry={() => void candidatesQuery.refetch()}
           />
         ) : (
           <CandidateTable candidates={candidatesQuery.data ?? []} />
@@ -1305,7 +1305,7 @@ export function PartnerCooperationBillingContent() {
             title="薬局間月次ドキュメントを表示できません"
             description="出力履歴の取得に失敗しました。再試行してください。"
             detail={safeErrorDetail()}
-            action={{ label: '再試行', onClick: () => void invoicesQuery.refetch() }}
+            onRetry={() => void invoicesQuery.refetch()}
           />
         ) : (
           <InvoiceHistoryTable

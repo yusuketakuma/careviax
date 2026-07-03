@@ -729,7 +729,7 @@ export function DashboardCockpit() {
               title="ダッシュボードを表示できません"
               description="運用コックピットの集計取得に失敗しました。再試行してください。"
               detail={cockpitQuery.error instanceof Error ? cockpitQuery.error.message : undefined}
-              action={{ label: '再試行', onClick: () => void cockpitQuery.refetch() }}
+              onRetry={() => void cockpitQuery.refetch()}
             />
           </div>
         ) : (
