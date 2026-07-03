@@ -77,6 +77,8 @@ const authenticatedGET = withAuthContext(
     const refResult = await validateOrgReferences(ctx.orgId, { site_id: parsed.data.site_id });
     if (!refResult.ok) return refResult.response;
 
+    // 有界: PharmacyOperatingHours は @@unique([site_id, weekday]) を持ち、weekday は 0-6 の7値のみ。
+    // site 単位で常に最大7行にしかならず、無制限に成長しない。
     const weeklyRows = await prisma.pharmacyOperatingHours.findMany({
       where: { org_id: ctx.orgId, site_id: parsed.data.site_id },
       orderBy: [{ weekday: 'asc' }],
@@ -90,6 +92,8 @@ const authenticatedGET = withAuthContext(
       return validationError(`解決済みカレンダーは${MAX_RESOLVED_DAYS}日以内で指定してください`);
     }
 
+    // 有界: date_from〜date_to は collectDateKeys 経由で MAX_RESOLVED_DAYS(366日)以内に検証済み。
+    // 1日あたりの一致行は site 個別 + org 共通(site_id=null)分のみで、日数上限と合わせて実質有界（無制限化しない）。
     const holidayRows = shouldResolve
       ? await prisma.businessHoliday.findMany({
           where: {
@@ -173,6 +177,7 @@ const authenticatedPUT = withAuthContext(
     if (!refResult.ok) return refResult.response;
 
     const result = await withOrgContext(ctx.orgId, async (tx) => {
+      // 有界: 上記GETと同様、@@unique([site_id, weekday]) により site あたり最大7行。
       const before = await tx.pharmacyOperatingHours.findMany({
         where: { org_id: ctx.orgId, site_id: parsed.data.site_id },
         orderBy: [{ weekday: 'asc' }],
@@ -214,6 +219,7 @@ const authenticatedPUT = withAuthContext(
         ),
       );
 
+      // 有界: 同上、site あたり最大7行。
       const after = await tx.pharmacyOperatingHours.findMany({
         where: { org_id: ctx.orgId, site_id: parsed.data.site_id },
         orderBy: [{ weekday: 'asc' }],

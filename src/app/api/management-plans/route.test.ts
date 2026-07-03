@@ -179,6 +179,40 @@ describe('/api/management-plans', () => {
     expect(JSON.stringify(payload)).not.toContain('source_plan_1');
   });
 
+  it('lists management plans org-wide with a safety cap and no take when case_id is omitted', async () => {
+    managementPlanFindManyMock.mockResolvedValueOnce([
+      { id: 'plan_1', case_id: 'case_1', title: '訪問薬剤管理指導計画書' },
+    ]);
+
+    const response = (await GET(createGetRequest('http://localhost/api/management-plans')))!;
+
+    expect(response.status).toBe(200);
+    expect(managementPlanFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { org_id: 'org_1' },
+        take: 501,
+      }),
+    );
+    const payload = await response.json();
+    expect(payload).toMatchObject({ hasMore: false });
+  });
+
+  it('reports hasMore and truncates at the safety cap for the org-wide management plan list', async () => {
+    const overflowRows = Array.from({ length: 501 }, (_, index) => ({
+      id: `plan_${index}`,
+      case_id: `case_${index}`,
+      title: '訪問薬剤管理指導計画書',
+    }));
+    managementPlanFindManyMock.mockResolvedValueOnce(overflowRows);
+
+    const response = (await GET(createGetRequest('http://localhost/api/management-plans')))!;
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.data).toHaveLength(500);
+    expect(payload.hasMore).toBe(true);
+  });
+
   it('rejects blank case filters before listing management plans', async () => {
     const response = (await GET(
       createGetRequest('http://localhost/api/management-plans?case_id=%20%20'),

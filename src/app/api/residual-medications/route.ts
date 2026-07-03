@@ -107,6 +107,12 @@ async function authenticatedGET(req: NextRequest) {
       patientVisitRecordIds = [visitRecord.id];
     }
 
+    // 有界（判断）: 以下2つの visitRecord.findMany は id のみを取得し、後続の residualMedication
+    // フィルタ(visit_record_id IN ...)を構築するための内部集合であり、レスポンスとして直接返る
+    // SSOT一覧ではない。ここに take を入れて打ち切ると、古い訪問記録に紐づく残薬データが
+    // フィルタ集合から欠落し、"無いように見える"サイレントな取りこぼしになる（残薬は服薬安全に
+    // 直結するため fail-close を優先し、打ち切らない）。実際の応答側の打ち切り可否は下の
+    // residualMedication.findMany の take 判断に委ねる。
     if (!visitRecordId && patientId) {
       const visitRecords = await prisma.visitRecord.findMany({
         where: {
@@ -136,6 +142,11 @@ async function authenticatedGET(req: NextRequest) {
       }
     }
 
+    // 有界（既存仕様・据え置き）: limit は 1〜MAX_RESIDUAL_MEDICATION_LIMIT(200) の範囲で任意指定でき、
+    // 省略時は take なし（無制限）。これは既存テスト
+    // 「preserves unbounded residual medication reads when limit is omitted」で明示的に固定された
+    // 意図的な挙動であり、残薬データを暗黙に打ち切らない fail-close 判断を継続する（今回の棚卸しでは
+    // 変更しない）。実運用の呼び出し元(medications-content.tsx等)は limit を明示指定している。
     const records = await prisma.residualMedication.findMany({
       where: {
         org_id: ctx.orgId,

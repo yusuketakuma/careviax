@@ -37,6 +37,10 @@ const managementPlanListSelect = {
   updated_at: true,
 } as const;
 
+// case_id 省略時（org 全体の一覧）に無制限成長するのを防ぐ安全上限。
+// case_id 指定時は @@unique([case_id, version]) によりケースあたりのバージョン数で実質有界なので take を足さない。
+const MANAGEMENT_PLAN_ORG_WIDE_SAFETY_LIMIT = 500;
+
 type ManagementPlanListRecord = {
   id: string;
   case_id: string;
@@ -93,11 +97,21 @@ async function authenticatedGET(req: NextRequest) {
         },
         orderBy: [{ updated_at: 'desc' }],
         select: managementPlanListSelect,
+        // 有界: case_id 指定時は１ケースのバージョン数のみで実質有界のため take を足さない。
+        // case_id 省略時のみ、org 全体の無制限成長を防ぐため安全上限+1件を取得し、
+        // hasMore で切り詰めをレスポンスに明示する（サイレント切り詰めを避ける）。
+        ...(caseId ? {} : { take: MANAGEMENT_PLAN_ORG_WIDE_SAFETY_LIMIT + 1 }),
       }),
     { requestContext: ctx },
   );
 
-  return success({ data: plans.map(toManagementPlanListItem) });
+  const hasMore = !caseId && plans.length > MANAGEMENT_PLAN_ORG_WIDE_SAFETY_LIMIT;
+  const pageRows = hasMore ? plans.slice(0, MANAGEMENT_PLAN_ORG_WIDE_SAFETY_LIMIT) : plans;
+
+  return success({
+    data: pageRows.map(toManagementPlanListItem),
+    ...(caseId ? {} : { hasMore }),
+  });
 }
 
 export async function GET(req: NextRequest) {

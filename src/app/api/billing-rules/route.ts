@@ -91,6 +91,9 @@ export async function GET(req: NextRequest) {
   const result = await withOrgContext(ctx.orgId, async (tx) => {
     await ensureHomeCareBillingSsot(tx, ctx.orgId);
     const summary = await getHomeCareBillingSsotSummary(tx, ctx.orgId);
+    // 有界: BillingRule は算定ルールのマスタ/カタログ（SSOT公式ルール + 管理者が登録するカスタムルール）で、
+    // 患者・訪問ごとに増える運用データではない。org あたりの行数は算定制度上の組み合わせ数と管理者運用で
+    // 実質的に小さい（数十〜数百件オーダー）ため無制限に成長しない。
     const rules = await tx.billingRule.findMany({
       where: {
         org_id: ctx.orgId,
