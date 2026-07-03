@@ -1,7 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import {
   Search,
@@ -1192,10 +1197,17 @@ function DrugMasterOperationalContent({
     isError: isDrugMasterError,
     error: drugMasterError,
     refetch: refetchDrugMasters,
-  } = useQuery({
+    fetchNextPage: fetchNextDrugMasters,
+    hasNextPage: hasMoreDrugMasters,
+    isFetchingNextPage: isFetchingMoreDrugMasters,
+  } = useInfiniteQuery({
     queryKey: ['drug-masters', orgId, params],
-    queryFn: async () => {
-      const res = await fetch(buildDrugMastersApiPath(params), {
+    // cursor pagination: 各ページの nextCursor を次ページの cursor として付与し、行を累積する。
+    // これがないと検索/フィルタ結果の 51 件目以降が hasMore で捨てられて表示されない（W2-F2）。
+    queryFn: async ({ pageParam }) => {
+      const pageParams = new URLSearchParams(params);
+      if (pageParam) pageParams.set('cursor', pageParam);
+      const res = await fetch(buildDrugMastersApiPath(pageParams.toString()), {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('医薬品マスターの取得に失敗しました');
@@ -1203,8 +1215,11 @@ function DrugMasterOperationalContent({
         data: DrugMasterRow[];
         totalCount: number;
         hasMore: boolean;
+        nextCursor?: string;
       }>;
     },
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    initialPageParam: undefined as string | undefined,
     enabled: !!orgId,
     staleTime: 300_000,
   });
@@ -2197,7 +2212,9 @@ function DrugMasterOperationalContent({
     pendingOfficialImportPreview,
   );
 
-  const drugs = data?.data ?? [];
+  // 累積された全ページの行。selectedRowIndex / onRowClick はこの累積配列を基準に整合させる。
+  const drugs = data?.pages.flatMap((page) => page.data) ?? [];
+  const drugMasterTotalCount = data?.pages[0]?.totalCount;
   const sites = sitesData?.data ?? [];
   const formularyTemplates = formularyTemplatesQuery.data?.data ?? [];
   const selectedTemplate =
@@ -3713,7 +3730,9 @@ function DrugMasterOperationalContent({
       <DataTable
         columns={tableColumns}
         data={drugs}
-        isLoading={isLoading}
+        isLoading={isLoading || isFetchingMoreDrugMasters}
+        hasMore={hasMoreDrugMasters}
+        onLoadMore={() => void fetchNextDrugMasters()}
         caption="医薬品マスター一覧"
         onRowClick={(index) => openDrugDetail(drugs[index]?.id ?? null)}
         selectedRowIndex={selectedRowIndex}
@@ -3757,8 +3776,8 @@ function DrugMasterOperationalContent({
                 {
                   label: '登録件数',
                   value:
-                    data?.totalCount !== undefined
-                      ? `${data.totalCount.toLocaleString()}件`
+                    drugMasterTotalCount !== undefined
+                      ? `${drugMasterTotalCount.toLocaleString()}件`
                       : '読込中',
                 },
                 {

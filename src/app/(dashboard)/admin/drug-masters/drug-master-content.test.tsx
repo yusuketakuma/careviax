@@ -44,6 +44,9 @@ const {
   refetchSpies,
   toastSuccessMock,
   toastErrorMock,
+  drugMastersPagesMock,
+  fetchNextDrugMastersMock,
+  dataTablePropsMock,
 } = vi.hoisted(() => ({
   useOrgIdMock: vi.fn(),
   pendingRequestsMock: vi.fn(),
@@ -75,6 +78,22 @@ const {
   refetchSpies: new Map<string, ReturnType<typeof vi.fn>>(),
   toastSuccessMock: vi.fn(),
   toastErrorMock: vi.fn(),
+  // W2-F2: drug-masters は useInfiniteQuery。各テストが cursor 累積ページを差し替えられるよう
+  // ページ配列を controllable にする。既定は空 1 ページ（従来の空表示挙動を維持）。
+  drugMastersPagesMock: {
+    current: [
+      { data: [] as unknown[], totalCount: 0, hasMore: false, nextCursor: undefined },
+    ] as Array<{
+      data: unknown[];
+      totalCount: number;
+      hasMore: boolean;
+      nextCursor?: string;
+    }>,
+  },
+  fetchNextDrugMastersMock: vi.fn(),
+  // DataTable は下でモックするが、load-more の配線（data 累積 / hasMore / onLoadMore）を
+  // 検証できるよう最新 props をここに捕捉する。
+  dataTablePropsMock: { current: null as Record<string, unknown> | null },
 }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -419,13 +438,70 @@ vi.mock('@tanstack/react-query', () => ({
     }
     return { data: null, isLoading: false, isError: false };
   },
+  useInfiniteQuery: (options: { queryKey: readonly unknown[]; queryFn?: () => unknown }) => {
+    const { queryKey } = options;
+    capturedQueryKeys.push(queryKey as ReadonlyArray<unknown>);
+    capturedQueryOptions.push(options);
+    const key = queryKey[0];
+    const shortKey = String(key);
+    const fullKey = queryKey.map((part) => String(part ?? '')).join('|');
+    const failedKey = queryErrorKeys.has(fullKey)
+      ? fullKey
+      : queryErrorKeys.has(shortKey)
+        ? shortKey
+        : null;
+    if (failedKey) {
+      let refetch = refetchSpies.get(failedKey);
+      if (!refetch) {
+        refetch = vi.fn();
+        refetchSpies.set(failedKey, refetch);
+      }
+      return {
+        data: staleQueryDataByKey.get(failedKey),
+        isLoading: false,
+        isError: true,
+        error: new Error('医薬品マスターの取得に失敗しました'),
+        refetch,
+        fetchNextPage: fetchNextDrugMastersMock,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+      };
+    }
+    if (key === 'drug-masters') {
+      const pages = drugMastersPagesMock.current;
+      return {
+        data: { pages, pageParams: [] },
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+        fetchNextPage: fetchNextDrugMastersMock,
+        hasNextPage: pages[pages.length - 1]?.hasMore ?? false,
+        isFetchingNextPage: false,
+      };
+    }
+    return {
+      data: { pages: [], pageParams: [] },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+      fetchNextPage: vi.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+    };
+  },
   useQueryClient: () => ({
     invalidateQueries: invalidateQueriesMock,
   }),
 }));
 
 vi.mock('@/components/ui/data-table', () => ({
-  DataTable: () => <div data-testid="drug-master-table" />,
+  DataTable: (props: Record<string, unknown>) => {
+    // load-more 配線の検証用に最新 props を捕捉する（data 累積 / hasMore / onLoadMore）。
+    dataTablePropsMock.current = props;
+    return <div data-testid="drug-master-table" />;
+  },
 }));
 
 // Records the original className of every SelectItem so the >=44px touch-target contract
@@ -693,6 +769,10 @@ describe('DrugMasterContent', () => {
     genericRecommendationsDataMock.current = [];
     ingredientGroupDataMock.current = null;
     importLogsDataMock.current = [];
+    drugMastersPagesMock.current = [
+      { data: [], totalCount: 0, hasMore: false, nextCursor: undefined },
+    ];
+    dataTablePropsMock.current = null;
   });
 
   it('shows PMDA and other externally configured sources in master status', () => {
@@ -2256,6 +2336,52 @@ describe('DrugMasterContent filter select migration (slice4b)', () => {
     // selectable under a controlled '' value; it is NOT collapsed to a placeholder).
     fireEvent.change(categoryCombobox, { target: { value: '' } });
     expect(new URLSearchParams(latestDrugMastersParams()).get('category')).toBeNull();
+  });
+
+  // W2-F2 実バグ回帰: /api/drug-masters は cursor pagination（limit=50, hasMore, nextCursor）
+  // 対応済みなのに、UI が初回 50 件のみ表示し 51 件目以降を捨てていた。useInfiniteQuery で
+  // 累積し、hasMore/onLoadMore を DataTable に配線したことを検証する。
+  it('wires cursor pagination hasMore + onLoadMore into the DataTable and fetches the next page (W2-F2)', () => {
+    const firstPage = Array.from({ length: 50 }, (_, i) => ({ id: `drug_${i}` }));
+    drugMastersPagesMock.current = [
+      { data: firstPage, totalCount: 123, hasMore: true, nextCursor: '50' },
+    ];
+
+    render(<DrugMasterContent />);
+
+    const props = dataTablePropsMock.current;
+    expect(props).not.toBeNull();
+    // 1 ページ目の 50 件が DataTable に渡る。
+    expect((props?.data as unknown[]).length).toBe(50);
+    // まだ続きがあるので load-more が有効化される（これがないと 51 件目以降が見えない）。
+    expect(props?.hasMore).toBe(true);
+    expect(typeof props?.onLoadMore).toBe('function');
+
+    // 「さらに表示」相当のトリガで次ページ取得が走る。
+    (props?.onLoadMore as () => void)();
+    expect(fetchNextDrugMastersMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('accumulates rows across cursor pages so results beyond the first 50 remain visible (W2-F2)', () => {
+    const firstPage = Array.from({ length: 50 }, (_, i) => ({ id: `drug_${i}` }));
+    const secondPage = Array.from({ length: 7 }, (_, i) => ({ id: `drug_${50 + i}` }));
+    drugMastersPagesMock.current = [
+      { data: firstPage, totalCount: 57, hasMore: true, nextCursor: '50' },
+      { data: secondPage, totalCount: 57, hasMore: false, nextCursor: undefined },
+    ];
+
+    render(<DrugMasterContent />);
+
+    const props = dataTablePropsMock.current;
+    const rows = props?.data as Array<{ id: string }>;
+    // 2 ページ分（50 + 7）が累積されて渡る。
+    expect(rows.length).toBe(57);
+    expect(rows[0]?.id).toBe('drug_0');
+    expect(rows[56]?.id).toBe('drug_56');
+    // 全件取得済みなので load-more は無効。
+    expect(props?.hasMore).toBe(false);
+    // 登録件数は総数（累積表示件数ではなく server の totalCount）を表示する。
+    expect(screen.getByText(/登録件数\s*57件/)).toBeTruthy();
   });
 
   it('carries purpose=audit on the export request when CSV出力用途=監査 (#4)', async () => {
