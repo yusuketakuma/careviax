@@ -271,8 +271,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         })
       : undefined;
 
-    const result = await tx.dispenseResult.update({
-      where: { id },
+    // 楽観ロック: 読み取った version を where に含めた updateMany で claim する。
+    // count!==1 なら並行更新が割り込んだと判断し 409 で fail-close（rework 副作用は不発火）。
+    const claimed = await tx.dispenseResult.updateMany({
+      where: {
+        id,
+        org_id: ctx.orgId,
+        version: existing.version,
+      },
       data: {
         actual_drug_name: parsed.data.actual_drug_name,
         actual_drug_code: parsed.data.actual_drug_code,
@@ -284,6 +290,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         version: { increment: 1 },
       },
     });
+    if (claimed.count !== 1) {
+      return { error: '他のユーザーによって更新されています', conflict: true } as const;
+    }
+
+    const result = await tx.dispenseResult.findFirst({
+      where: { id, org_id: ctx.orgId },
+    });
+    if (!result) {
+      return { error: '他のユーザーによって更新されています', conflict: true } as const;
+    }
 
     // Re-set DispenseTask status to completed and cycle to audit_pending
     const task = await tx.dispenseTask.update({

@@ -5,7 +5,7 @@ const { authMock, prismaMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
   prismaMock: {
     membership: { findFirst: vi.fn() },
-    formularyChangeRequest: { findFirst: vi.fn(), update: vi.fn() },
+    formularyChangeRequest: { findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     drugMaster: { findFirst: vi.fn() },
     pharmacyDrugStock: { upsert: vi.fn() },
     auditLog: { create: vi.fn() },
@@ -70,6 +70,7 @@ describe('/api/pharmacy-drug-stock-requests/[id]', () => {
       id: 'request_1',
       status: 'approved',
     });
+    prismaMock.formularyChangeRequest.updateMany.mockResolvedValue({ count: 1 });
     prismaMock.auditLog.create.mockResolvedValue({ id: 'audit_1' });
   });
 
@@ -109,6 +110,14 @@ describe('/api/pharmacy-drug-stock-requests/[id]', () => {
         }),
       }),
     );
+    // 楽観的 claim は status='pending' を条件に含めて確定する
+    expect(prismaMock.formularyChangeRequest.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'request_1', org_id: 'org_1', status: 'pending' },
+        data: expect.objectContaining({ status: 'approved', decided_by_id: 'user_1' }),
+      }),
+    );
+    expect(prismaMock.formularyChangeRequest.update).not.toHaveBeenCalled();
   });
 
   it('rejects a pending request without mutating stock', async () => {
@@ -282,5 +291,25 @@ describe('/api/pharmacy-drug-stock-requests/[id]', () => {
     expect(response.status).toBe(409);
     expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
     expect(prismaMock.formularyChangeRequest.update).not.toHaveBeenCalled();
+  });
+
+  it('returns a workflow conflict without side effects when a concurrent decision wins the claim', async () => {
+    // findFirst は pending を返して事前チェックを通過するが、
+    // トランザクション内の楽観的 claim が count=0（同時 approve に先を越された）となる。
+    prismaMock.formularyChangeRequest.updateMany.mockResolvedValue({ count: 0 });
+
+    const response = await PATCH(createRequest({ decision: 'approve' }), {
+      params: Promise.resolve({ id: 'request_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'この申請はすでに処理済みです',
+    });
+    // 二重承認の副作用（stock 反映・監査ログ）は発火しない
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
 });

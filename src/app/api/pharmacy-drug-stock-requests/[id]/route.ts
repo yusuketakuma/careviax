@@ -80,7 +80,24 @@ export const PATCH = withAuthContext(
     }
 
     const decidedAt = new Date();
+    const decidedStatus = parsed.data.decision === 'approve' ? 'approved' : 'rejected';
     const result = await prisma.$transaction(async (tx) => {
+      // 楽観的 claim: status='pending' の申請 1 件だけを確定させる。
+      // findFirst→判定→update の TOCTOU（同時 approve/reject による二重承認）を
+      // count!==1 で fail-close し、stock 反映・監査ログを発火させない。
+      const claim = await tx.formularyChangeRequest.updateMany({
+        where: { id: request.id, org_id: authCtx.orgId, status: 'pending' },
+        data: {
+          status: decidedStatus,
+          decided_by_id: authCtx.userId,
+          decision_note: parsed.data.decision_note ?? null,
+          decided_at: decidedAt,
+        },
+      });
+      if (claim.count !== 1) {
+        return { kind: 'conflict' as const };
+      }
+
       let stock = null;
       if (parsed.data.decision === 'approve') {
         if (!approvalPayload) throw new Error('Approval payload must be validated before mutation');
@@ -111,15 +128,13 @@ export const PATCH = withAuthContext(
         });
       }
 
-      const updated = await tx.formularyChangeRequest.update({
-        where: { id: request.id },
-        data: {
-          status: parsed.data.decision === 'approve' ? 'approved' : 'rejected',
-          decided_by_id: authCtx.userId,
-          decision_note: parsed.data.decision_note ?? null,
-          decided_at: decidedAt,
-        },
-      });
+      const updated = {
+        ...request,
+        status: decidedStatus,
+        decided_by_id: authCtx.userId,
+        decision_note: parsed.data.decision_note ?? null,
+        decided_at: decidedAt,
+      };
 
       await createAuditLogEntry(tx, authCtx, {
         action:
@@ -138,10 +153,14 @@ export const PATCH = withAuthContext(
         },
       });
 
-      return { request: updated, stock };
+      return { kind: 'ok' as const, request: updated, stock };
     });
 
-    return success(result);
+    if (result.kind === 'conflict') {
+      return conflict('この申請はすでに処理済みです');
+    }
+
+    return success({ request: result.request, stock: result.stock });
   },
   { permission: 'canAdmin' },
 );

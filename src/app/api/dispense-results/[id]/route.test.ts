@@ -8,6 +8,7 @@ const {
   dispenseResultFindManyMock,
   dispenseAuditFindFirstMock,
   dispenseResultUpdateMock,
+  dispenseResultUpdateManyMock,
   dispenseTaskUpdateMock,
   visitScheduleFindManyMock,
   visitScheduleUpdateMock,
@@ -24,6 +25,7 @@ const {
   dispenseResultFindManyMock: vi.fn(),
   dispenseAuditFindFirstMock: vi.fn(),
   dispenseResultUpdateMock: vi.fn(),
+  dispenseResultUpdateManyMock: vi.fn(),
   dispenseTaskUpdateMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   visitScheduleUpdateMock: vi.fn(),
@@ -145,6 +147,7 @@ describe('/api/dispense-results/[id]', () => {
     ]);
     dispenseAuditFindFirstMock.mockResolvedValue({ id: 'audit_1', result: 'rejected' });
     dispenseResultUpdateMock.mockResolvedValue({ id: 'result_1' });
+    dispenseResultUpdateManyMock.mockResolvedValue({ count: 1 });
     dispenseTaskUpdateMock.mockResolvedValue({ cycle_id: 'cycle_1' });
     visitScheduleFindManyMock.mockResolvedValue([]);
     visitScheduleUpdateMock.mockResolvedValue({});
@@ -162,6 +165,7 @@ describe('/api/dispense-results/[id]', () => {
           findFirst: dispenseResultFindFirstMock,
           findMany: dispenseResultFindManyMock,
           update: dispenseResultUpdateMock,
+          updateMany: dispenseResultUpdateManyMock,
         },
         dispenseAudit: {
           findFirst: dispenseAuditFindFirstMock,
@@ -325,13 +329,14 @@ describe('/api/dispense-results/[id]', () => {
         },
       },
     });
-    expect(dispenseResultUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'result_1' },
+    expect(dispenseResultUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'result_1', org_id: 'org_1', version: 1 },
       data: expect.objectContaining({
         actual_drug_name: 'Drug B',
         version: { increment: 1 },
       }),
     });
+    expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).toHaveBeenCalledWith({
       where: { id: 'task_1' },
       data: { status: 'completed' },
@@ -496,6 +501,7 @@ describe('/api/dispense-results/[id]', () => {
       },
     });
     expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpdateManyMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
@@ -546,6 +552,7 @@ describe('/api/dispense-results/[id]', () => {
         },
       });
       expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
+      expect(dispenseResultUpdateManyMock).not.toHaveBeenCalled();
       expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
       expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
     },
@@ -587,6 +594,7 @@ describe('/api/dispense-results/[id]', () => {
       },
     });
     expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpdateManyMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
@@ -616,6 +624,7 @@ describe('/api/dispense-results/[id]', () => {
       },
     });
     expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpdateManyMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
@@ -635,8 +644,8 @@ describe('/api/dispense-results/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    expect(dispenseResultUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'result_1' },
+    expect(dispenseResultUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'result_1', org_id: 'org_1', version: 1 },
       data: expect.objectContaining({
         actual_quantity: 12,
         actual_unit: '錠',
@@ -664,6 +673,7 @@ describe('/api/dispense-results/[id]', () => {
     expect(dispenseResultFindFirstMock).not.toHaveBeenCalled();
     expect(dispenseAuditFindFirstMock).not.toHaveBeenCalled();
     expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpdateManyMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
@@ -681,6 +691,7 @@ describe('/api/dispense-results/[id]', () => {
     expect(dispenseResultFindFirstMock).not.toHaveBeenCalled();
     expect(dispenseAuditFindFirstMock).not.toHaveBeenCalled();
     expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpdateManyMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
@@ -698,6 +709,7 @@ describe('/api/dispense-results/[id]', () => {
     expect(dispenseResultFindFirstMock).not.toHaveBeenCalled();
     expect(dispenseAuditFindFirstMock).not.toHaveBeenCalled();
     expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpdateManyMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
@@ -717,7 +729,34 @@ describe('/api/dispense-results/[id]', () => {
     expect(response.status).toBe(404);
     expect(dispenseAuditFindFirstMock).not.toHaveBeenCalled();
     expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpdateManyMock).not.toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a version conflict without rework side effects when the optimistic claim is lost', async () => {
+    // 事前の version チェック(existing.version===payload.version)は通過するが、
+    // 読み取り後に別リクエストが version を進めたため updateMany の count が 0 になる。
+    dispenseResultUpdateManyMock.mockResolvedValue({ count: 0 });
+
+    const response = (await PATCH(
+      createRequest('http://localhost/api/dispense-results/result_1', {
+        special_notes: '再調剤メモ',
+        version: 1,
+      }),
+      {
+        params: Promise.resolve({ id: 'result_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '他のユーザーによって更新されています',
+    });
+    // version を where に含めた claim が負けたので、後続の rework 副作用は発火しない
+    expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 });
