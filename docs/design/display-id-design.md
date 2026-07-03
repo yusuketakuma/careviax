@@ -196,7 +196,7 @@ parseDisplayId(s):
 | Template                         | `tpl`   | org          | テンプレート                                                                   |
 | TracingReport                    | `trc`   | org          | トレーシングレポート（服薬情報提供）                                           |
 | UatFeedback                      | `uat`   | org          | UATフィードバック                                                              |
-| User                             | `u`     | org          | 利用者（主要20）。例 u0000000001                                               |
+| User                             | `u`     | global       | 利用者（multi-org identity）。tenant-visible staff ID は Membership.display_id |
 | VisitBillingCandidate            | `vbc`   | org          | 訪問請求候補                                                                   |
 | VisitHandoffExtraction           | `vhe`   | org          | 訪問引き継ぎ抽出                                                               |
 | VisitPreparation                 | `vprep` | org          | 訪問準備                                                                       |

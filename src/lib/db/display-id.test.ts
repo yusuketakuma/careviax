@@ -35,6 +35,8 @@ const ORGANIZATION_DISPLAY_ID_W4_MIGRATION =
   'prisma/migrations/20260703154000_add_organization_display_ids/migration.sql';
 const PHARMACY_PARTNERSHIP_DISPLAY_ID_W5_MIGRATION =
   'prisma/migrations/20260703155000_add_pharmacy_partnership_display_ids/migration.sql';
+const ADMIN_DRUG_DISPLAY_ID_W6_MIGRATION =
+  'prisma/migrations/20260703160000_add_admin_drug_display_ids/migration.sql';
 const PATIENT_DISPLAY_ID_W1_MODELS = [
   'Patient',
   'Residence',
@@ -140,6 +142,45 @@ const PHARMACY_PARTNERSHIP_DISPLAY_ID_W5_MODELS = [
   'PharmacyInvoiceItem',
   'ContractDocument',
 ] as const satisfies readonly DisplayIdModel[];
+const ADMIN_DISPLAY_ID_W6_MODELS = [
+  'NotificationRule',
+  'BillingRule',
+  'BillingCandidate',
+  'BillingEvidence',
+  'Notification',
+  'AuditLog',
+  'Template',
+  'DocumentDeliveryRule',
+  'FileAsset',
+  'UatFeedback',
+  'SourceOfTruthMatrix',
+  'PushSubscription',
+  'WebhookRegistration',
+  'WebhookDelivery',
+  'IncidentReport',
+] as const satisfies readonly DisplayIdModel[];
+const DRUG_DISPLAY_ID_W6_MODELS = [
+  'PharmacyDrugStock',
+  'FormularyChangeRequest',
+  'FormularyTemplate',
+] as const satisfies readonly DisplayIdModel[];
+const DEFERRED_DISPLAY_ID_SCHEMA_MODELS = [
+  'DrugAlertRule',
+  'FirstVisitDocument',
+  'HandoffItem',
+  'IntegrationJob',
+  'Intervention',
+  'MedicationIssue',
+  'MedicationProfile',
+  'PackagingMethodMaster',
+  'PcaPump',
+  'PcaPumpMaintenanceEvent',
+  'PcaPumpRental',
+  'PcaPumpRentalAccessory',
+  'ResidualMedication',
+  'SavedView',
+  'Task',
+] as const satisfies readonly DisplayIdModel[];
 const DISPLAY_ID_SCHEMA_WAVES = [
   {
     label: 'W1 patient-domain',
@@ -177,8 +218,21 @@ const DISPLAY_ID_SCHEMA_WAVES = [
     migrationPath: PHARMACY_PARTNERSHIP_DISPLAY_ID_W5_MIGRATION,
     models: PHARMACY_PARTNERSHIP_DISPLAY_ID_W5_MODELS,
   },
+  {
+    label: 'W6 admin-domain',
+    schemaFile: 'admin.prisma',
+    migrationPath: ADMIN_DRUG_DISPLAY_ID_W6_MIGRATION,
+    models: ADMIN_DISPLAY_ID_W6_MODELS,
+  },
+  {
+    label: 'W6 drug-domain',
+    schemaFile: 'drug.prisma',
+    migrationPath: ADMIN_DRUG_DISPLAY_ID_W6_MIGRATION,
+    models: DRUG_DISPLAY_ID_W6_MODELS,
+  },
 ] as const;
 const DISPLAY_ID_WAVE_MODELS = DISPLAY_ID_SCHEMA_WAVES.flatMap((wave) => wave.models);
+const DISPLAY_ID_SCHEMA_DEFERRED_MODELS = [...DEFERRED_DISPLAY_ID_SCHEMA_MODELS];
 const RUN_ID = randomUUID().replaceAll('-', '').slice(0, 12);
 const databaseUrl = process.env.DISPLAY_ID_DATABASE_URL ?? process.env.DATABASE_URL;
 const shouldRunDbTests =
@@ -231,6 +285,18 @@ function collectDirectOrgScopedModels(schema: string): string[] {
         /\n\s+org_id\s+String(?:\s|$)/.test(block) &&
         /\n\s+created_at\s+DateTime(?:\s|$)/.test(block) &&
         block.includes('@@unique([id, org_id])')
+      );
+    })
+    .sort();
+}
+
+function collectNonNullableOrgScopedModels(schema: string): string[] {
+  return readModelNames(schema)
+    .filter((model) => {
+      const block = readModelBlock(schema, model);
+      return (
+        /\n\s+org_id\s+String(?:\s|$)/.test(block) &&
+        /\n\s+created_at\s+DateTime(?:\s|$)/.test(block)
       );
     })
     .sort();
@@ -291,7 +357,7 @@ describe('display_id registry and format contract', () => {
       counts[entry.scope] = (counts[entry.scope] ?? 0) + 1;
       return counts;
     }, {});
-    expect(scopeCounts).toEqual({ global: 11, org: 126, orgViaParent: 1 });
+    expect(scopeCounts).toEqual({ global: 12, org: 125, orgViaParent: 1 });
 
     expect(
       entries
@@ -310,6 +376,7 @@ describe('display_id registry and format contract', () => {
       'LabelDictionary',
       'Organization',
       'PlatformOperator',
+      'User',
     ]);
     expect(getDisplayIdRegistryEntry('HandoffItem')).toEqual({
       prefix: 'h',
@@ -413,6 +480,46 @@ describe('display_id registry and format contract', () => {
     expect(collectDirectOrgScopedModels(schema)).toEqual(
       [...PHARMACY_PARTNERSHIP_DISPLAY_ID_W5_MODELS].sort(),
     );
+  });
+
+  it('keeps the W6 admin and drug waves aligned with non-null direct org-scoped models', () => {
+    const adminSchema = readFileSync(join(SCHEMA_DIR, 'admin.prisma'), 'utf8');
+    const drugSchema = readFileSync(join(SCHEMA_DIR, 'drug.prisma'), 'utf8');
+
+    expect(collectNonNullableOrgScopedModels(adminSchema)).toEqual(
+      [...ADMIN_DISPLAY_ID_W6_MODELS].sort(),
+    );
+    expect(collectNonNullableOrgScopedModels(drugSchema)).toEqual(
+      [...DRUG_DISPLAY_ID_W6_MODELS].sort(),
+    );
+  });
+
+  it('assigns every tenant-scoped registry model to a wave or explicit deferred list', () => {
+    const tenantScopedRegistryModels = Object.entries(DISPLAY_ID_REGISTRY)
+      .filter(([, entry]) => entry.scope === 'org' || entry.scope === 'orgViaParent')
+      .map(([model]) => model as DisplayIdModel)
+      .sort();
+    const waveModelSet = new Set<DisplayIdModel>(DISPLAY_ID_WAVE_MODELS);
+    const deferredModelSet = new Set<DisplayIdModel>(DISPLAY_ID_SCHEMA_DEFERRED_MODELS);
+    const coveredModelSet = new Set<DisplayIdModel>([
+      ...DISPLAY_ID_WAVE_MODELS,
+      ...DISPLAY_ID_SCHEMA_DEFERRED_MODELS,
+    ]);
+
+    expect(DISPLAY_ID_WAVE_MODELS.filter((model) => deferredModelSet.has(model))).toEqual([]);
+    expect(DISPLAY_ID_SCHEMA_DEFERRED_MODELS.filter((model) => waveModelSet.has(model))).toEqual(
+      [],
+    );
+    expect([...waveModelSet]).toHaveLength(DISPLAY_ID_WAVE_MODELS.length);
+    expect([...deferredModelSet]).toHaveLength(DISPLAY_ID_SCHEMA_DEFERRED_MODELS.length);
+    expect(tenantScopedRegistryModels.filter((model) => !coveredModelSet.has(model))).toEqual([]);
+    expect(
+      [...coveredModelSet].filter(
+        (model) =>
+          !tenantScopedRegistryModels.includes(model) &&
+          getDisplayIdRegistryEntry(model).scope !== 'global',
+      ),
+    ).toEqual([]);
   });
 });
 

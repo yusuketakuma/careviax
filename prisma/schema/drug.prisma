@@ -188,6 +188,7 @@ model DrugAlertRule {
 model PharmacyDrugStock {
   id                    String       @id @default(cuid())
   org_id                String
+  display_id            String?
   site_id               String
   site                  PharmacySite @relation(fields: [site_id], references: [id])
   drug_master_id        String
@@ -209,6 +210,7 @@ model PharmacyDrugStock {
   created_at            DateTime     @default(now())
   updated_at            DateTime     @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([site_id, drug_master_id])
   @@index([org_id])
   @@index([site_id])
@@ -223,6 +225,7 @@ model PharmacyDrugStock {
 model FormularyChangeRequest {
   id                String    @id @default(cuid())
   org_id            String
+  display_id        String?
   site_id           String
   drug_master_id    String
   requested_by_id   String
@@ -237,6 +240,7 @@ model FormularyChangeRequest {
   created_at        DateTime  @default(now())
   updated_at        DateTime  @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id, site_id, status])
   @@index([org_id, drug_master_id, status])
   @@index([org_id, site_id, drug_master_id, status], map: "FormularyChangeRequest_pending_guard_idx")
@@ -246,6 +250,7 @@ model FormularyChangeRequest {
 model FormularyTemplate {
   id             String   @id @default(cuid())
   org_id         String
+  display_id     String?
   name           String
   description    String?
   source_site_id String?
@@ -255,6 +260,7 @@ model FormularyTemplate {
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([org_id, name], map: "FormularyTemplate_org_id_name_key")
   @@index([org_id, created_at])
 }

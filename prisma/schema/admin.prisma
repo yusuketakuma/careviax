@@ -38,6 +38,7 @@ model IdSequence {
 model NotificationRule {
   id         String   @id @default(cuid())
   org_id     String
+  display_id String?
   event_type String
   channel    String // in_app/email/sms/line/fax/mcs
   recipients Json
@@ -46,6 +47,7 @@ model NotificationRule {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([event_type])
   @@index([enabled])
@@ -54,6 +56,7 @@ model NotificationRule {
 model BillingRule {
   id                    String      @id @default(cuid())
   org_id                String
+  display_id            String?
   ssot_key              String?
   billing_scope         String      @default("custom") // home_care_ssot/custom_override
   rule_type             String // base/addition/regional_addition/reduction
@@ -77,6 +80,7 @@ model BillingRule {
   created_at            DateTime    @default(now())
   updated_at            DateTime    @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([org_id, ssot_key])
   @@index([org_id])
   @@index([rule_type])
@@ -88,6 +92,7 @@ model BillingRule {
 model BillingCandidate {
   id                    String   @id @default(cuid())
   org_id                String
+  display_id            String?
   patient_id            String?
   billing_domain        String   @default("home_care") // home_care/pca_rental
   billing_target_type   String   @default("patient") // patient/institution
@@ -109,6 +114,7 @@ model BillingCandidate {
   created_at            DateTime @default(now())
   updated_at            DateTime @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([org_id, dedupe_key])
   @@index([org_id])
   @@index([org_id, billing_domain, billing_month])
@@ -120,6 +126,7 @@ model BillingCandidate {
 model BillingEvidence {
   id                         String     @id @default(cuid())
   org_id                     String
+  display_id                 String?
   visit_record_id            String
   patient_id                 String?
   cycle_id                   String?
@@ -146,6 +153,7 @@ model BillingEvidence {
   created_at                 DateTime   @default(now())
   updated_at                 DateTime   @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([org_id, visit_record_id])
   @@index([org_id])
   @@index([visit_record_id])
@@ -156,6 +164,7 @@ model BillingEvidence {
 model Notification {
   id         String           @id @default(cuid())
   org_id     String
+  display_id String?
   user_id    String
   event_type String?
   type       NotificationType
@@ -169,6 +178,7 @@ model Notification {
   created_at DateTime         @default(now())
   updated_at DateTime         @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([org_id, user_id, dedupe_key])
   @@index([org_id])
   @@index([user_id])
@@ -179,6 +189,7 @@ model Notification {
 model AuditLog {
   id                String   @id @default(cuid())
   org_id            String
+  display_id        String?
   actor_id          String // User ID
   actor_pharmacy_id String?
   actor_site_id     String?
@@ -192,6 +203,7 @@ model AuditLog {
   created_at        DateTime @default(now())
   updated_at        DateTime @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([actor_id])
   @@index([org_id, actor_site_id, created_at])
@@ -228,6 +240,7 @@ model IntegrationJob {
 model Template {
   id              String          @id @default(cuid())
   org_id          String
+  display_id      String?
   name            String
   template_type   String // care_report/tracing_report/management_plan/medication_calendar/contract_document/important_matters/privacy_consent/consent_form
   target_role     String?
@@ -241,6 +254,7 @@ model Template {
   created_at      DateTime        @default(now())
   updated_at      DateTime        @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([template_type])
   @@index([target_role])
@@ -249,6 +263,7 @@ model Template {
 model DocumentDeliveryRule {
   id                String   @id @default(cuid())
   org_id            String
+  display_id        String?
   document_type     String
   target_role       String
   channel           String // email/fax/mcs
@@ -257,6 +272,7 @@ model DocumentDeliveryRule {
   created_at        DateTime @default(now())
   updated_at        DateTime @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([document_type, target_role])
   @@index([is_active])
@@ -278,6 +294,7 @@ model Setting {
 model FileAsset {
   id                   String       @id
   org_id               String
+  display_id           String?
   org                  Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
   purpose              String
   storage_key          String       @unique
@@ -300,6 +317,7 @@ model FileAsset {
 
   consent_records ConsentRecord[]
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([org_id, purpose])
   @@index([org_id, status])
@@ -322,6 +340,7 @@ model LabelDictionary {
 model UatFeedback {
   id                 String    @id @default(cuid())
   org_id             String
+  display_id         String?
   submitted_by       String?
   priority           String
   status             String    @default("open")
@@ -336,6 +355,7 @@ model UatFeedback {
   created_at         DateTime  @default(now())
   updated_at         DateTime  @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([priority])
   @@index([status])
@@ -346,6 +366,7 @@ model UatFeedback {
 model SourceOfTruthMatrix {
   id                 String   @id @default(cuid())
   org_id             String
+  display_id         String?
   entity_type        String // patient/prescription/dispense/carry_items/report_delivery/billing
   source_of_truth    String // ph-os/external
   sync_direction     String? // push/pull/bidirectional
@@ -354,12 +375,14 @@ model SourceOfTruthMatrix {
   created_at         DateTime @default(now())
   updated_at         DateTime @updatedAt
 
+  @@unique([org_id, display_id])
   @@unique([org_id, entity_type])
 }
 
 model PushSubscription {
   id         String   @id @default(cuid())
   org_id     String
+  display_id String?
   user_id    String
   endpoint   String   @unique
   p256dh     String
@@ -367,6 +390,7 @@ model PushSubscription {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id])
   @@index([user_id])
 }
@@ -374,6 +398,7 @@ model PushSubscription {
 model WebhookRegistration {
   id                String   @id @default(cuid())
   org_id            String
+  display_id        String?
   url               String
   secret            String?
   secret_ciphertext String?
@@ -389,12 +414,14 @@ model WebhookRegistration {
   organization Organization      @relation(fields: [org_id], references: [id])
   deliveries   WebhookDelivery[]
 
+  @@unique([org_id, display_id])
   @@index([org_id])
 }
 
 model WebhookDelivery {
   id                      String    @id @default(cuid())
   org_id                  String
+  display_id              String?
   webhook_registration_id String
   delivery_id             String
   event                   String
@@ -412,6 +439,7 @@ model WebhookDelivery {
   organization Organization        @relation(fields: [org_id], references: [id])
   registration WebhookRegistration @relation(fields: [webhook_registration_id], references: [id])
 
+  @@unique([org_id, display_id])
   @@unique([delivery_id, webhook_registration_id])
   @@index([org_id, created_at])
   @@index([status, next_attempt_at])
@@ -424,6 +452,7 @@ model WebhookDelivery {
 model IncidentReport {
   id               String    @id @default(cuid())
   org_id           String
+  display_id       String?
   site_id          String?
   patient_id       String? // 任意: 患者に紐づくヒヤリハットのみ設定
   title            String
@@ -439,6 +468,7 @@ model IncidentReport {
   created_at       DateTime  @default(now())
   updated_at       DateTime  @updatedAt
 
+  @@unique([org_id, display_id])
   @@index([org_id, status])
   @@index([org_id, created_at])
 }

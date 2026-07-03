@@ -16,6 +16,7 @@ export const DISPLAY_ID_REGISTRY = {
   BillingCandidate: { prefix: 'b', scope: 'org' },
   BillingEvidence: { prefix: 'bev', scope: 'org' },
   BillingRule: { prefix: 'brul', scope: 'org' },
+  // Platform control-plane rows are platform-only global identifiers; target_org_id is not row ownership.
   BreakGlassSession: { prefix: 'bg', scope: 'global' },
   BusinessHoliday: { prefix: 'bhol', scope: 'org' },
   CareCase: { prefix: 'cc', scope: 'org' },
@@ -116,6 +117,7 @@ export const DISPLAY_ID_REGISTRY = {
   PharmacySite: { prefix: 'phs', scope: 'org' },
   PharmacySiteInsuranceConfig: { prefix: 'phsic', scope: 'org' },
   PharmacyVisitRequest: { prefix: 'phvr', scope: 'org' },
+  // Platform operators have no org_id; tenant-visible staff IDs are Membership.display_id.
   PlatformOperator: { prefix: 'plop', scope: 'global' },
   PrescriberInstitution: { prefix: 'prin', scope: 'org' },
   PrescriptionIntake: { prefix: 'r', scope: 'org' },
@@ -136,7 +138,8 @@ export const DISPLAY_ID_REGISTRY = {
   Template: { prefix: 'tpl', scope: 'org' },
   TracingReport: { prefix: 'trc', scope: 'org' },
   UatFeedback: { prefix: 'uat', scope: 'org' },
-  User: { prefix: 'u', scope: 'org' },
+  // Multi-org identity record; tenant-visible staff/user numbering lives on Membership.display_id.
+  User: { prefix: 'u', scope: 'global' },
   VisitBillingCandidate: { prefix: 'vbc', scope: 'org' },
   VisitHandoffExtraction: { prefix: 'vhe', scope: 'org' },
   VisitPreparation: { prefix: 'vprep', scope: 'org' },
