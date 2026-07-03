@@ -2,12 +2,9 @@
 
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type {
-  CaseOption,
-  Pharmacist,
-  VisitScheduleBillingPreview,
-  VisitVehicleResourceSummary,
-} from './day-view.shared';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
+import type { CaseOption, Pharmacist, VisitScheduleBillingPreview } from './day-view.shared';
+import type { VisitVehicleResourceScheduleOptionsResponse } from '@/types/api/visit-vehicle-resources';
 import {
   buildScheduleDayPharmacistLookup,
   buildScheduleDayPlannerBillingPreviewQueryKey,
@@ -18,14 +15,6 @@ import {
   getScheduleDaySelectedPlannerVehicle,
   type ScheduleDayPlannerForm,
 } from './schedule-day-planner';
-
-export type VisitVehicleResourceOption = VisitVehicleResourceSummary & {
-  available: boolean;
-  site: {
-    id: string;
-    name: string;
-  } | null;
-};
 
 export function useScheduleDayPlannerQueries({
   orgId,
@@ -66,10 +55,10 @@ export function useScheduleDayPlannerQueries({
     queryKey: buildScheduleDayVehicleResourcesQueryKey({ orgId, selectedPlannerSiteId }),
     queryFn: async () => {
       const res = await fetch(buildScheduleDayVehicleResourcesRequestUrl(selectedPlannerSiteId), {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('社用車リソースの取得に失敗しました');
-      return res.json() as Promise<{ data: VisitVehicleResourceOption[] }>;
+      return res.json() as Promise<VisitVehicleResourceScheduleOptionsResponse>;
     },
     enabled: vehicleResourcesEnabled,
   });
@@ -105,7 +94,7 @@ export function useScheduleDayPlannerQueries({
           siteId: selectedPlannerSiteId,
         }),
         {
-          headers: { 'x-org-id': orgId },
+          headers: buildOrgHeaders(orgId),
         },
       );
       if (!res.ok) throw new Error('算定プレビューの取得に失敗しました');

@@ -6,10 +6,8 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CaseOption, Pharmacist, VisitScheduleBillingPreview } from './day-view.shared';
 import { getDefaultScheduleDayPlannerForm } from './schedule-day-planner';
-import {
-  useScheduleDayPlannerQueries,
-  type VisitVehicleResourceOption,
-} from './schedule-day-planner-hooks';
+import { useScheduleDayPlannerQueries } from './schedule-day-planner-hooks';
+import type { VisitVehicleResourceScheduleOption } from '@/types/api/visit-vehicle-resources';
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -42,7 +40,7 @@ const pharmacists: Pharmacist[] = [
   { id: 'pharmacist_2', name: '薬剤師B', site_id: 'site_2', site_name: '分店' },
 ];
 
-const vehicleResources: VisitVehicleResourceOption[] = [
+const vehicleResources: VisitVehicleResourceScheduleOption[] = [
   {
     id: 'vehicle_2',
     label: '社用車B',
