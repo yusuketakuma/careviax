@@ -152,6 +152,7 @@ const COVERAGE_CATEGORY_ENTRIES = {
     'VisitScheduleContactLog',
     'VisitScheduleOverride',
     'VisitHandoffExtraction',
+    'IdSequence',
     // Platform-operator console tables (no org_id; platform-level, not tenant
     // data). Excluded from the tenant Data Explorer via
     // DATA_EXPLORER_MODEL_EXCLUSIONS so org admins never see operator identities

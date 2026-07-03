@@ -225,6 +225,9 @@ const DATA_EXPLORER_MODEL_EXCLUSIONS: ReadonlySet<string> = new Set([
   'PatientMcsMessage',
   'HandoffItem',
   'PushSubscription',
+  // Display-id sequence counters are internal allocation infrastructure; org
+  // admins should not inspect or edit sequence state through tenant Data Explorer.
+  'IdSequence',
   // Platform-operator console tables have no org_id and are platform-level (not
   // tenant data). Excluding them keeps org admins from ever seeing operator
   // identities / break-glass sessions in the tenant Data Explorer.
