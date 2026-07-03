@@ -47,6 +47,7 @@ import {
   PATIENT_SHARE_CORRECTION_TARGET_LABELS as CORRECTION_TARGET_LABELS,
 } from '@/lib/patient-share/correction-request-labels';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 
 type PatientShareCaseRow = {
   id: string;
@@ -2777,7 +2778,7 @@ export function PharmacyCooperationWorkflowContent() {
       await invalidateWorkflow();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '患者共有ケースの有効化に失敗しました');
+      toast.error(messageFromError(error, '患者共有ケースの有効化に失敗しました'));
     },
   });
 
@@ -2827,7 +2828,7 @@ export function PharmacyCooperationWorkflowContent() {
       await invalidateWorkflow();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '患者リンクの更新に失敗しました');
+      toast.error(messageFromError(error, '患者リンクの更新に失敗しました'));
     },
   });
 
@@ -2872,7 +2873,7 @@ export function PharmacyCooperationWorkflowContent() {
       await invalidateWorkflow();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '患者共有同意の登録に失敗しました');
+      toast.error(messageFromError(error, '患者共有同意の登録に失敗しました'));
     },
   });
 
@@ -2907,7 +2908,7 @@ export function PharmacyCooperationWorkflowContent() {
       await invalidateWorkflow();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '患者共有同意の撤回に失敗しました');
+      toast.error(messageFromError(error, '患者共有同意の撤回に失敗しました'));
     },
   });
 
@@ -2948,7 +2949,7 @@ export function PharmacyCooperationWorkflowContent() {
       await invalidateWorkflow();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '修正依頼の作成に失敗しました');
+      toast.error(messageFromError(error, '修正依頼の作成に失敗しました'));
     },
   });
 
@@ -2990,7 +2991,7 @@ export function PharmacyCooperationWorkflowContent() {
       await invalidateWorkflow();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '訪問依頼の作成に失敗しました');
+      toast.error(messageFromError(error, '訪問依頼の作成に失敗しました'));
     },
   });
 
@@ -3024,7 +3025,7 @@ export function PharmacyCooperationWorkflowContent() {
       await invalidateWorkflow();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'メッセージの送信に失敗しました');
+      toast.error(messageFromError(error, 'メッセージの送信に失敗しました'));
     },
   });
 
@@ -3062,7 +3063,7 @@ export function PharmacyCooperationWorkflowContent() {
       await invalidateWorkflow();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '協力訪問記録の保存に失敗しました');
+      toast.error(messageFromError(error, '協力訪問記録の保存に失敗しました'));
     },
   });
 
@@ -3097,7 +3098,7 @@ export function PharmacyCooperationWorkflowContent() {
       await invalidateWorkflow();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '訪問依頼の更新に失敗しました');
+      toast.error(messageFromError(error, '訪問依頼の更新に失敗しました'));
     },
   });
 
@@ -3118,7 +3119,7 @@ export function PharmacyCooperationWorkflowContent() {
       await invalidateWorkflow();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '協力訪問記録の提出に失敗しました');
+      toast.error(messageFromError(error, '協力訪問記録の提出に失敗しました'));
     },
   });
 
@@ -3156,7 +3157,7 @@ export function PharmacyCooperationWorkflowContent() {
       await invalidateWorkflow();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '協力訪問記録の更新に失敗しました');
+      toast.error(messageFromError(error, '協力訪問記録の更新に失敗しました'));
     },
   });
 
@@ -3177,7 +3178,7 @@ export function PharmacyCooperationWorkflowContent() {
       await invalidateWorkflow();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '報告書ドラフトの作成に失敗しました');
+      toast.error(messageFromError(error, '報告書ドラフトの作成に失敗しました'));
     },
   });
 

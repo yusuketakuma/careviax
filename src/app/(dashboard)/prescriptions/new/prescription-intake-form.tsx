@@ -25,6 +25,7 @@ import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { usePrescriptionDraft } from '@/lib/hooks/use-prescription-draft';
 import { isOfflineEncryptionUnavailableError } from '@/lib/offline/crypto';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
+import { messageFromError } from '@/lib/utils/error-message';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildDrugMastersApiPath } from '@/lib/drug-masters/api-paths';
 import { downscaleImage } from '@/lib/files/downscale-image';
@@ -545,9 +546,7 @@ export function PrescriptionIntakeForm() {
       return;
     }
 
-    toast.error(
-      draftError instanceof Error ? draftError.message : '処方受付の下書き保存に失敗しました',
-    );
+    toast.error(messageFromError(draftError, '処方受付の下書き保存に失敗しました'));
   }, []);
 
   // Load draft on mount

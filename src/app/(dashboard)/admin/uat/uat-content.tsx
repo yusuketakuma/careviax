@@ -20,6 +20,7 @@ import { SegmentedProgressBar } from '@/components/ui/segmented-progress-bar';
 import { Separator } from '@/components/ui/separator';
 import { UAT_CHECKLIST, UAT_PRIORITY_OPTIONS, UAT_STATUS_OPTIONS } from '@/lib/constants/uat';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { messageFromError } from '@/lib/utils/error-message';
 import {
   createUatFeedbackDraft,
   isUatFeedbackDraftDirty,
@@ -337,9 +338,7 @@ export function UatContent() {
       ]);
     },
     onError: (error) => {
-      toast.error(
-        error instanceof Error ? error.message : 'UAT フィードバックの送信に失敗しました',
-      );
+      toast.error(messageFromError(error, 'UAT フィードバックの送信に失敗しました'));
     },
   });
   const updateMutation = useMutation({
@@ -371,9 +370,7 @@ export function UatContent() {
       ]);
     },
     onError: (error) => {
-      toast.error(
-        error instanceof Error ? error.message : 'UAT フィードバックの更新に失敗しました',
-      );
+      toast.error(messageFromError(error, 'UAT フィードバックの更新に失敗しました'));
     },
   });
 
