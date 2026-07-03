@@ -30,6 +30,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { careTeamContactBadges, type CareTeamContactBadge } from '@/lib/patient/care-team-contact';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { formatDisplayEntityLabel } from '@/lib/display-id/display-labels';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { cn } from '@/lib/utils';
@@ -91,6 +92,16 @@ type ReliabilityWarning = {
   message: string;
 };
 
+type CareTeamCaseOption = {
+  id: string;
+  display_id?: string | null;
+};
+
+function formatCareTeamCaseIdentifier(careCase: CareTeamCaseOption) {
+  const label = formatDisplayEntityLabel(careCase, { fallbackLength: 6 });
+  return careCase.display_id?.trim() ? label : label.toUpperCase();
+}
+
 const roleLabel: Record<CareTeamRow['role'], string> = {
   physician: '訪問診療医',
   nurse: '訪問看護師',
@@ -114,6 +125,7 @@ export function PatientCareTeamPanel({
   orgId: string;
   cases: Array<{
     id: string;
+    display_id?: string | null;
     status: string;
     care_team_links: Array<{
       id: string;
@@ -375,7 +387,7 @@ export function PatientCareTeamPanel({
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm text-muted-foreground">
             {selectedCase
-              ? `ケース ${selectedCase.id.slice(-6).toUpperCase()} / ${selectedCase.status}`
+              ? `ケース ${formatCareTeamCaseIdentifier(selectedCase)} / ${selectedCase.status}`
               : 'ケース未選択'}
           </div>
           <Select
@@ -388,7 +400,7 @@ export function PatientCareTeamPanel({
             <SelectContent>
               {cases.map((careCase) => (
                 <SelectItem key={careCase.id} value={careCase.id}>
-                  ケース {careCase.id.slice(-6).toUpperCase()}
+                  ケース {formatCareTeamCaseIdentifier(careCase)}
                 </SelectItem>
               ))}
             </SelectContent>

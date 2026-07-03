@@ -92,6 +92,7 @@ export type PatientOverview = {
   }>;
   cases: Array<{
     id: string;
+    display_id?: string | null;
     status: string;
     primary_pharmacist_id: string | null;
     backup_pharmacist_id: string | null;

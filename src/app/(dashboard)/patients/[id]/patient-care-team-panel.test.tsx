@@ -51,6 +51,7 @@ describe('PatientCareTeamPanel', () => {
         cases={[
           {
             id: 'case_active_123456',
+            display_id: 'cc0000000777',
             status: 'active',
             care_team_links: [
               {
@@ -76,6 +77,8 @@ describe('PatientCareTeamPanel', () => {
     expect(screen.getByRole('heading', { level: 2, name: '多職種連携先' }).tagName).toBe('H2');
     expect(screen.getByDisplayValue('佐藤医師')).toBeTruthy();
     expect(screen.getByDisplayValue('千代田クリニック')).toBeTruthy();
+    expect(screen.getByText('ケース cc0000000777 / active')).toBeTruthy();
+    expect(screen.queryByText('ケース 123456 / active')).toBeNull();
     expect(screen.getByLabelText('多職種連携先のケース')).toBeTruthy();
     expect(screen.getByLabelText('多職種連携先1件目の他職種マスター')).toBeTruthy();
     expect(screen.getByLabelText('多職種連携先1件目の役割')).toBeTruthy();
@@ -223,6 +226,7 @@ describe('PatientCareTeamPanel', () => {
     return [
       {
         id: 'case_active_123456',
+        display_id: 'cc0000000777',
         status: 'active' as const,
         care_team_links: [] as never[],
       },
@@ -324,6 +328,7 @@ describe('PatientCareTeamPanel', () => {
       const body = init.body as string;
       // patient id lives only in the URL path; the body is preserved exactly (raw case_id, empty links).
       expect(body).not.toContain(hostileId);
+      expect(body).not.toContain('cc0000000777');
       expect(JSON.parse(body)).toEqual({ case_id: 'case_active_123456', links: [] });
     } finally {
       vi.unstubAllGlobals();

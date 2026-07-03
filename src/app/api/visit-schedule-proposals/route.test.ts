@@ -155,11 +155,6 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
-}
-
 function createMalformedJsonPostRequest() {
   return new NextRequest('http://localhost/api/visit-schedule-proposals', {
     method: 'POST',
@@ -169,6 +164,11 @@ function createMalformedJsonPostRequest() {
       'x-org-id': 'org_1',
     },
   });
+}
+
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function buildSerializableConflictError() {
@@ -262,11 +262,14 @@ describe('/api/visit-schedule-proposals', () => {
     visitScheduleProposalFindManyMock.mockResolvedValue([
       {
         id: 'proposal_1',
+        display_id: 'vsp0000000001',
         proposed_pharmacist_id: 'user_2',
         reject_reason: '東京都港区2-2-2 090-1234-5678 アムロジピン 処方詳細',
         case_: {
+          display_id: 'cc0000000001',
           patient: {
             id: 'patient_1',
+            display_id: 'p0000000001',
             name: '患者A',
             phone: '03-0000-0000',
             medical_insurance_number: 'MED-SECRET-1',
@@ -428,6 +431,7 @@ describe('/api/visit-schedule-proposals', () => {
       data: [
         expect.objectContaining({
           id: 'proposal_1',
+          display_id: 'vsp0000000001',
           proposed_pharmacist: expect.objectContaining({
             id: 'user_2',
             name: '薬剤師A',
@@ -453,6 +457,7 @@ describe('/api/visit-schedule-proposals', () => {
     expect(body.data[0].case_).not.toHaveProperty('patient_id');
     expect(body.data[0].case_.patient).toEqual({
       id: 'patient_1',
+      display_id: 'p0000000001',
       name: '患者A',
       residences: [
         {
@@ -464,6 +469,7 @@ describe('/api/visit-schedule-proposals', () => {
         },
       ],
     });
+    expect(body.data[0].case_.display_id).toBe('cc0000000001');
     expect(body.data[0].case_.patient).not.toHaveProperty('phone');
     expect(body.data[0].case_.patient).not.toHaveProperty('medical_insurance_number');
     expect(body.data[0].case_.patient).not.toHaveProperty('care_insurance_number');
@@ -584,6 +590,7 @@ describe('/api/visit-schedule-proposals', () => {
     visitScheduleProposalFindManyMock.mockResolvedValueOnce([
       {
         id: 'proposal_palette_1',
+        display_id: 'vsp0000000101',
         proposal_status: 'patient_contact_pending',
         patient_contact_status: 'pending',
         proposed_date: new Date('2026-04-03T00:00:00.000Z'),
@@ -595,8 +602,10 @@ describe('/api/visit-schedule-proposals', () => {
         vehicle_resource: { id: 'vehicle_1', label: '社用車A' },
         contact_logs: [{ note: '家族へ折返し待ち', contact_phone: '090-0000-0000' }],
         case_: {
+          display_id: 'cc0000000101',
           patient: {
             id: 'patient_1',
+            display_id: 'p0000000101',
             name: '患者A',
             phone: '03-0000-0000',
             residences: [{ address: '東京都千代田区1-1-1', lat: 35.1, lng: 139.1 }],
@@ -605,6 +614,7 @@ describe('/api/visit-schedule-proposals', () => {
       },
       {
         id: 'proposal_palette_2',
+        display_id: null,
         proposal_status: 'patient_contact_pending',
         patient_contact_status: 'pending',
         proposed_date: new Date('2026-04-04T00:00:00.000Z'),
@@ -612,8 +622,10 @@ describe('/api/visit-schedule-proposals', () => {
         time_window_end: new Date('2026-04-04T10:00:00.000Z'),
         proposed_pharmacist_id: null,
         case_: {
+          display_id: null,
           patient: {
             id: 'patient_2',
+            display_id: null,
             name: '患者B',
           },
         },
@@ -631,14 +643,17 @@ describe('/api/visit-schedule-proposals', () => {
       data: [
         {
           id: 'proposal_palette_1',
+          display_id: 'vsp0000000101',
           proposal_status: 'patient_contact_pending',
           patient_contact_status: 'pending',
           proposed_date: '2026-04-03T00:00:00.000Z',
           time_window_start: '2026-04-03T09:00:00.000Z',
           time_window_end: '2026-04-03T10:00:00.000Z',
           case_: {
+            display_id: 'cc0000000101',
             patient: {
               id: 'patient_1',
+              display_id: 'p0000000101',
               name: '患者A',
             },
           },
@@ -654,6 +669,7 @@ describe('/api/visit-schedule-proposals', () => {
       take: 2,
       select: {
         id: true,
+        display_id: true,
         proposal_status: true,
         patient_contact_status: true,
         proposed_date: true,
@@ -662,9 +678,11 @@ describe('/api/visit-schedule-proposals', () => {
         proposed_pharmacist_id: true,
         case_: {
           select: {
+            display_id: true,
             patient: {
               select: {
                 id: true,
+                display_id: true,
                 name: true,
               },
             },

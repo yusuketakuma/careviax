@@ -124,6 +124,15 @@ describe('schedule-day-view.helpers', () => {
 
   it('formats short entity identifiers with optional known-prefix stripping', () => {
     expect(formatShortEntityIdentifier('  ')).toBe('未設定');
+    expect(formatShortEntityIdentifier({ id: 'case_1234567890', display_id: 'cc0000000042' })).toBe(
+      'cc0000000042',
+    );
+    expect(
+      formatShortEntityIdentifier({
+        id: 'case_1234567890',
+        display_id: '   ',
+      }),
+    ).toBe('34567890');
     expect(formatShortEntityIdentifier('case_1234567890')).toBe('34567890');
     expect(formatShortEntityIdentifier('case_1234567890', { stripKnownPrefixes: true })).toBe(
       '34567890',
@@ -202,6 +211,7 @@ describe('schedule-day-view.helpers', () => {
       finalized_schedule_id: null,
       reschedule_source_schedule_id: null,
       case_: {
+        display_id: '1',
         patient: {
           id: 'patient_1',
           name: '山田花子',
@@ -237,9 +247,39 @@ describe('schedule-day-view.helpers', () => {
 
     expect(proposalShortEntityIdentifier('case_same_2')).toBe('same_2');
     expect(proposalSafeIdentifierLabel(proposal)).toBe('ケース 1 / 候補 1');
+    expect(
+      proposalSafeIdentifierLabel({
+        ...proposal,
+        display_id: 'vsp0000000001',
+        case_: {
+          ...proposal.case_,
+          display_id: 'cc0000000001',
+        },
+      }),
+    ).toBe('ケース cc0000000001 / 候補 vsp0000000001');
+    expect(
+      proposalSafeIdentifierLabel({
+        ...proposal,
+        display_id: null,
+        case_: {
+          ...proposal.case_,
+          display_id: null,
+        },
+      }),
+    ).toBe('ケース 1 / 候補 1');
     expect(caseOptionPrimaryPharmacistLabel({ ...careCase, primary_pharmacist_name: null })).toBe(
       '主担当未設定',
     );
+    expect(
+      caseOptionTargetLabel({
+        ...careCase,
+        display_id: 'cc0000000002',
+        patient: {
+          ...careCase.patient,
+          display_id: 'p0000000002',
+        },
+      }),
+    ).toBe('佐藤太郎 / ケース cc0000000002 / 患者識別 p0000000002 / 主担当 薬剤師A');
     expect(caseOptionTargetLabel(careCase)).toBe(
       '佐藤太郎 / ケース same_2 / 患者識別 same_2 / 主担当 薬剤師A',
     );

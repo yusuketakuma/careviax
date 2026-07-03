@@ -666,22 +666,26 @@ describe('ScheduleProposalsContent', () => {
             data: [
               {
                 id: 'case_same_1',
+                display_id: 'cc0000000101',
                 status: 'active',
                 primary_pharmacist_id: 'pharmacist_1',
                 primary_pharmacist_name: '薬剤師A',
                 patient: {
                   id: 'patient_same_1',
+                  display_id: 'p0000000101',
                   name: '佐藤太郎',
                   residences: [{ address: '東京都千代田区1-1-1', lat: 35.1, lng: 139.1 }],
                 },
               },
               {
                 id: 'case_same_2',
+                display_id: 'cc0000000102',
                 status: 'active',
                 primary_pharmacist_id: 'pharmacist_1',
                 primary_pharmacist_name: '薬剤師A',
                 patient: {
                   id: 'patient_same_2',
+                  display_id: 'p0000000102',
                   name: '佐藤太郎',
                   residences: [{ address: '東京都港区2-2-2', lat: 35.2, lng: 139.2 }],
                 },
@@ -701,10 +705,10 @@ describe('ScheduleProposalsContent', () => {
 
     fireEvent.change(screen.getByLabelText('ケース/患者検索'), { target: { value: '佐藤' } });
     const firstResult = await screen.findByRole('button', {
-      name: '佐藤太郎 / ケース same_1 / 患者識別 same_1 / 主担当 薬剤師A で候補を絞り込む',
+      name: '佐藤太郎 / ケース cc0000000101 / 患者識別 p0000000101 / 主担当 薬剤師A で候補を絞り込む',
     });
     const secondResult = screen.getByRole('button', {
-      name: '佐藤太郎 / ケース same_2 / 患者識別 same_2 / 主担当 薬剤師A で候補を絞り込む',
+      name: '佐藤太郎 / ケース cc0000000102 / 患者識別 p0000000102 / 主担当 薬剤師A で候補を絞り込む',
     });
     expect(firstResult).toBeTruthy();
     expect(secondResult).toBeTruthy();
@@ -718,8 +722,8 @@ describe('ScheduleProposalsContent', () => {
         screen.getByRole('button', { name: '承認できる訪問候補を選択して一括承認' }),
       ).toBeTruthy();
     });
-    expect(screen.getByText(/ケース固定中/).textContent).toContain('ケース same_2');
-    expect(screen.getByText(/ケース固定中/).textContent).toContain('患者識別 same_2');
+    expect(screen.getByText(/ケース固定中/).textContent).toContain('ケース cc0000000102');
+    expect(screen.getByText(/ケース固定中/).textContent).toContain('患者識別 p0000000102');
     expectRouterReplacedWithSearchParam('case_id', 'case_same_2');
     expectRouterReplacedWithSearchParam('patient_id', 'patient_same_2');
     expectRouterReplacedWithSearchParam('focus', 'patient');
@@ -894,6 +898,16 @@ describe('ScheduleProposalsContent', () => {
     mockDashboardProposals([
       buildProposal({
         id: 'proposal_1',
+        display_id: 'vsp0000000001',
+        case_: {
+          display_id: 'cc0000000001',
+          patient: {
+            id: 'patient_1',
+            display_id: 'p0000000001',
+            name: '山田花子',
+            residences: [{ address: '東京都千代田区1-1-1', lat: 35.1, lng: 139.1 }],
+          },
+        },
         medication_end_date: '2026-04-10',
         visit_deadline_date: '2026-04-09',
         proposal_reason: 'アムロジピン増量 / 処方詳細 変更 / 患者条件 09:00-12:00',
@@ -902,7 +916,9 @@ describe('ScheduleProposalsContent', () => {
 
     render(<ScheduleProposalsContent />);
 
-    const target = proposalTargetName('山田花子');
+    const target =
+      '山田花子 2026/04/09 09:00 - 10:00 / 薬剤師A / 社用車A (最大6件 / 180分以内) / ケース cc0000000001 / 候補 vsp0000000001';
+    expect(screen.queryByText('ケース 1 / 候補 1')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: `${target} を承認して患者連絡へ進める` }));
     expect(fetchMock).not.toHaveBeenCalled();
 
@@ -950,6 +966,13 @@ describe('ScheduleProposalsContent', () => {
         }),
       }),
     );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      '/api/visit-schedule-proposals/vsp0000000001',
+      expect.anything(),
+    );
+    const approvalBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(JSON.stringify(approvalBody)).not.toContain('vsp0000000001');
+    expect(JSON.stringify(approvalBody)).not.toContain('cc0000000001');
     await waitFor(() => {
       expect(toastSuccessMock).toHaveBeenCalledWith('候補を承認し、患者連絡待ちへ移しました');
     });

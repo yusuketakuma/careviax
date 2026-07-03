@@ -8,7 +8,9 @@ exports[`/api/visit-schedules > lists visit schedules with workload and facility
       "assignment_mode": "fallback",
       "carry_items_status": "ready",
       "case_": {
+        "display_id": "cc0000000001",
         "patient": {
+          "display_id": "p0000000001",
           "id": "patient_1",
           "name": "患者A",
           "residences": [
@@ -23,6 +25,7 @@ exports[`/api/visit-schedules > lists visit schedules with workload and facility
       "cycle": {
         "overall_status": "visit_ready",
       },
+      "display_id": "vs0000000001",
       "facility_batch": null,
       "facility_batch_id": null,
       "facility_hint": null,

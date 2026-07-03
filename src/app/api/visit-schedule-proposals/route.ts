@@ -578,6 +578,7 @@ const authenticatedGET = withAuthContext(
         where: proposalWhere,
         select: {
           id: true,
+          display_id: true,
           proposal_status: true,
           patient_contact_status: true,
           proposed_date: true,
@@ -586,9 +587,11 @@ const authenticatedGET = withAuthContext(
           proposed_pharmacist_id: true,
           case_: {
             select: {
+              display_id: true,
               patient: {
                 select: {
                   id: true,
+                  display_id: true,
                   name: true,
                 },
               },
@@ -625,14 +628,17 @@ const authenticatedGET = withAuthContext(
       return success({
         data: dataRows.map((proposal) => ({
           id: proposal.id,
+          display_id: proposal.display_id,
           proposal_status: proposal.proposal_status,
           patient_contact_status: proposal.patient_contact_status,
           proposed_date: proposal.proposed_date,
           time_window_start: proposal.time_window_start,
           time_window_end: proposal.time_window_end,
           case_: {
+            display_id: proposal.case_.display_id,
             patient: {
               id: proposal.case_.patient.id,
+              display_id: proposal.case_.patient.display_id,
               name: proposal.case_.patient.name,
             },
           },
@@ -650,9 +656,11 @@ const authenticatedGET = withAuthContext(
       include: {
         case_: {
           select: {
+            display_id: true,
             patient: {
               select: {
                 id: true,
+                display_id: true,
                 name: true,
                 residences: {
                   where: { is_primary: true },

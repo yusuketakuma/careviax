@@ -74,8 +74,11 @@ export function redactProposalPatientFields<T extends object>(proposal: T): T {
   }
 
   safeProposal.case_ = {
+    display_id:
+      typeof safeProposal.case_.display_id === 'string' ? safeProposal.case_.display_id : null,
     patient: {
       id: typeof patient.id === 'string' ? patient.id : '',
+      display_id: typeof patient.display_id === 'string' ? patient.display_id : null,
       name: typeof patient.name === 'string' ? patient.name : '',
       residences: Array.isArray(patient.residences)
         ? patient.residences.map(redactProposalResidence)

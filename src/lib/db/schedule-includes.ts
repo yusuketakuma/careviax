@@ -53,11 +53,13 @@ export function buildScheduleListInclude(orgId: string) {
     },
     case_: {
       select: {
+        display_id: true,
         primary_pharmacist_id: true,
         backup_pharmacist_id: true,
         patient: {
           select: {
             id: true,
+            display_id: true,
             name: true,
             ...patientOperationalSummarySelect,
             residences: {
@@ -107,11 +109,13 @@ export function buildScheduleDetailInclude(orgId: string) {
     applied_override: true,
     case_: {
       select: {
+        display_id: true,
         primary_pharmacist_id: true,
         backup_pharmacist_id: true,
         patient: {
           select: {
             id: true,
+            display_id: true,
             name: true,
             ...patientOperationalSummarySelect,
             residences: {

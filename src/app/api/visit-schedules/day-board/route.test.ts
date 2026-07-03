@@ -178,13 +178,16 @@ describe('/api/visit-schedules/day-board', () => {
     });
     expect(proposalCountWhere).toEqual(proposalWhere);
     expect(select).toMatchObject({
+      display_id: true,
       cycle: { select: { overall_status: true } },
       carry_items_status: true,
       case_: {
         select: {
+          display_id: true,
           patient: {
             select: {
               id: true,
+              display_id: true,
               name: true,
               archived_at: true,
             },
@@ -253,6 +256,7 @@ describe('/api/visit-schedules/day-board', () => {
     const visibleProposals = [
       {
         id: 'proposal_visible_1',
+        display_id: 'vsp0000000001',
         visit_type: 'initial',
         proposal_status: 'proposed',
         patient_contact_status: 'pending',
@@ -260,10 +264,14 @@ describe('/api/visit-schedules/day-board', () => {
         time_window_start: null,
         time_window_end: null,
         proposed_pharmacist_id: 'user_1',
-        case_: { patient: { name: '佐藤 花子' } },
+        case_: {
+          display_id: 'cc0000000001',
+          patient: { id: 'patient_visible_1', display_id: 'p0000000001', name: '佐藤 花子' },
+        },
       },
       {
         id: 'proposal_visible_2',
+        display_id: 'vsp0000000002',
         visit_type: 'regular',
         proposal_status: 'patient_contact_pending',
         patient_contact_status: 'attempted',
@@ -271,10 +279,14 @@ describe('/api/visit-schedules/day-board', () => {
         time_window_start: null,
         time_window_end: null,
         proposed_pharmacist_id: 'user_1',
-        case_: { patient: { name: '鈴木 修' } },
+        case_: {
+          display_id: 'cc0000000002',
+          patient: { id: 'patient_visible_2', display_id: 'p0000000002', name: '鈴木 修' },
+        },
       },
       {
         id: 'proposal_visible_3',
+        display_id: null,
         visit_type: 'regular',
         proposal_status: 'reschedule_pending',
         patient_contact_status: 'change_requested',
@@ -282,7 +294,10 @@ describe('/api/visit-schedules/day-board', () => {
         time_window_start: null,
         time_window_end: null,
         proposed_pharmacist_id: 'user_1',
-        case_: { patient: { name: '田中 改' } },
+        case_: {
+          display_id: null,
+          patient: { id: 'patient_visible_3', display_id: null, name: '田中 改' },
+        },
       },
     ];
     proposalFindManyMock
@@ -349,6 +364,13 @@ describe('/api/visit-schedules/day-board', () => {
       },
     });
     expect(json.data.pending_proposals).toHaveLength(3);
+    expect(json.data.pending_proposals[0]).toMatchObject({
+      id: 'proposal_visible_1',
+      display_id: 'vsp0000000001',
+      case_display_id: 'cc0000000001',
+      patient_id: 'patient_visible_1',
+      patient_display_id: 'p0000000001',
+    });
     expect(json.data.pending_proposal_counts).toEqual({
       total_count: 5,
       visible_count: 3,

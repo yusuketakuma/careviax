@@ -586,10 +586,11 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
 
         return {
           currentOrder: schedule.route_order,
-          idLabel: formatShortEntityIdentifier(schedule.id),
+          idLabel: formatShortEntityIdentifier(schedule),
           nextOrder: update.route_order,
           patientName: schedule.case_.patient.name,
           preparationEvidence: schedulePreparationEvidenceLabel(schedule),
+          scheduleId: schedule.id,
           timeWindowLabel: formatNullableTimeRange(
             schedule.time_window_start,
             schedule.time_window_end,
@@ -950,7 +951,7 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
             <ul className="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-border/70 p-2">
               {confirmRouteRows.map((row) => (
                 <li
-                  key={`${row.idLabel}-${row.nextOrder}`}
+                  key={`${row.scheduleId}-${row.nextOrder}`}
                   className="rounded-md bg-muted/30 px-3 py-2"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">

@@ -157,6 +157,7 @@ describe('/api/visit-schedules', () => {
     visitScheduleFindManyMock.mockResolvedValue([
       {
         id: 'schedule_1',
+        display_id: 'vs0000000001',
         org_id: 'org_1',
         pharmacist_id: 'user_2',
         schedule_status: 'ready',
@@ -175,8 +176,10 @@ describe('/api/visit-schedules', () => {
         override_request: null,
         applied_override: null,
         case_: {
+          display_id: 'cc0000000001',
           patient: {
             id: 'patient_1',
+            display_id: 'p0000000001',
             name: '患者A',
             archived_at: new Date('2026-03-01T00:00:00.000Z'),
             allergy_info: [{ substance: 'ペニシリン' }],
@@ -302,14 +305,17 @@ describe('/api/visit-schedules', () => {
       data: [
         expect.objectContaining({
           id: 'schedule_1',
+          display_id: 'vs0000000001',
           pharmacist_id: 'user_2',
           schedule_status: 'ready',
           priority: 'urgent',
           route_order: 2,
           confirmed_at: '2026-03-29T09:00:00.000Z',
           case_: expect.objectContaining({
+            display_id: 'cc0000000001',
             patient: expect.objectContaining({
               id: 'patient_1',
+              display_id: 'p0000000001',
               name: '患者A',
             }),
           }),
@@ -349,6 +355,10 @@ describe('/api/visit-schedules', () => {
     );
     const patientSelect =
       visitScheduleFindManyMock.mock.calls[0]?.[0]?.include.case_.select.patient.select;
+    expect(visitScheduleFindManyMock.mock.calls[0]?.[0]?.include.case_.select.display_id).toBe(
+      true,
+    );
+    expect(patientSelect.display_id).toBe(true);
     expect(patientSelect.insurances.where).toMatchObject({ org_id: 'org_1' });
     expect(patientSelect.lab_observations.where).toMatchObject({ org_id: 'org_1' });
     expect(payload.data[0].case_.patient).not.toHaveProperty('archived_at');

@@ -736,6 +736,7 @@ const authenticatedGET = withAuthContext(
             orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
             select: {
               id: true,
+              display_id: true,
               case_id: true,
               cycle_id: true,
               pharmacist_id: true,
@@ -774,9 +775,11 @@ const authenticatedGET = withAuthContext(
               visit_record: { select: { id: true } },
               case_: {
                 select: {
+                  display_id: true,
                   patient: {
                     select: {
                       id: true,
+                      display_id: true,
                       name: true,
                       ...patientOperationalSummarySelect,
                       contacts: {
@@ -848,6 +851,7 @@ const authenticatedGET = withAuthContext(
             take: PENDING_PROPOSAL_LIMIT,
             select: {
               id: true,
+              display_id: true,
               visit_type: true,
               proposal_status: true,
               patient_contact_status: true,
@@ -857,9 +861,11 @@ const authenticatedGET = withAuthContext(
               proposed_pharmacist_id: true,
               case_: {
                 select: {
+                  display_id: true,
                   patient: {
                     select: {
                       id: true,
+                      display_id: true,
                       name: true,
                       ...patientOperationalSummarySelect,
                     },
@@ -944,7 +950,10 @@ const authenticatedGET = withAuthContext(
           const patient = summarizedSchedule.case_.patient;
           return {
             id: schedule.id,
+            display_id: schedule.display_id,
+            case_display_id: schedule.case_.display_id,
             patient_id: patient.id,
+            patient_display_id: patient.display_id,
             patient_name: patient.name,
             patient_archive: summarizedSchedule.patient_summary?.archive ?? null,
             patient_summary: summarizedSchedule.patient_summary,
@@ -1107,7 +1116,10 @@ const authenticatedGET = withAuthContext(
 
           return {
             id: proposal.id,
+            display_id: proposal.display_id,
+            case_display_id: proposal.case_.display_id,
             patient_id: patient.id,
+            patient_display_id: patient.display_id,
             patient_name: patient.name,
             patient_archive: summarizedProposal.patient_summary?.archive ?? null,
             patient_summary: summarizedProposal.patient_summary,

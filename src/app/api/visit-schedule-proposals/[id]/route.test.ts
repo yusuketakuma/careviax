@@ -184,6 +184,7 @@ function createMalformedJsonPatchRequest(headers?: Record<string, string>) {
 function buildProposal(overrides?: Record<string, unknown>) {
   return {
     id: 'proposal_1',
+    display_id: 'vsp0000000001',
     org_id: 'org_1',
     case_id: 'case_1',
     cycle_id: 'cycle_1',
@@ -209,10 +210,12 @@ function buildProposal(overrides?: Record<string, unknown>) {
     finalized_schedule_id: null,
     reschedule_source_schedule_id: null,
     case_: {
+      display_id: 'cc0000000001',
       patient_id: 'patient_1',
       required_visit_support: null,
       patient: {
         id: 'patient_1',
+        display_id: 'p0000000001',
         name: '患者A',
         phone: '03-0000-0000',
         medical_insurance_number: 'MED-SECRET-1',
@@ -439,8 +442,10 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         created_at: new Date('2026-03-26T09:00:00.000Z'),
         reject_reason: '東京都港区2-2-2 090-1234-5678 アムロジピン 処方詳細',
         case_: {
+          display_id: 'cc0000000001',
           patient: {
             id: 'patient_1',
+            display_id: 'p0000000001',
             name: '患者A',
             phone: '03-0000-0000',
             medical_insurance_number: 'MED-SECRET-1',
@@ -497,14 +502,17 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       {
         ...buildProposal({
           id: 'proposal_2',
+          display_id: 'vsp0000000002',
           proposed_pharmacist_id: 'pharmacist_2',
           priority: 'emergency',
           reject_reason: '埼玉県川口市9-9-9 090-9999-9999 ワルファリン 処方詳細',
           route_distance_score: 3.5,
           proposed_date: new Date('2026-03-28T00:00:00.000Z'),
           case_: {
+            display_id: 'cc0000000001',
             patient: {
               id: 'patient_1',
+              display_id: 'p0000000001',
               name: '患者A',
               phone: '03-9999-9999',
               medical_insurance_number: 'MED-SECRET-RELATED',
@@ -542,6 +550,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     scheduleFindManyMock.mockResolvedValueOnce([
       {
         id: 'schedule_1',
+        display_id: 'vs0000000001',
         visit_type: 'regular',
         priority: 'urgent',
         schedule_status: 'planned',
@@ -550,7 +559,10 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         time_window_start: new Date('1970-01-01T08:30:00.000Z'),
         time_window_end: new Date('1970-01-01T09:00:00.000Z'),
         case_: {
+          display_id: 'cc0000000002',
           patient: {
+            id: 'patient_2',
+            display_id: 'p0000000002',
             name: '患者B',
             residences: [
               {
@@ -613,6 +625,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     expect(body).toMatchObject({
       data: expect.objectContaining({
         id: 'proposal_1',
+        display_id: 'vsp0000000001',
         vehicle_resource: expect.objectContaining({ id: 'vehicle_1', label: '社用車A' }),
         contact_logs: [
           {
@@ -627,12 +640,14 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         related_proposals: [
           expect.objectContaining({
             id: 'proposal_2',
+            display_id: 'vsp0000000002',
             vehicle_resource: expect.objectContaining({ id: 'vehicle_1', label: '社用車A' }),
           }),
         ],
         pharmacist_day_schedules: [
           expect.objectContaining({
             id: 'schedule_1',
+            display_id: 'vs0000000001',
             vehicle_resource: expect.objectContaining({ id: 'vehicle_2', label: '社用車B' }),
           }),
         ],
@@ -653,6 +668,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     expect(body.data.case_).not.toHaveProperty('patient_id');
     expect(body.data.case_.patient).toEqual({
       id: 'patient_1',
+      display_id: 'p0000000001',
       name: '患者A',
       residences: [
         {
@@ -664,6 +680,11 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         },
       ],
     });
+    expect(body.data.case_.display_id).toBe('cc0000000001');
+    expect(body.data.related_proposals[0].case_.display_id).toBe('cc0000000001');
+    expect(body.data.pharmacist_day_schedules[0].case_.display_id).toBe('cc0000000002');
+    expect(body.data.route_preview.plan.orderedScheduleIds).toContain('proposal:proposal_1');
+    expect(body.data.route_preview.plan.orderedScheduleIds).not.toContain('vsp0000000001');
     expect(body.data.related_proposals[0].case_).not.toHaveProperty('patient_id');
     expect(body.data.related_proposals[0].case_.patient).not.toHaveProperty('phone');
     expect(body.data.related_proposals[0].case_.patient).not.toHaveProperty(

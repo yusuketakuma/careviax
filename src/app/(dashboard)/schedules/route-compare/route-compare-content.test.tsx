@@ -99,6 +99,7 @@ function renderRouteCompareContent() {
 function buildSchedule(overrides: Partial<VisitSchedule>): VisitSchedule {
   return {
     id: 'visit-a',
+    display_id: 'vs0000000101',
     case_id: 'case-a',
     visit_type: 'regular',
     priority: 'normal',
@@ -143,6 +144,7 @@ function buildSchedule(overrides: Partial<VisitSchedule>): VisitSchedule {
 const visitA = buildSchedule({});
 const visitB = buildSchedule({
   id: 'visit-b',
+  display_id: 'vs0000000102',
   case_id: 'case-b',
   route_order: 1,
   time_window_start: '2026-04-09T10:30:00.000Z',
@@ -172,6 +174,7 @@ const confirmedVisit = buildSchedule({
 });
 const visitC = buildSchedule({
   id: 'visit-c',
+  display_id: 'vs0000000103',
   case_id: 'case-c',
   priority: 'emergency',
   schedule_status: 'ready',
@@ -188,6 +191,7 @@ const visitC = buildSchedule({
 });
 const facilityVisit = buildSchedule({
   id: 'facility-1',
+  display_id: 'vs0000000104',
   case_id: 'case-facility',
   route_order: 4,
   facility_batch_id: 'batch_1',
@@ -368,6 +372,7 @@ describe('RouteCompareContent', () => {
     const confirmDialog = screen.getByRole('alertdialog');
     expect(within(confirmDialog).getByText('反映対象の訪問準備')).toBeTruthy();
     expect(within(confirmDialog).getByText('伊藤 キヨ')).toBeTruthy();
+    expect(within(confirmDialog).getByText(/ID vs0000000102/)).toBeTruthy();
     expect(within(confirmDialog).getByText('#1 → #2')).toBeTruthy();
     expect(
       within(confirmDialog).getAllByText(
@@ -379,6 +384,7 @@ describe('RouteCompareContent', () => {
 
     await waitFor(() => expect(toastSuccessMock).toHaveBeenCalled());
     const reorderRequest = fetchCalls.find((call) => call.url === '/api/visit-schedules/reorder');
+    expect(JSON.stringify(reorderRequest?.body)).not.toContain('vs0000000102');
     expect(reorderRequest?.body).toMatchObject({
       updates: [
         { schedule_id: 'visit-b', route_order: 2, expected_route_order: 1 },

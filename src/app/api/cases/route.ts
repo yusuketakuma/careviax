@@ -171,6 +171,7 @@ const authenticatedGET = withAuthContext(
         patient: {
           select: {
             id: true,
+            display_id: true,
             name: true,
             name_kana: true,
             residences: {

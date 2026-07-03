@@ -1,6 +1,10 @@
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { STATUS_TOKENS } from '@/lib/constants/status-tokens';
+import {
+  formatDisplayEntityLabel,
+  type DisplayIdLabelSource,
+} from '@/lib/display-id/display-labels';
 import type { PatientOperationalSummary } from '@/lib/patient/operational-summary';
 import type { HomeVisit2026BillingBlocker } from '@/lib/visits/home-visit-2026-evidence';
 import type { VisitPriority, VisitType } from '@/lib/validations/visit-schedule';
@@ -49,11 +53,13 @@ export type ScheduleStatus =
 
 export type CaseOption = {
   id: string;
+  display_id?: string | null;
   status: string;
   primary_pharmacist_id: string | null;
   primary_pharmacist_name: string | null;
   patient: {
     id: string;
+    display_id?: string | null;
     name: string;
     residences: Array<{
       address: string;
@@ -132,6 +138,7 @@ export type VisitScheduleBillingPreview = {
 
 export type Proposal = {
   id: string;
+  display_id?: string | null;
   case_id: string;
   visit_type: VisitType;
   priority: VisitPriority;
@@ -157,8 +164,10 @@ export type Proposal = {
   finalized_schedule_id: string | null;
   reschedule_source_schedule_id: string | null;
   case_: {
+    display_id?: string | null;
     patient: {
       id: string;
+      display_id?: string | null;
       name: string;
       residences: Array<{
         address: string;
@@ -179,11 +188,13 @@ export type Proposal = {
   vehicle_resource?: VisitVehicleResourceSummary | null;
   finalized_schedule: {
     id: string;
+    display_id?: string | null;
     scheduled_date: string;
     pharmacist_id: string;
   } | null;
   reschedule_source_schedule: {
     id: string;
+    display_id?: string | null;
     scheduled_date: string;
     pharmacist_id: string;
     override_request: {
@@ -421,6 +432,7 @@ export type ScheduleTask = {
 
 export type VisitSchedule = {
   id: string;
+  display_id?: string | null;
   case_id: string;
   visit_type: VisitType;
   priority: VisitPriority;
@@ -436,8 +448,10 @@ export type VisitSchedule = {
   facility_batch_id: string | null;
   confirmed_at: string | null;
   case_: {
+    display_id?: string | null;
     patient: {
       id: string;
+      display_id?: string | null;
       name: string;
       residences: Array<{
         address: string;
@@ -782,24 +796,48 @@ export function normalizeVehicleResourceSelectValue(
   return selectedValue && selectedValue !== autoValue ? selectedValue : '';
 }
 
-export function formatShortEntityIdentifier(
-  value: string | null | undefined,
-  options: { stripKnownPrefixes?: boolean } = {},
-) {
-  const normalized = value?.trim();
-  if (!normalized) return '未設定';
-  const candidate = options.stripKnownPrefixes
-    ? normalized.replace(/^(proposal|case|patient)[_-]/u, '') || normalized
-    : normalized;
-  return candidate.length <= 8 ? candidate : candidate.slice(-8);
+type ShortEntityIdentifierSource = string | null | undefined | DisplayIdLabelSource;
+
+function readShortIdentifierSourceId(value: ShortEntityIdentifierSource) {
+  return typeof value === 'object' && value !== null ? value.id : value;
 }
 
-export function proposalShortEntityIdentifier(value: string | null | undefined) {
+function stripProposalKnownPrefix(value: string) {
+  return value.replace(/^(proposal|case|patient)[_-]/u, '') || value;
+}
+
+export function formatShortEntityIdentifier(
+  value: ShortEntityIdentifierSource,
+  options: { stripKnownPrefixes?: boolean } = {},
+) {
+  const sourceId = readShortIdentifierSourceId(value);
+  const normalized = sourceId?.trim();
+  const displayId = typeof value === 'object' && value !== null ? value.display_id : null;
+  if (displayId?.trim()) {
+    return formatDisplayEntityLabel(
+      {
+        id: normalized ?? '',
+        display_id: displayId,
+      },
+      { fallbackLength: 8 },
+    );
+  }
+  if (!normalized) return '未設定';
+  const candidate = options.stripKnownPrefixes ? stripProposalKnownPrefix(normalized) : normalized;
+  return formatDisplayEntityLabel({ id: candidate, display_id: null }, { fallbackLength: 8 });
+}
+
+export function proposalShortEntityIdentifier(value: ShortEntityIdentifierSource) {
   return formatShortEntityIdentifier(value, { stripKnownPrefixes: true });
 }
 
-export function proposalSafeIdentifierLabel(proposal: Pick<Proposal, 'case_id' | 'id'>) {
-  return `ケース ${proposalShortEntityIdentifier(proposal.case_id)} / 候補 ${proposalShortEntityIdentifier(proposal.id)}`;
+export function proposalSafeIdentifierLabel(
+  proposal: Pick<Proposal, 'case_id' | 'id'> & {
+    display_id?: string | null;
+    case_?: { display_id?: string | null } | null;
+  },
+) {
+  return `ケース ${proposalShortEntityIdentifier({ id: proposal.case_id, display_id: proposal.case_?.display_id })} / 候補 ${proposalShortEntityIdentifier(proposal)}`;
 }
 
 export function proposalActionTargetLabel(proposal: Proposal) {
@@ -813,7 +851,7 @@ export function caseOptionPrimaryPharmacistLabel(careCase: CaseOption) {
 }
 
 export function caseOptionTargetLabel(careCase: CaseOption) {
-  return `${careCase.patient.name} / ケース ${proposalShortEntityIdentifier(careCase.id)} / 患者識別 ${proposalShortEntityIdentifier(careCase.patient.id)} / 主担当 ${caseOptionPrimaryPharmacistLabel(careCase)}`;
+  return `${careCase.patient.name} / ケース ${proposalShortEntityIdentifier(careCase)} / 患者識別 ${proposalShortEntityIdentifier(careCase.patient)} / 主担当 ${caseOptionPrimaryPharmacistLabel(careCase)}`;
 }
 
 export function proposalListVisitPlaceLabel(proposal: Pick<Proposal, 'site'>) {

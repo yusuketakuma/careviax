@@ -58,6 +58,7 @@ import {
 } from '@/lib/prescription/cycle-workspace';
 import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { formatDisplayEntityLabel } from '@/lib/display-id/display-labels';
 import { downscaleImage } from '@/lib/files/downscale-image';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -410,9 +411,11 @@ function formatVisitDate(value: string | null | undefined) {
 }
 
 function formatPatientShareCaseOption(careCase: PatientOverview['cases'][number]) {
-  const suffix = careCase.id.slice(-6).toUpperCase();
+  const displayLabel = careCase.display_id?.trim()
+    ? formatDisplayEntityLabel(careCase, { fallbackLength: 6 })
+    : `#${formatDisplayEntityLabel(careCase, { fallbackLength: 6 }).toUpperCase()}`;
   const status = CASE_STATUS_LABELS[careCase.status] ?? careCase.status;
-  return `ケース #${suffix} / ${status}`;
+  return `ケース ${displayLabel} / ${status}`;
 }
 
 async function readPatientShareApiJson<T>(response: Response, fallbackMessage: string) {

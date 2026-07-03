@@ -587,9 +587,11 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     include: {
       case_: {
         select: {
+          display_id: true,
           patient: {
             select: {
               id: true,
+              display_id: true,
               name: true,
               residences: {
                 where: { is_primary: true },
@@ -627,6 +629,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       finalized_schedule: {
         select: {
           id: true,
+          display_id: true,
           scheduled_date: true,
           pharmacist_id: true,
           route_order: true,
@@ -636,8 +639,11 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
           time_window_end: true,
           case_: {
             select: {
+              display_id: true,
               patient: {
                 select: {
+                  id: true,
+                  display_id: true,
                   name: true,
                   residences: {
                     where: { is_primary: true },
@@ -675,6 +681,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       reschedule_source_schedule: {
         select: {
           id: true,
+          display_id: true,
           scheduled_date: true,
           pharmacist_id: true,
           route_order: true,
@@ -690,8 +697,11 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
           },
           case_: {
             select: {
+              display_id: true,
               patient: {
                 select: {
+                  id: true,
+                  display_id: true,
                   name: true,
                   residences: {
                     where: { is_primary: true },
@@ -763,9 +773,11 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       include: {
         case_: {
           select: {
+            display_id: true,
             patient: {
               select: {
                 id: true,
+                display_id: true,
                 name: true,
                 residences: {
                   where: { is_primary: true },
@@ -816,6 +828,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       },
       select: {
         id: true,
+        display_id: true,
         visit_type: true,
         priority: true,
         schedule_status: true,
@@ -825,8 +838,11 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
         time_window_end: true,
         case_: {
           select: {
+            display_id: true,
             patient: {
               select: {
+                id: true,
+                display_id: true,
                 name: true,
                 residences: {
                   where: { is_primary: true },

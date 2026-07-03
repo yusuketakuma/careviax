@@ -10,7 +10,10 @@ import type { PatientOperationalSummary } from '@/lib/patient/operational-summar
 
 export type DayBoardVisit = {
   id: string;
+  display_id?: string | null;
+  case_display_id?: string | null;
   patient_id?: string;
+  patient_display_id?: string | null;
   patient_name: string;
   patient_archive?: PatientArchiveSummary | null;
   patient_summary?: PatientOperationalSummary | null;
@@ -98,7 +101,10 @@ export type DayBoardPatientContactStatus =
 
 export type DayBoardPendingProposal = {
   id: string;
+  display_id?: string | null;
+  case_display_id?: string | null;
   patient_id?: string;
+  patient_display_id?: string | null;
   patient_name: string;
   patient_archive?: PatientArchiveSummary | null;
   patient_summary?: PatientOperationalSummary | null;

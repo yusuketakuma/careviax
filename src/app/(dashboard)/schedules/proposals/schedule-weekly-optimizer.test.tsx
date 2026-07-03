@@ -78,6 +78,7 @@ import { toast } from 'sonner';
 function buildWeeklySchedule(overrides?: Record<string, unknown>) {
   return {
     id: 'schedule_1',
+    display_id: 'vs0000000001',
     case_id: 'case_schedule',
     visit_type: 'regular',
     priority: 'normal',
@@ -108,6 +109,7 @@ function buildWeeklySchedule(overrides?: Record<string, unknown>) {
 function buildWeeklyProposal(overrides?: Record<string, unknown>) {
   return {
     id: 'proposal_1',
+    display_id: 'vsp0000000001',
     case_id: 'case_proposal',
     visit_type: 'regular',
     priority: 'normal',
@@ -450,6 +452,8 @@ describe('ScheduleWeeklyOptimizer', () => {
     dialog = screen.getByRole('alertdialog', {
       name: '週間ルートの route_order を反映しますか',
     });
+    expect(within(dialog).getByText(/ID vsp0000000001/)).toBeTruthy();
+    expect(within(dialog).getByText(/ID vs0000000001/)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: '2件の route_order を反映' }));
 
     await waitFor(() => {
@@ -460,6 +464,8 @@ describe('ScheduleWeeklyOptimizer', () => {
     });
     const fetchCalls = fetchMock.mock.calls as unknown as Array<[string, RequestInit]>;
     const requestBody = JSON.parse(fetchCalls[0][1].body as string);
+    expect(JSON.stringify(requestBody.updates)).not.toContain('vsp0000000001');
+    expect(JSON.stringify(requestBody.updates)).not.toContain('vs0000000001');
     expect(requestBody).toEqual({
       updates: [
         {

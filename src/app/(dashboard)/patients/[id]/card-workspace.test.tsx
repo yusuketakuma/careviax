@@ -792,6 +792,7 @@ function mockPatientQuery(
 function buildActivePatientCase(): PatientOverview['cases'][number] {
   return {
     id: 'case_1',
+    display_id: 'cc0000000001',
     status: 'active',
     primary_pharmacist_id: null,
     backup_pharmacist_id: null,
@@ -1573,6 +1574,7 @@ describe('CardWorkspace', () => {
           cases: [
             {
               id: 'case_1',
+              display_id: 'cc0000000001',
               status: 'active',
               primary_pharmacist_id: null,
               backup_pharmacist_id: null,
@@ -1617,6 +1619,10 @@ describe('CardWorkspace', () => {
     render(<CardWorkspace patientId="patient_1" />);
 
     const panel = screen.getByTestId('patient-share-case-create-panel');
+    expect(
+      within(panel).getByRole('option', { name: 'ケース cc0000000001 / 稼働中' }),
+    ).toBeTruthy();
+    expect(within(panel).queryByText('ケース #CASE_1 / 稼働中')).toBeNull();
     expect(panel.textContent).not.toMatch(/田中 一郎|090-0000-0000|東京都/);
     expect(panel.textContent).not.toContain('田中 一郎 様 管理計画');
     const managementPlanSelect = within(panel).getByLabelText(
@@ -1671,6 +1677,7 @@ describe('CardWorkspace', () => {
       'x-org-id': 'org_1',
     });
     expect(JSON.parse(String(init.body))).toEqual(expectedPayload);
+    expect(String(init.body)).not.toContain('cc0000000001');
     expect(String(init.body)).not.toMatch(/田中 一郎|090-0000-0000|東京都/);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/activate'))).toBe(false);
     expect(invalidateQueries).toHaveBeenCalledWith({

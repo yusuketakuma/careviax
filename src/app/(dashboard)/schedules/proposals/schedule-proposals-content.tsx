@@ -900,11 +900,13 @@ export function ScheduleProposalsContent({
     if (!matchedProposal) return null;
     return {
       id: matchedProposal.case_id,
+      display_id: matchedProposal.case_?.display_id,
       status: 'active',
       primary_pharmacist_id: matchedProposal.proposed_pharmacist_id,
       primary_pharmacist_name: matchedProposal.proposed_pharmacist?.name ?? null,
       patient: {
         id: matchedProposal.case_.patient.id,
+        display_id: matchedProposal.case_.patient.display_id,
         name: matchedProposal.case_.patient.name,
         residences: matchedProposal.case_.patient.residences.map((residence) => ({
           address: residence.address,
@@ -1716,10 +1718,9 @@ export function ScheduleProposalsContent({
                   <p className="text-xs text-muted-foreground">
                     ケース固定中
                     {' / '}
-                    ケース {proposalShortEntityIdentifier(effectiveSelectedCaseSummary.id)}
+                    ケース {proposalShortEntityIdentifier(effectiveSelectedCaseSummary)}
                     {' / '}
-                    患者識別{' '}
-                    {proposalShortEntityIdentifier(effectiveSelectedCaseSummary.patient.id)}
+                    患者識別 {proposalShortEntityIdentifier(effectiveSelectedCaseSummary.patient)}
                     {' / '}
                     主担当 {caseOptionPrimaryPharmacistLabel(effectiveSelectedCaseSummary)}
                   </p>
@@ -1755,8 +1756,8 @@ export function ScheduleProposalsContent({
                         <span className="flex flex-col items-start leading-tight">
                           <span>{careCase.patient.name}</span>
                           <span className="text-xs font-normal text-muted-foreground">
-                            ケース {proposalShortEntityIdentifier(careCase.id)} / 患者識別{' '}
-                            {proposalShortEntityIdentifier(careCase.patient.id)} / 主担当{' '}
+                            ケース {proposalShortEntityIdentifier(careCase)} / 患者識別{' '}
+                            {proposalShortEntityIdentifier(careCase.patient)} / 主担当{' '}
                             {caseOptionPrimaryPharmacistLabel(careCase)}
                           </span>
                         </span>

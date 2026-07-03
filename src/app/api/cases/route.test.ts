@@ -90,6 +90,7 @@ describe('/api/cases', () => {
         updated_at: new Date('2026-03-29T00:00:00.000Z'),
         patient: {
           id: 'patient_1',
+          display_id: 'p0000000001',
           name: '患者A',
           name_kana: 'カンジャエー',
           residences: [],
@@ -125,6 +126,7 @@ describe('/api/cases', () => {
         updated_at: new Date('2026-03-29T00:00:00.000Z'),
         patient: {
           id: 'patient_1',
+          display_id: 'p0000000001',
           name: '患者A',
           name_kana: 'カンジャエー',
           residences: [],
@@ -139,6 +141,7 @@ describe('/api/cases', () => {
         updated_at: new Date('2026-03-28T00:00:00.000Z'),
         patient: {
           id: 'patient_1',
+          display_id: 'p0000000001',
           name: '患者A',
           name_kana: 'カンジャエー',
           residences: [],
@@ -175,6 +178,10 @@ describe('/api/cases', () => {
         expect.objectContaining({
           id: 'case_1',
           display_id: 'cc0000000001',
+          patient: expect.objectContaining({
+            id: 'patient_1',
+            display_id: 'p0000000001',
+          }),
           primary_pharmacist_name: '担当薬剤師',
         }),
       ],
@@ -184,6 +191,8 @@ describe('/api/cases', () => {
     expect(body.data).toHaveLength(1);
     expect(body.data[0].id).toBe('case_1');
     expect(body.data[0].display_id).not.toBe(body.data[0].id);
+    expect(body.data[0].patient.id).toBe('patient_1');
+    expect(body.data[0].patient.display_id).toBe('p0000000001');
   });
 
   it('does not mark hasMore when cases exactly fill the requested limit', async () => {
