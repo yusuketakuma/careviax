@@ -23,6 +23,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { NOTIFICATIONS_API_PATH, buildNotificationsApiPath } from '@/lib/notifications/api-paths';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
+import { messageFromError } from '@/lib/utils/error-message';
 import type { NotificationCategoryFilter } from './notifications-query-state';
 
 /**
@@ -129,7 +130,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
       void queryClient.invalidateQueries({ queryKey: ['notifications', 'inbox', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '既読化に失敗しました');
+      toast.error(messageFromError(error, '既読化に失敗しました'));
     },
   });
 

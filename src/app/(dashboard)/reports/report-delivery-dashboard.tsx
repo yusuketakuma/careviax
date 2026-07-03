@@ -22,6 +22,7 @@ import { buildCommunicationRequestsHref } from '@/lib/communications/navigation'
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 import { formatDateLabel } from '@/lib/ui/date-format';
 
 type DeliveryAnalyticsResponse = {
@@ -157,7 +158,7 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'リマインドタスクの起票に失敗しました');
+      toast.error(messageFromError(error, 'リマインドタスクの起票に失敗しました'));
     },
   });
 

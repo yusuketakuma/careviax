@@ -29,6 +29,7 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 import {
   groupSystemSettingCandidates,
   SYSTEM_SETTING_STATUS_LABELS,
@@ -530,7 +531,7 @@ export function OperationalPolicyContent() {
       toast.success('運用ポリシーを更新しました');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '運用ポリシーの更新に失敗しました');
+      toast.error(messageFromError(error, '運用ポリシーの更新に失敗しました'));
     },
   });
 

@@ -26,6 +26,7 @@ import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { messageFromError } from '@/lib/utils/error-message';
 import {
   BILLING_VALIDATION_LAYER_KEYS,
   collectBillingValidationMessages,
@@ -792,7 +793,7 @@ export function BillingCandidatesContent({
       URL.revokeObjectURL(objectUrl);
       toast.success('CSVをダウンロードしました');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'CSVエクスポートに失敗しました');
+      toast.error(messageFromError(error, 'CSVエクスポートに失敗しました'));
     } finally {
       setIsExporting(false);
     }

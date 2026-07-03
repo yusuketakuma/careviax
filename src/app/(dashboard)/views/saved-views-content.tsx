@@ -16,6 +16,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 import {
   DEFAULT_SAVED_VIEW_CONDITIONS,
   SAVED_VIEW_PRESETS,
@@ -125,7 +126,7 @@ function CurrentFilterCard({ orgId }: { orgId: string }) {
       toast.success('絞り込み条件を保存しました');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '絞り込み条件の保存に失敗しました');
+      toast.error(messageFromError(error, '絞り込み条件の保存に失敗しました'));
     },
   });
 
@@ -265,7 +266,7 @@ function NamedSavedViewsCard({
       toast.success('保存ビューを作成しました');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '保存ビューの作成に失敗しました');
+      toast.error(messageFromError(error, '保存ビューの作成に失敗しました'));
     },
   });
 
@@ -285,7 +286,7 @@ function NamedSavedViewsCard({
       toast.success('名前を変更しました');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '名前の変更に失敗しました');
+      toast.error(messageFromError(error, '名前の変更に失敗しました'));
     },
   });
 
@@ -302,7 +303,7 @@ function NamedSavedViewsCard({
       invalidate();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '共有設定の変更に失敗しました');
+      toast.error(messageFromError(error, '共有設定の変更に失敗しました'));
     },
   });
 
@@ -320,7 +321,7 @@ function NamedSavedViewsCard({
       toast.success('保存ビューを削除しました');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '削除に失敗しました');
+      toast.error(messageFromError(error, '削除に失敗しました'));
     },
   });
 

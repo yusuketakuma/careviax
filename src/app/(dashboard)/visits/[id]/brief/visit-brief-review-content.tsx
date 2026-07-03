@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 import type { VisitBrief } from '@/types/visit-brief';
 import {
   buildNeedsEditFeedbackInput,
@@ -127,7 +128,7 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
       }
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '確認結果の送信に失敗しました');
+      toast.error(messageFromError(error, '確認結果の送信に失敗しました'));
     },
   });
 

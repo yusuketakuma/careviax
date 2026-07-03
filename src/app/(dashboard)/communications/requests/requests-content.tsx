@@ -28,6 +28,7 @@ import {
 } from '@/lib/communications/request-labels';
 import { toast } from 'sonner';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
+import { messageFromError } from '@/lib/utils/error-message';
 
 type CommunicationRequestRow = {
   id: string;
@@ -208,7 +209,7 @@ export function CommunicationRequestsContent({
       await queryClient.invalidateQueries({ queryKey: ['dashboard-workflow', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '対応の記録に失敗しました');
+      toast.error(messageFromError(error, '対応の記録に失敗しました'));
     },
   });
 

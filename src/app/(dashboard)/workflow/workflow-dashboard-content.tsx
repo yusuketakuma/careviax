@@ -6,6 +6,7 @@ import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { messageFromError } from '@/lib/utils/error-message';
 import type { HomeLinkContext, WorkflowFocus } from '@/lib/dashboard/home-link-builders';
 import { getInquiryStructuredMetaFromLegacy } from '@/lib/inquiries/presentation';
 import type {
@@ -114,7 +115,7 @@ export function WorkflowDashboardContent({
       await queryClient.invalidateQueries({ queryKey: ['communication-requests', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '緊急連絡ドラフトの起票に失敗しました');
+      toast.error(messageFromError(error, '緊急連絡ドラフトの起票に失敗しました'));
     },
   });
 
@@ -153,7 +154,7 @@ export function WorkflowDashboardContent({
       await queryClient.invalidateQueries({ queryKey: ['communication-requests', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '疑義照会の起票に失敗しました');
+      toast.error(messageFromError(error, '疑義照会の起票に失敗しました'));
     },
   });
 
@@ -215,7 +216,7 @@ export function WorkflowDashboardContent({
       await queryClient.invalidateQueries({ queryKey: ['communication-requests', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '疑義照会の更新に失敗しました');
+      toast.error(messageFromError(error, '疑義照会の更新に失敗しました'));
     },
   });
 
@@ -272,7 +273,7 @@ export function WorkflowDashboardContent({
       await queryClient.invalidateQueries({ queryKey: ['dashboard-workflow', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '再訪候補の生成に失敗しました');
+      toast.error(messageFromError(error, '再訪候補の生成に失敗しました'));
     },
   });
 
