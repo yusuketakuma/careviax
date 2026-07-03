@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const { authMode, withAuthMock, buildNavBadgePayloadMock } = vi.hoisted(() => ({
   authMode: {
@@ -49,11 +50,6 @@ vi.mock('@/server/services/nav-badges', () => ({
 import { GET as rawGET } from './route';
 
 const routeContext = { params: Promise.resolve({}) };
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
-}
 
 describe('/api/nav-badges GET', () => {
   beforeEach(() => {

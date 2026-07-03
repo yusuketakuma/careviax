@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const { facilityFindFirstMock, residenceCountMock, residenceFindManyMock } = vi.hoisted(() => ({
   facilityFindFirstMock: vi.fn(),
@@ -30,11 +31,6 @@ import { GET } from './route';
 
 const createRequest = (query = '') =>
   new NextRequest(`http://localhost/api/facilities/facility_1/patients${query}`);
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
-}
 
 describe('/api/facilities/[id]/patients GET', () => {
   beforeEach(() => {

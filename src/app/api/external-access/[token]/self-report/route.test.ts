@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
 import { NextRequest } from 'next/server';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const VALID_ORG_ID = 'corgabcdefghijklmnopqrstu';
 
@@ -66,11 +67,6 @@ function createMalformedSelfReportRequest(url: string, otpHeader: string | null 
     },
     body: '{"reported_by_name":',
   });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/external-access/[token]/self-report', () => {

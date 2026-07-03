@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   authMock,
@@ -43,11 +44,6 @@ function createRequest(body: unknown) {
     },
     body: JSON.stringify(body),
   });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/handoff-board/items/[id]/resolve', () => {

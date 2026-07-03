@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 type RouteContext = { params: Promise<{ id: string }> };
 type TestRole = 'pharmacist' | 'driver';
@@ -122,11 +123,6 @@ function expectNoMutationSideEffects() {
   expect(facilityVisitBatchDeleteMock).not.toHaveBeenCalled();
   expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function expectDeleteScheduleUnlinkWrites() {

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const {
   loggerErrorMock,
@@ -51,11 +52,6 @@ vi.mock('@/server/services/incident-reports', () => ({
 import { GET, POST } from './route';
 
 const routeCtx = { params: Promise.resolve({}) };
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
-}
 
 function makePostRequest(body: unknown) {
   return new NextRequest('http://localhost/api/incident-reports', {

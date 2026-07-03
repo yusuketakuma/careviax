@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const { careCaseFindFirstMock, patientFindFirstMock, findExternalProfessionalSuggestionsMock } =
   vi.hoisted(() => ({
@@ -60,11 +61,6 @@ import { GET } from './route';
 
 function createRequest(search = '') {
   return new NextRequest(`http://localhost/api/external-professionals/suggestions${search}`);
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/external-professionals/suggestions', () => {

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
@@ -53,11 +54,6 @@ function expectAuthAuditPathTemplate() {
   const authRequest = requireAuthContextMock.mock.calls[0]?.[0] as NextRequest | undefined;
   expect(authRequest?.nextUrl.pathname).toBe('/api/medication-cycles/[id]/history');
   expect(authRequest?.nextUrl.pathname).not.toContain('cycle_1');
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 const authCtx = {

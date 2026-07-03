@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
@@ -83,11 +84,6 @@ async function readPackageInsertPayload(response: Response): Promise<DrugPackage
   });
 
   return payload as DrugPackageInsertResponse;
-}
-
-function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function requirePackageInsert(body: DrugPackageInsertResponse): DrugPackageInsert {
