@@ -164,11 +164,14 @@ export const SETTING_CATALOG: Record<SettingScope, SettingCatalogItem[]> = {
   ],
 };
 
+// 設定スコープは「状態」ではなく識別メタ情報。警告色(赤/橙)を非警告に流用しないよう中立トークンで統一し、
+// スコープの区別はラベル(システム/法人/店舗/個人)で担う(SSOT §2: 状態色は状態にのみ、生 Tailwind 状態色禁止)。
+const SCOPE_BADGE_NEUTRAL = 'bg-muted text-muted-foreground border-border';
 export const SCOPE_LABELS: Record<SettingScope, { label: string; badge: string }> = {
-  system: { label: 'システム', badge: 'bg-red-100 text-red-800 border-red-200' },
-  organization: { label: '法人', badge: 'bg-orange-100 text-orange-800 border-orange-200' },
-  site: { label: '店舗', badge: 'bg-blue-100 text-blue-800 border-blue-200' },
-  user: { label: '個人', badge: 'bg-green-100 text-green-800 border-green-200' },
+  system: { label: 'システム', badge: SCOPE_BADGE_NEUTRAL },
+  organization: { label: '法人', badge: SCOPE_BADGE_NEUTRAL },
+  site: { label: '店舗', badge: SCOPE_BADGE_NEUTRAL },
+  user: { label: '個人', badge: SCOPE_BADGE_NEUTRAL },
 };
 
 export type SettingValueItem = {
@@ -186,7 +189,10 @@ export function stringifySettingValue(value: unknown, fallbackValue: string) {
   return fallbackValue;
 }
 
-export function parseSettingInputValue(type: SettingFieldType, value: string): string | number | boolean {
+export function parseSettingInputValue(
+  type: SettingFieldType,
+  value: string,
+): string | number | boolean {
   if (type === 'number') {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;

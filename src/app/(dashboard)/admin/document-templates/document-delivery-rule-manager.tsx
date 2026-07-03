@@ -338,7 +338,7 @@ export function DocumentDeliveryRuleManager() {
             <div className="space-y-2">
               <p className="text-sm font-medium text-foreground">{ruleCountLabel}</p>
               {isRuleListTruncated ? (
-                <p role="status" className="text-sm text-amber-700">
+                <p role="status" className="text-sm text-state-confirm">
                   文書送達ルールは上限内の先頭行だけを表示しています。未表示のルールが報告書送達候補に影響する可能性があります。
                 </p>
               ) : null}

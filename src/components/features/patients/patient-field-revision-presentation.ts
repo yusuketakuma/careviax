@@ -24,13 +24,15 @@ export interface RevisionChangeTypeMeta {
 export function revisionChangeTypeMeta(item: PatientFieldRevisionListItem): RevisionChangeTypeMeta {
   const hasPrev = item.previous != null && item.previous !== '';
   const hasCur = item.current != null && item.current !== '';
+  // 変更種別は「状態」ではなく識別。警告色(amber)を非警告に流用せず、追加のみ情報タグ(青)で強調し、
+  // 変更/解除は中立トークンでラベル(追加/変更/解除)に区別を委ねる(SSOT §2: 生 Tailwind 状態色禁止)。
   if (!hasPrev && hasCur) {
-    return { label: '追加', className: 'border-sky-200 bg-sky-50 text-sky-700' };
+    return { label: '追加', className: 'border-tag-info/30 bg-tag-info/10 text-tag-info' };
   }
   if (hasPrev && !hasCur) {
-    return { label: '解除', className: 'border-slate-200 bg-slate-50 text-slate-600' };
+    return { label: '解除', className: 'border-border bg-muted text-muted-foreground' };
   }
-  return { label: '変更', className: 'border-amber-200 bg-amber-50 text-amber-700' };
+  return { label: '変更', className: 'border-border bg-muted text-muted-foreground' };
 }
 
 export function revisionDetailText(item: PatientFieldRevisionListItem): string | null {
