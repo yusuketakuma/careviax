@@ -53,6 +53,9 @@ export async function checkManagementPlanReviews() {
 
 export async function checkCallbackFollowups() {
   return runJob('callback_followup_check', async () => {
+    // cross-org: by-design。システム全体 cron のため折り返し期限超過ログを全org横断で走査する。
+    // タスク生成は withOrgContext(log.org_id) 内で行い、担当者(proposed_pharmacist_id)も
+    // 同一行の proposal から解決するため org 境界を跨がない。
     const dueLogs = await prisma.visitScheduleContactLog.findMany({
       where: {
         callback_due_at: { lte: new Date() },
@@ -96,6 +99,9 @@ export async function checkCallbackFollowups() {
 
 export async function checkResidenceGeocodeQuality() {
   return runJob('geocode_quality_check', async () => {
+    // cross-org: by-design。システム全体 cron のためジオコード品質不足の住所を全org横断で走査する。
+    // タスク生成は withOrgContext(residence.org_id) 内で行い、担当者も同一 org の
+    // patient.cases から解決するため org 境界を跨がない。
     const residences = await prisma.residence.findMany({
       where: {
         is_primary: true,
@@ -150,6 +156,9 @@ export async function checkResidenceGeocodeQuality() {
 
 export async function checkSelfReportFollowups() {
   return runJob('self_report_followup_check', async () => {
+    // cross-org: by-design。システム全体 cron のため未対応の自己申告を全org横断で走査する。
+    // タスク/通知は withOrgContext(report.org_id) 内で生成し、対象者も report.patient_id
+    // (同一 org)の careCase から解決するため org 境界を跨いだ漏洩は無い。
     const reports = await prisma.patientSelfReport.findMany({
       where: {
         status: { in: ['submitted', 'triaged', 'converted_to_task'] },

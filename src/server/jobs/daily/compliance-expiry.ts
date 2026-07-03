@@ -25,6 +25,9 @@ export async function checkFacilityStandardExpiry() {
     const now = new Date();
     const in60Days = addDays(now, 60);
 
+    // cross-org: by-design。システム全体 cron のため期限が近い施設基準登録を全org横断で走査する。
+    // 通知は各行の reg.org_id を付与して発行し、対象者は org 毎に bucket 化した
+    // adminUserIdsByOrg.get(reg.org_id) に限定するため org 境界を跨いだ漏洩は無い。
     const expiring = await prisma.facilityStandardRegistration.findMany({
       where: {
         expiry_date: { lte: in60Days, gte: now },

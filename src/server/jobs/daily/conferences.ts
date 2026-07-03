@@ -16,6 +16,9 @@ export async function checkConferenceMeetingReminders() {
     const today = startOfDay(new Date());
     const tomorrow = addDays(today, 1);
 
+    // cross-org: by-design。システム全体 cron のためリマインダ対象を全org横断で走査する。
+    // 通知は下段の withOrgContext(note.org_id) 内で dispatch され、対象者(primaryPharmacistId)も
+    // note.org_id と同一 org の careCase から解決するため org 境界を跨いだ漏洩は無い。
     const notes = await prisma.conferenceNote.findMany({
       where: {
         note_type: 'service_manager',

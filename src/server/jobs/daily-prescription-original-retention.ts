@@ -29,6 +29,9 @@ export async function checkPrescriptionOriginalRetention() {
     const expiringTo = startOfDay(addYears(in30Days, -5));
     const faxFollowupThreshold = startOfDay(addDays(now, -3));
 
+    // cross-org: by-design。システム全体 cron のため原本保存期限が近い処方箋を全org横断で走査する。
+    // 通知(notification)は各行の intake.org_id を付与して発行し、対象者は org 毎に bucket 化した
+    // adminsByOrg.get(intake.org_id) と同一 org の primary_pharmacist_id に限定するため org 境界を跨がない。
     const expiring = await prisma.prescriptionIntake.findMany({
       where: {
         source_type: { in: ['paper', 'fax'] },

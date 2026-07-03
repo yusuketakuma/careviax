@@ -7,6 +7,9 @@ import { runJob } from '../runner';
 export async function cleanupAbandonedQrDrafts() {
   return runJob('cleanup_abandoned_qr_drafts', async () => {
     const cutoff = subHours(new Date(), 24);
+    // cross-org: by-design。放置 QR ドラフトを全org横断で破棄する保守ジョブ。
+    // 結果は各ドラフトの in-place スクラブ(discarded 化)のみで、通知やレポートを
+    // 生成せず org 境界を跨いだ出力は無い。
     const abandonedDrafts = await prisma.qrScanDraft.findMany({
       where: {
         status: 'pending',
