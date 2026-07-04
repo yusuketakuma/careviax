@@ -1,5 +1,41 @@
 # CODEX Goal Progress
 
+## R24/R46 Available Shifts Cursor Helper Partial - 2026-07-05 01:33 JST
+
+- Status:
+  - Implemented and validated the next bounded R24/R46 slice:
+    - `src/app/api/pharmacist-shifts/available/route.ts`
+- Scope:
+  - Reused the existing `buildCursorPage` helper for available-shift overflow
+    detection and visible-row selection.
+  - Preserved the existing `meta: { limit, has_more }` response shape and
+    org-wide closure empty response.
+- Safety:
+  - Product API implementation internals changed; external response shape and
+    available-shift semantics are unchanged.
+  - Preserved `canVisit`, request auth context, RLS request context,
+    business-holiday closure filtering, time-window filtering, sensitive
+    no-store wrapping, DB query shape, schema/migrations/data,
+    auth/authorization semantics, PHI projection, billing behavior, deployment,
+    package dependency, live DB operation, external send, secret handling, push,
+    and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run src/app/api/pharmacist-shifts/available/route.test.ts src/lib/api/pagination.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `21` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `14904154`
+    (`refactor(api): reuse cursor page helper in available shifts`).
+- Remaining:
+  - R24/R46 are partial; continue compatible hand-rolled cursor page routes.
+  - Routes with keyset cursor encoding, scan-window filtering, hidden-count
+    semantics, or additive route-specific metadata need route-specific analysis
+    before helper convergence.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R24/R46 Share Consents Cursor Helper Partial - 2026-07-05 01:30 JST
 
 - Status:

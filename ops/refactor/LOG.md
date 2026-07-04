@@ -2736,3 +2736,23 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R24/R46 は partial。`meta.has_more`、keyset cursor encoding、scan-window、
   hidden-count、route-specific metadata を持つ route は個別分析後に継続。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R24/R46 available-shifts cursor helper slice
+
+- 分類: pattern-inconsistency / 手組み visible-row selection → `buildCursorPage` 収束。
+- 実施:
+  - `/api/pharmacist-shifts/available` GET の `shifts.length > limit` と `slice(0, limit)` を
+    `buildCursorPage` へ移行。
+  - route-specific contract として `meta: { limit, has_more }` を維持し、org-wide closure の
+    empty response は従来通り。
+- 挙動変更: API内部の重複 helper 収束のみ。外部 response shape、business-holiday closure filtering、
+  time-window filtering、RLS request context、no-store は維持。
+- 安全性: `canVisit`、request auth context、RLS request context、DB query shape、auth/authorization、
+  PHI projection、billing、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation は不変。
+- 検証: focused available-shifts/pagination Vitest `2 files / 21 tests` green、scoped ESLint
+  green、targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `14904154` (`refactor(api): reuse cursor page helper in available shifts`)。
+- 残課題: R24/R46 は partial。keyset cursor encoding、scan-window、hidden-count、
+  route-specific metadata を持つ route は個別分析後に継続。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
