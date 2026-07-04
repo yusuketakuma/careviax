@@ -955,5 +955,6 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   current-task の明示許可が必要と明記。
 - 検証: focused prescription detail Vitest `1 file / 7 tests` green、targeted ESLint green、
   targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `b779a867` (`fix(prescriptions): show skeleton for detail loading`)。
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。

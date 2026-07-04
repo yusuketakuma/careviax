@@ -32,6 +32,9 @@
   - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
     the prescription detail source/test and SSOT docs.
   - `pnpm typecheck` passed.
+- Commit:
+  - Implementation and SSOT slice landed at `b779a867`
+    (`fix(prescriptions): show skeleton for detail loading`).
 - Remaining:
   - Broader R55 residuals and Plans.md objective remain open.
   - Existing unrelated `refactor-instructions.md` and local skill install files
