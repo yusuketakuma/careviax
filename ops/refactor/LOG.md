@@ -3879,6 +3879,28 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   個別確認してから段階移行する。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
 
+## 2026-07-05 R40/R44 admin UAT readApiJson slice
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 実施:
+  - admin UAT の org-scoped local JSON fetch helper を `readApiJson` へ移行。
+  - queryFn contract test を追加し、6つの read endpoints と org-scoped headers を固定。
+- 挙動変更: fetch 実装内部の helper 収束のみ。UAT feedback/readiness/summary/
+  collaborators/org-audit/launch-dossier endpoints、`buildOrgHeaders`、query keys、
+  loading/error UI、POST/PATCH payloads、invalidation keys は維持。
+- 安全性: product UI fetch internals のみ変更。DB/schema、auth/authorization、
+  PHI projection、billing、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation、mutation/server behavior は不変。SSOT では
+  必要時の product API/DB/auth/authorization/PHI/billing/deploy/package dependency
+  変更許可を確認済みだが、この slice では不要。
+- 検証: focused UAT Vitest `1 file / 4 tests` green、scoped ESLint green、targeted
+  Prettier check は touched test formatting 後 green、targeted `git diff --check` green、
+  `pnpm typecheck` green。
+- commit: `b3d64bc4` (`Converge UAT JSON fetches on shared helper`)。
+- 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
 ## 2026-07-05 R40/R44 external professionals readApiJson slice
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。

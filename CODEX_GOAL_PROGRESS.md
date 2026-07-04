@@ -46892,6 +46892,48 @@ false` for every migrated column.
   - Existing unrelated `refactor-instructions.md` and local skill install files
     remain outside this slice.
 
+## R40/R44 Admin UAT readApiJson Slice - 2026-07-05 05:21 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/uat/uat-content.tsx`
+  - `src/app/(dashboard)/admin/uat/uat-content.test.tsx`
+- Status:
+  - Implemented and committed as `b3d64bc4`
+    (`Converge UAT JSON fetches on shared helper`).
+- Changes:
+  - Replaced the admin UAT local org-scoped JSON fetch helper with
+    `readApiJson<T>`.
+  - Preserved UAT feedback, pilot readiness, UAT summary, collaborator, org
+    audit, and launch dossier endpoints, `x-org-id` headers, query keys,
+    enabled conditions, loading states, error fallbacks, and invalidation keys.
+  - Added a focused queryFn contract test that directly executes all six read
+    queries and verifies org-scoped endpoint/header usage.
+- Safety:
+  - Product UI fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, destructive operation, UAT feedback POST payload,
+    triage PATCH payload, and server-provided error message fallback behavior.
+  - The 2026-07-04 user instruction allowing product
+    API/DB/auth/authorization/PHI/billing/deploy/package dependency changes when
+    necessary is recorded in `ops/refactor/STATE.md`; this slice did not require
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/uat/uat-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `4` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/uat/uat-content.tsx' 'src/app/(dashboard)/admin/uat/uat-content.test.tsx'`
+    passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/uat/uat-content.tsx' 'src/app/(dashboard)/admin/uat/uat-content.test.tsx'`
+    initially required formatting the touched test, then passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/uat/uat-content.tsx' 'src/app/(dashboard)/admin/uat/uat-content.test.tsx'`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - R40/R44 remains partial and broad; continue per-fetcher body-read/PHI review
+    before converting additional client fetchers.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 External Professionals readApiJson Slice - 2026-07-05 05:02 JST
 
 - Scope:

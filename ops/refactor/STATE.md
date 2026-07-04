@@ -173,6 +173,11 @@
   readApiJson へ収束し、BILLING_RULES_API_PATH/queryKey/source-summary/false-empty retry UI/
   SSOT sync/custom mutation/detail-path contract は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 admin-UAT readApiJson slice(b3d64bc4) land。focused Vitest 4、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。UAT org-scoped JSON fetch helper を
+  readApiJson へ収束し、feedback/readiness/summary/collaborator/audit/dossier read endpoints と
+  POST/PATCH payload/invalidation contract は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
