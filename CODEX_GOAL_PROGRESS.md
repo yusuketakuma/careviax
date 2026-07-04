@@ -1,5 +1,41 @@
 # CODEX Goal Progress
 
+## R24/R46 Drug Masters Cursor Helper Partial - 2026-07-05 02:00 JST
+
+- Status:
+  - Implemented and validated the next bounded R24/R46 slice:
+    - `src/app/api/drug-masters/route.ts`
+- Scope:
+  - Reused the existing `buildCursorPage` helper for drug-master search result
+    overflow detection and visible-row selection.
+  - Preserved search cache behavior, generic price comparison lookup for visible
+    rows, optional site stock lookup for visible rows, `hasMore`, `nextCursor`,
+    and `totalCount` response shape.
+- Safety:
+  - Product API implementation internals changed; external response shape and
+    drug-master search semantics are unchanged.
+  - Preserved request auth context, RLS request context, search/filter/sort
+    params, includeTotal behavior, DB query shape, schema/migrations/data,
+    auth/authorization semantics, PHI projection, billing behavior, deployment,
+    package dependency, live DB operation, external send, secret handling, push,
+    and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run src/app/api/drug-masters/route.test.ts src/lib/api/pagination.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `22` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `d37b26fa`
+    (`refactor(api): reuse cursor page helper in drug masters`).
+- Remaining:
+  - R24/R46 are partial; continue compatible hand-rolled cursor page routes.
+  - Routes with keyset cursor encoding, scan-window filtering, summary metadata,
+    or additive route-specific metadata need route-specific analysis before
+    helper convergence.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R24/R46 Pharmacy Drug Stocks Cursor Helper Partial - 2026-07-05 01:56 JST
 
 - Status:
