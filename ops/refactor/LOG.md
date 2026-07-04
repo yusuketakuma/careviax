@@ -3792,6 +3792,29 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   個別確認してから段階移行する。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
 
+## 2026-07-05 R40/R44 admin shifts readApiJson slice
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 実施:
+  - admin shifts の pharmacy-site / pharmacist member / shift / business-holiday /
+    shift-template GET fetchers を `readApiJson` へ移行。
+  - queryFn contract test を追加し、5つの read endpoints と org-scoped headers を固定。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。endpoints/search params、month/date range、
+  `limit` values、`buildOrgHeaders`、React Query keys、supporting-master error UI、loading
+  skeleton、refetch behavior、mutation behavior は維持。
+- 安全性: product UI read fetch internals のみ変更。DB/schema、auth/authorization、
+  PHI projection、billing、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation、shift edit/copy/apply mutations、holiday
+  mutations、template mutations、pharmacist action mutations は不変。SSOT では必要時の product
+  API/DB/auth/authorization/PHI/billing/deploy/package dependency 変更許可を確認済みだが、
+  この slice では不要。
+- 検証: focused admin shifts Vitest `1 file / 14 tests` green、scoped ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `5cca843d` (`Converge shift reads on shared JSON helper`)。
+- 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
 ## 2026-07-05 R40/R44 external professionals readApiJson slice
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。

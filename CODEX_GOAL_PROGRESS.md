@@ -46724,6 +46724,50 @@ false` for every migrated column.
   - Existing unrelated `refactor-instructions.md` and local skill install files
     remain outside this slice.
 
+## R40/R44 Admin Shifts readApiJson Slice - 2026-07-05 05:05 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/shifts/shifts-content.tsx`
+  - `src/app/(dashboard)/admin/shifts/shifts-content.test.tsx`
+- Status:
+  - Implemented and committed as `5cca843d`
+    (`Converge shift reads on shared JSON helper`).
+- Changes:
+  - Replaced pharmacy-site, pharmacist/member, shift, business-holiday, and
+    shift-template read GET queryFns with `readApiJson`.
+  - Preserved endpoints, search params, month/date range params, `limit` values,
+    `buildOrgHeaders(orgId)`, response envelopes, React Query keys,
+    supporting-master error UI, refetch behavior, loading skeleton, and all
+    mutation behavior.
+  - Added a focused queryFn contract test that directly executes the five read
+    query functions and verifies org-scoped endpoint/header usage.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, destructive operation, shift edit/copy/apply
+    mutations, holiday mutations, template mutations, and pharmacist action
+    mutations.
+  - The 2026-07-04 user instruction allowing product
+    API/DB/auth/authorization/PHI/billing/deploy/package dependency changes when
+    necessary is recorded in `ops/refactor/STATE.md`; this slice did not require
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `14` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/shifts/shifts-content.tsx' 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx'`
+    passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/shifts/shifts-content.tsx' 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx'`
+    passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/shifts/shifts-content.tsx' 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx'`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - R40/R44 remains partial and broad; continue per-fetcher body-read/PHI review
+    before converting additional client read fetchers.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 External Professionals readApiJson Slice - 2026-07-05 05:02 JST
 
 - Scope:
