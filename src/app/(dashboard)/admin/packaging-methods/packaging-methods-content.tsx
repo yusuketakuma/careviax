@@ -12,6 +12,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SkeletonRows } from '@/components/ui/loading';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
@@ -266,9 +267,9 @@ export function PackagingMethodsContent() {
             // isPending (not isLoading) so an unresolved orgId — which disables the query
             // (enabled: !!orgId) and leaves it pending-but-not-fetching — also shows loading
             // rather than the "未登録" empty-state.
-            <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
-              配薬方法を読み込み中...
-            </p>
+            <div role="status" aria-label="配薬方法を読み込み中" aria-live="polite">
+              <SkeletonRows rows={2} cols={2} status={false} />
+            </div>
           ) : methods.length === 0 ? (
             <p className="rounded-xl border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2 text-sm text-state-confirm">
               配薬方法が未登録です。セット作成前に最低1件登録してください。

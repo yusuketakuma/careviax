@@ -247,7 +247,7 @@ describe('PackagingMethodsContent', () => {
     ).toBeTruthy();
   });
 
-  it('shows loading (not the empty-state) while the query is pending, including an unresolved orgId', () => {
+  it('uses an announced skeleton while pending, including an unresolved orgId', () => {
     // isPending true with isLoading false models the React Query v5 disabled-query window
     // (enabled: !!orgId false when orgId is unresolved). The "未登録" empty-state must not show.
     useQueryMock.mockReturnValue({
@@ -259,7 +259,8 @@ describe('PackagingMethodsContent', () => {
     });
     render(<PackagingMethodsContent />);
 
-    expect(screen.getByText('配薬方法を読み込み中...')).toBeTruthy();
+    expect(screen.getByRole('status', { name: '配薬方法を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('配薬方法を読み込み中...')).toBeNull();
     expect(screen.queryByText(/配薬方法が未登録です/)).toBeNull();
   });
 });
