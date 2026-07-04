@@ -434,6 +434,43 @@ describe('AlertRulesPage', () => {
     expect((postCall![1] as RequestInit).headers).toEqual(buildOrgJsonHeaders('org_1'));
   });
 
+  it('blocks invalid alert condition JSON without mutating CDS rules', async () => {
+    renderPage();
+
+    await screen.findByRole('button', { name: '相互作用 の処方安全アラートルールを削除' });
+    vi.mocked(global.fetch).mockClear();
+
+    fireEvent.change(screen.getByLabelText('表示メッセージ'), {
+      target: { value: '条件 JSON の不正を検証' },
+    });
+    const conditionField = screen.getByLabelText('条件(JSON)');
+    fireEvent.change(conditionField, { target: { value: '[]' } });
+
+    const saveButton = screen.getByRole('button', { name: '登録する' }) as HTMLButtonElement;
+    expect(saveButton.disabled).toBe(true);
+    expect(saveButton.getAttribute('aria-describedby')).toBe('alert-rule-save-blocker');
+    expect(conditionField.getAttribute('aria-invalid')).toBe('true');
+    expect(document.getElementById('alert-rule-condition-error')?.textContent).toBe(
+      '条件(JSON) の形式が不正です',
+    );
+    expect(document.getElementById('alert-rule-save-blocker')?.textContent).toBe(
+      '条件(JSON) の形式が不正です',
+    );
+
+    const form = saveButton.closest('form');
+    expect(form).not.toBeNull();
+    fireEvent.submit(form as HTMLFormElement);
+
+    const summaryTitle = await screen.findByText('入力内容を確認してください');
+    const summary = summaryTitle.closest('[role="alert"]');
+    expect(summary?.textContent).toContain('条件(JSON)');
+    expect(summary?.textContent).toContain('条件(JSON) の形式が不正です');
+    const mutationCalls = vi
+      .mocked(global.fetch)
+      .mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method);
+    expect(mutationCalls).toHaveLength(0);
+  });
+
   it('DELETE encodes a hostile rule id via encodePathSegment', async () => {
     vi.stubGlobal(
       'fetch',

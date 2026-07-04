@@ -1,8 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminAlertRulesShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Button } from '@/components/ui/button';
@@ -15,6 +18,7 @@ import {
 } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
+import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -32,6 +36,7 @@ import { SignalTuningPanel } from './signal-tuning-panel';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
+import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 
 type DrugAlertRule = {
   id: string;
@@ -53,6 +58,15 @@ type DrugAlertRulesResponse = {
   count_basis?: 'drug_alert_rules';
   filters_applied?: Record<string, unknown>;
   limit?: number;
+};
+
+type AlertRuleForm = {
+  id: string;
+  alert_type: string;
+  severity: DrugAlertRule['severity'];
+  is_active: boolean;
+  message: string;
+  conditionText: string;
 };
 
 const ALERT_TYPE_LABELS: Record<string, string> = {
@@ -77,19 +91,116 @@ function severityLabel(severity: string): string {
   return SEVERITY_LABELS[severity as keyof typeof SEVERITY_LABELS] ?? severity;
 }
 
+const EMPTY_ALERT_RULE_FORM: AlertRuleForm = {
+  id: '',
+  alert_type: 'interaction',
+  severity: 'warning',
+  is_active: true,
+  message: '',
+  conditionText: '{}',
+};
+
+const CONDITION_ERROR_MESSAGE = '条件(JSON) の形式が不正です';
+const CONDITION_ERROR_ID = 'alert-rule-condition-error';
+const ALERT_RULE_SAVE_BLOCKER_ID = 'alert-rule-save-blocker';
+
+function normalizeAlertRuleForm(form?: Partial<AlertRuleForm> | null): AlertRuleForm {
+  return {
+    id: form?.id ?? EMPTY_ALERT_RULE_FORM.id,
+    alert_type: form?.alert_type ?? EMPTY_ALERT_RULE_FORM.alert_type,
+    severity: form?.severity ?? EMPTY_ALERT_RULE_FORM.severity,
+    is_active: form?.is_active ?? EMPTY_ALERT_RULE_FORM.is_active,
+    message: form?.message ?? EMPTY_ALERT_RULE_FORM.message,
+    conditionText: form?.conditionText ?? EMPTY_ALERT_RULE_FORM.conditionText,
+  };
+}
+
+function toAlertRuleForm(rule: DrugAlertRule): AlertRuleForm {
+  return normalizeAlertRuleForm({
+    id: rule.id,
+    alert_type: rule.alert_type,
+    severity: rule.severity,
+    is_active: rule.is_active,
+    message: rule.message,
+    conditionText: JSON.stringify(rule.condition ?? {}, null, 2),
+  });
+}
+
+function getAlertRuleConditionError(conditionText: string) {
+  try {
+    parseJsonObjectText(conditionText, CONDITION_ERROR_MESSAGE);
+    return null;
+  } catch (error) {
+    return messageFromError(error, CONDITION_ERROR_MESSAGE);
+  }
+}
+
+function getAlertRuleSaveBlocker(_form: AlertRuleForm, conditionError: string | null) {
+  return conditionError;
+}
+
+function getAlertRuleBlockerPath(
+  _form: AlertRuleForm,
+  conditionError: string | null,
+): keyof AlertRuleForm {
+  if (conditionError) return 'conditionText';
+  return 'conditionText';
+}
+
+const alertRuleFormSchema = z
+  .object({
+    id: z.string(),
+    alert_type: z.string(),
+    severity: z.custom<DrugAlertRule['severity']>(),
+    is_active: z.boolean(),
+    message: z.string(),
+    conditionText: z.string(),
+  })
+  .superRefine((value, ctx) => {
+    const form = normalizeAlertRuleForm(value);
+    const conditionError = getAlertRuleConditionError(form.conditionText);
+    const blocker = getAlertRuleSaveBlocker(form, conditionError);
+    if (!blocker) return;
+
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [getAlertRuleBlockerPath(form, conditionError)],
+      message: blocker,
+    });
+  });
+
 export default function AlertRulesPage() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({
-    id: '',
-    alert_type: 'interaction',
-    severity: 'warning',
-    is_active: true,
-    message: '',
-    conditionText: '{}',
+  const errorSummaryId = 'alert-rule-form-error-summary';
+  const {
+    control,
+    formState: { errors },
+    getValues,
+    handleSubmit,
+    register,
+    reset,
+  } = useForm<AlertRuleForm>({
+    resolver: zodResolver(alertRuleFormSchema),
+    defaultValues: EMPTY_ALERT_RULE_FORM,
+  });
+  const form = normalizeAlertRuleForm(useWatch({ control, defaultValue: EMPTY_ALERT_RULE_FORM }));
+  const conditionError = getAlertRuleConditionError(form.conditionText);
+  const saveBlocker = getAlertRuleSaveBlocker(form, conditionError);
+  const errorSummaryItems = collectFormErrorSummaryItems(errors, {
+    alert_type: 'アラート種別',
+    severity: '重要度',
+    is_active: '有効化',
+    message: '表示メッセージ',
+    conditionText: '条件(JSON)',
   });
   const [testCycleId, setTestCycleId] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<DrugAlertRule | null>(null);
+
+  function focusErrorSummary() {
+    if (typeof document === 'undefined') return;
+    document.getElementById(errorSummaryId)?.focus();
+  }
 
   const rulesQuery = useQuery({
     queryKey: ['drug-alert-rules', orgId],
@@ -106,23 +217,26 @@ export default function AlertRulesPage() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const parsedCondition = parseJsonObjectText(
-        form.conditionText,
-        '条件(JSON) の形式が不正です',
+      const values = normalizeAlertRuleForm(getValues());
+      const blocker = getAlertRuleSaveBlocker(
+        values,
+        getAlertRuleConditionError(values.conditionText),
       );
+      if (blocker) throw new Error(blocker);
+      const parsedCondition = parseJsonObjectText(values.conditionText, CONDITION_ERROR_MESSAGE);
 
       // buildDrugAlertRuleApiPath validates during URL construction, so a dot
       // segment id fails closed BEFORE the mutating PATCH side effect.
       const res = await fetch(
-        form.id ? buildDrugAlertRuleApiPath(form.id) : DRUG_ALERT_RULES_API_PATH,
+        values.id ? buildDrugAlertRuleApiPath(values.id) : DRUG_ALERT_RULES_API_PATH,
         {
-          method: form.id ? 'PATCH' : 'POST',
+          method: values.id ? 'PATCH' : 'POST',
           headers: buildOrgJsonHeaders(orgId),
           body: JSON.stringify({
-            alert_type: form.alert_type,
-            severity: form.severity,
-            is_active: form.is_active,
-            message: form.message,
+            alert_type: values.alert_type,
+            severity: values.severity,
+            is_active: values.is_active,
+            message: values.message,
             condition: parsedCondition,
           }),
         },
@@ -131,20 +245,16 @@ export default function AlertRulesPage() {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.message ?? '処方安全アラートルールの保存に失敗しました');
       }
-      return res.json();
+      await res.json();
+      return { wasEditing: Boolean(values.id) };
     },
-    onSuccess: async () => {
+    onSuccess: async ({ wasEditing }) => {
       toast.success(
-        form.id ? '処方安全アラートルールを更新しました' : '処方安全アラートルールを登録しました',
+        wasEditing
+          ? '処方安全アラートルールを更新しました'
+          : '処方安全アラートルールを登録しました',
       );
-      setForm({
-        id: '',
-        alert_type: 'interaction',
-        severity: 'warning',
-        is_active: true,
-        message: '',
-        conditionText: '{}',
-      });
+      reset(EMPTY_ALERT_RULE_FORM);
       await queryClient.invalidateQueries({ queryKey: ['drug-alert-rules', orgId] });
     },
     onError: (error) => {
@@ -165,14 +275,7 @@ export default function AlertRulesPage() {
     onSuccess: async (_data, deletedId) => {
       toast.success('処方安全アラートルールを削除しました');
       if (form.id === deletedId) {
-        setForm({
-          id: '',
-          alert_type: 'interaction',
-          severity: 'warning',
-          is_active: true,
-          message: '',
-          conditionText: '{}',
-        });
+        reset(EMPTY_ALERT_RULE_FORM);
       }
       setDeleteTarget(null);
       await queryClient.invalidateQueries({ queryKey: ['drug-alert-rules', orgId] });
@@ -273,16 +376,7 @@ export default function AlertRulesPage() {
                             aria-label={`${
                               ALERT_TYPE_LABELS[rule.alert_type] ?? rule.alert_type
                             } の処方安全アラートルールを編集`}
-                            onClick={() =>
-                              setForm({
-                                id: rule.id,
-                                alert_type: rule.alert_type,
-                                severity: rule.severity,
-                                is_active: rule.is_active,
-                                message: rule.message,
-                                conditionText: JSON.stringify(rule.condition ?? {}, null, 2),
-                              })
-                            }
+                            onClick={() => reset(toAlertRuleForm(rule))}
                           >
                             編集
                           </Button>
@@ -336,118 +430,149 @@ export default function AlertRulesPage() {
         <PageSection
           title={form.id ? 'ルールを編集' : 'ルールを登録'}
           description="空条件 `{}` でも種別単位の ON/OFF ルールとして利用できます。"
-          contentClassName="space-y-4"
         >
-          <div className="space-y-2">
-            <Label htmlFor="alert_type">アラート種別</Label>
-            <Select
-              value={form.alert_type}
-              onValueChange={(value) =>
-                setForm((current) => ({ ...current, alert_type: value ?? 'interaction' }))
-              }
-            >
-              <SelectTrigger id="alert_type" className="min-h-[44px] w-full sm:min-h-[44px]">
-                {/* Radix は SSR で既定値ラベルを解決できないため表示文言を明示する */}
-                <SelectValue>{ALERT_TYPE_LABELS[form.alert_type] ?? form.alert_type}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(ALERT_TYPE_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="severity">重要度</Label>
-            <Select
-              value={form.severity}
-              onValueChange={(value) =>
-                setForm((current) => ({
-                  ...current,
-                  severity: (value ?? 'warning') as 'critical' | 'warning' | 'info',
-                }))
-              }
-            >
-              <SelectTrigger id="severity" className="min-h-[44px] w-full sm:min-h-[44px]">
-                <SelectValue>{severityLabel(form.severity)}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="critical">重大</SelectItem>
-                <SelectItem value="warning">注意</SelectItem>
-                <SelectItem value="info">情報</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-            <div>
-              <Label htmlFor="alert-rule-active" className="text-sm font-medium">
-                有効化
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                OFF にするとこのルールは実行対象から外れます
-              </p>
+          <form
+            className="space-y-4"
+            onSubmit={handleSubmit(() => saveMutation.mutate(), focusErrorSummary)}
+            noValidate
+          >
+            <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
+            <div className="space-y-2">
+              <Label htmlFor="alert_type">アラート種別</Label>
+              <Controller
+                control={control}
+                name="alert_type"
+                render={({ field }) => (
+                  <Select
+                    value={field.value}
+                    onValueChange={(value) => field.onChange(value ?? 'interaction')}
+                  >
+                    <SelectTrigger
+                      id="alert_type"
+                      className="min-h-[44px] w-full sm:min-h-[44px]"
+                      aria-invalid={Boolean(errors.alert_type)}
+                    >
+                      {/* Radix は SSR で既定値ラベルを解決できないため表示文言を明示する */}
+                      <SelectValue>
+                        {ALERT_TYPE_LABELS[form.alert_type] ?? form.alert_type}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(ALERT_TYPE_LABELS).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
             </div>
-            <Switch
-              id="alert-rule-active"
-              className="!h-11 !w-14 px-1 data-[state=checked]:[&>span]:!translate-x-6 [&>span]:!size-6"
-              checked={form.is_active}
-              onCheckedChange={(checked) =>
-                setForm((current) => ({ ...current, is_active: checked }))
-              }
-            />
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="message">表示メッセージ</Label>
-            <Input
-              id="message"
-              value={form.message}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, message: event.target.value }))
-              }
-              placeholder="例: 併用禁忌候補を再確認してください"
-            />
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="severity">重要度</Label>
+              <Controller
+                control={control}
+                name="severity"
+                render={({ field }) => (
+                  <Select
+                    value={field.value}
+                    onValueChange={(value) =>
+                      field.onChange((value ?? 'warning') as 'critical' | 'warning' | 'info')
+                    }
+                  >
+                    <SelectTrigger
+                      id="severity"
+                      className="min-h-[44px] w-full sm:min-h-[44px]"
+                      aria-invalid={Boolean(errors.severity)}
+                    >
+                      <SelectValue>{severityLabel(form.severity)}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="critical">重大</SelectItem>
+                      <SelectItem value="warning">注意</SelectItem>
+                      <SelectItem value="info">情報</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="condition">条件(JSON)</Label>
-            <Textarea
-              id="condition"
-              rows={8}
-              className="font-mono text-xs"
-              value={form.conditionText}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, conditionText: event.target.value }))
-              }
-            />
-          </div>
+            <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+              <div>
+                <Label htmlFor="alert-rule-active" className="text-sm font-medium">
+                  有効化
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  OFF にするとこのルールは実行対象から外れます
+                </p>
+              </div>
+              <Controller
+                control={control}
+                name="is_active"
+                render={({ field }) => (
+                  <Switch
+                    id="alert-rule-active"
+                    className="!h-11 !w-14 px-1 data-[state=checked]:[&>span]:!translate-x-6 [&>span]:!size-6"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    aria-invalid={Boolean(errors.is_active)}
+                  />
+                )}
+              />
+            </div>
 
-          <ActionRail align="start">
-            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-              {saveMutation.isPending ? '保存中...' : form.id ? '更新する' : '登録する'}
-            </Button>
-            {form.id ? (
+            <div className="space-y-2">
+              <Label htmlFor="message">表示メッセージ</Label>
+              <Input
+                id="message"
+                aria-invalid={Boolean(errors.message)}
+                placeholder="例: 併用禁忌候補を再確認してください"
+                {...register('message')}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="condition">条件(JSON)</Label>
+              <Textarea
+                id="condition"
+                rows={8}
+                className="font-mono text-xs"
+                aria-invalid={conditionError ? true : undefined}
+                aria-describedby={conditionError ? CONDITION_ERROR_ID : undefined}
+                {...register('conditionText')}
+              />
+              {conditionError ? (
+                <p id={CONDITION_ERROR_ID} className="text-xs text-destructive">
+                  {conditionError}
+                </p>
+              ) : null}
+            </div>
+
+            <ActionRail align="start">
               <Button
-                variant="outline"
-                onClick={() =>
-                  setForm({
-                    id: '',
-                    alert_type: 'interaction',
-                    severity: 'warning',
-                    is_active: true,
-                    message: '',
-                    conditionText: '{}',
-                  })
-                }
+                type="submit"
+                disabled={saveMutation.isPending || Boolean(saveBlocker)}
+                aria-describedby={saveBlocker ? ALERT_RULE_SAVE_BLOCKER_ID : undefined}
               >
-                キャンセル
+                {saveMutation.isPending ? '保存中...' : form.id ? '更新する' : '登録する'}
               </Button>
+              {form.id ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => reset(EMPTY_ALERT_RULE_FORM)}
+                >
+                  キャンセル
+                </Button>
+              ) : null}
+            </ActionRail>
+            {saveBlocker ? (
+              <p id={ALERT_RULE_SAVE_BLOCKER_ID} className="text-xs text-destructive">
+                {saveBlocker}
+              </p>
             ) : null}
-          </ActionRail>
+          </form>
         </PageSection>
       </div>
 
