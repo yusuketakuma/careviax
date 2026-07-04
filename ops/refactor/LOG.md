@@ -5,6 +5,24 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R25-patient e6e73fa4
+
+- 分類: pattern-inconsistency / ErrorState retry action convergence
+- 対象: `src/components/features/patients/residual-medication-chart.tsx`,
+  `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx`
+- 実施: residual medication / prescription history / patient care-team professional
+  options の ErrorState 3箇所を `action={{ label: '再読み込み', onClick }}` から
+  `onRetry` + `retryLabel` へ移行。
+- 挙動変更: なし。表示ラベル、refetch handler、false-empty-safe error branch、
+  residual/prescription-history/professional-option query behavior は不変。
+- 安全: UI presentation/refactor のみ。product API/DB/auth/authorization/PHI/billing/deploy/package
+  dependency は変更不要。audit/live DB/external send/secret/push/destructive operation 不変。
+- 検証: targeted patient-context retry action scan 0件。focused patient-context vitest
+  3 files / 42 tests green。scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit e6e73fa4。
+- 残課題: R25 は partial。残りの ErrorState retry action は段階移行を継続。
+
 ## 2026-07-05 R25-prescription 901c4276
 
 - 分類: pattern-inconsistency / ErrorState retry action convergence
