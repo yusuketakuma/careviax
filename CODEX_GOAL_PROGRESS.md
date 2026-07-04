@@ -1,5 +1,43 @@
 # CODEX Goal Progress
 
+## R24/R46 Billing Candidates Cursor Helper Partial - 2026-07-05 01:14 JST
+
+- Status:
+  - Implemented and validated the next bounded R24/R46 slice:
+    - `src/app/api/billing-candidates/route.ts`
+    - `src/app/api/billing-candidates/route.test.ts`
+- Scope:
+  - Reused the existing `buildCursorPage` helper for `/api/billing-candidates`
+    GET overflow detection and `nextCursor` assembly.
+  - Added route coverage that `limit=1` fetches `take: 2`, returns only the
+    visible row, sets `hasMore: true`, emits `nextCursor: candidate_1`, and
+    preserves the additive `summary` field.
+- Safety:
+  - Product API implementation internals changed; the external response
+    envelope and billing semantics are unchanged.
+  - Preserved `canManageBilling`, RLS `withOrgContext`, strict query
+    validation, sensitive no-store wrapping, billing-domain/month/status
+    behavior, PHI-minimizing source snapshot sanitization, summary behavior, DB
+    query shape, POST generation behavior, schema/migrations/data, deployment,
+    package dependency, live DB operation, external send, secret handling, push,
+    and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run src/app/api/billing-candidates/route.test.ts src/lib/api/pagination.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `48` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `b4185e59`
+    (`refactor(api): reuse cursor page helper in billing candidates`).
+- Remaining:
+  - R24/R46 are partial; continue compatible hand-rolled cursor page routes.
+  - Routes with `meta.has_more`, keyset cursor encoding, scan-window filtering,
+    hidden-count semantics, or additive summary/count metadata need route-specific
+    analysis before helper convergence.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R23 Schedule Optimizer Error Message Helper Partial - 2026-07-05 01:10 JST
 
 - Status:

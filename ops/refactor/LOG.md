@@ -2607,3 +2607,26 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - commit: `2e8589a4` (`refactor(ui): route admin error retries through shorthand`)。
 - 残課題: R25 は partial。admin analytics/realtime 以外の ErrorState retry action は段階移行を継続。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R24/R46 billing-candidates cursor helper slice
+
+- 分類: pattern-inconsistency / 手組み cursor page assembly → `buildCursorPage` 収束。
+- 実施:
+  - `/api/billing-candidates` GET の route-local `hasMore` / `slice` / `nextCursor`
+    assembly を `src/lib/api/pagination.ts` の `buildCursorPage` へ移行。
+  - additive `summary` は従来どおり page envelope に併合し、`data` / `hasMore` /
+    `nextCursor` / `summary` の overflow response contract を test-lock。
+  - `limit=1` で `take: 2`、visible row 1件、hidden overflow row 非露出、
+    `nextCursor: candidate_1` を route test に追加。
+- 挙動変更: API内部の重複 helper 収束のみ。外部 response envelope、billing candidate
+  list semantics、summary semantics、POST generation behavior は維持。
+- 安全性: `canManageBilling`、RLS `withOrgContext`、query validation、sensitive no-store、
+  billing-domain/month/status behavior、PHI-minimizing source snapshot sanitization、DB query
+  shape、schema/migrations/data、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation は不変。
+- 検証: focused billing-candidates/pagination Vitest `2 files / 48 tests` green、scoped ESLint
+  green、targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `b4185e59` (`refactor(api): reuse cursor page helper in billing candidates`)。
+- 残課題: R24/R46 は partial。`meta.has_more`、keyset cursor encoding、scan-window、
+  hidden-count、summary/count metadata を持つ route は route-specific analysis 後に継続。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
