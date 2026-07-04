@@ -9,7 +9,7 @@ import { sortedManagementPlanSections, SECTION_LABELS } from '@/lib/validations/
 import { PrintPageToolbar } from '@/components/features/workflow/print-page-toolbar';
 import { PrintLayout } from '@/components/features/reports/print-layout';
 import { buttonVariants } from '@/components/ui/button';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/loading';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { encodePathSegment } from '@/lib/http/path-segment';
@@ -47,6 +47,38 @@ type CareCaseResponse = {
     };
   };
 };
+
+function ManagementPlanPrintLoadingState() {
+  return (
+    <div
+      className="mx-auto max-w-4xl space-y-6 p-6 print:p-0"
+      role="status"
+      aria-label="管理計画書の印刷データを読み込み中"
+      aria-live="polite"
+    >
+      <div className="space-y-2 print:hidden">
+        <Skeleton className="h-6 w-44" />
+        <Skeleton className="h-4 w-full max-w-lg" />
+      </div>
+
+      <div className="space-y-4 rounded-lg border border-border bg-card p-4" aria-hidden="true">
+        <Skeleton className="mx-auto h-7 w-56" />
+        <div className="grid gap-px overflow-hidden rounded border border-border bg-border text-xs sm:grid-cols-4">
+          {Array.from({ length: 12 }).map((_, index) => (
+            <Skeleton key={index} className="h-8 rounded-none bg-background" />
+          ))}
+        </div>
+        {Array.from({ length: 4 }).map((_, index) => (
+          <section key={index} className="space-y-1">
+            <Skeleton className="h-8 w-full rounded-none" />
+            <Skeleton className="h-16 w-full rounded-none" />
+          </section>
+        ))}
+      </div>
+      <span className="sr-only">管理計画書の印刷データを読み込み中</span>
+    </div>
+  );
+}
 
 export default function ManagementPlanPrintPage() {
   const params = useParams<{ id: string }>();
@@ -117,7 +149,7 @@ export default function ManagementPlanPrintPage() {
   }, [ready]);
 
   if (isBootstrappingOrg || isLoading) {
-    return <Loading />;
+    return <ManagementPlanPrintLoadingState />;
   }
 
   if (

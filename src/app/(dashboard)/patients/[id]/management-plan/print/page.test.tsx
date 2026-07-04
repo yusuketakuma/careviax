@@ -139,6 +139,20 @@ describe('ManagementPlanPrintPage', () => {
     Object.defineProperty(window, 'print', { configurable: true, value: printMock });
   });
 
+  it('shows a management-plan print skeleton instead of a generic spinner while loading', () => {
+    setRoute('patient_1', 'plan_1');
+    useQueryMock.mockReturnValue({ data: undefined, isLoading: true, error: null });
+
+    render(<ManagementPlanPrintPage />);
+
+    expect(screen.getByRole('status', { name: '管理計画書の印刷データを読み込み中' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByTestId('print-layout')).toBeNull();
+    expect(screen.queryByText(patientSnapshot.name)).toBeNull();
+    expect(screen.queryByText(planSnapshot.data.title)).toBeNull();
+  });
+
   it('builds patient, plan, and case fetch URLs with encoded path ids and org headers', async () => {
     const hostilePatientId = 'patient/1?x=y#z';
     const hostilePlanId = 'plan/1?x=y#z';
