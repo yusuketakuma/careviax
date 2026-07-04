@@ -32,6 +32,7 @@ import { z } from 'zod';
 import { visitRecordBaseSchema } from '@/lib/validations/visit-record';
 import { useNetworkOnline } from '@/lib/hooks/use-network-online';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSpeechRecognition } from '@/lib/hooks/use-speech-recognition';
 import { useSoapDraft } from '@/lib/hooks/use-soap-draft';
@@ -581,8 +582,7 @@ export function VisitRecordForm({
       const res = await fetch(`/api/visit-schedules/${id}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('スケジュール情報の取得に失敗しました');
-      return res.json();
+      return readApiJson<ScheduleDetail>(res, 'スケジュール情報の取得に失敗しました');
     },
     enabled: !!orgId && !!id,
   });
@@ -597,8 +597,9 @@ export function VisitRecordForm({
       const res = await fetch(buildPatientApiPath(schedule?.patient_id ?? '', '/header-summary'), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('患者ヘッダー情報の取得に失敗しました');
-      return res.json();
+      return readApiJson<{
+        safety: { visible_safety_tags: string[]; hidden_safety_tag_count: number };
+      }>(res, '患者ヘッダー情報の取得に失敗しました');
     },
     enabled: !!orgId && !!schedule?.patient_id,
   });
@@ -648,8 +649,7 @@ export function VisitRecordForm({
       const res = await fetch(`/api/visit-preparations/${id}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('訪問準備情報の取得に失敗しました');
-      return res.json();
+      return readApiJson<VisitPreparationSnapshot>(res, '訪問準備情報の取得に失敗しました');
     },
     enabled: !!orgId && !!schedule?.id,
   });
