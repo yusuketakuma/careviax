@@ -7,7 +7,7 @@ import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildSearchFilter, buildSort } from '@/lib/api/search';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
@@ -186,8 +186,8 @@ async function authenticatedGET(req: NextRequest) {
             includeTotal ? tx.drugMaster.count({ where }) : Promise.resolve(null),
           ]);
 
-          const hasMore = drugs.length > limit;
-          const data = hasMore ? drugs.slice(0, limit) : drugs;
+          const page = buildCursorPage(drugs, limit, (drug) => drug.id);
+          const data = page.data;
           const genericNames = [
             ...new Set(
               data
@@ -224,7 +224,7 @@ async function authenticatedGET(req: NextRequest) {
                   ? (priceComparisonByGenericName.get(drug.generic_name) ?? null)
                   : null,
             })),
-            hasMore,
+            hasMore: page.hasMore,
             totalCount,
           };
         };
