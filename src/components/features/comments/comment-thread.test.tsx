@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useRealtimeQueryMock = vi.hoisted(() => vi.fn());
@@ -75,7 +76,7 @@ describe('CommentThread', () => {
     vi.clearAllMocks();
     vi.stubGlobal('fetch', fetchMock);
     useOrgIdMock.mockReturnValue('org_1');
-    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ deleted: true }) });
+    fetchMock.mockResolvedValue(jsonResponse({ deleted: true }));
     useRealtimeQueryMock.mockReturnValue({
       data: { data: [] },
       isLoading: false,

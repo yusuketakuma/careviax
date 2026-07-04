@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { MentionInput } from './mention-input';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
@@ -42,7 +43,7 @@ describe('MentionInput', () => {
     vi.clearAllMocks();
     vi.stubGlobal('fetch', fetchMock);
     useOrgIdMock.mockReturnValue('org_1');
-    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ data: [] }) });
+    fetchMock.mockResolvedValue(jsonResponse({ data: [] }));
   });
 
   it('fetches staff mention candidates through shared pharmacist path and org headers', async () => {
@@ -93,9 +94,13 @@ function MentionHarness({
 
 async function renderWithLoadedStaff(
   staff: StaffMember[],
-  props: { initialValue: string; initialMentions: string[]; onMentionsChangeSpy: (m: string[]) => void },
+  props: {
+    initialValue: string;
+    initialMentions: string[];
+    onMentionsChangeSpy: (m: string[]) => void;
+  },
 ) {
-  fetchMock.mockResolvedValue({ ok: true, json: async () => ({ data: staff }) });
+  fetchMock.mockResolvedValue(jsonResponse({ data: staff }));
 
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
