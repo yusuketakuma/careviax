@@ -1,5 +1,35 @@
 # CODEX Goal Progress
 
+## R23 Schedule Proposals Error Message Helper Partial - 2026-07-05 00:37 JST
+
+- Status:
+  - Implemented and validated the next bounded R23 slice:
+    - `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`
+- Scope:
+  - Reused the existing `messageFromError` helper for proposal action and bulk
+    action fetch/json error formatting.
+  - Preserved safe failure display, server-reached handling, and sensitive
+    detail suppression for proposal mutation failures.
+- Safety:
+  - Client/helper error message formatting only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    audit, deployment, package dependency, live DB operation, external send,
+    secret handling, push, or destructive operation changed.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' src/lib/utils/error-message.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `42` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `6d098a9b`
+    (`refactor(ui): reuse error message helper in schedule proposals`).
+- Remaining:
+  - R23 is partial; remaining hand-rolled error-message ternaries should be
+    migrated by bounded domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R23 Workbench Mutations Error Message Helper Partial - 2026-07-05 00:34 JST
 
 - Status:
