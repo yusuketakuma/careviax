@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R24/R46 External Professionals Cursor Helper Partial - 2026-07-05 02:22 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R24/R46 slice:
+    - `src/app/api/admin/external-professionals/route.ts`
+    - `src/app/api/admin/external-professionals/route.test.ts`
+- Scope:
+  - Reused the existing `buildCursorPage` helper for q-filtered external
+    professional visible-row selection.
+  - Preserved exact `count` metadata, `total_count`, `visible_count`,
+    `hidden_count`, `truncated`, `meta.has_more`, filters, org scoping, and
+    public re-export smoke behavior.
+  - Q-filtered list reads now fetch one overflow row (`limit + 1`) while the
+    response still exposes only `limit` rows.
+- Safety:
+  - Product API implementation internals changed; external response shape and
+    external professional search semantics are unchanged.
+  - Preserved `canReport`, request auth context, DB query filters,
+    schema/migrations/data, auth/authorization semantics, PHI projection,
+    billing behavior, deployment, package dependency, live DB operation,
+    external send, secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run src/app/api/admin/external-professionals/route.test.ts src/app/api/external-professionals/route.test.ts src/lib/api/pagination.test.ts --reporter=dot --testTimeout=30000`
+    passed `3` files / `27` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `9e2a5204`
+    (`refactor(api): reuse cursor page helper in external professionals`).
+- Remaining:
+  - R24/R46 known backlog wording is nearly exhausted. Current-code scan still
+    includes specialized/non-cursor safety-limit cases that need separate
+    classification before any conversion.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R24/R46 Conference Notes Cursor Helper Partial - 2026-07-05 02:18 JST
 
 - Status:

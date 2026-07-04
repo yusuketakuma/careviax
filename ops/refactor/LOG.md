@@ -3058,3 +3058,27 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R24/R46 は partial。admin/external-professionals count-based q search は
   個別分析後に継続。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R24/R46 external-professionals cursor helper slice
+
+- 分類: pattern-inconsistency / count-based q-filtered visible-row selection →
+  `buildCursorPage` 収束。
+- 実施:
+  - `/api/admin/external-professionals` GET の q-filtered path で `take: limit + 1`
+    の overflow row を取得し、visible-row selection を `buildCursorPage` へ移行。
+  - exact `count` に基づく `total_count` / `visible_count` / `hidden_count` /
+    `truncated` / `meta.has_more`、filters、org scoping、public re-export smoke は維持。
+- 挙動変更: API内部の重複 helper 収束のみ。外部 response shape、
+  external professional search semantics、sensitive no-store は維持。
+- 安全性: `canReport`、auth context、DB query filters、auth/authorization、
+  PHI projection、billing、deployment、package dependency、live DB operation、
+  external send、secret handling、push、destructive operation は不変。
+- 検証: focused admin/public external-professionals/pagination Vitest
+  `3 files / 27 tests` green、scoped ESLint green、targeted Prettier check green、
+  targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `9e2a5204`
+  (`refactor(api): reuse cursor page helper in external professionals`)。
+- 残課題: R24/R46 の既知 backlog 文言はほぼ消化。current-code scan の残 hit は
+  management-plans safety-limit、fixed-size admin utility list、external-access 専用 pagination
+  などに分類し、別候補として扱う。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
