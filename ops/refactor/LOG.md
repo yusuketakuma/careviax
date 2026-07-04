@@ -5,6 +5,25 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R25-schedule-visit 72b1f57c
+
+- 分類: pattern-inconsistency / ErrorState retry action convergence
+- 対象: `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`,
+  `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`,
+  `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`,
+  `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`
+- 実施: schedule proposal / visit record の ErrorState 4箇所を
+  `action={{ label: '再読み込み', onClick }}` から `onRetry` + `retryLabel` へ移行。
+- 挙動変更: なし。表示ラベル、refetch handler、false-empty/false-negative-safe error branch、
+  schedule/visit query behavior は不変。
+- 安全: UI presentation/refactor のみ。product API/DB/auth/authorization/PHI/billing/deploy/package
+  dependency は変更不要。audit/live DB/external send/secret/push/destructive operation 不変。
+- 検証: focused schedule/visit vitest 4 files / 82 tests green。scoped
+  eslint/prettier/diff-check green。`pnpm typecheck` green。retry-label scan は
+  non-ErrorState EmptyState と ErrorState precedence test のみ残存。
+- レビュー: self-verified。commit 72b1f57c。
+- 残課題: R25 は partial。broader `<ErrorState action>` usages は別途監査が必要。
+
 ## 2026-07-05 R25-patient e6e73fa4
 
 - 分類: pattern-inconsistency / ErrorState retry action convergence

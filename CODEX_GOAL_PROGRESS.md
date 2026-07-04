@@ -1,5 +1,46 @@
 # CODEX Goal Progress
 
+## R25 Schedule/Visit ErrorState Retry Shorthand Partial - 2026-07-05 00:11 JST
+
+- Status:
+  - Implemented and validated the next bounded R25 slice:
+    - `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`
+    - `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`
+    - `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`
+    - `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`
+- Scope:
+  - Migrated schedule weekly board, schedule proposal billing preview, visit
+    record detail, and visit record form ErrorState retry actions from
+    hand-written `action={{ label: '再読み込み', onClick }}` objects to
+    `onRetry` + `retryLabel`.
+  - Preserved visible retry copy, existing refetch handlers, and
+    false-empty/false-negative-safe error behavior.
+- Safety:
+  - UI presentation/refactor only.
+  - Visible retry copy, click handlers, ErrorState branches, schedule proposal
+    query behavior, visit record query behavior, visit schedule query behavior,
+    and existing PHI-free error copy are preserved.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    audit, deployment, package dependency, live DB operation, external send,
+    secret handling, push, or destructive operation changed.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx' 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' 'src/app/(dashboard)/visits/[id]/visit-record-detail.test.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `4` files / `82` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+  - Targeted hand-written `再読み込み`/`再試行` action scan now reports only a
+    non-ErrorState `EmptyState` action and the `ErrorState` explicit action
+    precedence test; broader `<ErrorState action>` usages still need a separate
+    audit before closing R25.
+- Commit:
+  - Implementation slice landed at `72b1f57c`
+    (`refactor(ui): route visit schedule retries through shorthand`).
+- Remaining:
+  - R25 remains partial pending broader explicit `ErrorState action` audit.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R25 Patient ErrorState Retry Shorthand Partial - 2026-07-05 00:07 JST
 
 - Status:
