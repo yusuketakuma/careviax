@@ -2031,3 +2031,26 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - commit: `80a77b03` (`refactor(ui): share state action renderers`)。
 - 残課題: R35 は closure。broad Plans.md objective は継続。未所有
   `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-04 R25 admin ErrorState retry shorthand slice
+
+- 分類: pattern-inconsistency / ErrorState retry action convergence。
+- 実施:
+  - `ErrorState` に `retryLabel` を追加し、既存 `onRetry` shorthand で「再読み込み」などの
+    画面固有 retry copy を維持できるようにした。
+  - `admin/analytics` の初回失敗 ErrorState 2箇所を
+    `action={{ label: '再読み込み', onClick }}` から `onRetry` + `retryLabel` へ移行。
+  - `admin/realtime` の ErrorState 3箇所を同じ shorthand へ移行。
+  - explicit `action` が指定された場合は従来どおり `onRetry` より優先される契約を維持。
+- 挙動変更: ErrorState retry prop shape の追加と呼び出し側の定型句整理のみ。表示ラベル、
+  click handler、live-region behavior、copy、admin analytics/realtime query behavior は維持。
+- 安全性: UI presentation/refactor only。product API、DB、auth、authorization、PHI projection、
+  billing、audit、deployment、package dependency、live DB operation、external send、secret handling、
+  push、destructive operation は不変。
+- 検証: focused Vitest `error-state.test.tsx` + `admin/analytics/analytics-content.test.tsx` +
+  `admin/realtime/page.test.tsx` は `3 files / 28 tests` green。対象2画面の hand-rolled
+  `action={{ label: '再読み込み' ... }}` scan は no matches。scoped ESLint、targeted Prettier check、
+  targeted `git diff --check`、`pnpm typecheck` green。
+- commit: `2e8589a4` (`refactor(ui): route admin error retries through shorthand`)。
+- 残課題: R25 は partial。admin analytics/realtime 以外の ErrorState retry action は段階移行を継続。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。

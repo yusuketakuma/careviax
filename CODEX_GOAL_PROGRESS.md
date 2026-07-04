@@ -1,5 +1,45 @@
 # CODEX Goal Progress
 
+## R25 Admin ErrorState Retry Shorthand Partial - 2026-07-04 23:05 JST
+
+- Status:
+  - Implemented and validated the first bounded R25 slice:
+    - `src/components/ui/error-state.tsx`
+    - `src/components/ui/error-state.test.tsx`
+    - `src/app/(dashboard)/admin/analytics/analytics-content.tsx`
+    - `src/app/(dashboard)/admin/realtime/page.tsx`
+- Scope:
+  - Added `retryLabel` to `ErrorState`, so the existing `onRetry` shorthand can
+    preserve visible retry copy such as `再読み込み`.
+  - Migrated five admin analytics/realtime ErrorState retry actions from
+    hand-written `action={{ label: '再読み込み', onClick }}` objects to
+    `onRetry` + `retryLabel`.
+  - Preserved the existing contract that explicit `action` wins over `onRetry`.
+- Safety:
+  - UI presentation/refactor only.
+  - Visible labels, click handlers, live-region behavior, copy, and admin
+    analytics/realtime query behavior are preserved.
+  - No product API, DB, auth, authorization, PHI projection, billing, audit,
+    deployment, package dependency, live DB operation, external send, secret
+    handling, push, or destructive operation changed.
+- Validation:
+  - `pnpm exec vitest run src/components/ui/error-state.test.tsx 'src/app/(dashboard)/admin/analytics/analytics-content.test.tsx' 'src/app/(dashboard)/admin/realtime/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `3` files / `28` tests.
+  - Targeted scan for hand-written `再読み込み` ErrorState actions in the two
+    migrated screens returned no product matches; the remaining match is the
+    explicit link-action fixture in `error-state.test.tsx`.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `2e8589a4`
+    (`refactor(ui): route admin error retries through shorthand`).
+- Remaining:
+  - R25 is partial; remaining ErrorState retry action boilerplate should be
+    migrated in bounded screen/domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R35 ErrorState/EmptyState Renderer Convergence Completed - 2026-07-04 23:01 JST
 
 - Status:
