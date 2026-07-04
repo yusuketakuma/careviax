@@ -78,6 +78,12 @@
   readApiJson へ収束し、intake path helper / hostile-id encoding / retry-back error UI /
   display-id / patient link contract は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 generic-candidates readApiJson slice(68ac7d85) land。focused Vitest 7、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。prescription intake の generic
+  candidate lookup read GET を readApiJson へ収束し、drug-master path helper /
+  q,generic,limit,includeTotal params / org header / queryKey / enabled gate / generic-name
+  checkbox / candidate selection / submit payload contract は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 - codex: R40/R44 drug-masters readApiJson slice(fe9edc77) land。focused Vitest 88、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。pharmacy sites / drug master cursor page /
   import status / import logs read GET を readApiJson へ収束し、site scoping / cursor params /
