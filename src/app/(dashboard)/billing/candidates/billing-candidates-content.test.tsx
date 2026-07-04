@@ -195,6 +195,93 @@ describe('BillingCandidatesContent', () => {
     expect(closeReason.textContent).not.toMatch(/patient_1|山田|太郎/);
   });
 
+  it('uses a billing-specific label while loading the next candidates page', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.startsWith('/api/billing-candidates?') && url.includes('cursor=cursor_1')) {
+          return new Promise<Response>(() => undefined);
+        }
+        if (url.startsWith('/api/billing-candidates?')) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'candidate_target',
+                  patient_id: 'patient_1',
+                  patient_name: '山田 太郎',
+                  billing_domain: 'home_care',
+                  billing_target_type: 'patient',
+                  billing_target_id: 'patient_1',
+                  billing_target_label: '山田 太郎',
+                  billing_month: '2026-03-01T00:00:00.000Z',
+                  billing_code: 'MED_HOME_VISIT_SINGLE',
+                  billing_name: '在宅患者訪問薬剤管理指導料',
+                  points: 3240,
+                  quantity: 1,
+                  status: 'confirmed',
+                  exclusion_reason: null,
+                  updated_at: '2026-06-18T00:01:00.000Z',
+                  calculation_breakdown: { amount_yen: 3240 },
+                  source_snapshot: {
+                    billing_scope: 'home_care_ssot',
+                    selection_mode: 'auto',
+                    validation_layers: {
+                      evidence: { label: '証跡', state: 'passed', message: 'OK' },
+                    },
+                  },
+                  workflow_state: { review_state: 'reviewed', resolution_state: 'confirmed' },
+                },
+              ],
+              hasMore: true,
+              nextCursor: 'cursor_1',
+              summary: {
+                total: 1,
+                pending_review: 0,
+                confirmed: 1,
+                excluded: 0,
+                exported: 0,
+                reviewed: 1,
+                ready_to_close: 1,
+                blocked_from_close: 0,
+                blocker_reasons: [],
+              },
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.startsWith('/api/billing-candidates/export?') && url.includes('preview=1')) {
+          return new Response(
+            JSON.stringify({
+              data: {
+                billing_month: '2026-03-01',
+                billing_domain: 'home_care',
+                total_count: 1,
+                exportable_count: 1,
+                total_points: 3240,
+                total_amount_yen: 0,
+                status_counts: { confirmed: 1 },
+                insurance_type_counts: { medical: 1, care: 0, self: 0 },
+                exclusion_reasons: [],
+                generated_at: '2026-06-18T00:00:00.000Z',
+              },
+            }),
+            { status: 200 },
+          );
+        }
+
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+    renderBillingCandidatesContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'さらに読み込む' }));
+
+    expect(await screen.findByRole('button', { name: '月次請求候補を読み込み中...' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '読み込み中...' })).toBeNull();
+  });
+
   it('keeps billing operation disabled reasons fixed and value-free', () => {
     expect(
       getBillingCloseDisabledReason({

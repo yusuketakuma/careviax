@@ -257,6 +257,24 @@ describe('PrescriptionsWorkspace', () => {
     expect(fetchNextPageMock).toHaveBeenCalledTimes(1);
   });
 
+  it('uses a prescription-specific label while loading the next page', () => {
+    useInfiniteQueryMock.mockReturnValue({
+      data: { pages: [{ data: [buildRow()], nextCursor: 'cursor_1', totalCount: 75 }] },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchMock,
+      fetchNextPage: fetchNextPageMock,
+      hasNextPage: true,
+      isFetchingNextPage: true,
+    });
+
+    render(<PrescriptionsWorkspace />);
+
+    expect(screen.getByRole('button', { name: '処方一覧を読み込み中...' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '読み込み中...' })).toBeNull();
+  });
+
   it('keeps realtime invalidation without interval polling', () => {
     render(<PrescriptionsWorkspace />);
 

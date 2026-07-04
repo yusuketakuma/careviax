@@ -1280,7 +1280,7 @@ export function BillingCandidatesContent({
             onClick={() => void fetchNextPage()}
             disabled={isFetchingNextPage}
           >
-            {isFetchingNextPage ? '読み込み中...' : 'さらに読み込む'}
+            {isFetchingNextPage ? '月次請求候補を読み込み中...' : 'さらに読み込む'}
           </Button>
         </div>
       )}

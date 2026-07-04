@@ -281,6 +281,30 @@ describe('ExternalViewerContent', () => {
     expect(screen.queryByText('OTP共有と外部連携導線')).toBeNull();
   });
 
+  it('uses a screen-specific loading status for each work panel skeleton', () => {
+    useQueryMock
+      .mockReturnValueOnce({
+        data: undefined,
+        isLoading: true,
+        isError: false,
+      })
+      .mockReturnValueOnce({
+        data: { data: [] },
+        isLoading: false,
+        isError: false,
+      })
+      .mockReturnValueOnce({
+        data: { data: [] },
+        isLoading: false,
+        isError: false,
+      });
+
+    render(<ExternalViewerContent />);
+
+    expect(screen.getByRole('status', { name: '外部連携パネルを読み込み中' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中' })).toBeNull();
+  });
+
   it('keeps independent panels working when only one query fails', () => {
     useQueryMock
       .mockReturnValueOnce({

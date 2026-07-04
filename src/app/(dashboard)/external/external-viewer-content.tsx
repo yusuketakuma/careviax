@@ -460,7 +460,7 @@ function PanelBody({
 }) {
   if (isLoading) {
     return (
-      <div className="space-y-2" role="status" aria-label="読み込み中">
+      <div className="space-y-2" role="status" aria-label="外部連携パネルを読み込み中">
         <Skeleton className="h-20 w-full rounded-lg" />
         <Skeleton className="h-20 w-full rounded-lg" />
       </div>
