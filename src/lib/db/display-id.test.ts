@@ -44,6 +44,8 @@ const DRUG_GLOBAL_DISPLAY_ID_W8A_MIGRATION =
   'prisma/migrations/20260704083000_add_drug_global_display_ids/migration.sql';
 const DRUG_PRICE_VERSION_DISPLAY_ID_C1A_MIGRATION =
   'prisma/migrations/20260704090000_add_drug_price_versions/migration.sql';
+const VISIT_BILLING_DISPLAY_ID_B2_MIGRATION =
+  'prisma/migrations/20260704092500_add_visit_instruction_special_patient_status/migration.sql';
 const PATIENT_DISPLAY_ID_W1_MODELS = [
   'Patient',
   'Residence',
@@ -202,6 +204,10 @@ const DRUG_GLOBAL_DISPLAY_ID_W8A_MODELS = [
 const DRUG_PRICE_VERSION_DISPLAY_ID_C1A_MODELS = [
   'DrugPriceVersion',
 ] as const satisfies readonly DisplayIdModel[];
+const VISIT_BILLING_DISPLAY_ID_B2_MODELS = [
+  'VisitInstruction',
+  'SpecialPatientStatus',
+] as const satisfies readonly DisplayIdModel[];
 // Permanent defer: nullable/hybrid org_id requires explicit tenant-vs-global semantics.
 const PERMANENT_DEFERRED_DISPLAY_ID_SCHEMA_MODELS = [
   'DrugAlertRule',
@@ -285,6 +291,13 @@ const DISPLAY_ID_SCHEMA_WAVES = [
     schemaFile: 'saved-view.prisma',
     migrationPath: RESIDUAL_DISPLAY_ID_W7_MIGRATION,
     models: SAVED_VIEW_DISPLAY_ID_W7_MODELS,
+  },
+  {
+    label: 'W3-B2 visit-billing-domain',
+    schemaFile: 'visit.prisma',
+    migrationPath: VISIT_BILLING_DISPLAY_ID_B2_MIGRATION,
+    models: VISIT_BILLING_DISPLAY_ID_B2_MODELS,
+    displayIdRequired: true,
   },
 ] as const;
 const DISPLAY_ID_PARENT_SCOPED_SCHEMA_WAVES = [
@@ -414,8 +427,8 @@ function parseSequence(id: string): bigint {
 describe('display_id registry and format contract', () => {
   it('covers every Prisma model through registry, explicit business exclusion, or infrastructure exclusion', () => {
     const schemaModels = readSchemaModels();
-    expect(schemaModels).toHaveLength(141);
-    expect(Object.keys(DISPLAY_ID_REGISTRY)).toHaveLength(139);
+    expect(schemaModels).toHaveLength(143);
+    expect(Object.keys(DISPLAY_ID_REGISTRY)).toHaveLength(141);
     expect(DISPLAY_ID_EXCLUDED_MODELS).toEqual(['Setting']);
     expect(DISPLAY_ID_INFRASTRUCTURE_MODELS).toEqual(['IdSequence']);
 
@@ -432,7 +445,7 @@ describe('display_id registry and format contract', () => {
     const entries = Object.entries(DISPLAY_ID_REGISTRY);
     const prefixes = entries.map(([, entry]) => entry.prefix);
     expect(new Set(prefixes).size).toBe(prefixes.length);
-    expect(prefixes).toHaveLength(139);
+    expect(prefixes).toHaveLength(141);
     for (const prefix of prefixes) {
       expect(prefix).toMatch(/^[a-z]{1,6}$/);
     }
@@ -443,7 +456,7 @@ describe('display_id registry and format contract', () => {
       counts[entry.scope] = (counts[entry.scope] ?? 0) + 1;
       return counts;
     }, {});
-    expect(scopeCounts).toEqual({ global: 13, org: 125, orgViaParent: 1 });
+    expect(scopeCounts).toEqual({ global: 13, org: 127, orgViaParent: 1 });
 
     expect(
       entries
@@ -539,19 +552,37 @@ describe('display_id registry and format contract', () => {
         const block = readModelBlock(schema, model);
         expect(block, `${wave.label}:${model}`).toMatch(/\n\s+org_id\s+String(?:\s|$)/);
         expect(block, `${wave.label}:${model}`).toMatch(/\n\s+created_at\s+DateTime(?:\s|$)/);
-        expect(block, `${wave.label}:${model}`).toMatch(/\n\s+display_id\s+String\?(?:\s|$)/);
-        expect(block, `${wave.label}:${model}`).not.toMatch(/\n\s+display_id\s+String\b(?!\?)/);
+        if ('displayIdRequired' in wave && wave.displayIdRequired) {
+          expect(block, `${wave.label}:${model}`).toMatch(/\n\s+display_id\s+String(?:\s|$)/);
+          expect(block, `${wave.label}:${model}`).not.toMatch(/\n\s+display_id\s+String\?(?:\s|$)/);
+        } else {
+          expect(block, `${wave.label}:${model}`).toMatch(/\n\s+display_id\s+String\?(?:\s|$)/);
+          expect(block, `${wave.label}:${model}`).not.toMatch(/\n\s+display_id\s+String\b(?!\?)/);
+        }
         expect(block, `${wave.label}:${model}`).toContain('@@unique([org_id, display_id])');
 
-        expect(migration, `${wave.label}:${model}`).toContain(
-          `ALTER TABLE "${model}" ADD COLUMN "display_id" TEXT;`,
-        );
-        expect(migration, `${wave.label}:${model}`).toContain(
-          `CREATE UNIQUE INDEX "${model}_org_id_display_id_key" ON "${model}"("org_id", "display_id") WHERE "display_id" IS NOT NULL;`,
-        );
-        expect(migration, `${wave.label}:${model}`).not.toContain(
-          `ALTER TABLE "${model}" ALTER COLUMN "display_id" SET NOT NULL`,
-        );
+        if ('displayIdRequired' in wave && wave.displayIdRequired) {
+          expect(migration, `${wave.label}:${model}`).toContain('"display_id" TEXT NOT NULL');
+          expect(migration, `${wave.label}:${model}`).toContain(
+            `CREATE UNIQUE INDEX "${model}_org_id_display_id_key"`,
+          );
+          expect(migration, `${wave.label}:${model}`).toContain(
+            `ON "${model}"("org_id", "display_id");`,
+          );
+          expect(migration, `${wave.label}:${model}`).not.toContain(
+            `ALTER TABLE "${model}" ADD COLUMN "display_id" TEXT;`,
+          );
+        } else {
+          expect(migration, `${wave.label}:${model}`).toContain(
+            `ALTER TABLE "${model}" ADD COLUMN "display_id" TEXT;`,
+          );
+          expect(migration, `${wave.label}:${model}`).toContain(
+            `CREATE UNIQUE INDEX "${model}_org_id_display_id_key" ON "${model}"("org_id", "display_id") WHERE "display_id" IS NOT NULL;`,
+          );
+          expect(migration, `${wave.label}:${model}`).not.toContain(
+            `ALTER TABLE "${model}" ALTER COLUMN "display_id" SET NOT NULL`,
+          );
+        }
         expect(migration, `${wave.label}:${model}`).not.toContain(
           `ON "${model}"("display_id") WHERE "display_id" IS NOT NULL`,
         );

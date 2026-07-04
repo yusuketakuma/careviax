@@ -136,6 +136,8 @@ model Patient {
   mcs_messages               PatientMcsMessage[]
   insurances                 PatientInsurance[]
   lab_observations           PatientLabObservation[]
+  visit_instructions         VisitInstruction[]
+  special_patient_statuses   SpecialPatientStatus[]
   jahis_supplemental_records JahisSupplementalRecord[]
   workflow_exceptions        WorkflowException[]
   share_cases_as_base        PatientShareCase[]         @relation("PatientShareCaseBasePatient")
@@ -201,6 +203,8 @@ model CareCase {
   management_plans         ManagementPlan[]
   medication_cycles        MedicationCycle[]
   visit_schedules          VisitSchedule[]
+  visit_instructions       VisitInstruction[]
+  special_patient_statuses SpecialPatientStatus[]
   visit_schedule_proposals VisitScheduleProposal[]
   care_reports             CareReport[]
   patient_share_cases      PatientShareCase[]      @relation("PatientShareCaseBaseCareCase")

@@ -140,6 +140,26 @@ const homeVisit2026EvidenceSchema = z
   })
   .passthrough();
 
+const specialPatientStatusSchema = z
+  .object({
+    status_type: z.enum([
+      'terminal_cancer',
+      'injectable_narcotic',
+      'home_central_venous_nutrition',
+      'heart_failure',
+      'respiratory_failure',
+      'other',
+    ]),
+    evidence_summary: z.string().min(1),
+    set_by: z.string().optional(),
+    set_at: z.string().datetime(),
+    valid_from: dateKeySchema('特別患者状態の開始日の形式が不正です（YYYY-MM-DD）'),
+    valid_to: dateKeySchema('特別患者状態の終了日の形式が不正です（YYYY-MM-DD）')
+      .nullable()
+      .optional(),
+  })
+  .passthrough();
+
 const previousVisitReuseSchema = z
   .object({
     source_visit_record_id: z.string().optional(),
@@ -157,6 +177,7 @@ export const structuredSoapInputSchema = z
     plan: planSchema.optional(),
     residual_medications: z.array(residualMedicationSchema).optional(),
     home_visit_2026: homeVisit2026EvidenceSchema.optional(),
+    special_patient_statuses: z.array(specialPatientStatusSchema).optional(),
     handoff: handoffSchema.nullable().optional(),
     previous_visit_reuse: previousVisitReuseSchema.optional(),
   })

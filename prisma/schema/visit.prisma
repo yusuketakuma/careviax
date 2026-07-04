@@ -73,6 +73,15 @@ enum VisitScheduleOverrideStatus {
   cancelled
 }
 
+enum SpecialPatientStatusType {
+  terminal_cancer
+  injectable_narcotic
+  home_central_venous_nutrition
+  heart_failure
+  respiratory_failure
+  other
+}
+
 model VisitVehicleResource {
   id                         String                 @id @default(cuid())
   org_id                     String
@@ -152,6 +161,7 @@ model VisitSchedule {
   contact_logs          VisitScheduleContactLog[]
   override_request      VisitScheduleOverride?    @relation("OverrideSourceSchedule")
   applied_override      VisitScheduleOverride?    @relation("OverrideReplacementSchedule")
+  visit_instructions    VisitInstruction[]
 
   @@unique([org_id, display_id])
   @@unique([id, org_id])
@@ -223,8 +233,9 @@ model VisitRecord {
   created_at                 DateTime      @default(now())
   updated_at                 DateTime      @updatedAt
 
-  handoff_extraction    VisitHandoffExtraction?
-  partner_visit_records PartnerVisitRecord[]    @relation("PartnerVisitRecordSourceVisit")
+  handoff_extraction       VisitHandoffExtraction?
+  partner_visit_records    PartnerVisitRecord[]    @relation("PartnerVisitRecordSourceVisit")
+  special_patient_statuses SpecialPatientStatus[]
 
   @@unique([org_id, display_id])
   @@unique([id, org_id])
@@ -232,6 +243,67 @@ model VisitRecord {
   @@index([patient_id])
   @@index([visit_date])
   @@index([schedule_id])
+}
+
+model VisitInstruction {
+  id                  String         @id @default(cuid())
+  org_id              String
+  display_id          String
+  patient_id          String
+  patient             Patient        @relation(fields: [patient_id, org_id], references: [id, org_id], onDelete: Restrict)
+  case_id             String?
+  case_               CareCase?      @relation(fields: [case_id], references: [id], onDelete: SetNull)
+  schedule_id         String?
+  schedule            VisitSchedule? @relation(fields: [schedule_id], references: [id], onDelete: SetNull)
+  physician_id        String?
+  physician_name      String
+  medical_institution String
+  instruction_date    DateTime       @db.Date
+  instruction_content String
+  valid_from          DateTime       @db.Date
+  valid_to            DateTime?      @db.Date
+  source_type         String?
+  source_ref          Json?
+  created_by          String?
+  created_at          DateTime       @default(now())
+  updated_at          DateTime       @updatedAt
+
+  @@unique([org_id, display_id])
+  @@unique([id, org_id])
+  @@index([org_id])
+  @@index([patient_id])
+  @@index([case_id])
+  @@index([schedule_id])
+  @@index([org_id, patient_id, valid_from, valid_to])
+}
+
+model SpecialPatientStatus {
+  id                     String                   @id @default(cuid())
+  org_id                 String
+  display_id             String
+  patient_id             String
+  patient                Patient                  @relation(fields: [patient_id, org_id], references: [id, org_id], onDelete: Restrict)
+  case_id                String?
+  case_                  CareCase?                @relation(fields: [case_id], references: [id], onDelete: SetNull)
+  source_visit_record_id String?
+  source_visit_record    VisitRecord?             @relation(fields: [source_visit_record_id], references: [id], onDelete: SetNull)
+  status_type            SpecialPatientStatusType
+  evidence_summary       String
+  set_by                 String?
+  set_at                 DateTime
+  valid_from             DateTime                 @db.Date
+  valid_to               DateTime?                @db.Date
+  source_ref             Json?
+  created_at             DateTime                 @default(now())
+  updated_at             DateTime                 @updatedAt
+
+  @@unique([org_id, display_id])
+  @@unique([id, org_id])
+  @@index([org_id])
+  @@index([patient_id])
+  @@index([case_id])
+  @@index([source_visit_record_id])
+  @@index([org_id, patient_id, status_type, valid_from, valid_to])
 }
 
 model VisitHandoffExtraction {

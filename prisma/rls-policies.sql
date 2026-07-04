@@ -169,6 +169,20 @@ CREATE POLICY tenant_isolation ON "VisitHandoffExtraction"
   WITH CHECK (org_id = public.app_enforced_org_id());
 ALTER TABLE "VisitHandoffExtraction" FORCE ROW LEVEL SECURITY;
 
+ALTER TABLE "VisitInstruction" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "VisitInstruction";
+CREATE POLICY tenant_isolation ON "VisitInstruction"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "VisitInstruction" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "SpecialPatientStatus" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "SpecialPatientStatus";
+CREATE POLICY tenant_isolation ON "SpecialPatientStatus"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "SpecialPatientStatus" FORCE ROW LEVEL SECURITY;
+
 ALTER TABLE "VisitVehicleResource" ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_isolation ON "VisitVehicleResource";
 CREATE POLICY tenant_isolation ON "VisitVehicleResource"
@@ -714,6 +728,8 @@ ALTER TABLE "FacilityVisitBatch" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "VisitRecord" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "VisitPreparation" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "VisitHandoffExtraction" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "VisitInstruction" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "SpecialPatientStatus" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "CommunicationEvent" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "CommunicationRequest" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "CommunicationResponse" FORCE ROW LEVEL SECURITY;

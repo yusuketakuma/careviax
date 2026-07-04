@@ -153,6 +153,23 @@ export type HomeVisit2026Evidence = {
   initial_transition_management?: InitialTransitionManagementEvidence;
 };
 
+export type SpecialPatientStatusType =
+  | 'terminal_cancer'
+  | 'injectable_narcotic'
+  | 'home_central_venous_nutrition'
+  | 'heart_failure'
+  | 'respiratory_failure'
+  | 'other';
+
+export type SpecialPatientStatusCapture = {
+  status_type: SpecialPatientStatusType;
+  evidence_summary: string;
+  set_by?: string;
+  set_at: string;
+  valid_from: string;
+  valid_to?: string | null;
+};
+
 export type PreviousVisitReuseSource = {
   source_visit_record_id: string;
   source_visit_record_version: number | null;
@@ -167,6 +184,7 @@ export type StructuredSoap = {
   plan: SoapPlan;
   residual_medications?: ResidualMedicationEntry[];
   home_visit_2026?: HomeVisit2026Evidence;
+  special_patient_statuses?: SpecialPatientStatusCapture[];
   handoff?: HandoffData | null;
   previous_visit_reuse?: PreviousVisitReuseSource;
 };

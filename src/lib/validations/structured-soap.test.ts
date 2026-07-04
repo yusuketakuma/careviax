@@ -38,4 +38,49 @@ describe('structuredSoapInputSchema', () => {
       }).success,
     ).toBe(true);
   });
+
+  it('accepts structured special-patient status capture entries', () => {
+    const parsed = structuredSoapInputSchema.safeParse({
+      special_patient_statuses: [
+        {
+          status_type: 'home_central_venous_nutrition',
+          evidence_summary: '中心静脈栄養法の継続管理を確認',
+          set_by: 'user_1',
+          set_at: '2026-07-04T00:20:00.000Z',
+          valid_from: '2026-07-01',
+          valid_to: null,
+          local_note: 'optional provenance',
+        },
+      ],
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it('rejects malformed special-patient status fields when the known section is present', () => {
+    expect(
+      structuredSoapInputSchema.safeParse({
+        special_patient_statuses: [
+          {
+            status_type: 'unknown_status',
+            evidence_summary: '確認',
+            set_at: '2026-07-04T00:20:00.000Z',
+            valid_from: '2026-07-01',
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      structuredSoapInputSchema.safeParse({
+        special_patient_statuses: [
+          {
+            status_type: 'terminal_cancer',
+            evidence_summary: '',
+            set_at: 'not-a-date',
+            valid_from: '2026/07/01',
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
 });
