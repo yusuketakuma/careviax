@@ -1,5 +1,44 @@
 # CODEX Goal Progress
 
+## R25 Prescription ErrorState Retry Shorthand Partial - 2026-07-05 00:05 JST
+
+- Status:
+  - Implemented and validated the next bounded R25 slice:
+    - `src/app/(dashboard)/prescriptions/[id]/prescription-detail-content.tsx`
+    - `src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx`
+- Scope:
+  - Migrated prescription detail, QR draft load, and QR draft case-list
+    ErrorState retry actions from hand-written
+    `action={{ label: '再読み込み', onClick }}` objects to `onRetry` +
+    `retryLabel`.
+  - Preserved visible retry copy, existing refetch handlers, the prescription
+    detail secondary back action, and the QR draft case-list `outline` + `sm`
+    retry styling via `retryVariant` + `retrySize`.
+- Safety:
+  - UI presentation/refactor only.
+  - Visible retry copy, click handlers, ErrorState branches, prescription query
+    behavior, QR draft query behavior, active case-list query behavior, and
+    existing PHI-free error copy are preserved.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    audit, deployment, package dependency, live DB operation, external send,
+    secret handling, push, or destructive operation changed.
+- Validation:
+  - Targeted prescription scan for hand-written `再読み込み` retry actions
+    returned no matches.
+  - `pnpm exec vitest run 'src/app/(dashboard)/prescriptions/[id]/prescription-detail-content.test.tsx' 'src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `2` files / `15` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `901c4276`
+    (`refactor(ui): route prescription retries through shorthand`).
+- Remaining:
+  - R25 is partial; remaining ErrorState retry action boilerplate should be
+    migrated in bounded screen/domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R25 Admin Alert/Audit ErrorState Retry Shorthand Partial - 2026-07-05 00:02 JST
 
 - Status:
