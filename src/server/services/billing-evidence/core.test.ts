@@ -536,6 +536,8 @@ describe('billing-evidence/core: listBillingEvidenceBlockers', () => {
 });
 
 describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
+  const missingEmergencyCategoryReason = '緊急訪問の算定区分が未確認です';
+
   beforeEach(() => {
     vi.clearAllMocks();
     ensureHomeCareBillingSsotMock.mockResolvedValue(undefined);
@@ -576,6 +578,175 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
       expect.objectContaining({
         claimable: true,
         exclusionReason: null,
+      }),
+    );
+  });
+
+  it('fails closed for cycle-null emergency visits without authoritative emergency category source', async () => {
+    const tx = makeTx({
+      visitRecord: {
+        findFirst: vi.fn().mockResolvedValue(
+          makeVisitRecord({
+            schedule: {
+              cycle_id: null,
+              case_id: 'case_1',
+              pharmacist_id: 'pharm_1',
+              visit_type: 'emergency',
+              site_id: null,
+            },
+          }),
+        ),
+      },
+      billingEvidence: {
+        upsert: vi.fn().mockResolvedValue({ id: 'evidence_1', claimable: false }),
+      },
+    });
+
+    await upsertBillingEvidenceForVisit(tx, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+
+    expect(tx.prescriptionIntake.findFirst).not.toHaveBeenCalled();
+    expect(tx.billingEvidence.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          claimable: false,
+          exclusion_reason: missingEmergencyCategoryReason,
+          same_month_exclusion_flags: expect.objectContaining({
+            emergency_category_source_missing: true,
+          }),
+          calculation_context: expect.objectContaining({
+            visit_type: 'emergency',
+            emergency_category: null,
+            online_eligible: false,
+          }),
+        }),
+      }),
+    );
+    expect(buildBillingCandidateSpecsMock).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        claimable: false,
+        exclusionReason: missingEmergencyCategoryReason,
+        visitType: 'emergency',
+        emergencyCategory: null,
+        onlineEligible: false,
+      }),
+    );
+  });
+
+  it('fails closed for cycle-bound emergency visits when emergency_category is null', async () => {
+    const tx = makeTx({
+      visitRecord: {
+        findFirst: vi.fn().mockResolvedValue(
+          makeVisitRecord({
+            schedule: {
+              cycle_id: 'cycle_1',
+              case_id: 'case_1',
+              pharmacist_id: 'pharm_1',
+              visit_type: 'emergency',
+              site_id: null,
+            },
+          }),
+        ),
+      },
+      prescriptionIntake: {
+        findFirst: vi.fn().mockResolvedValue({
+          prescription_category: 'emergency',
+          emergency_category: null,
+        }),
+      },
+      billingEvidence: {
+        upsert: vi.fn().mockResolvedValue({ id: 'evidence_1', claimable: false }),
+      },
+    });
+
+    await upsertBillingEvidenceForVisit(tx, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+
+    expect(tx.billingEvidence.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          claimable: false,
+          exclusion_reason: missingEmergencyCategoryReason,
+          same_month_exclusion_flags: expect.objectContaining({
+            emergency_category_source_missing: true,
+          }),
+          calculation_context: expect.objectContaining({
+            visit_type: 'emergency',
+            emergency_category: null,
+            online_eligible: false,
+          }),
+        }),
+      }),
+    );
+    expect(buildBillingCandidateSpecsMock).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        claimable: false,
+        exclusionReason: missingEmergencyCategoryReason,
+        visitType: 'emergency',
+        emergencyCategory: null,
+        onlineEligible: false,
+      }),
+    );
+  });
+
+  it('keeps cycle-bound emergency visits claimable when emergency_category is authoritative', async () => {
+    const tx = makeTx({
+      visitRecord: {
+        findFirst: vi.fn().mockResolvedValue(
+          makeVisitRecord({
+            schedule: {
+              cycle_id: 'cycle_1',
+              case_id: 'case_1',
+              pharmacist_id: 'pharm_1',
+              visit_type: 'emergency',
+              site_id: null,
+            },
+          }),
+        ),
+      },
+      prescriptionIntake: {
+        findFirst: vi.fn().mockResolvedValue({
+          prescription_category: 'emergency',
+          emergency_category: 'planned_disease_exacerbation',
+        }),
+      },
+    });
+
+    await upsertBillingEvidenceForVisit(tx, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+
+    expect(tx.billingEvidence.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          claimable: true,
+          exclusion_reason: null,
+          same_month_exclusion_flags: expect.not.objectContaining({
+            emergency_category_source_missing: true,
+          }),
+          calculation_context: expect.objectContaining({
+            visit_type: 'emergency',
+            emergency_category: 'planned_disease_exacerbation',
+            online_eligible: false,
+          }),
+        }),
+      }),
+    );
+    expect(buildBillingCandidateSpecsMock).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        claimable: true,
+        exclusionReason: null,
+        visitType: 'emergency',
+        emergencyCategory: 'planned_disease_exacerbation',
+        onlineEligible: false,
       }),
     );
   });

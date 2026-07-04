@@ -1531,6 +1531,17 @@ export async function upsertBillingEvidenceForVisit(
         expectedReportCount: conferenceGeneratedReportIds.length,
       }));
 
+  const latestEmergencyCategory =
+    latestPrescriptionIntake?.prescription_category === 'emergency'
+      ? ((latestPrescriptionIntake.emergency_category as
+          | 'planned_disease_exacerbation'
+          | 'other_exacerbation'
+          | 'online'
+          | null) ?? null)
+      : null;
+  const emergencyCategorySourceMissing =
+    visitRecord.schedule.visit_type === 'emergency' && latestEmergencyCategory == null;
+
   const exclusionFlags = {
     missing_visit_consent: !consent,
     missing_management_plan: !plan.current,
@@ -1542,6 +1553,7 @@ export async function upsertBillingEvidenceForVisit(
     public_subsidy_application_pending: publicSubsidyApplicationBlocker != null,
     qr_insurance_review_pending: qrInsuranceReviewIssue != null,
     outcome_not_claimable: !isClaimableOutcome(visitRecord.outcome_status),
+    ...(emergencyCategorySourceMissing ? { emergency_category_source_missing: true } : {}),
     building_patient_count: buildingPatientCount,
     monthly_visit_count: monthlyVisitCount,
     weekly_visit_count: weeklyVisitCount,
@@ -1565,7 +1577,9 @@ export async function upsertBillingEvidenceForVisit(
                   ? '処方QR由来の保険・公費情報確認候補が未解決です。資格確認結果と照合してから請求してください'
                   : exclusionFlags.outcome_not_claimable
                     ? '訪問結果が算定対象外です'
-                    : null;
+                    : emergencyCategorySourceMissing
+                      ? '緊急訪問の算定区分が未確認です'
+                      : null;
 
   const claimable = exclusionReason == null;
 
@@ -1609,11 +1623,7 @@ export async function upsertBillingEvidenceForVisit(
     narcoticInjectionRequired || centralVenousRequired || terminalPainRequired;
   const emergencyCategory =
     latestPrescriptionIntake?.prescription_category === 'emergency'
-      ? ((latestPrescriptionIntake.emergency_category as
-          | 'planned_disease_exacerbation'
-          | 'other_exacerbation'
-          | 'online'
-          | null) ?? 'other_exacerbation')
+      ? (latestEmergencyCategory ?? (emergencyCategorySourceMissing ? null : 'other_exacerbation'))
       : null;
   const afterHoursVisit = resolveAfterHoursVisitCategory({
     visitDate,
