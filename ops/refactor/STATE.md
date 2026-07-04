@@ -96,6 +96,12 @@
   encoding / limit=100 / org headers / queryKeys / enabled gates / batch body /
   non-blocking notice / mutation and cache invalidation contracts は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 medication-calendar readApiJson slice(07e701d6) land。focused Vitest 8、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。current medication profile
+  read GET を readApiJson へ収束し、medication-profiles endpoint / encoded patient_id /
+  is_current,limit params / org header / queryKey / enabled gate / PDF href /
+  loading,error,empty states / PHI-free structural labels は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 - codex: R40/R44 drug-masters readApiJson slice(fe9edc77) land。focused Vitest 88、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。pharmacy sites / drug master cursor page /
   import status / import logs read GET を readApiJson へ収束し、site scoping / cursor params /
