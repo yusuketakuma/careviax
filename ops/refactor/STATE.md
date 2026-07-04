@@ -111,6 +111,9 @@
 - codex: R40/R44 pharmacist-credentials readApiJson slice(ac1a88d1) land。focused Vitest 17、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 document-templates readApiJson slice(416e9fd5) land。focused Vitest 9、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 

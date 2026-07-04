@@ -46541,3 +46541,44 @@ false` for every migrated column.
     before converting additional client read fetchers.
   - Existing unrelated `refactor-instructions.md` and local skill install files
     remain outside this slice.
+
+## R40/R44 Document Templates readApiJson Slice - 2026-07-05 04:26 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/document-templates/template-content.tsx`
+  - `src/app/(dashboard)/admin/document-templates/template-content.test.tsx`
+- Status:
+  - Implemented and committed as `416e9fd5`
+    (`refactor(ui): reuse readApiJson in document templates`).
+- Changes:
+  - Replaced the document template list GET helper for
+    `buildDocumentTemplatesApiPath(params)` with
+    `readApiJson<DocumentTemplatesResponse>` while preserving query key,
+    `buildOrgHeaders(orgId)`, filter params, response envelope/count metadata,
+    and body editor data mapping.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, destructive operation, false-empty error state,
+    delivery-rule manager, create/update/delete mutations, and path helper
+    encoding/fail-closed behavior.
+  - The 2026-07-04 user instruction allowing product
+    API/DB/auth/authorization/PHI/billing/deploy/package dependency changes when
+    necessary is recorded in `ops/refactor/STATE.md`; this slice did not require
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `9` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/document-templates/template-content.tsx' 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx'`
+    passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/document-templates/template-content.tsx' 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx'`
+    passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/document-templates/template-content.tsx' 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx'`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - R40/R44 remains partial and broad; continue per-fetcher body-read/PHI review
+    before converting additional client read fetchers.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
