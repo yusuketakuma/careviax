@@ -125,6 +125,11 @@ type FacilityForm = {
   contacts: ContactForm[];
 };
 
+type FacilityFormInput = Partial<Omit<FacilityForm, 'contacts' | 'regular_visit_weekdays'>> & {
+  regular_visit_weekdays?: number[] | null;
+  contacts?: Array<Partial<ContactForm> | null | undefined> | null;
+};
+
 type UnitForm = {
   name: string;
   floor: string;
@@ -188,6 +193,37 @@ function createEmptyContact(): ContactForm {
     fax: '',
     is_primary: false,
     notes: '',
+  };
+}
+
+function normalizeContactForm(contact?: Partial<ContactForm> | null): ContactForm {
+  return {
+    ...createEmptyContact(),
+    ...contact,
+    id: contact?.id,
+    name: contact?.name ?? '',
+    role: contact?.role ?? '',
+    phone: contact?.phone ?? '',
+    email: contact?.email ?? '',
+    fax: contact?.fax ?? '',
+    is_primary: contact?.is_primary ?? false,
+    notes: contact?.notes ?? '',
+  };
+}
+
+function normalizeFacilityForm(form?: FacilityFormInput | null): FacilityForm {
+  const base = createEmptyForm();
+  return {
+    name: form?.name ?? base.name,
+    facility_type: form?.facility_type ?? base.facility_type,
+    address: form?.address ?? base.address,
+    phone: form?.phone ?? base.phone,
+    fax: form?.fax ?? base.fax,
+    acceptance_time_from: form?.acceptance_time_from ?? base.acceptance_time_from,
+    acceptance_time_to: form?.acceptance_time_to ?? base.acceptance_time_to,
+    regular_visit_weekdays: form?.regular_visit_weekdays ?? [],
+    notes: form?.notes ?? base.notes,
+    contacts: (form?.contacts ?? []).map(normalizeContactForm),
   };
 }
 
@@ -444,25 +480,14 @@ export function FacilitiesContent() {
     () => facilities.filter((facility) => matchesFacilityQuery(facility, query)),
     [facilities, query],
   );
-  const form = {
-    ...createEmptyForm(),
-    ...watchedFacilityForm,
-    regular_visit_weekdays: watchedFacilityForm.regular_visit_weekdays ?? [],
-    contacts: watchedFacilityForm.contacts ?? [],
-  };
+  const form = normalizeFacilityForm(watchedFacilityForm);
   const formBlocker = getFormBlocker(form, editingFacility);
   const unitFormBlocker = getUnitFormBlocker(unitForm);
   const totalCount = data?.total_count ?? facilities.length;
   const hiddenCount = data?.hidden_count ?? 0;
 
   function getCurrentFacilityForm() {
-    const current = getFacilityFormValues();
-    return {
-      ...createEmptyForm(),
-      ...current,
-      regular_visit_weekdays: current.regular_visit_weekdays ?? [],
-      contacts: current.contacts ?? [],
-    };
+    return normalizeFacilityForm(getFacilityFormValues());
   }
 
   function setFacilityContacts(contacts: ContactForm[]) {

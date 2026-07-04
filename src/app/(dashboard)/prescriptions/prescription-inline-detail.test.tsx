@@ -247,7 +247,7 @@ describe('PrescriptionInlineDetail', () => {
           dispensing_method: null,
           is_generic: false,
           is_generic_name_prescription: false,
-          packaging_instructions: null,
+          packaging_instructions: null as string | null,
           notes: null,
         },
       ],
