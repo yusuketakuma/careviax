@@ -2715,3 +2715,24 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R24/R46 は partial。`meta.has_more`、keyset cursor encoding、scan-window、
   hidden-count、route-specific metadata を持つ route は個別分析後に継続。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R24/R46 share-consents audit cursor helper slice
+
+- 分類: pattern-inconsistency / view-audit visible-row slicing → `buildCursorPage` 収束。
+- 実施:
+  - `/api/patient-share-cases/[id]/consents` GET で、response page と view-audit metadata が
+    同じ `buildCursorPage` 結果を共有するよう変更。
+  - `limit=1` overflow で visible consent 1件、`nextCursor: share_consent_1`、raw consent
+    person 非露出、audit の visible consent ids/counts が response page と一致することを test-lock。
+- 挙動変更: API内部の重複 helper 収束のみ。外部 response page contract、share-case scoping、
+  GET audit behavior、POST validation/link checks は維持。
+- 安全性: `canVisit`、`withOrgContext`、share-case scoping、sensitive no-store、response PHI
+  minimization、view-audit fail-closed behavior、visible-row-only audit metadata、DB query shape、
+  schema/migrations/data、billing、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation は不変。
+- 検証: focused share-consents/pagination Vitest `2 files / 17 tests` green、scoped ESLint
+  green、targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `95ed181d` (`refactor(api): reuse cursor page helper in share consent audits`)。
+- 残課題: R24/R46 は partial。`meta.has_more`、keyset cursor encoding、scan-window、
+  hidden-count、route-specific metadata を持つ route は個別分析後に継続。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
