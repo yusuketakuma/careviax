@@ -32,6 +32,7 @@ import { Badge } from '@/components/ui/badge';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import { useAuthStore } from '@/lib/stores/auth-store';
@@ -85,6 +86,18 @@ type Task = {
   sla_due_at: string | null;
   related_entity_type: string | null;
   related_entity_id: string | null;
+};
+
+type StatusChangeAuditLog = {
+  id: string;
+  target_id: string;
+  changes: {
+    from: PatientStatusIcon;
+    from_label: string;
+    to: PatientStatusIcon;
+    to_label: string;
+  };
+  created_at: string;
 };
 
 // QueuePriority 写像(PRIORITY_ROLE 準拠): urgent(緊急+至急統合)=blocked, high=confirm, normal=info, low=readonly。
@@ -200,8 +213,7 @@ export function MyDayContent({
       const res = await fetch(`/api/visit-schedules?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('訪問スケジュールの取得に失敗しました');
-      return res.json() as Promise<{ data: VisitSchedule[] }>;
+      return readApiJson<{ data: VisitSchedule[] }>(res, '訪問スケジュールの取得に失敗しました');
     },
     enabled: !!orgId && !!userId,
   });
@@ -243,19 +255,11 @@ export function MyDayContent({
       const res = await fetch(`/api/audit-logs?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('ステータス変更の取得に失敗しました');
-      const json = await res.json();
-      return (json.data ?? []) as Array<{
-        id: string;
-        target_id: string;
-        changes: {
-          from: PatientStatusIcon;
-          from_label: string;
-          to: PatientStatusIcon;
-          to_label: string;
-        };
-        created_at: string;
-      }>;
+      const json = await readApiJson<{ data?: StatusChangeAuditLog[] }>(
+        res,
+        'ステータス変更の取得に失敗しました',
+      );
+      return json.data ?? [];
     },
     enabled: !!orgId && canViewStatusChanges,
   });

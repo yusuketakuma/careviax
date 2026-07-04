@@ -246,6 +246,26 @@ describe('MyDayContent', () => {
     expect(params.get('status')).toBe('open');
   });
 
+  it('builds the assigned visits query with the current user and org header', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-10T08:00:00+09:00'));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(JSON.stringify({ data: [] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MyDayContent />);
+
+    const visitsOptions = findQueryOptions('my-day-visits');
+    expect(visitsOptions.enabled).toEqual(true);
+    await visitsOptions.queryFn?.();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/visit-schedules?date_from=2026-04-10&date_to=2026-04-10&pharmacist_id=user_1',
+      { headers: { 'x-org-id': 'org_1' } },
+    );
+  });
+
   it('waits for the current user before fetching assigned visits and tasks', () => {
     mockCurrentUser({ id: null });
 
@@ -641,6 +661,7 @@ describe('MyDayContent', () => {
     await statusChangesOptions.queryFn?.();
 
     const requestUrl = vi.mocked(fetch).mock.calls[0]?.[0] as string;
+    expect(vi.mocked(fetch).mock.calls[0]?.[1]).toEqual({ headers: { 'x-org-id': 'org_1' } });
     expect(requestUrl).toContain('date_from=2026-04-10T00%3A00%3A00%2B09%3A00');
     expect(new URL(requestUrl, 'http://localhost').searchParams.get('date_from')).toEqual(
       '2026-04-10T00:00:00+09:00',
