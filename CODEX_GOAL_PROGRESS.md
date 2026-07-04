@@ -1,5 +1,41 @@
 # CODEX Goal Progress
 
+## R25 Dispense Patient List ErrorState Retry Shorthand Partial - 2026-07-04 23:32 JST
+
+- Status:
+  - Implemented and validated the next bounded R25 slice:
+    - `src/components/features/dispense-workbench/patient-list-panel.tsx`
+- Scope:
+  - Migrated one dispense workbench patient-list ErrorState retry action from
+    hand-written `action={{ label: '再読み込み', onClick }}` to `onRetry` +
+    `retryLabel`.
+  - Preserved visible retry copy and existing `retryLoad` handler.
+  - Left the same-label EmptyState action unchanged because R25 targets
+    ErrorState retry boilerplate and EmptyState has no `onRetry` shorthand.
+- Safety:
+  - UI presentation/refactor only.
+  - Visible labels, click handler, error branch behavior, and dispense
+    workbench query/mutation behavior are preserved.
+  - No product API, DB, auth, authorization, PHI projection, billing, audit,
+    deployment, package dependency, live DB operation, external send, secret
+    handling, push, or destructive operation changed.
+- Validation:
+  - Targeted scan for hand-written `再読み込み` ErrorState action in
+    `dispense-workbench/patient-list-panel.tsx` returned no matches.
+  - `pnpm exec vitest run 'src/components/features/dispense-workbench/workbench-color-tokens.test.ts' --reporter=dot --testTimeout=30000`
+    passed `1` file / `14` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `596afee7`
+    (`refactor(ui): route dispense patient list retry through shorthand`).
+- Remaining:
+  - R25 is partial; remaining ErrorState retry action boilerplate should be
+    migrated in bounded screen/domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R25 Admin Data-Explorer ErrorState Retry Shorthand Partial - 2026-07-04 23:28 JST
 
 - Status:
