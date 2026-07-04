@@ -445,6 +445,44 @@ describe('RouteCompareContent', () => {
     expect(screen.getByText('移動35分 / 午後余力大')).not.toBeNull();
   });
 
+  it('keeps API messages from failed day-board reads', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = input.toString();
+        const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
+        fetchCalls.push({ url, init, body });
+
+        if (url.startsWith('/api/visit-schedules?')) {
+          return jsonResponse({
+            data: [confirmedVisit, visitA, visitB, visitC, facilityVisit],
+            hasMore: false,
+          });
+        }
+        if (url.startsWith('/api/visit-schedules/day-board')) {
+          return jsonResponse({ message: '車両リソースの閲覧権限がありません' }, 403);
+        }
+        if (url === '/api/visit-routes') {
+          return jsonResponse({
+            data: routePlan(['visit-confirmed', 'visit-c', 'visit-a', 'visit-b'], 23 * 60),
+          });
+        }
+        throw new Error(`Unhandled fetch: ${url}`);
+      }),
+    );
+
+    const { queryClient } = renderRouteCompareContent();
+
+    await waitFor(() => {
+      const error = queryClient
+        .getQueryCache()
+        .find({ queryKey: ['schedule-day-board', 'org_1', '2026-04-09'], exact: true })
+        ?.state.error;
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe('車両リソースの閲覧権限がありません');
+    });
+  });
+
   it('does not render recommended route detail when every route-engine scenario fails', async () => {
     failAllRouteScenarios = true;
     renderRouteCompareContent();

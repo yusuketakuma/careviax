@@ -11,6 +11,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
@@ -82,8 +83,10 @@ async function fetchScheduleDayBoard(args: { orgId: string; date: string }) {
   const res = await fetch(`/api/visit-schedules/day-board?date=${args.date}`, {
     headers: buildOrgHeaders(args.orgId),
   });
-  if (!res.ok) throw new Error('対象日の車両リソース取得に失敗しました');
-  const json = (await res.json()) as { data: ScheduleDayBoardResponse };
+  const json = await readApiJson<{ data: ScheduleDayBoardResponse }>(
+    res,
+    '対象日の車両リソース取得に失敗しました',
+  );
   return json.data;
 }
 
