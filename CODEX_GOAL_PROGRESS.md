@@ -1,5 +1,44 @@
 # CODEX Goal Progress
 
+## R40/R44 Weekly Optimizer readApiJson Partial - 2026-07-05 08:14 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`
+    - `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx`
+- Scope:
+  - Reused `readApiJson` for weekly optimizer cases, case search, weekly
+    proposals, pharmacist shifts, vehicle resources, and billing preview read
+    fetchers.
+  - Added queryFn contract coverage proving API JSON `message` from failed
+    weekly optimizer read fetches is preserved.
+  - Preserved endpoints/query params, org headers, React Query/realtime query
+    keys, enabled gates, board loading/error states, case selection URL sync,
+    proposal disabled reasons, vehicle hidden-count warning, route
+    preview/reorder mutations, and facility aggregation mutation behavior.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx'`
+    passed `1` file / `11` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `c13f5942`
+    (`refactor(ui): reuse readApiJson in weekly optimizer`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Medication Calendar readApiJson Partial - 2026-07-05 08:08 JST
 
 - Status:
