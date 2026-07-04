@@ -1,5 +1,40 @@
 # CODEX Goal Progress
 
+## R24/R46 Visit Schedule Proposals Cursor Helper Partial - 2026-07-05 02:14 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R24/R46 slice:
+    - `src/app/api/visit-schedule-proposals/route.ts`
+- Scope:
+  - Reused the existing `buildCursorPage` helper for visit schedule proposal
+    palette overflow detection and visible-row selection.
+  - Preserved minimal palette select, assignment access filtering, pharmacist
+    name-only enrichment, PHI redaction/no sensitive projection, and `hasMore`
+    response shape.
+- Safety:
+  - Product API implementation internals changed; external response shape and
+    visit schedule proposal palette semantics are unchanged.
+  - Preserved request auth context, RLS request context, DB query shape,
+    schema/migrations/data, auth/authorization semantics, PHI projection,
+    billing behavior, deployment, package dependency, live DB operation,
+    external send, secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-schedule-proposals/route.test.ts src/lib/api/pagination.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `97` tests. The expected sanitized 500 logger stderr
+    was emitted by the route test.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `a8bdd918`
+    (`refactor(api): reuse cursor page helper in visit schedule proposals`).
+- Remaining:
+  - R24/R46 are partial; continue compatible hand-rolled cursor page routes.
+  - Conference-notes scan-window and admin/external-professionals count-based
+    q search need route-specific analysis before helper convergence.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R24/R46 Care Reports Cursor Helper Partial - 2026-07-05 02:11 JST
 
 - Status:
