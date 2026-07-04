@@ -848,5 +848,6 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   Loading copy は PHI-free で、actor name・note・patient identifier・org id・raw error を出さない。
 - 検証: focused workflow history Vitest `2 files / 7 tests` green、targeted ESLint green、
   targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `cc422338` (`fix(workflow): show skeleton for stage timeline loading`)。
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
