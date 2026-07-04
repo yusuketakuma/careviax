@@ -11,6 +11,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -79,7 +80,7 @@ const EMPTY_ROUTE_SCENARIOS: RouteScenario[] = [];
 
 async function fetchScheduleDayBoard(args: { orgId: string; date: string }) {
   const res = await fetch(`/api/visit-schedules/day-board?date=${args.date}`, {
-    headers: { 'x-org-id': args.orgId },
+    headers: buildOrgHeaders(args.orgId),
   });
   if (!res.ok) throw new Error('対象日の車両リソース取得に失敗しました');
   const json = (await res.json()) as { data: ScheduleDayBoardResponse };
@@ -107,10 +108,6 @@ function vehicleRouteDurationClassName(
   }
 }
 
-function routeHeaders(orgId: string) {
-  return { 'Content-Type': 'application/json', 'x-org-id': orgId } as const;
-}
-
 async function computeRoutePlan(args: {
   orgId: string;
   scheduleIds: string[];
@@ -120,7 +117,7 @@ async function computeRoutePlan(args: {
 }): Promise<VisitRoutePlan> {
   const res = await fetch('/api/visit-routes', {
     method: 'POST',
-    headers: routeHeaders(args.orgId),
+    headers: buildOrgJsonHeaders(args.orgId),
     body: JSON.stringify({
       schedule_ids: args.scheduleIds,
       travel_mode: args.travelMode,
