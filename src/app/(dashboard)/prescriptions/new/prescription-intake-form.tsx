@@ -26,6 +26,7 @@ import { usePrescriptionDraft } from '@/lib/hooks/use-prescription-draft';
 import { isOfflineEncryptionUnavailableError } from '@/lib/offline/crypto';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { messageFromError } from '@/lib/utils/error-message';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { formatDisplayEntityLabel } from '@/lib/display-id/display-labels';
 import { buildDrugMastersApiPath } from '@/lib/drug-masters/api-paths';
@@ -222,8 +223,7 @@ function GenericCandidatePanel({
       const res = await fetch(buildDrugMastersApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('後発候補の取得に失敗しました');
-      return res.json() as Promise<{ data: GenericCandidate[] }>;
+      return readApiJson<{ data: GenericCandidate[] }>(res, '後発候補の取得に失敗しました');
     },
     enabled: !!orgId && enabled && query.trim().length >= 2,
     staleTime: 30_000,

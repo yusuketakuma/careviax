@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { stubJsonFetch } from '@/test/fetch-test-utils';
+import { jsonResponse, stubJsonFetch } from '@/test/fetch-test-utils';
 
 const { useQueryMock, useMutationMock, useOrgIdMock, searchParamsGet } = vi.hoisted(() => ({
   useQueryMock: vi.fn(),
@@ -112,6 +112,9 @@ import { PrescriptionIntakeForm } from './prescription-intake-form';
 setupDomTestEnv();
 
 type QueryStub = { data?: unknown; isError?: boolean };
+type QueryConfig = { queryKey: unknown[]; queryFn?: () => Promise<unknown> };
+
+const queryConfigs: QueryConfig[] = [];
 
 function setupQueries(stubs: Record<string, QueryStub>) {
   const refetchSpies: Record<string, ReturnType<typeof vi.fn>> = {};
@@ -121,7 +124,10 @@ function setupQueries(stubs: Record<string, QueryStub>) {
     mutateAsync: vi.fn(),
     isPending: false,
   });
-  useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+  queryConfigs.length = 0;
+  useQueryMock.mockImplementation((config: QueryConfig) => {
+    const { queryKey } = config;
+    queryConfigs.push(config);
     const key = String(queryKey[0]);
     const refetch = (refetchSpies[key] ??= vi.fn());
     const stub = stubs[key];
@@ -194,6 +200,56 @@ describe('PrescriptionIntakeForm secondary-lookup fetch-error handling', () => {
     expect(screen.getByText(/前回処方を取得できませんでした/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
     expect(refetchSpies['patient-prescriptions']).toHaveBeenCalled();
+  });
+
+  it('keeps the API message when generic candidate lookup fetch fails', async () => {
+    setupQueries({
+      'patient-cases': { data: { data: [] } },
+      'patient-prescriptions': { data: { data: [] } },
+    });
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({ message: '後発候補を表示できません' }, 403),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PrescriptionIntakeForm />);
+
+      fireEvent.change(screen.getByLabelText('明細行 1 の薬剤名'), {
+        target: { value: 'ロキソ' },
+      });
+      fireEvent.click(screen.getByLabelText('一般名処方'));
+
+      await waitFor(() =>
+        expect(
+          queryConfigs.some(
+            (config) =>
+              config.queryKey[0] === 'generic-candidates' && config.queryKey[2] === 'ロキソ',
+          ),
+        ).toBe(true),
+      );
+      const genericCandidatesConfig = queryConfigs
+        .filter((config) => config.queryKey[0] === 'generic-candidates')
+        .at(-1);
+      expect(genericCandidatesConfig?.queryKey).toEqual(['generic-candidates', 'org_1', 'ロキソ']);
+      await expect(genericCandidatesConfig?.queryFn?.()).rejects.toThrow(
+        '後発候補を表示できません',
+      );
+      const [calledUrl, calledInit] = fetchMock.mock.calls[0] ?? [];
+      const url = new URL(String(calledUrl), 'http://localhost');
+      expect(url.pathname).toBe('/api/drug-masters');
+      expect(url.searchParams.get('q')).toBe('ロキソ');
+      expect(url.searchParams.get('generic')).toBe('true');
+      expect(url.searchParams.get('limit')).toBe('5');
+      expect(url.searchParams.get('includeTotal')).toBe('false');
+      expect(calledInit).toEqual(
+        expect.objectContaining({
+          headers: expect.objectContaining({ 'x-org-id': 'org_1' }),
+        }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('keeps the selected drug master id in the prescription submit payload', async () => {
