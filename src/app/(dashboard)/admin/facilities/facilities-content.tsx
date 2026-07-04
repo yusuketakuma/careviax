@@ -30,6 +30,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -456,8 +457,7 @@ export function FacilitiesContent() {
       const response = await fetch(buildAdminFacilitiesApiPath(new URLSearchParams()), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('施設マスターの取得に失敗しました');
-      return response.json() as Promise<FacilitiesResponse>;
+      return readApiJson<FacilitiesResponse>(response, '施設マスターの取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -470,8 +470,7 @@ export function FacilitiesContent() {
       const response = await fetch(buildAdminFacilityUnitsApiPath(editingFacility.id), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('施設ユニットの取得に失敗しました');
-      return response.json() as Promise<FacilityUnitsResponse>;
+      return readApiJson<FacilityUnitsResponse>(response, '施設ユニットの取得に失敗しました');
     },
     enabled: !!orgId && !!editingFacility && sheetOpen,
   });
