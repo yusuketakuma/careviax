@@ -19,7 +19,7 @@ export default function MetricsDashboardPage() {
         shortcuts={getAdminMetricsShortcutLinks()}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="経営指標ダッシュボードを読み込み中..." />}>
         <MetricsDashboardContent />
       </Suspense>
     </PageScaffold>

@@ -2,8 +2,13 @@
 
 import { render, screen } from '@testing-library/react';
 import type { AnchorHTMLAttributes, ReactNode } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+
+const pharmacyCooperationContentMockState = vi.hoisted(() => ({
+  suspend: false,
+  promise: new Promise(() => undefined),
+}));
 
 vi.mock('next/link', () => ({
   default: ({
@@ -21,7 +26,12 @@ vi.mock('next/link', () => ({
 }));
 
 vi.mock('./pharmacy-cooperation-setup-content', () => ({
-  PharmacyCooperationSetupContent: () => <section data-testid="pharmacy-cooperation-setup" />,
+  PharmacyCooperationSetupContent: () => {
+    if (pharmacyCooperationContentMockState.suspend) {
+      throw pharmacyCooperationContentMockState.promise;
+    }
+    return <section data-testid="pharmacy-cooperation-setup" />;
+  },
 }));
 
 import PharmacyCooperationSetupPage from './page';
@@ -29,6 +39,10 @@ import PharmacyCooperationSetupPage from './page';
 setupDomTestEnv();
 
 describe('PharmacyCooperationSetupPage', () => {
+  beforeEach(() => {
+    pharmacyCooperationContentMockState.suspend = false;
+  });
+
   it('uses the shared admin header while preserving setup context and related links', () => {
     render(<PharmacyCooperationSetupPage />);
 
@@ -51,5 +65,16 @@ describe('PharmacyCooperationSetupPage', () => {
       '/admin/pharmacy-sites',
     );
     expect(screen.getByTestId('pharmacy-cooperation-setup')).toBeTruthy();
+  });
+
+  it('uses a screen-specific loading status for the route shell fallback', () => {
+    pharmacyCooperationContentMockState.suspend = true;
+
+    render(<PharmacyCooperationSetupPage />);
+
+    expect(screen.getByRole('heading', { level: 1, name: '薬局間協力設定' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: '薬局間協力設定を読み込み中...' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByTestId('pharmacy-cooperation-setup')).toBeNull();
   });
 });

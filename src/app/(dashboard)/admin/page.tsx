@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function AdminDashboardPage() {
   return (
     <PageScaffold variant="bare">
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="マスターを読み込み中..." />}>
         <MasterHubContent />
       </Suspense>
     </PageScaffold>

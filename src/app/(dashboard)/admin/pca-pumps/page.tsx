@@ -18,7 +18,7 @@ export default function PcaPumpsPage() {
         supportingContent={null}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="PCAポンプレンタルを読み込み中..." />}>
         <PcaPumpsContent />
       </Suspense>
     </PageScaffold>

@@ -30,7 +30,7 @@ export default function PharmacyCooperationSetupPage() {
         ]}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="薬局間協力設定を読み込み中..." />}>
         <PharmacyCooperationSetupContent />
       </Suspense>
     </PageScaffold>

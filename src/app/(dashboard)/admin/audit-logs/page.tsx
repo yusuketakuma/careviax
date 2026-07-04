@@ -20,7 +20,7 @@ export default function AuditLogsPage() {
         supportingContent={null}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="監査ログを読み込み中..." />}>
         <AuditLogsContent />
       </Suspense>
     </PageScaffold>

@@ -20,7 +20,7 @@ export default function AnalyticsPage() {
         supportingContent={null}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="KPI分析ダッシュボードを読み込み中..." />}>
         <AnalyticsContent />
       </Suspense>
     </PageScaffold>
