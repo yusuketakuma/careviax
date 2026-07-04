@@ -2,17 +2,11 @@
 
 import * as React from 'react';
 import { useMutation } from '@tanstack/react-query';
+import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { DataTable, type DataTableColumnMeta } from '@/components/ui/data-table';
 import { StateBadge } from '@/components/ui/state-badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { decryptOfflinePayload } from '@/lib/offline/crypto';
 import { OUTCOME_LABELS } from '@/lib/constants/visit';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -55,12 +49,7 @@ const STATUS_ROLE: Record<OfflineSyncRowStatusKey, StatusRole> = {
 const OFFLINE_SYNC_LOCAL_OVERWRITE_DISABLED_REASON_ID =
   'offline-sync-local-overwrite-disabled-reason';
 const OFFLINE_SYNC_RETRY_ALL_DISABLED_REASON_ID = 'offline-sync-retry-all-disabled-reason';
-
-const STATUS_TONE: Record<OfflineSyncRowStatusKey, string> = {
-  conflict: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
-  failed: 'border-destructive/30 bg-destructive/10 text-destructive',
-  queued: 'border-tag-info/30 bg-tag-info/10 text-tag-info',
-};
+const OFFLINE_SYNC_QUEUE_ERROR_MESSAGE = '未同期データの読み込みに失敗しました';
 
 /** visitBriefCache から必要な scheduleId だけ患者名の解決マップを作る(ベストエフォート)。 */
 async function loadPatientNameMap(scheduleIds: string[]): Promise<Map<string, string>> {
@@ -95,13 +84,20 @@ export function OfflineSyncContent() {
   const [patientNames, setPatientNames] = React.useState<Map<string, string>>(new Map());
   const [selectedConflictId, setSelectedConflictId] = React.useState<number | null>(null);
   const [confirmingChoice, setConfirmingChoice] = React.useState<'server' | 'local' | null>(null);
+  const [syncQueueError, setSyncQueueError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     let active = true;
-    refreshSyncState().catch((error) => {
-      if (!active) return;
-      toast.error(messageFromError(error, '未同期データの読み込みに失敗しました'));
-    });
+    refreshSyncState()
+      .then(() => {
+        if (active) setSyncQueueError(null);
+      })
+      .catch((error) => {
+        if (!active) return;
+        const message = messageFromError(error, OFFLINE_SYNC_QUEUE_ERROR_MESSAGE);
+        setSyncQueueError(message);
+        toast.error(message);
+      });
 
     return () => {
       active = false;
@@ -207,6 +203,76 @@ export function OfflineSyncContent() {
     isPending: retryAllMutation.isPending,
     rowCount: rows.length,
   });
+  const visibleRetryAllDisabledReason =
+    syncQueueError && !retryAllMutation.isPending
+      ? '未同期データを読み込めないため、再読み込みしてください。'
+      : retryAllDisabledReason;
+  const summaryValue = (value: number) => (syncQueueError ? '—' : value);
+  const queueColumns: ColumnDef<OfflineSyncRow>[] = [
+    {
+      accessorKey: 'kindLabel',
+      header: '種類',
+      meta: { mobileLabel: '種類' } satisfies DataTableColumnMeta<OfflineSyncRow>,
+      cell: ({ row }) => (
+        <span className="font-medium text-foreground">{row.original.kindLabel}</span>
+      ),
+    },
+    {
+      accessorKey: 'patientLabel',
+      header: '患者さん',
+      meta: { mobileLabel: '患者さん' } satisfies DataTableColumnMeta<OfflineSyncRow>,
+      cell: ({ row }) => (
+        <div>
+          <span>{row.original.patientLabel}</span>
+          {row.original.lastError ? (
+            <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+              {row.original.lastError}
+            </span>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      id: 'status',
+      header: '状態',
+      meta: {
+        mobileLabel: '状態',
+        exportValue: (row) => row.statusLabel,
+      } satisfies DataTableColumnMeta<OfflineSyncRow>,
+      cell: ({ row }) => (
+        <StateBadge role={STATUS_ROLE[row.original.statusKey]}>
+          {row.original.statusLabel}
+        </StateBadge>
+      ),
+    },
+    {
+      id: 'nextAction',
+      header: '次にやること',
+      meta: {
+        mobileLabel: '次にやること',
+        exportValue: (row) => row.nextActionLabel,
+      } satisfies DataTableColumnMeta<OfflineSyncRow>,
+      cell: ({ row }) => (
+        <OfflineSyncRowAction
+          row={row.original}
+          retryPending={retryAllMutation.isPending}
+          onRetry={() => retryAllMutation.mutate()}
+          onResolve={(id) => setSelectedConflictId(id)}
+        />
+      ),
+    },
+  ];
+
+  function retrySyncQueueLoad() {
+    setSyncQueueError(null);
+    refreshSyncState()
+      .then(() => setSyncQueueError(null))
+      .catch((error) => {
+        const message = messageFromError(error, OFFLINE_SYNC_QUEUE_ERROR_MESSAGE);
+        setSyncQueueError(message);
+        toast.error(message);
+      });
+  }
 
   if (selectedConflict) {
     const localOverwriteDisabledReason = getOfflineSyncLocalOverwriteDisabledReason({
@@ -361,28 +427,32 @@ export function OfflineSyncContent() {
         </div>
         <div
           className="rounded-full border border-border/70 bg-card px-3 py-1.5 text-sm font-semibold text-foreground"
-          aria-label={`未同期 ${summary.total} 件、要確認 ${summary.needsAction} 件`}
+          aria-label={
+            syncQueueError
+              ? '未同期データを読み込めません'
+              : `未同期 ${summary.total} 件、要確認 ${summary.needsAction} 件`
+          }
         >
-          要確認 {summary.needsAction} / 全{summary.total}
+          {syncQueueError ? '読込失敗' : `要確認 ${summary.needsAction} / 全${summary.total}`}
         </div>
       </div>
 
       <div className="grid gap-2 sm:grid-cols-3" aria-label="同期状態の内訳">
         <SyncSummaryCard
           label="競合"
-          value={summary.conflict}
+          value={summaryValue(summary.conflict)}
           description="他スタッフの更新あり"
           tone="border-state-confirm/30 bg-state-confirm/10 text-state-confirm"
         />
         <SyncSummaryCard
           label="失敗"
-          value={summary.failed}
+          value={summaryValue(summary.failed)}
           description="再送が必要"
           tone="border-destructive/30 bg-destructive/10 text-destructive"
         />
         <SyncSummaryCard
           label="送信待ち"
-          value={summary.queued}
+          value={summaryValue(summary.queued)}
           description="通信復帰で自動送信"
           tone="border-tag-info/30 bg-tag-info/10 text-tag-info"
         />
@@ -397,82 +467,17 @@ export function OfflineSyncContent() {
             </div>
           </div>
 
-          <div className="mt-3 space-y-2 md:hidden">
-            {rows.length === 0 ? (
-              <p className="rounded-md border border-state-done/30 bg-state-done/10 px-3 py-4 text-center text-sm text-state-done">
-                未同期のデータはありません。すべて同期済みです。
-              </p>
-            ) : (
-              rows.map((row, index) => (
-                <OfflineSyncRowCard
-                  key={row.id ?? `row-${index}`}
-                  row={row}
-                  retryPending={retryAllMutation.isPending}
-                  onRetry={() => retryAllMutation.mutate()}
-                  onResolve={(id) => setSelectedConflictId(id)}
-                />
-              ))
-            )}
-          </div>
-
-          <Table className="mt-3 hidden md:table">
-            <TableHeader>
-              <TableRow>
-                <TableHead>種類</TableHead>
-                <TableHead>患者さん</TableHead>
-                <TableHead>状態</TableHead>
-                <TableHead>次にやること</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={4}
-                    className="py-10 text-center text-sm text-muted-foreground"
-                  >
-                    未同期のデータはありません。すべて同期済みです。
-                  </TableCell>
-                </TableRow>
-              ) : (
-                rows.map((row, index) => (
-                  <TableRow key={row.id ?? `row-${index}`} data-testid="offline-sync-row">
-                    <TableCell className="font-medium text-foreground">{row.kindLabel}</TableCell>
-                    <TableCell>{row.patientLabel}</TableCell>
-                    <TableCell>
-                      <StateBadge role={STATUS_ROLE[row.statusKey]}>{row.statusLabel}</StateBadge>
-                    </TableCell>
-                    <TableCell>
-                      {row.nextActionKey === 'retry' ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="min-h-11 text-primary sm:h-11 sm:min-h-11"
-                          disabled={retryAllMutation.isPending}
-                          onClick={() => retryAllMutation.mutate()}
-                        >
-                          再試行
-                        </Button>
-                      ) : row.nextActionKey === 'resolve_conflict' && row.id !== null ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="min-h-11 text-state-confirm sm:h-11 sm:min-h-11"
-                          onClick={() => setSelectedConflictId(row.id)}
-                        >
-                          内容を確認
-                        </Button>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">そのまま</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+          <DataTable
+            columns={queueColumns}
+            data={rows}
+            caption="同期キュー"
+            emptyMessage="未同期のデータはありません。すべて同期済みです。"
+            errorMessage={syncQueueError ?? undefined}
+            errorActionLabel="再読み込み"
+            onRetry={retrySyncQueueLoad}
+            getRowId={(row, index) => String(row.id ?? `row-${index}`)}
+            getRowA11yLabel={(row) => `${row.patientLabel} / ${row.kindLabel}`}
+          />
         </section>
 
         <aside className="h-fit rounded-lg border border-border/70 bg-card p-4" aria-label="注意">
@@ -489,19 +494,19 @@ export function OfflineSyncContent() {
             type="button"
             className="mt-4 min-h-11 w-full sm:h-11 sm:min-h-11"
             aria-describedby={
-              retryAllDisabledReason ? OFFLINE_SYNC_RETRY_ALL_DISABLED_REASON_ID : undefined
+              visibleRetryAllDisabledReason ? OFFLINE_SYNC_RETRY_ALL_DISABLED_REASON_ID : undefined
             }
-            disabled={retryAllMutation.isPending || Boolean(retryAllDisabledReason)}
+            disabled={retryAllMutation.isPending || Boolean(visibleRetryAllDisabledReason)}
             onClick={() => retryAllMutation.mutate()}
           >
             {retryAllMutation.isPending ? '送信中...' : 'すべて再試行'}
           </Button>
-          {retryAllDisabledReason ? (
+          {visibleRetryAllDisabledReason ? (
             <p
               id={OFFLINE_SYNC_RETRY_ALL_DISABLED_REASON_ID}
               className="mt-2 text-xs text-muted-foreground"
             >
-              {retryAllDisabledReason}
+              {visibleRetryAllDisabledReason}
             </p>
           ) : null}
         </aside>
@@ -517,7 +522,7 @@ function SyncSummaryCard({
   tone,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   description: string;
   tone: string;
 }) {
@@ -532,7 +537,7 @@ function SyncSummaryCard({
   );
 }
 
-function OfflineSyncRowCard({
+function OfflineSyncRowAction({
   row,
   retryPending,
   onRetry,
@@ -543,49 +548,35 @@ function OfflineSyncRowCard({
   onRetry: () => void;
   onResolve: (id: number) => void;
 }) {
-  return (
-    <article
-      className={`rounded-lg border px-3 py-3 ${STATUS_TONE[row.statusKey]}`}
-      data-testid="offline-sync-row"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-foreground">{row.patientLabel}</p>
-          <p className="mt-1 text-xs opacity-80">{row.kindLabel}</p>
-        </div>
-        <StateBadge role={STATUS_ROLE[row.statusKey]}>{row.statusLabel}</StateBadge>
-      </div>
-      {row.lastError ? <p className="mt-2 text-xs leading-5 opacity-80">{row.lastError}</p> : null}
-      <div className="mt-3">
-        {row.nextActionKey === 'retry' ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="min-h-11 w-full text-primary"
-            disabled={retryPending}
-            onClick={onRetry}
-          >
-            再試行
-          </Button>
-        ) : row.nextActionKey === 'resolve_conflict' && row.id !== null ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="min-h-11 w-full text-state-confirm"
-            onClick={() => {
-              // The branch above guarantees row.id is not null, but the
-              // closure does not preserve property narrowing.
-              if (row.id !== null) onResolve(row.id);
-            }}
-          >
-            内容を確認
-          </Button>
-        ) : (
-          <p className="text-sm text-muted-foreground">そのまま送信待ちです。</p>
-        )}
-      </div>
-    </article>
-  );
+  if (row.nextActionKey === 'retry') {
+    return (
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="min-h-11 text-primary sm:h-11 sm:min-h-11"
+        disabled={retryPending}
+        onClick={onRetry}
+      >
+        再試行
+      </Button>
+    );
+  }
+
+  if (row.nextActionKey === 'resolve_conflict' && row.id !== null) {
+    const itemId = row.id;
+    return (
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="min-h-11 text-state-confirm sm:h-11 sm:min-h-11"
+        onClick={() => onResolve(itemId)}
+      >
+        内容を確認
+      </Button>
+    );
+  }
+
+  return <span className="text-sm text-muted-foreground">そのまま</span>;
 }
