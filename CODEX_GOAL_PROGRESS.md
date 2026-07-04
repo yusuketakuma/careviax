@@ -1,5 +1,54 @@
 # CODEX Goal Progress
 
+## R55 Component Loading Copy Closure - 2026-07-04 21:29 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/external/external-viewer-content.tsx`
+    - `src/app/(dashboard)/external/external-viewer-content.test.tsx`
+    - `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`
+    - `src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx`
+    - `src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx`
+    - `src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx`
+- Scope:
+  - Replaced three component-level generic loading labels with screen-specific
+    statuses:
+    - `外部連携パネルを読み込み中`
+    - `月次請求候補を読み込み中...`
+    - `処方一覧を読み込み中...`
+  - Added/extended focused component tests proving the specific loading labels
+    render and generic `読み込み中` / `読み込み中...` variants are absent.
+  - Confirmed the remaining generic visible loading scan is now limited to the
+    platform data explorer copy and the shared DataTable default
+    `loadingLabel`.
+- Safety:
+  - Loading presentation and tests only.
+  - No external collaboration query, billing candidates API/export preview
+    semantics, prescription list infinite query, API path, org header, DB,
+    auth, authorization, PHI projection, billing semantics, deployment,
+    package dependency, or server behavior changed.
+  - Loading copy is PHI-free and does not echo patient names, patient IDs,
+    prescription details, billing candidate values, external-collaboration
+    request details, org IDs, raw errors, or billing amounts.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/external/external-viewer-content.test.tsx' 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx' 'src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `3` files / `24` tests after fixing the billing test page-shape mock.
+  - Scoped ESLint, targeted Prettier check after targeted formatting, targeted
+    `git diff --check`, and `pnpm typecheck` passed for the changed
+    source/test files.
+  - Residual generic visible loading scan now reports only
+    `src/app/platform/tenants/[orgId]/data-explorer-panel.tsx` and
+    `src/components/ui/data-table.tsx`.
+- Commit:
+  - Implementation slice landed at `1bbc9ca6`
+    (`fix(loading): name list loading states`).
+- Remaining:
+  - Broader Plans.md objective remains open.
+  - R55 still needs separate triage for the platform data explorer visible
+    generic copy and the shared DataTable default `loadingLabel`.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Generic Loading Component Closure - 2026-07-04 21:22 JST
 
 - Status:

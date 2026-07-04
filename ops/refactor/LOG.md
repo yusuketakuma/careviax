@@ -1560,6 +1560,36 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: billing route-shell generic fallback は closure。broad Plans.md / R55 residual scan は継続。
   `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
 
+## 2026-07-04 R55 component loading copy closure
+
+- 分類: UI loading-state cleanup / R55 component-level generic visible loading residual。
+- 実施:
+  - `external/external-viewer-content.tsx` の panel skeleton status を generic
+    `読み込み中` から `外部連携パネルを読み込み中` へ変更。
+  - `billing/candidates/billing-candidates-content.tsx` の load-more pending label を
+    `月次請求候補を読み込み中...` へ変更。
+  - `prescriptions/prescriptions-workspace.tsx` の load-more pending label を
+    `処方一覧を読み込み中...` へ変更。
+  - 3 component test を追加/拡張し、画面固有 loading label が出ることと generic
+    `読み込み中` / `読み込み中...` が出ないことを固定。
+- 挙動変更: loading label のみ。external collaboration query、billing candidates API/export preview semantics、
+  prescription list infinite query、API path、org header、API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の Clear state / false-empty prevention と
+  loading UI は軽量で意味のある state にする Next loading/Suspense guidance に整合。
+- 安全性: product API/DB/auth/authorization/PHI projection/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、patient name/id・prescription detail・billing candidate value・external collaboration request detail・billing amount・org id・raw error
+  を出さない。
+- 検証: focused external/billing/prescriptions component Vitest `3 files / 24 tests` green、
+  targeted ESLint green、targeted Prettier check は `billing-candidates-content.test.tsx` と
+  `prescriptions-workspace.tsx` の targeted format 後 green、targeted `git diff --check` green、
+  `pnpm typecheck` green。residual generic visible loading scan は
+  `src/app/platform/tenants/[orgId]/data-explorer-panel.tsx` と `src/components/ui/data-table.tsx`
+  のみ。
+- commit: `1bbc9ca6` (`fix(loading): name list loading states`)。
+- 残課題: component-level generic visible loading residual は platform data explorer と shared
+  DataTable default `loadingLabel` の別 triage が必要。broad Plans.md は継続。
+  `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
 ## 2026-07-04 R55 workflow and tasks route loading labels
 
 - 分類: UI loading-state cleanup / R55 route-shell generic loading residual。
