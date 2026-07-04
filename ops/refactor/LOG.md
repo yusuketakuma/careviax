@@ -3193,3 +3193,24 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
   個別確認してから段階移行する。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R40/R44 schedule planner hooks readApiJson slice
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 実施:
+  - schedule day planner の vehicle resources GET fetcher を
+    `readApiJson<VisitVehicleResourceScheduleOptionsResponse>` へ移行。
+  - schedule day planner の billing preview GET fetcher を
+    `readApiJson<VisitScheduleBillingPreview>` へ移行。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。API paths、`buildOrgHeaders`、
+  React Query keys、planner selection logic、billing preview semantics、画面表示は維持。
+- 安全性: product UI read fetch internals のみ変更。DB/schema、auth/authorization、
+  PHI projection、billing、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation は不変。
+- 検証: focused schedule planner hooks Vitest `1 file / 4 tests` green、
+  scoped ESLint green、targeted Prettier check green、targeted `git diff --check` green、
+  `pnpm typecheck` green。
+- commit: `5b7e6dea` (`refactor(ui): reuse readApiJson in schedule planner hooks`)。
+- 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。

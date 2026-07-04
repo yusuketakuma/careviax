@@ -1,5 +1,37 @@
 # CODEX Goal Progress
 
+## R40/R44 Schedule Planner Hooks readApiJson Partial - 2026-07-05 02:42 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/schedules/schedule-day-planner-hooks.ts`
+- Scope:
+  - Reused `readApiJson<VisitVehicleResourceScheduleOptionsResponse>` for the
+    schedule day planner vehicle resources GET fetcher.
+  - Reused `readApiJson<VisitScheduleBillingPreview>` for the schedule day
+    planner billing preview GET fetcher.
+  - Preserved API paths, `buildOrgHeaders`, React Query keys, planner
+    selection logic, billing preview semantics, and rendered UI behavior.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/schedule-day-planner-hooks.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `4` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `5b7e6dea`
+    (`refactor(ui): reuse readApiJson in schedule planner hooks`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Intake Triage readApiJson Partial - 2026-07-05 02:39 JST
 
 - Status:
