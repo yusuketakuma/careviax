@@ -24,6 +24,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Card, CardAction, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import { HelpPopover } from '@/components/ui/help-popover';
+import { SkeletonRows } from '@/components/ui/loading';
 import {
   Dialog,
   DialogContent,
@@ -957,7 +958,9 @@ export function MedicationsContent({
         </div>
 
         {isLoading ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">読み込み中...</div>
+          <div role="status" aria-label="服薬中薬剤を読み込み中" aria-live="polite">
+            <SkeletonRows rows={4} cols={4} status={false} />
+          </div>
         ) : isProfilesError ? (
           <ErrorState
             variant="server"
