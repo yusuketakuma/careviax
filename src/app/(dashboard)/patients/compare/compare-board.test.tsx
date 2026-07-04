@@ -102,6 +102,34 @@ describe('CompareBoard', () => {
     }
   });
 
+  it('keeps API messages from failed patient overview fetches', async () => {
+    mockBoard();
+
+    let capturedQueries: QueryConfig[] = [];
+    useQueriesMock.mockImplementation(({ queries }: { queries: QueryConfig[] }) => {
+      capturedQueries = queries;
+      return queries.map(() => ({ data: undefined, isLoading: true, error: null }));
+    });
+
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(jsonResponse({ message: '比較用患者情報APIからの詳細エラー' }, 500)),
+    );
+
+    try {
+      render(<CompareBoard requestedPatientIds={['patient_1']} />);
+
+      await expect(capturedQueries[0]?.queryFn()).rejects.toThrow(
+        '比較用患者情報APIからの詳細エラー',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
   it('routes compare card open links through the shared patient href helper', () => {
     const patientId = 'pt/1?x=y#z';
     mockBoard();
