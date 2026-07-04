@@ -40607,6 +40607,36 @@ false` for every migrated column.
 - Remaining:
   - Await coordinator GO/leave/BUILD-LOCK release.
 
+## OPS-SUBAGENT-DOC Direct Subagent Policy Reconciliation - 2026-07-04 18:04 JST
+
+- Scope:
+  - `.agent-loop/README.md`
+  - `ops/refactor/STATE.md`
+  - `.codex/ralph-state.md`
+  - `CODEX_GOAL_PROGRESS.md`
+  - `ops/refactor/LOG.md`
+- Status:
+  - Latest user request re-enables the intended Codex CLI direct-subagent
+    optimization/persona path after the intermediate `cf0f994c` single-Codex
+    docs commit disabled all subagents.
+  - Repo SSOT is being reconciled to: no agmsg, no codex2/codex3/codex4, no
+    Claude, no external worker lanes, and no PATCH_REPORT waits; direct Codex
+    CLI child subagents are allowed only as bounded helpers for mapping,
+    planning, review, and verification.
+- Safety:
+  - Process/docs/ledger only. Product source, DB, migration, auth,
+    authorization, PHI, billing runtime, deployment, packages, and production
+    settings are unchanged.
+  - Recursive subagent fan-out and subagent commit ownership remain disabled.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm prettier --check .agent-loop/README.md ops/refactor/STATE.md`
+    passed.
+  - `git diff --check -- .agent-loop/README.md ops/refactor/STATE.md` passed.
+- Remaining:
+  - Commit only the direct-subagent docs/ledger paths. Keep unrelated
+    `refactor-instructions.md` and untracked local `.agents/skills/**` /
+    `skills-lock.json` outside this slice.
+
 ## Coordinator Land Refresh - 2026-07-04 17:28 JST
 
 - Status:

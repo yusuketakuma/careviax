@@ -671,3 +671,21 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R21/R32 の他 residual は引き続き narrow wave で移行する。
 - 次アクション: R43 route-compare `jsonResponse` helper 収束、または R55 schedule proposals
   loading skeleton 化を次候補として再評価する。
+
+## 2026-07-04 OPS direct subagent policy reconciliation
+
+- 分類: operator workflow / Codex CLI direct-subagent enablement。
+- 背景: `cf0f994c` で一度すべての subagent を無効化したが、最新ユーザー指示は
+  「Codex CLI の最新版に最適化」「サブエージェントのペルソナ強化」。そのため、外部 worker lane は
+  引き続き無効のまま、Codex CLI の direct child subagents だけを bounded helper として再有効化する。
+- 変更:
+  - `.agent-loop/README.md`: single Codex operation のまま、direct Codex CLI subagents を
+    mapping / planning / review / verification 用の direct child helper として許可。
+  - `ops/refactor/STATE.md`: SSOT を Codex 単独統括 + direct subagents 体制へ戻し、
+    recursive fan-out と commit ownership は禁止。
+  - `.codex/ralph-state.md` / `CODEX_GOAL_PROGRESS.md` / 本 LOG: 検証済みの運用差分として記録。
+- 安全性: docs/ledger only。product source/API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+- 検証: `NODE_OPTIONS=--max-old-space-size=8192 pnpm prettier --check .agent-loop/README.md ops/refactor/STATE.md`
+  green、`git diff --check -- .agent-loop/README.md ops/refactor/STATE.md` green。
+- 残課題: `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は別スライスとして保持し、
+  この commit には混ぜない。

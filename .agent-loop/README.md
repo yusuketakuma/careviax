@@ -6,8 +6,9 @@
 
 > Current mode (2026-07-04 JST): **single Codex operation** for **careviax (PH-OS Pharmacy)**.
 > `codex` owns planning, implementation, verification, ledgers, and scoped commits. Do not use agmsg,
-> codex2/codex3/codex4, Claude, subagents, or external worker lanes unless the user explicitly re-enables
-> that workflow.
+> codex2/codex3/codex4, Claude, or external worker lanes unless the user explicitly re-enables that
+> workflow. Codex CLI built-in subagents may be used as direct child helpers for bounded exploration,
+> planning, review, or verification; they must not recursively spawn more agents or own commits.
 > gbrain remains long-term memory subordinate to live repository state.
 
 This directory holds the human/operator entry points and the live operational artifacts for the loop. Start here.
@@ -19,11 +20,12 @@ This directory holds the human/operator entry points and the live operational ar
 Current active loop:
 
 - **codex** — single active operator. Plans from live repo state, implements the smallest complete slice,
-  runs focused validation, updates ledgers, and creates scoped commits when a coherent validated slice is ready.
+  runs focused validation, updates ledgers, creates scoped commits when a coherent validated slice is ready,
+  and may use direct Codex CLI subagents for bounded evidence gathering.
 - **gbrain** — long-term memory subordinate. Provides recall (past decisions, prior art) but **never overrides live repo state**. When repo and gbrain disagree, the repo wins; gbrain gets a writeback correction.
 
 Disabled unless the user explicitly re-enables them: agmsg, codex2, codex3, codex4, Claude,
-subagents, PATCH_REPORT routing, and external maker/checker handoff.
+PATCH_REPORT routing, external maker/checker handoff, and recursive subagent fan-out.
 Historical references below explain the previous loop only.
 
 Historical two-supervisor model, retained for context only and not active:
@@ -35,8 +37,9 @@ Historical two-supervisor model, retained for context only and not active:
 ### 1.1 Communication mode
 
 Current communication is direct user ⇄ Codex only. Do not drain or send agmsg messages, do not wait for
-PATCH_REPORTs, and do not route work to worker lanes or subagents. If a later instruction re-enables agmsg
-or subagents, update `ops/refactor/STATE.md` first, then revive the historical protocol intentionally.
+PATCH_REPORTs, and do not route work to external worker lanes. Direct Codex CLI subagents return summaries to
+the parent thread; they are not an external communication channel. If a later instruction re-enables agmsg,
+update `ops/refactor/STATE.md` first, then revive the historical protocol intentionally.
 
 Operational compression rules:
 
