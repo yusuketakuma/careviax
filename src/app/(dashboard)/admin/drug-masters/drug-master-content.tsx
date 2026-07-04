@@ -1691,7 +1691,8 @@ function DrugMasterOperationalContent({
                   size="inline"
                   title="拠点一覧を読み込めませんでした"
                   description="「拠点が未登録」ではなく取得エラーです。対象拠点を選べないため、再読み込みしてください。"
-                  action={{ label: '再読み込み', onClick: () => void refetchSites() }}
+                  onRetry={() => void refetchSites()}
+                  retryLabel="再読み込み"
                 />
               </div>
             ) : null}
@@ -1725,7 +1726,8 @@ function DrugMasterOperationalContent({
             size="inline"
             title="マスター更新ステータスを読み込めませんでした"
             description="鮮度や取込件数を表示できていません。時間をおいて再読み込みしてください。"
-            action={{ label: '再読み込み', onClick: () => void refetchMasterStatus() }}
+            onRetry={() => void refetchMasterStatus()}
+            retryLabel="再読み込み"
           />
         </PageSection>
       ) : null}
@@ -1972,7 +1974,8 @@ function DrugMasterOperationalContent({
               size="inline"
               title="取込履歴を読み込めませんでした"
               description="「取込履歴なし」ではなく取得エラーです。監査確認のため再読み込みしてください。"
-              action={{ label: '再読み込み', onClick: () => void refetchImportLogs() }}
+              onRetry={() => void refetchImportLogs()}
+              retryLabel="再読み込み"
             />
           ) : importLogs.length === 0 ? (
             <p className="text-sm text-muted-foreground">まだ取込履歴はありません。</p>
