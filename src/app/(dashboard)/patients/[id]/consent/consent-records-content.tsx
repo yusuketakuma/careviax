@@ -34,6 +34,7 @@ import { downscaleImage } from '@/lib/files/downscale-image';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
+import { messageFromError } from '@/lib/utils/error-message';
 
 // --- Types ---
 
@@ -373,7 +374,7 @@ function CreateConsentDialog({
       onClose();
     },
     onError: (err: Error) => {
-      toast.error(err.message);
+      toast.error(messageFromError(err, '同意記録の登録に失敗しました'));
     },
   });
 
@@ -607,7 +608,7 @@ function EditConsentDialog({
       onClose();
     },
     onError: (err: Error) => {
-      toast.error(err.message);
+      toast.error(messageFromError(err, '同意記録の更新に失敗しました'));
     },
   });
 
@@ -701,7 +702,7 @@ function RevokeConsentDialog({
       onClose();
     },
     onError: (err: Error) => {
-      toast.error(err.message);
+      toast.error(messageFromError(err, '同意撤回に失敗しました'));
     },
   });
 

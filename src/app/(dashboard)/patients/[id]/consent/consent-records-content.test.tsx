@@ -289,6 +289,39 @@ describe('ConsentRecordsContent', () => {
     ).toBe(false);
   });
 
+  it('falls back when consent creation fails with an empty server message', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/consent-records?patient_id=patient_1') {
+        return new Response(
+          JSON.stringify({
+            data: [defaultConsentRecord],
+            hasMore: false,
+            totalCount: 1,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/templates?template_type=consent_form') {
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }
+      if (url === '/api/consent-records' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ message: '' }), { status: 500 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '新規同意取得' }));
+    fireEvent.click(screen.getByRole('button', { name: '外部共有' }));
+    fireEvent.click(screen.getByRole('button', { name: '登録' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('同意記録の登録に失敗しました');
+    });
+  });
+
   it('updates active consent records with a replacement document_file_id only', async () => {
     const fetchMock = stubFetch();
     renderContent();
