@@ -46412,3 +46412,45 @@ false` for every migrated column.
     before converting additional client read fetchers.
   - Existing unrelated `refactor-instructions.md` and local skill install files
     remain outside this slice.
+
+## R40/R44 Operating Hours readApiJson Slice - 2026-07-05 04:13 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/operating-hours/operating-hours-content.tsx`
+  - `src/app/(dashboard)/admin/operating-hours/operating-hours-content.test.tsx`
+- Status:
+  - Implemented and committed as `3cec07f8`
+    (`refactor(ui): reuse readApiJson in operating hours`).
+- Changes:
+  - Replaced the site-list GET helper for `/api/pharmacy-sites` with
+    `readApiJson<{ data: SiteOption[] }>` while preserving query key,
+    `buildOrgHeaders(orgId)`, and active-site selection.
+  - Replaced the operating-hours GET helper for `/api/pharmacy-operating-hours`
+    with `readApiJson<OperatingHoursResponse>` while preserving date params,
+    weekly draft sync, resolved-day calendar, and response envelope.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, destructive operation, named loading states,
+    false-zero calendar error state, stale-save conflict behavior, and mutating
+    PUT save behavior.
+  - The 2026-07-04 user instruction allowing product
+    API/DB/auth/authorization/PHI/billing/deploy/package dependency changes when
+    necessary is recorded in `ops/refactor/STATE.md`; this slice did not require
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/operating-hours/operating-hours-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `11` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/operating-hours/operating-hours-content.tsx' 'src/app/(dashboard)/admin/operating-hours/operating-hours-content.test.tsx'`
+    passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/operating-hours/operating-hours-content.tsx' 'src/app/(dashboard)/admin/operating-hours/operating-hours-content.test.tsx'`
+    passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/operating-hours/operating-hours-content.tsx' 'src/app/(dashboard)/admin/operating-hours/operating-hours-content.test.tsx'`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - R40/R44 remains partial and broad; continue per-fetcher body-read/PHI review
+    before converting additional client read fetchers.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
