@@ -1,5 +1,41 @@
 # CODEX Goal Progress
 
+## R24/R46 Care Reports Cursor Helper Partial - 2026-07-05 02:11 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R24/R46 slice:
+    - `src/app/api/care-reports/route.ts`
+- Scope:
+  - Reused the existing `buildCursorPage` helper for care report palette
+    overflow detection/visible-row selection and regular/keyword
+    visible-row selection plus next-cursor assembly.
+  - Preserved palette patient matching, patient name enrichment, content output
+    policy, keyword filtering, `deliverySummary`, `hasMore`, and `nextCursor`
+    response shape.
+- Safety:
+  - Product API implementation internals changed; external response shape and
+    care report semantics are unchanged.
+  - Preserved request auth context, RLS request context, care report access
+    filters, palette unsupported-filter gate, DB query shape,
+    schema/migrations/data, auth/authorization semantics, PHI projection,
+    billing behavior, deployment, package dependency, live DB operation,
+    external send, secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run src/app/api/care-reports/route.test.ts src/lib/api/pagination.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `75` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `bedc3197`
+    (`refactor(api): reuse cursor page helper in care reports`).
+- Remaining:
+  - R24/R46 are partial; continue compatible hand-rolled cursor page routes.
+  - Conference-notes scan-window and admin/external-professionals count-based
+    q search need route-specific analysis before helper convergence.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R24/R46 Visit Records Cursor Helper Partial - 2026-07-05 02:06 JST
 
 - Status:
