@@ -1,5 +1,39 @@
 # CODEX Goal Progress
 
+## R32 Schedule/Nav QueryClient Wrapper Convergence - 2026-07-04 22:35 JST
+
+- Status:
+  - Implemented and validated a tenth bounded R32 slice:
+    - `src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx`
+    - `src/app/(dashboard)/schedules/emergency-route/emergency-route-content.test.tsx`
+    - `src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts`
+    - `src/components/layout/use-nav-badges.test.ts`
+- Scope:
+  - Replaced four more local `QueryClient` / `QueryClientProvider` wrapper
+    implementations with `createQueryClientWrapper`.
+  - Used `createTestQueryClient` where tests still need an explicit client for
+    rerender or future cache access.
+  - Preserved retry-disabled test defaults and left product runtime code
+    untouched.
+- Safety:
+  - Test harness convergence only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    deployment, package dependency, query, mutation, org header, audit logging,
+    or runtime behavior changed.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx' 'src/app/(dashboard)/schedules/emergency-route/emergency-route-content.test.tsx' 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts' 'src/components/layout/use-nav-badges.test.ts' --reporter=dot --testTimeout=30000`
+    passed `4` files / `40` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `0ec765bf`
+    (`test(schedules): share query client wrapper`).
+- Remaining:
+  - R32 remains partially open for the remaining local QueryClient wrappers.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R32 Reports/Handoff QueryClient Wrapper Convergence - 2026-07-04 22:32 JST
 
 - Status:

@@ -5,6 +5,20 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-04 R32-schedules 0ec765bf
+
+- 分類: test refactor / QueryClient wrapper convergence
+- 対象: route compare / emergency route / schedule drawer / nav badges tests
+- 実施: schedule/nav 4テストの local `QueryClient`/`QueryClientProvider` wrapper を
+  `createQueryClientWrapper` へ収束。明示 client が必要な箇所は `createTestQueryClient` を使用。
+- 挙動変更: なし。retry-disabled test defaults を維持し、product runtime は不変。
+- 安全: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は変更不要。
+  query/mutation/org header/audit/server behavior 不変。
+- 検証: focused schedule/nav vitest 4 files / 40 tests green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit 0ec765bf。
+- 残課題: R32 は残りの QueryClient wrapper 移行が継続。
+
 ## 2026-07-04 R32-reports 1258009e
 
 - 分類: test refactor / QueryClient wrapper convergence
