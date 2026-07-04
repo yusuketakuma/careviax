@@ -9,9 +9,10 @@ import { UatContent } from './uat-content';
 
 setupDomTestEnv();
 
-const { mutateAsyncMock, invalidateQueriesMock } = vi.hoisted(() => ({
+const { mutateAsyncMock, invalidateQueriesMock, loadingQueryKeysMock } = vi.hoisted(() => ({
   mutateAsyncMock: vi.fn(),
   invalidateQueriesMock: vi.fn(),
+  loadingQueryKeysMock: new Set<string>(),
 }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -19,11 +20,21 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 }));
 
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: () => ({
-    data: undefined,
-    isLoading: false,
-    error: null,
-  }),
+  useQuery: (options: { queryKey?: readonly unknown[] }) => {
+    const queryName = String(options.queryKey?.[0] ?? '');
+    if (loadingQueryKeysMock.has(queryName)) {
+      return {
+        data: undefined,
+        isLoading: true,
+        error: null,
+      };
+    }
+    return {
+      data: undefined,
+      isLoading: false,
+      error: null,
+    };
+  },
   useMutation: () => ({
     mutateAsync: mutateAsyncMock,
     isPending: false,
@@ -53,6 +64,7 @@ vi.mock('sonner', () => ({
 describe('UatContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    loadingQueryKeysMock.clear();
     mutateAsyncMock.mockResolvedValue(undefined);
   });
 
@@ -78,5 +90,29 @@ describe('UatContent', () => {
 
     expect(mutateAsyncMock).toHaveBeenCalledTimes(1);
     expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('uses announced skeletons while launch dossier, summary, and org audit are loading', () => {
+    loadingQueryKeysMock.add('pilot-launch-dossier');
+    loadingQueryKeysMock.add('uat-feedback-summary');
+    loadingQueryKeysMock.add('pilot-org-audit');
+
+    render(<UatContent />);
+
+    expect(screen.getByRole('status', { name: 'ローンチ前提を読み込み中' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'UAT集計を読み込み中' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: '監査サマリーを読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('ローンチ前提を読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText('集計を読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText('監査サマリーを読み込み中...', { selector: 'p' })).toBeNull();
+  });
+
+  it('uses an announced skeleton while saved feedback is loading', () => {
+    loadingQueryKeysMock.add('uat-feedback');
+
+    render(<UatContent />);
+
+    expect(screen.getByRole('status', { name: '保存済みフィードバックを読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('読み込み中...', { selector: 'p' })).toBeNull();
   });
 });
