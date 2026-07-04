@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R24/R46 Admin Facilities Cursor Helper Partial - 2026-07-05 01:27 JST
+
+- Status:
+  - Implemented and validated the next bounded R24/R46 slice:
+    - `src/app/api/admin/facilities/route.ts`
+- Scope:
+  - Reused the existing `buildCursorPage` helper for `/api/admin/facilities`
+    search-mode overflow detection and visible-row selection.
+  - Preserved the existing response shape, including no `nextCursor` field,
+    `hasMore || hidden_count > 0`, total/visible/hidden count metadata, and
+    patient-count enrichment.
+- Safety:
+  - Product API implementation internals changed; external response shape and
+    facility-search semantics are unchanged.
+  - Preserved `canVisit`, sensitive no-store wrapping, search query
+    normalization, minimal facility projection, count/truncated metadata, POST
+    create behavior, DB query shape, schema/migrations/data, auth/authorization
+    semantics, PHI projection, billing behavior, deployment, package dependency,
+    live DB operation, external send, secret handling, push, and destructive
+    operation boundaries.
+- Validation:
+  - `pnpm exec vitest run src/app/api/admin/facilities/route.test.ts src/lib/api/pagination.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `16` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `44cb279a`
+    (`refactor(api): reuse cursor page helper in facility search`).
+- Remaining:
+  - R24/R46 are partial; continue compatible hand-rolled cursor page routes.
+  - Routes with `meta.has_more`, keyset cursor encoding, scan-window filtering,
+    hidden-count semantics, or additive route-specific metadata need
+    route-specific analysis before helper convergence.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R24/R46 Correction Requests Cursor Helper Partial - 2026-07-05 01:24 JST
 
 - Status:
