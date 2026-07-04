@@ -261,7 +261,8 @@ function GenericCandidatePanel({
         size="inline"
         title="後発候補を取得できませんでした"
         description="時間をおいて再読み込みしてください。"
-        action={{ label: '再読み込み', onClick: () => void refetch() }}
+        onRetry={() => void refetch()}
+        retryLabel="再読み込み"
       />
     );
   }
@@ -1825,7 +1826,8 @@ export function PrescriptionIntakeForm() {
               size="inline"
               title="前回処方を取得できませんでした"
               description="「前回処方なし」ではなく取得エラーです。引用が必要な場合は再読み込みしてください。"
-              action={{ label: '再読み込み', onClick: () => void refetchPreviousPrescriptions() }}
+              onRetry={() => void refetchPreviousPrescriptions()}
+              retryLabel="再読み込み"
             />
           </div>
         ) : null}
@@ -1948,7 +1950,8 @@ export function PrescriptionIntakeForm() {
                 size="inline"
                 title="患者検索に失敗しました"
                 description="「該当なし」ではなく取得エラーです。誤った患者で登録しないよう、再読み込みしてください。"
-                action={{ label: '再読み込み', onClick: () => void refetchPatients() }}
+                onRetry={() => void refetchPatients()}
+                retryLabel="再読み込み"
               />
             </div>
           )}
@@ -1997,7 +2000,8 @@ export function PrescriptionIntakeForm() {
               size="inline"
               title="ケースを取得できませんでした"
               description="この患者の既存ケースを表示できていません。「ケースなし」と取り違えて登録しないよう、再読み込みしてください。"
-              action={{ label: '再読み込み', onClick: () => void refetchCases() }}
+              onRetry={() => void refetchCases()}
+              retryLabel="再読み込み"
             />
           </div>
         )}
