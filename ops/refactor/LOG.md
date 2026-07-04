@@ -565,3 +565,17 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 安全性: test-only。runtime component/API/DB/auth/authorization/PHI/audit/billing/deploy/payload は不変。
   `pnpm exec` により一時的に `@aws-sdk/client-apigatewaymanagementapi` の package/lock diff が出たが、
   out-of-scope 副作用として復元済み。
+
+## 2026-07-04 R22 websocket reference refresh 91bca6fb
+
+- 分類: R22 docs/tooling stale-reference cleanup。
+- land: `91bca6fb docs(refactor): refresh websocket cleanup references`。
+  R22b 後に残っていた WebSocket/Yjs 表現を、現在の presence-only / Redis-backed realtime
+  前提へ整合。
+- 変更: `REFACTOR_REPORT.md`、`docs/env-catalog.md`、
+  `docs/operations/aws-cost-minimal-deployment.md`、`ops/refactor/BACKLOG.md`、
+  `ops/refactor/CODE_MAP.md`、`tools/aws-cost-minimal-scenarios.json`。
+- 検証: exact docs/tooling Prettier check green、targeted `git diff --check` green。
+  `docs/env-catalog.md` の key row count は `134`。
+- 安全性: docs/tooling-only。package dependencies、app runtime/API/DB/auth/authorization/PHI/audit/billing/deploy
+  は不変。`refactor-instructions.md` の広範な Markdown formatting churn は未コミットのまま残置。

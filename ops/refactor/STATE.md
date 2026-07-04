@@ -45,11 +45,13 @@
   PERF-01(981f1a58) / MFA1(f7bf2e97) / F84(c22c7fe3) / CE17(5205fc48) / R07(f3733036) /
   DR-DUP1(2e0c7fdb) / PERF-02(60469cd1) / CE20(66d65f99) / ID-1b(0a3b910c, e2a8b414)
   / ID-2-W1(898c0d6a) / ID-2-W2(90a1276e) / ID-2-W3(8c7e34e7) / ID-2-W4(7e18fcb2)
-  / FIX-CATALOG-IDSEQ(a42065fa) / R21-SONNER1(68688360) / ID-2-W5(86d9d273) / ID-2-W6(d2bcde00) — 全 opus/committer APPROVE
+  / FIX-CATALOG-IDSEQ(a42065fa) / R21-SONNER1(68688360) / ID-2-W5(86d9d273) / ID-2-W6(d2bcde00)
+  / R21 comment-thread sonner(7bb192e9) — 全 opus/committer APPROVE
 - codex2 lane: R16-MIN(da5889f0) / R16-SWEEP(6f26c04c) / FE-FALSEEMPTY(27496917) /
   R55 admin-jobs route loading label(66ae881e) / R55 admin master loading labels(f0029164) —
   coordinator validation green。R55 schedule operational task loading(a54484d3) — focused validation green
-- codex3 lane: R22-EXEC(759b4dbc) / R22b websocket infra deletion(96ead96b) / R08-EXEC(cee20c66) /
+- codex3 lane: R22-EXEC(759b4dbc) / R22b websocket infra deletion(96ead96b) /
+  R22 docs refresh(91bca6fb) / R08-EXEC(cee20c66) /
   R55 drug-master import-history skeleton(fd065171) / R21 report delivery sonner mock(932d3d22) —
   coordinator validation green
 - codex4 lane: W3-B9 evidence-side missing emergency category blocker(cbef13f4) /

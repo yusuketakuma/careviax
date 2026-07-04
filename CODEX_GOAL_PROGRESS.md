@@ -1,5 +1,26 @@
 # CODEX Goal Progress
 
+## R22b WebSocket Reference Refresh - 2026-07-04 17:45 JST
+
+- Status:
+  - Validated and landed:
+    - `91bca6fb docs(refactor): refresh websocket cleanup references`
+- Scope:
+  - Updated stale R22/WebSocket wording in `REFACTOR_REPORT.md`,
+    `docs/env-catalog.md`, `docs/operations/aws-cost-minimal-deployment.md`,
+    `ops/refactor/BACKLOG.md`, `ops/refactor/CODE_MAP.md`, and
+    `tools/aws-cost-minimal-scenarios.json`.
+  - Did not change package dependencies, app runtime code, API behavior, DB,
+    auth, authorization, PHI, billing, deploy, or production settings.
+- Validation:
+  - Targeted Prettier check passed for the exact changed docs/tooling files.
+  - Targeted `git diff --check` passed.
+  - `docs/env-catalog.md` contains `134` key rows after the WebSocket env
+    removals.
+- Remaining:
+  - `refactor-instructions.md` still has broad Markdown formatting churn and is
+    intentionally left uncommitted.
+
 ## R21 Comment Thread Sonner Mock - 2026-07-04 17:40 JST
 
 - Status:
