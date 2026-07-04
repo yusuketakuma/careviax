@@ -1,5 +1,45 @@
 # CODEX Goal Progress
 
+## R40/R44 Safety Check readApiJson Partial - 2026-07-05 06:45 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx`
+    - `src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for two safety-check read GETs:
+    - medication issues
+    - patient safety summary
+  - Added queryFn contract tests proving API JSON `message` from failed read
+    GETs is surfaced through the shared helper.
+  - Preserved medication-issues query path/raw `patient_id` query value, patient
+    API path helper, org headers, React Query keys, enabled gates, patient
+    header/safety banner, CDS degraded fail-closed behavior, CDS 4xx-as-empty
+    special contract, consultation mutation, resolve mutation, query
+    invalidation, and dot-segment fail-closed behavior.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx'`
+    passed `1` file / `25` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `6231bed5`
+    (`refactor(ui): reuse readApiJson in safety check`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Facility Packet readApiJson Partial - 2026-07-05 06:41 JST
 
 - Status:
