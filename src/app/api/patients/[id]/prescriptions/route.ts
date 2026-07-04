@@ -3,7 +3,7 @@ import { unstable_rethrow } from 'next/navigation';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { internalError, success, notFound, validationError } from '@/lib/api/response';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { decodeKeysetCursor, encodeKeysetCursor } from '@/lib/api/keyset-cursor';
 import { withOrgContext } from '@/lib/db/rls';
@@ -353,9 +353,10 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
           },
         });
 
-        const hasMore = intakes.length > limit;
-        const data = hasMore ? intakes.slice(0, limit) : intakes;
-        const nextCursor = hasMore ? data[data.length - 1] : null;
+        const page = buildCursorPage(intakes, limit, (intake) =>
+          encodeKeysetCursor(PATIENT_PRESCRIPTION_CURSOR_KEYS, intake),
+        );
+        const data = page.data;
 
         // p0_11「処方の変化を確認」用の差分。最初のページ(カーソル無し)でのみ最新 2 件を比較する
         const diffReview =
@@ -381,10 +382,8 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
           body: {
             patient,
             data,
-            hasMore,
-            nextCursor: nextCursor
-              ? encodeKeysetCursor(PATIENT_PRESCRIPTION_CURSOR_KEYS, nextCursor)
-              : undefined,
+            hasMore: page.hasMore,
+            nextCursor: page.nextCursor,
             diff_review: diffReview,
             diff_meta: diffMeta,
           },
