@@ -64,6 +64,19 @@ describe('workflow history widgets', () => {
     expect(screen.getByText('ステータス遷移履歴がありません')).toBeTruthy();
   });
 
+  it('renders a PH-OS skeleton while timeline entries load', () => {
+    useRealtimeQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+    });
+
+    render(<StageTimeline cycleId="cycle_1" />);
+
+    expect(screen.getByRole('status', { name: '工程履歴を読み込み中' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('ステータス遷移履歴がありません')).toBeNull();
+  });
+
   it('renders timeline entries with notes', () => {
     useRealtimeQueryMock.mockReturnValue({
       data: [

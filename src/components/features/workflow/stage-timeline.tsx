@@ -4,7 +4,7 @@ import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/loading';
 import { MEDICATION_CYCLE_STATUS_ROLE } from '@/lib/constants/status-labels';
 import { STATUS_TOKENS, type StatusRole } from '@/lib/constants/status-tokens';
 import {
@@ -25,6 +25,24 @@ type StageTimelineProps = {
   cycleId: string;
 };
 
+function StageTimelineLoadingState() {
+  return (
+    <div className="relative space-y-4 pl-6" role="status" aria-label="工程履歴を読み込み中">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <div key={index} className="relative pb-2">
+          {index < 2 ? <div className="absolute left-[-18px] top-3 h-full w-px bg-border" /> : null}
+          <Skeleton className="absolute left-[-22px] top-1.5 size-2.5 rounded-full" />
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-48" />
+          </div>
+        </div>
+      ))}
+      <span className="sr-only">工程履歴を読み込んでいます。</span>
+    </div>
+  );
+}
+
 export function StageTimeline({ cycleId }: StageTimelineProps) {
   const orgId = useOrgId();
 
@@ -35,7 +53,7 @@ export function StageTimeline({ cycleId }: StageTimelineProps) {
     invalidateOn: [...WORKFLOW_HISTORY_INVALIDATION_EVENTS],
   });
 
-  if (isLoading) return <Loading />;
+  if (isLoading) return <StageTimelineLoadingState />;
 
   if (!logs || logs.length === 0) {
     return (

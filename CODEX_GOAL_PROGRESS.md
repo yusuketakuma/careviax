@@ -1,5 +1,34 @@
 # CODEX Goal Progress
 
+## R55 Workflow Stage Timeline Loading State - 2026-07-04 18:51 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/components/features/workflow/stage-timeline.tsx`
+    - `src/components/features/workflow/workflow-history.test.tsx`
+- Scope:
+  - Replaced the generic `Loading` return in the workflow stage timeline with a
+    named skeleton region that preserves the timeline rhythm while transition
+    logs load.
+  - Loading no longer exposes generic `読み込み中...` semantics or the empty
+    timeline copy before the query resolves.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, fetcher, cache timing, DB, auth, authorization,
+    billing, audit, deployment, package, or server behavior changed.
+  - Loading copy is PHI-free and does not echo actor names, notes, patient
+    identifiers, org ids, raw errors, or timeline data.
+- Validation:
+  - `pnpm exec vitest run src/components/features/workflow/workflow-history.test.tsx src/components/features/workflow/workflow-history-widgets.test.tsx --reporter=dot --testTimeout=30000`
+    passed `2` files / `7` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the workflow stage timeline source/test files.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Patient MCS Summary Loading State - 2026-07-04 18:46 JST
 
 - Status:
