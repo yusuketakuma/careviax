@@ -1,5 +1,41 @@
 # CODEX Goal Progress
 
+## R25 Admin Data-Explorer ErrorState Retry Shorthand Partial - 2026-07-04 23:28 JST
+
+- Status:
+  - Implemented and validated the next bounded R25 slice:
+    - `src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx`
+- Scope:
+  - Migrated two admin data-explorer ErrorState retry actions from hand-written
+    `action={{ label: '再読み込み', onClick }}` objects to `onRetry` +
+    `retryLabel`.
+  - Preserved visible retry copy and existing refetch handlers for model list
+    lookup and row list lookup.
+- Safety:
+  - UI presentation/refactor only.
+  - Visible labels, click handlers, error branch behavior, and data-explorer
+    query behavior are preserved.
+  - No product API, DB, auth, authorization, PHI projection, admin
+    data-explorer read/edit semantics, billing, audit, deployment, package
+    dependency, live DB operation, external send, secret handling, push, or
+    destructive operation changed.
+- Validation:
+  - Targeted scan for hand-written `再読み込み` ErrorState actions in
+    `admin/data-explorer/data-explorer-content.tsx` returned no matches.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `9` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `b9095cfa`
+    (`refactor(ui): route data explorer error retries through shorthand`).
+- Remaining:
+  - R25 is partial; remaining ErrorState retry action boilerplate should be
+    migrated in bounded screen/domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R25 Admin Pharmacy-Sites ErrorState Retry Shorthand Partial - 2026-07-04 23:25 JST
 
 - Status:
