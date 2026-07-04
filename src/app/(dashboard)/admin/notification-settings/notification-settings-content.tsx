@@ -50,6 +50,7 @@ import {
   escalationNotifyRoles,
   escalationTriggerTypes,
 } from '@/lib/validations/escalation-rule';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   NOTIFICATION_RULES_API_PATH,
@@ -374,10 +375,7 @@ export function NotificationSettingsContent() {
       headers: buildOrgHeaders(orgId),
     })
       .then(async (response) => {
-        if (!response.ok) {
-          throw new Error('通知設定の取得に失敗しました');
-        }
-        return (await response.json()) as NotificationRulesResponse;
+        return readApiJson<NotificationRulesResponse>(response, '通知設定の取得に失敗しました');
       })
       .then((payload) => {
         if (!active) return;
@@ -421,10 +419,10 @@ export function NotificationSettingsContent() {
       headers: buildOrgHeaders(orgId),
     })
       .then(async (response) => {
-        if (!response.ok) {
-          throw new Error('エスカレーションルールの取得に失敗しました');
-        }
-        return (await response.json()) as EscalationRulesResponse;
+        return readApiJson<EscalationRulesResponse>(
+          response,
+          'エスカレーションルールの取得に失敗しました',
+        );
       })
       .then((payload) => {
         if (!active) return;
