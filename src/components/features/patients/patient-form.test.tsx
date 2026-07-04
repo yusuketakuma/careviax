@@ -3,6 +3,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath, buildPatientDuplicateCheckApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
@@ -324,10 +325,7 @@ describe('PatientForm', () => {
       },
     );
     const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: [] }),
-    } as Response);
+    fetchMock.mockImplementation(async () => jsonResponse({ data: [] }));
 
     render(<PatientForm />);
 
@@ -352,6 +350,60 @@ describe('PatientForm', () => {
     expect(buildOrgHeaders).toHaveBeenNthCalledWith(1, 'org_1');
     const staffParams = vi.mocked(buildOrgMembersApiPath).mock.calls[0]?.[0];
     expect(staffParams?.toString()).toBe('eligible=staff');
+  });
+
+  it('keeps API messages from failed patient-form lookup fetches', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    const queryConfigs: Array<{ queryKey: unknown[]; queryFn?: () => Promise<unknown> }> = [];
+    useQueryMock.mockImplementation(
+      (options: { queryKey: unknown[]; queryFn?: () => Promise<unknown> }) => {
+        queryConfigs.push(options);
+        return { data: [], isLoading: false, isError: false, refetch: vi.fn() };
+      },
+    );
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockImplementation(async () =>
+      jsonResponse({ message: '患者フォーム候補を表示できません' }, 403),
+    );
+
+    render(
+      <PatientForm
+        defaultValues={{
+          name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
+          birth_date: '1950-01-01',
+          gender: 'male',
+          facility_id: 'facility_1',
+        }}
+      />,
+    );
+
+    for (const key of [
+      'facilities',
+      'facility-units',
+      'service-areas',
+      'care-team-pharmacists',
+      'care-team-staff',
+    ]) {
+      const query = queryConfigs.find((config) => config.queryKey[1] === key);
+      await expect(query?.queryFn?.()).rejects.toThrow('患者フォーム候補を表示できません');
+    }
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/facilities', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/facilities/facility_1/units', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/service-areas', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/pharmacists', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/org/members?eligible=staff', {
+      headers: { 'x-org-id': 'org_1' },
+    });
   });
 
   it('shows server-side duplicate candidates and resubmits with duplicate acknowledgement', async () => {
@@ -592,10 +644,7 @@ describe('PatientForm', () => {
       },
     );
     const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ data: [] }),
-    } as Response);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ data: [] }));
 
     render(
       <PatientForm

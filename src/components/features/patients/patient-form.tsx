@@ -18,6 +18,7 @@ import {
   ADMIN_FACILITIES_API_PATH,
   buildAdminFacilityUnitsApiPath,
 } from '@/lib/facilities/api-paths';
+import { readApiJson } from '@/lib/api/client-json';
 import { SERVICE_AREAS_API_PATH } from '@/lib/service-areas/api-paths';
 import { PHARMACISTS_API_PATH } from '@/lib/pharmacists/api-paths';
 import { buildOrgMembersApiPath } from '@/lib/org-members/api-paths';
@@ -465,10 +466,10 @@ export function PatientForm({
       const res = await fetch(ADMIN_FACILITIES_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) {
-        throw new Error('施設一覧の取得に失敗しました');
-      }
-      const payload = (await res.json()) as { data?: FacilityOption[] };
+      const payload = await readApiJson<{ data?: FacilityOption[] }>(
+        res,
+        '施設一覧の取得に失敗しました',
+      );
       return payload.data ?? [];
     },
     enabled: !!orgId,
@@ -480,10 +481,10 @@ export function PatientForm({
       const res = await fetch(buildAdminFacilityUnitsApiPath(selectedFacilityId), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) {
-        throw new Error('ユニット一覧の取得に失敗しました');
-      }
-      const payload = (await res.json()) as { data?: FacilityUnitOption[] };
+      const payload = await readApiJson<{ data?: FacilityUnitOption[] }>(
+        res,
+        'ユニット一覧の取得に失敗しました',
+      );
       return payload.data ?? [];
     },
     enabled: !!orgId && !!selectedFacilityId,
@@ -495,10 +496,10 @@ export function PatientForm({
       const res = await fetch(SERVICE_AREAS_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) {
-        throw new Error('訪問エリア設定の取得に失敗しました');
-      }
-      const payload = (await res.json()) as { data?: ServiceAreaOption[] };
+      const payload = await readApiJson<{ data?: ServiceAreaOption[] }>(
+        res,
+        '訪問エリア設定の取得に失敗しました',
+      );
       return payload.data ?? [];
     },
     enabled: !!orgId,
@@ -509,8 +510,10 @@ export function PatientForm({
     queryKey: ['patient-form', 'care-team-pharmacists', orgId],
     queryFn: async () => {
       const res = await fetch(PHARMACISTS_API_PATH, { headers: buildOrgHeaders(orgId) });
-      if (!res.ok) throw new Error('薬剤師一覧の取得に失敗しました');
-      const payload = (await res.json()) as { data?: Array<{ id: string; name: string }> };
+      const payload = await readApiJson<{ data?: Array<{ id: string; name: string }> }>(
+        res,
+        '薬剤師一覧の取得に失敗しました',
+      );
       return payload.data ?? [];
     },
     enabled: !!orgId,
@@ -523,8 +526,10 @@ export function PatientForm({
       const res = await fetch(buildOrgMembersApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('スタッフ一覧の取得に失敗しました');
-      const payload = (await res.json()) as { data?: Array<{ id: string; name: string }> };
+      const payload = await readApiJson<{ data?: Array<{ id: string; name: string }> }>(
+        res,
+        'スタッフ一覧の取得に失敗しました',
+      );
       return payload.data ?? [];
     },
     enabled: !!orgId,
