@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -149,8 +150,7 @@ export function VisitConstraintsCard({ patientId, orgId }: { patientId: string; 
       const res = await fetch(buildPatientApiPath(patientId, '/visit-constraints'), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('訪問条件の取得に失敗しました');
-      return res.json() as Promise<VisitConstraintsResponse>;
+      return readApiJson<VisitConstraintsResponse>(res, '訪問条件の取得に失敗しました');
     },
     enabled: !!orgId,
   });

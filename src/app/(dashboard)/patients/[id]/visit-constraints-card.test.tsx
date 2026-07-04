@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 
@@ -83,9 +84,7 @@ function captureConfigs() {
 }
 
 function okFetch() {
-  return vi
-    .fn<typeof fetch>()
-    .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+  return vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({}));
 }
 
 afterEach(() => {
@@ -159,6 +158,21 @@ describe('VisitConstraintsCard', () => {
     expect(url).not.toContain('#z');
     expect(url).not.toContain('%25');
     expect(init.headers).toEqual(buildOrgHeaders('org_1'));
+  });
+
+  it('surfaces API error messages when visit constraints fail to load', async () => {
+    const { queryConfigs } = captureConfigs();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ message: '訪問条件の閲覧権限がありません' }, 403));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<VisitConstraintsCard patientId="patient_1" orgId="org_1" />);
+
+    await expect(queryConfigs[0]?.queryFn?.()).rejects.toThrow('訪問条件の閲覧権限がありません');
+    expect(fetchMock).toHaveBeenCalledWith('/api/patients/patient_1/visit-constraints', {
+      headers: buildOrgHeaders('org_1'),
+    });
   });
 
   it('saves visit constraints to an encoded patient path with JSON org headers and an exact raw body', async () => {
