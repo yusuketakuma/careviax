@@ -28,6 +28,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { GuardedWorkspaceActionRail } from '@/components/features/workspace/action-rail';
 import { HandoffConfirmPanel } from '@/components/features/visits/handoff-confirm-panel';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
@@ -71,12 +72,14 @@ import {
  * 主操作(青)はヘッダーの「+ 仕事を渡す」1 つだけ。
  */
 
-async function fetchHandoffBoard(orgId: string): Promise<HandoffBoardResponse> {
+export async function fetchHandoffBoard(orgId: string): Promise<HandoffBoardResponse> {
   const res = await fetch('/api/handoff-board', {
     headers: buildOrgHeaders(orgId),
   });
-  if (!res.ok) throw new Error('ハンドオフボードの取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: HandoffBoardResponse }>(
+    res,
+    'ハンドオフボードの取得に失敗しました',
+  );
   return json.data;
 }
 
@@ -91,16 +94,18 @@ function isHandoffBoardInvalidationEvent(event: unknown) {
   return HANDOFF_BOARD_INVALIDATION_EVENTS.some((type) => type === eventType);
 }
 
-async function fetchOperationCockpit(orgId: string): Promise<DashboardCockpitResponse> {
+export async function fetchOperationCockpit(orgId: string): Promise<DashboardCockpitResponse> {
   const res = await fetch('/api/dashboard/cockpit', {
     headers: buildOrgHeaders(orgId),
   });
-  if (!res.ok) throw new Error('当日オペレーション情報の取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: DashboardCockpitResponse }>(
+    res,
+    '当日オペレーション情報の取得に失敗しました',
+  );
   return json.data;
 }
 
-type HandoffConfirmationTask = {
+export type HandoffConfirmationTask = {
   id: string;
   title: string;
   priority: string;
@@ -109,7 +114,9 @@ type HandoffConfirmationTask = {
   created_at: string;
 };
 
-async function fetchHandoffConfirmationTasks(orgId: string): Promise<HandoffConfirmationTask[]> {
+export async function fetchHandoffConfirmationTasks(
+  orgId: string,
+): Promise<HandoffConfirmationTask[]> {
   const params = new URLSearchParams({
     status: 'pending',
     task_type: 'handoff_confirmation',
@@ -117,12 +124,14 @@ async function fetchHandoffConfirmationTasks(orgId: string): Promise<HandoffConf
   const res = await fetch(`/api/tasks?${params.toString()}`, {
     headers: buildOrgHeaders(orgId),
   });
-  if (!res.ok) throw new Error('訪問申し送り確認タスクの取得に失敗しました');
-  const json = (await res.json()) as { data?: HandoffConfirmationTask[] };
+  const json = await readApiJson<{ data?: HandoffConfirmationTask[] }>(
+    res,
+    '訪問申し送り確認タスクの取得に失敗しました',
+  );
   return (json.data ?? []).filter((task) => Boolean(task.related_entity_id));
 }
 
-type RecentComment = {
+export type RecentComment = {
   id: string;
   entity_type: string;
   entity_id: string;
@@ -144,24 +153,22 @@ const COMMENT_ENTITY_LABELS: Record<string, string> = {
   patient: '患者',
 };
 
-async function fetchRecentComments(orgId: string): Promise<RecentComment[]> {
+export async function fetchRecentComments(orgId: string): Promise<RecentComment[]> {
   const res = await fetch('/api/comments/recent', {
     headers: buildOrgHeaders(orgId),
   });
-  if (!res.ok) throw new Error('やり取りの取得に失敗しました');
-  const json = (await res.json()) as { data?: RecentComment[] };
+  const json = await readApiJson<{ data?: RecentComment[] }>(res, 'やり取りの取得に失敗しました');
   return json.data ?? [];
 }
 
-async function fetchVisitHandoff(orgId: string, visitRecordId: string): Promise<VisitHandoff> {
+export async function fetchVisitHandoff(
+  orgId: string,
+  visitRecordId: string,
+): Promise<VisitHandoff> {
   const res = await fetch(`/api/visit-records/${visitRecordId}/handoff`, {
     headers: buildOrgHeaders(orgId),
   });
-  if (!res.ok) {
-    const payload = (await res.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(payload?.message ?? '訪問申し送りの取得に失敗しました');
-  }
-  const json = (await res.json()) as { data: VisitHandoff };
+  const json = await readApiJson<{ data: VisitHandoff }>(res, '訪問申し送りの取得に失敗しました');
   return json.data;
 }
 

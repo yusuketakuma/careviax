@@ -5,11 +5,19 @@ import { QueryClient } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { useUIStore } from '@/lib/stores/ui-store';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
-import { HandoffWorkspace } from './handoff-workspace';
+import {
+  HandoffWorkspace,
+  fetchHandoffBoard,
+  fetchHandoffConfirmationTasks,
+  fetchOperationCockpit,
+  fetchRecentComments,
+  fetchVisitHandoff,
+} from './handoff-workspace';
 import {
   buildHeaderMeta,
   buildItemSubText,
@@ -276,6 +284,36 @@ afterEach(() => {
 });
 
 describe('HandoffWorkspace', () => {
+  it('keeps API messages from failed handoff workspace read fetches', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({ message: 'ハンドオフデータを表示できません' }, 403),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchHandoffBoard('org_1')).rejects.toThrow('ハンドオフデータを表示できません');
+    await expect(fetchOperationCockpit('org_1')).rejects.toThrow(
+      'ハンドオフデータを表示できません',
+    );
+    await expect(fetchHandoffConfirmationTasks('org_1')).rejects.toThrow(
+      'ハンドオフデータを表示できません',
+    );
+    await expect(fetchRecentComments('org_1')).rejects.toThrow('ハンドオフデータを表示できません');
+    await expect(fetchVisitHandoff('org_1', 'visit_record_1')).rejects.toThrow(
+      'ハンドオフデータを表示できません',
+    );
+
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+      '/api/handoff-board',
+      '/api/dashboard/cockpit',
+      '/api/tasks?status=pending&task_type=handoff_confirmation',
+      '/api/comments/recent',
+      '/api/visit-records/visit_record_1/handoff',
+    ]);
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init?.headers).toMatchObject({ 'x-org-id': 'org_1' });
+    }
+  });
+
   it('renders 私が渡した cards with status badges, 3-point summaries and rule bar', async () => {
     useAuthStore.getState().setCurrentUser({ id: 'user_1' });
     stubFetch();
