@@ -19,7 +19,7 @@ export default function FacilityStandardsPage() {
         shortcuts={getAdminFacilityStandardsShortcutLinks()}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="施設基準管理を読み込み中..." />}>
         <FacilityStandardsContent />
       </Suspense>
     </PageScaffold>

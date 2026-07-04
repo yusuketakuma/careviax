@@ -20,7 +20,7 @@ export default function PharmacySitesPage() {
         supportingContent={null}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="薬局情報管理を読み込み中..." />}>
         <PharmacySitesContent />
       </Suspense>
     </PageScaffold>

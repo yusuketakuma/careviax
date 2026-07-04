@@ -20,7 +20,7 @@ export default function InstitutionsPage() {
         supportingContent={null}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="医療機関マスターを読み込み中..." />}>
         <InstitutionsContent />
       </Suspense>
     </PageScaffold>
