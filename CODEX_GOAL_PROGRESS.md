@@ -1,5 +1,50 @@
 # CODEX Goal Progress
 
+## R55 Admin Site/Institution/Facility Route Loading Labels - 2026-07-04 20:49 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/admin/pharmacy-sites/page.tsx`
+    - `src/app/(dashboard)/admin/pharmacy-sites/page.test.tsx`
+    - `src/app/(dashboard)/admin/institutions/page.tsx`
+    - `src/app/(dashboard)/admin/institutions/page.test.tsx`
+    - `src/app/(dashboard)/admin/facility-standards/page.tsx`
+    - `src/app/(dashboard)/admin/facility-standards/page.test.tsx`
+- Scope:
+  - Replaced route-level generic Suspense fallback `Loading` with
+    screen-specific statuses for:
+    - `薬局情報管理を読み込み中...`
+    - `医療機関マスターを読み込み中...`
+    - `施設基準管理を読み込み中...`
+  - Added/extended route shell regression tests proving the admin header
+    remains visible, each fallback is screen-specific, generic `読み込み中...`
+    is absent, and suspended content is not rendered.
+- Safety:
+  - Route-shell loading presentation and tests only.
+  - No pharmacy site, institution, or facility standards content query, API
+    path builder, org header, insurance config, master mutation,
+    facility-criteria calculation, DB, auth, authorization, PHI, billing,
+    audit, deployment, package, or server behavior changed.
+  - Loading copy is PHI-free and does not echo pharmacy/site names,
+    institution names, facility standard details, insurance configuration,
+    contact details, site IDs, org IDs, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacy-sites/page.test.tsx' 'src/app/(dashboard)/admin/institutions/page.test.tsx' 'src/app/(dashboard)/admin/facility-standards/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `3` files / `6` tests.
+  - Scoped ESLint and targeted `git diff --check` passed for the source/test
+    files.
+  - Initial Prettier check reported `src/app/(dashboard)/admin/facility-standards/page.test.tsx`;
+    after targeted `prettier --write`, the same focused tests and Prettier
+    check passed.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `7b030707`
+    (`fix(admin): name site institution loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Staff and Shifts Route Loading Labels - 2026-07-04 20:44 JST
 
 - Status:
