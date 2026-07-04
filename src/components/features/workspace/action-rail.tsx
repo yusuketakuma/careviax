@@ -3,6 +3,8 @@
 import * as React from 'react';
 import { AlertTriangle, Eye, OctagonAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/error-state';
+import { Skeleton } from '@/components/ui/loading';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useUIStore } from '@/lib/stores/ui-store';
 import { cn } from '@/lib/utils';
@@ -303,6 +305,58 @@ export type WorkspaceActionRailProps = {
   className?: string;
   children?: React.ReactNode;
 };
+
+export type GuardedWorkspaceActionRailProps = WorkspaceActionRailProps & {
+  isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
+  loadingTestId: string;
+  loadingAriaLabel: string;
+  errorTitle?: string;
+  errorDescription?: string;
+  errorDetail?: React.ReactNode;
+};
+
+export function GuardedWorkspaceActionRail({
+  isLoading,
+  isError,
+  onRetry,
+  loadingTestId,
+  loadingAriaLabel,
+  errorTitle = '稼働状況を取得できませんでした',
+  errorDescription = '次にやることと止まっている理由を表示できていません。問題なしではなく取得エラーです。再試行してください。',
+  errorDetail,
+  ...railProps
+}: GuardedWorkspaceActionRailProps) {
+  if (isLoading || isError) {
+    return (
+      <div className="rounded-lg border border-border/70 bg-card p-4">
+        {isLoading ? (
+          <div
+            className="space-y-3"
+            role="status"
+            aria-label={loadingAriaLabel}
+            data-testid={loadingTestId}
+          >
+            <Skeleton className="h-5 w-28" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </div>
+        ) : (
+          <ErrorState
+            variant="server"
+            title={errorTitle}
+            description={errorDescription}
+            detail={errorDetail}
+            onRetry={onRetry}
+          />
+        )}
+      </div>
+    );
+  }
+
+  return <WorkspaceActionRail {...railProps} />;
+}
 
 /**
  * 補助パネルの標準構成。上から「次にやること」→「止まっている理由」→「根拠・記録」。

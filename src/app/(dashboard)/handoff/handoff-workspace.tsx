@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { WorkspaceActionRail } from '@/components/features/workspace/action-rail';
+import { GuardedWorkspaceActionRail } from '@/components/features/workspace/action-rail';
 import { HandoffConfirmPanel } from '@/components/features/visits/handoff-confirm-panel';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -1433,38 +1433,20 @@ export function HandoffWorkspace() {
   const now = new Date();
   const board = boardQuery.data ?? null;
   const cockpit = cockpitQuery.isError ? null : (cockpitQuery.data ?? null);
-  const actionRail =
-    cockpitQuery.isLoading || cockpitQuery.isError ? (
-      <div className="rounded-lg border border-border/70 bg-card p-4">
-        {cockpitQuery.isLoading ? (
-          <div
-            className="space-y-3"
-            role="status"
-            aria-label="稼働状況を読み込み中"
-            data-testid="handoff-action-rail-loading"
-          >
-            <Skeleton className="h-5 w-28" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-20 w-full" />
-          </div>
-        ) : (
-          <ErrorState
-            variant="server"
-            title="稼働状況を取得できませんでした"
-            description="次にやることと止まっている理由を表示できていません。問題なしではなく取得エラーです。再試行してください。"
-            onRetry={() => void cockpitQuery.refetch()}
-          />
-        )}
-      </div>
-    ) : (
-      <WorkspaceActionRail
-        nextAction={buildWorkspaceNextAction(cockpit)}
-        blockedReasons={buildWorkspaceBlockedReasons(cockpit)}
-        blockedReasonsEmptyLabel="止まっている作業はありません"
-        evidence={buildHandoffEvidence(board)}
-        evidenceOpenLabel="開く"
-      />
-    );
+  const actionRail = (
+    <GuardedWorkspaceActionRail
+      isLoading={cockpitQuery.isLoading}
+      isError={cockpitQuery.isError}
+      onRetry={() => void cockpitQuery.refetch()}
+      loadingTestId="handoff-action-rail-loading"
+      loadingAriaLabel="稼働状況を読み込み中"
+      nextAction={buildWorkspaceNextAction(cockpit)}
+      blockedReasons={buildWorkspaceBlockedReasons(cockpit)}
+      blockedReasonsEmptyLabel="止まっている作業はありません"
+      evidence={buildHandoffEvidence(board)}
+      evidenceOpenLabel="開く"
+    />
+  );
 
   const { outgoingItems, incomingItems, messageItems } = useMemo(() => {
     const items = board?.items ?? [];

@@ -16,7 +16,7 @@ import { StateBadge } from '@/components/ui/state-badge';
 import { SCHEDULE_STATUS_ROLE } from '@/lib/constants/status-labels';
 import type { StatusRole } from '@/lib/constants/status-tokens';
 import {
-  WorkspaceActionRail,
+  GuardedWorkspaceActionRail,
   type BlockedReason,
   type EvidenceItem,
   type NextActionPanelProps,
@@ -1840,38 +1840,20 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
       href: '/schedules/proposals',
     },
   ];
-  const actionRail =
-    cockpitQuery.isLoading || cockpitQuery.isError ? (
-      <div className="rounded-lg border border-border/70 bg-card p-4">
-        {cockpitQuery.isLoading ? (
-          <div
-            className="space-y-3"
-            role="status"
-            aria-label="稼働状況を読み込み中"
-            data-testid="schedule-action-rail-loading"
-          >
-            <Skeleton className="h-5 w-28" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-20 w-full" />
-          </div>
-        ) : (
-          <ErrorState
-            variant="server"
-            title="稼働状況を取得できませんでした"
-            description="次にやることと止まっている理由を表示できていません。問題なしではなく取得エラーです。再試行してください。"
-            onRetry={() => void cockpitQuery.refetch()}
-          />
-        )}
-      </div>
-    ) : (
-      <WorkspaceActionRail
-        nextAction={buildNextAction(cockpit, board)}
-        blockedReasons={blockedReasons}
-        blockedReasonsEmptyLabel="止まっている作業はありません"
-        evidence={evidence}
-        evidenceOpenLabel="開く"
-      />
-    );
+  const actionRail = (
+    <GuardedWorkspaceActionRail
+      isLoading={cockpitQuery.isLoading}
+      isError={cockpitQuery.isError}
+      onRetry={() => void cockpitQuery.refetch()}
+      loadingTestId="schedule-action-rail-loading"
+      loadingAriaLabel="稼働状況を読み込み中"
+      nextAction={buildNextAction(cockpit, board)}
+      blockedReasons={blockedReasons}
+      blockedReasonsEmptyLabel="止まっている作業はありません"
+      evidence={evidence}
+      evidenceOpenLabel="開く"
+    />
+  );
 
   return (
     <section aria-label="スケジュールボード" data-testid="schedule-team-board">

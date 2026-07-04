@@ -9,7 +9,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { DataTable, type DataTableColumnMeta } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
-import { WorkspaceActionRail } from '@/components/features/workspace/action-rail';
+import { GuardedWorkspaceActionRail } from '@/components/features/workspace/action-rail';
 import { MainWorkflowCompactNav } from '@/components/features/workflow/main-workflow-route';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
@@ -696,39 +696,23 @@ export function ReportShareWorkspace() {
   const now = new Date();
   const data = workspaceQuery.data ?? null;
   const cockpit = cockpitQuery.data ?? null;
-  const actionRail =
-    cockpitQuery.isLoading || cockpitQuery.isError ? (
-      <div className="rounded-lg border border-border/70 bg-card p-4">
-        {cockpitQuery.isLoading ? (
-          <div
-            className="space-y-3"
-            role="status"
-            aria-label="オペレーション情報を読み込み中"
-            data-testid="workspace-action-rail-loading"
-          >
-            <Skeleton className="h-5 w-28" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-20 w-full" />
-          </div>
-        ) : (
-          <ErrorState
-            variant="server"
-            title="オペレーション情報を表示できません"
-            description="止まっている理由の取得に失敗しました。再試行してください。"
-            detail={cockpitQuery.error instanceof Error ? cockpitQuery.error.message : undefined}
-            onRetry={() => void cockpitQuery.refetch()}
-          />
-        )}
-      </div>
-    ) : (
-      <WorkspaceActionRail
-        nextAction={buildWorkspaceNextAction(cockpit)}
-        blockedReasons={buildWorkspaceBlockedReasons(cockpit)}
-        blockedReasonsEmptyLabel="止まっている作業はありません"
-        evidence={buildReportEvidence(data)}
-        evidenceOpenLabel="開く"
-      />
-    );
+  const actionRail = (
+    <GuardedWorkspaceActionRail
+      isLoading={cockpitQuery.isLoading}
+      isError={cockpitQuery.isError}
+      onRetry={() => void cockpitQuery.refetch()}
+      loadingTestId="workspace-action-rail-loading"
+      loadingAriaLabel="オペレーション情報を読み込み中"
+      errorTitle="オペレーション情報を表示できません"
+      errorDescription="止まっている理由の取得に失敗しました。再試行してください。"
+      errorDetail={cockpitQuery.error instanceof Error ? cockpitQuery.error.message : undefined}
+      nextAction={buildWorkspaceNextAction(cockpit)}
+      blockedReasons={buildWorkspaceBlockedReasons(cockpit)}
+      blockedReasonsEmptyLabel="止まっている作業はありません"
+      evidence={buildReportEvidence(data)}
+      evidenceOpenLabel="開く"
+    />
+  );
 
   return (
     <section aria-label="報告・共有ワークスペース" data-testid="report-share-workspace">
