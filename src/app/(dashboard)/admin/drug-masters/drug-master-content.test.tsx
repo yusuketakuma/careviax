@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   buildDrugMasterApiPath,
@@ -2845,6 +2846,69 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     queryLoadingKeys.clear();
     staleQueryDataByKey.clear();
     refetchSpies.clear();
+  });
+
+  it('keeps API messages from failed core read queries', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-sites') {
+        return jsonResponse({ message: '拠点一覧を表示できません' }, 403);
+      }
+      if (url === '/api/drug-masters?limit=50&site_id=site_1&cursor=cursor_1') {
+        return jsonResponse({ message: '医薬品マスターを表示できません' }, 403);
+      }
+      if (url === '/api/drug-master-imports/status') {
+        return jsonResponse({ message: '取込ステータスを表示できません' }, 403);
+      }
+      if (url === '/api/drug-master-import-logs?limit=10') {
+        return jsonResponse({ message: '取込履歴を表示できません' }, 403);
+      }
+      return jsonResponse({ message: `unexpected fetch: ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<DrugMasterContent />);
+
+    const sitesConfig = capturedQueryOptions.find(
+      (config) => config.queryKey[0] === 'pharmacy-sites',
+    );
+    const drugMastersConfig = capturedQueryOptions.find(
+      (config) => config.queryKey[0] === 'drug-masters',
+    );
+    const statusConfig = capturedQueryOptions.find(
+      (config) => config.queryKey[0] === 'drug-master-status',
+    );
+    const importLogsConfig = capturedQueryOptions.find(
+      (config) => config.queryKey[0] === 'drug-master-import-logs',
+    );
+
+    await expect(sitesConfig?.queryFn?.()).rejects.toThrow('拠点一覧を表示できません');
+    await expect(
+      (
+        drugMastersConfig?.queryFn as
+          | ((context: { pageParam?: string }) => Promise<unknown>)
+          | undefined
+      )?.({ pageParam: 'cursor_1' }),
+    ).rejects.toThrow('医薬品マスターを表示できません');
+    await expect(statusConfig?.queryFn?.()).rejects.toThrow('取込ステータスを表示できません');
+    await expect(importLogsConfig?.queryFn?.()).rejects.toThrow('取込履歴を表示できません');
+    expect(fetchMock).toHaveBeenCalledWith('/api/pharmacy-sites', {
+      headers: buildOrgHeaders('org_1'),
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/drug-masters?limit=50&site_id=site_1&cursor=cursor_1',
+      {
+        headers: buildOrgHeaders('org_1'),
+      },
+    );
+    expect(fetchMock).toHaveBeenCalledWith('/api/drug-master-imports/status', {
+      headers: buildOrgHeaders('org_1'),
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/drug-master-import-logs?limit=10', {
+      headers: buildOrgHeaders('org_1'),
+    });
+
+    vi.unstubAllGlobals();
   });
 
   it('uses an announced skeleton while the drug detail sheet loads the selected drug', () => {

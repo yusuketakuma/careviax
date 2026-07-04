@@ -36,6 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   buildDrugMasterApiPath,
@@ -202,8 +203,7 @@ function DrugMasterOperationalContent({
       const res = await fetch('/api/pharmacy-sites', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('拠点一覧の取得に失敗しました');
-      return res.json() as Promise<{ data: PharmacySiteOption[] }>;
+      return readApiJson<{ data: PharmacySiteOption[] }>(res, '拠点一覧の取得に失敗しました');
     },
     enabled: !!orgId,
     staleTime: 300_000,
@@ -285,13 +285,12 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildDrugMastersApiPath(pageParams.toString()), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('医薬品マスターの取得に失敗しました');
-      return res.json() as Promise<{
+      return readApiJson<{
         data: DrugMasterRow[];
         totalCount: number;
         hasMore: boolean;
         nextCursor?: string;
-      }>;
+      }>(res, '医薬品マスターの取得に失敗しました');
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     initialPageParam: undefined as string | undefined,
@@ -309,8 +308,10 @@ function DrugMasterOperationalContent({
       const res = await fetch('/api/drug-master-imports/status', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('マスターステータスの取得に失敗しました');
-      return res.json() as Promise<DrugMasterImportStatusResponse>;
+      return readApiJson<DrugMasterImportStatusResponse>(
+        res,
+        'マスターステータスの取得に失敗しました',
+      );
     },
     enabled: !!orgId,
     staleTime: 60_000,
@@ -330,8 +331,7 @@ function DrugMasterOperationalContent({
       const res = await fetch(`/api/drug-master-import-logs?${logParams}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('取込履歴の取得に失敗しました');
-      return res.json() as Promise<{ data: DrugMasterImportLog[] }>;
+      return readApiJson<{ data: DrugMasterImportLog[] }>(res, '取込履歴の取得に失敗しました');
     },
     enabled: !!orgId,
     staleTime: 300_000,
