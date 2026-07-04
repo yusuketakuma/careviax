@@ -814,6 +814,30 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
 
+## 2026-07-04 R55 QR scan draft loading skeleton
+
+- 分類: UI loading-state cleanup / R55 visible loading residual。
+- 実施:
+  - `prescriptions/qr-drafts/[id]/page.tsx` の org 未解決 / QR scan draft loading 分岐で使っていた
+    generic `Loading` return を、draft form と side panel の形を保つ領域固有 `role="status"` + skeleton へ置換。
+  - loading 中に generic `読み込み中...` status、患者名、薬剤名、確定ボタンが出ないことを
+    `page.test.tsx` に追加。
+- 挙動変更: loading presentation のみ。query key、fetcher、org header、enabled behavior、
+  draft confirmation、case matching、mutation/cache invalidation、navigation behavior、
+  API/DB/auth/authorization/billing/audit は不変。
+- SSOT: 2026-07-04 ユーザー明示の「必要なら product API / DB / auth / authorization /
+  PHI / billing / deploy / package dependency も変更対象」は `ops/refactor/STATE.md` と
+  `CODEX_GOAL_PROGRESS.md` に記録済み。本 slice では不要だったため不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の 5状態分離、領域固有 loading label、
+  generic loading copy 禁止、workspace 形状に沿う skeleton loading に整合。
+- 安全性: Loading copy は PHI-free で、patient name・drug name・prescription detail・draft id・case id・org id・raw error
+  を出さない。
+- 検証: focused QR draft Vitest `1 file / 8 tests` green、targeted ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `d9c64e41` (`fix(prescriptions): show skeleton for qr draft loading`)。
+- 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
 ## 2026-07-04 R55 patient MCS summary loading skeleton
 
 - 分類: UI loading-state cleanup / R55 visible loading residual。

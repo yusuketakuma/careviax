@@ -1,5 +1,43 @@
 # CODEX Goal Progress
 
+## R55 QR Scan Draft Loading State - 2026-07-04 19:42 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx`
+    - `src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.test.tsx`
+- Scope:
+  - Replaced the generic `Loading` return in the QR scan draft review page with
+    a named skeleton region that preserves the draft form and side-panel rhythm
+    without rendering final draft review content.
+  - Loading no longer exposes generic `読み込み中...` semantics or final patient /
+    prescription draft details before org context and draft data resolve.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - The SSOT scope already records the 2026-07-04 user clarification that
+    product API, DB, auth, authorization, PHI, billing, deploy, and package
+    dependency changes may be made if needed for the active objective; this
+    slice did not need those areas.
+  - No API path, query key, fetcher, org header, `enabled` behavior, draft
+    confirmation, case matching, mutations, cache invalidation, navigation
+    behavior, DB, auth, authorization, billing, audit, deployment, package, or
+    server behavior changed.
+  - Loading copy is PHI-free and does not echo patient names, drug names,
+    prescription details, draft ids, case ids, org ids, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `8` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the QR draft source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `d9c64e41`
+    (`fix(prescriptions): show skeleton for qr draft loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Patient External Share Loading State - 2026-07-04 19:37 JST
 
 - Status:
