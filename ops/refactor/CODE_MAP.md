@@ -80,9 +80,8 @@ Snapshot: 2026-07-03 19:30 JST
 - `src/lib/collaboration/presence-api-client.ts`: client-side collaboration
   presence fetch/post helper; latest slice hardens heartbeat delivery failure
   observability while preserving best-effort return behavior.
-- `src/lib/collaboration/room-token-client.ts`: client-side collaboration room
-  token fetch/retry classifier; latest slice hardens transient failure
-  observability while preserving retry/access-denied result behavior.
+- `src/lib/collaboration/presence-contract.ts`: shared collaboration presence
+  payload/status contract for the current presence-only realtime surface.
 - `src/lib/api/search-params.ts`: strict single query-param, exact integer,
   and strict optional query-param parser helpers for route handlers that must
   reject duplicates, blank values, padded values, overlong filters, or padded

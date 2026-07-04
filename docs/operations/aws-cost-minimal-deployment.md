@@ -6,7 +6,7 @@ Updated: 2026-06-17
 
 PH-OS is a Next.js 16 / React 19 / Node 24 application with Prisma 7 and PostgreSQL. The repository already contains AWS SDK clients, Secrets Manager fallback support, S3/SES/Cognito integration points, DynamoDB rate-limit infrastructure, CloudWatch alarms, EventBridge schedule drift checks, and PH-OS Lambda/API Gateway templates.
 
-The lowest-cost path is therefore not a new serverless rewrite. Build the existing app as a production Docker image, run one app instance for the pilot, keep PostgreSQL managed, and only add distributed Redis/DynamoDB/WebSocket components when multiple app instances make in-memory fallbacks unsafe.
+The lowest-cost path is therefore not a new serverless rewrite. Build the existing app as a production Docker image, run one app instance for the pilot, keep PostgreSQL managed, and only add distributed Redis/DynamoDB plus Redis-backed realtime components when multiple app instances make in-memory fallbacks unsafe.
 
 ## Recommended Low-Cost Order
 

@@ -2,7 +2,7 @@
 
 Generated on 2026-06-12 from current source references to `process.env.*` under `src`, `tools`, `prisma`, and root TypeScript config files. Test files and generated build output are excluded.
 
-Current key count: 135. The earlier refactor note recorded 118 keys; the live repository now references 135.
+Current key count: 134. The earlier refactor note recorded 118 keys; the live repository now references 134.
 
 `src/lib/env/assert-env.ts` enforces the production safety subset from `src/instrumentation.ts` during the Node.js runtime startup path.
 

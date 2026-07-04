@@ -1230,8 +1230,8 @@ validation output.
   - `src/lib/collaboration/room-token-client.ts`
   - `src/lib/collaboration/room-token-client.test.ts`
 - Change reason:
-  - `fetchCollaborationRoomToken()` feeds `useYjsCollaborationRoom()` provider
-    setup and token renewal.
+  - `fetchCollaborationRoomToken()` fed the then-existing collaborative form
+    provider setup and token renewal.
   - Fetch rejection, transient HTTP responses, malformed payloads, and expired
     token payloads all collapsed to `transient-error` without an
     operator-visible signal.
@@ -1258,7 +1258,7 @@ validation output.
 - Validation:
   - Initial focused test failed before the fix on zero `logger.warn` calls.
   - `pnpm exec vitest run src/lib/collaboration/room-token-client.test.ts --reporter=dot --testTimeout=60000`: passed, `1` file / `7` tests.
-  - `pnpm exec vitest run src/lib/collaboration/room-token-client.test.ts src/lib/hooks/use-collaborative-form.test.tsx src/lib/collaboration/yjs-provider.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed, `4` files / `49` tests.
+  - `pnpm exec vitest run src/lib/collaboration/room-token-client.test.ts src/lib/hooks/use-collaborative-form.test.tsx src/lib/collaboration/yjs-provider.test.ts src/lib/utils/logger.test.ts --reporter=dot --testTimeout=60000`: passed against the then-existing collaborative form/provider tests, `4` files / `49` tests.
   - Scoped ESLint, Prettier, and diff-check for changed client/test files:
     passed.
   - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.

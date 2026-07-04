@@ -75,7 +75,7 @@
     {
       "id": "ha-production-floor",
       "name": "Production HA floor",
-      "description": "Minimum direction for production HA: two app instances behind a load balancer and a high-availability encrypted database. Redis/WebSocket/DynamoDB can be enabled when multi-instance realtime needs it.",
+      "description": "Minimum direction for production HA: two app instances behind a load balancer and a high-availability encrypted database. Redis/DynamoDB can be enabled when multi-instance realtime and rate limiting need shared backing.",
       "items": [
         { "name": "Two Lightsail Linux/Unix 2 GB bundles", "monthlyUsd": 24 },
         { "name": "Lightsail load balancer", "monthlyUsd": 18 },
