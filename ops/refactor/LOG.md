@@ -2797,3 +2797,23 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R24/R46 は partial。keyset cursor encoding、scan-window、hidden-count、
   optional-limit semantics、route-specific metadata を持つ route は個別分析後に継続。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R24/R46 me-sites cursor helper slice
+
+- 分類: pattern-inconsistency / visible-row selection → `buildCursorPage` 収束。
+- 実施:
+  - `/api/me/sites` GET の `sites.length > limit` と `slice(0, limit)` を
+    `buildCursorPage` へ移行。
+  - returned site ids を元に visit count を集計する trim-before-count semantics と
+    `meta: { limit, has_more }` は維持。
+- 挙動変更: API内部の重複 helper 収束のみ。外部 response shape、membership scoping、
+  today visit count scope、default-site flag behavior は維持。
+- 安全性: `withAuthContext`、membership scoping、org filtering、DB query shape、
+  auth/authorization、PHI projection、billing、deployment、package dependency、live DB operation、
+  external send、secret handling、push、destructive operation は不変。
+- 検証: focused me-sites/pagination Vitest `2 files / 15 tests` green、scoped ESLint
+  green、targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `bff89499` (`refactor(api): reuse cursor page helper in my sites`)。
+- 残課題: R24/R46 は partial。keyset cursor encoding、scan-window、hidden-count、
+  optional-limit semantics、route-specific metadata を持つ route は個別分析後に継続。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
