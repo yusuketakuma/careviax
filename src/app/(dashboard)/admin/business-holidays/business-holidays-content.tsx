@@ -380,7 +380,8 @@ export function BusinessHolidaysContent() {
           headingLevel={2}
           title="休日設定を読み込めませんでした"
           description="休日一覧・カレンダー・集計は最新ではありません。「該当なし」ではなく取得エラーです。再読み込みしてください。"
-          action={{ label: '再読み込み', onClick: () => void refetchHolidays() }}
+          onRetry={() => void refetchHolidays()}
+          retryLabel="再読み込み"
           live="assertive"
         />
       )}
@@ -392,7 +393,8 @@ export function BusinessHolidaysContent() {
           headingLevel={2}
           title="店舗一覧を読み込めませんでした"
           description="店舗フィルタと対象店舗の選択肢が表示されない場合があります。再読み込みしてください。"
-          action={{ label: '再読み込み', onClick: () => void sitesQuery.refetch() }}
+          onRetry={() => void sitesQuery.refetch()}
+          retryLabel="再読み込み"
         />
       )}
       <Card>
