@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { PropsWithChildren, ReactNode } from 'react';
+import type { PropsWithChildren } from 'react';
 import { toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { ConsentRecordsContent } from './consent-records-content';
 
 vi.mock('next/navigation', () => ({
@@ -70,21 +70,8 @@ vi.mock('@/components/ui/select', async () => {
 
 setupDomTestEnv();
 
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  };
-}
-
 function renderContent() {
-  return render(<ConsentRecordsContent />, { wrapper: createWrapper() });
+  return render(<ConsentRecordsContent />, { wrapper: createQueryClientWrapper() });
 }
 
 type TestConsentRecord = {

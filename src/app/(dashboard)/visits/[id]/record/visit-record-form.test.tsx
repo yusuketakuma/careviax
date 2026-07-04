@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
 import { type PropsWithChildren } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { VisitRecordForm } from './visit-record-form';
 
@@ -220,22 +220,9 @@ vi.mock('./visit-completion-readiness-warning', () => ({
 
 setupDomTestEnv();
 
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-
-  return function Wrapper({ children }: PropsWithChildren) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  };
-}
-
 function renderVisitRecordForm() {
   return render(<VisitRecordForm id="schedule_partial" facilityVisitContext={null} />, {
-    wrapper: createWrapper(),
+    wrapper: createQueryClientWrapper(),
   });
 }
 
@@ -1034,7 +1021,7 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
 
   function renderForm() {
     return render(<VisitRecordForm id="schedule_partial" facilityVisitContext={null} />, {
-      wrapper: createWrapper(),
+      wrapper: createQueryClientWrapper(),
     });
   }
 

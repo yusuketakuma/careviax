@@ -35,19 +35,12 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: routerPushMock }),
 }));
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import type { SavedViewRecord } from '@/lib/views/saved-filter-views';
 import { SavedViewsContent } from './saved-views-content';
 
 function renderPage() {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
-  return render(
-    <QueryClientProvider client={client}>
-      <SavedViewsContent />
-    </QueryClientProvider>,
-  );
+  return render(<SavedViewsContent />, { wrapper: createQueryClientWrapper() });
 }
 
 function mockPreferences(value: Record<string, unknown>, savedViews: SavedViewRecord[] = []) {

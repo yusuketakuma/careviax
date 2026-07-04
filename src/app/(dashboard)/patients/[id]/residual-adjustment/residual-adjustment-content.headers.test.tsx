@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 
 vi.mock('@/lib/hooks/use-org-id', () => ({ useOrgId: () => 'org_1' }));
@@ -45,12 +45,9 @@ type FetchCall = { url: string; init?: RequestInit };
 const DEFAULT_PATIENT_ID = 'patient_1';
 
 function renderContent(patientId = DEFAULT_PATIENT_ID) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <ResidualAdjustmentContent patientId={patientId} />
-    </QueryClientProvider>,
-  );
+  return render(<ResidualAdjustmentContent patientId={patientId} />, {
+    wrapper: createQueryClientWrapper(),
+  });
 }
 
 describe('ResidualAdjustmentContent tenant headers', () => {
