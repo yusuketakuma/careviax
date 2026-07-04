@@ -672,6 +672,24 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 次アクション: R43 route-compare `jsonResponse` helper 収束、または R55 schedule proposals
   loading skeleton 化を次候補として再評価する。
 
+## 2026-07-04 R43 route-compare jsonResponse helper cleanup
+
+- 分類: test-harness cleanup / R43 fetch response helper duplication。
+- 実施: `src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx` の
+  local `jsonResponse` helper を既存 `src/test/fetch-test-utils.ts` の shared helper に置換。
+- 変更ファイル: `src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx`。
+- 削除したコード: test-local の JSON Response helper。
+- 共通化した処理: JSON stringify、`content-type: application/json`、status/ResponseInit handling。
+- 挙動変更: なし。test-only で product runtime source は不変。
+- FE/BE整合性への影響: なし。
+- UI配置への影響: なし。
+- 性能への影響: なし。
+- 検証: focused Vitest `1 file / 4 tests` green、exact ESLint green、exact
+  Prettier check green、targeted `git diff --check` green。
+- 残課題: R43 の他 fetch/mock helper residual は引き続き narrow wave で移行する。
+- 次アクション: R55 schedule proposals loading/error 表示収束、または R40/R44 saved-views
+  `readApiJson` 収束を再評価する。
+
 ## 2026-07-04 OPS direct subagent policy reconciliation
 
 - 分類: operator workflow / Codex CLI direct-subagent enablement。

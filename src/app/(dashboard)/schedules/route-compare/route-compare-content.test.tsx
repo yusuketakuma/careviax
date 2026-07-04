@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import type { ScheduleDayBoardResponse } from '@/types/schedule-day-board';
 import type { VisitRoutePlan } from '@/types/visit-route';
 import type { VisitSchedule } from '../day-view.shared';
@@ -67,13 +68,6 @@ type FetchCall = {
 const fetchCalls: FetchCall[] = [];
 let failTimePreferenceRoute = false;
 let failAllRouteScenarios = false;
-
-function jsonResponse(payload: unknown, status = 200) {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
 
 function createQueryClient() {
   return new QueryClient({

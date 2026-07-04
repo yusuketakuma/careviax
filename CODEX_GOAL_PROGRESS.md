@@ -1,5 +1,28 @@
 # CODEX Goal Progress
 
+## R43 Route Compare Json Response Helper - 2026-07-04 18:07 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx`
+- Scope:
+  - Replaced the route-compare test-local `jsonResponse` helper with the shared
+    `src/test/fetch-test-utils.ts` helper.
+  - Product runtime code was not changed.
+- Safety:
+  - Test-harness only.
+  - No API, DB, auth, authorization, PHI, audit, billing, deployment, payload,
+    query, or component runtime behavior changed.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `4` tests.
+  - Targeted ESLint passed for the exact test/helper files.
+  - Targeted Prettier check passed for the exact test/helper files.
+  - Targeted `git diff --check` passed.
+- Remaining:
+  - Existing dirty `refactor-instructions.md` and untracked local skill files
+    remain unrelated and are not included in this slice.
+
 ## R21/R32 Billing Workflow Test Harness Cleanup - 2026-07-04 18:03 JST
 
 - Status:
