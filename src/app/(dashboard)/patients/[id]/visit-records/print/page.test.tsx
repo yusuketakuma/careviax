@@ -79,6 +79,22 @@ function mockReady(patientId = 'patient_1') {
 }
 
 describe('PatientVisitRecordsPrintPage', () => {
+  it('shows a visit-record print skeleton instead of a generic spinner while loading', () => {
+    useParamsMock.mockReturnValue({ id: 'patient_1' });
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: undefined, isLoading: true, error: null });
+
+    render(<PatientVisitRecordsPrintPage />);
+
+    expect(
+      screen.getByRole('status', { name: '訪問記録一覧の印刷データを読み込み中' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText(patientSnapshot.name)).toBeNull();
+    expect(screen.queryByRole('link', { name: '患者詳細へ戻る' })).toBeNull();
+  });
+
   it('builds the patient fetch URL with an encoded hostile patientId and org header', async () => {
     const hostileId = 'pt/1?x=y#z';
     useParamsMock.mockReturnValue({ id: hostileId });

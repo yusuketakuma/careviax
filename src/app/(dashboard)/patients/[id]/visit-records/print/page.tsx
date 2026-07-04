@@ -8,7 +8,7 @@ import { getPatientVisitRecordPrintShortcutLinks } from '@/components/features/w
 import { PrintPageToolbar } from '@/components/features/workflow/print-page-toolbar';
 import { PrintLayout } from '@/components/features/reports/print-layout';
 import { buttonVariants } from '@/components/ui/button';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -61,6 +61,38 @@ const visitTypeLabels: Record<string, string> = {
   emergency: '緊急',
   physician_co_visit: '医師同行',
 };
+
+function VisitRecordsPrintLoadingState() {
+  return (
+    <div
+      className="mx-auto max-w-4xl space-y-6 p-6 print:p-0"
+      role="status"
+      aria-label="訪問記録一覧の印刷データを読み込み中"
+      aria-live="polite"
+    >
+      <div className="space-y-2 print:hidden">
+        <Skeleton className="h-6 w-48" />
+        <Skeleton className="h-4 w-full max-w-lg" />
+      </div>
+
+      <div className="space-y-4 rounded-lg border border-border bg-card p-4" aria-hidden="true">
+        <Skeleton className="mx-auto h-7 w-52" />
+        <div className="grid gap-px overflow-hidden rounded border border-border bg-border text-xs sm:grid-cols-4">
+          {Array.from({ length: 12 }).map((_, index) => (
+            <Skeleton key={index} className="h-8 rounded-none bg-background" />
+          ))}
+        </div>
+        <Skeleton className="h-8 w-full rounded-none" />
+        <div className="space-y-px overflow-hidden rounded border border-border bg-border">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} className="h-16 rounded-none bg-background" />
+          ))}
+        </div>
+      </div>
+      <span className="sr-only">訪問記録一覧の印刷データを読み込み中</span>
+    </div>
+  );
+}
 
 export default function PatientVisitRecordsPrintPage() {
   const params = useParams<{ id: string }>();
@@ -132,7 +164,7 @@ export default function PatientVisitRecordsPrintPage() {
   }, [ready]);
 
   if (isBootstrappingOrg || isLoadingPrintData) {
-    return <Loading />;
+    return <VisitRecordsPrintLoadingState />;
   }
 
   if (!org || !patient || orgQuery.error || patientQuery.error || recordsQuery.error) {
