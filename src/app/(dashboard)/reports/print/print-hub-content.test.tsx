@@ -45,6 +45,18 @@ function renderPrintHubContent(queryClient: QueryClient = createTestQueryClient(
   };
 }
 
+async function expectQueryErrorMessage(
+  queryClient: QueryClient,
+  queryKey: readonly unknown[],
+  message: string,
+) {
+  await waitFor(() => {
+    const error = queryClient.getQueryCache().find({ queryKey, exact: true })?.state.error;
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe(message);
+  });
+}
+
 function physicianPrintAuditContent(assessment: string, reportDate = '2026-06-18') {
   return {
     patient: { name: '山田 太郎', birth_date: '1940-01-01', gender: 'M' },
@@ -544,6 +556,105 @@ describe('PrintHubContent', () => {
     expect(fetchMock).not.toHaveBeenCalledWith('/api/patients/patient_1/prescriptions?limit=20', {
       headers: buildOrgHeaders('org_1'),
     });
+  });
+
+  it('keeps API messages from failed set plan reads', async () => {
+    setPrintSearchParams({ type: 'set_instruction' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === '/api/set-plans') {
+          return new Response(JSON.stringify({ message: 'セットプランを表示できません' }), {
+            status: 500,
+          });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+
+    const { queryClient } = renderPrintHubContent();
+
+    await expectQueryErrorMessage(
+      queryClient,
+      ['print-hub-set-plans', 'org_1', null],
+      'セットプランを表示できません',
+    );
+  });
+
+  it('keeps API messages from failed prescription reads', async () => {
+    setPrintSearchParams({ type: 'set_instruction' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === '/api/set-plans') {
+          return new Response(JSON.stringify(setPlansResponse('patient_1')), { status: 200 });
+        }
+        if (url === '/api/patients/patient_1/prescriptions?limit=20') {
+          return new Response(JSON.stringify({ message: '処方明細を表示できません' }), {
+            status: 500,
+          });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+
+    const { queryClient } = renderPrintHubContent();
+
+    await expectQueryErrorMessage(
+      queryClient,
+      ['print-hub-prescriptions', 'org_1', 'patient_1'],
+      '処方明細を表示できません',
+    );
+  });
+
+  it('keeps API messages from failed care report reads', async () => {
+    setPrintSearchParams({ type: 'visit_report' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === '/api/care-reports?limit=50&status=confirmed') {
+          return new Response(JSON.stringify({ message: '報告書一覧を表示できません' }), {
+            status: 500,
+          });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+
+    const { queryClient } = renderPrintHubContent();
+
+    await expectQueryErrorMessage(
+      queryClient,
+      ['print-hub-care-reports', 'org_1'],
+      '報告書一覧を表示できません',
+    );
+  });
+
+  it('keeps API messages from failed patient document reads', async () => {
+    setPrintSearchParams({ type: 'first_visit_documents', patient_id: 'patient_1' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === '/api/patients/patient_1/documents') {
+          return new Response(JSON.stringify({ message: '患者文書を表示できません' }), {
+            status: 500,
+          });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+
+    const { queryClient } = renderPrintHubContent();
+
+    await expectQueryErrorMessage(
+      queryClient,
+      ['print-hub-patient-documents', 'org_1', 'patient_1'],
+      '患者文書を表示できません',
+    );
   });
 
   it('encodes visit-report print-audit paths for preview and print-requested writes', async () => {

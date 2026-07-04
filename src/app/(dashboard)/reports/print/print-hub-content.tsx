@@ -132,8 +132,7 @@ function usePrintHubData(
         ? `/api/set-plans?patient_id=${encodeURIComponent(explicitPatientId)}`
         : '/api/set-plans';
       const res = await fetch(url, { headers: buildOrgHeaders(orgId) });
-      if (!res.ok) throw new Error('セットプランの取得に失敗しました');
-      return res.json() as Promise<SetPlansResponse>;
+      return readApiJson<SetPlansResponse>(res, 'セットプランの取得に失敗しました');
     },
     enabled: !!orgId && needsSetPlan,
     staleTime: 60_000,
@@ -152,8 +151,7 @@ function usePrintHubData(
       const res = await fetch(`${buildPatientApiPath(patientId, '/prescriptions')}?limit=20`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('処方明細の取得に失敗しました');
-      return res.json() as Promise<PatientPrescriptionsResponse>;
+      return readApiJson<PatientPrescriptionsResponse>(res, '処方明細の取得に失敗しました');
     },
     enabled: !!orgId && !!patientId,
     staleTime: 60_000,
@@ -165,8 +163,7 @@ function usePrintHubData(
       const res = await fetch('/api/care-reports?limit=50&status=confirmed', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('報告書の取得に失敗しました');
-      return res.json() as Promise<CareReportsResponse>;
+      return readApiJson<CareReportsResponse>(res, '報告書の取得に失敗しました');
     },
     enabled: !!orgId && needsCareReports,
     staleTime: 60_000,
@@ -179,8 +176,7 @@ function usePrintHubData(
       const res = await fetch(buildPatientApiPath(explicitPatientId, '/documents'), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('患者文書の取得に失敗しました');
-      return res.json() as Promise<PatientDocumentsForPrintResponse>;
+      return readApiJson<PatientDocumentsForPrintResponse>(res, '患者文書の取得に失敗しました');
     },
     enabled: !!orgId && !!explicitPatientId && needsFirstVisitDocuments,
     staleTime: 60_000,
