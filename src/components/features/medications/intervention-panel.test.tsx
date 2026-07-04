@@ -38,6 +38,17 @@ describe('InterventionPanel new intervention form', () => {
     vi.useRealTimers();
   });
 
+  it('renders a named skeleton while interventions are loading', () => {
+    vi.mocked(fetch).mockReturnValue(new Promise(() => {}) as Promise<Response>);
+
+    render(<InterventionPanel patientId="patient_1" />);
+
+    expect(screen.getByRole('status', { name: '介入記録を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText('介入記録はありません。')).toBeNull();
+    expect(screen.queryByText('介入記録の読み込みに失敗しました。')).toBeNull();
+  });
+
   it('shows the intervention type label, not the raw enum, in the closed select trigger', async () => {
     // A bare <SelectValue /> leaks the raw default enum. Explicit children keep SSR labels stable.
     openCreateDialog();

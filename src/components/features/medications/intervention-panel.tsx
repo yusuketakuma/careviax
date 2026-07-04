@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { SkeletonRows } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -422,7 +423,9 @@ export function InterventionPanel({
       </div>
 
       {loading ? (
-        <p className="text-xs text-muted-foreground">読み込み中...</p>
+        <div role="status" aria-label="介入記録を読み込み中" aria-live="polite">
+          <SkeletonRows rows={2} cols={2} status={false} />
+        </div>
       ) : fetchError ? (
         <p className="text-xs text-destructive">介入記録の読み込みに失敗しました。</p>
       ) : interventions.length === 0 ? (
