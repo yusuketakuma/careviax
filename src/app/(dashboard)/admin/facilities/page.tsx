@@ -20,7 +20,7 @@ export default function FacilitiesPage() {
         supportingContent={null}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="施設マスターを読み込み中..." />}>
         <FacilitiesContent />
       </Suspense>
     </PageScaffold>
