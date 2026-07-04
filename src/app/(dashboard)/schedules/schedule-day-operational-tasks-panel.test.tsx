@@ -238,17 +238,24 @@ describe('ScheduleDayOperationalTasksPanel', () => {
     expect(onApproveOverride).toHaveBeenCalledWith(visibleSchedule);
   });
 
-  it('renders loading and empty states', () => {
-    const { rerender } = render(
-      <ScheduleDayOperationalTasksPanel
-        {...props({ callbackTasksLoading: true, tasksLoading: true })}
-      />,
-    );
+  it('renders a named skeleton for callback task loading without visible plain loading text', () => {
+    render(<ScheduleDayOperationalTasksPanel {...props({ callbackTasksLoading: true })} />);
 
-    expect(screen.getByText('再架電タスクを読み込んでいます...')).toBeTruthy();
-    expect(screen.getByText('運用タスクを読み込んでいます...')).toBeTruthy();
+    expect(screen.getByRole('status', { name: '再架電タスクを読み込んでいます...' })).toBeTruthy();
+    expect(screen.queryByText('再架電タスクを読み込んでいます...')).toBeNull();
+    expect(screen.queryByText('スケジュール関連の未完了タスクはありません')).toBeNull();
+  });
 
-    rerender(<ScheduleDayOperationalTasksPanel {...props()} />);
+  it('renders a named skeleton for scheduling task loading without visible plain loading text', () => {
+    render(<ScheduleDayOperationalTasksPanel {...props({ tasksLoading: true })} />);
+
+    expect(screen.getByRole('status', { name: '運用タスクを読み込んでいます...' })).toBeTruthy();
+    expect(screen.queryByText('運用タスクを読み込んでいます...')).toBeNull();
+    expect(screen.queryByText('スケジュール関連の未完了タスクはありません')).toBeNull();
+  });
+
+  it('renders the empty state only when both task branches are loaded and empty', () => {
+    render(<ScheduleDayOperationalTasksPanel {...props()} />);
     expect(screen.getByText('スケジュール関連の未完了タスクはありません')).toBeTruthy();
   });
 });

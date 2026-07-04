@@ -8,6 +8,7 @@ import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
 import { ActionRail } from '@/components/ui/action-rail';
 import { PageSection } from '@/components/layout/page-section';
+import { SkeletonRows } from '@/components/ui/loading';
 import {
   formatTaskDueLabel,
   taskPriorityClass,
@@ -130,8 +131,13 @@ export function ScheduleDayOperationalTasksPanel({
 
 function TaskLoadingState({ label }: { label: string }) {
   return (
-    <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
-      {label}
+    <div
+      role="status"
+      aria-label={label}
+      aria-live="polite"
+      className="rounded-xl border border-dashed border-border bg-card px-3 py-4"
+    >
+      <SkeletonRows rows={2} cols={3} status={false} />
     </div>
   );
 }
