@@ -270,12 +270,10 @@ export function AnalyticsContent() {
               variant="server"
               size="inline"
               description="最新の請求分析を取得できませんでした。表示は前回取得した値です。"
-              action={{
-                label: '再読み込み',
-                onClick: () => void refetch(),
-                variant: 'outline',
-                size: 'sm',
-              }}
+              onRetry={() => void refetch()}
+              retryLabel="再読み込み"
+              retryVariant="outline"
+              retrySize="sm"
               live="polite"
             />
           )}
@@ -415,12 +413,10 @@ export function AnalyticsContent() {
               variant="server"
               size="inline"
               description="最新の地域資源マップを取得できませんでした。表示は前回取得した値です。"
-              action={{
-                label: '再読み込み',
-                onClick: () => void resourceMapRefetch(),
-                variant: 'outline',
-                size: 'sm',
-              }}
+              onRetry={() => void resourceMapRefetch()}
+              retryLabel="再読み込み"
+              retryVariant="outline"
+              retrySize="sm"
               live="polite"
             />
           )}
