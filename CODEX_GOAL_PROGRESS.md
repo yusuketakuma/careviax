@@ -1,5 +1,43 @@
 # CODEX Goal Progress
 
+## R32 QueryClient Wrapper Convergence Completed - 2026-07-04 22:52 JST
+
+- Status:
+  - Implemented and validated the final bounded R32 slice:
+    - `src/components/features/dispense-workbench/use-workbench-mutations.test.tsx`
+    - `src/components/visit-brief/visit-brief-card.test.tsx`
+    - `src/app/(dashboard)/patients/[id]/patient-documents-panel.test.tsx`
+  - Current scan shows no remaining direct test-local `new QueryClient`,
+    `QueryClientProvider`, or local `createWrapper` / `createQueryClient`
+    definitions under `src/app` and `src/components` test files.
+- Scope:
+  - Replaced the final local `QueryClient` / `QueryClientProvider` wrapper
+    implementations with `createQueryClientWrapper`.
+  - Used `createTestQueryClient` where tests still need explicit client spies
+    or cache invalidation assertions.
+  - Preserved retry-disabled test defaults and left product runtime code
+    untouched.
+- Safety:
+  - Test harness convergence only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    deployment, package dependency, query, mutation, org header, audit logging,
+    or runtime behavior changed.
+- Validation:
+  - `pnpm exec vitest run 'src/components/features/dispense-workbench/use-workbench-mutations.test.tsx' 'src/components/visit-brief/visit-brief-card.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-documents-panel.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `3` files / `26` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+  - `rg -n "new QueryClient\\(|QueryClientProvider|function createQueryClient|const createQueryClient|function createWrapper|const createWrapper" src/app src/components --glob '*.test.tsx' --glob '*.test.ts'`
+    returned no matches.
+- Commit:
+  - Implementation slice landed at `bcf516b7`
+    (`test(harness): finish query client wrapper convergence`).
+- Remaining:
+  - R32 is complete.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R32 Patient/Visit QueryClient Wrapper Convergence - 2026-07-04 22:46 JST
 
 - Status:
