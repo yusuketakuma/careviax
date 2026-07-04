@@ -302,6 +302,12 @@
   path/query/header/queryKey/enabled gates/fail-closed banners/no-false-empty/no-false-complete/mutations は保持。
   SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
   維持しつつ、本sliceでは不要。
+- codex: R40/R44 visit-record-form readApiJson slice(88125ca9) land。focused Vitest 22、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。schedule detail / patient header summary /
+  visit-preparation read GET を readApiJson へ収束し、schedule/header-summary/visit-preparation path、
+  org header、queryKey、enabled gate、blocking error、fail-closed safety banner、retryable warning、
+  CDS POST、save/upload/reflection mutations は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
