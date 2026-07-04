@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
-import { parseBoundedInteger } from '@/lib/api/pagination';
+import { buildCursorPage, parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -100,9 +100,11 @@ async function authenticatedGET(req: NextRequest) {
       return success({ data: pumps.map(serializePcaPump) });
     }
 
+    const page = buildCursorPage(pumps, limit, (pump) => pump.id);
+
     return success({
-      data: pumps.slice(0, limit).map(serializePcaPump),
-      meta: { limit, has_more: pumps.length > limit },
+      data: page.data.map(serializePcaPump),
+      meta: { limit, has_more: page.hasMore },
     });
   });
 }
