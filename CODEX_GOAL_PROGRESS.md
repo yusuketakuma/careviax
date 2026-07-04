@@ -1,5 +1,40 @@
 # CODEX Goal Progress
 
+## R55 Visit Record Print Loading State - 2026-07-04 19:30 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/patients/[id]/visit-records/print/page.tsx`
+    - `src/app/(dashboard)/patients/[id]/visit-records/print/page.test.tsx`
+- Scope:
+  - Replaced the generic `Loading` return in the visit-record print page with a
+    named skeleton region that preserves the print toolbar, patient summary
+    table, and visit-record table shape without rendering final printable PHI.
+  - Loading no longer exposes generic `読み込み中...` semantics or final patient
+    visit-record content before all print data resolves.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, fetcher, org header, `enabled` behavior, no-store
+    cache setting, date filters, print readiness, auto-print timing, URL helper
+    usage, visit-record query params, DB, auth, authorization, billing, audit,
+    deployment, package, or server behavior changed.
+  - Loading copy is PHI-free and does not echo patient names, patient ids, kana,
+    birth dates, visit dates, SOAP notes, outcome labels, schedule data,
+    pharmacy names, org ids, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/visit-records/print/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `9` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the visit-record print source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `ac6fc8f2`
+    (`fix(patients): show skeleton for visit record print loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Medication Print Loading State - 2026-07-04 19:28 JST
 
 - Status:
