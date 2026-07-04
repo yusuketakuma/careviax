@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { cn } from '@/lib/utils';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { formatDisplayEntityLabel } from '@/lib/display-id/display-labels';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -380,8 +381,7 @@ export default function QrDraftReviewPage() {
       const res = await fetch(`/api/qr-scan-drafts/${id}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('下書きの取得に失敗しました');
-      return res.json() as Promise<QrScanDraft>;
+      return readApiJson<QrScanDraft>(res, '下書きの取得に失敗しました');
     },
     enabled: !!orgId && !!id,
   });
@@ -403,8 +403,7 @@ export default function QrDraftReviewPage() {
       const res = await fetch(`/api/cases?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('ケースの取得に失敗しました');
-      return res.json() as Promise<{ data: CaseOption[] }>;
+      return readApiJson<{ data: CaseOption[] }>(res, 'ケースの取得に失敗しました');
     },
     enabled: !!orgId && !!draft?.patient_id,
   });

@@ -5,6 +5,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 
 const {
   pushMock,
@@ -193,6 +194,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function getQueryConfig(queryKey: string) {
+  return useQueryMock.mock.calls
+    .map(([config]) => config as QueryConfig)
+    .find((config) => config.queryKey[0] === queryKey);
+}
+
 describe('QrDraftReviewPage case lookup error handling', () => {
   it('shows a QR draft skeleton instead of a generic spinner while loading', () => {
     useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
@@ -248,6 +255,25 @@ describe('QrDraftReviewPage case lookup error handling', () => {
     expect(refetchDraftMock).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps the API message when draft lookup fetch fails', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({ message: '下書きは確認できません' }, 403),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<QrDraftReviewPage />);
+
+    const draftQuery = getQueryConfig('qr-scan-draft');
+    expect(draftQuery?.queryKey).toEqual(['qr-scan-draft', 'draft_1', 'org_1']);
+    await expect(draftQuery?.queryFn?.()).rejects.toThrow('下書きは確認できません');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/qr-scan-drafts/draft_1',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'x-org-id': 'org_1' }),
+      }),
+    );
+  });
+
   it('surfaces a retryable error instead of a false empty case selector', () => {
     render(<QrDraftReviewPage />);
 
@@ -258,6 +284,30 @@ describe('QrDraftReviewPage case lookup error handling', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
     expect(refetchCasesMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the API message when case lookup fetch fails', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({ message: 'ケース一覧を表示できません' }, 403),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<QrDraftReviewPage />);
+
+    const patientCasesQuery = getQueryConfig('patient-cases');
+    expect(patientCasesQuery?.queryKey).toEqual(['patient-cases', 'patient_1', 'org_1']);
+    await expect(patientCasesQuery?.queryFn?.()).rejects.toThrow('ケース一覧を表示できません');
+
+    const lookupUrl = new URL(String(fetchMock.mock.calls[0]?.[0]), 'http://localhost');
+    expect(lookupUrl.pathname).toBe('/api/cases');
+    expect(lookupUrl.searchParams.get('patient_id')).toBe('patient_1');
+    expect(lookupUrl.searchParams.get('status')).toBe('active');
+    expect(lookupUrl.searchParams.get('limit')).toBe('20');
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'x-org-id': 'org_1' }),
+      }),
+    );
   });
 
   it('uses a named skeleton while case options are loading', () => {
@@ -334,10 +384,7 @@ describe('QrDraftReviewPage case lookup error handling', () => {
       isError: false,
       isLoading: false,
     };
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue({ data: [] }),
-    });
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ data: [] }));
     vi.stubGlobal('fetch', fetchMock);
 
     render(<QrDraftReviewPage />);
@@ -348,9 +395,7 @@ describe('QrDraftReviewPage case lookup error handling', () => {
     expect(option.value).toBe('case&safe=1');
     expect(screen.queryByText(/case&safe/)).toBeNull();
 
-    const patientCasesQuery = useQueryMock.mock.calls
-      .map(([config]) => config as QueryConfig)
-      .find((config) => config.queryKey[0] === 'patient-cases');
+    const patientCasesQuery = getQueryConfig('patient-cases');
     if (!patientCasesQuery?.queryFn) {
       throw new Error('patient-cases queryFn was not registered');
     }
@@ -395,10 +440,9 @@ describe('QrDraftReviewPage case lookup error handling', () => {
       isError: false,
       isLoading: false,
     };
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue({ intake: { id: 'intake_1' }, cycle: { id: 'cycle_1' } }),
-    });
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({ intake: { id: 'intake_1' }, cycle: { id: 'cycle_1' } }),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     render(<QrDraftReviewPage />);
