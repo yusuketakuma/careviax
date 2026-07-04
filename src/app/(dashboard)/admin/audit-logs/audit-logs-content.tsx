@@ -29,6 +29,7 @@ import {
   AUDIT_LOG_ACTION_OPTIONS,
   AUDIT_LOG_TARGET_TYPE_OPTIONS,
 } from '@/lib/audit-logs/filter-options';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -102,8 +103,7 @@ export function AuditLogsContent() {
       const res = await fetch(`/api/audit-logs?${queryParams}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('監査ログの取得に失敗しました');
-      return res.json() as Promise<{ data: AuditLog[] }>;
+      return readApiJson<{ data: AuditLog[] }>(res, '監査ログの取得に失敗しました');
     },
     enabled: !!orgId,
   });

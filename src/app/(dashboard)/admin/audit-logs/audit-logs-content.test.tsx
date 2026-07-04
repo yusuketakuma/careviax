@@ -67,7 +67,8 @@ function renderContent() {
 }
 
 function stubFetch() {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    void init;
     const url = String(input);
     if (url.startsWith('/api/audit-logs/export?')) {
       return new Response(JSON.stringify([]), {
@@ -170,10 +171,22 @@ describe('AuditLogsContent', () => {
   });
 
   it('renders audit filters for consent, patient-share, and file-download events', async () => {
-    stubFetch();
+    const fetchMock = stubFetch();
     renderContent();
 
     await screen.findByText('ログがありません');
+    expect(
+      fetchMock.mock.calls.some(([input, init]) => {
+        return (
+          String(input).startsWith('/api/audit-logs?') &&
+          (init as RequestInit | undefined)?.headers === undefined
+        );
+      }),
+    ).toBe(false);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/api\/audit-logs\?/),
+      expect.objectContaining({ headers: { 'x-org-id': 'org_1' } }),
+    );
 
     for (const label of [
       '同意記録',
