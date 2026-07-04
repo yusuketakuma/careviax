@@ -58,6 +58,9 @@
 - legacy Claude/Opus lane（削除前の履歴）: X01(e02cec50) / CE19(2136c93a) / N18(ad0ff309) /
   R03(3b31cec1) / A1-CRC(eebda8c3) land
 - 全量 gate green: test 13035 passed（2026-07-03 夜、F84/CE19/N18/R03後）
+- codex: R55 schedule proposals loading/error states(8fee04d8) land。focused Vitest 48、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck`、`pnpm build`、memory-expanded
+  `pnpm typecheck:no-unused` green。
 
 ## 進行中 / 凍結
 
@@ -78,7 +81,8 @@
 
 ## 次の一手
 
-1. codex: direct subagents 体制の文書差分は 70f8561a で land 済み。残 dirty と競合しないよう監視する。
+1. codex: R55 schedule proposals は 8fee04d8 で land 済み。次の安全な high-score 候補を
+   direct subagents で read-only triage し、P0/human gate と実装候補を分離する。
 2. codex: W3-B9 `monthly_cap_shared` rule-engine fix は ae81a9f7 で land 済み。長い gate が走っていないことを確認後、
    次の backend/business-domain 候補を read-only triage。
 3. codex: Plans.md 未完了40件（open 37 + partial 3）を継続棚卸しし、human/external gate と実装候補を分離して task supply を維持。

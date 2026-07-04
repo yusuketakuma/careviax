@@ -27,10 +27,13 @@
   - Scoped ESLint, Prettier check, and `git diff --check` passed for the schedule
     proposals content/test and weekly optimizer dirty files.
   - `pnpm typecheck` passed.
+  - `pnpm build` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed
+    after `pnpm build` regenerated the full Next route type artifacts.
 - Remaining:
-  - This false-empty fix is grouped with the same coherent R55 loading-skeleton
-    UI slice. Unrelated `refactor-instructions.md` and local skill files remain
-    outside this slice.
+  - Source/test changes are landed at `8fee04d8`.
+  - Unrelated `refactor-instructions.md` and local skill files remain outside
+    this slice.
 
 ## R43 Route Compare Json Response Helper - 2026-07-04 18:07 JST
 

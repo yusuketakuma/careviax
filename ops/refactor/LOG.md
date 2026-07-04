@@ -723,9 +723,10 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   禁止、`SkeletonRows status={false}` を単一 named status region 配下に置く契約へ整合。
 - 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
 - 検証: focused Vitest `2 files / 48 tests` green、targeted ESLint green、targeted Prettier check
-  green、targeted `git diff --check` green、`pnpm typecheck` green。
-- 残課題: `docs/ui-ux-design-guidelines.md` / `.codex/ralph-state.md` の design-SSOT dirty hunk、
-  `refactor-instructions.md`、`.agents/skills/**` / `skills-lock.json` は別スライスとして保持し、この commit には混ぜない。
+  green、targeted `git diff --check` green、`pnpm typecheck` green、`pnpm build` green、
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green。
+- 残課題: source/test は `8fee04d8` で land 済み。`refactor-instructions.md`、
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
 
 ## 2026-07-04 R55 schedule proposals false-empty guard
 
@@ -749,6 +750,8 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   - focused Vitest `1 file / 39 tests` green。
   - schedule proposals + weekly optimizer Vitest `2 files / 48 tests` green。
   - scoped ESLint green、scoped Prettier check green、targeted `git diff --check` green。
-  - `pnpm typecheck` green。
-- 残課題: `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は別スライスとして保持し、
-  この UI 状態設計 commit には混ぜない。
+  - `pnpm typecheck` green、`pnpm build` green。
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` green
+    （`pnpm build` で Next route type artifacts を再生成後に実行）。
+- 残課題: source/test は `8fee04d8` で land 済み。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
