@@ -1230,7 +1230,9 @@ export function MedicationsContent({
               </div>
               <div className="mt-3 space-y-2">
                 {inquiryQuery.isLoading ? (
-                  <p className="text-sm text-muted-foreground">疑義照会を読み込み中...</p>
+                  <div role="status" aria-label="疑義照会を読み込み中" aria-live="polite">
+                    <SkeletonRows rows={2} cols={2} status={false} />
+                  </div>
                 ) : inquiryQuery.isError ? (
                   <ErrorState
                     variant="server"
