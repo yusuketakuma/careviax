@@ -1,5 +1,36 @@
 # CODEX Goal Progress
 
+## R23 Search Error Message Helper Partial - 2026-07-05 00:45 JST
+
+- Status:
+  - Implemented and validated the next bounded R23 slice:
+    - `src/app/(dashboard)/search/search-content.tsx`
+    - `src/app/(dashboard)/search/search-content.test.tsx`
+- Scope:
+  - Reused the existing `messageFromError` helper for the cross-category search
+    outer error alert.
+  - Added coverage that an empty Error from JSON parsing falls back to
+    `検索結果の取得に失敗しました。`.
+- Safety:
+  - Client/helper error message formatting only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    audit, deployment, package dependency, live DB operation, external send,
+    secret handling, push, or destructive operation changed.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/search/search-content.test.tsx' src/lib/utils/error-message.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `23` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `4f1c7321`
+    (`refactor(ui): reuse error message helper in search`).
+- Remaining:
+  - R23 is partial; remaining hand-rolled error-message ternaries should be
+    migrated by bounded domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R23 Print Hub Error Message Helper Partial - 2026-07-05 00:41 JST
 
 - Status:
