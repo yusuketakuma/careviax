@@ -43,14 +43,17 @@ describe('MetricsDashboardContent', () => {
   });
 
   it('renders the metric cards on a successful fetch', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify(METRICS_BODY), { status: 200 })),
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify(METRICS_BODY), { status: 200 }),
     );
+    vi.stubGlobal('fetch', fetchMock);
 
     renderWith(makeClient());
 
     expect(await screen.findByText('処方箋集中率')).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/metrics', {
+      headers: { 'x-org-id': 'org_1' },
+    });
     expect(screen.getByText('後発医薬品調剤割合')).toBeTruthy();
     expect(screen.queryByText(/未達/)).toBeNull();
     expect(screen.queryByText(/超過/)).toBeNull();
