@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 import { act, render, screen, within } from '@testing-library/react';
-import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { AnalyticsContent } from './analytics-content';
 
@@ -19,37 +19,17 @@ vi.mock('@/lib/api/org-headers', async (importActual) => {
 
 setupDomTestEnv();
 
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  };
-}
-
 function renderContent() {
-  return render(<AnalyticsContent />, { wrapper: createWrapper() });
+  return render(<AnalyticsContent />, { wrapper: createQueryClientWrapper() });
 }
 
 function makeClient() {
-  return new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
+  return createTestQueryClient();
 }
 
 function renderWithClient(queryClient: QueryClient) {
   return render(<AnalyticsContent />, {
-    wrapper: ({ children }: { children: ReactNode }) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    ),
+    wrapper: createQueryClientWrapper(queryClient),
   });
 }
 

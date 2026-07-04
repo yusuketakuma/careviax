@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 import { act, render, screen } from '@testing-library/react';
-import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { StatisticsContent } from './statistics-content';
 import { STATISTICS_CATEGORIES, STATISTICS_SURFACES } from './statistics-surfaces';
@@ -40,24 +40,18 @@ function dispensingSuccess() {
 }
 
 function makeClient() {
-  return new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  return createTestQueryClient();
 }
 
 function renderContent() {
   return render(<StatisticsContent surfaces={STATISTICS_SURFACES} />, {
-    wrapper: ({ children }: { children: ReactNode }) => (
-      <QueryClientProvider client={makeClient()}>{children}</QueryClientProvider>
-    ),
+    wrapper: createQueryClientWrapper(),
   });
 }
 
 function renderWithClient(queryClient: QueryClient) {
   return render(<StatisticsContent surfaces={STATISTICS_SURFACES} />, {
-    wrapper: ({ children }: { children: ReactNode }) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    ),
+    wrapper: createQueryClientWrapper(queryClient),
   });
 }
 
@@ -233,10 +227,9 @@ describe('StatisticsContent', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const queryClient = makeClient();
+    const wrapper = createQueryClientWrapper(queryClient);
     const { rerender } = render(<StatisticsContent surfaces={STATISTICS_SURFACES} />, {
-      wrapper: ({ children }: { children: ReactNode }) => (
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-      ),
+      wrapper,
     });
 
     // disabled while hydrating
@@ -244,11 +237,7 @@ describe('StatisticsContent', () => {
 
     // org id resolves -> the query enables and fetches exactly once with the org header
     useOrgIdMock.mockReturnValue('org_1');
-    rerender(
-      <QueryClientProvider client={queryClient}>
-        <StatisticsContent surfaces={STATISTICS_SURFACES} />
-      </QueryClientProvider>,
-    );
+    rerender(<StatisticsContent surfaces={STATISTICS_SURFACES} />);
 
     expect(await screen.findByText('調剤 未着手')).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -331,9 +320,7 @@ describe('StatisticsContent', () => {
     const onlyCockpit = STATISTICS_SURFACES.filter((surface) => surface.href === '/dashboard');
 
     render(<StatisticsContent surfaces={onlyCockpit} />, {
-      wrapper: ({ children }: { children: ReactNode }) => (
-        <QueryClientProvider client={makeClient()}>{children}</QueryClientProvider>
-      ),
+      wrapper: createQueryClientWrapper(),
     });
 
     // the one allowed card renders; a filtered-out admin surface does not

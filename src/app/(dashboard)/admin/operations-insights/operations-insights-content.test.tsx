@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 import { OperationsInsightsContent } from './operations-insights-content';
 
 const { useOrgIdMock } = vi.hoisted(() => ({
@@ -35,20 +34,13 @@ const OPERATIONS_BODY = {
   },
 };
 
-function createQueryClient() {
-  return new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
+function makeClient() {
+  return createTestQueryClient();
 }
 
-function renderContent(queryClient = createQueryClient()) {
+function renderContent(queryClient = makeClient()) {
   return render(<OperationsInsightsContent />, {
-    wrapper: function Wrapper({ children }: { children: ReactNode }) {
-      return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-    },
+    wrapper: createQueryClientWrapper(queryClient),
   });
 }
 
@@ -78,7 +70,7 @@ describe('OperationsInsightsContent', () => {
 
   it('renders the operations summary as non-interactive shared StatCards', async () => {
     const fetchMock = stubOperationsFetch();
-    const queryClient = createQueryClient();
+    const queryClient = makeClient();
 
     renderContent(queryClient);
 
