@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import type { BillingCheckResponse } from '@/types/billing-check';
@@ -145,15 +146,12 @@ describe('BillingCheckContent', () => {
     const fixture = buildFixture();
     const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ data: fixture }),
-    } as unknown as Response);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: fixture }));
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await fetchBillingCheck('org_1', 'current');
 
-    expect(result).toBe(fixture);
+    expect(result).toStrictEqual(fixture);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('/api/billing-evidence/check?month=current');

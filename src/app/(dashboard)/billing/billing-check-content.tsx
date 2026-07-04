@@ -14,6 +14,7 @@ import {
   type BlockedReason,
   type EvidenceItem,
 } from '@/components/features/workspace/action-rail';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
@@ -40,8 +41,10 @@ export async function fetchBillingCheck(
   const res = await fetch(`/api/billing-evidence/check?month=${month}`, {
     headers: buildOrgHeaders(orgId),
   });
-  if (!res.ok) throw new Error('算定チェック集計の取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: BillingCheckResponse }>(
+    res,
+    '算定チェック集計の取得に失敗しました',
+  );
   return json.data;
 }
 

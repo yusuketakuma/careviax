@@ -7,6 +7,7 @@ import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page
 import { DataTable, type DataTableColumnMeta } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
@@ -26,8 +27,10 @@ async function fetchClerkSupport(orgId: string): Promise<ClerkSupportResponse> {
   const res = await fetch('/api/dashboard/clerk-support', {
     headers: buildOrgHeaders(orgId),
   });
-  if (!res.ok) throw new Error('事務サポート集計の取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: ClerkSupportResponse }>(
+    res,
+    '事務サポート集計の取得に失敗しました',
+  );
   return json.data;
 }
 
