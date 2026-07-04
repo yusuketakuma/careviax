@@ -1,5 +1,48 @@
 # CODEX Goal Progress
 
+## R10 Blocked Reason Rail Mapper Convergence - 2026-07-04 21:52 JST
+
+- Status:
+  - Implemented and validated the `blocked_reasons -> BlockedReason[]` portion
+    of R10:
+    - `src/lib/workspace/daily-ops-rail.ts`
+    - `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`
+    - `src/app/(dashboard)/handoff/handoff-workspace.helpers.ts`
+    - `src/app/(dashboard)/reports/report-share-workspace.helpers.ts`
+    - `src/app/(dashboard)/schedules/schedule-team-board.tsx`
+    - `src/app/(dashboard)/settings/operational-policy-content.tsx`
+    - `src/app/(dashboard)/billing/billing-check-content.tsx`
+    - `src/app/(dashboard)/admin/master-hub-content.tsx`
+    - `src/app/(dashboard)/patients/patients-board.tsx`
+    - `src/app/(dashboard)/visits/visits-today.tsx`
+- Scope:
+  - Generalized `buildDailyOpsBlockedReasons` to accept any payload with
+    `blocked_reasons`.
+  - Replaced nine local mapper copies with the shared builder.
+  - Confirmed the remaining matching mapper grep now resolves to the shared
+    implementation only.
+- Safety:
+  - Presentation helper consolidation only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    deployment, package dependency, query, mutation, org header, audit logging,
+    or server behavior changed.
+  - Existing category, elapsed-time, action label, and action href semantics are
+    preserved.
+- Validation:
+  - `pnpm exec vitest run src/lib/workspace/daily-ops-rail.test.ts 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' 'src/app/(dashboard)/settings/operational-policy-content.test.tsx' 'src/app/(dashboard)/billing/billing-check-content.test.tsx' 'src/app/(dashboard)/admin/master-hub-content.test.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `10` files / `152` tests. Existing React `act(...)` warnings were
+    emitted by handoff tests, but the suite passed.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed for the changed files.
+- Commit:
+  - Implementation slice landed at `ac8aa952`
+    (`refactor(workspace): share blocked reason mapping`).
+- Remaining:
+  - R10 still has `buildWorkspaceNextAction` near-duplicate follow-up work.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R09 Cockpit Action Rail Guard Convergence - 2026-07-04 21:44 JST
 
 - Status:

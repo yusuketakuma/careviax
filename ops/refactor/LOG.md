@@ -5,6 +5,21 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-04 R10-blocked-reasons ac8aa952
+
+- 分類: refactor / workspace rail helper convergence
+- 対象: `src/lib/workspace/daily-ops-rail.ts` + dashboard/handoff/report/schedule/settings/
+  billing/admin/patients/visits rail consumers
+- 実施: `buildDailyOpsBlockedReasons` の入力型を `blocked_reasons` payload へ一般化し、
+  9箇所の `blocked_reasons -> BlockedReason[]` 手組み mapper を共有 helper に置換。
+- 挙動変更: なし。category/age/action label/action href の変換結果は保持。
+- 安全: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は変更不要。
+  query/mutation/org header/audit/server behavior 不変。
+- 検証: focused rail consumer vitest 10 files / 152 tests green（既存 act warning は出力あり）。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit ac8aa952。
+- 残課題: R10 の `buildWorkspaceNextAction` 準コピーは別 follow-up。broad Plans.md objective は継続。
+
 ## 2026-07-04 R09 63b98972
 
 - 分類: refactor / cockpit action rail guard convergence
