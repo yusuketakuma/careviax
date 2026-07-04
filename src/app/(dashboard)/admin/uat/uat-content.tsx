@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SkeletonRows } from '@/components/ui/loading';
 import { SegmentedProgressBar } from '@/components/ui/segmented-progress-bar';
 import { Separator } from '@/components/ui/separator';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { UAT_CHECKLIST, UAT_PRIORITY_OPTIONS, UAT_STATUS_OPTIONS } from '@/lib/constants/uat';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -242,17 +243,7 @@ async function fetchOrgJson<T>(
     headers: buildUatRequestHeaders(orgId, init?.headers),
   });
 
-  const payload = (await response.json().catch(() => null)) as (T & { message?: string }) | null;
-
-  if (!response.ok) {
-    throw new Error(payload?.message ?? fallbackMessage);
-  }
-
-  if (!payload) {
-    throw new Error(fallbackMessage);
-  }
-
-  return payload;
+  return readApiJson<T>(response, fallbackMessage);
 }
 
 export function UatContent() {

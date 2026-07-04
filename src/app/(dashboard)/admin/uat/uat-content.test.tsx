@@ -9,18 +9,24 @@ import { UatContent } from './uat-content';
 
 setupDomTestEnv();
 
-const { mutateAsyncMock, invalidateQueriesMock, loadingQueryKeysMock } = vi.hoisted(() => ({
-  mutateAsyncMock: vi.fn(),
-  invalidateQueriesMock: vi.fn(),
-  loadingQueryKeysMock: new Set<string>(),
-}));
+const { mutateAsyncMock, invalidateQueriesMock, loadingQueryKeysMock, queryOptionsMock } =
+  vi.hoisted(() => ({
+    mutateAsyncMock: vi.fn(),
+    invalidateQueriesMock: vi.fn(),
+    loadingQueryKeysMock: new Set<string>(),
+    queryOptionsMock: [] as Array<{
+      queryKey?: readonly unknown[];
+      queryFn?: () => Promise<unknown>;
+    }>,
+  }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
 
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: (options: { queryKey?: readonly unknown[] }) => {
+  useQuery: (options: { queryKey?: readonly unknown[]; queryFn?: () => Promise<unknown> }) => {
+    queryOptionsMock.push(options);
     const queryName = String(options.queryKey?.[0] ?? '');
     if (loadingQueryKeysMock.has(queryName)) {
       return {
@@ -84,16 +90,24 @@ vi.mock('sonner', () => ({
   },
 }));
 
+function queryFnFor(queryKeyName: string) {
+  const queryFn = queryOptionsMock.find(
+    (options) => options.queryKey?.[0] === queryKeyName,
+  )?.queryFn;
+  if (typeof queryFn !== 'function') throw new Error(`Missing queryFn for ${queryKeyName}`);
+  return queryFn;
+}
+
 describe('UatContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     loadingQueryKeysMock.clear();
+    queryOptionsMock.length = 0;
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({
-        ok: true,
-        json: async () => ({ data: { id: 'feedback_1' } }),
-      })),
+      vi.fn(
+        async () => new Response(JSON.stringify({ data: { id: 'feedback_1' } }), { status: 200 }),
+      ),
     );
   });
 
@@ -167,5 +181,35 @@ describe('UatContent', () => {
 
     expect(screen.getByRole('status', { name: '保存済みフィードバックを読み込み中' })).toBeTruthy();
     expect(screen.queryByText('読み込み中...', { selector: 'p' })).toBeNull();
+  });
+
+  it('uses org-scoped headers for UAT read endpoints', async () => {
+    render(<UatContent />);
+
+    await queryFnFor('uat-feedback')();
+    await queryFnFor('pilot-readiness')();
+    await queryFnFor('uat-feedback-summary')();
+    await queryFnFor('uat-feedback-collaborators')();
+    await queryFnFor('pilot-org-audit')();
+    await queryFnFor('pilot-launch-dossier')();
+
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/admin/uat-feedback', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/admin/pilot-readiness', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/admin/uat-feedback/summary', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/pharmacists?include_collaborators=true', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/admin/pilot-org-audit', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/admin/pilot-launch-dossier', {
+      headers: { 'x-org-id': 'org_1' },
+    });
   });
 });
