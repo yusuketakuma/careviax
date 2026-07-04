@@ -11,6 +11,7 @@ import { CommentThread } from '@/components/features/comments/comment-thread';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { usePresenceUsers } from '@/lib/hooks/use-presence-users';
 import { usePresenceHeartbeat } from '@/lib/hooks/use-presence-heartbeat';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
@@ -73,8 +74,7 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
       const res = await fetch(buildPatientApiPath(patientId, '/overview'), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('患者情報の取得に失敗しました');
-      return res.json();
+      return readApiJson<PatientOverview>(res, '患者情報の取得に失敗しました');
     },
     enabled: Boolean(orgId),
   });

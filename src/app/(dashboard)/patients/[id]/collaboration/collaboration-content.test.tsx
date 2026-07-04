@@ -278,6 +278,39 @@ describe('CollaborationContent realtime presence policy', () => {
     }
   });
 
+  it('surfaces API error messages when patient overview fails to load', async () => {
+    const queryConfigs: Array<{ queryKey?: unknown[]; queryFn?: () => Promise<unknown> }> = [];
+    useQueryMock.mockImplementation(
+      (options: { queryKey?: unknown[]; queryFn?: () => Promise<unknown> }) => {
+        queryConfigs.push(options);
+        const [scope] = options.queryKey ?? [];
+        if (scope === 'presence') return { data: [] };
+        if (scope === 'patient-overview') {
+          return { data: undefined, isError: true, isLoading: false };
+        }
+        throw new Error(`Unexpected query key: ${JSON.stringify(options.queryKey)}`);
+      },
+    );
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ message: '患者情報の閲覧権限がありません' }, 403));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<CollaborationContent patientId="patient_1" />);
+      const overviewConfig = queryConfigs.find(
+        (config) => config.queryKey?.[0] === 'patient-overview',
+      );
+
+      await expect(overviewConfig?.queryFn?.()).rejects.toThrow('患者情報の閲覧権限がありません');
+      expect(fetchMock).toHaveBeenCalledWith('/api/patients/patient_1/overview', {
+        headers: buildOrgHeaders('org_1'),
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('renders the workflow back link through buildPatientHref', () => {
     const hostilePatientId = 'patient/1?tab=overview#frag';
 
