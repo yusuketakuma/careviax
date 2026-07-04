@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R25 Prescription Intake ErrorState Retry Shorthand Partial - 2026-07-04 23:14 JST
+
+- Status:
+  - Implemented and validated the next bounded R25 slice:
+    - `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`
+- Scope:
+  - Migrated four prescription intake ErrorState retry actions from hand-written
+    `action={{ label: '再読み込み', onClick }}` objects to `onRetry` +
+    `retryLabel`.
+  - Preserved visible retry copy and existing refetch handlers for generic
+    candidates, previous prescriptions, patient search, and case lookup.
+- Safety:
+  - UI presentation/refactor only.
+  - Visible labels, click handlers, error branch behavior, and prescription
+    intake lookup behavior are preserved.
+  - No product API, DB, auth, authorization, PHI projection, prescription
+    payload semantics, billing, audit, deployment, package dependency, live DB
+    operation, external send, secret handling, push, or destructive operation
+    changed.
+- Validation:
+  - Targeted scan for hand-written `再読み込み` ErrorState actions in
+    `prescriptions/new/prescription-intake-form.tsx` returned no matches.
+  - `pnpm exec vitest run 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.test.tsx' 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.contract.test.ts' --reporter=dot --testTimeout=30000`
+    passed `2` files / `17` tests with existing React `act(...)` warnings on
+    several async lookup tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `b9a55665`
+    (`refactor(ui): route prescription intake error retries through shorthand`).
+- Remaining:
+  - R25 is partial; remaining ErrorState retry action boilerplate should be
+    migrated in bounded screen/domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R25 Patient Medications ErrorState Retry Shorthand Partial - 2026-07-04 23:12 JST
 
 - Status:
