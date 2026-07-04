@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { Plus, Trash2 } from 'lucide-react';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -394,7 +395,19 @@ export function FacilitiesContent() {
   const [query, setQuery] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editingFacility, setEditingFacility] = useState<Facility | null>(null);
-  const [form, setForm] = useState<FacilityForm>(createEmptyForm);
+  const {
+    control: facilityFormControl,
+    register: registerFacilityField,
+    getValues: getFacilityFormValues,
+    reset: resetFacilityForm,
+    setValue: setFacilityFormValue,
+  } = useForm<FacilityForm>({
+    defaultValues: createEmptyForm(),
+  });
+  const watchedFacilityForm = useWatch({
+    control: facilityFormControl,
+    defaultValue: createEmptyForm(),
+  });
   const [deleteTarget, setDeleteTarget] = useState<Facility | null>(null);
   const [unitForm, setUnitForm] = useState<UnitForm | null>(null);
   const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
@@ -430,14 +443,34 @@ export function FacilitiesContent() {
     () => facilities.filter((facility) => matchesFacilityQuery(facility, query)),
     [facilities, query],
   );
+  const form = {
+    ...createEmptyForm(),
+    ...watchedFacilityForm,
+    regular_visit_weekdays: watchedFacilityForm.regular_visit_weekdays ?? [],
+    contacts: watchedFacilityForm.contacts ?? [],
+  };
   const formBlocker = getFormBlocker(form, editingFacility);
   const unitFormBlocker = getUnitFormBlocker(unitForm);
   const totalCount = data?.total_count ?? facilities.length;
   const hiddenCount = data?.hidden_count ?? 0;
 
+  function getCurrentFacilityForm() {
+    const current = getFacilityFormValues();
+    return {
+      ...createEmptyForm(),
+      ...current,
+      regular_visit_weekdays: current.regular_visit_weekdays ?? [],
+      contacts: current.contacts ?? [],
+    };
+  }
+
+  function setFacilityContacts(contacts: ContactForm[]) {
+    setFacilityFormValue('contacts', contacts, { shouldDirty: true });
+  }
+
   function resetForm() {
     setEditingFacility(null);
-    setForm(createEmptyForm());
+    resetFacilityForm(createEmptyForm());
     setUnitForm(null);
     setEditingUnitId(null);
     setUnitDeleteTarget(null);
@@ -450,36 +483,39 @@ export function FacilitiesContent() {
 
   function openEdit(facility: Facility) {
     setEditingFacility(facility);
-    setForm(toForm(facility));
+    resetFacilityForm(toForm(facility));
     setUnitForm(null);
     setEditingUnitId(null);
     setSheetOpen(true);
   }
 
   function updateContact(index: number, next: Partial<ContactForm>) {
-    setForm((current) => ({
-      ...current,
-      contacts: current.contacts.map((contact, contactIndex) =>
+    const contacts = getFacilityFormValues('contacts') ?? [];
+    setFacilityContacts(
+      contacts.map((contact, contactIndex) =>
         contactIndex === index ? { ...contact, ...next } : contact,
       ),
-    }));
+    );
   }
 
   function toggleWeekday(value: number, checked: boolean) {
-    setForm((current) => {
-      const nextValues = checked
-        ? Array.from(new Set([...current.regular_visit_weekdays, value]))
-        : current.regular_visit_weekdays.filter((weekday) => weekday !== value);
-      return {
-        ...current,
-        regular_visit_weekdays: nextValues.sort((a, b) => a - b),
-      };
-    });
+    const weekdays = getFacilityFormValues('regular_visit_weekdays') ?? [];
+    const nextValues = checked
+      ? Array.from(new Set([...weekdays, value]))
+      : weekdays.filter((weekday) => weekday !== value);
+    setFacilityFormValue(
+      'regular_visit_weekdays',
+      nextValues.sort((a, b) => a - b),
+      {
+        shouldDirty: true,
+      },
+    );
   }
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const blocker = getFormBlocker(form, editingFacility);
+      const currentForm = getCurrentFacilityForm();
+      const blocker = getFormBlocker(currentForm, editingFacility);
       if (blocker) throw new Error(blocker);
       const endpoint = editingFacility
         ? buildAdminFacilityApiPath(editingFacility.id)
@@ -489,7 +525,9 @@ export function FacilitiesContent() {
         method,
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(
-          editingFacility ? buildUpdatePayload(form, editingFacility) : buildCreatePayload(form),
+          editingFacility
+            ? buildUpdatePayload(currentForm, editingFacility)
+            : buildCreatePayload(currentForm),
         ),
       });
       const payload = await response.json().catch(() => ({}));
@@ -811,66 +849,40 @@ export function FacilitiesContent() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-1.5 md:col-span-2">
                 <Label htmlFor="facility-name">施設名</Label>
-                <Input
-                  id="facility-name"
-                  value={form.name}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, name: event.target.value }))
-                  }
-                />
+                <Input id="facility-name" {...registerFacilityField('name')} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="facility-type">施設種別</Label>
-                <Select
-                  value={form.facility_type}
-                  onValueChange={(value) =>
-                    setForm((current) => ({
-                      ...current,
-                      facility_type: value as FacilityType,
-                    }))
-                  }
-                >
-                  <SelectTrigger id="facility-type" className="!h-11 !min-h-[44px]">
-                    <SelectValue placeholder="施設種別" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {FACILITY_TYPES.map((type) => (
-                      <SelectItem key={type.value} value={type.value}>
-                        {type.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Controller
+                  control={facilityFormControl}
+                  name="facility_type"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger id="facility-type" className="!h-11 !min-h-[44px]">
+                        <SelectValue placeholder="施設種別" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FACILITY_TYPES.map((type) => (
+                          <SelectItem key={type.value} value={type.value}>
+                            {type.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="facility-address">住所</Label>
-                <Input
-                  id="facility-address"
-                  value={form.address}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, address: event.target.value }))
-                  }
-                />
+                <Input id="facility-address" {...registerFacilityField('address')} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="facility-phone">電話番号</Label>
-                <Input
-                  id="facility-phone"
-                  value={form.phone}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, phone: event.target.value }))
-                  }
-                />
+                <Input id="facility-phone" {...registerFacilityField('phone')} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="facility-fax">FAX</Label>
-                <Input
-                  id="facility-fax"
-                  value={form.fax}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, fax: event.target.value }))
-                  }
-                />
+                <Input id="facility-fax" {...registerFacilityField('fax')} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="facility-time-from">受入開始</Label>
@@ -878,13 +890,7 @@ export function FacilitiesContent() {
                   id="facility-time-from"
                   type="time"
                   className="!h-11 !min-h-[44px]"
-                  value={form.acceptance_time_from}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      acceptance_time_from: event.target.value,
-                    }))
-                  }
+                  {...registerFacilityField('acceptance_time_from')}
                 />
               </div>
               <div className="space-y-1.5">
@@ -893,13 +899,7 @@ export function FacilitiesContent() {
                   id="facility-time-to"
                   type="time"
                   className="!h-11 !min-h-[44px]"
-                  value={form.acceptance_time_to}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      acceptance_time_to: event.target.value,
-                    }))
-                  }
+                  {...registerFacilityField('acceptance_time_to')}
                 />
               </div>
               <div className="space-y-2 md:col-span-2">
@@ -923,14 +923,7 @@ export function FacilitiesContent() {
               </div>
               <div className="space-y-1.5 md:col-span-2">
                 <Label htmlFor="facility-notes">備考</Label>
-                <Textarea
-                  id="facility-notes"
-                  rows={4}
-                  value={form.notes}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, notes: event.target.value }))
-                  }
-                />
+                <Textarea id="facility-notes" rows={4} {...registerFacilityField('notes')} />
               </div>
             </div>
 
@@ -947,10 +940,10 @@ export function FacilitiesContent() {
                   variant="outline"
                   className="!h-11 !min-h-[44px]"
                   onClick={() =>
-                    setForm((current) => ({
-                      ...current,
-                      contacts: [...current.contacts, createEmptyContact()],
-                    }))
+                    setFacilityContacts([
+                      ...(getFacilityFormValues('contacts') ?? []),
+                      createEmptyContact(),
+                    ])
                   }
                 >
                   <Plus aria-hidden className="mr-2 h-4 w-4" />
@@ -985,12 +978,11 @@ export function FacilitiesContent() {
                           className="!h-11 !min-h-[44px] !w-11 px-0"
                           aria-label={`担当者${index + 1}を削除`}
                           onClick={() =>
-                            setForm((current) => ({
-                              ...current,
-                              contacts: current.contacts.filter(
+                            setFacilityContacts(
+                              (getFacilityFormValues('contacts') ?? []).filter(
                                 (_contact, contactIndex) => contactIndex !== index,
                               ),
-                            }))
+                            )
                           }
                         >
                           <Trash2 aria-hidden className="h-4 w-4" />
