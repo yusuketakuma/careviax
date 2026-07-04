@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { stubJsonFetch } from '@/test/fetch-test-utils';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useRealtimeQueryMock = vi.hoisted(() => vi.fn());
@@ -165,6 +166,37 @@ describe('WorkflowDashboardContent', () => {
     expect(screen.getByTestId('workflow-integration-map')).toBeTruthy();
     expect(screen.getByText('訪問記録を報告書へ展開する')).toBeTruthy();
     expect(screen.getByTestId('workflow-communication')).toBeTruthy();
+  });
+
+  it('fetches workflow dashboard data with org headers and the shared JSON reader contract', async () => {
+    const fetchMock = stubJsonFetch({ data: buildWorkflowData() });
+    let captured: { queryKey: unknown[]; queryFn: () => Promise<unknown> } | undefined;
+    useRealtimeQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn: () => Promise<unknown> }) => {
+        captured = config;
+        return {
+          data: { data: buildWorkflowData() },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      },
+    );
+
+    try {
+      render(<WorkflowDashboardContent />);
+
+      if (!captured) throw new Error('query config was not captured');
+      expect(captured.queryKey).toEqual(['dashboard-workflow', 'org_1']);
+
+      await expect(captured.queryFn()).resolves.toStrictEqual({ data: buildWorkflowData() });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('/api/dashboard/workflow');
+      expect(init.headers).toEqual({ 'x-org-id': 'org_1' });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('shows an error state instead of an empty workflow dashboard when initial loading fails', () => {

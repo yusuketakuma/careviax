@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -69,8 +70,7 @@ export function WorkflowDashboardContent({
       const res = await fetch('/api/dashboard/workflow', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('ダッシュボードの取得に失敗しました');
-      return res.json() as Promise<{ data: WorkflowData }>;
+      return readApiJson<{ data: WorkflowData }>(res, 'ダッシュボードの取得に失敗しました');
     },
     enabled: !!orgId,
     fallbackRefetchInterval: 60_000,
