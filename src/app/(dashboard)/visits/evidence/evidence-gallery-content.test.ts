@@ -42,4 +42,13 @@ describe('fetchVisitRecordsWithAttachments', () => {
       },
     );
   });
+
+  it('surfaces API messages from failed gallery list requests', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ message: 'API側の証跡一覧エラー' }, 503));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchVisitRecordsWithAttachments('org_1')).rejects.toThrow(
+      'API側の証跡一覧エラー',
+    );
+  });
 });

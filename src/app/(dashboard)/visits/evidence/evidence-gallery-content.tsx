@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { Button } from '@/components/ui/button';
@@ -52,8 +53,7 @@ export async function fetchVisitRecordsWithAttachments(
       headers,
     },
   );
-  if (!listRes.ok) throw new Error('訪問記録の取得に失敗しました');
-  const list = (await listRes.json()) as VisitRecordListResponse;
+  const list = await readApiJson<VisitRecordListResponse>(listRes, '訪問記録の取得に失敗しました');
   return (list.data ?? []).slice(0, MAX_RECORDS_FOR_ATTACHMENTS);
 }
 
