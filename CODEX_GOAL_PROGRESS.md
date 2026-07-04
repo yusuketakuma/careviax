@@ -1,5 +1,38 @@
 # CODEX Goal Progress
 
+## R23 Prescription Intake Error Message Helper Partial - 2026-07-05 00:28 JST
+
+- Status:
+  - Implemented and validated the first bounded R23 slice:
+    - `src/app/(dashboard)/prescriptions/new/prescription-intake-submit.ts`
+    - `src/app/(dashboard)/prescriptions/new/prescription-intake-submit.test.ts`
+    - `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`
+- Scope:
+  - Reused the existing `messageFromError` helper for prescription intake submit
+    fallback formatting and original-document upload errors.
+  - Added coverage that empty Error messages and non-Error values fall back to
+    the provided prescription intake fallback.
+- Safety:
+  - Client/helper error message formatting only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    audit, deployment, package dependency, live DB operation, external send,
+    secret handling, push, or destructive operation changed.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/prescriptions/new/prescription-intake-submit.test.ts' 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.test.tsx' src/lib/utils/error-message.test.ts --reporter=dot --testTimeout=30000`
+    passed `3` files / `17` tests with pre-existing React `act(...)` warnings in
+    `prescription-intake-form.test.tsx`.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `a510f2c2`
+    (`refactor(ui): reuse error message helper in prescription intake`).
+- Remaining:
+  - R23 is partial; remaining hand-rolled error-message ternaries should be
+    migrated by bounded domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R25 ErrorState Retry Shorthand Complete - 2026-07-05 00:20 JST
 
 - Status:

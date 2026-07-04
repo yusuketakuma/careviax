@@ -5,6 +5,23 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R23-prescription-intake a510f2c2
+
+- 分類: dup-helper / error message helper convergence
+- 対象: `src/app/(dashboard)/prescriptions/new/prescription-intake-submit.ts`,
+  `src/app/(dashboard)/prescriptions/new/prescription-intake-submit.test.ts`,
+  `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`
+- 実施: prescription intake submit/original-document error formatting を既存
+  `messageFromError` へ収束。empty Error message の fallback テストを追加。
+- 挙動変更: 空の Error message は shared helper 契約どおり fallback へ正規化。
+  blocked line detail formatting と通常 Error message は維持。
+- 安全: client/helper error formatting のみ。product API/DB/auth/authorization/PHI/billing/deploy/package
+  dependency は変更不要。audit/live DB/external send/secret/push/destructive operation 不変。
+- 検証: focused prescription-intake/error-message vitest 3 files / 17 tests green
+  （既存 React act warning あり）。scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit a510f2c2。
+- 残課題: R23 は partial。残りの hand-rolled error-message ternary は段階移行を継続。
+
 ## 2026-07-05 R25-complete 0f3d0151+3ed6ad78
 
 - 分類: pattern-inconsistency / ErrorState retry action convergence
