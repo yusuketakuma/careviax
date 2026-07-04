@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## W3-B2 VisitInstruction + SpecialPatientStatus Plan - 2026-07-04 09:25 JST
+
+- Scope:
+  - Planning only. No schema, migration, API, RLS file, generated client, DB
+    apply, commit, or push performed.
+  - Target clarified as `Plans.md` W3-B2:
+    `VisitInstruction` + `SpecialPatientStatus`, not the historical W3-B2
+    BillingRequirementCatalog label.
+- Proposed:
+  - Add org-scoped `VisitInstruction` as the durable physician-instruction /
+    effective-period root with required create-time `display_id`, patient/case
+    / optional schedule relations, instruction date/content, and validity
+    range.
+  - Add org-scoped `SpecialPatientStatus` as the durable weekly/monthly cap
+    input source with required create-time `display_id`, patient/case / optional
+    source visit-record relations, status type, evidence, set_by/set_at, and
+    validity range.
+  - Add optional `structured_soap.special_patient_statuses` type/zod skeleton
+    for visit-time capture/provenance while keeping existing structured SOAP
+    payloads backward-compatible.
+  - Add fail-closed RLS for both new org tables in the migration and
+    `prisma/rls-policies.sql`, using `public.app_enforced_org_id()`.
+  - Register both models in `DISPLAY_ID_REGISTRY` and display-id coverage
+    tests.
+- Open reviewer decisions sent through agmsg:
+  - `@db.Date` vs full `DateTime` for instruction/status validity dates.
+  - Required `display_id` on new empty tables vs nullable/backfill style.
+  - Durable `SpecialPatientStatus` table + optional JSON provenance vs JSON-only.
+- Safety:
+  - Existing VisitRecord, billing validator, report generator, UI completion
+    gate, invoice/PDF behavior, and claimable calculation remain unchanged.
+  - Pending billing requirements stay fail-closed until later coverage/checker
+    wiring removes pending state.
+- Status:
+  - Plan sent to Claude/Fable through agmsg for reviewer audit.
+  - Awaiting reviewer decision before implementation.
+
 ## W3-C1-A Drug Price Version Snapshot - 2026-07-04 09:05 JST
 
 - Scope:
