@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import type { PhysicianReportContent } from '@/types/care-report-content';
@@ -41,6 +41,52 @@ function buildContent(overrides: Partial<PhysicianReportContent> = {}): Physicia
 }
 
 describe('PhysicianReportView', () => {
+  it('renders prescriptions and residual medications through labeled data tables', () => {
+    render(
+      <PhysicianReportView
+        content={buildContent({
+          prescriptions: [
+            { drug_name: '薬A', dose: '1錠', frequency: '朝', days: 14 },
+            { drug_name: '薬B', dose: '2錠', frequency: '夕', days: 7 },
+          ],
+          residual_medications: [
+            {
+              drug_name: '薬A',
+              remaining_qty: 12,
+              excess_days: 3,
+              reduction_proposal: true,
+            },
+          ],
+        })}
+      />,
+    );
+
+    const prescriptionTable = screen.getByRole('table', { name: '処方薬一覧' });
+    expect(within(prescriptionTable).getByText('薬A')).toBeTruthy();
+    expect(within(prescriptionTable).getByText('1錠')).toBeTruthy();
+    expect(within(prescriptionTable).getByText('朝')).toBeTruthy();
+    expect(within(prescriptionTable).getByText('14日')).toBeTruthy();
+
+    const residualTable = screen.getByRole('table', { name: '残薬一覧' });
+    expect(within(residualTable).getByText('薬A')).toBeTruthy();
+    expect(within(residualTable).getByText('12')).toBeTruthy();
+    expect(within(residualTable).getByText('3日')).toBeTruthy();
+    expect(within(residualTable).getByText('提案あり')).toBeTruthy();
+  });
+
+  it('omits prescription and residual medication sections when their arrays are empty', () => {
+    render(
+      <PhysicianReportView
+        content={buildContent({ prescriptions: [], residual_medications: [] })}
+      />,
+    );
+
+    expect(screen.queryByText('処方内容')).toBeNull();
+    expect(screen.queryByText('残薬状況')).toBeNull();
+    expect(screen.queryByRole('table', { name: '処方薬一覧' })).toBeNull();
+    expect(screen.queryByRole('table', { name: '残薬一覧' })).toBeNull();
+  });
+
   it('lists classified prescriptions under その他薬（セット外で持参） (§11-7)', () => {
     render(
       <PhysicianReportView

@@ -1,7 +1,9 @@
 'use client';
 
+import type { ColumnDef } from '@tanstack/react-table';
 import { AlertTriangle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { DataTable, type DataTableColumnMeta } from '@/components/ui/data-table';
 import { StateBadge } from '@/components/ui/state-badge';
 import { ADHERENCE_LABELS } from '@/lib/constants/soap-options';
 import type { PhysicianReportContent } from '@/types/care-report-content';
@@ -31,6 +33,75 @@ function FunctionalItem({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+type PrescriptionReportRow = PhysicianReportContent['prescriptions'][number];
+type ResidualMedicationReportRow = PhysicianReportContent['residual_medications'][number];
+
+const prescriptionColumns: ColumnDef<PrescriptionReportRow>[] = [
+  {
+    accessorKey: 'drug_name',
+    header: '薬剤名',
+    enableSorting: false,
+    meta: { mobileLabel: '薬剤名' } satisfies DataTableColumnMeta<PrescriptionReportRow>,
+    cell: ({ row }) => <span className="font-medium">{row.original.drug_name}</span>,
+  },
+  {
+    accessorKey: 'dose',
+    header: '用量',
+    enableSorting: false,
+    meta: { mobileLabel: '用量' } satisfies DataTableColumnMeta<PrescriptionReportRow>,
+    cell: ({ row }) => <span className="text-muted-foreground">{row.original.dose}</span>,
+  },
+  {
+    accessorKey: 'frequency',
+    header: '用法',
+    enableSorting: false,
+    meta: { mobileLabel: '用法' } satisfies DataTableColumnMeta<PrescriptionReportRow>,
+    cell: ({ row }) => <span className="text-muted-foreground">{row.original.frequency}</span>,
+  },
+  {
+    accessorKey: 'days',
+    header: '日数',
+    enableSorting: false,
+    meta: { mobileLabel: '日数' } satisfies DataTableColumnMeta<PrescriptionReportRow>,
+    cell: ({ row }) => <span className="tabular-nums">{row.original.days}日</span>,
+  },
+];
+
+const residualMedicationColumns: ColumnDef<ResidualMedicationReportRow>[] = [
+  {
+    accessorKey: 'drug_name',
+    header: '薬剤名',
+    enableSorting: false,
+    meta: { mobileLabel: '薬剤名' } satisfies DataTableColumnMeta<ResidualMedicationReportRow>,
+  },
+  {
+    accessorKey: 'remaining_qty',
+    header: '残数',
+    enableSorting: false,
+    meta: { mobileLabel: '残数' } satisfies DataTableColumnMeta<ResidualMedicationReportRow>,
+    cell: ({ row }) => <span className="tabular-nums">{row.original.remaining_qty}</span>,
+  },
+  {
+    accessorKey: 'excess_days',
+    header: '余剰日数',
+    enableSorting: false,
+    meta: { mobileLabel: '余剰日数' } satisfies DataTableColumnMeta<ResidualMedicationReportRow>,
+    cell: ({ row }) => <span className="tabular-nums">{row.original.excess_days}日</span>,
+  },
+  {
+    accessorKey: 'reduction_proposal',
+    header: '減数提案',
+    enableSorting: false,
+    meta: { mobileLabel: '減数提案' } satisfies DataTableColumnMeta<ResidualMedicationReportRow>,
+    cell: ({ row }) =>
+      row.original.reduction_proposal ? (
+        <StateBadge role="info">提案あり</StateBadge>
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      ),
+  },
+];
 
 export function PhysicianReportView({ content }: { content: PhysicianReportContent }) {
   const adherenceCfg = ADHERENCE_LABELS[content.medication_management.adherence_score];
@@ -111,40 +182,11 @@ export function PhysicianReportView({ content }: { content: PhysicianReportConte
       {/* Prescriptions */}
       {content.prescriptions.length > 0 && (
         <SectionCard title="処方内容">
-          <div className="overflow-auto rounded-md border border-border">
-            <table className="w-full text-sm">
-              <caption className="sr-only">処方薬一覧</caption>
-              <thead className="bg-muted/60">
-                <tr className="border-b border-border">
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                    薬剤名
-                  </th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                    用量
-                  </th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                    用法
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
-                    日数
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {content.prescriptions.map((rx, i) => (
-                  <tr
-                    key={i}
-                    className={`border-b border-border last:border-0 ${i % 2 === 1 ? 'bg-muted/20' : ''}`}
-                  >
-                    <td className="px-3 py-2 font-medium">{rx.drug_name}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{rx.dose}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{rx.frequency}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{rx.days}日</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={prescriptionColumns}
+            data={content.prescriptions}
+            caption="処方薬一覧"
+          />
         </SectionCard>
       )}
 
@@ -243,46 +285,11 @@ export function PhysicianReportView({ content }: { content: PhysicianReportConte
       {/* Residual medications */}
       {content.residual_medications.length > 0 && (
         <SectionCard title="残薬状況">
-          <div className="overflow-auto rounded-md border border-border">
-            <table className="w-full text-sm">
-              <caption className="sr-only">残薬一覧</caption>
-              <thead className="bg-muted/60">
-                <tr className="border-b border-border">
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                    薬剤名
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
-                    残数
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
-                    余剰日数
-                  </th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                    減数提案
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {content.residual_medications.map((med, i) => (
-                  <tr
-                    key={i}
-                    className={`border-b border-border last:border-0 ${i % 2 === 1 ? 'bg-muted/20' : ''}`}
-                  >
-                    <td className="px-3 py-2">{med.drug_name}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{med.remaining_qty}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{med.excess_days}日</td>
-                    <td className="px-3 py-2">
-                      {med.reduction_proposal ? (
-                        <StateBadge role="info">提案あり</StateBadge>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={residualMedicationColumns}
+            data={content.residual_medications}
+            caption="残薬一覧"
+          />
         </SectionCard>
       )}
 
