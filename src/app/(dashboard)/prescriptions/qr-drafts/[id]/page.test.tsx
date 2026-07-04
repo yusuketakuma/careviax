@@ -233,6 +233,17 @@ describe('QrDraftReviewPage case lookup error handling', () => {
     expect(refetchCasesMock).toHaveBeenCalledTimes(1);
   });
 
+  it('uses a named skeleton while case options are loading', () => {
+    casesQueryResult = { data: undefined, isError: false, isLoading: true };
+
+    render(<QrDraftReviewPage />);
+
+    expect(screen.getByRole('status', { name: 'ケース一覧を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('ケースを読み込み中です...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText('ケース一覧を読み込めませんでした')).toBeNull();
+    expect(screen.queryByText('この患者に紐付くアクティブなケースが見つかりません。')).toBeNull();
+  });
+
   it('drops a previously selected case when it disappears from the active case options', () => {
     casesQueryResult = {
       data: {

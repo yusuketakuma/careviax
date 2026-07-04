@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Loading } from '@/components/ui/loading';
+import { Loading, SkeletonRows } from '@/components/ui/loading';
 import { ErrorState } from '@/components/ui/error-state';
 import {
   Select,
@@ -774,7 +774,9 @@ export default function QrDraftReviewPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {isCasesLoading ? (
-              <p className="text-sm text-muted-foreground">ケースを読み込み中です...</p>
+              <div role="status" aria-label="ケース一覧を読み込み中" aria-live="polite">
+                <SkeletonRows rows={2} cols={2} status={false} />
+              </div>
             ) : isCasesError ? (
               <ErrorState
                 variant="server"
