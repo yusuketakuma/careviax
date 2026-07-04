@@ -1,5 +1,48 @@
 # CODEX Goal Progress
 
+## R55 Generic Loading Component Closure - 2026-07-04 21:22 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/shared/[token]/page.tsx`
+    - `src/app/shared/[token]/page.test.tsx`
+    - `src/app/(dashboard)/admin/pca-pumps/loading.tsx`
+    - `src/app/(dashboard)/admin/pca-pumps/loading.test.tsx`
+- Scope:
+  - Replaced the last raw generic `<Loading />` usages with screen-specific
+    statuses:
+    - `共有ページを読み込み中...`
+    - `PCAポンプレンタルを読み込み中...`
+  - Added regression tests proving the shared route fallback and PCA segment
+    loading file no longer expose generic `読み込み中...`.
+  - Confirmed the whole app/component generic `<Loading />` scan now returns no
+    matches.
+- Safety:
+  - Loading presentation and tests only.
+  - No external shared viewer query, OTP redirect behavior, token handling,
+    shared content projection, PCA pump query, API path, org header, DB, auth,
+    authorization, PHI projection, billing semantics, audit, deployment,
+    package, or server behavior changed.
+  - Loading copy is PHI-free and does not echo token values, patient names,
+    medication details, visit schedules, self-report content, recipients,
+    billing values, org IDs, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/shared/[token]/page.test.tsx' 'src/app/(dashboard)/admin/pca-pumps/loading.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `2` files / `3` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed for the changed source/test files.
+  - Targeted and whole app/component generic `<Loading />` scans returned no
+    matches.
+- Commit:
+  - Implementation slice landed at `40ce6f25`
+    (`fix(loading): name remaining loading states`).
+- Remaining:
+  - Broader Plans.md objective remains open.
+  - R55 still needs component-level re-triage for generic visible
+    `読み込み中...` and non-skeleton loading copy beyond raw `<Loading />`.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Patient/Prescription/Schedule Route Loading Closure - 2026-07-04 21:17 JST
 
 - Status:

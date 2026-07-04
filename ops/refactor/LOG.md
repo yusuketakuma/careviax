@@ -1653,3 +1653,29 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - commit: `eec7e953` (`fix(routes): close patient loading fallbacks`)。
 - 残課題: dashboard route-level generic fallback は closure。broad Plans.md / R55 residual scan は継続。
   `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
+## 2026-07-04 R55 generic Loading component closure
+
+- 分類: UI loading-state cleanup / R55 generic Loading residual。
+- 実施:
+  - `shared/[token]/page.tsx` の external shared viewer Suspense fallback を generic
+    `<Loading />` から `共有ページを読み込み中...` の画面固有 status へ変更。
+  - `admin/pca-pumps/loading.tsx` の segment loading file を generic `<Loading />` から
+    `PCAポンプレンタルを読み込み中...` へ変更。
+  - 2 route/loading file の tests を追加し、generic `読み込み中...` が出ないこと、
+    suspended content が出ないこと、route token wiring が保持されることを固定。
+- 挙動変更: loading label のみ。external shared viewer query、OTP redirect behavior、
+  token handling、shared content projection、PCA pump query、API path、org header、
+  API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の Clear state / false-empty prevention と
+  loading UI は軽量で意味のある state にする Next loading/Suspense guidance に整合。
+- 安全性: product API/DB/auth/authorization/PHI projection/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、token value・patient name・medication detail・visit schedule・self-report content・recipient・billing value・org id・raw error
+  を出さない。
+- 検証: focused shared/PCA loading Vitest `2 files / 3 tests` green、targeted ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+  targeted generic `<Loading />` scan と whole app/component generic `<Loading />` scan は no matches。
+- commit: `40ce6f25` (`fix(loading): name remaining loading states`)。
+- 残課題: raw `<Loading />` は closure。R55 は component-level generic visible `読み込み中...` と
+  non-skeleton loading copy の再triageを継続。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
