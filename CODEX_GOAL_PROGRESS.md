@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R40/R44 Patient Labs readApiJson Partial - 2026-07-05 05:51 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/patients/[id]/patient-labs-card.tsx`
+    - `src/app/(dashboard)/patients/[id]/patient-labs-card.test.tsx`
+- Scope:
+  - Reused `readApiJson<LabsResponse>` for the patient labs GET.
+  - Added a queryFn contract test proving API JSON `message` from a failed GET
+    is surfaced through the shared helper.
+  - Preserved `buildPatientApiPath(patientId, '/labs')`, `?limit=30`,
+    `buildOrgHeaders`, React Query key, enabled gate, hostile-id encoding,
+    dot-segment rejection, response envelope, POST/PATCH mutations, raw
+    patient-id cache invalidation, and visit-record source link encoding.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/patients/[id]/patient-labs-card.test.tsx'`
+    passed `1` file / `13` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `cad9ae1e`
+    (`refactor(ui): reuse readApiJson in patient labs`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Visit Constraints readApiJson Partial - 2026-07-05 05:47 JST
 
 - Status:

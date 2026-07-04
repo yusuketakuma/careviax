@@ -209,6 +209,12 @@
   dot-segment fail-closed/error edit-stop/save mutation/raw patient-id invalidation は保持。SSOT の
   必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
   維持しつつ、本sliceでは不要。
+- codex: R40/R44 patient-labs readApiJson slice(cad9ae1e) land。focused Vitest 13、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient labs read GET を
+  readApiJson へ収束し、patient path helper/limit query/org header/queryKey/enabled gate/
+  hostile-id encoding/dot-segment fail-closed/POST-PATCH mutations/raw patient-id invalidation は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
