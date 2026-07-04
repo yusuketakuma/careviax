@@ -1312,6 +1312,138 @@ function VisitRequestActionCell({
   );
 }
 
+function PartnerVisitRecordSummaryCell({ record }: { record: PartnerVisitRecordRow }) {
+  return (
+    <div>
+      <div className="font-medium">{record.id}</div>
+      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+        <Badge variant={statusVariant(record.status)}>{statusLabel(record.status)}</Badge>
+        <TinyMeta>rev.{record.revision_no}</TinyMeta>
+      </div>
+    </div>
+  );
+}
+
+function PartnerVisitRecordClaimNoteCell({ record }: { record: PartnerVisitRecordRow }) {
+  if (!record.claim_note) {
+    return <TinyMeta>未作成</TinyMeta>;
+  }
+
+  return (
+    <div>
+      <div>{statusLabel(record.claim_note.claim_status)}</div>
+      <TinyMeta>{formatDate(record.claim_note.visit_date)}</TinyMeta>
+    </div>
+  );
+}
+
+function PartnerVisitRecordActionCell({
+  record,
+  returnReason,
+  setReturnReasons,
+  isBusy,
+  onSubmit,
+  onConfirm,
+  onReturn,
+  onCreateReport,
+}: {
+  record: PartnerVisitRecordRow;
+  returnReason: string;
+  setReturnReasons: Dispatch<SetStateAction<Record<string, string>>>;
+  isBusy: boolean;
+  onSubmit: (row: PartnerVisitRecordRow) => void;
+  onConfirm: (row: PartnerVisitRecordRow, doctorReportRequired: boolean) => void;
+  onReturn: (row: PartnerVisitRecordRow, reason: string) => void;
+  onCreateReport: (row: PartnerVisitRecordRow) => void;
+}) {
+  const ownerPartnerPharmacyName = record.owner_partner_pharmacy.name;
+
+  if (record.status === 'draft' || record.status === 'returned') {
+    return (
+      <Button
+        type="button"
+        size="sm"
+        disabled={isBusy}
+        onClick={() => onSubmit(record)}
+        aria-label={`${record.id} ${ownerPartnerPharmacyName} の協力訪問記録を提出`}
+      >
+        <Send className="size-4" aria-hidden="true" />
+        提出
+      </Button>
+    );
+  }
+
+  if (record.status === 'submitted') {
+    return (
+      <div className="flex min-w-0 flex-col gap-2 text-left md:min-w-[24rem]">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            disabled={isBusy}
+            onClick={() => onConfirm(record, false)}
+            aria-label={`${record.id} ${ownerPartnerPharmacyName} の協力訪問記録を確認`}
+          >
+            <CheckCircle2 className="size-4" aria-hidden="true" />
+            確認
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={isBusy}
+            onClick={() => onConfirm(record, true)}
+            aria-label={`${record.id} ${ownerPartnerPharmacyName} の協力訪問記録を確認して報告書ドラフトを作成`}
+          >
+            <FileText className="size-4" aria-hidden="true" />
+            確認+報告
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={isBusy || returnReason.trim().length === 0}
+            onClick={() => onReturn(record, returnReason)}
+            aria-label={`${record.id} ${ownerPartnerPharmacyName} の協力訪問記録を差戻し`}
+          >
+            <RotateCcw className="size-4" aria-hidden="true" />
+            差戻し
+          </Button>
+        </div>
+        <Input
+          value={returnReason}
+          onChange={(event) =>
+            setReturnReasons((current) => ({
+              ...current,
+              [record.id]: event.target.value,
+            }))
+          }
+          placeholder="差戻し理由"
+          aria-label={`${record.id} の差戻し理由`}
+        />
+      </div>
+    );
+  }
+
+  if (record.status === 'confirmed') {
+    return (
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={isBusy}
+        onClick={() => onCreateReport(record)}
+        aria-label={`${record.id} ${ownerPartnerPharmacyName} の報告書ドラフトを作成`}
+      >
+        <FileText className="size-4" aria-hidden="true" />
+        報告書ドラフト
+      </Button>
+    );
+  }
+
+  return <TinyMeta>状態遷移はありません</TinyMeta>;
+}
+
 function ShareCasesTable({
   rows,
   linkAcceptForms,
@@ -2254,134 +2386,68 @@ function PartnerVisitRecordsTable({
   if (rows.length === 0) {
     return <EmptyState title="協力訪問記録はまだありません" />;
   }
+  const partnerVisitRecordColumns: ColumnDef<PartnerVisitRecordRow>[] = [
+    {
+      id: 'record',
+      header: '訪問記録',
+      meta: { label: '訪問記録' },
+      cell: ({ row }) => <PartnerVisitRecordSummaryCell record={row.original} />,
+      enableSorting: false,
+    },
+    {
+      id: 'owner_partner_pharmacy',
+      header: '協力薬局',
+      meta: { label: '協力薬局' },
+      cell: ({ row }) => row.original.owner_partner_pharmacy.name,
+      enableSorting: false,
+    },
+    {
+      id: 'visit_at',
+      header: '訪問日時',
+      meta: { label: '訪問日時' },
+      cell: ({ row }) => (
+        <span className="tabular-nums">{formatDateTime(row.original.visit_at)}</span>
+      ),
+      enableSorting: false,
+    },
+    {
+      id: 'claim_note',
+      header: '請求メモ',
+      meta: { label: '請求メモ' },
+      cell: ({ row }) => <PartnerVisitRecordClaimNoteCell record={row.original} />,
+      enableSorting: false,
+    },
+    {
+      id: 'action',
+      header: '操作',
+      meta: { label: '操作' },
+      cell: ({ row }) => (
+        <PartnerVisitRecordActionCell
+          record={row.original}
+          returnReason={returnReasons[row.original.id] ?? ''}
+          setReturnReasons={setReturnReasons}
+          isBusy={isBusy}
+          onSubmit={onSubmit}
+          onConfirm={onConfirm}
+          onReturn={onReturn}
+          onCreateReport={onCreateReport}
+        />
+      ),
+      enableSorting: false,
+    },
+  ];
 
   return (
-    <TableFrame label="協力訪問記録一覧">
-      <thead className="sticky top-0 z-10 bg-muted/80 text-xs text-muted-foreground backdrop-blur">
-        <tr>
-          <th scope="col" className="px-3 py-2 text-left font-medium">
-            訪問記録
-          </th>
-          <th scope="col" className="px-3 py-2 text-left font-medium">
-            協力薬局
-          </th>
-          <th scope="col" className="px-3 py-2 text-left font-medium">
-            訪問日時
-          </th>
-          <th scope="col" className="px-3 py-2 text-left font-medium">
-            請求メモ
-          </th>
-          <th scope="col" className="px-3 py-2 text-left font-medium">
-            操作
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => {
-          const returnReason = returnReasons[row.id] ?? '';
-          const ownerPartnerPharmacyName = row.owner_partner_pharmacy.name;
-          return (
-            <tr key={row.id} className="border-t border-border/70">
-              <td className="px-3 py-2">
-                <div className="font-medium">{row.id}</div>
-                <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                  <Badge variant={statusVariant(row.status)}>{statusLabel(row.status)}</Badge>
-                  <TinyMeta>rev.{row.revision_no}</TinyMeta>
-                </div>
-              </td>
-              <td className="px-3 py-2">{ownerPartnerPharmacyName}</td>
-              <td className="px-3 py-2 tabular-nums">{formatDateTime(row.visit_at)}</td>
-              <td className="px-3 py-2">
-                {row.claim_note ? (
-                  <>
-                    <div>{statusLabel(row.claim_note.claim_status)}</div>
-                    <TinyMeta>{formatDate(row.claim_note.visit_date)}</TinyMeta>
-                  </>
-                ) : (
-                  <TinyMeta>未作成</TinyMeta>
-                )}
-              </td>
-              <td className="px-3 py-2 lg:min-w-[24rem]">
-                {row.status === 'draft' || row.status === 'returned' ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={isBusy}
-                    onClick={() => onSubmit(row)}
-                    aria-label={`${row.id} ${ownerPartnerPharmacyName} の協力訪問記録を提出`}
-                  >
-                    <Send className="size-4" aria-hidden="true" />
-                    提出
-                  </Button>
-                ) : row.status === 'submitted' ? (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={isBusy}
-                        onClick={() => onConfirm(row, false)}
-                        aria-label={`${row.id} ${ownerPartnerPharmacyName} の協力訪問記録を確認`}
-                      >
-                        <CheckCircle2 className="size-4" aria-hidden="true" />
-                        確認
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        disabled={isBusy}
-                        onClick={() => onConfirm(row, true)}
-                        aria-label={`${row.id} ${ownerPartnerPharmacyName} の協力訪問記録を確認して報告書ドラフトを作成`}
-                      >
-                        <FileText className="size-4" aria-hidden="true" />
-                        確認+報告
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={isBusy || returnReason.trim().length === 0}
-                        onClick={() => onReturn(row, returnReason)}
-                        aria-label={`${row.id} ${ownerPartnerPharmacyName} の協力訪問記録を差戻し`}
-                      >
-                        <RotateCcw className="size-4" aria-hidden="true" />
-                        差戻し
-                      </Button>
-                    </div>
-                    <Input
-                      value={returnReason}
-                      onChange={(event) =>
-                        setReturnReasons((current) => ({
-                          ...current,
-                          [row.id]: event.target.value,
-                        }))
-                      }
-                      placeholder="差戻し理由"
-                      aria-label={`${row.id} の差戻し理由`}
-                    />
-                  </div>
-                ) : row.status === 'confirmed' ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={isBusy}
-                    onClick={() => onCreateReport(row)}
-                    aria-label={`${row.id} ${ownerPartnerPharmacyName} の報告書ドラフトを作成`}
-                  >
-                    <FileText className="size-4" aria-hidden="true" />
-                    報告書ドラフト
-                  </Button>
-                ) : (
-                  <TinyMeta>状態遷移はありません</TinyMeta>
-                )}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </TableFrame>
+    <DataTable
+      columns={partnerVisitRecordColumns}
+      data={rows}
+      caption="協力訪問記録一覧"
+      getRowId={(row) => row.id}
+      getRowA11yLabel={(row) =>
+        `${row.id} ${row.owner_partner_pharmacy.name} ${statusLabel(row.status)}`
+      }
+      emptyMessage="協力訪問記録はまだありません"
+    />
   );
 }
 

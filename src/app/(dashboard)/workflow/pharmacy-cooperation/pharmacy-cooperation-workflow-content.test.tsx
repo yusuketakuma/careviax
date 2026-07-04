@@ -340,6 +340,10 @@ describe('PharmacyCooperationWorkflowContent', () => {
                     urgency: 'normal',
                   },
                   claim_note: null,
+                  record_content: {
+                    medication_guidance: '服薬指導詳細',
+                    visit_note: '訪問記録本文',
+                  },
                   has_record_content: true,
                   attachment_count: 0,
                   has_returned_reason: false,
@@ -764,7 +768,8 @@ describe('PharmacyCooperationWorkflowContent', () => {
 
     renderContent();
 
-    const confirmedRow = (await screen.findByText('partner_record_confirmed')).closest('tr');
+    const recordsTable = await screen.findByRole('table', { name: '協力訪問記録一覧' });
+    const confirmedRow = within(recordsTable).getByText('partner_record_confirmed').closest('tr');
     expect(confirmedRow).toBeTruthy();
     fireEvent.click(
       within(confirmedRow as HTMLTableRowElement).getByRole('button', {
@@ -924,7 +929,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(await screen.findByText('share_case_1')).toBeTruthy();
     expect(await screen.findByText('share_case_active')).toBeTruthy();
     expect((await screen.findAllByText('visit_request_1')).length).toBeGreaterThan(0);
-    expect(await screen.findByText('partner_record_submitted')).toBeTruthy();
+    expect((await screen.findAllByText('partner_record_submitted')).length).toBeGreaterThan(0);
     expect((await screen.findAllByText('correction_1')).length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByRole('button', { name: 'CSV出力' })).toBeNull();
     expect(screen.queryByRole('button', { name: '印刷' })).toBeNull();
@@ -940,6 +945,8 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(screen.getAllByText('協力薬局').length).toBeGreaterThanOrEqual(1);
     expect(document.body.textContent).not.toContain('山田');
     expect(document.body.textContent).not.toContain('訪問本文');
+    expect(document.body.textContent).not.toContain('訪問記録本文');
+    expect(document.body.textContent).not.toContain('服薬指導詳細');
   });
 
   it('shows the pharmacy visit request empty state only for genuine empty results', async () => {
@@ -974,6 +981,40 @@ describe('PharmacyCooperationWorkflowContent', () => {
 
     expect(await screen.findByText('薬局間協力ワークフローを表示できません')).toBeTruthy();
     expect(screen.queryByText('協力薬局への訪問依頼はまだありません')).toBeNull();
+  });
+
+  it('shows the partner visit record empty state only for genuine empty results', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/partner-visit-records?limit=8') {
+        return new Response(JSON.stringify({ data: [], hasMore: false }), { status: 200 });
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('協力訪問記録はまだありません')).toBeTruthy();
+    expect(screen.queryByText('薬局間協力ワークフローを表示できません')).toBeNull();
+  });
+
+  it('keeps partner visit record query failures out of the empty state', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/partner-visit-records?limit=8') {
+        return new Response(JSON.stringify({ error: 'boom' }), { status: 500 });
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('薬局間協力ワークフローを表示できません')).toBeTruthy();
+    expect(screen.queryByText('協力訪問記録はまだありません')).toBeNull();
   });
 
   it('shows total and hidden share-case counts from the API instead of only visible rows', async () => {
