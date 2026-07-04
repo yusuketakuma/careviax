@@ -95,10 +95,9 @@ describe('ContactProfilesContent', () => {
     buildContactProfilesApiPathMock.mockClear();
     buildOrgHeadersMock.mockClear();
     buildOrgJsonHeadersMock.mockClear();
-    vi.spyOn(global, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: profiles }),
-    } as Response);
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ data: profiles }), { status: 200 }),
+    );
   });
 
   afterEach(() => {
@@ -214,7 +213,8 @@ describe('ContactProfilesContent', () => {
   it('keeps the 未完了 KPI neutral (no state color) when there is no pending work', async () => {
     vi.spyOn(global, 'fetch').mockResolvedValue({
       ok: true,
-      json: async () => ({ data: profiles.map((p) => ({ ...p, pending_response_count: 0 })) }),
+      text: async () =>
+        JSON.stringify({ data: profiles.map((p) => ({ ...p, pending_response_count: 0 })) }),
     } as Response);
 
     renderContent();
@@ -230,7 +230,7 @@ describe('ContactProfilesContent', () => {
   it('debounces search so a keystroke does not immediately issue a filtered fetch', async () => {
     const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue({
       ok: true,
-      json: async () => ({ data: profiles }),
+      text: async () => JSON.stringify({ data: profiles }),
     } as Response);
 
     renderContent();

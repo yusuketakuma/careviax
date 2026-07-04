@@ -26,6 +26,7 @@ import {
   type ContactProfileKind,
 } from '@/lib/contact-profile-options';
 import { buildContactProfilesApiPath } from '@/lib/contact-profile-api-paths';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -128,8 +129,10 @@ export function ContactProfilesContent() {
       const response = await fetch(buildContactProfilesApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('連携先プロファイルの取得に失敗しました');
-      return response.json() as Promise<{ data: ContactProfile[] }>;
+      return readApiJson<{ data: ContactProfile[] }>(
+        response,
+        '連携先プロファイルの取得に失敗しました',
+      );
     },
     enabled: !!orgId,
   });
