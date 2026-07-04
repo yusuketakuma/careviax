@@ -4162,3 +4162,26 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   個別確認してから段階移行する。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R40/R44 patient packaging readApiJson slice
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 実施:
+  - patient packaging settings の `buildPatientApiPath(patientId, '/packaging')` GET fetcher を
+    `readApiJson<PackagingResponse>` へ移行。
+  - failed GET の API JSON `message` が queryFn から表面化する契約テストを追加。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。patient path helper、
+  `buildOrgHeaders`、React Query key、enabled gate、hostile-id encoding、dot-segment fail-closed、
+  response envelope、ErrorState の編集停止、save mutation、invalidation contract は維持。
+- 安全性: product UI read fetch internals のみ変更。DB/schema、auth/authorization、
+  PHI projection、billing、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation は不変。SSOT では必要時の product
+  API/DB/auth/authorization/PHI/billing/deploy/package dependency 変更許可を確認済みだが、
+  この slice では不要。
+- 検証: focused patient packaging Vitest `1 file / 8 tests` green、scoped ESLint green、
+  targeted Prettier check は touched test formatting 後 green、targeted `git diff --check`
+  green、`pnpm typecheck` green。
+- commit: `8f2217cd` (`refactor(ui): reuse readApiJson in patient packaging`)。
+- 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
