@@ -1,5 +1,48 @@
 # CODEX Goal Progress
 
+## R40/R44 Patient Share readApiJson Partial - 2026-07-05 06:23 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/patients/[id]/share/external-share-content.tsx`
+    - `src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for five patient share read GET helpers:
+    - patient share overview
+    - patient care team
+    - patient contacts
+    - patient-scoped communication request list
+    - communication request detail
+  - Added a queryFn contract test proving API JSON `message` from failed read
+    GETs is surfaced through the shared helper.
+  - Preserved API path helpers, `buildOrgHeaders`, React Query keys, enabled
+    gates, no-store overview fetch, hostile patient/request id encoding, raw
+    related-entity query identity, selected audience taxonomy, external share
+    generation mutation, follow-up task mutation, reply request mutation,
+    mutation error handling, queue href, and retry warning behavior.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx'`
+    passed `1` file / `12` tests.
+  - Scoped ESLint, targeted Prettier check after formatting, targeted
+    `git diff --check`, and `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `d351c199`
+    (`refactor(ui): reuse readApiJson in patient share`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Structured Care Panel readApiJson Partial - 2026-07-05 06:19 JST
 
 - Status:

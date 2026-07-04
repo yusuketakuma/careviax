@@ -260,6 +260,12 @@
   readApiJson へ収束し、patient API helper/org header/queryKey/enabled gate/retryable error UI/
   empty-card suppression/UTC date-only display は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 patient-share readApiJson slice(d351c199) land。focused Vitest 12、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient share overview / care team /
+  contacts / communication request list+detail の read GET を readApiJson へ収束し、path helpers/
+  org header/queryKey/enabled gates/no-store overview/hostile-id encoding/mutation contracts/
+  queue href は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
