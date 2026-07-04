@@ -184,6 +184,35 @@ describe('MedicationsContent', () => {
     // a raw String(new Error(msg)) renders "Error: msg" — prove that prefix is gone
     expect(alert.textContent).not.toContain('Error:');
   });
+
+  it('falls back for add-medication submit failures with empty Error messages', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: true,
+      error: new Error(''),
+    });
+    useQueryMock.mockImplementation(() => ({ data: { data: [] }, isLoading: false }));
+
+    render(
+      <MedicationsContent
+        patientId="patient_1"
+        patientName="山田花子"
+        patientNameKana="ヤマダハナコ"
+        birthDate="1950-04-01"
+        gender="female"
+        allergyInfo={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '薬剤追加' }));
+
+    const alert = screen.getByRole('alert');
+    expect(alert.getAttribute('aria-live')).toBe('assertive');
+    expect(alert.textContent).toBe('登録に失敗しました');
+  });
 });
 
 describe('MedicationsContent url/header convergence', () => {
