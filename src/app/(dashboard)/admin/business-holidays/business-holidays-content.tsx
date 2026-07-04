@@ -33,6 +33,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { SkeletonRows } from '@/components/ui/loading';
 import { MonthGrid } from '@/components/ui/month-grid';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   buildBusinessHolidayApiPath,
@@ -206,8 +207,7 @@ export function BusinessHolidaysContent() {
       const response = await fetch(buildBusinessHolidaysApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('休日設定の取得に失敗しました');
-      return response.json() as Promise<{ data: Holiday[] }>;
+      return readApiJson<{ data: Holiday[] }>(response, '休日設定の取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -218,8 +218,7 @@ export function BusinessHolidaysContent() {
       const response = await fetch('/api/pharmacy-sites', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('店舗一覧の取得に失敗しました');
-      return response.json() as Promise<{ data: SiteOption[] }>;
+      return readApiJson<{ data: SiteOption[] }>(response, '店舗一覧の取得に失敗しました');
     },
     enabled: !!orgId,
   });
