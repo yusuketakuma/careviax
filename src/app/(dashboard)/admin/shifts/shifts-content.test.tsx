@@ -8,7 +8,13 @@ import { toTimeValue } from './shifts-content.shared';
 
 setupDomTestEnv();
 
+type CapturedMutation = {
+  mutationFn: () => unknown;
+};
+
 const mutationMutateMock = vi.hoisted(() => vi.fn());
+const mutationConfigs = vi.hoisted(() => [] as CapturedMutation[]);
+const fetchMock = vi.hoisted(() => vi.fn());
 // Tests can mark specific query keys as failed (isError) to exercise the
 // supporting-master fetch-error banner without touching the success-path tests.
 const queryErrorKeys = vi.hoisted(() => new Set<string>());
@@ -20,10 +26,13 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 }));
 
 vi.mock('@tanstack/react-query', () => ({
-  useMutation: () => ({
-    mutate: mutationMutateMock,
-    isPending: false,
-  }),
+  useMutation: (config: CapturedMutation) => {
+    mutationConfigs.push(config);
+    return {
+      mutate: mutationMutateMock,
+      isPending: false,
+    };
+  },
   useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => {
     const key = String(queryKey[0]);
 
@@ -130,12 +139,37 @@ vi.mock('sonner', () => ({
   },
 }));
 
+async function runUpsertTemplateMutationAndReadBody() {
+  for (let index = mutationConfigs.length - 1; index >= 0; index -= 1) {
+    fetchMock.mockClear();
+    try {
+      await mutationConfigs[index]?.mutationFn();
+    } catch {
+      // Other captured mutations can require arguments or selected records.
+    }
+
+    const call = fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
+    if (call?.[0] === '/api/pharmacist-shift-templates') {
+      const init = call[1] as RequestInit;
+      return JSON.parse(String(init.body)) as Record<string, unknown>;
+    }
+  }
+
+  throw new Error('upsert template mutation was not captured');
+}
+
 describe('ShiftsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mutationConfigs.length = 0;
     queryErrorKeys.clear();
     queryLoadingKeys.clear();
     refetchSpies.clear();
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { id: 'template_saved' } }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
   });
 
   it('prioritizes the monthly calendar before secondary summaries and uses full-size primary controls', () => {
@@ -265,6 +299,66 @@ describe('ShiftsContent', () => {
     expect((within(holidayDialog).getByLabelText('休日名') as HTMLInputElement).value).toBe(
       '棚卸休業',
     );
+  });
+
+  it('builds the weekly template create payload from RHF defaults and existing fallbacks', async () => {
+    render(<ShiftsContent />);
+
+    expect(await runUpsertTemplateMutationAndReadBody()).toEqual({
+      user_id: 'user_1',
+      site_id: 'site_1',
+      weekday: 1,
+      available: true,
+      available_from: '09:00',
+      available_to: '18:00',
+    });
+  });
+
+  it('builds the weekly template update payload after loading an existing template', async () => {
+    render(<ShiftsContent />);
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: '山田 太郎 / 月曜日 / 本店 / 勤務不可 の定型シフトを編集',
+      }),
+    );
+    fireEvent.change(screen.getByLabelText('備考'), {
+      target: { value: '  午後は施設対応  ' },
+    });
+
+    expect(await runUpsertTemplateMutationAndReadBody()).toEqual({
+      user_id: 'user_1',
+      site_id: 'site_1',
+      weekday: 1,
+      available: false,
+      note: '  午後は施設対応  ',
+    });
+  });
+
+  it('retains disabled time values but omits them from unavailable weekly template payloads', async () => {
+    render(<ShiftsContent />);
+
+    const availableCheckbox = screen.getByRole('checkbox', {
+      name: 'この曜日を勤務可として扱う',
+    });
+    const fromInput = screen.getByLabelText('開始時刻') as HTMLInputElement;
+    const toInput = screen.getByLabelText('終了時刻') as HTMLInputElement;
+    expect(fromInput.value).toBe('09:00');
+    expect(toInput.value).toBe('18:00');
+
+    fireEvent.click(availableCheckbox);
+
+    expect(fromInput.value).toBe('09:00');
+    expect(toInput.value).toBe('18:00');
+    expect(fromInput.disabled).toBe(true);
+    expect(toInput.disabled).toBe(true);
+
+    expect(await runUpsertTemplateMutationAndReadBody()).toEqual({
+      user_id: 'user_1',
+      site_id: 'site_1',
+      weekday: 1,
+      available: false,
+    });
   });
 
   it('renders monthly shift cells as keyboard-accessible buttons in edit mode', async () => {

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import {
   addMonths,
   eachDayOfInterval,
@@ -79,6 +80,28 @@ function pharmacistStatusRole(status: Pharmacist['account_status']): StatusRole 
   return role && role !== 'neutral' ? role : 'readonly';
 }
 
+type TemplateFormValues = {
+  user_id: string;
+  site_id: string;
+  weekday: string;
+  available: boolean;
+  available_from: string;
+  available_to: string;
+  note: string;
+};
+
+function createTemplateFormValues(userId = '', siteId = ''): TemplateFormValues {
+  return {
+    user_id: userId,
+    site_id: siteId,
+    weekday: '1',
+    available: true,
+    available_from: '09:00',
+    available_to: '18:00',
+    note: '',
+  };
+}
+
 export function ShiftsContent() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
@@ -106,14 +129,16 @@ export function ShiftsContent() {
     visit_specialties: '',
     coverage_area: '',
   });
-  const [templateForm, setTemplateForm] = useState({
-    user_id: '',
-    site_id: '',
-    weekday: '1',
-    available: true,
-    available_from: '09:00',
-    available_to: '18:00',
-    note: '',
+  const {
+    control: templateControl,
+    register: registerTemplateField,
+    reset: resetTemplateFields,
+  } = useForm<TemplateFormValues>({
+    defaultValues: createTemplateFormValues(),
+  });
+  const watchedTemplateForm = useWatch({
+    control: templateControl,
+    defaultValue: createTemplateFormValues(),
   });
   const [templateApplyMonthState, setTemplateApplyMonthState] = useState(() => {
     const now = new Date();
@@ -294,6 +319,10 @@ export function ShiftsContent() {
     templateApplyMonthState.sourceMonth === currentMonthKey
       ? templateApplyMonthState.value
       : currentMonthKey;
+  const templateForm = {
+    ...createTemplateFormValues(),
+    ...watchedTemplateForm,
+  };
   const effectiveTemplateForm = {
     ...templateForm,
     user_id: templateForm.user_id || shiftPharmacists[0]?.id || '',
@@ -351,7 +380,7 @@ export function ShiftsContent() {
 
   function loadTemplateIntoForm(template: ShiftTemplate) {
     setEditingTemplateId(template.id);
-    setTemplateForm({
+    resetTemplateFields({
       user_id: template.user_id,
       site_id: template.site_id,
       weekday: String(template.weekday),
@@ -364,15 +393,9 @@ export function ShiftsContent() {
 
   function resetTemplateForm() {
     setEditingTemplateId(null);
-    setTemplateForm({
-      user_id: shiftPharmacists[0]?.id ?? '',
-      site_id: sites[0]?.id ?? '',
-      weekday: '1',
-      available: true,
-      available_from: '09:00',
-      available_to: '18:00',
-      note: '',
-    });
+    resetTemplateFields(
+      createTemplateFormValues(shiftPharmacists[0]?.id ?? '', sites[0]?.id ?? ''),
+    );
   }
 
   function openHolidayEditDialog(holiday: BusinessHoliday) {
@@ -1396,98 +1419,96 @@ export function ShiftsContent() {
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="template-user">担当者</Label>
-                  <Select
-                    value={effectiveTemplateForm.user_id}
-                    onValueChange={(value) =>
-                      value
-                        ? setTemplateForm((current) => ({
-                            ...current,
-                            user_id: value,
-                          }))
-                        : undefined
-                    }
-                  >
-                    <SelectTrigger id="template-user" className="w-full">
-                      <SelectValue placeholder="担当者を選択" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {shiftPharmacists.map((pharmacist) => (
-                        <SelectItem key={pharmacist.id} value={pharmacist.id}>
-                          {pharmacist.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Controller
+                    control={templateControl}
+                    name="user_id"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value || effectiveTemplateForm.user_id}
+                        onValueChange={(value) => (value ? field.onChange(value) : undefined)}
+                      >
+                        <SelectTrigger id="template-user" className="w-full">
+                          <SelectValue placeholder="担当者を選択" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {shiftPharmacists.map((pharmacist) => (
+                            <SelectItem key={pharmacist.id} value={pharmacist.id}>
+                              {pharmacist.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="template-site">店舗</Label>
-                  <Select
-                    value={effectiveTemplateForm.site_id}
-                    onValueChange={(value) =>
-                      value
-                        ? setTemplateForm((current) => ({
-                            ...current,
-                            site_id: value,
-                          }))
-                        : undefined
-                    }
-                  >
-                    <SelectTrigger id="template-site" className="w-full">
-                      <SelectValue placeholder="店舗を選択" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {sites.map((site) => (
-                        <SelectItem key={site.id} value={site.id}>
-                          {site.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Controller
+                    control={templateControl}
+                    name="site_id"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value || effectiveTemplateForm.site_id}
+                        onValueChange={(value) => (value ? field.onChange(value) : undefined)}
+                      >
+                        <SelectTrigger id="template-site" className="w-full">
+                          <SelectValue placeholder="店舗を選択" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {sites.map((site) => (
+                            <SelectItem key={site.id} value={site.id}>
+                              {site.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
                 </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="template-weekday">曜日</Label>
-                  <Select
-                    value={effectiveTemplateForm.weekday}
-                    onValueChange={(value) =>
-                      value
-                        ? setTemplateForm((current) => ({
-                            ...current,
-                            weekday: value,
-                          }))
-                        : undefined
-                    }
-                  >
-                    <SelectTrigger id="template-weekday" className="w-full">
-                      <SelectValue>
-                        {
-                          WEEKDAY_OPTIONS.find(
-                            (option) => option.value === effectiveTemplateForm.weekday,
-                          )?.label
-                        }
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {WEEKDAY_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Controller
+                    control={templateControl}
+                    name="weekday"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value}
+                        onValueChange={(value) => (value ? field.onChange(value) : undefined)}
+                      >
+                        <SelectTrigger id="template-weekday" className="w-full">
+                          <SelectValue>
+                            {
+                              WEEKDAY_OPTIONS.find(
+                                (option) => option.value === effectiveTemplateForm.weekday,
+                              )?.label
+                            }
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {WEEKDAY_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
                 </div>
                 <div className="flex items-center gap-3 rounded-lg border px-3 py-2">
-                  <Checkbox
-                    id="template-available"
-                    checked={effectiveTemplateForm.available}
-                    onCheckedChange={(checked) =>
-                      setTemplateForm((current) => ({
-                        ...current,
-                        available: checked === true,
-                      }))
-                    }
+                  <Controller
+                    control={templateControl}
+                    name="available"
+                    render={({ field }) => (
+                      <Checkbox
+                        id="template-available"
+                        checked={field.value}
+                        onCheckedChange={(checked) => field.onChange(checked === true)}
+                      />
+                    )}
                   />
                   <label htmlFor="template-available" className="cursor-pointer text-sm">
                     この曜日を勤務可として扱う
@@ -1501,13 +1522,7 @@ export function ShiftsContent() {
                   <Input
                     id="template-from"
                     type="time"
-                    value={effectiveTemplateForm.available_from}
-                    onChange={(event) =>
-                      setTemplateForm((current) => ({
-                        ...current,
-                        available_from: event.target.value,
-                      }))
-                    }
+                    {...registerTemplateField('available_from')}
                     disabled={!effectiveTemplateForm.available}
                   />
                 </div>
@@ -1516,13 +1531,7 @@ export function ShiftsContent() {
                   <Input
                     id="template-to"
                     type="time"
-                    value={effectiveTemplateForm.available_to}
-                    onChange={(event) =>
-                      setTemplateForm((current) => ({
-                        ...current,
-                        available_to: event.target.value,
-                      }))
-                    }
+                    {...registerTemplateField('available_to')}
                     disabled={!effectiveTemplateForm.available}
                   />
                 </div>
@@ -1533,13 +1542,7 @@ export function ShiftsContent() {
                 <Textarea
                   id="template-note"
                   rows={2}
-                  value={effectiveTemplateForm.note}
-                  onChange={(event) =>
-                    setTemplateForm((current) => ({
-                      ...current,
-                      note: event.target.value,
-                    }))
-                  }
+                  {...registerTemplateField('note')}
                   placeholder="例: 午前は施設対応、午後は在宅訪問優先"
                 />
               </div>
