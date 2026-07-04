@@ -1,6 +1,6 @@
 import { unstable_rethrow } from 'next/navigation';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { parseBoundedInteger } from '@/lib/api/pagination';
+import { buildCursorPage, parseBoundedInteger } from '@/lib/api/pagination';
 import { withAuthContext } from '@/lib/auth/context';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -49,8 +49,9 @@ const authenticatedGET = withAuthContext(
           orderBy: [{ name: 'asc' }],
         }),
       ]);
-      const hasMore = facilities.length > limit;
-      const data = hasMore ? facilities.slice(0, limit) : facilities;
+      const page = buildCursorPage(facilities, limit, (facility) => facility.id);
+      const data = page.data;
+      const hasMore = page.hasMore;
       const visibleCount = data.length;
       const hiddenCount = Math.max(totalCount - visibleCount, 0);
       const facilityIds = data.map((facility) => facility.id);
