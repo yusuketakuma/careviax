@@ -371,7 +371,8 @@ export default function PerformancePage() {
         <ErrorState
           variant="server"
           size="inline"
-          action={{ label: '再読み込み', onClick: refetchMetrics }}
+          onRetry={refetchMetrics}
+          retryLabel="再読み込み"
         />
       ) : (
         <section className="space-y-3" aria-labelledby="performance-workflow-kpis">
@@ -445,7 +446,8 @@ export default function PerformancePage() {
         <ErrorState
           variant="server"
           size="inline"
-          action={{ label: '再読み込み', onClick: () => void runtimeQuery.refetch() }}
+          onRetry={() => void runtimeQuery.refetch()}
+          retryLabel="再読み込み"
         />
       ) : (
         <section className="space-y-3" aria-labelledby="performance-runtime-kpis">
@@ -551,7 +553,8 @@ export default function PerformancePage() {
               <ErrorState
                 variant="server"
                 size="inline"
-                action={{ label: '再読み込み', onClick: () => void proposalsQuery.refetch() }}
+                onRetry={() => void proposalsQuery.refetch()}
+                retryLabel="再読み込み"
               />
             ) : topProposals.length === 0 ? (
               <p className="text-sm text-muted-foreground">対象期間の訪問候補はありません</p>
@@ -663,7 +666,8 @@ export default function PerformancePage() {
               <ErrorState
                 variant="server"
                 size="inline"
-                action={{ label: '再読み込み', onClick: () => void runtimeQuery.refetch() }}
+                onRetry={() => void runtimeQuery.refetch()}
+                retryLabel="再読み込み"
               />
             ) : (
               <>
@@ -717,7 +721,8 @@ export default function PerformancePage() {
               <ErrorState
                 variant="server"
                 size="inline"
-                action={{ label: '再読み込み', onClick: () => void runtimeQuery.refetch() }}
+                onRetry={() => void runtimeQuery.refetch()}
+                retryLabel="再読み込み"
               />
             ) : (runtime?.routes.length ?? 0) === 0 ? (
               <p className="text-sm text-muted-foreground">
