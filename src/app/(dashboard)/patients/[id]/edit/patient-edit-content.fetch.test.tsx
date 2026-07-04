@@ -3,6 +3,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 
@@ -72,9 +73,7 @@ describe('PatientEditContent patient overview fetch', () => {
       },
     );
 
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({}));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -160,9 +159,7 @@ describe('PatientEditContent patient overview fetch', () => {
       },
     );
 
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({}));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -210,4 +207,30 @@ describe('PatientEditContent patient overview fetch', () => {
       }
     },
   );
+
+  it('keeps API messages from failed patient overview reads', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+
+    let captured: { queryKey: unknown[]; queryFn: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn: () => Promise<unknown> }) => {
+        captured = config;
+        return { data: undefined, isLoading: true, error: null };
+      },
+    );
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ message: '患者編集APIからの詳細エラー' }, 500));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientEditContent patientId="patient_1" />);
+
+      await expect(captured?.queryFn?.()).rejects.toThrow('患者編集APIからの詳細エラー');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
 });

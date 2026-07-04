@@ -5,6 +5,7 @@ import { FileQuestion } from 'lucide-react';
 import { PatientForm } from '@/components/features/patients/patient-form';
 import { Skeleton } from '@/components/ui/loading';
 import { EmptyState } from '@/components/ui/empty-state';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
@@ -209,8 +210,7 @@ export function PatientEditContent({ patientId }: { patientId: string }) {
       const response = await fetch(buildPatientApiPath(patientId, '/overview'), {
         headers: buildOrgHeaders(orgId ?? ''),
       });
-      if (!response.ok) throw new Error('患者情報の取得に失敗しました');
-      return response.json();
+      return readApiJson<PatientOverview>(response, '患者情報の取得に失敗しました');
     },
     enabled: Boolean(orgId),
     refetchOnReconnect: false,
