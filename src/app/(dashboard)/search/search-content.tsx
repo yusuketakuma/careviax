@@ -16,6 +16,7 @@ import { FilterChipBar } from '@/components/features/workspace/filter-chip-bar';
 import { ListOpenCard } from '@/components/features/workspace/list-open-card';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { messageFromError } from '@/lib/utils/error-message';
 import { AdvancedFilterModal } from './advanced-filter-modal';
 import { type AdvancedFilterState, EMPTY_ADVANCED_FILTER } from './advanced-filter.shared';
 import {
@@ -463,7 +464,7 @@ export function SearchContent({
         );
       } catch (err) {
         if (controller.signal.aborted) return;
-        setSearchError(err instanceof Error ? err.message : '検索結果の取得に失敗しました。');
+        setSearchError(messageFromError(err, '検索結果の取得に失敗しました。'));
       } finally {
         if (!controller.signal.aborted) {
           setIsLoading(false);

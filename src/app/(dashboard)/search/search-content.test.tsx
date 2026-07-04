@@ -444,6 +444,24 @@ describe('SearchContent', () => {
     expect(screen.getByText('一致する結果がありません')).toBeTruthy();
   });
 
+  it('uses the fallback alert when search JSON parsing fails with an empty Error message', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/api/pharmacists')) return makeJsonResponse([]);
+      if (url.includes('/api/patients')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.reject(new Error('')),
+        });
+      }
+      return makeJsonResponse([]);
+    });
+
+    render(<SearchContent />);
+    await triggerSearch('田中');
+
+    expect(screen.getByRole('alert').textContent).toContain('検索結果の取得に失敗しました。');
+  });
+
   it('guides users to other categories when the selected category has no results', async () => {
     setupFetchMocks({ patients: [], drugs: DRUG_RESULTS });
 
