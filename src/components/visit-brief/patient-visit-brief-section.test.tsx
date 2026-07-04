@@ -61,7 +61,7 @@ describe('PatientVisitBriefSection', () => {
   it('routes the visit brief fetch through the shared patient API path helper', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ data: { patient: { id: 'patient_1?x=1#frag' } } }),
+      text: async () => JSON.stringify({ data: { patient: { id: 'patient_1?x=1#frag' } } }),
     });
     vi.stubGlobal('fetch', fetchMock);
     vi.mocked(buildPatientApiPath).mockReturnValueOnce(
@@ -102,6 +102,37 @@ describe('PatientVisitBriefSection', () => {
       expect.anything(),
     );
     expect(screen.getByTestId('visit-brief-card').dataset.patientId).toBe('patient_1?x=1#frag');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('surfaces API messages from the visit brief read query', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      text: async () => JSON.stringify({ message: 'API側の患者要約エラー' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    let capturedQueryFn: (() => Promise<unknown>) | undefined;
+    useQueryMock.mockImplementation((options) => {
+      capturedQueryFn = options.queryFn;
+      return {
+        data: undefined,
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      };
+    });
+
+    render(
+      <PatientVisitBriefSection
+        patientId="patient_1"
+        title="訪問前要約"
+        description="確認事項"
+        compact
+      />,
+    );
+
+    await expect(capturedQueryFn?.()).rejects.toThrow('API側の患者要約エラー');
 
     vi.unstubAllGlobals();
   });

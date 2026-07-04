@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { VisitBriefCard } from '@/components/visit-brief/visit-brief-card';
+import { readApiJson } from '@/lib/api/client-json';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
@@ -52,10 +53,7 @@ export function PatientVisitBriefSection({
       const response = await fetch(buildPatientApiPath(patientId, '/visit-brief'), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) {
-        throw new Error('患者要約の取得に失敗しました');
-      }
-      return response.json() as Promise<{ data: VisitBrief }>;
+      return readApiJson<{ data: VisitBrief }>(response, '患者要約の取得に失敗しました');
     },
     enabled: !!orgId,
   });
