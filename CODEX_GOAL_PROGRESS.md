@@ -1,5 +1,41 @@
 # CODEX Goal Progress
 
+## R55 Patient MCS Loading State - 2026-07-04 19:58 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/patients/[id]/mcs/mcs-content.tsx`
+    - `src/app/(dashboard)/patients/[id]/mcs/mcs-content.test.tsx`
+- Scope:
+  - Replaced the generic `Loading` returns in the patient MCS workspace with
+    named skeleton regions for org-context bootstrapping and message-list
+    loading.
+  - Loading no longer exposes generic `読み込み中...` semantics, final MCS
+    headings/actions during org bootstrap, or message author/body content while
+    messages are loading.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, fetcher, patient API path helper, org header,
+    sync/check-log/profile mutation, clipboard behavior, cache invalidation, DB,
+    auth, authorization, billing, audit, deployment, package, or server behavior
+    changed.
+  - Loading copy is PHI-free and does not echo MCS author names, message bodies,
+    clinical content, patient ids, source URLs, sync errors, org ids, or raw
+    errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/mcs/mcs-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `12` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the MCS source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `a2180de4`
+    (`fix(patients): show skeleton for mcs loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Report Print Audit Loading State - 2026-07-04 19:53 JST
 
 - Status:
