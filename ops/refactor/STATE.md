@@ -118,6 +118,10 @@
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。関連 test の既存 formatting は
   Prettier write で解消。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 admin-realtime readApiJson slice(628df9dc) land。focused Vitest 13、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。queryFn contract test で
+  org-scoped workflow/notification endpoints を固定。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 

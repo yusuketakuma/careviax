@@ -46629,3 +46629,50 @@ false` for every migrated column.
     before converting additional client read fetchers.
   - Existing unrelated `refactor-instructions.md` and local skill install files
     remain outside this slice.
+
+## R40/R44 Admin Realtime readApiJson Slice - 2026-07-05 04:35 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/realtime/page.tsx`
+  - `src/app/(dashboard)/admin/realtime/page.test.tsx`
+- Status:
+  - Implemented and committed as `628df9dc`
+    (`refactor(ui): reuse readApiJson in admin realtime`).
+- Changes:
+  - Replaced the workflow GET helper for
+    `/api/dashboard/workflow?view=realtime` with
+    `readApiJson<{ data: WorkflowSnapshot }>` while preserving query key,
+    `buildOrgHeaders(orgId)`, realtime invalidation policy, and response
+    envelope.
+  - Replaced the notification GET helper for
+    `/api/notifications?limit=12&is_read=false` with
+    `readApiJson<{ data: Notification[] }>` while preserving query key,
+    `buildOrgHeaders(orgId)`, realtime event merge behavior, and response
+    envelope.
+  - Added a focused queryFn contract test that directly executes both realtime
+    query functions and verifies org-scoped endpoint/header usage.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI/personnel projection,
+    billing behavior, deployment, package dependency, live DB operation,
+    external send, secret handling, push, destructive operation, false-empty
+    error states, SSE/realtime merge behavior, and query invalidation policy.
+  - The 2026-07-04 user instruction allowing product
+    API/DB/auth/authorization/PHI/billing/deploy/package dependency changes when
+    necessary is recorded in `ops/refactor/STATE.md`; this slice did not require
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/realtime/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `13` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/realtime/page.tsx' 'src/app/(dashboard)/admin/realtime/page.test.tsx'`
+    passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/realtime/page.tsx' 'src/app/(dashboard)/admin/realtime/page.test.tsx'`
+    passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/realtime/page.tsx' 'src/app/(dashboard)/admin/realtime/page.test.tsx'`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - R40/R44 remains partial and broad; continue per-fetcher body-read/PHI review
+    before converting additional client read fetchers.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.

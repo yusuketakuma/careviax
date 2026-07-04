@@ -3791,4 +3791,28 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
   個別確認してから段階移行する。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R40/R44 admin realtime readApiJson slice
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 実施:
+  - admin realtime の `/api/dashboard/workflow?view=realtime` GET fetcher を
+    `readApiJson<{ data: WorkflowSnapshot }>` へ移行。
+  - admin realtime の `/api/notifications?limit=12&is_read=false` GET fetcher を
+    `readApiJson<{ data: Notification[] }>` へ移行。
+  - queryFn contract test を追加し、org-scoped endpoint/header と response envelope を固定。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。endpoint paths、
+  `buildOrgHeaders`、React Query keys、realtime invalidation、SSE notification merge、
+  response envelopes、false-empty ErrorState は維持。
+- 安全性: product UI read fetch internals のみ変更。DB/schema、auth/authorization、
+  PHI/personnel projection、billing、deployment、package dependency、live DB operation、
+  external send、secret handling、push、destructive operation は不変。SSOT では必要時の product
+  API/DB/auth/authorization/PHI/billing/deploy/package dependency 変更許可を確認済みだが、
+  この slice では不要。
+- 検証: focused admin realtime Vitest `1 file / 13 tests` green、scoped ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `628df9dc` (`refactor(ui): reuse readApiJson in admin realtime`)。
+- 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
