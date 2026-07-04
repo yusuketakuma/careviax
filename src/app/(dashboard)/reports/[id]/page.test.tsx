@@ -2,6 +2,7 @@
 
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildReportHref } from '@/lib/reports/navigation';
 
@@ -177,6 +178,7 @@ type QueryConfig = {
 
 type MutationConfig<TInput = unknown> = {
   mutationFn?: (input?: TInput) => Promise<unknown>;
+  onError?: (error: unknown) => void;
 };
 
 function mockReport() {
@@ -1046,6 +1048,33 @@ describe('ReportDetailPage send safety dialog', () => {
       expect(href).not.toContain('#');
       expect(href).not.toContain('%25');
     }
+  });
+
+  it('keeps report mutation server messages and uses operation fallbacks for non-Error failures', () => {
+    const mutationConfigs: Array<MutationConfig> = [];
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return {
+        mutate: sendMutateMock,
+        isPending: false,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    mutationConfigs[0]?.onError?.(new Error('確認保存は競合しています'));
+    mutationConfigs[1]?.onError?.(new Error('送付先が無効です'));
+    mutationConfigs[2]?.onError?.(new Error('一括送付は締切済みです'));
+    expect(toast.error).toHaveBeenCalledWith('確認保存は競合しています');
+    expect(toast.error).toHaveBeenCalledWith('送付先が無効です');
+    expect(toast.error).toHaveBeenCalledWith('一括送付は締切済みです');
+
+    mutationConfigs[0]?.onError?.('confirm-failure');
+    mutationConfigs[1]?.onError?.('send-failure');
+    mutationConfigs[2]?.onError?.('bulk-send-failure');
+    expect(toast.error).toHaveBeenCalledWith('薬剤師確認の保存に失敗しました');
+    expect(toast.error).toHaveBeenCalledWith('送付に失敗しました');
+    expect(toast.error).toHaveBeenCalledWith('一括送付に失敗しました');
   });
 
   it.each(['.', '..'])(

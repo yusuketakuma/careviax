@@ -80,6 +80,7 @@ import {
 } from '@/lib/reports/care-report-send-validation';
 import { inferCareReportTargetRole } from '@/lib/reports/care-report-target-role';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 
 // --- Types ---
 
@@ -551,7 +552,7 @@ export default function ReportDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['care-report', id, orgId] });
       queryClient.invalidateQueries({ queryKey: ['care-reports'] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(messageFromError(err, '薬剤師確認の保存に失敗しました')),
   });
 
   const sendMutation = useMutation({
@@ -586,7 +587,7 @@ export default function ReportDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['care-report', id, orgId] });
       queryClient.invalidateQueries({ queryKey: ['care-reports'] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(messageFromError(err, '送付に失敗しました')),
   });
 
   // p0_28: 一括送付。選択した共有先すべてに送付する。
@@ -613,7 +614,7 @@ export default function ReportDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['care-report', id, orgId] });
       queryClient.invalidateQueries({ queryKey: ['care-reports'] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(messageFromError(err, '一括送付に失敗しました')),
   });
 
   function handleSend() {
@@ -761,7 +762,11 @@ export default function ReportDetailPage() {
   // hasContentView と等価な条件を型ガードの三項演算子で再表現し、content を
   // `PhysicianReportContent | CareManagerReportContent | AudienceReportContent`
   // へ絞り込む(content が optional 化されたため、絞り込みなしの直接参照は型エラーになる)。
-  const viewableReportContent: PhysicianReportContent | CareManagerReportContent | AudienceReportContent | null =
+  const viewableReportContent:
+    | PhysicianReportContent
+    | CareManagerReportContent
+    | AudienceReportContent
+    | null =
     isPhysician && isPhysicianReportContent(report.content)
       ? report.content
       : isCareManager && isCareManagerReportContent(report.content)

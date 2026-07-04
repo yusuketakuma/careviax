@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildCareReportApiPath } from '@/lib/reports/api-paths';
+import { messageFromError } from '@/lib/utils/error-message';
 import type { PhysicianReportContent, CareManagerReportContent } from '@/types/care-report-content';
 import { deriveReportComplianceChecks } from './compliance-checklist';
 
@@ -602,7 +603,7 @@ export function ReportEditForm({ reportId, reportType, updatedAt, content, onSav
       queryClient.invalidateQueries({ queryKey: ['care-reports'] });
       onSaved?.();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(messageFromError(err, '報告書の保存に失敗しました')),
   });
 
   return (

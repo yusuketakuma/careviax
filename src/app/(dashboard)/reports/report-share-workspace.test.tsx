@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
@@ -327,6 +328,7 @@ const COCKPIT: DashboardCockpitResponse = {
 function stubFetch(
   workspace: ReportsTodayWorkspaceResponse = TODAY_WORKSPACE,
   generatedReportId = 'rep_generated',
+  generateFailure?: Response,
 ) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -337,6 +339,9 @@ function stubFetch(
       return new Response(JSON.stringify({ data: COCKPIT }), { status: 200 });
     }
     if (url.includes('/api/care-reports/generate-from-visit')) {
+      if (generateFailure) {
+        return generateFailure;
+      }
       return new Response(
         JSON.stringify({
           data: [
@@ -787,6 +792,44 @@ describe('ReportShareWorkspace', () => {
     });
     await waitFor(() => {
       expect(routerPushMock).toHaveBeenCalledWith('/reports/rep_generated');
+    });
+  });
+
+  it('keeps server messages when draft generation fails', async () => {
+    stubFetch(
+      TODAY_WORKSPACE,
+      'rep_generated',
+      new Response(JSON.stringify({ message: '訪問記録が更新されています' }), { status: 409 }),
+    );
+    renderWorkspace();
+
+    fireEvent.click(
+      (
+        await screen.findAllByRole('button', {
+          name: '田中 一郎 様 ケアマネ向けの下書きを自動作成',
+        })
+      )[0],
+    );
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('訪問記録が更新されています');
+    });
+  });
+
+  it('falls back when draft generation fails without a server message', async () => {
+    stubFetch(TODAY_WORKSPACE, 'rep_generated', new Response('server error', { status: 500 }));
+    renderWorkspace();
+
+    fireEvent.click(
+      (
+        await screen.findAllByRole('button', {
+          name: '田中 一郎 様 医師向けの下書きを自動作成',
+        })
+      )[0],
+    );
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('下書きの作成に失敗しました');
     });
   });
 

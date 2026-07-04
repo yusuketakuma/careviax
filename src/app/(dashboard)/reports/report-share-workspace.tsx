@@ -20,6 +20,7 @@ import type { GeneratedCareReportSummary } from '@/lib/reports/generate-from-vis
 import { displayDeliveryFailureReason } from '@/lib/reports/delivery-failure-reasons';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 import { timeIsoToString } from '@/lib/visits/time-of-day';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type {
@@ -689,7 +690,7 @@ export function ReportShareWorkspace() {
       queryClient.invalidateQueries({ queryKey: ['care-reports'] });
       router.push(buildReportHref(firstReport.id));
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(messageFromError(err, '下書きの作成に失敗しました')),
   });
 
   const now = new Date();

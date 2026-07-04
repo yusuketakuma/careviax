@@ -25,6 +25,7 @@ import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildCareReportApiPath } from '@/lib/reports/api-paths';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { buildTasksApiPath } from '@/lib/tasks/api-paths';
+import { messageFromError } from '@/lib/utils/error-message';
 import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
 import type { CareReportActionPermissions } from '@/types/care-report-permissions';
 import {
@@ -305,7 +306,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
       }
       toast.success('次回訪問の確認タスクを作成しました');
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(messageFromError(err, '次回タスクの作成に失敗しました')),
   });
 
   const createReplyRequestMutation = useMutation({
@@ -361,7 +362,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
         queryKey: ['communication-requests', 'care_report', reportId, orgId],
       });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(messageFromError(err, '返信依頼の起票に失敗しました')),
   });
 
   if (isBootstrappingOrg || reportQuery.isLoading) {

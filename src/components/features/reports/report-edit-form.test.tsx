@@ -2,6 +2,7 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { stubJsonFetch } from '@/test/fetch-test-utils';
 import { ReportEditForm } from './report-edit-form';
@@ -11,6 +12,7 @@ setupDomTestEnv();
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const invalidateQueriesMock = vi.hoisted(() => vi.fn());
+const mutationOptionsMock = vi.hoisted(() => vi.fn());
 const buildOrgJsonHeadersMock = vi.hoisted(() =>
   vi.fn((orgId: string) => ({
     'Content-Type': 'application/json',
@@ -27,9 +29,23 @@ vi.mock('@/lib/api/org-headers', () => ({
   buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
 
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 vi.mock('@tanstack/react-query', () => ({
-  useMutation: (options: { mutationFn: () => Promise<unknown> }) => ({
-    mutate: () => void options.mutationFn(),
+  useMutation: (options: {
+    mutationFn: () => Promise<unknown>;
+    onSuccess?: () => void;
+    onError?: (error: unknown) => void;
+  }) => ({
+    mutate: () => {
+      mutationOptionsMock(options);
+      void options.mutationFn().then(() => options.onSuccess?.(), options.onError);
+    },
     isPending: false,
   }),
   useQueryClient: () => ({
@@ -178,5 +194,35 @@ describe('ReportEditForm', () => {
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
       expected_updated_at: '2026-04-21T00:00:00.000Z',
     });
+  });
+
+  it('keeps server save messages in mutation toasts and falls back for non-Error failures', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ message: '版が競合しました' }), { status: 409 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <ReportEditForm
+        reportId="report_1"
+        reportType="physician_report"
+        updatedAt="2026-04-21T00:00:00.000Z"
+        content={physicianContent}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('版が競合しました');
+    });
+
+    const mutationOptions = mutationOptionsMock.mock.calls.at(-1)?.[0] as
+      | { onError?: (error: unknown) => void }
+      | undefined;
+    mutationOptions?.onError?.('network-failure');
+
+    expect(toast.error).toHaveBeenCalledWith('報告書の保存に失敗しました');
   });
 });

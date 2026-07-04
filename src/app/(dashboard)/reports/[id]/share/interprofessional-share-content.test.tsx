@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
@@ -200,6 +201,8 @@ function stubFetch(
     report?: typeof REPORT;
     requests?: typeof REQUESTS;
     requestDetail?: typeof REQUEST_DETAIL;
+    failRequestPost?: Response;
+    failTaskPost?: Response;
   } = {},
 ) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -231,6 +234,9 @@ function stubFetch(
       (url === '/api/communication-requests' || url === '/api/communication-requests__sentinel') &&
       init?.method === 'POST'
     ) {
+      if (options.failRequestPost) {
+        return options.failRequestPost;
+      }
       return new Response(JSON.stringify({ data: { id: 'req_new', status: 'sent' } }), {
         status: 201,
       });
@@ -241,6 +247,9 @@ function stubFetch(
       });
     }
     if ((url === '/api/tasks' || url === '/api/tasks__sentinel') && init?.method === 'POST') {
+      if (options.failTaskPost) {
+        return options.failTaskPost;
+      }
       return new Response(JSON.stringify({ data: { id: 'task_1' } }), { status: 201 });
     }
     throw new Error(`unexpected fetch: ${url}`);
@@ -567,6 +576,47 @@ describe('InterprofessionalShareContent', () => {
     expect(body.content).toContain('主治医向けに共有する報告内容です');
     expect(body.content).toContain('【薬剤師からのお願い】');
     expect(body.content).toContain('昼分はヘルパー訪問時の声かけ');
+  });
+
+  it('keeps server messages for follow-up task failures', async () => {
+    stubFetch({
+      failTaskPost: new Response(JSON.stringify({ message: 'タスクは既に起票済みです' }), {
+        status: 409,
+      }),
+    });
+    renderShare();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('share-reply-card')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId('share-next-task-button'));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('タスクは既に起票済みです');
+    });
+  });
+
+  it('falls back when reply request creation fails without a server message', async () => {
+    stubFetch({
+      failRequestPost: new Response('server error', { status: 500 }),
+    });
+    renderShare();
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('share-audience-card')).toHaveLength(5);
+    });
+
+    fireEvent.click(
+      screen
+        .getAllByTestId('share-audience-card')
+        .find((card) => card.getAttribute('data-audience') === 'physician')!,
+    );
+    fireEvent.click(await screen.findByTestId('share-create-request-button'));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('返信依頼の起票に失敗しました');
+    });
   });
 
   it('communication request and task mutations consume shared API helper return values', async () => {
