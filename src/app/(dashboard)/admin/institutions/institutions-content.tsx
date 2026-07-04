@@ -25,6 +25,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { hasPermission } from '@/lib/auth/permission-matrix';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
@@ -181,8 +182,7 @@ export function InstitutionsContent() {
       const response = await fetch(buildPrescriberInstitutionsApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('医療機関マスターの取得に失敗しました');
-      return response.json() as Promise<{ data: Institution[] }>;
+      return readApiJson<{ data: Institution[] }>(response, '医療機関マスターの取得に失敗しました');
     },
     enabled: !!orgId,
   });
