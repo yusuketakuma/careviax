@@ -1,5 +1,46 @@
 # CODEX Goal Progress
 
+## R40/R44 Billing Candidates readApiJson Partial - 2026-07-05 08:38 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`
+    - `src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx`
+- Scope:
+  - Reused `readApiJson` for the billing candidates list read GET.
+  - Added rendering coverage proving API JSON `message` from a failed list GET
+    is preserved through the existing DataTable error message path while URL,
+    filter params, cursor params, and `x-org-id` header contracts remain
+    unchanged.
+  - Preserved infinite-query key, cursor pagination, selected candidate
+    highlighting, monthly close/export disabled reasons, export-preview query
+    behavior, billing generation/review/close mutations, and CSV export blob
+    behavior.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Export-preview and mutation response handling were intentionally left
+    unchanged in this slice.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    calculation behavior, deployment, package dependency, live DB operation,
+    external send, secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx'`
+    passed `1` file / `8` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `1e561e01`
+    (`refactor(ui): reuse readApiJson in billing candidates`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 QR Draft List readApiJson Partial - 2026-07-05 08:33 JST
 
 - Status:

@@ -96,6 +96,13 @@
   fallback refetch / realtime invalidation / enabled gates / DataTable states / row navigation /
   keyboard shortcuts は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 billing-candidates readApiJson slice(1e561e01) land。focused Vitest 8、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。billing candidates list read GET を
+  readApiJson へ収束し、endpoint/query params / org header / infinite query key /
+  cursor pagination / DataTable error states / target highlight / close-export disabled reasons は保持。
+  export-preview query、generation/review/close mutations、CSV blob export は未変更。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 - codex: R40/R44 prescription-history readApiJson slice(d65d08d5) land。focused Vitest 29、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient prescription history GET /
   drug-master batch enrichment POST を readApiJson へ収束し、patient path helper / hostile-id

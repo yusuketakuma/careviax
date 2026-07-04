@@ -5,6 +5,23 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-billing-candidates 1e561e01
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`,
+  `src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx`
+- 実施: billing candidates list read GET を `readApiJson` へ移行し、
+  failed response の API JSON `message` が DataTable error に出るテストを追加。
+- 挙動変更: list read fetch 実装内部の helper 収束のみ。endpoint/query params、org header、
+  infinite query key、cursor pagination、target highlight、disabled reasons は維持。
+- 安全: billing product UI read internals のみ。export-preview query / generation / review /
+  close mutations / CSV blob export は未変更。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- 検証: focused billing candidates Vitest `1 file / 8 tests` green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit 1e561e01。
+- 残課題: R40/R44 は partial。
+
 ## 2026-07-05 R40/R44-qr-draft-list 09120529
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。
