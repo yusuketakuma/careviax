@@ -1,5 +1,39 @@
 # CODEX Goal Progress
 
+## R55 Dispense Audit Stats Loading State - 2026-07-04 20:13 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/admin/dispense-audit-stats/page.tsx`
+    - `src/app/(dashboard)/admin/dispense-audit-stats/page.test.tsx`
+- Scope:
+  - Replaced the generic `Loading` branch in the admin dispense-audit stats
+    page with a named skeleton region that preserves the overview KPI and
+    reject-reason breakdown card rhythm without rendering final aggregate data.
+  - Loading coverage now proves the old ellipsis label, generic loading status,
+    final aggregate count, final reason label, and true-empty copy are absent
+    while the stats query is pending.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, fetcher, org header, period selector behavior,
+    reject-reason calculation, billing/audit semantics, DB, auth,
+    authorization, deployment, package, or server behavior changed.
+  - Loading copy is PHI-free and does not echo patient identifiers, dispense
+    result details, reject counts, reason labels, org ids, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/dispense-audit-stats/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `5` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the dispense-audit stats source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `d9a68f06`
+    (`fix(admin): show skeleton for dispense audit stats loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Patient Card Workspace Loading State - 2026-07-04 20:09 JST
 
 - Status:
