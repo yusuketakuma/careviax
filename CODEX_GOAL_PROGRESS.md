@@ -1,5 +1,37 @@
 # CODEX Goal Progress
 
+## R55 Schedule Proposals False-Empty Error Guard - 2026-07-04 18:14 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`
+    - `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx`
+- Scope:
+  - Added a `casesQuery.isError` branch between case-search loading and empty
+    states so `/api/cases` failures no longer render `一致するケースはありません。`.
+  - The error uses the shared `ErrorState`, PHI-free copy, assertive live-region
+    semantics, and `casesQuery.refetch()` retry.
+  - Added detail-sheet error regression coverage and `role="alert"` semantics
+    for the existing detail fetch failure branch.
+- Safety:
+  - UI state/test-only behavior around failure rendering.
+  - No API path, query key, payload, DB, auth, authorization, billing, audit,
+    deployment, package, or server behavior changed.
+  - Error copy does not echo the entered patient-search term, patient address,
+    phone number, medication details, raw error text, case id, patient id, or org id.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' --reporter=dot --testTimeout=60000`
+    passed `1` file / `39` tests.
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx' --reporter=dot --testTimeout=60000`
+    passed `2` files / `48` tests.
+  - Scoped ESLint, Prettier check, and `git diff --check` passed for the schedule
+    proposals content/test and weekly optimizer dirty files.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - This false-empty fix is grouped with the same coherent R55 loading-skeleton
+    UI slice. Unrelated `refactor-instructions.md` and local skill files remain
+    outside this slice.
+
 ## R43 Route Compare Json Response Helper - 2026-07-04 18:07 JST
 
 - Status:
@@ -40659,6 +40691,39 @@ false` for every migrated column.
   - Commit only the direct-subagent docs/ledger paths. Keep unrelated
     `refactor-instructions.md` and untracked local `.agents/skills/**` /
     `skills-lock.json` outside this slice.
+
+## R55 Schedule Proposals Loading Skeleton - 2026-07-04 18:13 JST
+
+- Scope:
+  - `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`
+  - `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx`
+  - `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`
+  - `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx`
+- Status:
+  - Replaced visible plain loading copy in schedule proposal case search,
+    proposal-card list, confirmation-flow detail Sheet, weekly optimizer case
+    search, and weekly optimizer board with named `role="status"` skeleton
+    regions.
+  - Preserved existing query keys, loading/error/empty branch order, retryable
+    errors, selection state, mutation disabled logic, API payloads, and
+    billing/route semantics.
+- Safety:
+  - UI presentation/test-only. No API, DB, auth, authorization, PHI logging,
+    billing logic, route mutation, deployment, package, or production setting
+    changed.
+  - `SkeletonRows status={false}` is nested under a single area-specific status
+    region to avoid duplicate generic announcements.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx' --reporter=dot --testTimeout=30000`
+    passed: 2 files / 48 tests.
+  - Targeted `pnpm eslint --` for the four touched files passed.
+  - Targeted `NODE_OPTIONS=--max-old-space-size=8192 pnpm prettier --check` for the four touched files passed.
+  - Targeted `git diff --check` passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - Unrelated dirty `docs/ui-ux-design-guidelines.md`, `.codex/ralph-state.md`
+    design-SSOT hunk, `refactor-instructions.md`, and untracked
+    `.agents/skills/**` / `skills-lock.json` remain separate.
 
 ## Coordinator Land Refresh - 2026-07-04 17:28 JST
 

@@ -400,6 +400,83 @@ describe('ScheduleProposalsContent', () => {
     expect(screen.getByTestId('schedule-proposal-active-row')).toBeTruthy();
   });
 
+  it('uses an announced skeleton while the confirmation flow detail loads', () => {
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-dashboard') {
+        return {
+          data: { data: [buildProposal()] },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+          connected: true,
+        };
+      }
+      if (queryKey[0] === 'schedule-proposal-detail') {
+        return {
+          data: undefined,
+          isLoading: true,
+          isError: false,
+          refetch: vi.fn(),
+          connected: true,
+        };
+      }
+      return {
+        data: undefined,
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+        connected: true,
+      };
+    });
+
+    render(<ScheduleProposalsContent initialDetailId="proposal_1" />);
+
+    expect(screen.getByRole('status', { name: '確定フローを読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('確定フローを読み込み中...', { selector: 'div,p' })).toBeNull();
+    expect(screen.queryByText('確定フローを表示できません')).toBeNull();
+  });
+
+  it('shows detail error with retry instead of indefinite detail loading', () => {
+    const refetch = vi.fn();
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-dashboard') {
+        return {
+          data: { data: [buildProposal()] },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+          connected: true,
+        };
+      }
+      if (queryKey[0] === 'schedule-proposal-detail') {
+        return {
+          data: undefined,
+          isLoading: false,
+          isError: true,
+          refetch,
+          connected: false,
+        };
+      }
+      return {
+        data: undefined,
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+        connected: true,
+      };
+    });
+
+    render(<ScheduleProposalsContent initialDetailId="proposal_1" />);
+
+    const detailError = screen.getByRole('alert');
+    expect(within(detailError).getByText('確定フローを表示できません')).toBeTruthy();
+    expectElementTextExcludesSensitiveDetails(detailError);
+    expect(screen.queryByRole('status', { name: '確定フローを読み込み中' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
   it('warns when the reproposal vehicle resource selector hides additional options', () => {
     const detail = buildProposalDetail();
     useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
@@ -488,6 +565,43 @@ describe('ScheduleProposalsContent', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses an announced skeleton while proposal cards load', () => {
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-dashboard') {
+        return {
+          data: undefined,
+          isLoading: true,
+          isError: false,
+          refetch: vi.fn(),
+          connected: true,
+        };
+      }
+      if (queryKey[0] === 'schedule-proposal-detail') {
+        return {
+          data: undefined,
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+          connected: true,
+        };
+      }
+      return {
+        data: undefined,
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+        connected: true,
+      };
+    });
+
+    render(<ScheduleProposalsContent />);
+
+    expect(screen.getByRole('status', { name: '訪問候補を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('訪問候補を読み込み中...', { selector: 'div,p' })).toBeNull();
+    expect(screen.queryByText('条件に一致する訪問候補はありません。')).toBeNull();
+    expect(screen.queryByRole('heading', { name: '訪問候補を表示できません' })).toBeNull();
   });
 
   it('warns when the billing preview fetch fails so cadence warnings are not silently dropped', () => {
@@ -632,6 +746,52 @@ describe('ScheduleProposalsContent', () => {
     expectLargeCheckboxTarget(
       screen.getByRole('checkbox', { name: proposalCheckboxName('山田花子') }),
     );
+  });
+
+  it('uses an announced skeleton while case search results load', async () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-case-search') {
+        return { data: undefined, isLoading: true };
+      }
+      return { data: undefined, isLoading: false };
+    });
+
+    render(<ScheduleProposalsContent />);
+
+    fireEvent.change(screen.getByLabelText('ケース/患者検索'), { target: { value: '佐藤' } });
+
+    expect(await screen.findByRole('status', { name: 'ケース候補を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('ケース候補を読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText('一致するケースはありません。')).toBeNull();
+  });
+
+  it('shows a case-search error instead of a false empty case result', async () => {
+    const refetch = vi.fn();
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-case-search') {
+        return { data: undefined, isLoading: false, isError: true, refetch };
+      }
+      return { data: undefined, isLoading: false, isError: false, refetch: vi.fn() };
+    });
+
+    render(<ScheduleProposalsContent />);
+
+    fireEvent.change(screen.getByLabelText('ケース/患者検索'), { target: { value: '佐藤' } });
+
+    const caseSearchErrorHeading = await screen.findByRole('heading', {
+      name: 'ケース候補を表示できません',
+    });
+    const caseSearchError = caseSearchErrorHeading.closest('[role="alert"]');
+    expect(caseSearchError).not.toBeNull();
+    expect(caseSearchError?.textContent).toContain(
+      '取得失敗時は一致するケースがないものとして扱わず',
+    );
+    expectTextExcludesSensitiveDetails(caseSearchError?.textContent);
+    expect(caseSearchError?.textContent).not.toContain('佐藤');
+    expect(screen.queryByText('一致するケースはありません。')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 
   it('disambiguates same-name case search results with safe case and patient identifiers', async () => {

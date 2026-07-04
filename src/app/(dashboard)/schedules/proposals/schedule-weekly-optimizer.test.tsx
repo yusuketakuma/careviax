@@ -208,6 +208,28 @@ describe('ScheduleWeeklyOptimizer', () => {
     );
   });
 
+  it('uses an announced skeleton while case search results load', async () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'cases' && queryKey[1] === 'weekly-optimizer-search') {
+        return { data: undefined, isLoading: true };
+      }
+      if (queryKey[0] === 'cases' && queryKey[1] === 'weekly-optimizer') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      return { data: undefined, isLoading: false };
+    });
+
+    render(<ScheduleWeeklyOptimizer />);
+
+    fireEvent.change(screen.getByLabelText('提案対象ケース'), {
+      target: { value: '山田' },
+    });
+
+    expect(await screen.findByRole('status', { name: 'ケース候補を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('ケース候補を読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText('一致するケースはありません。')).toBeNull();
+  });
+
   it('shows the vehicle resource selector in planner settings', async () => {
     useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
       if (queryKey[0] === 'cases' && queryKey[1] === 'weekly-optimizer') {
@@ -490,6 +512,31 @@ describe('ScheduleWeeklyOptimizer', () => {
         route_order_diff_count: 2,
       },
     });
+  });
+
+  it('uses an announced skeleton while the weekly board loads', () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'cases') return { data: { data: [] }, isLoading: false };
+      if (queryKey[0] === 'pharmacist-shifts') {
+        return {
+          data: undefined,
+          isLoading: true,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      if (queryKey[0] === 'visit-vehicle-resources') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      return { data: undefined, isLoading: false };
+    });
+
+    render(<ScheduleWeeklyOptimizer initialDate="2026-04-09" />);
+
+    expect(screen.getByRole('status', { name: '週間最適化ビューを読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('週間最適化ビューを読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText('週間ボードを取得できませんでした')).toBeNull();
+    expect(screen.queryAllByRole('button', { name: 'この枠に提案' })).toHaveLength(0);
   });
 
   it('renders a retryable ErrorState — not a false-empty board — when a board query fails', () => {

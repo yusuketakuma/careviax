@@ -49,6 +49,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Skeleton, SkeletonRows } from '@/components/ui/loading';
 import {
   Select,
   SelectContent,
@@ -234,6 +235,40 @@ type CreateProposalResponse = {
 type CaseSearchResponse = { data: CaseOption[] };
 type ContactOutcome = 'attempted' | 'declined' | 'change_requested' | 'unreachable' | 'confirmed';
 type ContactMethod = 'phone' | 'fax' | 'email';
+
+function CaseSearchLoadingState() {
+  return (
+    <div
+      className="space-y-2 py-1"
+      role="status"
+      aria-label="ケース候補を読み込み中"
+      aria-live="polite"
+    >
+      <Skeleton className="h-9 max-w-sm rounded-md" />
+      <Skeleton className="h-9 max-w-md rounded-md" />
+    </div>
+  );
+}
+
+function ProposalListLoadingState() {
+  return (
+    <Card>
+      <CardContent className="py-8">
+        <div role="status" aria-label="訪問候補を読み込み中" aria-live="polite">
+          <SkeletonRows rows={4} cols={4} status={false} />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProposalDetailLoadingState() {
+  return (
+    <div className="mt-6 py-8" role="status" aria-label="確定フローを読み込み中" aria-live="polite">
+      <SkeletonRows rows={4} cols={3} status={false} />
+    </div>
+  );
+}
 
 function createProposalGenerationIdempotencyKey(proposalId: string) {
   return createClientIdempotencyKey('visit-reproposal', proposalId);
@@ -1735,7 +1770,18 @@ export function ScheduleProposalsContent({
               <div className="space-y-2 rounded-lg border border-border/70 bg-muted/10 p-3">
                 <p className="text-xs font-medium text-muted-foreground">検索結果</p>
                 {casesQuery.isLoading ? (
-                  <p className="text-sm text-muted-foreground">ケース候補を読み込み中...</p>
+                  <CaseSearchLoadingState />
+                ) : casesQuery.isError ? (
+                  <ErrorState
+                    variant="server"
+                    size="inline"
+                    live="assertive"
+                    title="ケース候補を表示できません"
+                    cause="ケース候補の取得に失敗しました。"
+                    nextAction="通信状態を確認して再試行してください。"
+                    detail="取得失敗時は一致するケースがないものとして扱わず、ケース固定と候補絞り込みを停止しています。"
+                    onRetry={() => void casesQuery.refetch()}
+                  />
                 ) : caseSearchResults.length === 0 ? (
                   <p className="text-sm text-muted-foreground">一致するケースはありません。</p>
                 ) : (
@@ -2106,11 +2152,7 @@ export function ScheduleProposalsContent({
           ) : null}
 
           {proposalsQuery.isLoading ? (
-            <Card>
-              <CardContent className="py-10 text-sm text-muted-foreground">
-                訪問候補を読み込み中...
-              </CardContent>
-            </Card>
+            <ProposalListLoadingState />
           ) : visibleProposals.length === 0 ? (
             <EmptyState icon={SearchX} title="条件に一致する訪問候補はありません。" />
           ) : (
@@ -2665,7 +2707,7 @@ export function ScheduleProposalsContent({
           </SheetHeader>
 
           {detailQuery.isError ? (
-            <Card className="mt-6 border-destructive/30 bg-destructive/5">
+            <Card className="mt-6 border-destructive/30 bg-destructive/5" role="alert">
               <CardContent className="space-y-3 py-6 text-sm">
                 <p className="font-semibold text-destructive">確定フローを表示できません</p>
                 <p className="text-muted-foreground">
@@ -2682,7 +2724,7 @@ export function ScheduleProposalsContent({
               </CardContent>
             </Card>
           ) : !detail || detailQuery.isLoading ? (
-            <div className="py-10 text-sm text-muted-foreground">確定フローを読み込み中...</div>
+            <ProposalDetailLoadingState />
           ) : (
             <div className="mt-6 space-y-6">
               <Card>

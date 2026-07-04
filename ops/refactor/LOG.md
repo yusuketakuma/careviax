@@ -707,3 +707,48 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   green、`git diff --check -- .agent-loop/README.md ops/refactor/STATE.md` green。
 - 残課題: `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は別スライスとして保持し、
   この commit には混ぜない。
+
+## 2026-07-04 R55 schedule proposals loading skeleton
+
+- 分類: UI loading-state cleanup / R55 visible loading residual。
+- 実施:
+  - `schedule-proposals-content.tsx` のケース検索、訪問候補一覧、確定フロー Sheet の可視
+    plain loading copy を領域固有 `role="status"` + skeleton へ置換。
+  - `schedule-weekly-optimizer.tsx` のケース検索と週間ボード loading を領域固有
+    `role="status"` + skeleton へ置換。
+  - 各テストへ named status と旧 plain loading copy 不在の assertion を追加。
+- 挙動変更: loading presentation のみ。query key、enabled 条件、error/empty branch、retry action、
+  selection/bulk/action disabled、route/billing/API payload は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の loading / error / empty 分離、可視 generic loading copy
+  禁止、`SkeletonRows status={false}` を単一 named status region 配下に置く契約へ整合。
+- 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+- 検証: focused Vitest `2 files / 48 tests` green、targeted ESLint green、targeted Prettier check
+  green、targeted `git diff --check` green、`pnpm typecheck` green。
+- 残課題: `docs/ui-ux-design-guidelines.md` / `.codex/ralph-state.md` の design-SSOT dirty hunk、
+  `refactor-instructions.md`、`.agents/skills/**` / `skills-lock.json` は別スライスとして保持し、この commit には混ぜない。
+
+## 2026-07-04 R55 schedule proposals false-empty guard
+
+- 分類: UI false-empty prevention / patient-safety and privacy-state guard。
+- 実施:
+  - `schedule-proposals-content.tsx` の case/patient search result panel に
+    `casesQuery.isError` 分岐を追加し、`/api/cases` 取得失敗時に
+    `一致するケースはありません。` を表示しないようにした。
+  - `ErrorState` + assertive live region + `casesQuery.refetch()` retry を使い、PHI-free の
+    cause / next action / safety detail copy を表示。
+  - 既存 detail sheet error branch に `role="alert"` を追加し、取得失敗が loading ではなく
+    blocking error として支援技術にも伝わるようにした。
+  - `schedule-proposals-content.test.tsx` に case-search error retry と detail error retry の回帰
+    coverage を追加。検索語・住所・電話・薬剤/処方詳細を error copy に出さないことも固定。
+- 挙動変更: error UI のみ。query key、enabled 条件、fetch path、payload、selection、bulk action、
+  route/billing/API/DB/auth/authorization/PHI persistence は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の False-empty prevention と状態5分離に整合。
+- safety/privacy review: Codex-local review で false-empty / PHI-free copy /
+  retryability を確認。
+- 検証:
+  - focused Vitest `1 file / 39 tests` green。
+  - schedule proposals + weekly optimizer Vitest `2 files / 48 tests` green。
+  - scoped ESLint green、scoped Prettier check green、targeted `git diff --check` green。
+  - `pnpm typecheck` green。
+- 残課題: `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は別スライスとして保持し、
+  この UI 状態設計 commit には混ぜない。

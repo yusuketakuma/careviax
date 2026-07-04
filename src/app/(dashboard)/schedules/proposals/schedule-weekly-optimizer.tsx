@@ -34,6 +34,7 @@ import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Skeleton, SkeletonRows } from '@/components/ui/loading';
 import {
   Select,
   SelectContent,
@@ -162,6 +163,42 @@ const EMPTY_SCHEDULES: VisitSchedule[] = [];
 const EMPTY_PROPOSALS: Proposal[] = [];
 const EMPTY_SHIFTS: PharmacistShift[] = [];
 const EMPTY_VEHICLE_RESOURCES: VisitVehicleResourceScheduleOption[] = [];
+
+function CaseSearchLoadingState() {
+  return (
+    <div
+      className="space-y-2 py-1"
+      role="status"
+      aria-label="ケース候補を読み込み中"
+      aria-live="polite"
+    >
+      <Skeleton className="h-9 max-w-sm rounded-md" />
+      <Skeleton className="h-9 max-w-md rounded-md" />
+    </div>
+  );
+}
+
+function WeeklyBoardLoadingState() {
+  return (
+    <div
+      className="py-6"
+      role="status"
+      aria-label="週間最適化ビューを読み込み中"
+      aria-live="polite"
+    >
+      <div className="overflow-x-auto">
+        <div className="min-w-[1100px] space-y-3">
+          <div className="grid grid-cols-[220px_repeat(7,minmax(170px,1fr))] gap-3">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <Skeleton key={index} className="h-12 rounded-xl" />
+            ))}
+          </div>
+          <SkeletonRows rows={4} cols={8} status={false} />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function shiftFitsSchedule(shift: PharmacistShift | null, schedule: DragSchedule) {
   if (!shift || !shift.available) return false;
@@ -1418,7 +1455,7 @@ export function ScheduleWeeklyOptimizer({
             <div className="space-y-2 rounded-lg border border-border/70 bg-muted/10 p-3">
               <p className="text-xs font-medium text-muted-foreground">検索結果</p>
               {caseSearchQuery.isLoading ? (
-                <p className="text-sm text-muted-foreground">ケース候補を読み込み中...</p>
+                <CaseSearchLoadingState />
               ) : caseSearchResults.length === 0 ? (
                 <p className="text-sm text-muted-foreground">一致するケースはありません。</p>
               ) : (
@@ -1460,7 +1497,7 @@ export function ScheduleWeeklyOptimizer({
           ) : null}
 
           {isLoading ? (
-            <p className="py-8 text-sm text-muted-foreground">週間最適化ビューを読み込み中...</p>
+            <WeeklyBoardLoadingState />
           ) : boardError ? (
             <div className="py-8">
               <ErrorState
