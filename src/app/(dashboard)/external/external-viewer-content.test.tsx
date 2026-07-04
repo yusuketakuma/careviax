@@ -33,6 +33,16 @@ import { ExternalViewerContent } from './external-viewer-content';
 
 setupDomTestEnv();
 
+type QueryConfig<TData = unknown> = {
+  queryKey: readonly unknown[];
+  queryFn: () => Promise<TData>;
+  enabled?: boolean;
+};
+
+function getQueryConfigs() {
+  return useQueryMock.mock.calls.map(([config]) => config) as Array<QueryConfig>;
+}
+
 describe('ExternalViewerContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -61,6 +71,40 @@ describe('ExternalViewerContent', () => {
     expect(screen.getByText('自己申告')).toBeTruthy();
     expect(screen.getByText('地域フォロー')).toBeTruthy();
     expect(screen.getByRole('heading', { name: '共有とフォロー' })).toBeTruthy();
+  });
+
+  it('keeps external read queries on org-scoped endpoints through the shared JSON helper', async () => {
+    const fetchMock = stubJsonFetch({ data: [] });
+
+    render(<ExternalViewerContent />);
+
+    const [grantsQuery, selfReportsQuery, activitiesQuery] = getQueryConfigs();
+
+    expect(grantsQuery?.queryKey).toEqual(['external-access-grants', 'org_1']);
+    expect(selfReportsQuery?.queryKey).toEqual([
+      'patient-self-reports',
+      'org_1',
+      'external-dashboard',
+    ]);
+    expect(activitiesQuery?.queryKey).toEqual(['community-activities', 'org_1', 'follow-up']);
+
+    await grantsQuery?.queryFn();
+    await selfReportsQuery?.queryFn();
+    await activitiesQuery?.queryFn();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/external-access', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/patient-self-reports?limit=12', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      '/api/community-activities?limit=8&follow_up_required=true',
+      {
+        headers: { 'x-org-id': 'org_1' },
+      },
+    );
   });
 
   it('sends the self report version timestamp when updating status', async () => {

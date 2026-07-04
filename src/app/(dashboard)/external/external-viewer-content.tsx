@@ -15,6 +15,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { StatCard } from '@/components/ui/stat-card';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { SELF_REPORT_STATUS_LABELS } from '@/lib/constants/status-labels';
 import { PageSection } from '@/components/layout/page-section';
@@ -85,8 +86,7 @@ export function ExternalViewerContent({
       const response = await fetch('/api/external-access', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('外部共有の取得に失敗しました');
-      return response.json() as Promise<{ data: ExternalGrant[] }>;
+      return readApiJson<{ data: ExternalGrant[] }>(response, '外部共有の取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -97,8 +97,7 @@ export function ExternalViewerContent({
       const response = await fetch('/api/patient-self-reports?limit=12', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('自己申告の取得に失敗しました');
-      return response.json() as Promise<{ data: SelfReport[] }>;
+      return readApiJson<{ data: SelfReport[] }>(response, '自己申告の取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -109,8 +108,7 @@ export function ExternalViewerContent({
       const response = await fetch('/api/community-activities?limit=8&follow_up_required=true', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('地域活動の取得に失敗しました');
-      return response.json() as Promise<{ data: CommunityActivity[] }>;
+      return readApiJson<{ data: CommunityActivity[] }>(response, '地域活動の取得に失敗しました');
     },
     enabled: !!orgId,
   });
