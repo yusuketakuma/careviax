@@ -137,6 +137,49 @@ describe('OperatingHoursContent', () => {
     vi.unstubAllGlobals();
   });
 
+  it('shows a named skeleton while pharmacy sites are loading', () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-sites') {
+        return new Promise<Response>(() => undefined);
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+
+    expect(screen.getByRole('status', { name: '稼働日設定を読み込み中' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('営業日')).toBeNull();
+    expect(screen.queryByText('休業日')).toBeNull();
+  });
+
+  it('shows named skeleton regions while operating hours are loading', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-sites') {
+        return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+          status: 200,
+        });
+      }
+      if (url.startsWith('/api/pharmacy-operating-hours?')) {
+        return new Promise<Response>(() => undefined);
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+
+    expect(await screen.findByText('週次の営業時間')).toBeTruthy();
+    expect(screen.getByRole('status', { name: '週次営業時間を読み込み中' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: '稼働日カレンダーを読み込み中' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('営業日')).toBeNull();
+    expect(screen.queryByText('休業日')).toBeNull();
+  });
+
   it('renders 7 weekday editor rows and delegates GET to buildOrgHeaders', async () => {
     const fetchMock = stubFetch();
     renderContent();

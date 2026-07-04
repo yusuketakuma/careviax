@@ -794,3 +794,22 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R55 残として current-code scan で `operating-hours` loading state が次候補。
   既存 dirty の `Plans.md` / `.codex/hooks.json` / `refactor-instructions.md` /
   `workflow-dashboard-view.test.tsx` / `.agents/skills/**` は別スライスとして保持する。
+
+## 2026-07-04 R55 operating-hours loading skeleton
+
+- 分類: UI loading-state cleanup / R55 visible loading residual。
+- 実施:
+  - `operating-hours-content.tsx` の拠点一覧 bootstrap、週次営業時間 editor、稼働日カレンダーで
+    generic `Loading` をやめ、領域固有 `role="status"` + skeleton へ置換。
+  - loading 中に generic `読み込み中...` status へ戻らないこと、稼働日カレンダーの stats を
+    unavailable な状態で表示しないことをテストに追加。
+- 挙動変更: loading presentation のみ。query key、fetch path、org headers、mutation payload、
+  conflict retry/reload、error/empty branch、API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の 5状態分離、false-empty/false-zero 防止、
+  領域固有 loading label、可視 generic loading copy 禁止に整合。
+- 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、site id・org id・患者情報・raw error・未取得のカレンダー集計を出さない。
+- 検証: focused Vitest `1 file / 11 tests` green、targeted ESLint green、targeted Prettier
+  check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。

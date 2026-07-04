@@ -79,7 +79,8 @@
 
 ## 次の一手
 
-1. codex: R55 schedule proposals は 8fee04d8 で land 済み。次の安全な high-score 候補を
+1. codex: R55 schedule proposals は 8fee04d8、report delivery / operating-hours loading
+   cleanup は 1122d58e 以降のR55 continuationで消化中。次の安全な high-score 候補を
    Codex 本体で read-only triage し、P0/human gate と実装候補を分離する。
 2. codex: W3-B9 `monthly_cap_shared` rule-engine fix は ae81a9f7 で land 済み。長い gate が走っていないことを確認後、
    次の backend/business-domain 候補を read-only triage。

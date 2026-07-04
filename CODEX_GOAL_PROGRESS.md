@@ -1,5 +1,36 @@
 # CODEX Goal Progress
 
+## R55 Operating Hours Loading States - 2026-07-04 18:44 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/admin/operating-hours/operating-hours-content.tsx`
+    - `src/app/(dashboard)/admin/operating-hours/operating-hours-content.test.tsx`
+- Scope:
+  - Replaced generic `Loading` fallback usage in the operating-hours content
+    with named skeleton regions for site bootstrap, weekly-hours editor loading,
+    and operating-day calendar loading.
+  - Kept loading, empty, and error states separate: loading no longer exposes a
+    generic `読み込み中...` status, and calendar KPI stats are not shown while
+    operating-hours data is unavailable.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, request payload, mutation payload, DB, auth,
+    authorization, billing, audit, deployment, package, or server behavior
+    changed.
+  - Loading copy is PHI-free and does not echo site ids, org ids, patient data,
+    raw errors, or unavailable calendar stats.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/operating-hours/operating-hours-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `11` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the operating-hours source/test files.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Report Delivery Analytics Loading States - 2026-07-04 18:31 JST
 
 - Status:

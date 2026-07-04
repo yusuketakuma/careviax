@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ErrorState } from '@/components/ui/error-state';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton, SkeletonRows } from '@/components/ui/loading';
 import { StatCard } from '@/components/ui/stat-card';
 import { StatusDot } from '@/components/ui/status-dot';
 import { MonthGrid, MonthGridNav } from '@/components/ui/month-grid';
@@ -144,6 +144,54 @@ function resolvedLabel(day: ResolvedDay): string {
     return day.from && day.to ? `${day.from}〜${day.to}` : '営業';
   }
   return day.reason === 'holiday' ? '休業' : '定休';
+}
+
+function OperatingHoursBootstrapLoadingState() {
+  return (
+    <div className="space-y-6" role="status" aria-label="稼働日設定を読み込み中">
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-11 w-64 rounded-md" />
+      </div>
+      <Skeleton className="h-72 w-full rounded-lg" />
+      <Skeleton className="h-80 w-full rounded-lg" />
+      <span className="sr-only">稼働日設定を読み込んでいます。</span>
+    </div>
+  );
+}
+
+function WeeklyHoursLoadingState() {
+  return (
+    <div className="space-y-2" role="status" aria-label="週次営業時間を読み込み中">
+      {Array.from({ length: 7 }).map((_, index) => (
+        <div
+          key={index}
+          className="flex flex-wrap items-center gap-3 rounded-md border border-border/70 bg-card p-3"
+        >
+          <Skeleton className="h-5 w-8" />
+          <Skeleton className="h-6 w-20 rounded-full" />
+          <Skeleton className="h-10 w-32 rounded-md" />
+          <Skeleton className="h-4 w-4" />
+          <Skeleton className="h-10 w-32 rounded-md" />
+        </div>
+      ))}
+      <span className="sr-only">週次営業時間を読み込んでいます。</span>
+    </div>
+  );
+}
+
+function OperatingCalendarLoadingState() {
+  return (
+    <div className="space-y-4" role="status" aria-label="稼働日カレンダーを読み込み中">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3" aria-hidden="true">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <Skeleton key={index} className="h-[88px] rounded-lg" />
+        ))}
+      </div>
+      <SkeletonRows rows={5} cols={7} status={false} />
+      <span className="sr-only">稼働日カレンダーを読み込んでいます。</span>
+    </div>
+  );
 }
 
 export function OperatingHoursContent() {
@@ -281,7 +329,7 @@ export function OperatingHoursContent() {
   }
 
   if (!orgId || sitesQuery.isLoading) {
-    return <Loading />;
+    return <OperatingHoursBootstrapLoadingState />;
   }
 
   if (sitesQuery.isError) {
@@ -358,7 +406,7 @@ export function OperatingHoursContent() {
         }
       >
         {operatingQuery.isLoading ? (
-          <Loading />
+          <WeeklyHoursLoadingState />
         ) : operatingQuery.isError ? (
           <ErrorState
             variant="server"
@@ -457,7 +505,7 @@ export function OperatingHoursContent() {
         }
       >
         {operatingQuery.isLoading ? (
-          <Loading />
+          <OperatingCalendarLoadingState />
         ) : operatingQuery.isError ? (
           <ErrorState
             variant="server"
