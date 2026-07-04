@@ -579,3 +579,17 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   `docs/env-catalog.md` の key row count は `134`。
 - 安全性: docs/tooling-only。package dependencies、app runtime/API/DB/auth/authorization/PHI/audit/billing/deploy
   は不変。`refactor-instructions.md` の広範な Markdown formatting churn は未コミットのまま残置。
+
+## 2026-07-04 W3-B9 online shared monthly cap ae81a9f7
+
+- 分類: billing correctness / online monthly cap sharing。
+- land: `ae81a9f7 fix(billing): apply shared online monthly caps`。
+  `monthly_cap_shared` の base rule が explicit `monthly_cap` を持たない場合も、通常月4回・特別患者月8回/週2回の
+  shared cap を rule-engine 側で適用。
+- 変更: `src/server/services/billing-rules/rule-engine.ts` と
+  `src/server/services/billing-rules/rule-engine.test.ts`。医療オンライン59点、介護オンライン46単位、
+  null special-cap 値からの fallback を focused test で固定。
+- 検証: billing focused Vitest `3 files / 109 tests` green、exact ESLint green、exact
+  Prettier check green、targeted `git diff --check` green、full `pnpm typecheck` green。
+- 安全性: DB/migration/auth/authorization/API payload/PHI logging/deploy/package dependencies は不変。
+  算定上限の過小適用を防ぐ fail-closed 寄りの修正。

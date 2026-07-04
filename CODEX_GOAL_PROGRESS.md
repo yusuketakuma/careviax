@@ -1,5 +1,30 @@
 # CODEX Goal Progress
 
+## W3-B9 Online Shared Monthly Cap - 2026-07-04 17:50 JST
+
+- Status:
+  - Implemented, validated, and landed:
+    - `ae81a9f7 fix(billing): apply shared online monthly caps`
+- Scope:
+  - `rule-engine` now resolves `monthly_cap_shared` base rules to the shared
+    monthly cap (`4`) and special-patient shared caps (`8` monthly / `2`
+    weekly) when explicit cap fields are absent.
+  - Medical online 59-point and care online 46-unit cases are covered by
+    focused tests, including null special-cap values falling back safely.
+- Safety:
+  - Billing rule-engine only. No DB, migration, auth, authorization, API
+    payload, PHI logging, deployment, package dependency, or production setting
+    changed.
+- Validation:
+  - `pnpm vitest run src/server/services/billing-rules/rule-engine.test.ts src/server/services/billing-rules/__tests__/rule-engine-emergency.test.ts src/server/services/billing-evidence/core.test.ts --reporter=dot --testTimeout=30000`
+    passed `3` files / `109` tests.
+  - Exact ESLint, Prettier check, and `git diff --check` passed for
+    `rule-engine.ts` and `rule-engine.test.ts`.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+- Remaining:
+  - `.codex/config.toml`, `AGENTS.md`, and `refactor-instructions.md` are
+    unrelated dirty files and were not staged.
+
 ## R22b WebSocket Reference Refresh - 2026-07-04 17:45 JST
 
 - Status:
