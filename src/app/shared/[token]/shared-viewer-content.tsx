@@ -23,6 +23,7 @@ import { StateBadge } from '@/components/ui/state-badge';
 import { Textarea } from '@/components/ui/textarea';
 import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
+import { messageFromError } from '@/lib/utils/error-message';
 
 type ExternalPayload = {
   patient: {
@@ -349,7 +350,7 @@ export function SharedViewerContent({ token }: { token: string }) {
         toast.error('送信回数が多すぎます。しばらく待ってから再試行してください');
         return;
       }
-      toast.error(error.message);
+      toast.error(messageFromError(error, '自己申告の送信に失敗しました'));
     },
   });
 

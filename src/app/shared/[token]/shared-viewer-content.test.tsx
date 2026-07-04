@@ -53,6 +53,32 @@ function createSharedViewerPayload() {
   };
 }
 
+function mockSelfReportPostFailure(status: number, body: Record<string, unknown>) {
+  vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === '/api/external-access/token_1') {
+      return new Response(JSON.stringify(createSharedViewerPayload()), { status: 200 });
+    }
+    if (url === '/api/external-access/token_1/self-report' && init?.method === 'POST') {
+      return new Response(JSON.stringify(body), { status });
+    }
+    return new Response(JSON.stringify({ message: `Unhandled request: ${url}` }), {
+      status: 500,
+    });
+  });
+}
+
+async function unlockAndFillSelfReport() {
+  fireEvent.change(screen.getByLabelText('OTP'), { target: { value: '123456' } });
+  fireEvent.click(screen.getByRole('button', { name: /閲覧する/ }));
+
+  await screen.findByText('患者・ご家族からの連絡');
+
+  fireEvent.change(screen.getByLabelText(/報告者氏名/), { target: { value: '家族A' } });
+  fireEvent.change(screen.getByLabelText(/件名/), { target: { value: '飲み忘れ' } });
+  fireEvent.change(screen.getByLabelText(/内容/), { target: { value: '夕食後を飲み忘れ' } });
+}
+
 describe('SharedViewerContent self report', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -134,6 +160,41 @@ describe('SharedViewerContent self report', () => {
         ([input, init]) => String(input).endsWith('/self-report') && init?.method === 'POST',
       );
     expect(postCalls).toHaveLength(0);
+  });
+
+  it('keeps the server message for generic self report submit failures', async () => {
+    mockSelfReportPostFailure(500, { message: '自己申告APIからの詳細エラー' });
+    renderSharedViewerContent();
+
+    await unlockAndFillSelfReport();
+    fireEvent.click(screen.getByRole('button', { name: '薬局へ送信' }));
+
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('自己申告APIからの詳細エラー'));
+  });
+
+  it('falls back when generic self report submit failures have no message', async () => {
+    mockSelfReportPostFailure(500, { message: '' });
+    renderSharedViewerContent();
+
+    await unlockAndFillSelfReport();
+    fireEvent.click(screen.getByRole('button', { name: '薬局へ送信' }));
+
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith('自己申告の送信に失敗しました'),
+    );
+  });
+
+  it.each([
+    [409, '同じ送信内容は受付済みの可能性があります。画面を更新して確認してください'],
+    [429, '送信回数が多すぎます。しばらく待ってから再試行してください'],
+  ])('keeps the fixed self report submit message for status %s', async (status, message) => {
+    mockSelfReportPostFailure(status, { message: 'server message should not override fixed copy' });
+    renderSharedViewerContent();
+
+    await unlockAndFillSelfReport();
+    fireEvent.click(screen.getByRole('button', { name: '薬局へ送信' }));
+
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith(message));
   });
 
   it('restores a same-session self report draft without posting it', async () => {
