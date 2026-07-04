@@ -203,6 +203,12 @@
   readApiJson へ収束し、patient path helper/org header/queryKey/enabled gate/hostile-id encoding/
   dot-segment fail-closed/error edit-stop/save mutation は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 visit-constraints readApiJson slice(9b4aef59) land。focused Vitest 9、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。visit constraints read GET を
+  readApiJson へ収束し、patient path helper/org header/queryKey/enabled gate/hostile-id encoding/
+  dot-segment fail-closed/error edit-stop/save mutation/raw patient-id invalidation は保持。SSOT の
+  必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
