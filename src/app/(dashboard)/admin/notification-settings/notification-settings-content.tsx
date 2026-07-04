@@ -738,15 +738,13 @@ export function NotificationSettingsContent() {
               size="inline"
               title="通知設定を読み込めませんでした"
               description="データの読み込みに失敗しました。時間をおいて再読み込みしてください。"
-              action={{
-                label: '再読み込み',
-                onClick: () => {
-                  // 再取得を loading 表示から開始するため、エラーと読込済みorgをリセットしてから effect を再走させる。
-                  setRulesLoadError(false);
-                  setRulesLoadedOrgId(null);
-                  setRulesReloadKey((key) => key + 1);
-                },
+              onRetry={() => {
+                // 再取得を loading 表示から開始するため、エラーと読込済みorgをリセットしてから effect を再走させる。
+                setRulesLoadError(false);
+                setRulesLoadedOrgId(null);
+                setRulesReloadKey((key) => key + 1);
               }}
+              retryLabel="再読み込み"
             />
           ) : (
             <>
@@ -920,14 +918,12 @@ export function NotificationSettingsContent() {
               size="inline"
               title="エスカレーションルールを読み込めませんでした"
               description="データの読み込みに失敗しました。時間をおいて再読み込みしてください。"
-              action={{
-                label: '再読み込み',
-                onClick: () => {
-                  setEscalationLoadError(false);
-                  setEscalationLoadedOrgId(null);
-                  setEscalationReloadKey((key) => key + 1);
-                },
+              onRetry={() => {
+                setEscalationLoadError(false);
+                setEscalationLoadedOrgId(null);
+                setEscalationReloadKey((key) => key + 1);
               }}
+              retryLabel="再読み込み"
             />
           ) : escalationRules.length === 0 ? (
             <p className="text-sm text-muted-foreground">

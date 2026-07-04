@@ -1311,10 +1311,8 @@ export function MedicationsContent({
                       variant="server"
                       size="inline"
                       description="アレルギー情報を読み込めませんでした。登録済みのアレルギーが表示されていない可能性があります。再読み込みしてください。"
-                      action={{
-                        label: '再読み込み',
-                        onClick: () => void patientSummaryQuery.refetch(),
-                      }}
+                      onRetry={() => void patientSummaryQuery.refetch()}
+                      retryLabel="再読み込み"
                     />
                   ) : resolvedAllergyInfo && resolvedAllergyInfo.length > 0 ? (
                     resolvedAllergyInfo.map((item, index) => {

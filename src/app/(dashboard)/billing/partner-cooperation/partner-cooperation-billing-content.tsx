@@ -1129,11 +1129,8 @@ export function PartnerCooperationBillingContent() {
                   title="有効な薬局間契約を表示できません"
                   description="契約一覧の取得に失敗しました。再試行してください。"
                   detail={safeErrorDetail()}
-                  action={{
-                    label: '再試行',
-                    size: 'sm',
-                    onClick: () => void contractsQuery.refetch(),
-                  }}
+                  onRetry={() => void contractsQuery.refetch()}
+                  retrySize="sm"
                 />
               </div>
             ) : (

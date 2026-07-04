@@ -205,7 +205,8 @@ export function PrescriptionsTable({
           title="処方受付一覧を表示できません"
           description="処方受付データの取得に失敗しました。空の一覧として扱わず、通信状況を確認して再読み込みしてください。"
           detail={errorMessage}
-          action={onRetry ? { label: '再読み込み', onClick: onRetry } : undefined}
+          onRetry={onRetry}
+          retryLabel="再読み込み"
           headingLevel={3}
         />
       </div>

@@ -1202,12 +1202,10 @@ export default function ReportDetailPage() {
             headingLevel={2}
             title="他職種候補を読み込めませんでした"
             description="ケアチーム送付候補の取得に失敗しています。手入力での送付は続行できますが、共有候補を使う場合は再読み込みしてください。"
-            action={{
-              label: '候補を再読み込み',
-              onClick: () => void externalProfessionalSuggestionsQuery.refetch(),
-              variant: 'outline',
-              size: 'sm',
-            }}
+            onRetry={() => void externalProfessionalSuggestionsQuery.refetch()}
+            retryLabel="候補を再読み込み"
+            retryVariant="outline"
+            retrySize="sm"
             className="items-start text-left"
           />
         ) : null}
@@ -1236,12 +1234,10 @@ export default function ReportDetailPage() {
                       headingLevel={3}
                       title="他職種候補を読み込めませんでした"
                       description="共有先候補の一部または全部を確認できません。再読み込みしてから共有先を選んでください。"
-                      action={{
-                        label: '候補を再読み込み',
-                        onClick: () => void externalProfessionalSuggestionsQuery.refetch(),
-                        variant: 'outline',
-                        size: 'sm',
-                      }}
+                      onRetry={() => void externalProfessionalSuggestionsQuery.refetch()}
+                      retryLabel="候補を再読み込み"
+                      retryVariant="outline"
+                      retrySize="sm"
                       className="px-3 py-4"
                     />
                   ) : null}
@@ -1687,12 +1683,10 @@ export default function ReportDetailPage() {
                   headingLevel={3}
                   title="他職種候補を読み込めませんでした"
                   description="患者情報ページのケアチーム候補を確認できません。手入力での送付は続行できます。"
-                  action={{
-                    label: '候補を再読み込み',
-                    onClick: () => void externalProfessionalSuggestionsQuery.refetch(),
-                    variant: 'outline',
-                    size: 'sm',
-                  }}
+                  onRetry={() => void externalProfessionalSuggestionsQuery.refetch()}
+                  retryLabel="候補を再読み込み"
+                  retryVariant="outline"
+                  retrySize="sm"
                   className="items-start px-3 py-4 text-left"
                 />
               ) : null}

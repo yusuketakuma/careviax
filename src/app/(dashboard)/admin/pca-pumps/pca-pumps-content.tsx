@@ -1002,10 +1002,8 @@ export function PcaPumpsContent() {
               headingLevel={3}
               title="返却検品待ちを取得できませんでした"
               description="検品未完了のPCAポンプを確認できていません。0件ではなく取得エラーです。安全のため、確認できるまで再貸出・整備操作をブロックしています。再読み込みしてください。"
-              action={{
-                label: '再読み込み',
-                onClick: () => void returnInspectionRentalsQuery.refetch(),
-              }}
+              onRetry={() => void returnInspectionRentalsQuery.refetch()}
+              retryLabel="再読み込み"
             />
           ) : returnInspectionRentalsQuery.isLoading ? (
             <p className="text-sm text-muted-foreground">返却検品待ちを確認しています…</p>
