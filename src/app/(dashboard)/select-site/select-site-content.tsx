@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
@@ -28,8 +29,7 @@ type MySite = {
 
 async function fetchMySites(orgId: string): Promise<MySite[]> {
   const res = await fetch('/api/me/sites', { headers: buildOrgHeaders(orgId) });
-  if (!res.ok) throw new Error('所属薬局の取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: MySite[] }>(res, '所属薬局の取得に失敗しました');
   return json.data;
 }
 
