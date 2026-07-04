@@ -4,6 +4,7 @@ import { render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { stubJsonFetch } from '@/test/fetch-test-utils';
 import type { ClerkSupportResponse } from '@/types/clerk-support';
 
 setupDomTestEnv();
@@ -177,11 +178,7 @@ describe('ClerkSupportContent', () => {
   it('fetches the clerk-support dashboard with shared org headers and raw query key', async () => {
     const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: buildFixture() }),
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = stubJsonFetch({ data: buildFixture() });
 
     let captured: { queryKey: unknown[]; queryFn: () => Promise<unknown> } | undefined;
     useQueryMock.mockImplementation(

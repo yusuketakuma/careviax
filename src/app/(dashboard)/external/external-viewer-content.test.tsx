@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { stubJsonFetch } from '@/test/fetch-test-utils';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
@@ -54,11 +55,7 @@ describe('ExternalViewerContent', () => {
   });
 
   it('sends the self report version timestamp when updating status', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue({ data: { id: 'report_1' } }),
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = stubJsonFetch({ data: { id: 'report_1' } });
 
     render(<ExternalViewerContent />);
 
