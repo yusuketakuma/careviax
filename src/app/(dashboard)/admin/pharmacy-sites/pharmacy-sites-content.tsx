@@ -371,7 +371,8 @@ export function PharmacySitesContent() {
           headingLevel={2}
           title="薬局情報を読み込めませんでした"
           description="「該当なし」ではなく取得エラーです。再読み込みしてください。"
-          action={{ label: '再読み込み', onClick: () => void refetchSites() }}
+          onRetry={() => void refetchSites()}
+          retryLabel="再読み込み"
           live="assertive"
         />
       ) : sites.length === 0 ? (
@@ -591,7 +592,8 @@ export function PharmacySitesContent() {
                 headingLevel={3}
                 title="保険設定を読み込めませんでした"
                 description="「未登録」ではなく取得エラーです。再読み込みしてください。"
-                action={{ label: '再読み込み', onClick: () => void configsQuery.refetch() }}
+                onRetry={() => void configsQuery.refetch()}
+                retryLabel="再読み込み"
                 live="assertive"
               />
             ) : configs.length === 0 ? (
