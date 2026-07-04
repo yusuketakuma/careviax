@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import {
   createPatientMcsQueryKeyPrefix,
   createPatientMcsQueryKey,
@@ -61,10 +62,8 @@ describe('patient-mcs query', () => {
     const originalFetch = global.fetch;
     const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgHeaders).mockReturnValueOnce(sentinelHeaders);
-    const fetchMock = vi.fn().mockResolvedValue({
-      status: 200,
-      ok: true,
-      json: async () => ({
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
         data: {
           patient: { id: 'pt/1?x=y#z', name: '青葉 花子' },
           link: null,
@@ -74,7 +73,7 @@ describe('patient-mcs query', () => {
           checkLogs: [],
         },
       }),
-    } as Response);
+    );
     global.fetch = fetchMock;
 
     await fetchPatientMcsOverview('pt/1?x=y#z', 'org_1', 0);
@@ -97,10 +96,8 @@ describe('patient-mcs query', () => {
   it('uses the shared patient API path helper return value for MCS overview fetches', async () => {
     const originalFetch = global.fetch;
     vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_patient_1__/mcs');
-    const fetchMock = vi.fn().mockResolvedValue({
-      status: 200,
-      ok: true,
-      json: async () => ({
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
         data: {
           patient: { id: 'patient_1', name: '青葉 花子' },
           link: null,
@@ -110,7 +107,7 @@ describe('patient-mcs query', () => {
           checkLogs: [],
         },
       }),
-    } as Response);
+    );
     global.fetch = fetchMock;
 
     await fetchPatientMcsOverview('patient_1', 'org_1', 30);
@@ -146,13 +143,14 @@ describe('patient-mcs query', () => {
 
   it('maps forbidden responses to a typed query error', async () => {
     const originalFetch = global.fetch;
-    global.fetch = vi.fn().mockResolvedValue({
-      status: 403,
-      ok: false,
-      json: async () => ({
-        message: 'MCS 本文は権限のある担当者のみ表示できます。',
-      }),
-    } as Response);
+    global.fetch = vi.fn().mockResolvedValue(
+      jsonResponse(
+        {
+          message: 'MCS 本文は権限のある担当者のみ表示できます。',
+        },
+        403,
+      ),
+    );
 
     await expect(fetchPatientMcsOverview('patient_1', 'org_1', 0)).rejects.toMatchObject({
       code: 'forbidden',
@@ -176,11 +174,9 @@ describe('patient-mcs query', () => {
 
   it('normalizes invalid limits and maps failed responses with the server message', async () => {
     const originalFetch = global.fetch;
-    const fetchMock = vi.fn().mockResolvedValue({
-      status: 500,
-      ok: false,
-      json: async () => ({ message: 'MCS の取得に失敗しました' }),
-    } as Response);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ message: 'MCS の取得に失敗しました' }, 500));
     global.fetch = fetchMock;
 
     await expect(fetchPatientMcsOverview('patient_1', 'org_1', -1)).rejects.toMatchObject({
@@ -197,10 +193,8 @@ describe('patient-mcs query', () => {
 
   it('maps malformed successful payloads to a typed failed query error', async () => {
     const originalFetch = global.fetch;
-    global.fetch = vi.fn().mockResolvedValue({
-      status: 200,
-      ok: true,
-      json: async () => ({
+    global.fetch = vi.fn().mockResolvedValue(
+      jsonResponse({
         data: {
           patient: { id: 'patient_1', name: '青葉 花子' },
           link: null,
@@ -208,7 +202,7 @@ describe('patient-mcs query', () => {
           messages: { id: 'message_1' },
         },
       }),
-    } as Response);
+    );
 
     await expect(fetchPatientMcsOverview('patient_1', 'org_1', 30)).rejects.toMatchObject({
       code: 'failed',
