@@ -1,5 +1,40 @@
 # CODEX Goal Progress
 
+## R25 Admin Performance ErrorState Retry Shorthand Partial - 2026-07-04 23:09 JST
+
+- Status:
+  - Implemented and validated the next bounded R25 slice:
+    - `src/app/(dashboard)/admin/performance/page.tsx`
+- Scope:
+  - Migrated five admin performance ErrorState retry actions from hand-written
+    `action={{ label: '再読み込み', onClick }}` objects to `onRetry` +
+    `retryLabel`.
+  - Preserved visible retry copy and the existing refetch handlers for metrics,
+    runtime, and proposals queries.
+- Safety:
+  - UI presentation/refactor only.
+  - Visible labels, click handlers, error branch behavior, and admin performance
+    query behavior are preserved.
+  - No product API, DB, auth, authorization, PHI projection, billing, audit,
+    deployment, package dependency, live DB operation, external send, secret
+    handling, push, or destructive operation changed.
+- Validation:
+  - Targeted scan for hand-written `再読み込み` ErrorState actions in
+    `admin/performance/page.tsx` returned no matches.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/performance/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `5` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `1ea41977`
+    (`refactor(ui): route performance error retries through shorthand`).
+- Remaining:
+  - R25 is partial; remaining ErrorState retry action boilerplate should be
+    migrated in bounded screen/domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R25 Admin ErrorState Retry Shorthand Partial - 2026-07-04 23:05 JST
 
 - Status:
