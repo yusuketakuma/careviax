@@ -44,6 +44,8 @@ vi.mock('sonner', () => ({
   },
 }));
 
+import { toast } from 'sonner';
+
 vi.mock('@/lib/hooks/use-unsaved-changes-guard', () => ({
   useUnsavedChangesGuard: unsavedGuardMock,
 }));
@@ -400,6 +402,26 @@ describe('PatientForm', () => {
     expect(secondBody).toMatchObject({
       name: '山田 太郎',
       duplicate_acknowledged: true,
+    });
+  });
+
+  it('falls back when patient registration failure has an empty server message', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: async () => ({ message: '' }),
+    } as Response);
+
+    render(<PatientForm />);
+    fillRequiredPatientFields();
+
+    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('登録に失敗しました');
     });
   });
 

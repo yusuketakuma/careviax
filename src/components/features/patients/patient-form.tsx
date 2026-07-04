@@ -23,6 +23,7 @@ import { PHARMACISTS_API_PATH } from '@/lib/pharmacists/api-paths';
 import { buildOrgMembersApiPath } from '@/lib/org-members/api-paths';
 import { createPatientSchema, type CreatePatientInput } from '@/lib/validations/patient';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { messageFromError } from '@/lib/utils/error-message';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -662,10 +663,20 @@ export function PatientForm({
       ) {
         setDuplicates(err.details.duplicates);
         setDuplicateConfirmedKey(null);
-        toast.error(err.message ?? '重複している可能性がある患者が存在します');
+        toast.error(
+          messageFromError(
+            new Error(err.message ?? ''),
+            '重複している可能性がある患者が存在します',
+          ),
+        );
         return;
       }
-      toast.error(err.message ?? (patientId ? '更新に失敗しました' : '登録に失敗しました'));
+      toast.error(
+        messageFromError(
+          new Error(err.message ?? ''),
+          patientId ? '更新に失敗しました' : '登録に失敗しました',
+        ),
+      );
       return;
     }
 
