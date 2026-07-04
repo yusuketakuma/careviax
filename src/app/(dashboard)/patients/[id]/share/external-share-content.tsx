@@ -24,7 +24,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { ErrorState } from '@/components/ui/error-state';
 import { Label } from '@/components/ui/label';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/loading';
 import {
   Select,
   SelectContent,
@@ -143,6 +143,47 @@ type ShareFormErrors = {
   grantedToName?: string;
   scope?: string;
 };
+
+function ExternalShareLoadingState() {
+  return (
+    <div
+      className="space-y-4"
+      role="status"
+      aria-label="患者共有ワークスペースを読み込み中"
+      aria-live="polite"
+    >
+      <div className="flex items-start gap-3 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-4 py-3">
+        <Skeleton className="mt-0.5 size-4 shrink-0 rounded-full" />
+        <div className="min-w-0 flex-1 space-y-2">
+          <Skeleton className="h-5 w-64 max-w-full" />
+          <Skeleton className="h-4 w-full max-w-3xl" />
+          <Skeleton className="h-4 w-3/4 max-w-2xl" />
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_minmax(0,1fr)]">
+        {Array.from({ length: 3 }).map((_, columnIndex) => (
+          <Card key={columnIndex} className="border-border shadow-sm" aria-hidden="true">
+            <CardHeader className="space-y-2">
+              <Skeleton className="h-5 w-36" />
+              <Skeleton className="h-4 w-full max-w-xs" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {Array.from({ length: columnIndex === 1 ? 5 : 4 }).map((__, rowIndex) => (
+                <div key={rowIndex} className="space-y-2 rounded-md border border-border/70 p-3">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-2/3" />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <span className="sr-only">患者共有ワークスペースを読み込み中</span>
+    </div>
+  );
+}
 
 // --- Constants ---
 
@@ -522,7 +563,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
   }
 
   if (isBootstrappingOrg || overviewQuery.isLoading) {
-    return <Loading />;
+    return <ExternalShareLoadingState />;
   }
 
   if (overviewQuery.isError) {

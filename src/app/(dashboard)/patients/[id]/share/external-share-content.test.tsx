@@ -78,6 +78,24 @@ afterEach(() => {
 });
 
 describe('ExternalShareContent', () => {
+  it('shows a share workspace skeleton instead of a generic spinner while loading', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+
+    expect(screen.getByRole('status', { name: '患者共有ワークスペースを読み込み中' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByRole('heading', { level: 2, name: '共有設定' })).toBeNull();
+    expect(screen.queryByText('田中ケアマネジャー')).toBeNull();
+  });
+
   it('renders share setup and history with semantic section headings', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
