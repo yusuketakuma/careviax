@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   DOCUMENT_DELIVERY_RULES_API_PATH,
@@ -173,10 +174,7 @@ export function DocumentDeliveryRuleManager() {
       const res = await fetch(buildDocumentDeliveryRulesApiPath(), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) {
-        throw new Error('文書送達ルールの取得に失敗しました');
-      }
-      return res.json() as Promise<DocumentDeliveryRulesResponse>;
+      return readApiJson<DocumentDeliveryRulesResponse>(res, '文書送達ルールの取得に失敗しました');
     },
     enabled: !!orgId,
   });
