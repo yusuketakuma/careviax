@@ -105,9 +105,7 @@ describe('PatientFieldRevisionTimeline', () => {
       },
     );
 
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue({ ok: true, json: () => Promise.resolve({ data: [] }) } as Response);
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ data: [] })));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -135,6 +133,33 @@ describe('PatientFieldRevisionTimeline', () => {
         `/api/patients/${patientId}/field-revisions?category=basic`,
         expect.anything(),
       );
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('surfaces API messages from failed field revision read queries', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+
+    let capturedQuery: { queryFn: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation((config: { queryFn: () => Promise<unknown> }) => {
+      capturedQuery = config;
+      return { data: { data: [] }, isLoading: false, error: null };
+    });
+
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(JSON.stringify({ message: '変更履歴の閲覧権限がありません' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientFieldRevisionTimeline patientId="patient_1" />);
+      await expect(capturedQuery?.queryFn()).rejects.toThrow('変更履歴の閲覧権限がありません');
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();

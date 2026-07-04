@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/loading';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -83,10 +84,10 @@ export function PatientFieldRevisionTimeline({ patientId }: { patientId: string 
           headers: buildOrgHeaders(orgId),
         },
       );
-      if (!response.ok) {
-        throw new Error('変更履歴の取得に失敗しました');
-      }
-      return (await response.json()) as PatientFieldRevisionTimelineResponse;
+      return readApiJson<PatientFieldRevisionTimelineResponse>(
+        response,
+        '変更履歴の取得に失敗しました',
+      );
     },
     enabled: !!orgId,
   });
