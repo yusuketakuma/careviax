@@ -5,6 +5,23 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-patient-form-lookups bbf75619
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/components/features/patients/patient-form.tsx`,
+  `src/components/features/patients/patient-form.test.tsx`
+- 実施: patient form の facilities / facility-units / service-areas / pharmacists /
+  staff lookup read fetchers を `readApiJson` へ移行し、failed response の API JSON
+  `message` 表面化テストを追加。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。endpoints/path helper、hostile-id
+  encoding、org header、queryKeys、enabled gates、care-team states、mutations は維持。
+- 安全: product UI read fetch internals のみ。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- 検証: focused patient-form Vitest `1 file / 24 tests` green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit bbf75619。
+- 残課題: R40/R44 は partial。
+
 ## 2026-07-05 R40/R44-billing-candidates 1e561e01
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。

@@ -1,5 +1,43 @@
 # CODEX Goal Progress
 
+## R40/R44 Patient Form Lookups readApiJson Partial - 2026-07-05 08:46 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/components/features/patients/patient-form.tsx`
+    - `src/components/features/patients/patient-form.test.tsx`
+- Scope:
+  - Reused `readApiJson` for patient form facilities, facility-units,
+    service-areas, pharmacist, and staff lookup read fetchers.
+  - Added queryFn coverage proving API JSON `message` from failed patient-form
+    lookup responses is preserved while URL and `x-org-id` header contracts
+    remain unchanged.
+  - Preserved facility unit path helper and hostile-id encoding, React Query
+    keys, enabled gates, care-team disabled/error states, duplicate check,
+    qualification check, and create/update mutations.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run src/components/features/patients/patient-form.test.tsx`
+    passed `1` file / `24` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `bbf75619`
+    (`refactor(ui): reuse readApiJson in patient form lookups`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Billing Candidates readApiJson Partial - 2026-07-05 08:38 JST
 
 - Status:

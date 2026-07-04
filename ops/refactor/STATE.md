@@ -103,6 +103,13 @@
   export-preview query、generation/review/close mutations、CSV blob export は未変更。
   SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
   維持しつつ、本sliceでは不要。
+- codex: R40/R44 patient-form-lookups readApiJson slice(bbf75619) land。focused Vitest 24、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient form の facilities /
+  facility-units / service-areas / pharmacists / staff lookup read fetchers を readApiJson へ収束し、
+  endpoints/path helper / hostile-id encoding / org header / queryKeys / enabled gates /
+  care-team disabled,error states / duplicate check / qualification check / create-update mutations は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 - codex: R40/R44 prescription-history readApiJson slice(d65d08d5) land。focused Vitest 29、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient prescription history GET /
   drug-master batch enrichment POST を readApiJson へ収束し、patient path helper / hostile-id
