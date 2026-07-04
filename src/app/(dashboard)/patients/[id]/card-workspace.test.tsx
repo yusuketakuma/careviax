@@ -2742,6 +2742,46 @@ describe('CardWorkspace', () => {
     });
   });
 
+  it('keeps server messages and falls back for billing home-operation mutation error toasts', () => {
+    mockPatientQuery(buildWorkspace());
+    const baseMutation = useMutationMock.getMockImplementation();
+    const mutationConfigs: Array<{ onError?: (error: Error) => void }> = [];
+    useMutationMock.mockImplementation((config: { onError?: (error: Error) => void }) => {
+      mutationConfigs.push(config);
+      return baseMutation?.(config);
+    });
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const findMutationByFallback = (fallback: string) => {
+      const config = mutationConfigs.find((candidate) =>
+        String(candidate.onError).includes(fallback),
+      );
+      expect(config).toBeTruthy();
+      return config;
+    };
+
+    const cases = [
+      {
+        config: findMutationByFallback('集金記録の保存に失敗しました'),
+        serverMessage: '集金記録APIからの詳細エラー',
+        fallback: '集金記録の保存に失敗しました',
+      },
+      {
+        config: findMutationByFallback('支払設定の保存に失敗しました'),
+        serverMessage: '支払設定APIからの詳細エラー',
+        fallback: '支払設定の保存に失敗しました',
+      },
+    ];
+
+    for (const { config, serverMessage, fallback } of cases) {
+      config?.onError?.(new Error(serverMessage));
+      expect(toast.error).toHaveBeenLastCalledWith(serverMessage);
+      config?.onError?.(new Error(''));
+      expect(toast.error).toHaveBeenLastCalledWith(fallback);
+    }
+  });
+
   it('requires payer details before saving a non-self billing payment profile', async () => {
     const { billingProfileMutate } = mockPatientQuery(buildWorkspace(), {
       generated_at: '2026-06-16T00:00:00.000Z',

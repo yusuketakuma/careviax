@@ -4175,7 +4175,7 @@ export function CardWorkspace({
       toast.success('集金記録を保存しました');
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(messageFromError(error, '集金記録の保存に失敗しました'));
     },
   });
 
@@ -4215,7 +4215,7 @@ export function CardWorkspace({
       toast.success('支払設定を保存しました');
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(messageFromError(error, '支払設定の保存に失敗しました'));
     },
   });
 
