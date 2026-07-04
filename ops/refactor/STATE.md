@@ -10,7 +10,8 @@
   メイン lane は実装で塞がず、Plans 棚卸し、割当、review、gate、scoped commit、例外処理を優先する。
 - 実行役: codex2 = frontend/UI、codex3 = cleanup/DataTable/API-helper、codex4 = backend/business-domain
   recon/implementation。各 agent は exact path assignment 以外を編集しない。
-- Claude は停止済み。新規 work/review/gate は送らない。既存メッセージは legacy handoff として扱う。
+- Claude は今回の運用から削除済み（agmsg `phos` registration removed）。新規 work/review/gate は送らない。
+  既存メッセージは legacy handoff として扱う。
 - 規律: agmsg drain → exact LOCK/assignment → 実装/validation → PATCH_REPORT → codex review →
   central gate/scoped commit。実行役の self-commit 禁止。
 - gate: lint / typecheck / typecheck:no-unused / format:check / test / build / colors:check
@@ -18,7 +19,7 @@
 
 ## 全エージェント共通の自律待機方針（2026-07-04 ユーザー指示）
 
-- 対象: Claude / Codex / codex2 / codex3 / codex4 / opus / sonnet / haiku / future workers。
+- 対象: Codex / codex2 / codex3 / codex4 / future workers（Claude は今回の `phos` から削除済み）。
 - review待ち、LOCK待ち、land待ち、狭い blocker、担当slice hold中でも、完全停止しない。
 - まず agmsg と dirty tree を確認し、active LOCK・peer dirty・危険領域を避ける。
 - 編集できない場合も read-only recon、衝突表、候補scoring、focused validation、次に安全な作業の棚卸しを続ける。
@@ -45,21 +46,31 @@
   DR-DUP1(2e0c7fdb) / PERF-02(60469cd1) / CE20(66d65f99) / ID-1b(0a3b910c, e2a8b414)
   / ID-2-W1(898c0d6a) / ID-2-W2(90a1276e) / ID-2-W3(8c7e34e7) / ID-2-W4(7e18fcb2)
   / FIX-CATALOG-IDSEQ(a42065fa) / R21-SONNER1(68688360) / ID-2-W5(86d9d273) / ID-2-W6(d2bcde00) — 全 opus/committer APPROVE
-- codex2 lane: R16-MIN(da5889f0) / R16-SWEEP(6f26c04c) / FE-FALSEEMPTY(27496917) — opus/committer APPROVE
-- codex3 lane: R22-EXEC(759b4dbc) / R08-EXEC(cee20c66) — 全 opus APPROVE
-- claude/opus lane: X01(e02cec50) / CE19(2136c93a) / N18(ad0ff309) / R03(3b31cec1) /
-  A1-CRC(eebda8c3) land
+- codex2 lane: R16-MIN(da5889f0) / R16-SWEEP(6f26c04c) / FE-FALSEEMPTY(27496917) /
+  R55 admin-jobs route loading label(66ae881e) / R55 admin master loading labels(f0029164) —
+  coordinator validation green
+- codex3 lane: R22-EXEC(759b4dbc) / R08-EXEC(cee20c66) /
+  R55 drug-master import-history skeleton(fd065171) — coordinator validation green
+- codex4 lane: W3-B9 evidence-side missing emergency category blocker(cbef13f4) /
+  W3-B9 rule-engine missing emergency category fail-closed(d535b4f6) — focused validation green
+- legacy Claude/Opus lane（削除前の履歴）: X01(e02cec50) / CE19(2136c93a) / N18(ad0ff309) /
+  R03(3b31cec1) / A1-CRC(eebda8c3) land
 - 全量 gate green: test 13035 passed（2026-07-03 夜、F84/CE19/N18/R03後）
 
 ## 進行中 / 凍結
 
-- codex2: W3-E1 low-risk frontend/RHF lane。`W3-E1-FACILITIES-RHF` は a18abc1c で land。
-  users invite / consent create は read-only mapping 済みだが、auth-adjacent / PHI+file upload のため次候補としては保留。
+- codex2: frontend/UI lane。`R55-ADMIN-JOBS-PAGE-SUSPENSE-LOADING-LABEL` は
+  66ae881e、`R55-ADMIN-MASTER-PAGE-SUSPENSE-LOADING-LABELS` は f0029164 で land。
+  次は `R55-SCHEDULE-OPERATIONAL-TASKS-LOADING-SKELETON`
+  （schedule-day-operational-tasks-panel only）を GO 済み。
 - codex3: W3-E2/R55 cleanup lane。DataTable contract と prescriptions migration は land 済み。
-  `R55-COMMENT-THREAD-LOADING-SKELETON` を exact path で GO 済み。
-- codex4: W3-B9 billing-cycle recon lane。初回 read-only recon で cycle-null emergency が
-  missing emergency_category のまま fee2 fallback しうる算定リスクを検出。次は
-  `B9-EMERGENCY-NULLSOURCE-FAILCLOSED` の design-only recon（実装禁止・billing byte-preservation確認）。
+  `R55-DRUG-MASTER-IMPORT-HISTORY-LOADING-SKELETON` は fd065171 で land。
+  次は `R21-SONNER-MOCK-SMALL-WAVE`（report-delivery-dashboard.test の sonner helper migration）を
+  GO 済み。
+- codex4: W3-B9 billing-cycle lane。cycle-null/cycle-bound emergency category 欠落は
+  evidence 側 cbef13f4 + rule-engine 側 d535b4f6 で fail-closed 化済み。次は
+  `monthly_cap_shared` が rule-engine 上限計算で未消費の候補を、公式点数/単位確認つきで read-only
+  recon → 小スライス化する。
 - codex: `ID-1a` / `ID-1b` / `ID-2-W1` / `ID-2-W2` / `ID-2-W3` / `ID-2-W4` は land 済み。
   `ID-2-W5` も land 済み(86d9d273)。
   E1 は基準1 FAIL、E2（明示 tx allocator）正式採用。
@@ -72,10 +83,9 @@
 
 ## 次の一手
 
-1. codex3: `R55-COMMENT-THREAD-LOADING-SKELETON` PATCH_REPORT 待ち（UI loading-only、comment-thread exact paths）。
-2. codex2: 次の W3-E1 低リスク frontend 候補を recon。users invite / consent create は保留し、
-   auth/PHI/file-upload を避けた候補を優先。
-3. codex4: `B9-EMERGENCY-NULLSOURCE-FAILCLOSED` design recon 待ち。実装する場合は billing reviewer相当の
-   byte-preservation確認と focused billing-evidence tests を必須にする。
+1. codex2: `R55-SCHEDULE-OPERATIONAL-TASKS-LOADING-SKELETON` PATCH_REPORT 待ち。
+2. codex3: `R21-SONNER-MOCK-SMALL-WAVE` PATCH_REPORT 待ち。
+3. codex4: W3-B9 `online shared monthly cap` read-only recon。`monthly_cap_shared` / care online
+   46単位 / medical online 59点の cap 根拠と実装スライスを確認し、billing reviewer 前提で報告。
 4. codex: Plans.md 未完了40件（open 37 + partial 3）を継続棚卸しし、human/external gate と実装候補を分離して task supply を維持。
 5. held: `R40-PRINT-HUB-READAPIJSON` / high-risk W3-B6/ID migration/PMDA/AWS/UAT/legal は明示GOまたは human gate まで保留。

@@ -463,3 +463,65 @@
   (phone/保険番号等の非露出テスト継続)。UI ラベル置換 + cuid 不変条件を直接値比較で test 固定
   (route-compare の React key はむしろ display 由来→cuid へ改善)。opus APPROVE、392 tests green。
 - ID-3 残: S3(patient board/detail nested)、S4+(data-explorer 等の設計スライス)。CP-D recon 進行中。
+
+## 2026-07-04 R55 admin pharmacy-sites loading skeleton (codex3, pending review)
+
+- 分類: UI pattern convergence / R55 plain-text loading → skeleton。
+- 実施: `src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.tsx` の薬局一覧 loading と
+  保険設定 sheet 内 loading を visible plain text から `SkeletonRows` + named `role=status` に置換。
+  `docs/ui-ux-design-guidelines.md` の skeleton loading 方針に沿い、API/DB/auth/billing 挙動は不変。
+- テスト: `pharmacy-sites-content.test.tsx` に2件追加し、薬局一覧/保険設定 loading が
+  announced skeleton になり旧 visible div text が出ないことを固定。
+- 検証: focused Vitest 21/21 green、scoped ESLint green、scoped Prettier check green、
+  scoped `git diff --check` green。
+- 状態: Claude/Fable review/commit 待ち。W3-B2 migration apply/commit は引き続き user §15 承認待ち。
+
+## 2026-07-04 agmsg Claude removal / R55 admin jobs loading 66ae881e
+
+- 運用: ユーザー指示「claudeは今回使いません。削除してください。」に従い、`phos` から
+  `claude` 登録を削除。`despawn.sh` は live actas lock なし、`reset.sh "$(pwd)" claude-code
+claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `codex2` / `codex3` /
+  `codex4` の4名のみ。
+- land: codex2 の `R55-ADMIN-JOBS-PAGE-SUSPENSE-LOADING-LABEL` を coordinator 再検証後に
+  `66ae881e refactor(admin): name jobs route loading status` として scoped commit。
+- 変更: `src/app/(dashboard)/admin/jobs/page.tsx` の route-shell `Suspense` fallback を
+  screen-specific `Loading label="ジョブ監視を読み込み中..."` に変更し、`page.test.tsx` で
+  suspended content 時の named `role=status` と旧 generic status 不在を固定。
+- 検証: focused Vitest `2/2` green、targeted ESLint green、targeted Prettier check green、
+  targeted `git diff --check` green。
+- 次: codex2=`R55-ADMIN-MASTER-PAGE-SUSPENSE-LOADING-LABELS`、codex3=`R55-DRUG-MASTER-IMPORT-HISTORY-LOADING-SKELETON`、
+  codex4=backend/business-domain top2 read-only triage を割当済み。
+
+## 2026-07-04 R55 admin master + drug-master loading f0029164 / fd065171
+
+- 分類: UI pattern convergence / R55 loading-state cleanup。
+- land: codex2 の `R55-ADMIN-MASTER-PAGE-SUSPENSE-LOADING-LABELS` を coordinator
+  再検証後に `f0029164 refactor(admin): name master loading statuses` として scoped commit。
+  coordinator 側で `packaging-methods` / `business-holidays` page tests を追加し、
+  Suspense fallback の screen-specific `role=status` と旧 generic status 不在を固定。
+- land: codex3 の `R55-DRUG-MASTER-IMPORT-HISTORY-LOADING-SKELETON` を coordinator
+  再検証後に `fd065171 refactor(drug-masters): skeletonize import history loading` として
+  scoped commit。取込履歴 loading を named skeleton にし、error/empty 分岐は維持。
+- 検証: admin master focused Vitest `2 files / 4 tests` green、drug-master focused
+  Vitest `1 file / 86 tests` green、両スライスとも exact ESLint / exact Prettier check /
+  exact `git diff --check` green。
+- 安全性: API/DB/auth/authorization/PHI/billing/import/deploy は不変。R22b infra deletion と
+  ledger dirt は混ぜず別スライスとして保持。
+- 次: codex2=`R55-SCHEDULE-OPERATIONAL-TASKS-LOADING-SKELETON`、codex3=`R21-SONNER-MOCK-SMALL-WAVE` を
+  exact path で割当済み。codex4 backend/business-domain triage 待ち。
+
+## 2026-07-04 W3-B9 emergency category fail-closed d535b4f6
+
+- 分類: billing correctness / emergency category source fail-closed。
+- land: codex4 read-only triage の candidate1 を coordinator 側で実装し、
+  `d535b4f6 fix(billing): fail closed missing emergency rule category` として scoped commit。
+- 変更: `rule-engine` は emergency visit の `emergencyCategory` が null/undefined の場合に
+  fee2(`other_exacerbation`) を推定しない。manual emergency candidate も同条件では出さない。
+  evidence 側 cbef13f4 の `emergency_category_source_missing` blocker と整合。
+- 検証: focused Vitest
+  `rule-engine.test.ts` + `rule-engine-emergency.test.ts` + `billing-evidence/core.test.ts`
+  `3 files / 106 tests` green、targeted ESLint green、targeted Prettier check green、
+  targeted `git diff --check` green。
+- 安全性: DB/migration/auth/authorization/PHI/API payload は不変。算定根拠欠落時の過請求防止のみ。
+- 次: codex4 は W3-B9 candidate2 として `monthly_cap_shared` が rule-engine で未消費の問題を
+  read-only で公式根拠確認し、care online 46単位 / medical online 59点の shared cap 実装スライスを提案する。

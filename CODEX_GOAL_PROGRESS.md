@@ -1,5 +1,1155 @@
 # CODEX Goal Progress
 
+## R55 Admin Master + Drug Master Loading States - 2026-07-04 17:25 JST
+
+- Status:
+  - Reviewed and landed codex2's admin master page-shell loading-label slice:
+    - `f0029164 refactor(admin): name master loading statuses`
+  - Reviewed and landed codex3's drug-master import-history loading skeleton
+    slice:
+    - `fd065171 refactor(drug-masters): skeletonize import history loading`
+- Scope:
+  - `packaging-methods` and `business-holidays` route-shell Suspense fallbacks
+    now use screen-specific `Loading label=...` values.
+  - Added focused page tests that suspend each content component and assert the
+    screen-specific `role="status"` while the generic `読み込み中...` status is
+    absent.
+  - Drug master import history loading now uses a named `role="status"`
+    skeleton and preserves error/empty handling.
+- Safety:
+  - No page metadata, header content, query keys, API calls, DB, auth,
+    authorization, PHI, billing, import, deploy, or production path changed.
+- Validation:
+  - Admin master focused Vitest passed `2` files / `4` tests.
+  - Drug-master focused Vitest passed `1` file / `86` tests.
+  - Exact ESLint, Prettier check, and diff-check passed for both slices.
+- Routing:
+  - Notified codex2 and codex3 of the landed commits.
+  - Assigned codex2 `R55-SCHEDULE-OPERATIONAL-TASKS-LOADING-SKELETON`.
+  - Assigned codex3 `R21-SONNER-MOCK-SMALL-WAVE`.
+  - R22b infra deletion remains a separate pending coordinator validation
+    decision and was not mixed into either commit.
+
+## agmsg Monitor Mode - 2026-07-04 17:17 JST
+
+- Status:
+  - Set agmsg Codex delivery mode to `monitor`.
+- Evidence:
+  - `delivery.sh status codex "$(pwd)"` reports `mode: monitor`.
+  - `.codex/hooks.json` now uses SessionStart/SessionEnd monitor hooks.
+- Important:
+  - This already-running Codex session stays unmonitored.
+  - Restart Codex and send the first message in the new session for the bridge
+    to start.
+  - Status currently reports a stale `phos/codex` pidfile and no running bridge
+    for codex/codex2/codex3/codex4.
+
+## R55 Admin Jobs Route Loading Label - 2026-07-04 17:10 JST
+
+- Status:
+  - Reviewed codex2's exact-path patch and landed:
+    - `66ae881e refactor(admin): name jobs route loading status`
+- Scope:
+  - Admin jobs route-shell `Suspense` fallback now uses
+    `Loading label="ジョブ監視を読み込み中..."`.
+  - Focused page test suspends `JobsDashboardContent` and asserts the
+    screen-specific `role="status"` while the dashboard content is absent.
+- Safety:
+  - No `AdminPageHeader` props, shortcuts, metadata, content render path, API,
+    DB, auth, job behavior, PHI, audit, or deployment path changed.
+- Validation:
+  - Focused Vitest passed `2/2`.
+  - Targeted ESLint passed.
+  - Targeted Prettier check passed.
+  - Targeted diff-check passed.
+- Routing:
+  - Notified codex2 of the land.
+  - Assigned codex2 `R55-ADMIN-MASTER-PAGE-SUSPENSE-LOADING-LABELS`.
+  - Assigned codex3 `R55-DRUG-MASTER-IMPORT-HISTORY-LOADING-SKELETON`.
+  - Assigned codex4 read-only backend/business-domain top2 candidate triage.
+
+## agmsg Claude Removal - 2026-07-04 17:02 JST
+
+- Status:
+  - Removed the `claude` registration from the `phos` agmsg team per user
+    instruction: "claudeは今回使いません。削除してください。"
+- Evidence:
+  - Graceful despawn reported no live `claude` actas lock.
+  - `reset.sh "$(pwd)" claude-code claude` removed `1` registration.
+  - Final `team.sh phos` lists only `codex`, `codex2`, `codex3`, and `codex4`.
+- Safety:
+  - No source code, DB, auth, PHI, deployment, secrets, or production path
+    changed.
+- Remaining:
+  - Continue codex-only coordination and task routing across codex2/3/4.
+
+## R55 Residual Chart Loading Skeleton - 2026-07-04 15:28 JST
+
+- Status:
+  - Implemented after exact-path coordinator GO.
+  - `codex` reviewed and landed:
+    - `9407b621 refactor(patients): use skeleton for residual chart loading`
+- Scope:
+  - `ResidualMedicationChart` loading state now uses a named
+    `role="status"` skeleton for `残薬データを読み込み中`.
+  - Added focused test that the named skeleton is present and old visible
+    plain `読み込み中...` div text is absent.
+- Safety:
+  - No fetch/query behavior, auth, API, DB, error/empty rendering, chart labels,
+    residual-data semantics, or JST bucketing changed.
+- Validation:
+  - Focused Vitest passed `5/5`; targeted ESLint, Prettier check, and
+    diff-check passed.
+- Remaining:
+  - `R40-PRINT-HUB-READAPIJSON` remains HOLD.
+
+## R40 Cycle Transition Helper - 2026-07-04 15:21 JST
+
+- Status:
+  - Continued after BUILD-LOCK release and exact-path coordinator GO.
+  - `codex` reviewed and landed:
+    - `8ea45b8a refactor(workflow): read cycle transition history with json helper`
+- Scope:
+  - `fetchCycleTransitionLogs` now uses `readApiJson<TransitionLog[]>` after the
+    same `/api/medication-cycles/{cycleId}/history` URL and `buildOrgHeaders`
+    call.
+  - Added direct unit coverage for URL/header preservation and empty/non-JSON
+    error fallback.
+- Safety:
+  - No workflow UI copy, status labels, invalidation events, auth, API contract,
+    DB behavior, or permission behavior changed.
+- Validation:
+  - Focused Vitest passed `2/2`; targeted ESLint, Prettier check, and
+    diff-check passed.
+  - Read-only validation for peer-owned
+    `f323dc12 refactor(drug-masters): use skeletons for detail sheet loading`
+    also passed: focused Vitest `85/85`, targeted ESLint, Prettier check, and
+    diff-check.
+- Remaining:
+  - `R40-PRINT-HUB-READAPIJSON` and `R55-RESIDUAL-CHART-LOADING-SKELETON`
+    remain HOLD pending coordinator GO/leave.
+  - Full objective remains active; docs/tools dirt must not be bundled.
+
+## R40/R23 Helper Residue - 2026-07-04 15:11 JST
+
+- Status:
+  - Continued after coordinator BUILD-LOCK release.
+  - `codex` reviewed and landed:
+    - `86f5e8c0 refactor(comments): read mention lookup with shared json helper`
+    - `e57ba27c refactor(external): route self-report errors through helper`
+    - `2aea4e39 refactor(patients): route billing home operation errors through helper`
+    - `6eea394d refactor(patients): read residual chart data with shared json helper`
+- Scope:
+  - Mention input R40: staff lookup now uses `readApiJson` after the same
+    `/api/pharmacists` path and `buildOrgHeaders` call.
+  - External viewer R23: self-report update/task creation mutation errors now
+    route through `messageFromError`.
+  - Patient card workspace R23: billing collection/payment-profile mutation
+    errors now route through existing `messageFromError`.
+  - Residual medication chart R40: residual medication fetch parsing now uses
+    `readApiJson` after the same URLSearchParams and org-header construction.
+- Safety:
+  - No API path, method, header, body, query key, enabled/staleTime, UI copy,
+    self-report status transition, task payload/dedupe key, auth, DB, RLS,
+    audit, PHI logging, billing calculation, amount, receipt, invoice, or
+    validation behavior changed.
+  - PHI-adjacent and billing/算定 slices were exact-path LOCKed,
+    coordinator-reviewed, and coordinator-landed; no self-commit.
+  - Server non-empty `Error.message` display remains preserved; empty/non-Error
+    or malformed rejection paths now use existing fallbacks.
+- Validation:
+  - Mention input focused Vitest passed `5/5`; targeted ESLint, Prettier check,
+    and diff-check passed.
+  - External viewer focused Vitest passed `7/7`; targeted ESLint, Prettier
+    check, and diff-check passed.
+  - Card workspace focused Vitest passed `67/67`; targeted ESLint, Prettier
+    check, and diff-check passed.
+  - Residual chart focused Vitest passed `4/4`; targeted ESLint, Prettier
+    check, and diff-check passed. The test harness was updated to use
+    Response-compatible mocks for the `readApiJson` response.text contract.
+- Remaining:
+  - Full objective remains active; continue safe bounded slices while preserving
+    peer-owned dirty ledger/docs/tools/websocket changes.
+
+## R15/R23/R40 Reviewed Residue - 2026-07-04 15:00 JST
+
+- Status:
+  - Continued the broad refactor loop after R43/fold.
+  - `codex` reviewed and landed:
+    - `16f2580b refactor(route-compare): use shared org header helpers`
+    - `aa464c79 refactor(billing): route candidate mutation errors through helper`
+    - `3d7a0025 refactor(admin): route billing rule errors through helper`
+    - `65d1bfe3 refactor(comments): read comment responses with shared json helper`
+  - Peer-owned R55 skeleton validation was provided for communications and
+    medications; those patches were not bundled by codex3.
+- Scope:
+  - Route-compare R15: helper-only org header convergence.
+  - Billing candidates R23: generate/review/close mutation `onError` display.
+  - Billing rules R23: sync/create/update/delete mutation `onError` display.
+  - Comment thread R40: list/create/delete response JSON parsing via
+    `readApiJson`.
+- Safety:
+  - No API path, method, header, body, query key, table column, amount label,
+    calculation, auth, DB, RLS, audit, PHI, payload, path encoding, or UI copy
+    changed in the landed slices.
+  - Billing/算定 slices were exact-path LOCKed, reviewed, and coordinator-landed;
+    no self-commit.
+  - Non-Error/malformed rejection now falls back instead of assuming
+    `error.message`; server non-empty `Error.message` display remains preserved.
+- Validation:
+  - Billing candidates focused Vitest passed `6/6`; targeted ESLint,
+    Prettier check, and diff-check passed.
+  - Billing rules focused Vitest passed `13/13`; targeted ESLint,
+    Prettier check, and diff-check passed.
+  - Comment thread focused Vitest passed `9/9`; targeted ESLint,
+    Prettier check, and diff-check passed.
+  - Communications requests R55 read-only validation passed `14/14` plus
+    targeted ESLint, Prettier check, and diff-check.
+  - Medications R55 read-only validation passed `24/24` plus targeted ESLint,
+    Prettier check, and diff-check.
+- Remaining:
+  - `R40-MENTION-INPUT-READAPIJSON` LOCK_REQUEST is pending.
+  - Full objective remains active; continue safe bounded slices while preserving
+    peer-owned dirty ledger/docs/tools/websocket changes.
+
+## W3-B6a Slice1 Apply and Commit - 2026-07-04 12:49 JST
+
+- Status:
+  - Claude/Fable SQL review passed and user §15 apply approval was granted.
+  - Applied migration to local e2e DB and committed only the approved B6a paths.
+- Apply:
+  - `DATABASE_URL='postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public' DIRECT_URL='postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public' ./node_modules/.bin/prisma migrate deploy --schema=prisma/schema/`
+    applied `20260704124000_add_care_report_revision_schema`.
+  - `DATABASE_URL='postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public' DIRECT_URL='postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public' ./node_modules/.bin/prisma migrate status --schema=prisma/schema/`
+    reported the database schema is up to date.
+- Post-check:
+  - `psql` was unavailable on PATH.
+  - Node `pg` catalog SELECT confirmed:
+    `CareReportRevision` table exists, RLS and FORCE RLS are enabled, required
+    revision indexes exist, `PharmacistCredential_id_org_id_key` exists,
+    `CareReport` additive columns exist, and the two same-org FKs exist.
+- Commit:
+  - `bc736b3f feat(care-reports): add revision schema foundation`
+  - Committed exactly the approved B6a paths:
+    `docs/security/rls-gap-ledger.md`,
+    `prisma/migrations/20260704124000_add_care_report_revision_schema/migration.sql`,
+    `prisma/rls-policies.sql`, `prisma/schema/communication.prisma`,
+    `prisma/schema/organization.prisma`,
+    `src/lib/db/display-id-registry.ts`, `src/lib/db/display-id.test.ts`.
+- Remaining:
+  - Full typecheck/build left for Claude/Fable central fold.
+  - R02 helper changes remain dirty and validated but uncommitted.
+  - Codex ledgers remain dirty; `ops/refactor/STATE.md` remains peer-owned dirty.
+
+## R02 Visit Vehicle Body Parse Helper - 2026-07-04 12:44 JST
+
+- Scope:
+  - `src/lib/api/request-body.ts`
+  - `src/lib/api/request-body.test.ts`
+  - `src/app/api/visit-vehicle-resources/route.ts`
+  - `src/app/api/visit-vehicle-resources/route.test.ts`
+  - `src/app/api/visit-vehicle-resources/[id]/route.ts`
+  - `src/app/api/visit-vehicle-resources/[id]/route.test.ts`
+- Status:
+  - Implemented after prior Claude/Fable ACK as non-§15 filler while W3-B6a
+    Slice1 SQL is under review.
+  - Landed as separate scoped commit after B6a landed:
+    `801eab2f refactor(api): centralize vehicle resource body parsing`.
+- Fixed:
+  - Added `parseJsonObjectRequestBodyOrError(req, schema)` to centralize the
+    common `readJsonObjectRequestBody` + zod `safeParse` + standardized
+    `validationError` response flow.
+  - Replaced the duplicated POST/PATCH parsing blocks in visit vehicle resource
+    routes.
+  - Added helper tests for valid object, malformed body, and schema mismatch.
+  - Added route tests for auth-after malformed body handling and empty object
+    schema mismatch contracts.
+- Safety:
+  - Error contract preserved:
+    malformed/non-object body returns `400 VALIDATION_ERROR` with
+    `リクエストボディが不正です`; schema mismatch returns `入力値が不正です`
+    with zod field details.
+  - No auth, authorization, RLS, DB query, audit, payload success path, PHI,
+    schema, migration, external send, logging, or no-store behavior changed.
+- Validation:
+  - `./node_modules/.bin/vitest run src/lib/api/request-body.test.ts src/app/api/visit-vehicle-resources/route.test.ts 'src/app/api/visit-vehicle-resources/[id]/route.test.ts' --reporter=dot --testTimeout=30000`
+    passed `3` files / `35` tests.
+  - Scoped ESLint passed for the helper/routes/tests.
+  - Scoped Prettier check passed for the helper/routes/tests.
+  - Scoped diff-check passed for the helper/routes/tests.
+- Remaining:
+  - Full typecheck/build left for central gate.
+
+## W3-B6a Slice1 Option C Schema Foundation - 2026-07-04 12:38 JST
+
+- Scope:
+  - `prisma/schema/communication.prisma`
+  - `prisma/schema/organization.prisma`
+  - `prisma/migrations/20260704124000_add_care_report_revision_schema/migration.sql`
+  - `prisma/rls-policies.sql`
+  - `src/lib/db/display-id-registry.ts`
+  - `src/lib/db/display-id.test.ts`
+  - `docs/security/rls-gap-ledger.md`
+- Status:
+  - Implemented after Claude/Fable §15 GO.
+  - Migration SQL was created for review, but DB migration was not applied and
+    no commit was made.
+- Implemented:
+  - Added `CareReportRevision` as an org-scoped revision table with required
+    `display_id`, `content_snapshot`, `content_hash`, optional `pdf_hash`,
+    `revision_no`, amendment reason, supersession pointer, `(id, org_id)` key,
+    tenant-local display ID uniqueness, revision uniqueness, content-hash
+    uniqueness, and `(org_id, report_id)` lookup index.
+  - Added nullable finalize/lock/void/unlock/hash fields to `CareReport`, with
+    `report_revision Int @default(1)`.
+  - Added same-org finalizer credential evidence relation:
+    `PharmacistCredential @@unique([id, org_id])` and
+    `CareReport(finalized_pharmacist_credential_id, org_id)` FK.
+  - Registered `CareReportRevision` in `DISPLAY_ID_REGISTRY` with prefix `crev`
+    and added a required-display-id wave to `display-id.test.ts`.
+  - Added `CareReportRevision` ENABLE+FORCE RLS with fail-closed
+    `public.app_enforced_org_id()` to both migration SQL and
+    `prisma/rls-policies.sql`; regenerated the RLS gap ledger.
+- Safety:
+  - Additive schema only.
+  - No finalize endpoint, amendment/void/unlock runtime path, authz change,
+    report-generation path change, send path change, PHI projection change, or
+    existing report content/status behavior change.
+  - Credential deletion is restricted once referenced by a finalized report
+    evidence pointer.
+- Validation:
+  - `./node_modules/.bin/prisma format --schema=prisma/schema/` passed.
+  - `./node_modules/.bin/prisma validate --schema=prisma/schema/` passed.
+  - `./node_modules/.bin/prisma generate --schema=prisma/schema/ && node tools/scripts/link-prisma-client.mjs`
+    passed.
+  - `UPDATE_RLS_LEDGER=1 ./node_modules/.bin/vitest run src/tools/rls-policy-contract.test.ts --reporter=dot --testTimeout=30000`
+    passed `19/19`.
+  - `./node_modules/.bin/vitest run src/tools/rls-policy-contract.test.ts --reporter=dot --testTimeout=30000`
+    passed `19/19`.
+  - `./node_modules/.bin/vitest run src/lib/db/display-id.test.ts --reporter=dot --testTimeout=30000`
+    passed `21`, skipped `6` DB-gated tests.
+  - `./node_modules/.bin/vitest run 'src/app/api/care-reports/[id]/route.test.ts' 'src/app/api/care-reports/[id]/send/route.test.ts' src/server/services/report-generator.test.ts --reporter=dot --testTimeout=30000`
+    passed `110/110`.
+  - `./node_modules/.bin/vitest run src/app/api/care-reports/route.test.ts --reporter=dot --testTimeout=30000`
+    passed `67/67`.
+  - Scoped ESLint passed for changed TS test/registry files.
+  - Scoped Prettier check passed for parseable changed files.
+  - Scoped `git diff --check` passed for schema, SQL, TS, docs, and ledgers.
+- Blocked/Not Run:
+  - `prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema --script`
+    is blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`;
+    no DB migration was applied.
+  - Full typecheck/build intentionally left for Claude/Fable central gate per
+    instruction.
+- Remaining:
+  - Claude/Fable exact SQL review and explicit §15 apply confirmation.
+  - No DB apply/commit until approved.
+
+## W3-B7 ManagementPlanContent Recon - 2026-07-04 12:31 JST
+
+- Scope:
+  - `docs/visit-report-collab-spec.md`
+  - `src/lib/validations/management-plan.ts`
+  - `src/app/api/management-plans/route.ts`
+  - `src/app/api/management-plans/[id]/route.ts`
+  - `src/server/services/management-plans.ts`
+  - `src/server/jobs/daily/followups.ts`
+  - `src/server/services/pdf-documents.tsx`
+  - billing/readiness consumers around `reviewOverdue`
+- Status:
+  - Read-only recon complete.
+  - No source implementation made because this changes medical-plan structure,
+    API validation contract, billing/readiness fail-closed behavior, and likely
+    requires backfill dry-run plus UI/PDF updates.
+- Findings:
+  - Spec requires `ManagementPlanContent` structured required fields:
+    `planned_visit_frequency`, `visit_interval`, management method,
+    `interaction_review`, and `collaborating_physicians[]`; medical insurance
+    plans must be monthly-reviewed, including `next_review_date` missing as
+    overdue.
+  - Current schema keeps legacy optional sections and `catchall`, while create
+    and update APIs accept `z.record(z.string(), z.unknown())`.
+  - Current `findCurrentManagementPlan`, batch workflow gates, billing preview,
+    and daily review job only treat dated past review rows as overdue; missing
+    `next_review_date` is not fail-closed.
+  - Current management-plan PDF renders flattened arbitrary JSON, not required
+    structured sections.
+- Safety:
+  - No schema, migration, API contract, billing, PHI, auth/RLS, or runtime
+    behavior changed.
+  - Recommended next step is a human-gate proposal before code.
+- Validation:
+  - Read-only inspection only (`rg`, `nl`, `sed`, agmsg inbox, git status).
+  - No tests run because no implementation changed.
+- Remaining:
+  - Send W3-B7 recon report to Claude/Fable.
+  - If approved, split implementation into proposal/backfill-dry-run,
+    schema-versioned validation, API/UI/PDF rendering, workflow/billing
+    fail-closed updates, and tests.
+
+## W3-B6a Human-Gate Decision Proposal Doc - 2026-07-04 12:19 JST
+
+- Scope:
+  - Created `docs/design/care-report-finalize-lock-human-gate-proposal.md`.
+  - Documentation only. No code, schema, migration, auth, audit, API, report
+    generator, send route, retention, billing, PHI, or Object Lock behavior
+    changed.
+- Recommendation captured:
+  - Option B-first rollout for initial additive metadata, preserving current
+    `CareReport` row semantics and `updated_at` / `expected_updated_at`.
+  - Same-row metadata only for finalize/lock/void/unlock state.
+  - Content-changing amendment remains disabled until an immutable revision
+    record strategy, preferably `CareReportRevision`, is approved.
+  - Existing visit/partner report uniqueness remains on the current
+    `CareReport` row; revision uniqueness belongs under revision records.
+  - Content hash should cover clinical report content only and exclude delivery
+    metadata, with delivery/proof state moving toward `DeliveryRecord`,
+    `CareReportSendRequest`, or proof tables.
+  - `PharmacistCredential` should be the finalizer credential evidence source;
+    `(id, org_id)` composite unique and same-org FK hardening require explicit
+    migration approval.
+  - Generic unlock is not available in v1; prefer void or amendment with reason,
+    role, and structured audit metadata.
+- Required approval checklist added:
+  - Option B-first vs full Option C.
+  - Amendment storage strategy.
+  - Current-row vs revision-row unique-key strategy.
+  - Content hash boundary and delivery metadata migration boundary.
+  - Finalizer credential source and FK/app-layer policy.
+  - Unlock/void/amend permission policy and audit payload redaction.
+  - Additive-first implementation sequence.
+- Validation:
+  - `./node_modules/.bin/prettier --check docs/design/care-report-finalize-lock-human-gate-proposal.md`
+    passed after formatting.
+  - `git diff --check -- docs/design/care-report-finalize-lock-human-gate-proposal.md`
+    passed.
+- Status:
+  - Ready for Claude/Fable review and user-facing §15 approval routing.
+  - W3-B6a code/schema/migration remains frozen.
+
+## W3-B6a / RPT-007 Finalize-Lock Recon - 2026-07-04 12:12 JST
+
+- Scope:
+  - Read-only reconnaissance only after R23 safe-small handlers.
+  - No schema, migration, route, service, auth, audit, retention, billing, PHI,
+    or report-generator implementation changed.
+- Current-state evidence:
+  - `docs/design/care-report-finalize-lock-design.md` is ratified as direction:
+    keep `updated_at`/`expected_updated_at` for row-level optimistic lock,
+    prefer `report_revision` naming, and recommend Option B, but defer Option B
+    vs C final choice plus unique/hash/unlock/void details to
+    migration/human approval.
+  - `CareReport` currently has `status`, `content`, `template_id`, `pdf_url`,
+    `created_by`, `created_at`, and `updated_at`, but lacks finalized/locked
+    metadata, revision chain fields, hashes, retention fields, and finalizer
+    credential evidence.
+  - `PATCH /api/care-reports/[id]` already rejects content/template edits once
+    the report is non-draft, permits only draft to confirmed status transition,
+    uses `expected_updated_at`, and writes `care_report_confirmed` audit.
+  - `report-generator` already requires the current draft `updated_at` before
+    refreshing an existing draft.
+  - `send` still updates `CareReport.content` via delivery-target merge, so
+    content hash timing must be decided before finalize/lock implementation.
+  - `PharmacistCredential` has no `(id, org_id)` composite unique key, so a
+    same-org FK for finalizer credential evidence needs a separate migration
+    decision or app-layer evidence first.
+- Recommendation:
+  - Do not implement W3-B6a code directly from this state.
+  - Create/route a migration-human-gate package first:
+    1. choose Option B vs C;
+    2. decide same-row amendment metadata vs separate revision table;
+    3. decide unique-key strategy for visit/partner report revisions;
+    4. decide whether content hash excludes delivery metadata or delivery data
+       moves fully to `DeliveryRecord`/proof tables;
+    5. decide finalizer credential verification source and FK/app-layer policy;
+    6. decide unlock/void roles, reason codes, and audit requirements.
+- Status:
+  - Proposal ready to send to Claude/Fable.
+  - No W3-B6a implementation started.
+
+## R23 Admin Operating Hours Error Helper - 2026-07-04 12:09 JST
+
+- Scope:
+  - Claude/Fable ACKed exact-path slice for
+    `src/app/(dashboard)/admin/operating-hours/operating-hours-content.tsx`
+    and `.test.tsx`.
+  - No API path, payload, headers, auth/RLS, query invalidation, success
+    behavior, schema/migration, billing, PHI, external send, deploy, or
+    persistence semantics changed.
+- Changed:
+  - `saveMutation.onError` now keeps the
+    `OperatingHoursSaveError && status === 409` branch intact, preserving the
+    server conflict detail in `saveConflictMessage`.
+  - The generic error toast now uses
+    `messageFromError(error, '営業時間設定の保存に失敗しました')`.
+  - The existing 409 conflict test now asserts the server message is still
+    shown in both the conflict UI and toast.
+  - Added non-409/no-message save failure coverage for the operation-specific
+    fallback toast, with no conflict reload prompt.
+- Validation:
+  - Focused Vitest passed `1` file / `9` tests:
+    `operating-hours-content.test.tsx`.
+  - Scoped ESLint passed.
+  - Scoped Prettier check passed.
+  - Scoped `git diff --check` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+- Status:
+  - Ready for Claude/Fable review, central gate, and commit routing.
+  - Not self-committed.
+
+## R23 Schedule Conflicts Error Helper - 2026-07-04 12:06 JST
+
+- Scope:
+  - Claude/Fable ACKed exact-path slice for
+    `src/app/(dashboard)/schedules/conflicts/conflict-resolution-content.tsx`
+    and `.test.tsx`.
+  - No schedule application semantics, reconfirmation task semantics, API
+    paths, payloads, headers, auth/RLS, schema/migration, billing, or PHI
+    projection changes.
+- Changed:
+  - `applyPlanMutation.onError` now uses
+    `messageFromError(error, '訪問予定の順路更新に失敗しました')`.
+  - `reconfirmationMutation.onError` now uses
+    `messageFromError(error, '患者再確認依頼の作成に失敗しました')`.
+  - Existing server `Error.message` preservation remains covered by the Plan A
+    persistence failure test.
+  - Added direct fallback coverage for non-`Error` failures on both mutation
+    handlers.
+- Validation:
+  - Focused Vitest passed `1` file / `7` tests:
+    `conflict-resolution-content.test.tsx`.
+  - Vitest emitted the existing React `act(...)` warning in the adopted-plan
+    date-change test; no test failed.
+  - Scoped ESLint passed.
+  - Scoped Prettier check passed.
+  - Scoped `git diff --check` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+- Status:
+  - Ready for Claude/Fable review, central gate, and commit routing.
+  - Not self-committed.
+
+## W3-B4 Residual Manual Billing Context Plan - 2026-07-04 11:19 JST
+
+- Scope:
+  - Read-only planning only while W3-C1-B2 remains under Claude/Fable review.
+  - No care-report source implementation yet.
+- Evidence:
+  - `Plans.md` marks W3-B4 partly complete and explicitly leaves manual
+    care-report `billing_context` as a separate billing-reviewed slice.
+  - Generated report creation already calls `buildCareReportBillingContext()`.
+  - Manual `POST /api/care-reports` currently validates/locks the source visit
+    and adds `source_provenance`, but does not read `BillingEvidence` or add
+    `billing_context`.
+  - `BillingEvidence` has `@@unique([org_id, visit_record_id])`.
+  - `getCareReportSourceBillingEvidence()` already reads the fields consumed by
+    `buildCareReportBillingContext()`.
+- Recommended safe next slice, if approved:
+  - Extend the manual create transaction client with `billingEvidence`.
+  - When `visit_record_id` is present, read existing BillingEvidence inside the
+    same create transaction after source revalidation.
+  - Add `content.billing_context` via the existing projection helper.
+  - Preserve current null behavior when no visit record or no BillingEvidence
+    exists.
+  - Add focused route tests for billing context inclusion and no-evidence null
+    behavior.
+- Deferred:
+  - New `ClaimRecord` table/projector is a separate migration/design slice.
+  - Dynamic monthly count correction, claim-note templates, and claimable gate
+    semantics require human/billing review and should not be hidden inside this
+    manual create plumbing.
+- Status:
+  - Sending to Claude/Fable for GO/no-go.
+
+## W3-C1-B2 Effective-To Close Implementation - 2026-07-04 11:16 JST
+
+- Scope:
+  - Claude/Fable-approved implementation of forward-only
+    `DrugPriceVersion.effective_to` closing for MHLW price imports.
+  - No schema, migration, RLS, auth, billing rule amount, or existing
+    `DispenseResult` snapshot mutation.
+- Changed:
+  - MHLW price import now wraps exact-date lookup, new version create, display
+    ID allocation, and prior-open close in a single DB transaction.
+  - On new version creation at effective date `E`, prior open versions for the
+    same `drug_master_id` with `effective_from < E` and `effective_to IS NULL`
+    are closed to UTC date-only `E - 1 day`.
+  - Same-day update path keeps `effective_to` unchanged and does not close
+    anything.
+  - Preview exposes `price_version_close_count` and sampled row close-to date
+    without writing.
+  - Import `change_summary` records `price_version_close_count`.
+  - Dispense selection query still uses the same effective window predicate; it
+    now selects `effective_to` and passes candidates through a shared selector
+    helper so close-before/after invariance is testable.
+- Tests added:
+  - Newer import creates a version and closes the prior open row inside the same
+    transaction.
+  - Close failure rejects the import and marks the import log failed.
+  - Preview counts close candidates and performs no writes.
+  - Dispense selector returns the same version before/after close across
+    `E - 1`, `E`, post-month, and year-boundary as-of dates.
+- Validation:
+  - Focused Vitest passed `3` files / `94` tests:
+    `mhlw.test.ts`, `shared.test.ts`, and `dispense-results/route.test.ts`.
+  - Scoped ESLint passed for the five touched source/test files.
+  - Scoped Prettier check passed.
+  - Scoped `git diff --check` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+- Status:
+  - Ready for Claude/Fable billing-focused review and commit routing.
+  - Not self-committed.
+
+## W8b Stale-Close Approved - 2026-07-04 11:01 JST
+
+- Result:
+  - Claude/Fable approved W8b as stale-close / existing-code close-out.
+  - No new auth implementation and no §15 action are required for W8b.
+- Accepted evidence:
+  - `GET /api/me/sites` and `PUT /api/me/site` satisfy membership-scope and
+    org-owned site switching.
+  - Business audit `user_site_switched` with from/to changes inside
+    `withOrgContext` satisfies the switch audit requirement.
+  - `AuthContext.actorSiteId` is already verified.
+  - Focused tests passed `24` API/auth tests and `2` select-site UI tests.
+- Backlog:
+  - A dedicated `SecurityEventType.site_switch` is optional backlog only; if
+    pursued, it is auth/audit-adjacent and should be a separate §15-reviewed
+    slice.
+- Status:
+  - Migration / ID-2 wave close-out confirmed: `W3-C1-A`, `W3-B2`, `W3-B5`,
+    `W8a`, and `W8b` are all landed or closed as existing implementation.
+  - Next work should be read-only planning for remaining Plans mainline items,
+    e.g. W3-C1-B2 `effective_to` close or other W3-B/W3-C residuals.
+
+## W8b / ID-2 Auth Site-Switch Close-Out Verdict - 2026-07-04 10:59 JST
+
+- Verdict:
+  - W8b site-switch auth/membership-scope requirements are satisfied by existing
+    code. Treat the older design-gap entries as stale rather than an
+    implementation blocker.
+- Evidence:
+  - `GET /api/me/sites` returns membership-scoped sites, supports universal
+    `site_id: null` access, includes today's non-cancelled visit count,
+    `has_home_visit`, `is_current`, and bounded `limit`.
+  - `PUT /api/me/site` validates org-owned site, verifies matching or universal
+    membership, persists `User.default_site_id`, and writes business audit
+    action `user_site_switched`.
+  - `AuthContext` already includes verified `actorSiteId`, resolved only when
+    the default site belongs to the org and membership permits it.
+  - `(dashboard)/layout.tsx` injects `default_site_id` into `AppProvider`, and
+    `auth-store` has `siteId` / `setSite`.
+  - `/select-site` UI exists and calls `/api/me/sites` + `PUT /api/me/site`.
+- Validation:
+  - `pnpm exec vitest run src/app/api/me/sites/route.test.ts src/app/api/me/site/route.test.ts src/lib/auth/__tests__/context.test.ts --reporter=dot --testTimeout=30000`
+    passed `24` tests.
+  - `pnpm exec vitest run src/app/(dashboard)/select-site/select-site-content.test.tsx --reporter=dot --testTimeout=30000`
+    passed `2` tests.
+- Residual:
+  - `SecurityEventType` lacks a separate `site_switch` security event, but the
+    implemented business audit event satisfies the switch audit requirement.
+    Adding duplicate security-event logging should be a separate §15-reviewed
+    auth/audit semantics slice only if explicitly required.
+  - `docs/design-gap-analysis.md/json` still contain stale statements.
+- Status:
+  - Sending close-out verdict to Claude/Fable. No W8b source implementation
+    needed.
+
+## W3-C1-B Minimal-Scope Revision - 2026-07-04 10:56 JST
+
+- Scope:
+  - Followed Claude/Fable recommendation to keep W3-C1-B as pure date
+    parser/precedence work and defer workbook URL resolver expansion.
+- Changed:
+  - Removed the no-`tp` `.xlsx` fallback expansion from
+    `resolveLatestMhlwPriceWorkbookUrls()`.
+  - Removed fallback-specific tests, leaving the resolver behavior limited to
+    existing `tpYYYYMMDD-01_0[1-4].xlsx` links.
+  - Kept Japanese-era applicable-date parsing, page metadata extraction,
+    workbook `tpYYYYMMDD` precedence, and invalid month/day/rollover guards.
+- Safety:
+  - No arbitrary or positive-match workbook resolver expansion remains in this
+    slice.
+  - No schema, migration, `effective_to` closure, billing rule, auth, PHI,
+    DB/RLS, existing snapshot values, or dispense-result snapshot selection
+    changed.
+- Validation so far:
+  - Focused drug-master import Vitest passed `46` tests.
+  - Scoped ESLint passed.
+  - Final Prettier, diff-check, and typecheck are being rerun before
+    re-review.
+- Status:
+  - Ready for final validation and Claude/Fable minimal-scope re-review.
+
+## W3-C1-B Review Response - 2026-07-04 10:53 JST
+
+- Scope:
+  - Addressed Claude/Fable's W3-C1-B scope concern about broad workbook URL
+    fallback.
+- Changed:
+  - Narrowed no-`tp` workbook fallback to positive-match MHLW price workbook
+    links only. A fallback link must match price-list signals in href or link
+    text (`薬価`, `収載`, `yakka`, `kijun`, `shusai`, or `price`) and still
+    excludes `ippanmeishohoumaster_`.
+  - Added resolver tests proving unrelated `.xlsx` links are rejected and a
+    positive price workbook fallback is accepted.
+  - Added Japanese-era date validation for invalid month/day and rollover dates
+    such as `令和8年13月1日` and `令和8年2月31日`.
+- Safety:
+  - No arbitrary `.xlsx` fallback remains.
+  - No schema, migration, effective-to closure, billing rule, auth, PHI, DB/RLS,
+    existing snapshot values, or dispense-result snapshot selection changed.
+- Validation:
+  - Focused drug-master import Vitest passed `49` tests.
+  - Scoped ESLint passed.
+  - Scoped Prettier check passed with `NODE_OPTIONS=--max-old-space-size=8192`
+    after formatting `.codex/ralph-state.md`; the first check without heap
+    tuning OOMed on the huge progress files.
+  - Scoped `git diff --check` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+- Status:
+  - Ready for Claude/Fable re-review and land decision.
+
+## W8b / ID-2 Auth Site-Switch Recon - 2026-07-04 10:50 JST
+
+- Scope:
+  - Read-only reconciliation of the older `docs/design-gap-analysis.md`
+    site-switch/auth plan against live code.
+  - No source implementation, auth behavior, audit behavior, migration, DB
+    write, commit, or push performed.
+- Confirmed current state:
+  - `GET /api/me/sites` already exists and returns membership-scoped site cards
+    with visit counts, `has_home_visit`, `is_current`, limit bounds, and
+    universal `site_id: null` access handling.
+  - `PUT /api/me/site` already validates the target site belongs to the current
+    org, verifies membership for the specific site or universal site access,
+    updates `User.default_site_id`, and writes business audit action
+    `user_site_switched`.
+  - `AuthContext` already carries verified `actorSiteId`; resolution checks the
+    candidate default site belongs to the org and that the user has matching or
+    universal membership.
+  - Session/JWT wiring already stores `defaultSiteId`, and select-site UI calls
+    `/api/me/sites` and `/api/me/site`.
+- Remaining planning gaps:
+  - `SecurityEventType` includes `org_switch` but not `site_switch`. The older
+    proposal requested a symmetric security event; live code currently has the
+    business audit event only. This is auth/audit-adjacent and should be routed
+    before implementation.
+  - `GET /api/me/profile` still derives `currentRole` / `currentSiteName` from
+    `memberships[0]`, not necessarily the selected `default_site_id`, so there
+    may be a small profile display drift if membership ordering differs.
+  - The design-gap analysis JSON/MD entries remain stale relative to shipped
+    code.
+- Evidence:
+  - Source/test paths inspected:
+    `src/app/api/me/sites/route.ts`,
+    `src/app/api/me/sites/route.test.ts`,
+    `src/app/api/me/site/route.ts`,
+    `src/app/api/me/site/route.test.ts`,
+    `src/lib/auth/context.ts`,
+    `src/lib/auth/request-context.ts`,
+    `src/lib/auth/config.ts`,
+    `src/lib/auth/security-events.ts`,
+    `src/app/api/me/profile/route.ts`,
+    `src/app/api/me/profile/route.test.ts`, and
+    `src/app/(dashboard)/select-site/select-site-content.tsx`.
+- Status:
+  - Sending recon to Claude/Fable for GO/no-go. Do not implement
+    `site_switch` security logging or profile-site behavior until routed.
+
+## W3-C1-B MHLW Applicable-Date Parser Implementation - 2026-07-04 10:47 JST
+
+- Scope:
+  - Parser-only W3-C1-B slice approved by Claude/Fable.
+  - Touched `src/server/services/drug-master-import/shared.ts`,
+    `src/server/services/drug-master-import/shared.test.ts`,
+    `src/server/services/drug-master-import/mhlw.ts`, and
+    `src/server/services/drug-master-import/mhlw.test.ts`.
+- Changed:
+  - Added `parseJapaneseEraApplicableDateText()` for MHLW applied-date labels
+    such as `令和8年5月20日適用`, including full-width digit normalization and
+    UTC date construction.
+  - Added MHLW price-list page metadata resolution that preserves the existing
+    URL-only API while carrying the parsed applicable date for auto-resolved
+    imports.
+  - Kept workbook `tpYYYYMMDD` date tokens as the highest-precedence
+    effective-date source.
+  - Used the page applicable date only when the workbook URL lacks a
+    `tpYYYYMMDD` token; no-date/no-token paths still report
+    `skipped_missing_effective_from`.
+  - Allowed the price workbook resolver to fall back to non-generic `.xlsx`
+    links only when the standard `tpYYYYMMDD-01_01..04.xlsx` links are absent.
+- Safety:
+  - No schema, migration, `effective_to` closure, backfill script, billing rule,
+    auth, PHI projection, snapshot selection query, or existing
+    `DispenseResult` snapshot value changed.
+  - `effective_to` closing remains deferred as a separate billing-adjacent
+    follow-up requiring its own plan and review.
+- Validation:
+  - `pnpm exec vitest run src/server/services/drug-master-import/shared.test.ts src/server/services/drug-master-import/mhlw.test.ts --reporter=dot --testTimeout=30000`
+    passed `47` tests.
+  - Scoped ESLint passed.
+  - Scoped Prettier check passed.
+  - Scoped `git diff --check` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+- Status:
+  - Ready for Claude/Fable review and commit routing.
+
+## W3-C1-B MHLW Applicable-Date Parser Recon - 2026-07-04 10:43 JST
+
+- Scope:
+  - Read-only backend reconnaissance and implementation plan for the MHLW
+    applicable-date parser portion of W3-C1.
+  - No source files were edited.
+- Confirmed current state:
+  - `DrugPriceVersion` already exists, with `effective_from` / `effective_to`
+    and provenance columns.
+  - `DispenseResult` already stores `drug_price_version_id`,
+    `drug_price_snapshot`, `drug_price_effective_from_snapshot`, and
+    `drug_price_source_snapshot`.
+  - MHLW price import currently derives price version `effective_from` from
+    workbook URL tokens such as `tp20260520-...`.
+  - Dispense-result creation already snapshots the latest effective
+    `DrugPriceVersion` after safety, barcode, and CDS checks.
+- Gap:
+  - Existing MHLW fixtures include Japanese applied-date text such as
+    `令和8年5月20日適用`, but the price importer does not use that text as an
+    effective-date fallback.
+  - If a workbook URL lacks a `tpYYYYMMDD` token, preview/import currently keeps
+    the version effective date null and reports
+    `skipped_missing_effective_from`.
+- Plan sent to Claude/Fable:
+  - B1: parser-only slice. Parse MHLW applicable-date text and use it as a
+    fallback when the workbook URL has no `tpYYYYMMDD`; preserve URL-token
+    precedence and current null/skip behavior when no date exists.
+  - B2: defer `effective_to` closing because it is billing-adjacent. If
+    approved later, use non-overlapping `D-1` closure for prior open versions
+    and prove existing snapshots remain immutable.
+- Safety:
+  - B1 would not change schema, migrations, backfill scripts, billing rules,
+    auth, PHI projection, existing `DispenseResult` snapshots, or the
+    dispense-result snapshot selection query.
+- Status:
+  - Awaiting Claude/Fable GO for B1 parser-only implementation.
+  - Contact-profiles W3-E1 landed as `73229e26` with focused Vitest, ESLint,
+    Prettier, and typecheck passing per Claude/Fable.
+
+## W3-E1 Contact Profiles RHF Conversion - 2026-07-04 10:38 JST
+
+- Scope:
+  - One-file form implementation slice in
+    `src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.tsx`.
+  - No test file changes were needed; existing focused tests cover the preserved
+    payload and workspace behavior.
+- Changed:
+  - Replaced manual `editState`/controlled-input form state with
+    `react-hook-form`, `zodResolver`, `Controller`, and `useWatch`.
+  - Used a `ContactProfileEditor` child keyed by `selected?.id` so first-row
+    auto selection and row changes initialize the form by remount, avoiding
+    reset/set-state effects.
+  - Added a small normalizer for `useWatch` partial values so derived labels and
+    dirty state always compare complete form shapes.
+  - Kept `getValues()` as the mutation source and preserved the existing
+    trim/`|| null` payload semantics for name, role/department, phone, fax,
+    email, and preferred contact method.
+- Safety:
+  - No API path, tenant header helper, auth/authorization, PHI projection, DB,
+    RLS, billing, response shape, query key, debounce behavior, or save success
+    invalidation changed.
+  - No required-name validation was added, so existing submit affordance and
+    tests remain behavior-compatible.
+- Validation:
+  - `pnpm exec vitest run src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx --reporter=dot --testTimeout=30000`
+    passed `6` tests.
+  - Scoped ESLint passed.
+  - Scoped Prettier check passed.
+  - Scoped `git diff --check` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+- Status:
+  - Ready to send to Claude/Fable for independent review and commit routing.
+  - Per Claude direction, next work should prioritize backend Plans
+    reconnaissance after this FE slice.
+
+## R23 Admin Signal Tuning Error Helper Convergence - 2026-07-04 10:31 JST
+
+- Scope:
+  - One-file admin error handling convergence in
+    `src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx`.
+- Changed:
+  - Replaced direct `toast.error(error.message)` in the signal-tuning save
+    mutation with the shared `messageFromError(error, '表示設定の保存に失敗しました')`
+    helper.
+- Safety:
+  - Non-empty `Error.message` behavior is preserved by the helper contract.
+  - Empty or non-`Error` mutation failures now fall back to the established
+    Japanese message instead of depending on a narrowed `Error` parameter.
+  - No API path, auth, authorization, PHI, DB/RLS, billing, alert-rule payload,
+    fetch sequence, or dot-segment fail-closed behavior changed.
+- Validation:
+  - `pnpm exec vitest run src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx --reporter=dot --testTimeout=30000`
+    passed `8` tests.
+  - Scoped ESLint passed.
+  - Scoped Prettier check passed.
+  - Scoped `git diff --check` passed.
+- Status:
+  - Ready to send to Claude/Fable as a separate one-file R23 review/commit
+    routing slice.
+
+## W3-M1 Conflict Snapshot Alias Tidy + R55 Admin UAT Loading Skeleton - 2026-07-04 10:28 JST
+
+- Scope:
+  - Reviewer-approved `W3-M1` type-only cleanup in
+    `src/app/api/visit-records/route.ts`.
+  - Non-overlapping `R55` admin UAT loading-state cleanup in
+    `src/app/(dashboard)/admin/uat/uat-content.tsx` and focused test.
+- Changed:
+  - Removed the route-local `VisitRecordConflictDetail` alias and changed
+    `loadExistingVisitRecordConflict` to return
+    `Promise<VisitRecordConflictServerSnapshot | null>` directly.
+  - Replaced UAT launch dossier, summary, org audit, and saved feedback plain
+    text loading rows with `SkeletonRows` wrapped in named `role=status`
+    regions.
+  - Added focused UAT tests that drive loading by query key and assert the named
+    status regions while preventing the old visible paragraph loading copy from
+    returning.
+- Safety:
+  - No conflict response payload shape changed; `existing_record` still carries
+    the same server snapshot object.
+  - No API query, mutation, auth/authorization, PHI projection, DB/RLS, billing,
+    or persistence behavior changed.
+  - UI change follows `docs/ui-ux-design-guidelines.md` false-empty/loading
+    distinction and existing skeleton component contracts.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-records/route.test.ts --reporter=dot --testTimeout=30000`
+    passed `82` tests.
+  - `pnpm exec vitest run src/app/(dashboard)/admin/uat/uat-content.test.tsx --reporter=dot --testTimeout=30000`
+    passed `3` tests.
+  - Scoped ESLint passed for route and UAT files.
+  - Scoped Prettier check passed for route and UAT files.
+  - Scoped `git diff --check` passed.
+- Status:
+  - Ready to send as two separate review/commit-routing slices:
+    W3-M1 route-only, and R55 UAT UI/test.
+  - Full build not run locally per Claude/Fable central-gate routing.
+
+## W3-B4-S4A Report Generator Source Reader Consolidation - 2026-07-04 10:14 JST
+
+- Scope:
+  - Reviewer-approved, behavior-preserving report-generator read-boundary
+    consolidation.
+  - Touched only `src/server/services/care-report-source-readers.ts` and
+    `src/server/services/report-generator.ts`, plus progress ledgers.
+- Changed:
+  - Added typed care-report source readers for visit record, visit schedule,
+    pharmacist user, billing evidence, care case, optional conference notes,
+    prescription lines, and existing care reports.
+  - Derived reader return types from Prisma `GetPayload` selectors to preserve
+    original Prisma nullability instead of widening fields by hand.
+  - Replaced matching direct read-only queries in `report-generator.ts` with
+    those readers while preserving existing query shapes, execution order, and
+    validation/error ordering.
+  - Kept `withOrgContext` draft update/create persistence inside
+    `report-generator.ts`; no persistence boundary change in this slice.
+- Safety:
+  - No Prisma schema, migration, RLS, API route, UI, billing semantics,
+    claimable gate, `CareReport.content` JSON shape, source provenance shape,
+    or send-route behavior changed.
+  - Optional `conferenceNote` delegate still resolves to an empty list when the
+    delegate is absent.
+- Validation:
+  - `pnpm exec vitest run src/server/services/report-generator.test.ts --reporter=dot --testTimeout=30000`
+    passed `21` tests.
+  - Scoped ESLint passed.
+  - Scoped Prettier check passed.
+  - Scoped `git diff --check` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+- Status:
+  - Ready to send to Claude/Fable for independent review and commit routing.
+  - Full no-unused/build not run locally because Claude/Fable is running the
+    central gate for this wave.
+
+## W3-B3A Add-on Evidence StructuredSoap Extension - 2026-07-04 10:06 JST
+
+- Scope:
+  - Reviewer-approved, non-migration, capture-only W3-B3 foundation slice.
+  - Touched only `src/types/structured-soap.ts`,
+    `src/lib/validations/structured-soap.ts`,
+    `src/lib/validations/structured-soap.test.ts`, plus progress ledgers.
+- Changed:
+  - Added optional passthrough `StructuredSoap` sections:
+    `narcotic_guidance_evidence`,
+    `continuous_narcotic_infusion_evidence`,
+    `home_central_venous_nutrition_evidence`,
+    `infant_guidance_evidence`,
+    `drug_adherence_evidence`,
+    `qr_residual_reconciliation`, and `legal_record_flags`.
+  - Added `billing_rule_keys?: string[]` to the add-on evidence sections that
+    reference existing BillingRule `ssot_key` values, using confirmed real seed
+    keys such as `medical.addition.narcotic`,
+    `medical.addition.continuous_narcotic_infusion`,
+    `medical.addition.central_venous_nutrition`,
+    `medical.addition.infant`, `care.addition.narcotic_management`,
+    `care.addition.narcotic_continuous_injection`, and
+    `care.addition.central_venous_nutrition`.
+  - Preserved existing W3-B2 `special_patient_statuses` without redefining it.
+- Safety:
+  - No Prisma schema, migration, RLS, API route, UI, billing rule amount,
+    source URL/note, rule-engine condition, candidate status, automatic
+    confirmation, or claimable gate changed.
+  - New sections are optional and capture-only, so existing payloads remain
+    backward-compatible and billing remains fail-closed.
+- Validation:
+  - `pnpm exec vitest run src/lib/validations/structured-soap.test.ts --reporter=dot --testTimeout=30000`
+    passed `6` tests.
+  - Scoped ESLint passed.
+  - Scoped Prettier check passed.
+  - Scoped `git diff --check` passed.
+- Deferred:
+  - `W3-B3B`: `BillingRule` official confirmation machine field/column is
+    deferred to a separate §15 migration and billing-semantics review slice.
+    It should decide how `source_note` stays as the human citation while any
+    machine confirmation flag affects future publication/gating.
+
+## R55 Admin Data Explorer Loading Skeleton - 2026-07-04 09:59 JST
+
+- Scope:
+  - Non-DB, non-auth, non-billing UI consistency slice after the
+    business-holidays R55 slice landed as `33210be8`.
+  - Touched only admin data-explorer content and its focused test, plus
+    progress ledgers.
+- Changed:
+  - Replaced the visible plain-text loading rows for the model list and table
+    row list in
+    `src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx` with
+    existing `SkeletonRows` inside named `role=status` regions:
+    `モデル一覧を読み込み中` and `テーブルデータを読み込み中`.
+  - Added focused React Query mock states and tests proving both loading states
+    are announced and the old visible `div` text no longer renders.
+- Safety:
+  - No API response shape, fetch path, auth/authorization, PHI, DB/RLS,
+    billing, mutation, or error/empty behavior changed.
+  - Existing retryable error tests and PHI-free row action-name tests remain
+    intact.
+- Validation:
+  - `pnpm exec vitest run src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx --reporter=dot --testTimeout=30000`
+    passed `9` tests.
+  - Scoped ESLint passed.
+  - Scoped Prettier check passed.
+  - Scoped `git diff --check` passed.
+- Status:
+  - Ready to send to Claude/Fable for review/commit routing.
+  - Full typecheck/build not run for this two-file UI-only slice.
+
+## R55 Admin Business Holidays Loading Skeleton - 2026-07-04 09:52 JST
+
+- Scope:
+  - Non-DB, non-auth, non-billing UI consistency slice after the pharmacy-sites
+    R55 slice landed.
+  - Touched only admin business-holidays content and its focused test, plus
+    progress ledgers.
+- Changed:
+  - Replaced the visible plain-text calendar loading row in
+    `src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx`
+    with existing `SkeletonRows` inside a named `role=status` region:
+    `休日カレンダーを読み込み中`.
+  - Added a focused pending-fetch test proving the loading state is announced
+    and the old visible `div` text no longer renders.
+- Safety:
+  - No API response shape, fetch path, auth/authorization, PHI, DB/RLS,
+    billing, mutation, or error/empty behavior changed.
+  - Existing false-empty protections for holiday and site fetch errors remain
+    intact.
+- Validation:
+  - `pnpm exec vitest run src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx --reporter=dot --testTimeout=30000`
+    passed `13` tests.
+  - Scoped ESLint passed.
+  - Scoped Prettier check passed after formatting the focused test file.
+  - Scoped `git diff --check` passed.
+- Status:
+  - Ready to send to Claude/Fable for review/commit routing.
+  - Full typecheck/build intentionally not run for this two-file UI-only slice
+    and to avoid central Next.js gate races.
+
+## R55 Admin Pharmacy Sites Loading Skeleton - 2026-07-04 10:39 JST
+
+- Scope:
+  - Non-DB, non-auth, non-billing UI consistency slice while W3-B2 and W3-B3
+    remain externally gated.
+  - Touched only admin pharmacy-sites content and its focused test, plus
+    progress ledgers.
+- Changed:
+  - Replaced two visible plain-text loading rows in
+    `src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.tsx` with
+    existing `SkeletonRows` inside named `role=status` regions:
+    `薬局情報を読み込み中` and `保険設定を読み込み中`.
+  - Added focused tests proving both loading states are announced skeletons and
+    the old visible `div` text no longer renders.
+- Safety:
+  - No API response shape, fetch path, auth/authorization, PHI, DB/RLS,
+    billing, mutation, or error/empty behavior changed.
+  - Existing false-empty protections for sites and insurance configs remain
+    intact.
+- Validation:
+  - `pnpm exec vitest run src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.test.tsx --reporter=dot --testTimeout=30000`
+    passed `21` tests.
+  - Scoped ESLint passed.
+  - Scoped Prettier check passed.
+  - Scoped `git diff --check` passed.
+- Status:
+  - Sent/being sent to Claude/Fable for review/commit routing.
+  - Not self-committed because current `ops/refactor/STATE.md` routes reviewer
+    and commit through the coordination lane.
+
+## W3-B3 Add-on Evidence Planning - 2026-07-04 09:55 JST
+
+- Scope:
+  - Read-only planning only. No source implementation, schema/migration, DB
+    apply, commit, or push performed.
+  - W3-B2 remains held pending explicit user §15 approval for the exact
+    `20260704092500_add_visit_instruction_special_patient_status` migration SQL.
+- Inspected:
+  - `Plans.md` W3-B3 target and `docs/visit-report-collab-spec.md` add-on
+    evidence requirements.
+  - Existing `BillingRule` schema, billing-rules condition/evidence types,
+    medical/care revision seeds, rule-engine filtering, billing evidence
+    context derivation, patient intake fields, visit-preparation intake context,
+    and current `StructuredSoap` type/zod skeleton.
+- Findings:
+  - The add-on code master surface already exists as `BillingRule` plus
+    billing-rules revision seed data for narcotic guidance, continuous narcotic
+    infusion, infant, central venous nutrition, and care regional add-ons.
+  - `BillingRule` has `source_url`, `source_note`, `amount`,
+    `conditions`, and `evidence_requirements`, but does not have a dedicated
+    machine-readable official-confirmation field; `status` exists on
+    `BillingCandidate`, not on rule definitions.
+  - `StructuredSoap` currently has `home_visit_2026` and
+    `special_patient_statuses`, but not the spec-requested add-on evidence
+    objects for narcotic guidance, continuous narcotic infusion, home central
+    venous nutrition, drug-level adherence, QR residual reconciliation, or legal
+    six-item record flags.
+  - Billing evidence currently derives narcotic/central venous flags mostly
+    from intake/special procedure data and infant eligibility from birth date;
+    rule-engine add-on results remain candidate/manual and should stay
+    fail-closed until evidence gating is explicitly wired.
+- Proposed next slice:
+  - Do not add a new add-on master table first; treat the existing
+    `BillingRule` / revision seed layer as the current master.
+  - Implement a non-migration `StructuredSoap` evidence-extension slice with
+    optional typed/zod objects for `narcotic_guidance_evidence`,
+    `continuous_narcotic_infusion_evidence`,
+    `home_central_venous_nutrition_evidence`, `drug_adherence`,
+    `qr_residual_reconciliation`, and `legal_record_flags`.
+  - Preserve backward compatibility and fail-closed billing behavior: capture
+    evidence only, with no point changes and no automatic candidate
+    confirmation.
+  - Separate follow-up decision: whether `BillingRule` needs an official
+    confirmation metadata migration, and whether current 2026 point values need
+    official-source refresh before any claimable automation relies on them.
+- Status:
+  - Plan sent to Claude/Fable through agmsg for direction.
+  - No W3-B3 implementation started.
+
 ## W3-B2 VisitInstruction + SpecialPatientStatus Plan - 2026-07-04 09:25 JST
 
 - Scope:
@@ -35,7 +1185,43 @@
     wiring removes pending state.
 - Status:
   - Plan sent to Claude/Fable through agmsg for reviewer audit.
-  - Awaiting reviewer decision before implementation.
+  - Reviewer approved the plan and confirmed `@db.Date`, required display IDs,
+    and durable table placement.
+  - Implementation is complete and exact SQL reviewer-audit passed.
+  - Waiting for explicit user §15 approval before migration apply or commit.
+- Implemented:
+  - `VisitInstruction` and `SpecialPatientStatus` Prisma schema skeletons.
+  - Migration
+    `20260704092500_add_visit_instruction_special_patient_status` with additive
+    tables, required `display_id`, indexes, FKs, and fail-closed RLS.
+  - `prisma/rls-policies.sql` SSOT sync and regenerated
+    `docs/security/rls-gap-ledger.md`.
+  - Display-id registry/test coverage for `vins` and `spst`.
+  - Optional `structured_soap.special_patient_statuses` type/zod skeleton and
+    accept/reject tests.
+- Validation:
+  - Prisma format/validate/generate passed.
+  - RLS contract + display-id + structured-soap focused Vitest passed `44`
+    tests with `6` skips.
+  - Scoped ESLint, scoped Prettier check, scoped diff-check passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+  - Full `pnpm build` intentionally not run locally to avoid central build
+    races.
+  - e2e DB `prisma migrate status` reached `localhost:5433/ph_os_e2e` and
+    reports `20260704092500_add_visit_instruction_special_patient_status`
+    unapplied, which is expected while §15 approval is pending.
+- Remaining:
+  - Completed after explicit user §15 approval relayed by Claude/Fable.
+    Migration
+    `20260704092500_add_visit_instruction_special_patient_status` was applied
+    to local e2e DB `localhost:5433/ph_os_e2e`, `prisma migrate status`
+    reported `Database schema is up to date!`, and exact scoped W3-B2 source
+    paths were committed as `17562267`
+    (`feat(visits): add instruction and special status roots`).
+  - Future create API slice must validate `case_id` / `schedule_id` /
+    `source_visit_record_id` org ownership before writes because those optional
+    SetNull FKs are id-only.
 
 ## W3-C1-A Drug Price Version Snapshot - 2026-07-04 09:05 JST
 
@@ -922,7 +2108,7 @@ Objective: preserve existing external behavior while maximizing maintainability,
 
 - Current HEAD: `45ab4804`.
 - B5 source diff remains unchanged at `13 files changed, 31 insertions(+), 33
-  deletions(-)`.
+deletions(-)`.
 - Re-ran scoped raw-header scan over the 13 target files: no raw `x-org-id`
   matches.
 - Re-ran scoped `git diff --check`, scoped ESLint, and the same focused Vitest
@@ -38176,6 +39362,65 @@ Next loop:
 - Remaining:
   - Send completion report to Claude and await opus verdict / Claude commit.
 
+## W3-C1-B2 Effective-To Close Plan - 2026-07-04 11:05 JST
+
+- Scope:
+  - `DrugPriceVersion.effective_to` close semantics for MHLW price imports.
+  - Read-only planning only; no importer source change yet because this is
+    drug-price/billing-adjacent.
+- Current evidence:
+  - `DrugPriceVersion` already has nullable `effective_to`, a unique
+    `(drug_master_id, effective_from)`, and an index on
+    `(drug_master_id, effective_from, effective_to)`.
+  - `DispenseResult` persists immutable price snapshot fields:
+    `drug_price_version_id`, `drug_price_snapshot`,
+    `drug_price_effective_from_snapshot`, and `drug_price_source_snapshot`.
+  - MHLW import currently finds the exact same effective date, then updates it
+    or creates a new row. It does not close prior open rows.
+  - MHLW preview currently counts create/update/skipped for the exact effective
+    date only. It does not surface close candidates.
+  - Dispense selection already honors effective windows with
+    `effective_from <= asOf` and
+    `(effective_to IS NULL OR effective_to >= asOf)`, then chooses the latest
+    `effective_from` per drug. Open overlaps are therefore masked at read time
+    but not normalized in stored version history.
+  - `withImportLog` is not an all-import transaction wrapper; current importer
+    writes are chunk/record operations. Any close implementation must choose
+    between keeping that behavior or introducing a scoped per-record
+    transaction for create+close atomicity.
+- Local DB evidence:
+  - `prisma migrate status --schema=prisma/schema/` against
+    `localhost:5433/ph_os_e2e` reports migrations up to date.
+  - Read-only query through the repo Prisma client found
+    `DrugPriceVersion=0`, `DispenseResult` price snapshots `0`, and no open
+    sample rows, so local data cannot prove overlap cleanup behavior.
+- Proposed semantics for approval:
+  - Only close rows for the same `drug_master_id`.
+  - Only when the incoming effective date is valid.
+  - On creation of a new version at `E`, close prior open rows where
+    `effective_from < E` and `effective_to IS NULL` to `E - 1 day` using
+    UTC/date-only math, matching the existing inclusive dispense selector.
+  - Do not close same-day rows; the unique key and update path handle them.
+  - Do not close future rows or already closed rows.
+  - Do not mutate existing `DispenseResult` snapshots.
+  - Preview/import summary should expose close counts and sampled close
+    candidates before writes.
+  - Historical production overlap repair, if needed, should be a separate
+    approved maintenance/backfill slice rather than hidden inside importer
+    runtime behavior.
+- Suggested tests after GO:
+  - Newer import creates a new version and closes the previous open version to
+    the prior date.
+  - Same effective date updates the existing version and does not close.
+  - Older import/backfill does not close a newer open version.
+  - Preview counts close candidates without writing.
+  - Dispense selector keeps choosing the correct version across closed windows,
+    and existing snapshots remain unchanged.
+  - UTC date math handles month boundaries without JST shift.
+- Remaining:
+  - Send this plan to Claude/Fable and wait for explicit GO/no-go before
+    editing importer code or adding DB writes.
+
 ## ID-2 W8a Global Drug Display IDs - 2026-07-04 08:34 JST
 
 - Scope:
@@ -38213,7 +39458,7 @@ Next loop:
     skipped due no local DB env.
   - Scoped ESLint and scoped diff-check passed.
   - Old-schema temp `prisma migrate diff --from-schema <tmp old schema>
-    --to-schema prisma/schema --script` produced the expected 7 column adds and
+--to-schema prisma/schema --script` produced the expected 7 column adds and
     7 unique indexes.
   - `pnpm typecheck` passed.
   - `pnpm typecheck:no-unused` passed on rerun after transient missing
@@ -38322,3 +39567,985 @@ Next loop:
   - `pnpm typecheck` passed.
 - Remaining:
   - Send completion report to Claude and await opus verdict / Claude commit.
+
+## W3-B4 Manual Care-Report Billing Context - 2026-07-04 11:30 JST
+
+- Scope:
+  - `src/app/api/care-reports/route.ts`
+  - `src/app/api/care-reports/route.test.ts`
+- Status:
+  - Implemented after Claude/Fable GO for the billing-adjacent residual slice.
+  - Claude/Fable billing-focused review passed and the slice landed as
+    `8a9fdc95`.
+- Fixed:
+  - Manual care-report creation now reads existing `BillingEvidence` inside the
+    same locked transaction after visit source revalidation and projects it into
+    `content.billing_context` with the existing report projection helper.
+  - Reports linked to a visit but without evidence, and reports without a visit,
+    store `billing_context: null`.
+- Safety:
+  - No billing evidence is generated or mutated.
+  - `claimable`, amount, delivery, pending, status, auth/RLS, schema, migration,
+    external send, UI, production config, push/deploy, and destructive-operation
+    behavior are unchanged.
+  - Tests lock that billing context inclusion does not write report `status`,
+    `delivery_records`, or `delivery_status`.
+- Validation:
+  - `./node_modules/.bin/vitest run src/app/api/care-reports/route.test.ts --reporter=dot --testTimeout=30000`
+    passed `1` file / `67` tests.
+  - Scoped ESLint passed for route and route test.
+  - Scoped Prettier check passed for route and route test.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+- Remaining:
+  - No remaining W3-B4 manual `billing_context` work in this slice. P0/deeper
+    claim-record projector work remains separate by design.
+
+## R23 Admin Incidents Error Helper - 2026-07-04 11:45 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/incidents/incidents-content.tsx`
+  - `src/app/(dashboard)/admin/incidents/incidents-content.test.tsx`
+- Status:
+  - Implemented after Claude/Fable granted exact lock
+    `R23-admin-incidents-error-helper`.
+  - Focused and full type validations are green; awaiting Claude/Fable central
+    gate and commit.
+- Fixed:
+  - Incident memo-save, status-change, and create mutation failure toasts now
+    use shared `messageFromError(error, fallback)`.
+  - Existing server-provided `Error.message` text is preserved.
+  - Fallback toasts keep the prior operation-specific Japanese failure messages
+    when the thrown value has no usable message.
+- Safety:
+  - No mutation payload, API route, headers, auth/RLS, success path,
+    query-invalidation behavior, server error creation, billing, PHI, schema,
+    migration, external send, production config, push/deploy, or destructive
+    operation behavior changed.
+  - Existing non-toast incident error detail branches were intentionally left
+    unchanged.
+- Validation:
+  - `./node_modules/.bin/vitest run 'src/app/(dashboard)/admin/incidents/incidents-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `15` tests.
+  - Scoped ESLint passed for the incident content source and test.
+  - Scoped Prettier check passed for the incident content source and test.
+  - Scoped diff-check passed for the incident content source and test.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+- Remaining:
+  - Send completion report to Claude/Fable and await central gate / commit.
+
+## R23 Admin Template Body Error Helper - 2026-07-04 11:50 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/document-templates/template-body-editor.tsx`
+  - `src/app/(dashboard)/admin/document-templates/template-body-editor.render.test.tsx`
+- Status:
+  - Implemented after Claude/Fable granted exact lock
+    `R23-admin-template-body-error-helper`.
+  - Focused validation is green; full typecheck/no-unused is waiting for
+    Claude/Fable `BUILD-LOCK`解除.
+- Fixed:
+  - Document template body editor save failure toast now uses shared
+    `messageFromError(error, fallback)`.
+  - Existing server-provided `Error.message` text is preserved.
+  - Fallback toast keeps the prior operation-specific Japanese failure message
+    when the thrown value has no usable message.
+- Safety:
+  - No mutation payload, API route, headers, auth/RLS, success path,
+    query-invalidation behavior, server error creation, billing, PHI, schema,
+    migration, external send, production config, push/deploy, or destructive
+    operation behavior changed.
+- Validation:
+  - `./node_modules/.bin/vitest run 'src/app/(dashboard)/admin/document-templates/template-body-editor.test.ts' 'src/app/(dashboard)/admin/document-templates/template-body-editor.render.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `2` files / `10` tests.
+  - Scoped ESLint passed for the template body editor source and render test.
+  - Scoped Prettier check passed for the template body editor source and render
+    test.
+  - Scoped diff-check passed for the template body editor source and render
+    test.
+  - Full `typecheck` / `typecheck:no-unused` not run yet because
+    Claude/Fable's central `BUILD-LOCK` is active.
+- Remaining:
+  - Run full typecheck/no-unused after `BUILD-LOCK`解除 if still needed, then
+    send final completion report to Claude/Fable for central gate / commit.
+
+## R23 Admin Settings Error Helper - 2026-07-04 11:55 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/settings/settings-content.tsx`
+  - `src/app/(dashboard)/admin/settings/settings-content.test.tsx`
+- Status:
+  - Implemented after Claude/Fable granted exact lock
+    `R23-admin-settings-error-helper`.
+  - Focused validation is green. Claude/Fable is holding `BUILD-LOCK` and will
+    run incidents + template-body + settings through one central build gate.
+- Fixed:
+  - Admin settings save failure toast now uses shared
+    `messageFromError(error, fallback)`.
+  - Existing server-provided `Error.message` and local range-validation
+    `Error.message` text are preserved.
+  - Fallback toast keeps the prior operation-specific Japanese failure message
+    when the thrown value has no usable message.
+- Safety:
+  - No mutation payload, API route, headers, auth/RLS, success path,
+    query-invalidation behavior, server error creation, settings validation,
+    billing, PHI, schema, migration, external send, production config,
+    push/deploy, or destructive operation behavior changed.
+- Validation:
+  - `./node_modules/.bin/vitest run 'src/app/(dashboard)/admin/settings/settings-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `8` tests.
+  - Scoped ESLint passed for the admin settings source and test.
+  - Scoped Prettier check passed for the admin settings source and test.
+  - Scoped diff-check passed for the admin settings source and test.
+  - Full `typecheck` / `typecheck:no-unused` / `build` not run locally because
+    Claude/Fable's central `BUILD-LOCK` is active for the batched gate.
+- Remaining:
+  - Send completion report to Claude/Fable and await central batched gate /
+    scoped commits for the three R23 admin cards.
+
+## R23 Conferences Error Helper - 2026-07-04 12:05 JST
+
+- Scope:
+  - `src/app/(dashboard)/conferences/conferences-content.tsx`
+  - `src/app/(dashboard)/conferences/conferences-content.test.tsx`
+- Status:
+  - Implemented after Claude/Fable granted exact lock
+    `R23-conferences-error-helper`.
+  - Focused and full type validations are green; awaiting Claude/Fable central
+    gate / commit.
+  - Prior R23 admin 3-card batch landed as `0a6487a1`.
+- Fixed:
+  - Conference action-item task conversion and report generation failure toasts
+    now use shared `messageFromError(error, fallback)`.
+  - Existing server-provided `Error.message` text is preserved.
+  - Fallback toasts keep the operation-specific Japanese failure messages when
+    the thrown value has no usable message.
+- Safety:
+  - No mutation payload, API route, headers, auth/RLS, success path,
+    query-invalidation behavior, server error creation, report generation
+    semantics, billing, PHI, schema, migration, external send, production
+    config, push/deploy, or destructive operation behavior changed.
+- Validation:
+  - `./node_modules/.bin/vitest run 'src/app/(dashboard)/conferences/conferences-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `17` tests.
+  - Scoped ESLint passed for the conferences source and test.
+  - Scoped Prettier check passed for the conferences source and test.
+  - Scoped diff-check passed for the conferences source and test.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+- Remaining:
+  - Send completion report to Claude/Fable and await central gate / scoped
+    commit.
+
+## W3-B6a Slice3 Finalize Endpoint Design - 2026-07-04 12:50 JST
+
+- Scope:
+  - Read-only design for `POST /api/care-reports/[id]/finalize`.
+  - No source implementation yet; Slice3 needs Claude/Fable review and likely a
+    user checkpoint because it introduces legal-record enforcement behavior.
+- Status:
+  - Sent design proposal to Claude/Fable via agmsg.
+  - Slice2 pure dual-read was intentionally skipped/minimized per Claude/Fable
+    direction because no consumer needs the new metadata yet and the API
+    response shape should stay unchanged.
+- Design points:
+  - Keep finalization metadata server-internal; do not expand list/detail/send
+    API response shapes.
+  - Require current `updated_at` optimistic lock through
+    `expected_updated_at`.
+  - Resolve an active same-org pharmacist credential for the actor before any
+    mutation; role gaps are `403`, missing/expired/ambiguous credential is
+    proposed as `409`.
+  - Hash the clinical content subset only, excluding server-managed delivery
+    metadata such as `billing_context`, `source_provenance`,
+    `report_delivery_targets`, and `warnings`.
+  - In the same `withOrgContext` transaction: update `CareReport`
+    finalized/locked/hash/credential snapshot fields, create
+    `CareReportRevision` with a `crev` display ID, and write
+    `care_report_finalized` AuditLog without leaking credential numbers.
+  - Add approved behavior-change guards in the same slice: finalized/locked
+    reports reject content/template mutation, and report-generator does not
+    refresh finalized/locked reports.
+- Validation:
+  - Read-only inspection only; no tests were run because no code changed.
+  - Full build/typecheck remains under Claude/Fable `BUILD-LOCK`.
+- Remaining:
+  - Await Claude/Fable design verdict before implementing.
+
+## Idle Recon: R03 stale / R05 SSK helper candidate - 2026-07-04 12:56 JST
+
+- Scope:
+  - Read-only backlog refresh while B6a Slice3 design waits for review.
+- R03 result:
+  - Current worktree no longer has `src/lib/api/route-builder.ts` or
+    `src/lib/auth/middleware.ts`.
+  - `rg` finds only historical docs/ledger mentions and unrelated current
+    symbols such as route error boundaries and `withRoutePerformance`.
+  - Sent Claude/Fable a stale-candidate note; no source changes.
+- R05 result:
+  - `src/server/services/drug-master-import/ssk.ts` still carries local
+    `normalizeCell` and `parseCsvLine` helpers.
+  - `src/server/services/drug-master-import/shared.ts` already exports
+    behavior-matching `normalizeCell` and `splitDelimitedLine`.
+  - Sent `LOCK_REQUEST R05-SSK-CSV-helper-min` for
+    `src/server/services/drug-master-import/ssk.ts` and its focused test.
+- Validation:
+  - Read-only inspection only.
+  - Claude/Fable separately released the central `BUILD-LOCK`: #16/#17/#18/B6a
+    /R02 passed typecheck, no-unused, and build.
+- Remaining:
+  - Await exact-path lock before editing R05.
+
+## W3-B6a Slice3 Finalize Endpoint - 2026-07-04 13:01 JST
+
+- Scope:
+  - `POST /api/care-reports/[id]/finalize`
+  - `PATCH /api/care-reports/[id]` finalized/locked/voided mutation guard
+  - report-generator draft refresh guard
+  - focused route and generator tests
+- Status:
+  - Implemented after Claude/Fable approved Slice3 with two required design
+    corrections: finalize uses `canAuthorReport`, and finalized content
+    hash/snapshot includes clinical `billing_context`, `source_provenance`,
+    and `warnings` while excluding delivery metadata only.
+  - Not committed; auth/legal-record adjacent slice is awaiting Claude/Fable
+    checker review.
+- Fixed:
+  - Added finalize endpoint with `expected_updated_at` optimistic locking,
+    active same-org same-user pharmacist credential resolution, same-transaction
+    `CareReport` finalize/lock/hash update, `CareReportRevision` creation with
+    `crev` display ID, and `care_report_finalized` AuditLog.
+  - Audit changes store credential ID/type and hash evidence but do not store
+    raw credential numbers.
+  - Existing PATCH rejects content/template mutation when legal finalize,
+    lock, or void metadata is present, even if compatibility status remains
+    `draft`.
+  - Report generator refreshes only draft reports that are not finalized,
+    locked, or voided, and repeats that guard inside the update claim.
+- Safety:
+  - No schema or migration change in this slice.
+  - Send route remains allowed and send-before-finalize is not made mandatory.
+  - API response expansion is limited to the new finalize endpoint result; the
+    existing detail/list/send response shapes are unchanged.
+- Validation:
+  - `./node_modules/.bin/vitest run 'src/app/api/care-reports/[id]/finalize/route.test.ts' 'src/app/api/care-reports/[id]/route.test.ts' src/server/services/report-generator.test.ts --reporter=dot --testTimeout=30000`
+    passed `3` files / `51` tests.
+  - Scoped ESLint passed for finalize route/test, care-report `[id]` route/test,
+    report-generator source/test, and care-report source readers.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff-check passed for the same files.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+- Remaining:
+  - Send implementation report to Claude/Fable for required auth/legal-record
+    review and central commit decision.
+  - R05 SSK helper cleanup is LOCK-granted but intentionally deferred until
+    after Slice3 review/report because Claude/Fable marked Slice3 higher
+    priority.
+
+## R05 SSK CSV Helper Cleanup - 2026-07-04 13:03 JST
+
+- Scope:
+  - `src/server/services/drug-master-import/ssk.ts`
+- Status:
+  - Implemented after Claude/Fable granted
+    `R05-SSK-CSV-helper-min`.
+  - Not committed; awaiting Claude/Fable checker/commit decision.
+- Fixed:
+  - Removed SSK-local `normalizeCell` and `parseCsvLine` duplicates.
+  - Reused shared `normalizeCell` and `splitDelimitedLine` from
+    `drug-master-import/shared.ts`.
+  - SSK parsing still uses comma-delimited quote/escaped-quote/trailing-empty
+    behavior through the shared parser.
+- Safety:
+  - No API, DB, auth/RLS, audit, PHI, URL policy, SSRF guard, import source
+    resolution, ZIP expansion, preview behavior, or persistence behavior
+    changed.
+- Validation:
+  - `./node_modules/.bin/vitest run src/server/services/drug-master-import/ssk.test.ts src/server/services/drug-master-import/shared.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `32` tests.
+  - Scoped ESLint passed for SSK/shared source and tests.
+  - Scoped Prettier check passed for SSK/shared source and tests.
+  - Scoped diff-check passed for SSK source/test.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+- Remaining:
+  - Send completion report to Claude/Fable. Slice3 auth/legal-record review is
+    still the higher-priority pending checker item.
+
+## R36 Drug Master Preview Limit Helper - 2026-07-04 13:08 JST
+
+- Scope:
+  - `src/server/services/drug-master-import/shared.ts`
+  - `src/server/services/drug-master-import/shared.test.ts`
+  - `src/server/services/drug-master-import/hot.ts`
+  - `src/server/services/drug-master-import/mhlw.ts`
+  - `src/server/services/drug-master-import/pmda.ts`
+  - `src/server/services/drug-master-import/ssk.ts`
+- Status:
+  - Implemented after Claude/Fable granted
+    `R36-drug-master-preview-limit-helper`.
+  - Not committed; awaiting Claude/Fable checker/commit decision.
+- Fixed:
+  - Added shared `normalizePreviewRowLimit`.
+  - Replaced identical local preview-limit normalizers in HOT, MHLW, PMDA, and
+    SSK import services.
+  - Added shared boundary tests pinning `undefined`, non-finite, NaN, unsafe
+    integer, negative, zero, fractional, and max-cap behavior.
+- Safety:
+  - Behavior is preserved: default limit remains `20`, max remains `100`,
+    negative/non-finite/unsafe values fall back to default, `0` remains allowed,
+    and fractional values are truncated.
+  - No API, DB, auth/RLS, audit, PHI, URL policy, SSRF, source resolution, ZIP
+    expansion, import persistence, or preview response shape changed.
+- Validation:
+  - `./node_modules/.bin/vitest run src/server/services/drug-master-import/shared.test.ts src/server/services/drug-master-import/hot.test.ts src/server/services/drug-master-import/mhlw.test.ts src/server/services/drug-master-import/pmda.test.ts src/server/services/drug-master-import/ssk.test.ts --reporter=dot --testTimeout=30000`
+    passed `5` files / `91` tests.
+  - Scoped ESLint passed for shared/HOT/MHLW/PMDA/SSK source and focused tests.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff-check passed for the same files.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+- Remaining:
+  - Send completion report to Claude/Fable. Slice3 remains the higher-priority
+    checker item; R05/R36 are behavior-preserving cleanup slices awaiting review.
+
+## B6a Care Report Finalization Slice3 MUST-FIX - 2026-07-04 13:11 JST
+
+- Scope:
+  - `src/app/api/care-reports/[id]/route.ts`
+  - `src/app/api/care-reports/[id]/route.test.ts`
+- Status:
+  - Implemented Claude/Fable's conditional-approval MUST-FIX.
+  - Not committed by Codex; awaiting central review/commit decision for the
+    auth/legal-record-adjacent Slice3.
+- Fixed:
+  - `PATCH /api/care-reports/[id]` no longer treats
+    `{ status: "confirmed" }` as a valid draft-confirm transition when the
+    existing report has already been legally finalized, locked, or voided while
+    retaining compatibility `status = "draft"`.
+  - Added a focused regression test proving a legally finalized draft receives
+    `409`, skips `withOrgContext`, does not call `updateMany`, and writes no
+    confirmation audit.
+- Safety:
+  - This closes the post-finalization status mutation gap without changing send
+    workflow responsibilities, auth/RLS, audit payload shape, PHI logging,
+    finalization endpoint semantics, or response shapes.
+  - Known follow-up is intentionally outside this slice: read/list consumers
+    that still interpret compatibility `status = "draft"` as editable must be
+    handled separately.
+- Validation:
+  - `./node_modules/.bin/vitest run 'src/app/api/care-reports/[id]/finalize/route.test.ts' 'src/app/api/care-reports/[id]/route.test.ts' src/server/services/report-generator.test.ts --reporter=dot --testTimeout=30000`
+    passed `3` files / `52` tests.
+  - Scoped ESLint passed for finalize route/test, care-report `[id]` route/test,
+    report-generator source/test, and care-report source readers.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff-check passed for the same files.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+- Remaining:
+  - Send B6a MUST-FIX completion report to Claude/Fable for final Slice3
+    verdict and central commit.
+
+## B6a-Slice3b Today Workspace Finalized-Draft Awareness + R43 Patient-MCS Test Helper - 2026-07-04 13:28 JST
+
+- Scope:
+  - `src/app/api/care-reports/today-workspace/route.ts`
+  - `src/app/api/care-reports/today-workspace/route.test.ts`
+  - `src/lib/patient-mcs/query.test.ts`
+- Status:
+  - Implemented after Claude/Fable granted B6a-Slice3b and queued R43.
+  - Not committed by Codex; awaiting checker/central commit handling.
+- Fixed:
+  - Today-workspace no longer treats finalized, locked, or voided
+    draft-compatible care reports as editable drafts.
+  - Schedule rows now label finalized draft-compatible reports as existing
+    detail targets, not `draft_ready` / `→ 下書きへ`.
+  - Open issues no longer emit draft-confirmation for finalized
+    draft-compatible created reports.
+  - R43 replaced hand-built JSON fetch response doubles in
+    `patient-mcs/query.test.ts` with shared `jsonResponse`, preserving URL,
+    header, error, and restore assertions.
+- Safety:
+  - Draft generation exclusion behavior remains unchanged: existing report
+    types still suppress regeneration regardless of finalized state.
+  - No auth, authorization, RLS, PHI logging, external send, audit payload,
+    schema, migration, persistence, or runtime API response shape changed.
+- Validation:
+  - `./node_modules/.bin/vitest run 'src/app/api/care-reports/today-workspace/route.test.ts' --reporter=dot --testTimeout=30000`
+    passed `1` file / `29` tests.
+  - Scoped ESLint passed for today-workspace route/test.
+  - Scoped Prettier check passed for today-workspace route/test.
+  - Scoped diff-check passed for today-workspace route/test.
+  - `./node_modules/.bin/vitest run src/lib/patient-mcs/query.test.ts --reporter=dot --testTimeout=30000`
+    passed `1` file / `11` tests.
+  - Scoped ESLint passed for `src/lib/patient-mcs/query.test.ts`.
+  - Scoped Prettier check passed for `src/lib/patient-mcs/query.test.ts`.
+  - Scoped diff-check passed for `src/lib/patient-mcs/query.test.ts`.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - Send completion report to Claude/Fable for checker/central commit handling.
+  - Preserve peer-owned dirty `ops/refactor/STATE.md` and `ops/refactor/LOG.md`.
+
+## W3-E2 Prescriptions Table DataTable Mapping - 2026-07-04 15:34 JST
+
+- Scope:
+  - `src/app/(dashboard)/prescriptions/prescriptions-table.tsx`
+  - `src/app/(dashboard)/prescriptions/prescriptions-table.test.tsx`
+  - `src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx`
+  - `src/app/(dashboard)/dispense/dispense-work-queue.shared.tsx`
+  - `src/components/ui/data-table.tsx`
+  - `src/components/ui/data-table.test.tsx`
+- Status:
+  - Completed read-only mapping for coordinator assignment
+    `W3-E2-PRESCRIPTIONS-TABLE-DATATABLE`.
+  - No source edits were made; mapping was sent to `codex` via agmsg.
+- Finding:
+  - Direct conversion is not safe as a one-file swap. The current
+    prescriptions table is a selectable master-detail list with
+    `role="listbox"`, row `role="option"`, `aria-selected`, selected-only
+    tab stop, and parent-managed ArrowUp / ArrowDown selection.
+  - `DataTable` currently supports clickable rows and selected row styling, but
+    clickable rows are exposed as `role="button"` with every row tabbable and
+    no `aria-selected` option semantics.
+- Recommendation:
+  - No-go for direct conversion until `DataTable` gains an explicit selectable
+    listbox mode, or split a smaller helper slice that preserves the current
+    accessibility contract.
+- Validation:
+  - `pnpm vitest --run src/app/(dashboard)/prescriptions/prescriptions-table.test.tsx src/components/ui/data-table.test.tsx`
+    passed `2` files / `14` tests.
+- Remaining:
+  - Await coordinator GO/leave before editing W3-E2 paths.
+
+## W3-E2 DataTable Selectable Listbox Recon - 2026-07-04 15:39 JST
+
+- Scope:
+  - `src/components/ui/data-table.tsx`
+  - `src/components/ui/data-table.test.tsx`
+  - Current `onRowClick` / `selectedRowIndex` DataTable callers
+- Status:
+  - Completed read-only API proposal after coordinator marked direct
+    prescriptions conversion no-go.
+  - No source edits were made; proposal was sent to `codex` via agmsg.
+- Proposal:
+  - Add opt-in `rowInteractionMode?: 'button' | 'selectable-listbox'`.
+  - Add `listboxLabel?: string`.
+  - Reuse existing `selectedRowIndex` for selected option state.
+  - Keep default `button` behavior unchanged for every existing DataTable user.
+- Safety:
+  - The first implementation can be isolated to `DataTable` and its tests. The
+    prescriptions migration should remain a separate GO after the shared
+    contract lands.
+- Validation:
+  - Existing focused validation in this recon window passed:
+    `pnpm vitest --run src/app/(dashboard)/prescriptions/prescriptions-table.test.tsx src/components/ui/data-table.test.tsx`
+    passed `2` files / `14` tests.
+- Remaining:
+  - Await coordinator GO/leave before editing `DataTable`.
+
+## W3-E2 / R55 Lock Requests and CommentThread Recon - 2026-07-04 15:38 JST
+
+- Scope:
+  - `src/components/ui/data-table.tsx`
+  - `src/components/ui/data-table.test.tsx`
+  - `src/components/features/comments/comment-thread.tsx`
+  - `src/components/features/comments/comment-thread.test.tsx`
+- Status:
+  - Requested exact-path GO for
+    `W3-E2-DATATABLE-SELECTABLE-LISTBOX-CONTRACT`.
+  - Requested exact-path GO for
+    `R55-COMMENT-THREAD-LOADING-SKELETON`.
+  - No source edits were made without GO.
+- Recon:
+  - `CommentThread` still has a small R55 plain loading branch:
+    pending comments render visible `読み込み中...`.
+  - Existing focused tests already separate pending loading from the empty
+    comment state, making this a small UI-only skeleton/status convergence
+    candidate.
+- Validation:
+  - `pnpm vitest --run src/components/features/comments/comment-thread.test.tsx`
+    passed `1` file / `9` tests.
+- Remaining:
+  - Await coordinator GO/leave before editing either requested slice.
+  - `R40-PRINT-HUB-READAPIJSON` remains HOLD.
+  - Peer-dirty `src/app/(dashboard)/admin/shifts/shifts-content.tsx` remains
+    excluded from codex3 work.
+
+## W3-E2 DataTable Selectable Listbox Contract - 2026-07-04 15:43 JST
+
+- Scope:
+  - `src/components/ui/data-table.tsx`
+  - `src/components/ui/data-table.test.tsx`
+- Status:
+  - Implemented after coordinator GO.
+  - Landed by coordinator as
+    `757ca20c feat(data-table): support selectable listbox rows`.
+- Changed:
+  - Added opt-in `rowInteractionMode?: 'button' | 'selectable-listbox'`.
+  - Added `listboxLabel?: string`.
+  - Reused existing `selectedRowIndex` for selected option state.
+  - Kept default clickable rows as `role="button"` with the existing detail
+    activation label so existing DataTable users are unchanged.
+  - In selectable-listbox mode, desktop and mobile rows now expose
+    `role="option"`, `aria-selected`, selected-only `tabIndex`, source-index
+    click/Enter/Space activation, and mobile selected styling.
+- Tests:
+  - Default row activation still has no listbox.
+  - Selectable listbox desktop/mobile roles, labels, selected state, tab stops,
+    click, Enter, and Space are covered.
+  - Sorting/filtering keep source-index activation.
+  - Loading/error/empty states emit no stale option rows.
+- Validation:
+  - `pnpm vitest --run src/components/ui/data-table.test.tsx` passed `1` file /
+    `14` tests.
+  - `pnpm eslint -- src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx`
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm prettier --check src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx`
+    passed.
+  - `git diff --check -- src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx`
+    passed.
+  - Coordinator also reran focused Vitest `14/14`, targeted ESLint, Prettier,
+    diff-check, `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm build`;
+    all passed.
+- Remaining:
+  - No prescriptions-table migration yet. It needs a separate exact-path GO.
+  - `R55-COMMENT-THREAD-LOADING-SKELETON` and `R40-PRINT-HUB-READAPIJSON`
+    remain HOLD.
+
+## W3-E2 Prescriptions Table DataTable Migration - 2026-07-04 15:56 JST
+
+- Scope:
+  - `src/app/(dashboard)/prescriptions/prescriptions-table.tsx`
+  - `src/app/(dashboard)/prescriptions/prescriptions-table.test.tsx`
+- Status:
+  - Implemented after coordinator GO.
+  - Landed by coordinator as
+    `2d0d80b4 refactor(prescriptions): render intake list with data table`.
+- Changed:
+  - Replaced the loaded-row handmade table with shared `DataTable`.
+  - Used the landed `rowInteractionMode="selectable-listbox"` and
+    `listboxLabel="処方受付一覧"` contract.
+  - Derived `selectedRowIndex` from `items.findIndex((item) => item.id ===
+selectedId)`.
+  - Preserved `onRowClick(index)` source-data index activation.
+  - Kept loading, error-only-empty, and genuine-empty branches outside
+    DataTable so false-empty behavior and copy remain unchanged.
+  - Disabled sorting on all migrated columns so the old table does not gain new
+    sort behavior in this slice.
+- Safety:
+  - No API/query/payload/auth/DB behavior changed.
+  - No toolbar, export, print, filtering, or pagination was enabled.
+  - Visible PHI cells remain status, patient name/kana, source, prescribed date,
+    prescriber, expiry, and refill count.
+- Validation:
+  - `pnpm vitest --run src/app/(dashboard)/prescriptions/prescriptions-table.test.tsx`
+    passed `1` file / `4` tests.
+  - `pnpm vitest --run src/components/ui/data-table.test.tsx` passed `1` file /
+    `14` tests.
+  - `pnpm eslint -- src/app/(dashboard)/prescriptions/prescriptions-table.tsx src/app/(dashboard)/prescriptions/prescriptions-table.test.tsx`
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm prettier --check src/app/(dashboard)/prescriptions/prescriptions-table.tsx src/app/(dashboard)/prescriptions/prescriptions-table.test.tsx`
+    passed.
+  - `git diff --check -- src/app/(dashboard)/prescriptions/prescriptions-table.tsx src/app/(dashboard)/prescriptions/prescriptions-table.test.tsx`
+    passed.
+  - Coordinator reran prescriptions-table + DataTable focused Vitest `18/18`,
+    targeted ESLint, Prettier, and diff-check; all passed.
+- Remaining:
+  - `R55-COMMENT-THREAD-LOADING-SKELETON` and `R40-PRINT-HUB-READAPIJSON`
+    remain HOLD.
+
+## R55 Comment Thread Loading Skeleton - 2026-07-04 16:00 JST
+
+- Scope:
+  - `src/components/features/comments/comment-thread.tsx`
+  - `src/components/features/comments/comment-thread.test.tsx`
+- Status:
+  - Implemented after coordinator GO.
+  - Landed by coordinator as
+    `d00773af refactor(comments): use skeleton for loading state`.
+- Changed:
+  - Replaced the pending-query visible plain loading paragraph
+    `読み込み中...` with a named `role=status` skeleton:
+    `aria-label="コメントを読み込み中"`.
+  - Updated the focused test to assert the named status and absence of the old
+    visible plain loading paragraph while preserving pending-vs-empty
+    separation.
+- Safety:
+  - No query key, realtime invalidation, fetch/readApiJson path, create/delete
+    mutation, error alert/retry, empty copy, MentionInput, form, toast, auth,
+    API, DB, or payload behavior changed.
+- Validation:
+  - `pnpm vitest --run src/components/features/comments/comment-thread.test.tsx`
+    passed `1` file / `9` tests.
+  - `pnpm eslint -- src/components/features/comments/comment-thread.tsx src/components/features/comments/comment-thread.test.tsx`
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm prettier --check src/components/features/comments/comment-thread.tsx src/components/features/comments/comment-thread.test.tsx`
+    passed.
+  - `git diff --check -- src/components/features/comments/comment-thread.tsx src/components/features/comments/comment-thread.test.tsx`
+    passed.
+- Remaining:
+  - No remaining comment-thread work in this slice.
+  - `R40-PRINT-HUB-READAPIJSON` remains HOLD.
+
+## R55 External Professionals Linked Patients Loading Skeleton - 2026-07-04 16:20 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/external-professionals/external-professionals-content.tsx`
+  - `src/app/(dashboard)/admin/external-professionals/external-professionals-content.test.tsx`
+- Status:
+  - Read-only recon only.
+  - Not implemented; needs coordinator exact-path GO before edits.
+- Finding:
+  - `LinkedPatientsPanel` still renders the assigned-patients loading state as
+    visible plain text `担当患者を読み込み中...`.
+  - The same panel already has false-empty separation tests for success and
+    error, making it a low-risk R55 skeleton/status convergence candidate.
+- Safety:
+  - Proposed slice is UI-only and should not change fetch paths,
+    `buildOrgHeaders`, counted metadata, patient navigation helpers, error
+    alert/retry behavior, empty copy, mutations, auth, API, DB, or payload
+    semantics.
+- Validation:
+  - Read-only `rg`/`nl`/test inspection only so far.
+- Remaining:
+  - Request coordinator GO for the two exact external-professionals paths.
+
+## W3-E2 Physician Report View DataTable Migration - 2026-07-04 16:14 JST
+
+- Scope:
+  - `src/components/features/reports/physician-report-view.tsx`
+  - `src/components/features/reports/physician-report-view.test.tsx`
+- Status:
+  - Implemented after coordinator GO.
+  - Landed by coordinator as
+    `2811d6aa refactor(reports): render physician report tables with data table`.
+- Changed:
+  - Replaced the handmade prescriptions table with shared `DataTable`.
+  - Replaced the handmade residual-medications table with shared `DataTable`.
+  - Added typed column definitions with `mobileLabel` and `enableSorting:
+false` for every migrated column.
+  - Preserved conditional section rendering: prescriptions and residual
+    medication sections are still omitted when their arrays are empty.
+- Safety:
+  - No API, fetch, mutation, auth, authorization, DB, audit, PHI logging,
+    export, print, report payload, outside-meds classification, warnings,
+    medication-management, adverse-event, assessment, plan, or physician
+    communication behavior changed.
+  - No toolbar, CSV export, print action, pagination, row action, or selection
+    behavior was introduced.
+- Validation:
+  - `pnpm vitest --run src/components/features/reports/physician-report-view.test.tsx`
+    passed `1` file / `4` tests.
+  - `pnpm eslint -- src/components/features/reports/physician-report-view.tsx src/components/features/reports/physician-report-view.test.tsx`
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm prettier --check src/components/features/reports/physician-report-view.tsx src/components/features/reports/physician-report-view.test.tsx`
+    passed.
+  - `git diff --check -- src/components/features/reports/physician-report-view.tsx src/components/features/reports/physician-report-view.test.tsx`
+    passed.
+  - Coordinator reran focused Vitest `4/4`, targeted ESLint, Prettier, and
+    diff-check; all passed.
+- Remaining:
+  - No remaining physician-report-view work in this slice.
+
+## W3-E2 Prescription Inline Detail DataTable Recon - 2026-07-04 16:18 JST
+
+- Scope:
+  - `src/app/(dashboard)/prescriptions/prescription-inline-detail.tsx`
+  - `src/app/(dashboard)/prescriptions/prescription-inline-detail.test.tsx`
+- Status:
+  - Exact-path LOCK_REQUEST sent to coordinator.
+  - No source edits made; awaiting GO.
+- Finding:
+  - `PrescriptionInlineDetail` still has a handmade prescription detail lines
+    table. It is a medium-risk DataTable candidate because it sits in a dense
+    scrollable master-detail pane and has explicit loading/error/empty/link
+    contracts that must stay unchanged.
+- Safety:
+  - Requested slice excludes query key, fetch path, `buildOrgHeaders`, hostile
+    id encoding / dot guard behavior, patient/history/detail links,
+    loading/error states, `明細なし` copy, inquiries block, API, DB, auth,
+    audit, export, print, toolbar, pagination, row action, and selection
+    behavior.
+- Validation:
+  - Baseline `pnpm vitest --run src/app/(dashboard)/prescriptions/prescription-inline-detail.test.tsx`
+    passed `1` file / `8` tests before any source edit.
+- Remaining:
+  - Await coordinator GO/leave before implementation.
+
+## W3-E2 Prescription Inline Detail DataTable Migration - 2026-07-04 16:20 JST
+
+- Scope:
+  - `src/app/(dashboard)/prescriptions/prescription-inline-detail.tsx`
+  - `src/app/(dashboard)/prescriptions/prescription-inline-detail.test.tsx`
+- Status:
+  - Implemented after coordinator GO.
+  - Landed by coordinator as
+    `69f251ea refactor(prescriptions): render inline details with data table`.
+- Changed:
+  - Replaced the handmade prescription detail lines table with shared
+    `DataTable`.
+  - Added typed prescription-line column definitions with `mobileLabel` and
+    `enableSorting: false`.
+  - Preserved the explicit `明細なし` empty copy by rendering it outside
+    DataTable when `data.lines.length === 0`.
+- Safety:
+  - No query key, fetch path, `buildOrgHeaders`, hostile id encoding, dot guard,
+    patient/history/detail links, loading/error states, inquiries block, API,
+    DB, auth, authorization, audit, PHI logging, export, print, mutation, or
+    payload behavior changed.
+  - No toolbar, CSV export, print action, pagination, row action, or selection
+    behavior was introduced.
+- Validation:
+  - `pnpm vitest --run src/app/(dashboard)/prescriptions/prescription-inline-detail.test.tsx`
+    passed `1` file / `10` tests.
+  - `pnpm eslint -- src/app/(dashboard)/prescriptions/prescription-inline-detail.tsx src/app/(dashboard)/prescriptions/prescription-inline-detail.test.tsx`
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm prettier --check src/app/(dashboard)/prescriptions/prescription-inline-detail.tsx src/app/(dashboard)/prescriptions/prescription-inline-detail.test.tsx`
+    passed after formatting exact paths.
+  - `git diff --check -- src/app/(dashboard)/prescriptions/prescription-inline-detail.tsx src/app/(dashboard)/prescriptions/prescription-inline-detail.test.tsx`
+    passed.
+  - Coordinator reran focused Vitest `10/10`, targeted ESLint, Prettier, and
+    diff-check; all passed.
+- Remaining:
+  - No remaining prescription-inline-detail work in this slice.
+  - BUILD-LOCK is active; do not run build/typecheck/typecheck:no-unused or
+    start source edits until coordinator releases or assigns the next exact
+    path slice.
+
+## R55 External Professionals Linked Patients Loading Skeleton - 2026-07-04 16:25 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/external-professionals/external-professionals-content.tsx`
+  - `src/app/(dashboard)/admin/external-professionals/external-professionals-content.test.tsx`
+- Status:
+  - Read-only recon refreshed during coordinator BUILD-LOCK.
+  - Exact-path LOCK_REQUEST sent to coordinator; no source edits made.
+- Finding:
+  - `LinkedPatientsPanel` still renders the assigned-patients loading state as
+    visible plain text `担当患者を読み込み中...`.
+  - Existing tests already cover linked-patient success metadata/navigation and
+    false-empty separation for query failure, making this a narrow R55
+    skeleton/status convergence candidate.
+- Safety:
+  - Proposed slice is UI-only and should not change external-professionals
+    list, facilities, linked-patients fetch paths, `buildOrgHeaders`,
+    `buildOrgJsonHeaders`, encoded API path helpers, patient navigation helper,
+    counted metadata, success/error/empty copy, retry behavior, mutations, auth,
+    API, DB, audit, or payload semantics.
+- Validation:
+  - Baseline `pnpm vitest --run src/app/(dashboard)/admin/external-professionals/external-professionals-content.test.tsx`
+    passed `1` file / `12` tests.
+- Remaining:
+  - Await coordinator GO/leave/BUILD-LOCK release before implementation.
+
+## R55 Plain Text Loading Candidate Mapping - 2026-07-04 16:32 JST
+
+- Status:
+  - Read-only mapping only; no new source edits or LOCK_REQUEST beyond the
+    pending external-professionals request.
+- Additional candidates inspected:
+  - `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`: bootstrap
+    loading still renders plain `読み込み中...`.
+  - `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`:
+    case search, proposal list, and detail sheet loading states still render
+    plain loading text.
+  - `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`:
+    case search and optimizer board loading states still render plain loading
+    text.
+- Triage:
+  - Keep the pending external-professionals linked-patients slice as the best
+    next codex3 candidate because it is narrower, admin UI-only, exact-path
+    clean, and already has focused success/error false-empty tests plus a green
+    baseline suite.
+  - Visit-record and schedule-proposal slices are larger/high-traffic
+    workspaces and should require separate exact-path assignment and focused
+    loading-state tests before any implementation.
+- Validation:
+  - Read-only `nl`, `rg`, `git status`, `git log`, and agmsg inbox only.
+- Remaining:
+  - Await coordinator GO/leave/BUILD-LOCK release.
+
+## Coordinator Land Refresh - 2026-07-04 17:28 JST
+
+- Status:
+  - `R55-ADMIN-MASTER-PAGE-SUSPENSE-LOADING-LABELS` landed as
+    `f0029164 refactor(admin): name master loading statuses`.
+  - `R55-DRUG-MASTER-IMPORT-HISTORY-LOADING-SKELETON` landed as
+    `fd065171 refactor(drug-masters): skeletonize import history loading`.
+  - W3-B9 emergency category rule-engine fail-closed landed as
+    `d535b4f6 fix(billing): fail closed missing emergency rule category`.
+- Validation:
+  - UI focused Vitest: `3` files / `90` tests passed for packaging methods,
+    business holidays, and drug-master import history.
+  - UI targeted ESLint passed for exact six UI files.
+  - UI targeted Prettier check and `git diff --check` passed for exact six UI
+    files.
+  - Billing focused Vitest:
+    `src/server/services/billing-rules/rule-engine.test.ts`,
+    `src/server/services/billing-rules/__tests__/rule-engine-emergency.test.ts`,
+    `src/server/services/billing-evidence/core.test.ts` passed `3` files /
+    `106` tests.
+  - Billing targeted ESLint, Prettier check, and `git diff --check` passed for
+    the exact three billing rule-engine files.
+- Safety:
+  - UI commits change loading presentation/accessibility only.
+  - Billing commit prevents fee2/manual emergency candidate inference when the
+    authoritative emergency category is missing; no DB, migration, auth,
+    authorization, API payload, PHI logging, or deploy behavior changed.
+- Remaining:
+  - `monitor` mode is configured in `.codex/hooks.json`, but existing Codex
+    sessions still have no running bridge; restart/relaunch is required for
+    bridge attachment.
+  - codex2 next assignment:
+    `R55-SCHEDULE-OPERATIONAL-TASKS-LOADING-SKELETON`.
+  - codex3 next assignment: `R21-SONNER-MOCK-SMALL-WAVE`.
+  - codex4 next assignment: W3-B9 `online shared monthly cap` read-only recon
+    with official cap confirmation before implementation.
+
+## R55 External Professionals Pending Recheck - 2026-07-04 16:35 JST
+
+- Status:
+  - No coordinator GO or BUILD-LOCK release found in agmsg inbox/history.
+  - No source edits made.
+- Current evidence:
+  - `LinkedPatientsPanel` still renders visible plain loading copy
+    `担当患者を読み込み中...`.
+  - Exact requested paths remain clean in `git status`:
+    `src/app/(dashboard)/admin/external-professionals/external-professionals-content.tsx`
+    and
+    `src/app/(dashboard)/admin/external-professionals/external-professionals-content.test.tsx`.
+- Validation:
+  - `pnpm vitest --run src/app/(dashboard)/admin/external-professionals/external-professionals-content.test.tsx`
+    passed `1` file / `12` tests.
+- Remaining:
+  - Await coordinator GO/leave/BUILD-LOCK release before implementation.
+
+## R55 Admin Plain Text Loading Recon - 2026-07-04 16:37 JST
+
+- Status:
+  - Read-only recon only; no new source edits.
+  - Sent `STATUS_REQUEST` to coordinator asking for pending
+    external-professionals GO/leave or BUILD-LOCK release.
+- Admin R55 scan:
+  - `packaging-methods-content.tsx` already uses a named `role=status`
+    `SkeletonRows` loading state and has a focused test.
+  - `business-holidays-content.tsx` already uses a named `role=status`
+    `SkeletonRows` loading state and has a focused test.
+  - `drug-master-content.tsx` still has visible plain text import-history
+    loading copy `履歴を読み込み中です…`.
+- Triage:
+  - Keep external-professionals linked-patients loading as the active next
+    request because it is narrower, already pending with coordinator, exact
+    paths are clean, and baseline focused Vitest is green.
+  - Drug-master import-history loading is a valid future R55 candidate, but the
+    file is a large admin workspace and should be a separate exact-path slice
+    after the current pending request is resolved.
+- Validation:
+  - `pnpm vitest --run src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+    passed `1` file / `85` tests.
+- Remaining:
+  - Await coordinator response; avoid source edits/build/typecheck/no-unused
+    while BUILD-LOCK remains active.
+
+## R55 External Professionals Landed / Residual Chart No-op - 2026-07-04 16:40 JST
+
+- External-professionals result:
+  - Coordinator landed
+    `7f9e7d58 refactor(external-professionals): skeletonize linked-patient loading`.
+  - Coordinator validation reported focused external-professionals Vitest
+    `13/13`, ESLint, Prettier, and diff-check all passed.
+- Residual chart assignment:
+  - New GO received for `R55-RESIDUAL-CHART-LOADING-SKELETON`.
+  - Exact paths:
+    `src/components/features/patients/residual-medication-chart.tsx` and
+    `src/components/features/patients/residual-medication-chart.test.tsx`.
+  - Current HEAD already has the requested named `role=status` skeleton with
+    aria-label `残薬データを読み込み中`, uses `SkeletonRows`, and includes a
+    focused loading test asserting the old visible `読み込み中...` text is
+    absent.
+  - No residual-chart source edits were needed.
+- Validation:
+  - `pnpm vitest --run src/components/features/patients/residual-medication-chart.test.tsx`
+    passed `1` file / `5` tests.
+  - `pnpm eslint -- src/components/features/patients/residual-medication-chart.tsx src/components/features/patients/residual-medication-chart.test.tsx`
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm prettier --check src/components/features/patients/residual-medication-chart.tsx src/components/features/patients/residual-medication-chart.test.tsx`
+    passed.
+  - `git diff --check -- src/components/features/patients/residual-medication-chart.tsx src/components/features/patients/residual-medication-chart.test.tsx`
+    passed.
+- Remaining:
+  - Send coordinator no-op report for residual chart and await next exact-path
+    GO.
+
+## R55 Visible Loading Inventory Refresh - 2026-07-04 16:42 JST
+
+- Status:
+  - New coordinator BUILD-LOCK received after the residual-chart no-op report.
+  - No source edits made after BUILD-LOCK restart.
+- Current visible plain loading candidates from read-only scan:
+  - `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`:
+    import-history loading `履歴を読み込み中です…`.
+  - `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`:
+    bootstrap loading `読み込み中...`.
+  - `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`:
+    case-search, proposal list, and detail-flow loading strings.
+  - `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`:
+    case-search and weekly optimizer loading strings.
+- Triage:
+  - Drug-master import-history loading is the smallest confirmed admin
+    remainder, but it is a large admin workspace and should be a separate
+    exact-path GO.
+  - Visit-record and schedule-proposals are higher-traffic/larger workflows and
+    should not be taken without explicit assignment and focused loading tests.
+- Validation:
+  - Read-only `rg`, `git status`, `git log`, and agmsg inbox only.
+- Remaining:
+  - Await BUILD-LOCK release or next exact-path GO; do not run
+    build/typecheck/typecheck:no-unused.
+
+## R55 Drug Master Import History Loading Skeleton - 2026-07-04 16:43 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`
+  - `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+- Status:
+  - Read-only recon complete.
+  - Exact-path LOCK_REQUEST sent to coordinator; no source edits made.
+- Finding:
+  - Import-history loading still renders visible plain text
+    `履歴を読み込み中です…`.
+  - The same test file already covers import-log query keys, retryable
+    false-empty separation, and nearby named skeleton patterns for detail,
+    stock config, and stock history panels.
+- Safety:
+  - Proposed slice is UI-only and should not change drug-master list/detail,
+    formulary behavior, import-log query key, fetch path, `buildOrgHeaders`,
+    `readApiJson`, source/status filters, import preview/mutations, error
+    copy/retry, empty copy, summary counts, auth, API, DB, audit, import
+    payload, or PHI semantics.
+- Validation:
+  - Baseline `pnpm vitest --run src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+    passed `1` file / `85` tests.
+- Remaining:
+  - Await coordinator GO/leave/BUILD-LOCK release before implementation.
+
+## W3-E2 DataTable Residual Table Recon - 2026-07-04 16:44 JST
+
+- Status:
+  - Read-only recon only during BUILD-LOCK.
+- Current non-print handmade table assessment:
+  - `src/app/(dashboard)/reports/report-delivery-dashboard.tsx` keeps a
+    lightweight 3-5 row aggregate table by explicit local comment; not a better
+    DataTable target.
+  - `src/components/features/dispense/medication-format-grid.tsx` remains a
+    sticky slot matrix with fixed dosing columns; still unsuitable as a first
+    DataTable migration.
+  - `src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx`
+    remains a calendar grid from prior recon; not a DataTable target.
+  - `src/app/(dashboard)/admin/shifts/shifts-content.tsx` is a calendar-like
+    staffing grid; not a safer DataTable target than current R55 work.
+- Triage:
+  - Continue prioritizing the pending
+    `R55-DRUG-MASTER-IMPORT-HISTORY-LOADING-SKELETON` request.
+- Validation:
+  - Read-only `rg`, `nl`, and `git status` only.
+- Remaining:
+  - Await coordinator GO/leave/BUILD-LOCK release.
