@@ -18,6 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SkeletonRows } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
 
 import {
@@ -602,7 +603,14 @@ export function TasksContent({
             );
           })}
           {isStaffWorkloadLoading ? (
-            <p className="text-sm text-muted-foreground">スタッフ別業務量を読み込み中...</p>
+            <div
+              className="col-span-full"
+              role="status"
+              aria-label="スタッフ別業務量を読み込み中"
+              aria-live="polite"
+            >
+              <SkeletonRows rows={3} cols={3} status={false} />
+            </div>
           ) : null}
           {!isStaffWorkloadLoading && isStaffWorkloadError ? (
             // 取得失敗時は「スタッフがいない」かのような false-empty を出さず、再読み込み導線を示す。

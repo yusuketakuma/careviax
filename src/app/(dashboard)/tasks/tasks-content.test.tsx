@@ -58,7 +58,9 @@ vi.mock('@/components/ui/data-table', async () => {
       const [pageIndex, setPageIndex] = useState(0);
       const size = enablePagination ? (pageSize ?? data.length) : data.length;
       const pageCount = enablePagination ? Math.max(1, Math.ceil(data.length / size)) : 1;
-      const visible = enablePagination ? data.slice(pageIndex * size, pageIndex * size + size) : data;
+      const visible = enablePagination
+        ? data.slice(pageIndex * size, pageIndex * size + size)
+        : data;
 
       return (
         <div>
@@ -364,6 +366,27 @@ describe('TasksContent', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
     expect(refetchStaffWorkload).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a named skeleton instead of a plain loading text for staff workload', () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'staff-workload') {
+        return {
+          data: undefined,
+          isLoading: true,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+    });
+
+    render(<TasksContent />);
+
+    expect(screen.getByRole('status', { name: 'スタッフ別業務量を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('スタッフ別業務量を読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText('スタッフ別業務量を取得できませんでした。')).toBeNull();
+    expect(screen.queryByText('依頼可能なスタッフが見つかりません')).toBeNull();
   });
 
   it('prefills work request fields from visit or audit deep links', () => {
