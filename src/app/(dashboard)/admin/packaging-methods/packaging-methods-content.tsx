@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { SkeletonRows } from '@/components/ui/loading';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -106,8 +107,7 @@ export function PackagingMethodsContent() {
       const res = await fetch(PACKAGING_METHODS_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('配薬方法マスターの取得に失敗しました');
-      return res.json() as Promise<PackagingMethodsResponse>;
+      return readApiJson<PackagingMethodsResponse>(res, '配薬方法マスターの取得に失敗しました');
     },
     enabled: !!orgId,
   });

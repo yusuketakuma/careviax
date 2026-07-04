@@ -127,7 +127,7 @@ describe('PackagingMethodsContent', () => {
     const fetchMock = stubFetchOk();
     render(<PackagingMethodsContent />);
 
-    await latestQueryFn()();
+    await expect(latestQueryFn()()).resolves.toEqual({ data: [METHOD] });
 
     expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
     expect(fetchMock).toHaveBeenCalledTimes(1);
