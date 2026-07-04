@@ -5,6 +5,23 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-residual-adjustment 8fa2bbcc
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/app/(dashboard)/patients/[id]/residual-adjustment/residual-adjustment-content.tsx`,
+  `src/app/(dashboard)/patients/[id]/residual-adjustment/residual-adjustment-content.headers.test.tsx`
+- 実施: residual medications / inquiry records read GET 2本を `readApiJson` へ移行し、
+  focused header/path test を real Response body 経路へ更新。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。query path、encoded patient_id、org header、
+  queryKey、enabled gate、error UI、intervention mutation、presigned upload flow は維持。
+- 安全: product UI read fetch internals のみ。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+  live DB/external send/secret/push/destructive operation 不変。
+- 検証: focused residual-adjustment Vitest `3 files / 17 tests` green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit 8fa2bbcc。
+- 残課題: R40/R44 は partial。mutation/upload fetcher は未変更。
+
 ## 2026-07-05 R40/R44-patient-edit d62db6f6
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。
