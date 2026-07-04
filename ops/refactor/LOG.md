@@ -1987,3 +1987,26 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: raw `<Loading />` は closure。R55 は component-level generic visible `読み込み中...` と
   non-skeleton loading copy の再triageを継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
+## 2026-07-04 R33 billing-evidence date-boundary convergence
+
+- 分類: dup-helper / billing-evidence month boundary helper convergence。
+- 実施:
+  - `src/server/services/billing-evidence/core.ts` の private JST offset/month-part 計算を削除し、
+    `src/lib/utils/date-boundary.ts` の `japanDateKey` / `japanMonthInstantRange` /
+    `utcMonthDateRange` 経由へ収束。
+  - 既存公開 helper (`startOfMonth` / `endOfMonth` / `billingMonthForJapanTimestamp` /
+    `japanMonthRangeForBillingMonth`) の名前と返却 shape は維持。
+  - `billingMonthForJapanTimestamp` が UTC runtime の JST 月初境界
+    (`2026-05-31T15:00:00.000Z`) で正しい canonical billing month を返す回帰テストを追加。
+- 挙動変更: helper 実装元の統合のみ。billing candidate/evidence API shape、DB query predicate shape、
+  billing amount/rule semantics、auth、authorization、PHI projection、audit、deployment、
+  package dependency は不変。
+- 安全性: billing 隣接 refactor のため、JST 月境界の過大/過少請求リスクを focused test で固定。
+  PHI、secret、raw payload、patient identifier の新規露出なし。migration/deploy/live DB operation は未実施。
+- 検証: `billing-evidence/core.test.ts` 単体 `80 tests` green。関連 billing/API focused Vitest
+  `9 files / 163 tests` green。scoped ESLint、targeted Prettier check、targeted `git diff --check`、
+  `pnpm typecheck` green。
+- commit: `4561a33d` (`refactor(billing): use date boundary month helpers`)。
+- 残課題: R33 は closure。broad Plans.md objective は継続。未所有
+  `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。

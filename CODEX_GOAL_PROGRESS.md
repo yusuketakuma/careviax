@@ -1,5 +1,53 @@
 # CODEX Goal Progress
 
+## R33 Billing-Evidence Date Boundary Convergence Completed - 2026-07-04 22:56 JST
+
+- Status:
+  - Implemented and validated R33:
+    - `src/server/services/billing-evidence/core.ts`
+    - `src/server/services/billing-evidence/core.test.ts`
+  - `ops/refactor/STATE.md` already records the 2026-07-04 user clarification
+    that product API, DB, auth, authorization, PHI, billing, deploy, and
+    package dependency changes are allowed when required for the active
+    objective, while migration/deploy/secret/live-data/destructive/push gates
+    remain explicit-approval boundaries.
+- Scope:
+  - Removed billing-evidence private JST offset/month-part arithmetic.
+  - Routed `startOfMonth`, `endOfMonth`, `billingMonthForJapanTimestamp`, and
+    `japanMonthRangeForBillingMonth` through the date-boundary SSOT helpers:
+    `japanDateKey`, `japanMonthInstantRange`, and `utcMonthDateRange`.
+  - Preserved the existing exported helper names and return shapes for current
+    billing-evidence, billing-candidates, conference-sync, and PCA rental
+    consumers.
+  - Added a UTC-runtime regression test for the JST billing-month boundary at
+    `2026-05-31T15:00:00.000Z`.
+- Safety:
+  - Billing-adjacent helper refactor only.
+  - No billing amount/rule change, candidate/evidence response shape change,
+    DB schema or migration, auth, authorization, PHI projection, audit logging,
+    deploy, package dependency, live DB operation, external send, secret
+    handling, push, or destructive operation changed.
+  - The added test reduces over/under-claim drift risk at JST month boundaries.
+- Validation:
+  - `pnpm exec vitest run src/server/services/billing-evidence/core.test.ts --reporter=dot --testTimeout=60000`
+    passed `1` file / `80` tests.
+  - Related billing/API focused Vitest passed `9` files / `163` tests:
+    `core.test.ts`, `duplicate-interaction.test.ts`,
+    `information-provision.test.ts`, `pca-rental-billing.test.ts`,
+    `conference-sync.test.ts`, `billing-candidates/route.test.ts`,
+    `billing-evidence/check/route.test.ts`, `billing-evidence/analytics/route.test.ts`,
+    and `billing-evidence/stats/route.test.ts`.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `4561a33d`
+    (`refactor(billing): use date boundary month helpers`).
+- Remaining:
+  - R33 is complete.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R32 QueryClient Wrapper Convergence Completed - 2026-07-04 22:52 JST
 
 - Status:
