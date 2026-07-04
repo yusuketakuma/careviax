@@ -46242,3 +46242,45 @@ false` for every migrated column.
     before converting additional client read fetchers.
   - Existing unrelated `refactor-instructions.md` and local skill install files
     remain outside this slice.
+
+## R40/R44 Business Holidays readApiJson Slice - 2026-07-05 03:59 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx`
+  - `src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx`
+- Status:
+  - Implemented and committed as `b557f856`
+    (`refactor(ui): reuse readApiJson in business holidays`).
+- Changes:
+  - Replaced the holiday-list GET helper for `buildBusinessHolidaysApiPath(params)`
+    with `readApiJson<{ data: Holiday[] }>` while preserving query key,
+    date/site params, `buildOrgHeaders(orgId)`, and the response envelope.
+  - Replaced the site-option GET helper for `/api/pharmacy-sites` with
+    `readApiJson<{ data: SiteOption[] }>` while preserving the store filter and
+    target-store select behavior.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, destructive operation, form validation, static
+    false-empty error UI, mutating POST/PATCH/DELETE behavior, and path helper
+    encoding/fail-closed behavior.
+  - The 2026-07-04 user instruction allowing product
+    API/DB/auth/authorization/PHI/billing/deploy/package dependency changes when
+    necessary is recorded in `ops/refactor/STATE.md`; this slice did not require
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `14` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`
+    passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`
+    passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - R40/R44 remains partial and broad; continue per-fetcher body-read/PHI review
+    before converting additional client read fetchers.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.

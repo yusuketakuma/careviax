@@ -3572,3 +3572,28 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
   個別確認してから段階移行する。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R40/R44 business holidays readApiJson slice
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 実施:
+  - admin business-holidays の `buildBusinessHolidaysApiPath(params)` GET fetcher を
+    `readApiJson<{ data: Holiday[] }>` へ移行。
+  - admin business-holidays の `/api/pharmacy-sites` GET fetcher を
+    `readApiJson<{ data: SiteOption[] }>` へ移行。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。API paths、date/site params、
+  `buildOrgHeaders`、React Query keys、response envelopes、static false-empty error UI、
+  calendar/list/stat rendering、form validation、POST/PATCH/DELETE mutation、
+  path helper encode/fail-closed semantics は維持。
+- 安全性: product UI read fetch internals のみ変更。DB/schema、auth/authorization、
+  PHI projection、billing、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation は不変。SSOT では必要時の product
+  API/DB/auth/authorization/PHI/billing/deploy/package dependency 変更許可を確認済みだが、
+  この slice では不要。
+- 検証: focused business-holidays Vitest `1 file / 14 tests` green、
+  scoped ESLint green、targeted Prettier check green、targeted `git diff --check` green、
+  `pnpm typecheck` green。
+- commit: `b557f856` (`refactor(ui): reuse readApiJson in business holidays`)。
+- 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
