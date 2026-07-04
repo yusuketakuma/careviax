@@ -923,9 +923,11 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(await screen.findByText('共有ケース 4 件')).toBeTruthy();
     expect(await screen.findByText('share_case_1')).toBeTruthy();
     expect(await screen.findByText('share_case_active')).toBeTruthy();
-    expect(await screen.findByText('visit_request_1')).toBeTruthy();
+    expect((await screen.findAllByText('visit_request_1')).length).toBeGreaterThan(0);
     expect(await screen.findByText('partner_record_submitted')).toBeTruthy();
     expect((await screen.findAllByText('correction_1')).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByRole('button', { name: 'CSV出力' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '印刷' })).toBeNull();
     const shareCasesRegion = screen.getByRole('region', {
       name: '患者共有ケース一覧 横スクロール領域',
     });
@@ -938,6 +940,40 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(screen.getAllByText('協力薬局').length).toBeGreaterThanOrEqual(1);
     expect(document.body.textContent).not.toContain('山田');
     expect(document.body.textContent).not.toContain('訪問本文');
+  });
+
+  it('shows the pharmacy visit request empty state only for genuine empty results', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-visit-requests?limit=8') {
+        return new Response(JSON.stringify({ data: [], hasMore: false }), { status: 200 });
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('協力薬局への訪問依頼はまだありません')).toBeTruthy();
+    expect(screen.queryByText('薬局間協力ワークフローを表示できません')).toBeNull();
+  });
+
+  it('keeps pharmacy visit request query failures out of the empty state', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-visit-requests?limit=8') {
+        return new Response(JSON.stringify({ error: 'boom' }), { status: 500 });
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('薬局間協力ワークフローを表示できません')).toBeTruthy();
+    expect(screen.queryByText('協力薬局への訪問依頼はまだありません')).toBeNull();
   });
 
   it('shows total and hidden share-case counts from the API instead of only visible rows', async () => {
@@ -1620,7 +1656,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
 
     renderContent();
 
-    await screen.findByText('visit_request_record_ready');
+    await screen.findAllByText('visit_request_record_ready');
     fireEvent.change(screen.getByLabelText('協力訪問記録の訪問日時'), {
       target: { value: '2026-06-20T10:30' },
     });
@@ -1688,7 +1724,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
   it('saves a partner visit record draft for an accepted visit request', async () => {
     renderContent();
 
-    await screen.findByText('visit_request_record_ready');
+    await screen.findAllByText('visit_request_record_ready');
     fireEvent.change(screen.getByLabelText('協力訪問記録の訪問日時'), {
       target: { value: '2026-06-20T10:30' },
     });

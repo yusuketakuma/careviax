@@ -1204,6 +1204,114 @@ function PatientShareConsentActionCell({
   );
 }
 
+function VisitRequestSummaryCell({ request }: { request: PharmacyVisitRequestRow }) {
+  return (
+    <div>
+      <div className="font-medium">{request.id}</div>
+      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+        <Badge variant={statusVariant(request.status)}>{statusLabel(request.status)}</Badge>
+        <TinyMeta>{request.urgency}</TinyMeta>
+      </div>
+    </div>
+  );
+}
+
+function VisitRequestDesiredTimeCell({ request }: { request: PharmacyVisitRequestRow }) {
+  return (
+    <span className="tabular-nums">
+      {formatDateTime(request.desired_start_at)}
+      {request.desired_end_at ? ` - ${formatDateTime(request.desired_end_at)}` : ''}
+    </span>
+  );
+}
+
+function VisitRequestEstimateCell({ request }: { request: PharmacyVisitRequestRow }) {
+  return (
+    <div className="text-right tabular-nums">
+      {formatYen(request.estimated_amount)}
+      <div className="mt-1">
+        <TinyMeta>
+          {request.contract_id ? `契約 ${request.contract_id}` : '契約未確定'}
+          {request.contract_version_id ? ` / 版 ${request.contract_version_id}` : ''}
+        </TinyMeta>
+      </div>
+      <div className="mt-1">
+        <TinyMeta>
+          {billingModelLabel(request.estimated_snapshot?.billing_model)}
+          {request.estimated_snapshot?.unit_price !== null &&
+          request.estimated_snapshot?.unit_price !== undefined
+            ? ` / 単価 ${formatYen(request.estimated_snapshot.unit_price)}`
+            : ''}
+        </TinyMeta>
+      </div>
+      <div className="mt-1">
+        <TinyMeta>{estimateStatusLabel(request.estimated_snapshot?.estimate_status)}</TinyMeta>
+      </div>
+    </div>
+  );
+}
+
+function VisitRequestActionCell({
+  request,
+  declineReason,
+  setDeclineReasons,
+  isBusy,
+  onAccept,
+  onDecline,
+}: {
+  request: PharmacyVisitRequestRow;
+  declineReason: string;
+  setDeclineReasons: Dispatch<SetStateAction<Record<string, string>>>;
+  isBusy: boolean;
+  onAccept: (row: PharmacyVisitRequestRow) => void;
+  onDecline: (row: PharmacyVisitRequestRow, reason: string) => void;
+}) {
+  const partnerPharmacyName = request.partner_pharmacy.name;
+
+  if (request.status !== 'requested') {
+    return <TinyMeta>状態遷移はありません</TinyMeta>;
+  }
+
+  return (
+    <div className="flex min-w-0 flex-col gap-2 text-left md:min-w-72">
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          disabled={isBusy}
+          onClick={() => onAccept(request)}
+          aria-label={`${request.id} ${partnerPharmacyName} の訪問依頼を受諾`}
+        >
+          <CheckCircle2 className="size-4" aria-hidden="true" />
+          受諾
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={isBusy || declineReason.trim().length === 0}
+          onClick={() => onDecline(request, declineReason)}
+          aria-label={`${request.id} ${partnerPharmacyName} の訪問依頼を辞退`}
+        >
+          <XCircle className="size-4" aria-hidden="true" />
+          辞退
+        </Button>
+      </div>
+      <Input
+        value={declineReason}
+        onChange={(event) =>
+          setDeclineReasons((current) => ({
+            ...current,
+            [request.id]: event.target.value,
+          }))
+        }
+        placeholder="辞退理由"
+        aria-label={`${request.id} の辞退理由`}
+      />
+    </div>
+  );
+}
+
 function ShareCasesTable({
   rows,
   linkAcceptForms,
@@ -1717,116 +1825,62 @@ function VisitRequestsTable({
   if (rows.length === 0) {
     return <EmptyState title="協力薬局への訪問依頼はまだありません" />;
   }
+  const visitRequestColumns: ColumnDef<PharmacyVisitRequestRow>[] = [
+    {
+      id: 'request',
+      header: '依頼',
+      meta: { label: '依頼' },
+      cell: ({ row }) => <VisitRequestSummaryCell request={row.original} />,
+      enableSorting: false,
+    },
+    {
+      id: 'partner_pharmacy',
+      header: '協力薬局',
+      meta: { label: '協力薬局' },
+      cell: ({ row }) => row.original.partner_pharmacy.name,
+      enableSorting: false,
+    },
+    {
+      id: 'desired_time',
+      header: '希望日時',
+      meta: { label: '希望日時' },
+      cell: ({ row }) => <VisitRequestDesiredTimeCell request={row.original} />,
+      enableSorting: false,
+    },
+    {
+      id: 'estimate',
+      header: '見込額',
+      meta: { label: '見込額' },
+      cell: ({ row }) => <VisitRequestEstimateCell request={row.original} />,
+      enableSorting: false,
+    },
+    {
+      id: 'action',
+      header: '操作',
+      meta: { label: '操作' },
+      cell: ({ row }) => (
+        <VisitRequestActionCell
+          request={row.original}
+          declineReason={declineReasons[row.original.id] ?? ''}
+          setDeclineReasons={setDeclineReasons}
+          isBusy={isBusy}
+          onAccept={onAccept}
+          onDecline={onDecline}
+        />
+      ),
+      enableSorting: false,
+    },
+  ];
 
   return (
-    <TableFrame label="協力薬局訪問依頼一覧">
-      <thead className="sticky top-0 z-10 bg-muted/80 text-xs text-muted-foreground backdrop-blur">
-        <tr>
-          <th scope="col" className="px-3 py-2 text-left font-medium">
-            依頼
-          </th>
-          <th scope="col" className="px-3 py-2 text-left font-medium">
-            協力薬局
-          </th>
-          <th scope="col" className="px-3 py-2 text-left font-medium">
-            希望日時
-          </th>
-          <th scope="col" className="px-3 py-2 text-right font-medium">
-            見込額
-          </th>
-          <th scope="col" className="px-3 py-2 text-left font-medium">
-            操作
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => {
-          const declineReason = declineReasons[row.id] ?? '';
-          const partnerPharmacyName = row.partner_pharmacy.name;
-          return (
-            <tr key={row.id} className="border-t border-border/70">
-              <td className="px-3 py-2">
-                <div className="font-medium">{row.id}</div>
-                <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                  <Badge variant={statusVariant(row.status)}>{statusLabel(row.status)}</Badge>
-                  <TinyMeta>{row.urgency}</TinyMeta>
-                </div>
-              </td>
-              <td className="px-3 py-2">{partnerPharmacyName}</td>
-              <td className="px-3 py-2 tabular-nums">
-                {formatDateTime(row.desired_start_at)}
-                {row.desired_end_at ? ` - ${formatDateTime(row.desired_end_at)}` : ''}
-              </td>
-              <td className="px-3 py-2 text-right tabular-nums">
-                {formatYen(row.estimated_amount)}
-                <div className="mt-1">
-                  <TinyMeta>
-                    {row.contract_id ? `契約 ${row.contract_id}` : '契約未確定'}
-                    {row.contract_version_id ? ` / 版 ${row.contract_version_id}` : ''}
-                  </TinyMeta>
-                </div>
-                <div className="mt-1">
-                  <TinyMeta>
-                    {billingModelLabel(row.estimated_snapshot?.billing_model)}
-                    {row.estimated_snapshot?.unit_price !== null &&
-                    row.estimated_snapshot?.unit_price !== undefined
-                      ? ` / 単価 ${formatYen(row.estimated_snapshot.unit_price)}`
-                      : ''}
-                  </TinyMeta>
-                </div>
-                <div className="mt-1">
-                  <TinyMeta>
-                    {estimateStatusLabel(row.estimated_snapshot?.estimate_status)}
-                  </TinyMeta>
-                </div>
-              </td>
-              <td className="px-3 py-2 lg:min-w-72">
-                {row.status === 'requested' ? (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={isBusy}
-                        onClick={() => onAccept(row)}
-                        aria-label={`${row.id} ${partnerPharmacyName} の訪問依頼を受諾`}
-                      >
-                        <CheckCircle2 className="size-4" aria-hidden="true" />
-                        受諾
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={isBusy || declineReason.trim().length === 0}
-                        onClick={() => onDecline(row, declineReason)}
-                        aria-label={`${row.id} ${partnerPharmacyName} の訪問依頼を辞退`}
-                      >
-                        <XCircle className="size-4" aria-hidden="true" />
-                        辞退
-                      </Button>
-                    </div>
-                    <Input
-                      value={declineReason}
-                      onChange={(event) =>
-                        setDeclineReasons((current) => ({
-                          ...current,
-                          [row.id]: event.target.value,
-                        }))
-                      }
-                      placeholder="辞退理由"
-                      aria-label={`${row.id} の辞退理由`}
-                    />
-                  </div>
-                ) : (
-                  <TinyMeta>状態遷移はありません</TinyMeta>
-                )}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </TableFrame>
+    <DataTable
+      columns={visitRequestColumns}
+      data={rows}
+      caption="協力薬局訪問依頼一覧"
+      getRowId={(row) => row.id}
+      getRowA11yLabel={(row) => `${row.id} ${row.partner_pharmacy.name} ${statusLabel(row.status)}`}
+      emptyMessage="協力薬局への訪問依頼はまだありません"
+    />
   );
 }
 
