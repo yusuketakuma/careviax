@@ -8,7 +8,7 @@ import { getPatientMedicationPrintShortcutLinks } from '@/components/features/wo
 import { PrintPageToolbar } from '@/components/features/workflow/print-page-toolbar';
 import { PrintLayout } from '@/components/features/reports/print-layout';
 import { buttonVariants } from '@/components/ui/button';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/loading';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -37,6 +37,38 @@ type MedicationProfile = {
 type MedicationProfileResponse = {
   data: MedicationProfile[];
 };
+
+function MedicationPrintLoadingState() {
+  return (
+    <div
+      className="mx-auto max-w-4xl space-y-6 p-6 print:p-0"
+      role="status"
+      aria-label="薬歴・服薬一覧の印刷データを読み込み中"
+      aria-live="polite"
+    >
+      <div className="space-y-2 print:hidden">
+        <Skeleton className="h-6 w-52" />
+        <Skeleton className="h-4 w-full max-w-lg" />
+      </div>
+
+      <div className="space-y-4 rounded-lg border border-border bg-card p-4" aria-hidden="true">
+        <Skeleton className="mx-auto h-7 w-48" />
+        <div className="grid gap-px overflow-hidden rounded border border-border bg-border text-xs sm:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, index) => (
+            <Skeleton key={index} className="h-8 rounded-none bg-background" />
+          ))}
+        </div>
+        <Skeleton className="h-8 w-full rounded-none" />
+        <div className="grid gap-px overflow-hidden rounded border border-border bg-border text-xs sm:grid-cols-7">
+          {Array.from({ length: 21 }).map((_, index) => (
+            <Skeleton key={index} className="h-8 rounded-none bg-background" />
+          ))}
+        </div>
+      </div>
+      <span className="sr-only">薬歴・服薬一覧の印刷データを読み込み中</span>
+    </div>
+  );
+}
 
 export default function MedicationPrintPage() {
   const params = useParams<{ id: string }>();
@@ -104,7 +136,7 @@ export default function MedicationPrintPage() {
   }, [ready]);
 
   if (isBootstrappingOrg || isLoadingPrintData) {
-    return <Loading />;
+    return <MedicationPrintLoadingState />;
   }
 
   if (!org || !patient || orgQuery.error || patientQuery.error || medicationQuery.error) {

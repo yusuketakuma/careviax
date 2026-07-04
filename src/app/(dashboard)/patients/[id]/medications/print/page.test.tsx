@@ -94,6 +94,29 @@ function mockReady(patientId = 'patient_1') {
 }
 
 describe('MedicationPrintPage', () => {
+  it('shows a print-data skeleton instead of a generic spinner while loading', () => {
+    setRoute('patient_1');
+    useQueryMock.mockImplementation(({ queryKey }: QueryConfig) => {
+      if (queryKey[0] === 'me-org') {
+        return { data: undefined, isLoading: true, error: null };
+      }
+      if (queryKey[0] === 'patient-print') {
+        return { data: undefined, isLoading: true, error: null };
+      }
+      return { data: undefined, isLoading: true, error: null };
+    });
+
+    render(<MedicationPrintPage />);
+
+    expect(
+      screen.getByRole('status', { name: '薬歴・服薬一覧の印刷データを読み込み中' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByTestId('print-layout')).toBeNull();
+    expect(screen.queryByText(patientSnapshot.name)).toBeNull();
+  });
+
   it('builds patient and medication fetch URLs through shared/encoded URL boundaries', async () => {
     const hostilePatientId = 'pt/1?x=y#z&limit=999';
     setRoute(hostilePatientId);
