@@ -3,6 +3,7 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
@@ -164,10 +165,7 @@ describe('PrescriptionInlineDetail', () => {
 
     useOrgIdMock.mockReturnValue('org_1');
     vi.mocked(buildOrgHeaders).mockReturnValueOnce(sentinelHeaders);
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({}),
-    });
+    fetchMock.mockResolvedValue(jsonResponse({}));
     useQueryMock.mockImplementation((config: QueryConfig) => {
       queryConfig = config;
       return {

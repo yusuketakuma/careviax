@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { PrescriptionDetailContent } from './prescription-detail-content';
 
 setupDomTestEnv();
@@ -122,10 +123,7 @@ describe('PrescriptionDetailContent', () => {
 
     useOrgIdMock.mockReturnValue('org_1');
     buildOrgHeadersMock.mockReturnValueOnce(sentinelHeaders);
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({}),
-    });
+    fetchMock.mockResolvedValue(jsonResponse({}));
     useQueryMock.mockImplementation((config: QueryConfig) => {
       queryConfig = config;
       return {

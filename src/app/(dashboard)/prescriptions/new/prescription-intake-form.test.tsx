@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { stubJsonFetch } from '@/test/fetch-test-utils';
 
 const { useQueryMock, useMutationMock, useOrgIdMock, searchParamsGet } = vi.hoisted(() => ({
   useQueryMock: vi.fn(),
@@ -212,11 +213,7 @@ describe('PrescriptionIntakeForm secondary-lookup fetch-error handling', () => {
         isPending: false,
       }),
     );
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: { id: 'intake_1' } }),
-    } as Response);
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = stubJsonFetch({ data: { id: 'intake_1' } });
 
     try {
       render(<PrescriptionIntakeForm />);
