@@ -68,6 +68,7 @@ describe('ConferencesContent', () => {
   const mutationConfigs: Array<{
     mutationFn?: (payload: Record<string, unknown>) => Promise<unknown>;
     onSuccess?: (payload: unknown) => void | Promise<void>;
+    onError?: (error: unknown) => void;
   }> = [];
   const mutationMocks: ReturnType<typeof vi.fn>[] = [];
   const queryConfigs: Array<{
@@ -493,6 +494,26 @@ describe('ConferencesContent', () => {
     );
 
     vi.unstubAllGlobals();
+  });
+
+  it('keeps conference mutation server error messages', () => {
+    render(<ConferencesContent initialFocus="notes" />);
+
+    mutationConfigs[2]?.onError?.(new Error('既にタスク化されています'));
+    mutationConfigs[3]?.onError?.(new Error('報告書種別が無効です'));
+
+    expect(toast.error).toHaveBeenCalledWith('既にタスク化されています');
+    expect(toast.error).toHaveBeenCalledWith('報告書種別が無効です');
+  });
+
+  it('falls back to operation-specific conference mutation messages', () => {
+    render(<ConferencesContent initialFocus="notes" />);
+
+    mutationConfigs[2]?.onError?.({});
+    mutationConfigs[3]?.onError?.({});
+
+    expect(toast.error).toHaveBeenCalledWith('タスク化に失敗しました');
+    expect(toast.error).toHaveBeenCalledWith('報告書生成に失敗しました');
   });
 
   it('uses the clicked action item index when duplicate titles and assignees exist', () => {

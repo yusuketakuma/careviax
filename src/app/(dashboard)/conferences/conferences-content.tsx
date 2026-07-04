@@ -65,6 +65,7 @@ import { SectionIntro } from '@/components/ui/section-intro';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 import type { ConferencesFocus } from '@/lib/dashboard/home-link-builders';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 import { Skeleton } from '@/components/ui/loading';
@@ -818,7 +819,7 @@ export function ConferencesContent({
       await queryClient.invalidateQueries({ queryKey: ['tasks', orgId] });
       toast.success('アクションアイテムをタスク化しました');
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error) => toast.error(messageFromError(error, 'タスク化に失敗しました')),
   });
 
   const generateReportMutation = useMutation({
@@ -873,7 +874,7 @@ export function ConferencesContent({
       queryClient.invalidateQueries({ queryKey: ['care-reports', orgId] });
       queryClient.invalidateQueries({ queryKey: ['care-report-analytics', orgId] });
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error) => toast.error(messageFromError(error, '報告書生成に失敗しました')),
   });
 
   function resetNoteForm() {
