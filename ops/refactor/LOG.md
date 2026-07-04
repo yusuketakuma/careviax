@@ -813,3 +813,21 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   check green、targeted `git diff --check` green、`pnpm typecheck` green。
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
+## 2026-07-04 R55 patient MCS summary loading skeleton
+
+- 分類: UI loading-state cleanup / R55 visible loading residual。
+- 実施:
+  - `patient-mcs-summary-section.tsx` の generic `Loading` return を、既存カード shell 内の
+    領域固有 `role="status"` + skeleton へ置換。
+  - loading 中に generic `読み込み中...` status や未取得時の empty copy が出ないことをテストに追加。
+- 挙動変更: loading presentation のみ。query key、fetcher、cache timing、error/restricted/empty
+  branch、リンク生成、API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の 5状態分離、領域固有 loading label、
+  generic loading copy 禁止に整合。
+- 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、患者名・MCS本文・patient id・org id・sync error を出さない。
+- 検証: focused Vitest `1 file / 6 tests` green、targeted ESLint green、targeted Prettier
+  check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。

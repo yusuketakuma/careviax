@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Link2, Sparkles } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import {
@@ -15,6 +15,23 @@ import {
   PatientMcsOverviewQueryError,
 } from '@/lib/patient-mcs/query';
 import { PatientMcsSummaryCard } from './patient-mcs-summary-card';
+
+function PatientMcsSummaryLoadingState({ compact }: { compact: boolean }) {
+  return (
+    <div className="space-y-3" role="status" aria-label="MCS要約を読み込み中">
+      <Skeleton className="h-20 w-full rounded-lg" />
+      <div className={compact ? 'grid gap-3' : 'grid gap-3 xl:grid-cols-3'}>
+        {Array.from({ length: compact ? 2 : 3 }).map((_, index) => (
+          <div key={index} className="space-y-2">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-16 w-full rounded-lg" />
+          </div>
+        ))}
+      </div>
+      <span className="sr-only">MCS要約を読み込んでいます。</span>
+    </div>
+  );
+}
 
 export function PatientMcsSummarySection({
   patientId,
@@ -59,7 +76,7 @@ export function PatientMcsSummarySection({
     refetchOnWindowFocus: false,
   });
 
-  if (isLoading) return <Loading />;
+  if (isLoading) return shell(<PatientMcsSummaryLoadingState compact={compact} />);
   if (error) {
     return shell(
       <div className="flex items-start gap-2 rounded-lg border border-state-confirm/30 bg-state-confirm/10 p-3 text-sm text-state-confirm">

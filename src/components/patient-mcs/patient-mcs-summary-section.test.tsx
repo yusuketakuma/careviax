@@ -33,6 +33,27 @@ describe('PatientMcsSummarySection', () => {
     vi.clearAllMocks();
   });
 
+  it('shows a named skeleton while the MCS summary is loading', () => {
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+    });
+
+    render(
+      <PatientMcsSummarySection
+        patientId="patient_1"
+        title="MCS共有要点"
+        description="test"
+        compact
+      />,
+    );
+
+    expect(screen.getByRole('status', { name: 'MCS要約を読み込み中' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('MCS の要点サマリーはまだありません。')).toBeNull();
+  });
+
   it('renders the compact summary card when summary data exists', () => {
     useQueryMock.mockReturnValue({
       data: {

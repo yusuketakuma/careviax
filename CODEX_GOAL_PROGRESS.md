@@ -1,5 +1,33 @@
 # CODEX Goal Progress
 
+## R55 Patient MCS Summary Loading State - 2026-07-04 18:46 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/components/patient-mcs/patient-mcs-summary-section.tsx`
+    - `src/components/patient-mcs/patient-mcs-summary-section.test.tsx`
+- Scope:
+  - Replaced the generic `Loading` return in the patient MCS summary section
+    with a named skeleton region inside the existing card shell.
+  - Loading no longer exposes generic `読み込み中...` semantics or the empty
+    summary copy before the query resolves.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, fetcher, cache timing, DB, auth, authorization,
+    billing, audit, deployment, package, or server behavior changed.
+  - Loading copy is PHI-free and does not echo patient names, raw MCS messages,
+    patient ids, org ids, sync errors, or empty-state details.
+- Validation:
+  - `pnpm exec vitest run src/components/patient-mcs/patient-mcs-summary-section.test.tsx --reporter=dot --testTimeout=30000`
+    passed `1` file / `6` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the MCS summary source/test files.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Operating Hours Loading States - 2026-07-04 18:44 JST
 
 - Status:
