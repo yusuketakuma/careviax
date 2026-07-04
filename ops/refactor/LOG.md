@@ -5,6 +5,24 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-print-hub 8acdefdb
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/app/(dashboard)/reports/print/print-hub-content.tsx`,
+  `src/app/(dashboard)/reports/print/print-hub-content.test.tsx`
+- 実施: set plans / patient prescriptions / care reports / patient documents の read GET 4本を
+  `readApiJson` へ移行し、failed GET の API JSON `message` 表面化テストを追加。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。query paths、patient_id scoping、
+  patient API helper、print audit helper、org header、queryKey、enabled gates、print audit POST、
+  first-visit print history mutation、error UI は維持。
+- 安全: product UI read fetch internals のみ。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+  live DB/external send/secret/push/destructive operation 不変。
+- 検証: focused print-hub-content Vitest `1 file / 28 tests` green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit 8acdefdb。
+- 残課題: R40/R44 は partial。first-visit print history mutation は未変更。
+
 ## 2026-07-05 R40/R44-patient-medications c54ff5d4
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。

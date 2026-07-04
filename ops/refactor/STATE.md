@@ -63,6 +63,11 @@
 - codex: R55 schedule proposals loading/error states(8fee04d8) land。focused Vitest 48、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck`、`pnpm build`、memory-expanded
   `pnpm typecheck:no-unused` green。
+- codex: R40/R44 print-hub readApiJson slice(8acdefdb) land。focused Vitest 28、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。set-plans/prescriptions/care-reports/
+  patient-documents read GET を readApiJson へ収束し、print audit/mutation contract は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 - codex: R40/R44 master-hub readApiJson slice(67f3b081) land。focused Vitest 11、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
