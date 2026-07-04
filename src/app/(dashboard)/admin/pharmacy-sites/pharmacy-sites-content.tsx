@@ -34,6 +34,7 @@ import {
 import { AlertTriangle } from 'lucide-react';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { ErrorState } from '@/components/ui/error-state';
+import { SkeletonRows } from '@/components/ui/loading';
 import {
   CARE_BOOL_FIELDS,
   getAvailableRevisions,
@@ -359,7 +360,9 @@ export function PharmacySitesContent() {
   return (
     <div className="space-y-6">
       {isLoading ? (
-        <div className="text-sm text-muted-foreground">読み込み中...</div>
+        <div role="status" aria-label="薬局情報を読み込み中">
+          <SkeletonRows rows={2} cols={3} status={false} />
+        </div>
       ) : isSitesError ? (
         // 取得失敗を「薬局情報がありません」に潰さない。薬局マスタ消失の誤認は業務停止リスク。
         <ErrorState
@@ -577,7 +580,9 @@ export function PharmacySitesContent() {
               )}
 
             {configsQuery.isPending ? (
-              <div className="text-sm text-muted-foreground">読み込み中...</div>
+              <div role="status" aria-label="保険設定を読み込み中">
+                <SkeletonRows rows={2} cols={3} status={false} />
+              </div>
             ) : configsQuery.isError ? (
               // 取得失敗を「未登録」に潰さない。保険設定の見落としは調剤報酬算定に影響する。
               <ErrorState

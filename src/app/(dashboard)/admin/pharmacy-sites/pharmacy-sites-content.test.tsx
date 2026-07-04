@@ -181,6 +181,58 @@ describe('PharmacySitesContent', () => {
     );
   });
 
+  it('uses an announced skeleton while pharmacy sites are loading', () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+
+    renderContent();
+
+    expect(screen.getByRole('status', { name: '薬局情報を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('読み込み中...', { selector: 'div' })).toBeNull();
+  });
+
+  it('uses an announced skeleton while insurance configs are loading', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === PHARMACY_SITES_API_PATH) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'site_1',
+                  name: '本店',
+                  address: '東京都千代田区1-1',
+                  phone: '03-1111-2222',
+                  fax: '03-1111-2223',
+                  is_health_support_pharmacy: false,
+                  is_regional_support: false,
+                  is_specialized_pharmacy: false,
+                  dispensing_fee_category: null,
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/pharmacy-sites/site_1/insurance-configs') {
+          return new Promise<Response>(() => {});
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '本店の保険設定を開く' }));
+
+    expect(screen.getByRole('status', { name: '保険設定を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('読み込み中...', { selector: 'div' })).toBeNull();
+  });
+
   it('associates visible labels with insurance config fields', async () => {
     renderContent();
 
