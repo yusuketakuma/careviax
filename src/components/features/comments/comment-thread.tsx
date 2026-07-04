@@ -14,6 +14,7 @@ import {
 } from '@/lib/comments/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { messageFromError } from '@/lib/utils/error-message';
 import { MentionInput } from './mention-input';
 
 type Comment = {
@@ -83,7 +84,7 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
       void queryClient.invalidateQueries({ queryKey });
     },
     onError: (err: Error) => {
-      toast.error(err.message);
+      toast.error(messageFromError(err, 'コメントの投稿に失敗しました'));
     },
   });
 
@@ -103,7 +104,7 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
       void queryClient.invalidateQueries({ queryKey });
     },
     onError: (err: Error) => {
-      toast.error(err.message);
+      toast.error(messageFromError(err, 'コメントの削除に失敗しました'));
     },
   });
 

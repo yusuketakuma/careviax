@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
+import { toast } from 'sonner';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useRealtimeQueryMock = vi.hoisted(() => vi.fn());
@@ -33,6 +34,10 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 
 vi.mock('@/lib/hooks/use-realtime-query', () => ({
   useRealtimeQuery: useRealtimeQueryMock,
+}));
+
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn() },
 }));
 
 vi.mock('./mention-input', () => ({
@@ -163,6 +168,61 @@ describe('CommentThread', () => {
       });
     });
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
+  });
+
+  it('preserves server comment-create errors and falls back for empty messages', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'コメント本文が長すぎます' }, 400));
+
+    renderWithQueryClient(<CommentThread entityType="patient" entityId="patient_1" />);
+
+    fireEvent.change(screen.getByLabelText('コメント入力'), {
+      target: { value: '確認お願いします' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('コメント本文が長すぎます');
+    });
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: '' }, 500));
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenLastCalledWith('コメントの投稿に失敗しました');
+    });
+  });
+
+  it('preserves server comment-delete errors and falls back for empty messages', async () => {
+    useRealtimeQueryMock.mockReturnValue({
+      data: {
+        data: [
+          {
+            id: 'comment_1',
+            author_id: 'user_1',
+            author_name: '田中',
+            content: '確認お願いします',
+            mentions: [],
+            created_at: '2026-06-13T09:30:00+09:00',
+          },
+        ],
+      },
+      isLoading: false,
+    });
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: '削除権限がありません' }, 403));
+
+    renderWithQueryClient(<CommentThread entityType="patient" entityId="patient_1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'コメントを削除' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('削除権限がありません');
+    });
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: '' }, 500));
+    fireEvent.click(screen.getByRole('button', { name: 'コメントを削除' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenLastCalledWith('コメントの削除に失敗しました');
+    });
   });
 
   it('fails closed with a retryable error instead of a false-empty "no comments" on fetch failure', () => {
