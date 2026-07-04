@@ -16,16 +16,40 @@ Work in YOLO mode.
 Use Ralph-loop execution.
 Do not stop until the concrete task is actually complete or an explicit blocker is proven.
 
+## Autonomous Idle Search — all agents
+
+This rule applies to every agent in this repository: Claude, Codex, codex2,
+codex3, codex4, opus, sonnet, haiku, and future workers.
+
+When a current slice is waiting on review, LOCK release, commit/land, another
+agent, or a narrow blocker, do not become passively idle. Continue looking for
+useful, safe work that moves the repository-level objective forward:
+
+- drain agmsg and respect active LOCKs, dirty peer work, and ownership notes;
+- prefer read-only reconnaissance, conflict mapping, candidate scoring,
+  focused validation, and documentation of next safe actions while blocked;
+- if editing is safe, claim exact paths before editing and keep the slice
+  small, reviewable, and behavior-preserving;
+- never use idle work to bypass maker/checker review, human gates, security,
+  privacy, billing, auth/authorization, migration, deployment, or destructive
+  operation restrictions;
+- report what was explored, what was proven, and what remains blocked.
+
 ## Current Operating Mode — SSOT pointer
 
 **現行の運用体制は `ops/refactor/STATE.md` が唯一の正（SSOT）。** このファイルや他の文書に
-残る体制記述（Codex-only / agmsg 双方向ループ等）は歴史的記録であり、矛盾時は STATE.md に従う。
+残る体制記述（旧 Claude main / Codex-only / rev8 等）は歴史的記録であり、矛盾時は STATE.md に従う。
 
-2026-07-03 確定の骨子（詳細・更新は STATE.md）: fable(Claude main)=全体指揮・commit、
-実装=codex(BE強い)/opus/sonnet/haiku、レビュー=opus 独立必須。LOCK宣言→ACK→実装→report→
-verdict→claude commit。billing/算定/PHI隣接/authorization は self-commit 禁止。
-Preserve all pre-existing dirty/user/Claude changes: before claiming a file, inspect
-`git status --short --untracked-files=all` and the file diff.
+2026-07-04 確定の骨子（詳細・更新は STATE.md）: `codex` が全体統括 coordinator /
+checker / central-gate / committer / task-router。実行役は `codex2`（frontend/UI lane）、
+`codex3`（cleanup/DataTable/API-helper lane）、`codex4`（backend/business-domain recon/implementation
+lane）。Claude は停止済みの歴史的 handoff 元であり、ユーザーが明示的に再有効化しない限り新規
+作業・review・gate は送らない。
+
+全 agent は agmsg team `phos` で連絡を取り合う。作業開始前・PATCH_REPORT 前・land/hold 後に inbox
+を drain し、exact-path LOCK/assignment、PATCH_REPORT、coordinator review、scoped commit の順序を守る。
+Makers must not self-commit. Preserve all pre-existing dirty/user/peer changes: before claiming a file,
+inspect `git status --short --untracked-files=all` and the file diff.
 
 ## Ralph-loop
 
@@ -41,18 +65,22 @@ For each iteration:
 7. Update `.codex/ralph-state.md` / `CODEX_GOAL_PROGRESS.md` when present and relevant.
 8. Before any commit, inspect `git status --short --untracked-files=all`, stage only explicit owned paths, and continue. Do not push unless the user explicitly asks.
 
-## Multi-agent coordination (suspended)
+## Multi-agent coordination
 
-Claude/Codex agmsg coordination is suspended while Codex-only operation is active.
+The active loop is Codex-coordinated multi-agent execution.
 
-- Do not create new Claude tasks, review requests, lock requests, or long-gate negotiations.
-- If an already-running Claude session sends messages, treat them as legacy handoff context only. Preserve its dirty files, but do not wait for Claude before continuing with non-overlapping Codex-owned work.
-- Keep long Next.js gates serialized locally: do not run `pnpm build` concurrently with `pnpm typecheck` or `pnpm typecheck:no-unused`; `.next/types` can race.
-- For commits, stage only explicit Codex-owned files. Never use `git add -A` in this shared dirty worktree.
+- `codex` assigns work, reviews reports, declares BUILD-LOCK, runs central folds, and makes scoped commits.
+- `codex2` / `codex3` / `codex4` implement only exact assigned paths and report validation; they do not self-commit.
+- Claude messages are legacy handoff context only unless the user explicitly re-enables Claude.
+- Keep long Next.js gates serialized: do not run `pnpm build` concurrently with `pnpm typecheck` or `pnpm typecheck:no-unused`; `.next/types` can race. Workers must not run those long gates while a BUILD-LOCK is active.
+- For commits, stage only explicit owned files. Never use `git add -A` in this shared dirty worktree.
 
 ## Agent loop SSOT
 
-The current operational SSOT is `.agent-loop/README.md` plus this Codex-only override. Historical Claude x Codex x agmsg rules remain useful background, but the active loop is single-supervisor Codex plus validation/gbrain. Before editing, inspect the dirty tree; before committing, stage only owned files; and follow the objective gates in `.agent-loop/GATE_CONFIG.md`.
+The current operational SSOT is `ops/refactor/STATE.md`, with `.agent-loop/README.md` as the operator guide.
+Historical Claude x Codex x agmsg rules remain useful background, but the active loop is codex-led coordination
+with three execution agents plus validation/gbrain. Before editing, inspect the dirty tree; before committing,
+stage only owned files; and follow the objective gates in `.agent-loop/GATE_CONFIG.md`.
 
 ## gbrain memory writeback
 

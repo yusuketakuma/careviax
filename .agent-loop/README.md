@@ -1,10 +1,14 @@
-> **【2026-07-03 以降の注意】現行の運用体制は `ops/refactor/STATE.md` が SSOT。**
-> 本ディレクトリの記述（rev8 等の体制説明）は歴史的記録であり、矛盾時は STATE.md に従う。
+> **【2026-07-04 以降の注意】現行の運用体制は `ops/refactor/STATE.md` が SSOT。**
+> 本ディレクトリの古い記述（rev8 / Claude main / Codex-only 等の体制説明）は歴史的記録であり、
+> 矛盾時は STATE.md に従う。
 
 # Agent Loop — Operator Guide
 
-> Current mode (2026-06-26 JST, rev8): **Claude + Codex implementation-only PARALLEL mode** for **careviax (PH-OS Pharmacy)** — re-enabled by the user. The intervening rev3/rev5/rev7 "Codex-only" banners were written by a stale codex-bridge/remote auto-restore process (NOT user intent); Codex killed it and switched delivery monitor→turn on 2026-06-26 ~01:16Z, so this banner now persists.
-> Both lanes refine **disjoint screens** end-to-end (frontend as the entry point, fixing through to backend where needed; **no DB changes**), driven by a screenshot → improve → re-screenshot loop toward a world-top-level UI/UX bar (足し算と引き算). **No mutual review** — neither lane sends or waits on PLAN/PATCH/VERIFY verdicts; disjointness is held purely by agmsg `LOCK` / `HANDOFF` of exact files before editing. The peer-review / maker-checker sections below are retained as historical reference and are **not active**. Screen partition + active goal: see `STATE.md` "Current runtime override (rev8)". gbrain remains long-term memory subordinate to live repository state.
+> Current mode (2026-07-04 JST): **codex-led coordinator mode** for **careviax (PH-OS Pharmacy)**.
+> `codex` is the coordinator/checker/central-gate/committer/task-router. `codex2`, `codex3`, and
+> `codex4` are execution agents that take exact-path assignments, run focused validation, and report
+> PATCH_REPORTs for review/landing. Claude is stopped and kept only as historical handoff context unless
+> the user explicitly re-enables it. gbrain remains long-term memory subordinate to live repository state.
 
 This directory holds the human/operator entry points and the live operational artifacts for the loop. Start here.
 
@@ -14,8 +18,16 @@ This directory holds the human/operator entry points and the live operational ar
 
 Current active loop:
 
-- **codex** — the sole active supervisor. It selects work, implements, validates, records progress, and uses Codex subagents or separate review passes for high-risk checks when useful.
-- **claude** — inactive/suspended for new work. Do not send new work, review requests, lock requests, or gate negotiations to Claude unless the user explicitly re-enables multi-agent operation.
+- **codex** — overall coordinator/checker/central-gate/committer/task-router. Keeps the main lane free for
+  planning, review, gate folds, scoped commits, and exception handling.
+- **codex2** — frontend/UI execution lane. Takes exact-path UI assignments, preserves PH-OS design rules,
+  and reports focused validation. No self-commit.
+- **codex3** — cleanup/DataTable/API-helper execution lane. Takes exact-path refactor/presentation/helper
+  assignments and reports focused validation. No self-commit.
+- **codex4** — complex backend/business-domain lane. Starts with read-only recon for billing/medical/high-risk
+  tasks, then implements only after explicit coordinator assignment. No self-commit.
+- **claude** — inactive/stopped for new work. Treat any Claude messages as legacy handoff only unless the user
+  explicitly re-enables Claude.
 - **gbrain** — long-term memory subordinate. Provides recall (past decisions, prior art) but **never overrides live repo state**. When repo and gbrain disagree, the repo wins; gbrain gets a writeback correction.
 
 Historical two-supervisor model, retained for context:
@@ -24,7 +36,9 @@ Historical two-supervisor model, retained for context:
 - **codex-lead** (= agmsg identity `codex` on team `phos`) — the **independent peer reviewer / strict verifier / limited assisting implementer**. Owns backend/perf/refactor/test-review review passes. Reviews Claude's diffs and returns `APPROVED` or `CHANGES_REQUESTED`. Implements only within an explicitly LOCKed scope.
 - **gbrain** — long-term memory subordinate. Provides recall (past decisions, prior art) but **never overrides live repo state**. When repo and gbrain disagree, the repo wins; gbrain gets a writeback correction.
 
-In the current Codex-only mode, agmsg is used for manual inbox drains, stale conflict notices, and traceability. It is not a mutual-review gate. Subagents/workers never write to agmsg directly.
+In the current codex-led multi-agent mode, agmsg is the coordination bus. Every execution agent drains inbox
+before starting, before reporting, and after land/hold. The coordinator grants assignments, reviews reports,
+declares BUILD-LOCK, runs central folds, and performs scoped commits.
 
 ```
 send:  ~/.agents/skills/agmsg/scripts/send.sh phos <from> <to> "<msg>"
@@ -33,9 +47,10 @@ inbox: ~/.agents/skills/agmsg/scripts/inbox.sh phos <name>
 
 ### 1.1 Communication mode
 
-Codex-only mode does not require Claude coordination. Monitor delivery can stay
-enabled as a latency optimization, while manual inbox drains remain the reliable
-delivery path. Check and restore Codex monitor mode when needed:
+Manual inbox drains are the reliable delivery path. Monitor delivery can stay
+enabled as a latency optimization, but workers must not change agmsg runtime
+settings while holding implementation work. Check Codex monitor mode only when
+coordinating runtime health:
 
 ```bash
 ~/.agents/skills/agmsg/scripts/delivery.sh status codex "$(pwd)"
@@ -218,6 +233,11 @@ split, not a bypass of the loop:
 
 ### 5.2 Idle-capacity work
 
+This idle-capacity contract applies to every active or future agent in this
+repository: Claude, Codex, codex2, codex3, codex4, opus, sonnet, haiku, and replacement
+workers. A local hold, review wait, land wait, or narrow blocker is not a reason
+to stop searching for useful work.
+
 When no review, plan, VERIFY, LOCK, or user-priority task is actionable, the loop should still
 improve the repo deliberately. Idle work is allowed only when it is small, owned, and reviewable.
 
@@ -256,7 +276,7 @@ Idle auto-discovery contract:
    send a path `LOCK`, confirm no peer conflict, and stay inside the declared paths.
 5. If no candidate is safe to edit, still produce useful output: a read-only recon note,
    `REQUEST_DELEGATE` via `.agent-loop/scripts/idle-assist.sh request <agent>`, stale-ledger
-   finding, or explicit blocked context. The peer can answer with
+   finding, conflict matrix, focused validation result, candidate scoring note, or explicit blocked context. The peer can answer with
    `.agent-loop/scripts/idle-assist.sh delegate <from> <to> ...` to provide a concrete scoped task.
    `zero_actionable_count` should increase only after this exploration is recorded.
 6. Yield immediately when a higher-priority inbound message arrives, then resume selection after

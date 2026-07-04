@@ -4,24 +4,34 @@
 > 3+1 のみ。旧台帳・巨大ログは `archive/` に凍結（新規追記禁止）。
 > 再開手順: このファイル → LOG.md 末尾 → BACKLOG.md → `git status` / `git log --oneline -15`。
 
-## 体制（2026-07-03 ユーザー指示）
+## 体制（2026-07-04 ユーザー指示）
 
-- fable(claude main) = 全体指揮・計画・モデルルーティング・commit
-- 実装: codex(BE強い) / opus(複雑FE・アーキ) / sonnet(標準) / haiku(機械的)
-- レビュー: opus 独立レビュー必須（maker/checker 分離）
-- 規律: LOCK宣言→ACK→実装→report→opus verdict→claude commit。
-  billing/算定/PHI隣接/authorization は self-commit 全面禁止。
+- codex = 全体統括 coordinator / checker / central-gate / committer / task-router。
+  メイン lane は実装で塞がず、Plans 棚卸し、割当、review、gate、scoped commit、例外処理を優先する。
+- 実行役: codex2 = frontend/UI、codex3 = cleanup/DataTable/API-helper、codex4 = backend/business-domain
+  recon/implementation。各 agent は exact path assignment 以外を編集しない。
+- Claude は停止済み。新規 work/review/gate は送らない。既存メッセージは legacy handoff として扱う。
+- 規律: agmsg drain → exact LOCK/assignment → 実装/validation → PATCH_REPORT → codex review →
+  central gate/scoped commit。実行役の self-commit 禁止。
 - gate: lint / typecheck / typecheck:no-unused / format:check / test / build / colors:check
-  （build と typecheck は並列禁止）
+  （build と typecheck は並列禁止。BUILD-LOCK 中は実行役が build/typecheck/no-unused を走らせない）
+
+## 全エージェント共通の自律待機方針（2026-07-04 ユーザー指示）
+
+- 対象: Claude / Codex / codex2 / codex3 / codex4 / opus / sonnet / haiku / future workers。
+- review待ち、LOCK待ち、land待ち、狭い blocker、担当slice hold中でも、完全停止しない。
+- まず agmsg と dirty tree を確認し、active LOCK・peer dirty・危険領域を避ける。
+- 編集できない場合も read-only recon、衝突表、候補scoring、focused validation、次に安全な作業の棚卸しを続ける。
+- 編集可能な候補が見つかった場合は exact path を LOCK/claim してから、小さく reviewable な差分だけ実装する。
+- maker/checker、人間承認、billing/算定/PHI隣接/authorization、migration/deploy/destructive gate は迂回しない。
 
 ## Phase
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: 3レーン並行体制（2026-07-04〜）。codex(xhigh)=DB/schema、
-  codex2(high)=BE services、codex3(medium)=cleanup。**display_id schema 波 W1-W7 完遂**
-  (W7=483750cb)、全量 gate ALL GREEN(test 12995)。現在: codex=ID-2-CP-A(create-path 第1弾)、
-  codex2=R24-B1(cursor page 収斂)、codex3=R23-B4(admin 35 hits)。
+- Phase C（実装ループ）: 3実行レーン+codex統括体制（2026-07-04〜）。
+  現在の供給源は `Plans.md` 未完了40件（open 37 + partial 3）。即時実装は W3-E1/E2 の低リスクUI、
+  read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の land（本日・要点）
 
@@ -51,8 +61,10 @@
 
 ## 次の一手
 
-1. codex: `ID-2-CP-A`（SavedView/MedicationIssue/Task/PCA の create へ same-tx allocateDisplayId 配線。HandoffItem 配線禁止=unique 軸未解決）
-2. codex2: `R24-B1`（4 route の buildCursorPage 収斂、full-key-order assert）
-3. codex3: `R23-B4`（admin 5 files 35 hits）→ B5
-4. schema 波後の残プログラム: ID-2-CP-B以降(重量 create/createMany/upsert) → ID-3(UI 表示/検索の slice(-8) 置換) → ID-2-OPS(本番 CONCURRENTLY 手順)
-5. 運用: 台帳=claude 専任、全量 gate=EDIT-FREEZE→ACK→直列実行(初適用で race ゼロ実証済み)
+1. codex2: `W3-E1-SHIFTS-TEMPLATE-RHF`（weekly template form のみ。mapping 承認済み、実装中）。
+2. codex3: `W3-E2-DATATABLE-SELECTABLE-LISTBOX-RECON` → DataTable 契約拡張を先に設計し、
+   prescriptions-table 変換は contract land 後に別 slice。
+3. codex4: `W3-B9-BILLING-CYCLE-RECON`（read-only。cycle_id 任意化、緊急訪問薬剤管理指導料、
+   オンライン46単位、月キャップ、evidence map、実装可能 slice/gate を提出）。
+4. codex: Plans.md の未完了40件を継続棚卸しし、human/external gate と実装候補を分離して task supply を維持。
+5. held: `R40-PRINT-HUB-READAPIJSON` は coordinator の path/risk check 後に GO/leave。
