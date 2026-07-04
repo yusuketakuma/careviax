@@ -56,6 +56,22 @@ vi.mock('@/lib/patient/api-paths', async (importActual) => {
 });
 
 describe('PatientWorkflowPreviewCard', () => {
+  it('renders a PH-OS skeleton while the workflow preview loads', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+    });
+
+    render(<PatientWorkflowPreviewCard patientId="patient_1" />);
+
+    expect(screen.getByRole('status', { name: 'ワークフロープレビューを読み込み中' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('ワークフロープレビューの取得に失敗しました')).toBeNull();
+    expect(screen.queryByRole('heading', { name: '訪問準備プレビュー' })).toBeNull();
+  });
+
   it('renders visit, report, and communication preview sections', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useQueryMock.mockReturnValue({

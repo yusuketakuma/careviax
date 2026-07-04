@@ -1,5 +1,36 @@
 # CODEX Goal Progress
 
+## R55 Patient Workflow Preview Loading State - 2026-07-04 19:05 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx`
+    - `src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx`
+- Scope:
+  - Replaced the spinner-style `Loading` return in the patient workflow preview
+    card with a named skeleton region that preserves the three-section preview
+    rhythm.
+  - Loading no longer exposes generic `読み込み中...` semantics, error copy, or
+    final preview section headings before the query resolves.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, fetcher, org header, `enabled` behavior, link helper
+    usage, cache timing, DB, auth, authorization, billing, audit, deployment,
+    package, or server behavior changed.
+  - Loading copy is PHI-free and does not echo patient identifiers, contact
+    names, phone numbers, report recipients, baseline context, org ids, or raw
+    errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `8` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the patient workflow preview source/test files.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Patient Readiness Loading State - 2026-07-04 19:01 JST
 
 - Status:

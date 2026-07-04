@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/loading';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -36,6 +36,38 @@ const reportTargetSourceLabels: Record<
   missing: '未設定',
 };
 
+function PatientWorkflowPreviewLoadingCard() {
+  return (
+    <Card className="lg:col-span-2">
+      <CardHeader>
+        <h2 className="font-heading text-base leading-snug font-medium">
+          訪問・報告・連携プレビュー
+        </h2>
+      </CardHeader>
+      <CardContent
+        className="grid gap-4 xl:grid-cols-3"
+        role="status"
+        aria-label="ワークフロープレビューを読み込み中"
+      >
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div key={index} className="space-y-3 rounded-lg border border-border/70 bg-card p-4">
+            <div className="flex items-center justify-between gap-3">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-5 w-16 rounded-full" />
+            </div>
+            <div className="space-y-2">
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-5/6" />
+              <Skeleton className="h-3 w-2/3" />
+            </div>
+          </div>
+        ))}
+        <span className="sr-only">ワークフロープレビューを読み込んでいます。</span>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function PatientWorkflowPreviewCard({ patientId }: { patientId: string }) {
   const orgId = useOrgId();
   const previewQuery = useQuery<PatientWorkflowPreviewSnapshot>({
@@ -53,18 +85,7 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
   });
 
   if (!orgId || previewQuery.isLoading) {
-    return (
-      <Card className="lg:col-span-2">
-        <CardHeader>
-          <h2 className="font-heading text-base leading-snug font-medium">
-            訪問・報告・連携プレビュー
-          </h2>
-        </CardHeader>
-        <CardContent>
-          <Loading label="ワークフロープレビューを読み込み中..." />
-        </CardContent>
-      </Card>
-    );
+    return <PatientWorkflowPreviewLoadingCard />;
   }
 
   if (previewQuery.error instanceof Error || !previewQuery.data) {
