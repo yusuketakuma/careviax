@@ -546,7 +546,15 @@ export function SearchContent({
           <h2 id="search-results-title" className="text-lg font-bold text-foreground">
             検索結果
           </h2>
-          {isLoading ? <p className="text-sm font-medium text-primary">検索中...</p> : null}
+          {isLoading ? (
+            <p
+              className="text-sm font-medium text-primary"
+              role="status"
+              aria-label="検索結果を読み込み中"
+            >
+              検索結果を読み込み中...
+            </p>
+          ) : null}
         </div>
 
         {searchError ? (

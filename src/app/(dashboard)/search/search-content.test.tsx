@@ -188,6 +188,23 @@ describe('SearchContent', () => {
     expect(screen.getByText('田中 一郎 様')).toBeTruthy();
   });
 
+  it('shows named loading status while search requests are pending', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/api/pharmacists')) return makeJsonResponse([]);
+      return new Promise(() => undefined);
+    });
+
+    render(<SearchContent />);
+    const input = screen.getByLabelText('全体検索キーワード');
+    fireEvent.change(input, { target: { value: '田中' } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    expect(screen.getByRole('status', { name: '検索結果を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('検索中...')).toBeNull();
+  });
+
   it('uses minimal search contracts where they preserve /search row content', async () => {
     render(<SearchContent />);
     await triggerSearch('田中');
