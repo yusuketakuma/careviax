@@ -554,6 +554,33 @@ describe('PatientForm', () => {
     });
   });
 
+  it('uses the qualification check fallback when the thrown error has an empty message', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockRejectedValueOnce(new Error(''));
+
+    render(
+      <PatientForm
+        patientId="patient_1"
+        defaultValues={{
+          name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
+          birth_date: '1950-01-01',
+          gender: 'male',
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: '住所・保険' }));
+    fireEvent.click(screen.getByRole('button', { name: '資格確認' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('資格確認に失敗しました');
+    });
+    expect(toast.error).toHaveBeenCalledWith('資格確認に失敗しました');
+  });
+
   it('encodes the selected facility id for the unit query before fetching', async () => {
     const hostileFacilityId = 'fac/1?x=y#z';
     useOrgIdMock.mockReturnValue('org_1');

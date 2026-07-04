@@ -150,7 +150,7 @@ function formatOptionLabelMap(labelMap: Record<string, string>) {
 }
 
 function queryErrorMessage(errorValue: unknown, fallback: string) {
-  return errorValue instanceof Error ? errorValue.message : fallback;
+  return messageFromError(errorValue, fallback);
 }
 
 const requesterProfessionOptions = formatOptionLabelMap(requesterProfessionLabels);
@@ -740,7 +740,7 @@ export function PatientForm({
       setQualificationCheckMessage({ tone: 'warning', text: message });
       toast.error(message);
     } catch (err) {
-      const message = err instanceof Error ? err.message : '資格確認に失敗しました';
+      const message = messageFromError(err, '資格確認に失敗しました');
       setQualificationCheckMessage({ tone: 'error', text: message });
       toast.error(message);
     } finally {
