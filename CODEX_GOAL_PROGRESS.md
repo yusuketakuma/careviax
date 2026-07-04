@@ -1,5 +1,38 @@
 # CODEX Goal Progress
 
+## R55 Pharmacist Credentials Route Loading Label - 2026-07-04 20:35 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/admin/pharmacist-credentials/page.tsx`
+    - `src/app/(dashboard)/admin/pharmacist-credentials/page.test.tsx`
+- Scope:
+  - Replaced the route-level generic Suspense fallback `Loading` with a
+    screen-specific `かかりつけ薬剤師管理を読み込み中...` status.
+  - Extended the existing route shell regression test to prove the admin header
+    remains visible, the fallback is screen-specific, generic `読み込み中...` is
+    absent, and suspended pharmacist credential content is not rendered.
+- Safety:
+  - Route-shell loading presentation and tests only.
+  - No pharmacist credential content query, expiry calculation, staff link,
+    credential update, DB, auth, authorization, PHI, billing, audit,
+    deployment, package, or server behavior changed.
+  - Loading copy is PHI-free and does not echo pharmacist names, license
+    numbers, certification dates, staff IDs, site IDs, org IDs, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacist-credentials/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `2` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the pharmacist-credentials route source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `a821ded7`
+    (`fix(admin): name pharmacist credentials route loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Contact Profiles Route Loading Label - 2026-07-04 20:32 JST
 
 - Status:
