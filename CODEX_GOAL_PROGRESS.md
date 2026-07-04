@@ -1,5 +1,53 @@
 # CODEX Goal Progress
 
+## W3-C1-A Drug Price Version Snapshot - 2026-07-04 09:05 JST
+
+- Scope:
+  - `DrugPriceVersion` additive schema/migration.
+  - MHLW price importer version provenance.
+  - `DispenseResult` nullable drug price snapshot after dispense safety gates.
+  - Review-only backfill helper for current `DrugMaster.drug_price` rows.
+  - Backfill helper unit tests for dry-run/apply guardrails.
+- Status:
+  - Implemented, approved, applied to local e2e DB, dry-run backfill verified,
+    and source committed as `12f37c89`
+    (`feat(drugs): add drug price versions`).
+  - Ledger update is being committed separately. No push/deploy performed.
+- Fixed:
+  - Added required global `display_id` registry coverage for new
+    `DrugPriceVersion`.
+  - MHLW price import now creates/updates version rows using
+    `source_published_at` as C1-A `effective_from` and records preview/import
+    counts.
+  - Dispense result creation snapshots effective price version, price,
+    effective date, and provenance JSON after validation/barcode/CDS gates.
+  - Snapshot is null-safe when a prescription line lacks `drug_master_id` or no
+    effective version exists.
+  - Backfill helper tests now prove dry-run has no mutation side effects,
+    `--apply` requires an explicit `--max-rows`, and apply mode allocates
+    create-time global display IDs in a fake transaction.
+- Safety:
+  - Client cannot submit snapshot price/version data.
+  - Existing `DrugMaster.drug_price` writes are preserved.
+  - No billing/UI/PDF/history reconstruction, auth/RLS/tenant boundary,
+    deployment, push, or destructive operation changed.
+- Validation:
+  - Prisma format/validate/generate passed.
+  - Focused Vitest passed `4` files / `89` tests, `6` skipped.
+  - Scoped ESLint, scoped Prettier check, scoped diff-check passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+  - `pnpm build` passed, clearing the shared-tree build blocker reported for
+    W3-C1-A's intermediate Prisma/client state.
+  - Default `prisma migrate status` could not reach `localhost:5432`; e2e DB
+    `localhost:5433` is reachable and reports
+    `20260704090000_add_drug_price_versions` unapplied, which is expected
+    pending approval.
+- Remaining:
+  - Commit this ledger-only update and share HEAD through agmsg.
+  - Next planned migration slice per Claude/Fable is W3-B2
+    (`VisitInstruction` + RLS) planning.
+
 ## Current Goal - 2026-06-20 JST Repo-wide Maintainability / Type Safety / Testability Loop
 
 Objective: preserve existing external behavior while maximizing maintainability, readability, responsibility separation, type safety, and testability across the repository. Continue beyond one improvement or one green test until at least two full loops and two consecutive zero-actionable re-audits are complete.
@@ -41,6 +89,872 @@ Objective: preserve existing external behavior while maximizing maintainability,
   fix, validate with focused and available broad gates, update ledgers, commit
   coherent slices, and never push/deploy/migrate/destructively mutate data
   without explicit approval.
+
+### W3-B5 Visit Execution Evidence Plan - 2026-07-04 07:54 JST
+
+- Scope:
+  - Planning only. No schema, migration, API, or UI implementation performed.
+  - Disambiguated `W3-B5`: this plan targets `Plans.md` line for
+    `VisitRecord.visit_started_at` / `visit_ended_at`; it does not target
+    `docs/design/billing-requirement-catalog-design.md` section 7 `W3-B5`
+    (Catalog-based FE completion-gate replacement).
+- Proposed schema/migration:
+  - Add nullable `visit_started_at DateTime?` and `visit_ended_at DateTime?`
+    to `VisitRecord`.
+  - Expected SQL:
+    `ALTER TABLE "VisitRecord" ADD COLUMN "visit_started_at" TIMESTAMP(3);`
+    and
+    `ALTER TABLE "VisitRecord" ADD COLUMN "visit_ended_at" TIMESTAMP(3);`
+  - No RLS/policy change expected; this is an additive column change on an
+    existing RLS table. No index initially because query paths still use
+    `visit_date`.
+- Proposed API/validation:
+  - Extend `src/lib/validations/visit-record.ts` with optional ISO datetime
+    inputs and validate effective `visit_ended_at >= visit_started_at`.
+  - Persist fields in create, overwrite, and PATCH paths; PATCH should validate
+    against existing effective values, not just payload-local values.
+  - Reject an end timestamp without an effective start timestamp.
+  - Do not infer `visit_ended_at` from save time.
+- Proposed UX:
+  - Keep `visit_geo_log` as optional location evidence.
+  - In visit-record form evidence UI, display timestamp evidence separately
+    from location evidence.
+  - Start timestamp may be recorded by the start action/initial start capture;
+    end timestamp must be set only by explicit `訪問終了` tap.
+  - `/visits/[id]/capture` should offer a one-handed `訪問終了` action only when
+    a visit record id/version is resolvable; otherwise route the user to create
+    or open the visit record instead of fabricating a record.
+- Test plan:
+  - Validation tests for end-before-start and end-without-start.
+  - Create route tests for persisting valid timestamps and rejecting invalid
+    ordering.
+  - PATCH route tests for merging existing start with payload end.
+  - Form tests proving save alone does not set `visit_ended_at`; explicit end
+    tap does.
+  - Capture-content tests for no-record and PATCH-capable paths.
+  - Then run Prisma validate/generate, focused route/form/capture tests,
+    typecheck, no-unused typecheck, and build.
+- Status:
+  - Sent to Claude for reviewer-audit. Implementation/migration remains blocked
+    until reviewer and user approval.
+
+### W3-B5 Visit Execution Evidence Implementation - 2026-07-04 08:18 JST
+
+- Scope:
+  - Implemented after Claude/reviewer plan approval for the `Plans.md`
+    VisitRecord evidence slice.
+  - Added nullable `VisitRecord.visit_started_at` and
+    `VisitRecord.visit_ended_at` fields.
+  - Added migration
+    `prisma/migrations/20260704080000_add_visit_record_execution_timestamps/migration.sql`
+    with only:
+    `ALTER TABLE "VisitRecord" ADD COLUMN "visit_started_at" TIMESTAMP(3);`
+    and
+    `ALTER TABLE "VisitRecord" ADD COLUMN "visit_ended_at" TIMESTAMP(3);`
+- Fixed:
+  - Create/overwrite/PATCH visit-record paths now accept and persist explicit
+    ISO visit execution timestamps.
+  - Validation rejects an end timestamp without an effective start timestamp
+    and rejects `visit_ended_at < visit_started_at`; PATCH validates against
+    existing effective values plus payload values.
+  - Visit-record form now separates timestamp evidence from optional geo
+    evidence. Form save alone does not infer an end timestamp; `訪問終了` is set
+    only by explicit user action.
+  - Capture flow offers a one-handed `訪問終了` PATCH only when visit record id,
+    version, and start timestamp are known; otherwise it links back to the
+    visit record instead of fabricating a record.
+  - Visit-record detail now surfaces available visit execution timestamps in
+    the evidence display.
+- Safety:
+  - Migration is additive nullable only. No RLS, policy, index, auth/RLS,
+    tenant boundary, API envelope, production config, deploy, external-send, or
+    destructive data operation changed.
+  - `visit_geo_log` remains separate optional location evidence.
+  - No commit/land or migration application performed; exact SQL still needs
+    user approval before landing.
+- Validation:
+  - `pnpm db:generate` passed.
+  - `pnpm exec prisma validate --schema=prisma/schema/` passed.
+  - `pnpm exec prisma format --schema=prisma/schema/` passed.
+  - Focused Vitest passed `5` files / `143` tests:
+    visit-record create route, visit-record PATCH route, visit-record form,
+    capture-content, and `use-soap-draft`.
+  - Scoped ESLint passed for touched W3-B5 source/test files.
+  - Scoped Prettier check passed for touched TS/TSX files. SQL was excluded
+    because repository Prettier has no inferred SQL parser for this migration;
+    SQL was covered by diff-check.
+  - `git diff --check --` touched W3-B5 files including the SQL migration
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+  - `pnpm build` passed.
+  - Local Postgres `localhost:5433` was reachable, but Prisma migrate status
+    exited nonzero because
+    `20260704080000_add_visit_record_execution_timestamps` is intentionally
+    unapplied pending user approval.
+- Remaining:
+  - Done: Claude/Fable reviewer-audit approved the W3-B5 code and validation.
+  - Done: explicit user approval of the migration SQL was received through
+    Claude/Fable.
+  - Done: local dev DB `localhost:5433/ph_os_e2e` migration deploy applied
+    `20260704080000_add_visit_record_execution_timestamps`; subsequent Prisma
+    migrate status reported the database schema is up to date.
+  - Done: W3-B5 source/migration/test slice committed as `b35567fe`
+    (`feat(visits): record visit execution timestamps`) with exact W3-B5 paths
+    only. Unrelated `prisma/schema/organization.prisma` was excluded and remains
+    a separate Prisma format-alignment follow-up.
+
+### ID-2 W8a Global Drug Display IDs - 2026-07-04 08:44 JST
+
+- Scope:
+  - Added nullable unique `display_id` columns to the seven global drug
+    registry models and extended the display-id backfill script to support
+    global/sentinel allocation without an org filter.
+  - Target models: `DrugMaster`, `DrugPackage`, `DrugPackageInsert`,
+    `DrugInteraction`, `GenericDrugMapping`, `DrugMasterImportLog`, and
+    `DrugMasterChangeEvent`.
+- Fixed:
+  - The previous backfill CLI could not process global registry tables because
+    it only supported tenant/org scoped allocation. W8a adds a global allocator
+    path and rejects `--org-id` for global targets to avoid mixed scope
+    semantics.
+- Safety:
+  - No PHI, tenant auth, RLS policy, API response, UI, production config,
+    deployment, or external-send behavior changed.
+  - Migration SQL is additive nullable columns plus Prisma-generated unique
+    indexes. Production CONCURRENTLY planning remains deferred to ID-2-OPS.
+- Validation:
+  - Pre-approval implementation validation passed: Prisma format/validate,
+    `pnpm db:generate`, focused Vitest (`2` files / `33` tests, `6` DB-gated
+    skipped), scoped ESLint, scoped Prettier check, old-schema migrate diff,
+    scoped diff-check, 8GB typecheck, 8GB typecheck:no-unused rerun, and build.
+  - Post-approval local DB apply passed:
+    `pnpm exec prisma migrate deploy --schema=prisma/schema/` applied
+    `20260704083000_add_drug_global_display_ids`; migrate status then reported
+    `Database schema is up to date!`.
+  - Dry-run artifacts reported `DrugMaster` `5` rows to backfill and all other
+    target models `0`. Apply with `--max-rows 5` backfilled `5` rows and
+    reported all postChecks OK.
+  - Independent Node/pg post-check reported all seven models with
+    `nullCount=0`, `duplicateGroups=0`, sequence health OK; `DrugMaster`
+    has max sequence `5` and `id_sequence(__global__, drug).next_value=6`.
+- Artifacts:
+  - `artifacts/display-id-w8a-dry-run.json`
+  - `artifacts/display-id-w8a-dry-run.md`
+  - `artifacts/display-id-w8a-apply.json`
+  - `artifacts/display-id-w8a-apply.md`
+- Remaining:
+  - Commit exact W8a source/schema/test/migration paths only.
+  - Keep mixed ledger files and artifacts out of the source commit unless
+    explicitly requested.
+
+### W3-B4-S4 Care Report Source Reader Patient Slice - 2026-07-04 07:23 JST
+
+- Scope:
+  - Implemented after Claude approved the W3-B4-S4 scope and first slice.
+  - Added `src/server/services/care-report-source-readers.ts`.
+  - Extracted only the `generateReportsFromVisit` patient source read into
+    `getCareReportSourcePatient`.
+- Fixed:
+  - Reduced direct Prisma read ownership inside `report-generator.ts` by one
+    source reader while preserving the patient query exactly.
+- Safety:
+  - No behavior change intended or introduced.
+  - Preserved the exact patient query shape:
+    `where: { id: visitRecord.patient_id, org_id: orgId }` and
+    `select: { id: true, name: true, birth_date: true, gender: true }`.
+  - No API/auth/RLS/tenant/PHI/billing/DB schema/migration/deploy/external-send
+    changes.
+- Validation:
+  - `pnpm exec vitest run src/server/services/report-generator.test.ts --reporter=dot --testTimeout=30000`
+    passed: `1` file / `21` tests.
+  - `pnpm exec eslint src/server/services/report-generator.ts src/server/services/care-report-source-readers.ts`
+    passed.
+  - `pnpm exec prettier --check src/server/services/report-generator.ts src/server/services/care-report-source-readers.ts`
+    passed.
+  - `git diff --check -- src/server/services/report-generator.ts src/server/services/care-report-source-readers.ts`
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+  - First `pnpm build` attempt was blocked by an already-running Next build
+    process; after waiting for that process to exit, rerun `pnpm build` passed.
+- Review:
+  - Claude reviewer-audit approved the slice and authorized source scoped
+    commit after gate completion.
+- Remaining:
+  - Commit only `src/server/services/report-generator.ts` and
+    `src/server/services/care-report-source-readers.ts`, then share HEAD.
+
+### W3-B4-S4 Care Report Source Reader Medication Cycle Slice - 2026-07-04 07:31 JST
+
+- Scope:
+  - Continued after `66356c11` landed the patient-reader slice and Claude
+    approved continuing one reader at a time.
+  - Extracted only the `generateReportsFromVisit` medication cycle source read
+    into `getCareReportSourceMedicationCycle`.
+- Fixed:
+  - Reduced direct Prisma read ownership inside `report-generator.ts` by one
+    more source reader while preserving the schedule-cycle query exactly.
+- Safety:
+  - No behavior change intended or introduced.
+  - Preserved the exact medication cycle query shape:
+    `where: { id: schedule.cycle_id, org_id: orgId }`,
+    `orderBy: { created_at: 'desc' }`, and `select: { id: true }`.
+  - The caller's `MEDICATION_CYCLE_NOT_FOUND_FOR_REPORT` guard remains
+    unchanged.
+  - No API/auth/RLS/tenant/PHI/billing/DB schema/migration/deploy/external-send
+    changes.
+- Validation:
+  - `pnpm exec vitest run src/server/services/report-generator.test.ts --reporter=dot --testTimeout=30000`
+    passed: `1` file / `21` tests.
+  - `pnpm exec eslint src/server/services/report-generator.ts src/server/services/care-report-source-readers.ts`
+    passed.
+  - `pnpm exec prettier --check src/server/services/report-generator.ts src/server/services/care-report-source-readers.ts`
+    passed.
+  - `git diff --check -- src/server/services/report-generator.ts src/server/services/care-report-source-readers.ts`
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+- Review:
+  - Claude reviewer-audit approved the slice and authorized source scoped
+    commit after gate completion.
+- Additional gate:
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+  - `pnpm build` passed.
+- Remaining:
+  - Commit only `src/server/services/report-generator.ts` and
+    `src/server/services/care-report-source-readers.ts`, then share HEAD.
+
+### W3-B4-S4 Care Report Source Reader Residual Medication Slice - 2026-07-04 07:37 JST
+
+- Scope:
+  - Continued after `306777d5` landed the medication-cycle reader slice and
+    Claude instructed the reader loop to continue.
+  - Extracted only the `generateReportsFromVisit` residual medications source
+    read into `listCareReportSourceResidualMedications`.
+- Fixed:
+  - Reduced direct Prisma read ownership inside `report-generator.ts` by one
+    more source reader while preserving the residual medication query exactly.
+- Safety:
+  - No behavior change intended or introduced.
+  - Preserved the exact residual medication query shape:
+    `where: { org_id: orgId, visit_record_id: visitRecordId }` and
+    selected fields `drug_name`, `remaining_quantity`, `excess_days`, and
+    `is_reduction_target`.
+  - No ordering, filtering, normalization, API/auth/RLS/tenant/PHI/billing/DB
+    schema/migration/deploy/external-send changes.
+- Validation:
+  - `pnpm exec vitest run src/server/services/report-generator.test.ts --reporter=dot --testTimeout=30000`
+    passed: `1` file / `21` tests.
+  - `pnpm exec eslint src/server/services/report-generator.ts src/server/services/care-report-source-readers.ts`
+    passed.
+  - `pnpm exec prettier --check src/server/services/report-generator.ts src/server/services/care-report-source-readers.ts`
+    passed.
+  - `git diff --check -- src/server/services/report-generator.ts src/server/services/care-report-source-readers.ts`
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+- Review:
+  - Claude reviewer-audit approved the slice and authorized source scoped
+    commit after gate completion.
+- Additional gate:
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+  - `pnpm build` passed.
+- Remaining:
+  - Commit only `src/server/services/report-generator.ts` and
+    `src/server/services/care-report-source-readers.ts`, then share HEAD.
+
+### W3-B4-S4 Care Report Source Reader Care Team Slice - 2026-07-04 07:43 JST
+
+- Scope:
+  - Continued after `411f0e60` landed the residual-medication reader slice and
+    Claude instructed the reader loop to continue.
+  - Extracted only the `generateReportsFromVisit` care-team link source read
+    into `listCareReportSourceCareTeamLinks`.
+- Fixed:
+  - Reduced direct Prisma read ownership inside `report-generator.ts` by one
+    more source reader while preserving the care-team query exactly.
+- Safety:
+  - No behavior change intended or introduced.
+  - Preserved the exact care-team query shape:
+    `where: { case_id: caseId, org_id: orgId, role: { in: ['physician', 'care_manager'] } }`,
+    `select: { role: true, name: true, organization_name: true }`, and
+    `orderBy: { is_primary: 'desc' }`.
+  - No normalization, API/auth/RLS/tenant/PHI/billing/DB schema/migration/deploy
+    or external-send changes.
+- Validation:
+  - `pnpm exec vitest run src/server/services/report-generator.test.ts --reporter=dot --testTimeout=30000`
+    passed: `1` file / `21` tests.
+  - `pnpm exec eslint src/server/services/report-generator.ts src/server/services/care-report-source-readers.ts`
+    passed.
+  - Initial Prettier check flagged only
+    `src/server/services/care-report-source-readers.ts`; `pnpm exec prettier --write`
+    was applied to the two scoped source files.
+  - Re-run `pnpm exec prettier --check src/server/services/report-generator.ts src/server/services/care-report-source-readers.ts`
+    passed.
+  - `git diff --check -- src/server/services/report-generator.ts src/server/services/care-report-source-readers.ts`
+    passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` initially failed in
+    unrelated dirty `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`
+    while its extracted component file was not yet visible to the checker.
+  - After the dirty component extraction was present in the working tree,
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+  - `pnpm build` passed.
+- Remaining:
+  - Claude reviewer-audit approved the source diff and authorized source scoped
+    landing after gate.
+  - Commit only `src/server/services/report-generator.ts` and
+    `src/server/services/care-report-source-readers.ts`; leave unrelated dirty
+    UI/test/docs/infrastructure files and ledger updates unstaged.
+  - Next task after landing: draft W3-B5 plan for additive
+    `VisitRecord.visit_started_at` / `visit_ended_at` migration and explicit
+    visit-ended tap UX. Do not implement until reviewer/user approval.
+
+### Stale WebSocket/Yjs Infra Deletion R22b - 2026-07-04 04:43 JST
+
+- Scope:
+  - Implemented after Claude ACKed lock `R22b-EXEC`.
+  - Deleted the orphaned `tools/infra/websocket/**` SAM/Yjs WebSocket stack
+    (`18` tracked files, previously `3030` lines).
+  - Cleaned stale references in `tools/infra/README.md`,
+    `docs/operations/aws-cost-minimal-deployment.md`,
+    `tools/aws-cost-minimal-scenarios.json`,
+    `REFACTOR_REPOSITORY_INVENTORY.md`, `ops/refactor/CODE_MAP.md`,
+    `docs/change-staging-plan.md`, `refactor-instructions.md`, and
+    `REFACTOR_EXECUTION_PLAN.md`.
+- Fixed:
+  - Removed stale deployment/cost/documentation references to the deleted
+    WebSocket/Yjs collaboration sync stack.
+  - While running the required full Vitest gate, aligned stale Task route test
+    mocks with the current `upsertOperationalTask` contract by returning and
+    asserting `display_id` selection in:
+    `src/app/api/visit-records/route.test.ts`,
+    `src/app/api/patients/[id]/route.test.ts`,
+    `src/app/api/communication-requests/[id]/resolve-followup/route.test.ts`,
+    `src/app/api/consent-records/[id]/revoke/route.test.ts`, and
+    `src/app/api/patients/[id]/mcs/logs/route.test.ts`.
+  - Repaired a typecheck-only test fixture tuple assertion in
+    `src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx`.
+- Safety:
+  - No AWS/deploy command, DB mutation, migration, production config, auth,
+    authorization, tenant/RLS, PHI, billing, API response contract, external
+    send, push, or destructive data operation was changed.
+  - The deleted WebSocket infra had a green pre-delete focused suite and no
+    direct package dependency entries for `yjs`, `y-protocols`, `y-websocket`,
+    or `lib0`.
+- Validation:
+  - Pre-delete infra suite passed `8` files / `59` tests.
+  - Stale reference grep for websocket/Yjs symbols returned no matches outside
+    the deleted tree and archived plans.
+  - Scoped Prettier writes completed; final test-file Prettier pass was
+    unchanged.
+  - Scoped `git diff --check` passed.
+  - Scoped ESLint for the six validation test files passed.
+  - Focused route suites passed `5` files / `154` tests, with existing
+    `phi_read_audit_write_failed` warnings in patient detail tests.
+  - Focused packaging-methods test passed `1` file / `9` tests.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - Full `pnpm test -- --reporter=dot --testTimeout=30000` passed: `1291`
+    files passed / `2` skipped, `12976` tests passed / `12` skipped.
+- Remaining:
+  - Send implementation report to Claude/opus and await verdict / Claude
+    commit.
+  - Inbox now reports ID-3-S2 landed and `R15-final-route-compare` lock is
+    established; handle that non-overlapping helper cleanup next.
+
+### Frontend Header Helper Convergence R15 Final Route Compare - 2026-07-04 04:47 JST
+
+- Scope:
+  - Implemented after Claude reported ID-3-S2 landed and
+    `R15-final-route-compare` lock was established.
+  - Migrated the final `route-compare-content.tsx` raw org-header GET and JSON
+    POST sites to `buildOrgHeaders` / `buildOrgJsonHeaders`.
+- Fixed:
+  - Removed the local `routeHeaders()` wrapper and the remaining raw
+    route-compare `x-org-id` literals.
+  - Final non-test source raw-header scan now leaves only intentional
+    core/header boundary files: `src/lib/auth/context.ts` and
+    `src/lib/api/org-headers.ts`.
+- Safety:
+  - Fetch URLs, methods, body payloads, scenario computation flow, query
+    behavior, route adoption behavior, UI rendering, auth/RLS, PHI, billing,
+    DB schema, migration, production config, external send, push, deploy, and
+    destructive operations are unchanged.
+  - The helper returns the same `x-org-id` header for GET and the same
+    `Content-Type: application/json` plus `x-org-id` headers for POST.
+- Validation:
+  - Next.js `use client` docs were checked before editing the client component.
+  - Scoped Prettier write was unchanged.
+  - Route-compare raw-header/helper grep shows only the new helper import and
+    helper calls.
+  - Scoped `git diff --check` passed.
+  - Scoped ESLint passed.
+  - Focused route-compare Vitest passed `2` files / `29` tests.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - Final `rg -n "['\"]x-org-id['\"]" src --glob '!**/*.test.ts' --glob '!**/*.test.tsx'`
+    reports only `src/lib/auth/context.ts` and `src/lib/api/org-headers.ts`.
+- Remaining:
+  - Send implementation report to Claude/opus and await verdict / Claude
+    commit.
+
+### R45 Error State Cleanup Recon - 2026-07-04 05:05 JST
+
+- Scope:
+  - Read-only recon for backlog `R45` after `R22b-EXEC` and
+    `R15-final-route-compare` reports were sent.
+  - Checked PH-OS UI/UX SSOT before considering UI error-state changes.
+- Findings:
+  - Legacy plain `text-destructive` error branches remain in six clean
+    patient/prescription UI files:
+    `patient-workflow-preview-card.tsx`, `patient-readiness-card.tsx`,
+    `prescription-inline-detail.tsx`, and the management-plan / visit-records /
+    medications print pages.
+  - Existing focused tests are present for all six paths.
+- Coordination:
+  - Sent `LOCK_REQUEST R45-B1` to Claude for those clean source paths plus
+    focused tests if needed.
+  - No ACK yet; app code was not edited.
+- Next:
+  - On ACK, replace the legacy plain error branches with structured
+    `ErrorState`-style states while preserving fetch/query/API behavior, then
+    run focused tests, scoped ESLint/Prettier/diff-check, and typecheck.
+
+### Dirty Fetch Mock Helper Validation While R45 Pending - 2026-07-04 04:51 JST
+
+- Scope:
+  - No app-code edits. Validated the current dirty fetch-mock helper test slice
+    because it overlaps `prescription-inline-detail.test.tsx`, one of the R45
+    test files, while the R45 source files remain clean.
+- Findings:
+  - The dirty test changes are unowned helper convergence only:
+    ad-hoc fetch response mocks are replaced with `jsonResponse` /
+    `stubJsonFetch` in four test files.
+  - Preserve those test hunks when R45 proceeds.
+- Validation:
+  - Focused Vitest passed `4` files / `26` tests, with existing React
+    `act(...)` warnings in `prescription-intake-form.test.tsx`.
+  - Scoped `git diff --check` passed for the four dirty test files.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+- Remaining:
+  - `R45-B1` still has no ACK. Do not edit its six source paths or the dirty
+    overlapping test until lock state is clear.
+
+### Expanded Dirty Fetch Mock Helper Validation While R45 Pending - 2026-07-04 04:54 JST
+
+- Scope:
+  - No app-code edits. Rechecked the expanded dirty fetch-mock helper test
+    slice after three additional test files became dirty:
+    `clerk-support-content.test.tsx`, `select-mode-content.test.tsx`, and
+    `comment-thread.test.tsx`.
+- Findings:
+  - The additional diffs are the same unowned helper convergence pattern:
+    replacing ad-hoc fetch response mocks with `jsonResponse` /
+    `stubJsonFetch`.
+  - Preserve all seven dirty test hunks while `R45-B1` remains pending.
+- Validation:
+  - Focused Vitest passed `7` files / `40` tests, with the same existing React
+    `act(...)` warnings in `prescription-intake-form.test.tsx`.
+  - Scoped `git diff --check` passed for the seven dirty test files.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - agmsg inbox still reports no new messages.
+- Remaining:
+  - `R45-B1` still has no ACK. Do not edit the six candidate source paths or
+    the overlapping dirty `prescription-inline-detail.test.tsx` until lock
+    state is clear.
+
+### Expanded Dirty Fetch Mock Helper Validation While R45 Pending - 2026-07-04 04:57 JST
+
+- Scope:
+  - No app-code edits. Rechecked the dirty fetch-mock helper test slice after
+    four more test files became dirty:
+    `notifications-content.test.tsx`, `mention-input.test.tsx`,
+    `drug-suggest.test.tsx`, and `app-header.test.tsx`.
+- Findings:
+  - The additional diffs are still unowned test-helper convergence only:
+    replacing ad-hoc fetch response mocks with `jsonResponse` /
+    `stubJsonFetch`.
+  - Preserve all eleven dirty R43 test hunks while `R45-B1` remains pending.
+- Validation:
+  - Focused Vitest passed `11` files / `79` tests, with the same existing
+    React `act(...)` warnings in `prescription-intake-form.test.tsx`.
+  - Scoped `git diff --check` passed for the eleven dirty test files.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - agmsg inbox still reports no new messages.
+- Remaining:
+  - `R45-B1` still has no ACK. Do not edit the six candidate source paths or
+    the overlapping dirty `prescription-inline-detail.test.tsx` until lock
+    state is clear.
+
+### R45 Error State Cleanup Follow-up Recon - 2026-07-04 04:59 JST
+
+- Scope:
+  - No app-code edits. Performed read-only recon for additional
+    `text-destructive` failure states while `R45-B1` remains ACK-pending.
+- Findings:
+  - A likely `R45-B2` follow-up exists in five clean source files where
+    section/full-state fetch or compute failures are still plain destructive
+    text rather than structured `ErrorState`-style UI:
+    `patient-labs-card.tsx`, `patient-insurance-card.tsx`,
+    `visit-route-preview-panel.tsx`, `intervention-panel.tsx`, and
+    `print-hub-content.tsx`.
+  - Field validation errors, destructive action labels, and already-structured
+    `ErrorState` branches were excluded from this candidate set.
+- Validation:
+  - Candidate source paths are clean on the current worktree.
+  - Focused baseline Vitest passed `5` files / `52` tests for the candidate
+    files.
+- Remaining:
+  - Do not edit `R45-B1` or `R45-B2` source paths until the corresponding lock
+    is acknowledged. If B1 lands, request a separate `R45-B2` lock for the
+    five follow-up files.
+
+### R49 State Color Residual Recon + R43 Expanded Validation - 2026-07-04 05:03 JST
+
+- Scope:
+  - No app-code edits. Performed read-only recon for backlog `R49` while
+    `R45-B1` remains ACK-pending.
+  - Revalidated the expanded dirty R43 fetch-helper test context after six more
+    test files became dirty.
+- Findings:
+  - `R49` is still present in clean files:
+    `patient-field-revision-presentation.ts`,
+    `patient-field-revision-timeline.tsx`, and
+    `settings-content.tsx`.
+  - Patient field revision change-type badges still use local className
+    plumbing; admin settings scope badges still pass scope-local badge classes
+    into a generic `Badge` rather than using the central state/neutral display
+    contract.
+  - The newly dirty R43 tests are the same `jsonResponse` helper convergence
+    pattern.
+- Validation:
+  - R49 baseline focused Vitest passed `2` files / `10` tests.
+  - Expanded dirty R43 focused Vitest passed `17` files / `108` tests, with
+    the same existing React `act(...)` warnings in
+    `prescription-intake-form.test.tsx`.
+  - Scoped `git diff --check` passed for the seventeen dirty R43 test files.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+- Coordination:
+  - Sent `LOCK_REQUEST R49-B1` for the three clean source files plus focused
+    tests. Await ACK before editing.
+  - `R45-B1` remains ACK-pending.
+
+### R43 Dirty Fetch Helper Expanded Validation - 2026-07-04 07:00 JST
+
+- Scope:
+  - No app-code edits. Rechecked agmsg and current dirty test state while
+    `R45-B1` and `R49-B1` remain ACK-pending.
+  - Added three newly dirty helper-convergence tests to the focused validation
+    set: collaboration content, patient readiness card, and visit capture.
+- Findings:
+  - The newly inspected dirty test hunks preserve payloads and response intent
+    while replacing ad hoc fetch response objects with `jsonResponse`.
+  - Deleted WebSocket tests belong to the existing R22b deletion slice and were
+    intentionally excluded from the dirty helper test validation set.
+- Validation:
+  - Expanded dirty fetch-helper focused Vitest passed `20` files / `124` tests,
+    with the same existing React `act(...)` warnings in
+    `prescription-intake-form.test.tsx`.
+  - Scoped `git diff --check` passed for the twenty dirty helper test files.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+- Coordination:
+  - agmsg inbox still reports no new messages.
+  - Preserve all dirty helper-convergence test hunks. Do not edit `R45-B1` or
+    `R49-B1` app source paths until their locks are acknowledged.
+
+### R43 Fetch Mock Helper Convergence B9 - 2026-07-04 07:04 JST
+
+- Scope:
+  - Continued the existing codex2 `R43` fetch-test-utils convergence lane with
+    a small clean patient-detail test batch.
+  - Changed only fetch success response construction in:
+    `patient-contacts-panel.test.tsx`, `patient-care-team-panel.test.tsx`,
+    `patient-packaging-card.test.tsx`, and
+    `patient-workflow-preview-card.test.tsx`.
+- Fixed:
+  - Replaced local ad hoc ok/json fetch mock responses with shared
+    `jsonResponse`.
+  - Preserved fetch mock identity, URL/header/body assertions, raw query-key
+    assertions, shared patient path helper assertions, and dot-segment
+    fail-closed checks.
+- Safety:
+  - No app source, API response contract, auth/RLS, PHI, billing, DB schema,
+    migration, deployment config, external send, push, or destructive operation
+    changed.
+- Validation:
+  - Baseline focused Vitest passed `4` files / `32` tests.
+  - Post-edit focused Vitest passed `4` files / `32` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+
+### R50-B1 Report Generator Lab Summary Helper Convergence - 2026-07-04 07:12 JST
+
+- Scope:
+  - Implemented after Claude ACKed `R50-B1` for
+    `src/server/services/report-generator.ts` with helper changes in
+    `src/server/services/patient-detail-labs.ts`.
+  - Replaced report-generator's local latest-lab query and first-per-analyte
+    map with `listLatestPatientLabObservations`.
+- Fixed:
+  - Extracted shared first-per-analyte selection in `patient-detail-labs.ts`.
+  - Added a report-shaped `listLatestPatientLabObservations` helper that keeps
+    the report field set: `id`, `analyte_code`, `measured_at`,
+    `value_numeric`, `value_text`, `unit`, and `abnormal_flag`.
+  - Kept existing `listPatientLabSummary` field selection/output unchanged.
+- Safety:
+  - Query semantics are preserved: same org/patient predicates, same key
+    analyte filter, same ordering (`measured_at desc`, `created_at desc`),
+    same `take: 50`, and same first-per-analyte ordering.
+  - No API response contract, auth/RLS, PHI, billing, DB schema, migration,
+    deployment config, external send, push, or destructive operation changed.
+- Validation:
+  - Care-report focused Vitest passed `19` files / `311` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+  - `pnpm build` passed.
+- Coordination:
+  - Sent `REPORT R50-B1` to Claude for reviewer-audit with diff stat and gate
+    results. Not staged or committed.
+- Coordination:
+  - Send `REPORT R43-B9` to Claude/committer and await verdict/land.
+  - B4-B8 remain dirty/unlanded in this worktree; unrelated ledger/docs/tools
+    and R15/R22b files remain preserved.
+
+### Frontend Header Helper Convergence R15-B2 - 2026-07-04 03:46 JST
+
+- Scope:
+  - Continued the behavior-preserving org-header helper convergence under
+    Claude ACKed lock `R15-B2`.
+  - Migrated raw `x-org-id` fetch headers in a capped 19-file patients,
+    visit-brief, and schedules batch to `buildOrgHeaders` /
+    `buildOrgJsonHeaders`.
+  - Intentionally avoided route-compare, emergency-route, proposal list, and
+    other R42-sensitive visit-vehicle areas where practical.
+- Fixed:
+  - Removed the selected batch's raw client-side tenant header literals while
+    preserving request paths, HTTP methods, JSON bodies, cache options, query
+    keys, enabled conditions, and error handling.
+  - Confirmed the 19 target files now have zero raw `x-org-id` matches and no
+    helper import leaks.
+- Safety:
+  - No auth, authorization, RLS, PHI payload, billing, DB schema, migration,
+    external send trigger condition, production config, push, deploy, or
+    destructive operation changed.
+  - A temporary non-header type drift in `schedule-day-planner-hooks.ts` was
+    detected during diff review and reverted to avoid R42/codex2 overlap.
+- Validation:
+  - `rg -n "['\"]x-org-id['\"]" <19 target files>` returned no matches.
+  - Helper-import leak check returned no files.
+  - Scoped Prettier write reported all 19 target files unchanged.
+  - Scoped `git diff --check` and scoped ESLint passed.
+  - Focused Vitest passed `22` files / `126` tests; one existing React
+    `act(...)` warning was emitted by the consent records test.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+- Remaining:
+  - Await Claude/opus verdict. This slice is intentionally not staged,
+    committed, or pushed by codex3.
+  - Preserve unrelated dirty work, including concurrent R42/codex2
+    visit-vehicle files and existing server service changes.
+
+### Frontend Header Helper Convergence R15-B3 - 2026-07-04 03:58 JST
+
+- Scope:
+  - Continued org-header helper convergence under Claude-corrected lock
+    `R15-B3`.
+  - Implemented the coordinator-corrected concrete B3 plan: 9 files / 22 raw
+    `x-org-id` header sites in presence, cycle-transition query,
+    workflow-phase access, workflow dashboard, report-share workspace, my-day,
+    prescription intake triage, prescription QR drafts list, and tasks.
+  - A broader earlier B3 interpretation was superseded by Claude's corrected
+    ruling; extra pharmacy-cooperation/handoff/visit-record/schedules/billing
+    B4 candidate files were restored before final validation.
+- Fixed:
+  - Removed raw `x-org-id` literals from the corrected 9-file B3 batch by
+    routing GET requests through `buildOrgHeaders` and JSON mutations through
+    `buildOrgJsonHeaders`.
+- Safety:
+  - Preserved fetch URLs, HTTP methods, JSON bodies, query keys,
+    invalidations, enabled conditions, error handling, and route behavior.
+  - No auth, authorization, RLS, PHI payload, billing, DB schema, migration,
+    external send trigger condition, production config, push, deploy, or
+    destructive operation changed.
+- Validation:
+  - `rg -n "['\"]x-org-id['\"]" <9 target files>` returned no matches.
+  - Helper-import leak check returned no files.
+  - Scoped Prettier write reported all 9 target files unchanged.
+  - Scoped `git diff --check` and scoped ESLint passed.
+  - Focused Vitest passed `11` files / `84` tests.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - Remaining non-test raw `x-org-id` source count after the corrected B3
+    slice: `117` hits.
+- Remaining:
+  - Claude/opus approved and Claude landed this slice as `fc261eb2`.
+  - Preserve unrelated dirty work that appeared during the slice, including
+    prescription/display-id and API-test files.
+
+### Frontend Header Helper Convergence R15-B4 - 2026-07-04 04:12 JST
+
+- Scope:
+  - Continued org-header helper convergence under Claude ACKed lock `R15-B4`.
+  - Migrated the deferred 13-file / 89-site batch across pharmacy cooperation,
+    handoff, visit record form/detail, schedule proposals, partner/billing
+    candidates, external viewer, visit brief review, voice memo, facility
+    packet, and global search.
+  - Kept billing files to header construction only.
+- Fixed:
+  - Removed raw `x-org-id` literals from the 13 target files by routing ordinary
+    org-scoped fetches through `buildOrgHeaders` and uppercase JSON requests
+    through `buildOrgJsonHeaders`.
+  - Preserved the conditional empty-header branch in search, preserved shared
+    `headers` variable reuse in visit brief review and voice memo, and
+    preserved lowercase `content-type` casing in facility packet, pharmacy
+    cooperation, and partner billing by using `buildOrgHeaders(orgId, {
+'content-type': 'application/json' })`.
+- Safety:
+  - Preserved fetch URLs, HTTP methods, JSON bodies, query keys,
+    invalidations, enabled conditions, error handling, billing payloads,
+    schedule proposal payloads, and route behavior.
+  - No auth, authorization, RLS, PHI payload, billing math, DB schema,
+    migration, external send trigger condition, production config, push,
+    deploy, or destructive operation changed.
+- Validation:
+  - `rg -n "['\"]x-org-id['\"]" <13 target files>` returned no matches.
+  - Helper-import leak check returned no files.
+  - Scoped Prettier write reported all 13 target files unchanged.
+  - Scoped `git diff --check` and scoped ESLint passed.
+  - Focused Vitest passed `13` files / `161` tests; existing
+    HandoffWorkspace React `act(...)` warnings were emitted.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - Remaining non-test raw `x-org-id` source count after this slice: `28`
+    hits.
+  - Report diff stat for Claude:
+    `13 files changed, 102 insertions(+), 188 deletions(-)`.
+- Remaining:
+  - Claude/opus approved and Claude landed this slice as `72392917`.
+  - Preserve unrelated dirty prescription/display-id/API-test files.
+
+### Frontend Header Helper Convergence R15-B5 - 2026-07-04 04:20 JST
+
+- Scope:
+  - Continued org-header helper convergence under Claude ACKed lock `R15-B5`.
+  - Migrated 13 non-core remaining raw `x-org-id` sites across offline evidence
+    drafts, shared realtime stream, sync engine, global search, QR scan,
+    app-header preferences, handoff confirmation, schedule conflicts, emergency
+    route, referral form, visit reflected fields, visit capture, and evidence
+    gallery.
+  - Excluded `src/lib/auth/context.ts` and `src/lib/api/org-headers.ts` as
+    intentional core/header-boundary files. Deferred
+    `src/app/(dashboard)/schedules/route-compare/route-compare-content.tsx`
+    because it was already dirty in another lane.
+- Fixed:
+  - Routed ordinary org-scoped fetches through `buildOrgHeaders` and JSON
+    requests through `buildOrgJsonHeaders`.
+  - Preserved conditional empty/undefined header semantics in global search,
+    QR scan, and app-header preference writes.
+  - Preserved reusable headers variables in offline evidence drafts, visit
+    capture, and evidence gallery; retry/queue/encryption control flow was not
+    changed.
+- Safety:
+  - No auth/RLS policy, PHI payload, billing, DB schema, migration, external
+    send trigger condition, production config, push, deploy, or destructive
+    operation changed.
+  - Offline/realtime/sync-engine changes are header-construction only and do
+    not change retry, queue, encryption, IndexedDB, SSE reconnect, or conflict
+    handling semantics.
+- Validation:
+  - `rg -n "['\"]x-org-id['\"]" <13 target files>` returned no matches.
+  - Helper-import leak check returned no files.
+  - Scoped Prettier write reported all 13 target files unchanged.
+  - Scoped `git diff --check` and scoped ESLint passed.
+  - Focused Vitest passed `14` files / `150` tests; existing React
+    `act(...)` warnings were emitted in conflict-resolution and global-search
+    tests.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed.
+  - Remaining non-test raw `x-org-id` scan now shows only intentional core
+    files plus deferred dirty route-compare: `src/lib/auth/context.ts`,
+    `src/lib/api/org-headers.ts`, and
+    `src/app/(dashboard)/schedules/route-compare/route-compare-content.tsx`.
+  - Report diff stat for Claude:
+    `13 files changed, 31 insertions(+), 33 deletions(-)`.
+- Remaining:
+  - Claude/opus approved this slice and Claude landed it as `b0801994`.
+  - Coordinate route-compare separately after the current dirty lane lands or
+    releases it.
+
+#### Revalidation - 2026-07-04 04:24 JST
+
+- Current HEAD: `45ab4804`.
+- B5 source diff remains unchanged at `13 files changed, 31 insertions(+), 33
+  deletions(-)`.
+- Re-ran scoped raw-header scan over the 13 target files: no raw `x-org-id`
+  matches.
+- Re-ran scoped `git diff --check`, scoped ESLint, and the same focused Vitest
+  suite: all passed. Focused Vitest remained `14` files / `150` tests, with the
+  same existing React `act(...)` warnings in conflict-resolution and
+  global-search tests.
+- Re-ran `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: passed.
+- Remaining non-test raw scan is still limited to the intentional core/header
+  boundary files plus deferred dirty route-compare.
+- Claude later held the route-compare final slice because ID-3-S2 is actively
+  editing the same file. Do not touch route-compare until that lane lands or
+  releases it.
+- Claude/opus approved B5 after this revalidation, and the slice landed as
+  `b0801994`.
+
+### R22b WebSocket Infra Dead-Code Recon - 2026-07-04 04:27 JST
+
+- Scope:
+  - Read-only recon while R15-B5 verdict and route-compare ACK are pending.
+  - Rechecked `R22b`: the app-side Yjs collaboration chain has already been
+    removed, but `tools/infra/websocket` and stale Yjs/WebSocket docs remain.
+- Findings:
+  - `tools/infra/websocket` still contains `18` tracked files / `3030` lines:
+    SAM template, README, connect/disconnect/sync/authorizer lambdas, shared
+    room-token/AWS/client/connection-store helpers, and tests.
+  - `package.json` no longer declares direct `yjs`, `y-protocols`,
+    `y-websocket`, or `lib0` dependencies.
+  - `vitest.config.ts` still includes `tools/infra/**/*.test.ts`, so these
+    infra tests are still part of the default test surface while the directory
+    exists.
+  - Stale references remain in `tools/infra/README.md`,
+    `docs/operations/aws-cost-minimal-deployment.md`,
+    `tools/aws-cost-minimal-scenarios.json`,
+    `REFACTOR_REPOSITORY_INVENTORY.md`, `ops/refactor/CODE_MAP.md`, and
+    `docs/change-staging-plan.md`.
+- Validation:
+  - Focused infra suite passed:
+    `./node_modules/.bin/vitest run tools/infra/websocket/template.test.ts tools/infra/websocket/lambdas/connect/handler.test.ts tools/infra/websocket/lambdas/disconnect/handler.test.ts tools/infra/websocket/lambdas/sync/handler.test.ts tools/infra/websocket/lambdas/authorizer/handler.test.ts tools/infra/websocket/lambdas/shared/aws-client.test.ts tools/infra/websocket/lambdas/shared/connection-store.test.ts tools/infra/websocket/lambdas/shared/room-token.test.ts --reporter=dot --testTimeout=30000`
+    passed `8` files / `59` tests.
+- Proposed next slice after LOCK/ACK:
+  - Delete `tools/infra/websocket` and remove the stale docs/cost/code-map
+    references above.
+  - Validate with `pnpm typecheck`, focused `rg` for websocket/Yjs stale
+    references, and default/focused Vitest coverage appropriate to the deleted
+    test surface.
+
+### Schedule Day View Display-ID Fixture Typecheck Repair - 2026-07-04 04:15 JST
+
+- Scope:
+  - Revalidated R15-B4 after newer HEAD commits advanced the worktree.
+  - Fixed the current `pnpm typecheck` failure in
+    `src/app/(dashboard)/schedules/schedule-day-view.helpers.test.ts`.
+- Fixed:
+  - The proposal fixture used with `proposalSafeIdentifierLabel()` had
+    `case_` data without `display_id`, while the current helper type accepts a
+    display-id-aware case projection.
+  - Added `case_.display_id: '1'` to preserve the existing expected label
+    `ケース 1 / 候補 1`.
+- Safety:
+  - Test-only fixture correction. No production code, API contract, auth/RLS,
+    PHI, billing, DB schema, migration, external send, push, deploy, or
+    destructive operation changed.
+  - Concurrent display-id-related test additions in the same file are preserved
+    and not claimed as part of R15-B4.
+- Validation:
+  - Focused schedule-day-view helper test passed `1` file / `31` tests.
+  - Scoped ESLint and scoped `git diff --check` passed for the test file.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed after the
+    fixture repair.
 
 ### Backend/API Query Helper Convergence - 2026-07-03 20:05 JST
 
@@ -37224,6 +38138,55 @@ Next loop:
   - Scoped ESLint, scoped Prettier check, and scoped diff-check passed.
 - Remaining:
   - Send completion report to Claude and await opus verdict / Claude commit.
+
+## ID-2 W8a Global Drug Display IDs - 2026-07-04 08:34 JST
+
+- Scope:
+  - `prisma/schema/drug.prisma`
+  - `prisma/migrations/20260704083000_add_drug_global_display_ids/migration.sql`
+  - `src/lib/db/display-id.ts`
+  - `src/lib/db/display-id.test.ts`
+  - `tools/scripts/backfill-display-ids.ts`
+  - `tools/scripts/backfill-display-ids.test.ts`
+- Status:
+  - Implemented after Claude reviewer-approved plan.
+  - Migration apply, dev/e2e backfill, commit, and land are still held for
+    reviewer-audit plus exact SQL user approval.
+- Changed:
+  - Added nullable globally unique `display_id` fields to 7 global drug models:
+    `DrugMaster`, `DrugPackage`, `DrugPackageInsert`, `DrugInteraction`,
+    `GenericDrugMapping`, `DrugMasterImportLog`, `DrugMasterChangeEvent`.
+  - Added Prisma-generated additive migration SQL: `ADD COLUMN TEXT` x7 and
+    `CREATE UNIQUE INDEX ..._display_id_key` x7.
+  - Added `allocateGlobalDisplayIdRange` and wired the backfill script to use
+    `DISPLAY_ID_GLOBAL_ORG_ID` / `__global__` for global models.
+  - Backfill CLI now accepts global registry models and rejects `--org-id` when
+    a global model is targeted.
+  - Added schema/migration coverage and global dry-run/apply tests.
+- Safety:
+  - No `org_id`, default, NOT NULL, tenant composite unique, import/create path
+    wiring, `DrugAlertRule`, or `IntegrationJob` change.
+  - Backfill SQL remains model/table allowlist based and value-parameterized.
+  - Production unique-index lock risk remains deferred to ID-2-OPS /
+    CONCURRENTLY planning.
+- Validation:
+  - `pnpm exec prisma validate --schema=prisma/schema/` passed.
+  - `pnpm db:generate` passed.
+  - Focused Vitest passed `2` files / `33` tests, with `6` DB integration tests
+    skipped due no local DB env.
+  - Scoped ESLint and scoped diff-check passed.
+  - Old-schema temp `prisma migrate diff --from-schema <tmp old schema>
+    --to-schema prisma/schema --script` produced the expected 7 column adds and
+    7 unique indexes.
+  - `pnpm typecheck` passed.
+  - `pnpm typecheck:no-unused` passed on rerun after transient missing
+    `.next/types/app/**` generated files on first attempt.
+  - `pnpm build` passed on rerun after an existing unrelated Next build process
+    exited.
+- Remaining:
+  - Send exact generated SQL and diff summary to Claude for reviewer-audit.
+  - Wait for user approval before migration apply, backfill dry-run/apply,
+    post-check, commit, or land.
 
 ## Tasks Query Helper Convergence - 2026-07-03 19:42 JST
 
