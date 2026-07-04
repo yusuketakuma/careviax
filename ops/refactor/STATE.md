@@ -84,6 +84,12 @@
   q,generic,limit,includeTotal params / org header / queryKey / enabled gate / generic-name
   checkbox / candidate selection / submit payload contract は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 qr-draft-review readApiJson slice(d08fb9e5) land。focused Vitest 10、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。QR draft detail / active case
+  lookup read GET を readApiJson へ収束し、draft/cases endpoints / encoded patient_id /
+  active status,limit params / org header / queryKeys / enabled gates / retry UI /
+  hostile-id links / confirm and discard mutations は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 - codex: R40/R44 drug-masters readApiJson slice(fe9edc77) land。focused Vitest 88、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。pharmacy sites / drug master cursor page /
   import status / import logs read GET を readApiJson へ収束し、site scoping / cursor params /

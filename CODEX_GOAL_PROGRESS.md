@@ -1,5 +1,44 @@
 # CODEX Goal Progress
 
+## R40/R44 QR Draft Review readApiJson Partial - 2026-07-05 08:00 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx`
+    - `src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.test.tsx`
+- Scope:
+  - Reused `readApiJson` for QR draft detail and active case lookup read GETs.
+  - Added queryFn contract coverage proving API JSON `message` from failed
+    draft/case lookups is preserved.
+  - Preserved the QR draft detail endpoint, case lookup endpoint, encoded
+    patient_id, active status/limit params, org headers, React Query keys,
+    enabled gates, retryable QR draft and case error UI, hostile-id URL
+    encoding, confirmation mutation, discard mutation, and registration link
+    behavior.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.test.tsx'`
+    passed `1` file / `10` tests after updating an existing success fetch mock
+    to return a standard `Response`.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `d08fb9e5`
+    (`refactor(ui): reuse readApiJson in qr draft review`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Generic Candidates readApiJson Partial - 2026-07-05 07:55 JST
 
 - Status:
