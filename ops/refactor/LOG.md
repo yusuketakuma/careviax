@@ -5,6 +5,22 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-handoff-workspace 8d74ea99
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/app/(dashboard)/handoff/handoff-workspace.tsx`,
+  `src/app/(dashboard)/handoff/handoff-workspace.test.tsx`
+- 実施: handoff board / dashboard cockpit / handoff confirmation tasks / recent comments /
+  visit handoff read fetchers を `readApiJson` へ移行し、failed response の API JSON `message` 表面化テストを追加。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。endpoints/query params、org header、queryKeys、
+  realtime invalidation、enabled gates、board/action rail/comment feed/visit-handoff states、mutations は維持。
+- 安全: product UI read fetch internals のみ。関連 handoff API route tests で raw error body sanitize 済み。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- 検証: focused handoff workspace Vitest `1 file / 23 tests` green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit 8d74ea99。
+- 残課題: R40/R44 は partial。
+
 ## 2026-07-05 R40/R44-weekly-optimizer c13f5942
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。

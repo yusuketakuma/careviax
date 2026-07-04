@@ -1,5 +1,46 @@
 # CODEX Goal Progress
 
+## R40/R44 Handoff Workspace readApiJson Partial - 2026-07-05 08:20 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/handoff/handoff-workspace.tsx`
+    - `src/app/(dashboard)/handoff/handoff-workspace.test.tsx`
+- Scope:
+  - Reused `readApiJson` for handoff board, dashboard cockpit, handoff
+    confirmation tasks, recent comments, and visit handoff read fetchers.
+  - Added direct fetch contract coverage proving API JSON `message` from failed
+    handoff workspace read fetches is preserved while URL and `x-org-id` header
+    contracts remain unchanged.
+  - Preserved endpoints/query params, org headers, React Query/realtime query
+    keys, enabled gates, handoff board states, action rail states, comment feed
+    states, visit handoff confirmation states, and transfer/message/resolve/read
+    and visit-confirm mutations.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Related handoff API route tests already verify raw unexpected errors are
+    sanitized before JSON response bodies are returned.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx'`
+    passed `1` file / `23` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `8d74ea99`
+    (`refactor(ui): reuse readApiJson in handoff workspace`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Weekly Optimizer readApiJson Partial - 2026-07-05 08:14 JST
 
 - Status:
