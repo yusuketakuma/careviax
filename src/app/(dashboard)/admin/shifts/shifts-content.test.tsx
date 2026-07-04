@@ -12,8 +12,14 @@ type CapturedMutation = {
   mutationFn: () => unknown;
 };
 
+type CapturedQuery = {
+  queryKey: readonly unknown[];
+  queryFn?: () => Promise<unknown>;
+};
+
 const mutationMutateMock = vi.hoisted(() => vi.fn());
 const mutationConfigs = vi.hoisted(() => [] as CapturedMutation[]);
+const queryConfigs = vi.hoisted(() => [] as CapturedQuery[]);
 const fetchMock = vi.hoisted(() => vi.fn());
 // Tests can mark specific query keys as failed (isError) to exercise the
 // supporting-master fetch-error banner without touching the success-path tests.
@@ -33,7 +39,9 @@ vi.mock('@tanstack/react-query', () => ({
       isPending: false,
     };
   },
-  useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => {
+  useQuery: (options: CapturedQuery) => {
+    queryConfigs.push(options);
+    const { queryKey } = options;
     const key = String(queryKey[0]);
 
     let refetch = refetchSpies.get(key);
@@ -162,6 +170,7 @@ describe('ShiftsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mutationConfigs.length = 0;
+    queryConfigs.length = 0;
     queryErrorKeys.clear();
     queryLoadingKeys.clear();
     refetchSpies.clear();
@@ -406,5 +415,61 @@ describe('ShiftsContent', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
     expect(refetchSpies.get('pharmacy-sites')).toHaveBeenCalled();
+  });
+
+  it('uses the shared JSON reader for read-only shift support queries', async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      expect(init?.headers).toEqual({ 'x-org-id': 'org_1' });
+      if (url === '/api/pharmacy-sites') {
+        return Response.json({ data: [{ id: 'site_1', name: '本店', address: '東京都' }] });
+      }
+      if (url === '/api/pharmacists?include_collaborators=true') {
+        return Response.json({ data: [] });
+      }
+      if (url.startsWith('/api/pharmacist-shifts?')) {
+        expect(url).toContain('limit=400');
+        return Response.json({ data: [] });
+      }
+      if (url.startsWith('/api/business-holidays?')) {
+        expect(url).toContain('date_from=');
+        expect(url).toContain('date_to=');
+        return Response.json({ data: [] });
+      }
+      if (url === '/api/pharmacist-shift-templates') {
+        return Response.json({ data: [] });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    render(<ShiftsContent />);
+
+    const queryByKey = (key: string) => queryConfigs.find((query) => query.queryKey[0] === key);
+
+    await expect(queryByKey('pharmacy-sites')?.queryFn?.()).resolves.toEqual({
+      data: [{ id: 'site_1', name: '本店', address: '東京都' }],
+    });
+    await expect(queryByKey('pharmacists')?.queryFn?.()).resolves.toEqual({ data: [] });
+    await expect(queryByKey('pharmacist-shifts')?.queryFn?.()).resolves.toEqual({ data: [] });
+    await expect(queryByKey('business-holidays')?.queryFn?.()).resolves.toEqual({ data: [] });
+    await expect(queryByKey('pharmacist-shift-templates')?.queryFn?.()).resolves.toEqual({
+      data: [],
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/pharmacy-sites', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/pharmacists?include_collaborators=true', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/^\/api\/pharmacist-shifts\?/), {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/^\/api\/business-holidays\?/), {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/pharmacist-shift-templates', {
+      headers: { 'x-org-id': 'org_1' },
+    });
   });
 });

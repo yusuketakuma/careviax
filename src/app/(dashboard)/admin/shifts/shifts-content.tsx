@@ -51,6 +51,7 @@ import {
   roleRequiresSite,
   type ManageableMemberRole,
 } from '@/lib/auth/member-roles';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
@@ -188,8 +189,7 @@ export function ShiftsContent() {
       const res = await fetch('/api/pharmacy-sites', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('店舗情報の取得に失敗しました');
-      return res.json() as Promise<{ data: PharmacySite[] }>;
+      return readApiJson<{ data: PharmacySite[] }>(res, '店舗情報の取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -205,8 +205,7 @@ export function ShiftsContent() {
       const res = await fetch('/api/pharmacists?include_collaborators=true', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('メンバー一覧の取得に失敗しました');
-      return res.json() as Promise<{ data: Pharmacist[] }>;
+      return readApiJson<{ data: Pharmacist[] }>(res, 'メンバー一覧の取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -223,8 +222,7 @@ export function ShiftsContent() {
       const res = await fetch(`/api/pharmacist-shifts?month=${month}&limit=400`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('シフトの取得に失敗しました');
-      return res.json() as Promise<{ data: ShiftRecord[] }>;
+      return readApiJson<{ data: ShiftRecord[] }>(res, 'シフトの取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -248,8 +246,7 @@ export function ShiftsContent() {
       const res = await fetch(`/api/business-holidays?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('休日設定の取得に失敗しました');
-      return res.json() as Promise<{ data: BusinessHoliday[] }>;
+      return readApiJson<{ data: BusinessHoliday[] }>(res, '休日設定の取得に失敗しました');
     },
     enabled: !!orgId,
   });
@@ -264,8 +261,7 @@ export function ShiftsContent() {
       const res = await fetch('/api/pharmacist-shift-templates', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('定型シフトの取得に失敗しました');
-      return res.json() as Promise<{ data: ShiftTemplate[] }>;
+      return readApiJson<{ data: ShiftTemplate[] }>(res, '定型シフトの取得に失敗しました');
     },
     enabled: !!orgId,
   });
