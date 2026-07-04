@@ -96,14 +96,16 @@ describe('StaffKpiPanel', () => {
     const currentMonth = new Date().toISOString().slice(0, 7);
     const fetchMock = vi.fn(async () => new Response(JSON.stringify(SUCCESS_DATA.data)));
     vi.stubGlobal('fetch', fetchMock);
+    let queryPromise: Promise<unknown> | undefined;
     useQueryMock.mockImplementationOnce(({ queryFn }: { queryFn: () => Promise<unknown> }) => {
-      void queryFn();
+      queryPromise = queryFn();
       return SUCCESS_DATA;
     });
 
     render(<StaffKpiPanel />);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await expect(queryPromise).resolves.toEqual(SUCCESS_DATA.data);
     expect(buildAdminStaffMetricsApiPath).toHaveBeenCalledWith(expect.any(URLSearchParams));
     expect(buildOrgHeaders).toHaveBeenCalledWith('org_1');
     expect(fetchMock).toHaveBeenCalledWith(`/api/admin/staff-metrics?month=${currentMonth}`, {

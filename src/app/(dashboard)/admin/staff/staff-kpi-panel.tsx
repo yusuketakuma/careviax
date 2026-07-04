@@ -11,6 +11,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { StatCard } from '@/components/ui/stat-card';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildAdminStaffMetricsApiPath } from '@/lib/staff-metrics/api-paths';
@@ -68,8 +69,7 @@ export function StaffKpiPanel() {
       const response = await fetch(buildAdminStaffMetricsApiPath(new URLSearchParams({ month })), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('スタッフKPIの取得に失敗しました');
-      return response.json() as Promise<StaffMetricsResponse>;
+      return readApiJson<StaffMetricsResponse>(response, 'スタッフKPIの取得に失敗しました');
     },
     enabled: !!orgId,
   });
