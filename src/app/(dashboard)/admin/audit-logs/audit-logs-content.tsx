@@ -31,6 +31,7 @@ import {
 } from '@/lib/audit-logs/filter-options';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { messageFromError } from '@/lib/utils/error-message';
 
 // --- Types ---
 
@@ -201,8 +202,7 @@ export function AuditLogsContent() {
       URL.revokeObjectURL(objectUrl);
       toast.success(`監査ログを${format.toUpperCase()}形式で出力しました`);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : '監査ログのエクスポートに失敗しました';
+      const message = messageFromError(error, '監査ログのエクスポートに失敗しました');
       toast.error(message);
     }
   }

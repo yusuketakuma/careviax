@@ -18,6 +18,8 @@ vi.mock('sonner', () => ({
   },
 }));
 
+import { toast } from 'sonner';
+
 vi.mock('@/components/ui/select', async () => {
   const React = await import('react');
   const SelectContext = React.createContext<{
@@ -245,6 +247,29 @@ describe('AuditLogsContent', () => {
       expect(params.get('target_type')).toBe('consent_record');
       expect(params.get('action')).toBe('consent_record_viewed');
       expect(params.get('format')).toBe('json');
+    });
+  });
+
+  it('uses the audit export fallback toast when the thrown error has an empty message', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/audit-logs/export?')) {
+        throw new Error('');
+      }
+      if (url.startsWith('/api/audit-logs?')) {
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+    await screen.findByText('ログがありません');
+
+    fireEvent.click(screen.getByRole('button', { name: 'JSON出力' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('監査ログのエクスポートに失敗しました');
     });
   });
 
