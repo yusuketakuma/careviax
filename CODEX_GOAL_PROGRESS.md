@@ -1,5 +1,38 @@
 # CODEX Goal Progress
 
+## R40/R44 Site Selection readApiJson Partial - 2026-07-05 03:00 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/select-site/select-site-content.tsx`
+- Scope:
+  - Reused `readApiJson<{ data: MySite[] }>` for the site-selection GET helper.
+  - Preserved `/api/me/sites`, `buildOrgHeaders`, React Query key, response
+    envelope unwrapping, rendered UI behavior, and site-switch mutation
+    behavior.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/select-site/select-site-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `2` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `cb515780`
+    (`refactor(ui): reuse readApiJson in site selection`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Staff Workload readApiJson Partial - 2026-07-05 02:57 JST
 
 - Status:
