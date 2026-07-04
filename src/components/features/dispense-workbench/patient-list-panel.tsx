@@ -121,7 +121,8 @@ export function PatientListPanel({ view }: PatientListPanelProps) {
               size="inline"
               title="データを取得できませんでした"
               description="通信状態を確認し、再読み込みしてください。"
-              action={{ label: '再読み込み', onClick: () => retryLoad() }}
+              onRetry={() => retryLoad()}
+              retryLabel="再読み込み"
             />
           </div>
         ) : view.listState === 'empty' ? (
