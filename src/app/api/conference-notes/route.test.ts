@@ -656,6 +656,49 @@ describe('/api/conference-notes', () => {
     });
   });
 
+  it('keeps scanning cursor when billing eligibility filter under-fills the visible page', async () => {
+    conferenceNoteFindManyMock.mockResolvedValue(
+      Array.from({ length: 11 }, (_, index) => ({
+        id: `note_${index + 1}`,
+        org_id: 'org_1',
+        case_id: null,
+        patient_id: null,
+        facility_id: null,
+        note_type: 'pre_discharge',
+        title: `退院前カンファ ${index + 1}`,
+        content: '退院支援内容',
+        structured_content: null,
+        metadata: null,
+        participants: [],
+        billing_eligible: index === 0,
+        billing_code: null,
+        follow_up_date: null,
+        follow_up_completed: false,
+        generated_report_id: null,
+        conference_date: new Date(`2026-03-${String(28 - index).padStart(2, '0')}T01:00:00.000Z`),
+        action_items: [],
+        created_at: new Date('2026-03-28T02:00:00.000Z'),
+        updated_at: new Date('2026-03-28T02:00:00.000Z'),
+      })),
+    );
+    careCaseFindManyMock.mockResolvedValue([]);
+
+    const response = await GET(
+      createRequest({
+        url: 'http://localhost/api/conference-notes?billing_eligible=true&limit=2',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(conferenceNoteFindManyMock).toHaveBeenCalledWith(expect.objectContaining({ take: 11 }));
+    await expect(response.json()).resolves.toMatchObject({
+      data: [expect.objectContaining({ id: 'note_1', billing_eligible: true })],
+      hasMore: true,
+      nextCursor: 'note_11',
+    });
+  });
+
   it('creates a structured conference note and synthesizes summary metadata defaults', async () => {
     conferenceNoteCreateMock.mockResolvedValue({
       id: 'note_2',

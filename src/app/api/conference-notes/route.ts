@@ -6,7 +6,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { conflict, internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { parseSearchParams } from '@/lib/api/validation';
 import { ConferenceDataSyncService } from '@/server/services/conference-data-sync';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
@@ -286,18 +286,17 @@ const authenticatedGET = withAuthContext(
         billingEligibilityFilter === undefined
           ? mappedRecords
           : mappedRecords.filter((note) => note.billing_eligible === billingEligibilityFilter);
-      const hasFilteredOverflow = filteredRecords.length > limit;
       const hasScanOverflow = records.length >= scanLimit;
-      const data = hasFilteredOverflow ? filteredRecords.slice(0, limit) : filteredRecords;
-      const nextCursor = hasFilteredOverflow
-        ? data[data.length - 1]?.id
+      const page = buildCursorPage(filteredRecords, limit, (note) => note.id);
+      const nextCursor = page.hasMore
+        ? page.nextCursor
         : hasScanOverflow
           ? records[records.length - 1]?.id
           : undefined;
 
       return {
-        data,
-        hasMore: Boolean(nextCursor) && (hasFilteredOverflow || hasScanOverflow),
+        data: page.data,
+        hasMore: Boolean(nextCursor) && (page.hasMore || hasScanOverflow),
         nextCursor,
       };
     });
