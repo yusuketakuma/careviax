@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckSquare, Square, Send } from 'lucide-react';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,6 +35,10 @@ const UAT_FEEDBACK_REQUIRED_MESSAGE = 'フィードバック内容を入力し�
 const UAT_FEEDBACK_HELP_MESSAGE = 'フィードバック内容を入力すると送信できます。';
 const UAT_FEEDBACK_HELP_ID = 'uat-feedback-help';
 const UAT_FEEDBACK_ERROR_ID = 'uat-feedback-error';
+const UAT_FEEDBACK_FORM_DEFAULTS = {
+  priority: 'medium',
+  feedback: '',
+} satisfies UatFeedbackForm;
 
 function LoadingRows({ label, rows = 3 }: { label: string; rows?: number }) {
   return (
@@ -56,6 +61,11 @@ type UatFeedbackItem = {
   due_date: string | null;
   resolved_at: string | null;
   created_at: string;
+};
+
+type UatFeedbackForm = {
+  priority: UatFeedbackItem['priority'];
+  feedback: string;
 };
 
 type PilotReadinessData = {
@@ -249,9 +259,22 @@ export function UatContent() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [checked, setChecked] = useState<Set<string>>(new Set());
-  const [feedback, setFeedback] = useState('');
-  const [feedbackError, setFeedbackError] = useState<string | null>(null);
-  const [priority, setPriority] = useState('medium');
+  const {
+    clearErrors: clearFeedbackFormErrors,
+    control: feedbackFormControl,
+    getValues: getFeedbackFormValues,
+    handleSubmit: handleSubmitFeedbackForm,
+    register: registerFeedbackField,
+    resetField: resetFeedbackField,
+    formState: { errors: feedbackFormErrors },
+  } = useForm<UatFeedbackForm>({
+    defaultValues: UAT_FEEDBACK_FORM_DEFAULTS,
+  });
+  const watchedFeedback = useWatch({
+    control: feedbackFormControl,
+    name: 'feedback',
+    defaultValue: UAT_FEEDBACK_FORM_DEFAULTS.feedback,
+  });
   const [feedbackDrafts, setFeedbackDrafts] = useState<Record<string, UatFeedbackDraft>>({});
 
   const feedbackQuery = useQuery({
@@ -322,8 +345,9 @@ export function UatContent() {
   });
 
   const submitMutation = useMutation({
-    mutationFn: () =>
-      fetchOrgJson<{ data: UatFeedbackItem }>(
+    mutationFn: () => {
+      const currentFeedbackForm = getFeedbackFormValues();
+      return fetchOrgJson<{ data: UatFeedbackItem }>(
         orgId,
         '/api/admin/uat-feedback',
         {
@@ -332,18 +356,19 @@ export function UatContent() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            priority,
-            feedback: feedback.trim(),
+            priority: currentFeedbackForm.priority,
+            feedback: currentFeedbackForm.feedback.trim(),
             checklist_progress: `${checkedCount}/${totalItems}`,
             checked_items: Array.from(checked),
             source: 'pilot_pharmacy',
           }),
         },
         'UAT フィードバックの送信に失敗しました',
-      ),
+      );
+    },
     onSuccess: async () => {
       toast.success('フィードバックを保存しました');
-      setFeedback('');
+      resetFeedbackField('feedback');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['uat-feedback', orgId] }),
         queryClient.invalidateQueries({ queryKey: ['uat-feedback-summary', orgId] }),
@@ -399,7 +424,11 @@ export function UatContent() {
     collaboratorsQuery.error instanceof Error
       ? collaboratorsQuery.error.message
       : '担当候補の取得に失敗しました';
-  const feedbackIsBlank = !feedback.trim();
+  const feedbackError =
+    typeof feedbackFormErrors.feedback?.message === 'string'
+      ? feedbackFormErrors.feedback.message
+      : null;
+  const feedbackIsBlank = !watchedFeedback.trim();
   const feedbackDescriptionId = feedbackError
     ? UAT_FEEDBACK_ERROR_ID
     : feedbackIsBlank
@@ -412,6 +441,9 @@ export function UatContent() {
   const statusLabelByValue = new Map<string, string>(
     UAT_STATUS_OPTIONS.map((option) => [option.value, option.label] as const),
   );
+  const feedbackField = registerFeedbackField('feedback', {
+    validate: (value) => value.trim() !== '' || UAT_FEEDBACK_REQUIRED_MESSAGE,
+  });
 
   function getDraft(item: UatFeedbackItem): UatFeedbackDraft {
     return feedbackDrafts[item.id] ?? createUatFeedbackDraft(item);
@@ -447,14 +479,11 @@ export function UatContent() {
     });
   }
 
-  async function handleSubmitFeedback() {
-    if (feedbackIsBlank) {
-      setFeedbackError(UAT_FEEDBACK_REQUIRED_MESSAGE);
-      return;
-    }
-    setFeedbackError(null);
+  async function submitFeedbackForm() {
     await submitMutation.mutateAsync();
   }
+
+  const handleSubmitFeedback = handleSubmitFeedbackForm(submitFeedbackForm);
 
   async function handleUpdateFeedback(item: UatFeedbackItem) {
     await updateMutation.mutateAsync({
@@ -916,34 +945,46 @@ export function UatContent() {
       <Separator />
 
       {/* Feedback form */}
-      <div className="space-y-4">
+      <form className="space-y-4" onSubmit={handleSubmitFeedback} noValidate>
         <h2 className="text-base font-semibold text-foreground">フィードバック送信</h2>
 
         <div className="space-y-1">
           <Label htmlFor="feedback_priority">優先度</Label>
-          <Select value={priority} onValueChange={(v) => v && setPriority(v)}>
-            <SelectTrigger id="feedback_priority" className="w-48">
-              <SelectValue>{priorityLabelByValue.get(priority) ?? priority}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {UAT_PRIORITY_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Controller
+            control={feedbackFormControl}
+            name="priority"
+            render={({ field }) => (
+              <Select
+                value={field.value}
+                onValueChange={(value) => {
+                  if (!value) return;
+                  field.onChange(value as UatFeedbackForm['priority']);
+                }}
+              >
+                <SelectTrigger id="feedback_priority" className="w-48">
+                  <SelectValue>{priorityLabelByValue.get(field.value) ?? field.value}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {UAT_PRIORITY_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
         </div>
 
         <div className="space-y-1">
           <Label htmlFor="feedback_text">フィードバック内容</Label>
           <Textarea
             id="feedback_text"
-            value={feedback}
-            onChange={(e) => {
-              setFeedback(e.target.value);
-              if (feedbackError && e.target.value.trim()) {
-                setFeedbackError(null);
+            {...feedbackField}
+            onChange={(event) => {
+              void feedbackField.onChange(event);
+              if (feedbackError && event.target.value.trim()) {
+                clearFeedbackFormErrors('feedback');
               }
             }}
             aria-invalid={feedbackError ? true : undefined}
@@ -964,14 +1005,14 @@ export function UatContent() {
         </div>
 
         <Button
-          onClick={handleSubmitFeedback}
+          type="submit"
           disabled={submitMutation.isPending || feedbackIsBlank}
           aria-describedby={feedbackDescriptionId}
         >
           <Send className="mr-2 size-4" aria-hidden="true" />
           {submitMutation.isPending ? '送信中...' : 'フィードバックを送信'}
         </Button>
-      </div>
+      </form>
 
       <Separator />
 

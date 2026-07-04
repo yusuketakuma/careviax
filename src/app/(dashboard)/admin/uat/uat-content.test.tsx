@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { ReactNode } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -35,8 +35,16 @@ vi.mock('@tanstack/react-query', () => ({
       error: null,
     };
   },
-  useMutation: () => ({
-    mutateAsync: mutateAsyncMock,
+  useMutation: (options: {
+    mutationFn: (variables?: unknown) => Promise<unknown>;
+    onSuccess?: (data: unknown, variables?: unknown, context?: unknown) => void | Promise<void>;
+  }) => ({
+    mutateAsync: async (variables?: unknown) => {
+      mutateAsyncMock(variables);
+      const data = await options.mutationFn(variables);
+      await options.onSuccess?.(data, variables, undefined);
+      return data;
+    },
     isPending: false,
   }),
   useQueryClient: () => ({
@@ -45,13 +53,28 @@ vi.mock('@tanstack/react-query', () => ({
 }));
 
 vi.mock('@/components/ui/select', () => ({
-  Select: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  Select: ({
+    children,
+    onValueChange,
+  }: {
+    children: ReactNode;
+    onValueChange?: (value: string) => void;
+  }) => (
+    <div>
+      {children}
+      {onValueChange ? (
+        <button type="button" onClick={() => onValueChange('high')}>
+          優先度を高に変更
+        </button>
+      ) : null}
+    </div>
+  ),
   SelectContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   SelectItem: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   SelectTrigger: ({ children, id }: { children: ReactNode; id?: string }) => (
     <div id={id}>{children}</div>
   ),
-  SelectValue: () => <span>medium</span>,
+  SelectValue: ({ children }: { children?: ReactNode }) => <span>{children ?? 'medium'}</span>,
 }));
 
 vi.mock('sonner', () => ({
@@ -65,10 +88,16 @@ describe('UatContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     loadingQueryKeysMock.clear();
-    mutateAsyncMock.mockResolvedValue(undefined);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ data: { id: 'feedback_1' } }),
+      })),
+    );
   });
 
-  it('shows a disabled-send reason until feedback content is entered', () => {
+  it('shows a disabled-send reason until feedback content is entered and submits the preserved body', async () => {
     render(<UatContent />);
 
     const textarea = screen.getByLabelText('フィードバック内容');
@@ -79,6 +108,8 @@ describe('UatContent', () => {
     expect(submitButton.getAttribute('aria-describedby')).toBe('uat-feedback-help');
     expect(submitButton).toHaveProperty('disabled', true);
 
+    fireEvent.click(screen.getByText(/患者登録 → 訪問予定作成/));
+    fireEvent.click(screen.getByRole('button', { name: '優先度を高に変更' }));
     fireEvent.change(textarea, { target: { value: 'チェックリストの導線を改善したい' } });
 
     expect(screen.queryByText('フィードバック内容を入力すると送信できます。')).toBeNull();
@@ -88,7 +119,29 @@ describe('UatContent', () => {
 
     fireEvent.click(submitButton);
 
-    expect(mutateAsyncMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mutateAsyncMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body as string)).toEqual({
+      priority: 'high',
+      feedback: 'チェックリストの導線を改善したい',
+      checklist_progress: '1/8',
+      checked_items: ['flow_patient_to_report'],
+      source: 'pilot_pharmacy',
+    });
+    await waitFor(() => expect(textarea).toHaveProperty('value', ''));
+    expect(submitButton).toHaveProperty('disabled', true);
+
+    fireEvent.change(textarea, { target: { value: '二回目の送信' } });
+    fireEvent.click(submitButton);
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(vi.mocked(globalThis.fetch).mock.calls[1]?.[1]?.body as string)).toEqual({
+      priority: 'high',
+      feedback: '二回目の送信',
+      checklist_progress: '1/8',
+      checked_items: ['flow_patient_to_report'],
+      source: 'pilot_pharmacy',
+    });
     expect(toast.error).not.toHaveBeenCalled();
   });
 
