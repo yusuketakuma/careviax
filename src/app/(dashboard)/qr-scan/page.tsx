@@ -36,6 +36,7 @@ import {
 import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { normalizeJahisSupplementalRecords } from '@/lib/pharmacy/jahis-supplemental-records-view';
@@ -381,7 +382,7 @@ export default function QRScanPage() {
 
       setPhase('done');
     } catch (err) {
-      setSendError(err instanceof Error ? err.message : '送信中にエラーが発生しました');
+      setSendError(messageFromError(err, '送信中にエラーが発生しました'));
       setPhase('error');
     }
   };

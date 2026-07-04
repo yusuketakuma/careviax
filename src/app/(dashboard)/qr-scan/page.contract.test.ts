@@ -11,6 +11,11 @@ describe('QRScanPage accessibility status contract', () => {
     expect(SOURCE).toContain('{sendError}');
   });
 
+  it('normalizes send error messages through the shared fallback helper', () => {
+    expect(SOURCE).toContain("import { messageFromError } from '@/lib/utils/error-message';");
+    expect(SOURCE).toContain("setSendError(messageFromError(err, '送信中にエラーが発生しました'))");
+  });
+
   it('announces non-blocking scan progress and successful send state as status messages', () => {
     expect(SOURCE).toContain('role="status"');
     expect(SOURCE).toContain('aria-live="polite"');
