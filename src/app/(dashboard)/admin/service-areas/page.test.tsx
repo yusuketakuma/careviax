@@ -575,7 +575,7 @@ describe('ServiceAreasPage', () => {
     vi.stubGlobal('fetch', fetchMock);
     renderPage();
 
-    expect(screen.getByText('訪問エリアを読み込み中...')).toBeTruthy();
+    expect(screen.getByRole('status', { name: '訪問エリアを読み込み中' })).toBeTruthy();
     expect(screen.queryByText('まだ訪問エリアはありません。')).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });

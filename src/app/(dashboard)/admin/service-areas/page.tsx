@@ -22,6 +22,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SkeletonRows } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
@@ -465,9 +466,9 @@ export default function ServiceAreasPage() {
               // isPending (not isLoading) so an unresolved orgId — which disables the query
               // (enabled: !!orgId) and leaves it pending-but-not-fetching — also shows loading
               // rather than the empty-state.
-              <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
-                訪問エリアを読み込み中...
-              </p>
+              <div role="status" aria-label="訪問エリアを読み込み中" aria-live="polite">
+                <SkeletonRows rows={3} cols={3} status={false} />
+              </div>
             ) : serviceAreas.length === 0 ? (
               <p className="text-sm text-muted-foreground">まだ訪問エリアはありません。</p>
             ) : (
