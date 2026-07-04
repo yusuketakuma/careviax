@@ -35,6 +35,7 @@ import { useAuthStore } from '@/lib/stores/auth-store';
 import { hasPermission } from '@/lib/auth/permission-matrix';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type { VisitHandoff } from '@/types/visit-brief';
 import {
@@ -368,7 +369,7 @@ function TransferDialog({
       onCreated();
     },
     onError: (err: Error) => {
-      toast.error(err.message);
+      toast.error(messageFromError(err, '仕事を渡せませんでした'));
     },
   });
 
@@ -642,7 +643,7 @@ function HandoffMessageChannel({
       setContent('');
       onChanged();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(messageFromError(err, '連絡を送れませんでした')),
   });
 
   const readMutation = useMutation({
@@ -658,7 +659,7 @@ function HandoffMessageChannel({
       return res.json();
     },
     onSuccess: () => onChanged(),
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(messageFromError(err, '既読にできませんでした')),
   });
 
   return (
@@ -933,7 +934,7 @@ function ConsultResolutionPanel({
     },
     onError: (err: Error) => {
       setPendingAction(null);
-      toast.error(err.message);
+      toast.error(messageFromError(err, '対応を記録できませんでした'));
     },
   });
 
@@ -1047,7 +1048,7 @@ function ConsultIntake({
       setContent('');
       onCreated();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(messageFromError(err, '相談を起票できませんでした')),
   });
 
   return (
@@ -1425,7 +1426,7 @@ export function HandoffWorkspace() {
       void queryClient.invalidateQueries({ queryKey: ['handoff-board'] });
     },
     onError: (err: Error) => {
-      toast.error(err.message);
+      toast.error(messageFromError(err, '受領確認に失敗しました'));
     },
   });
 

@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { useUIStore } from '@/lib/stores/ui-store';
@@ -33,6 +34,11 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 vi.mock('@/lib/hooks/use-realtime-events', () => ({
   useRealtimeEvents: useRealtimeEventsMock,
 }));
+
+vi.mock('sonner', async () => {
+  const { createSonnerToastMock } = await import('@/test/sonner-test-utils');
+  return createSonnerToastMock().module;
+});
 
 function buildItem(overrides: Partial<HandoffBoardItem>): HandoffBoardItem {
   return {
@@ -150,6 +156,8 @@ function stubFetch(
     cockpitStatus?: number;
     recentCommentsStatus?: number;
     recentComments?: Array<Record<string, unknown>>;
+    itemPostFailure?: Response;
+    itemReadFailure?: Response;
   } = {},
 ) {
   const cockpitStatus = options.cockpitStatus ?? 200;
@@ -169,6 +177,9 @@ function stubFetch(
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.includes('/api/handoff-board/items') && init?.method === 'POST') {
+      if (options.itemPostFailure) {
+        return options.itemPostFailure;
+      }
       return new Response(
         JSON.stringify({
           data: {
@@ -179,6 +190,14 @@ function stubFetch(
         }),
         { status: 201 },
       );
+    }
+    if (url.includes('/api/handoff-board/items/') && init?.method === 'PATCH') {
+      if (options.itemReadFailure) {
+        return options.itemReadFailure;
+      }
+      return new Response(JSON.stringify({ data: { read_at: '2026-06-11T01:00:00.000Z' } }), {
+        status: 200,
+      });
     }
     if (url.includes('/api/handoff-board')) {
       return new Response(JSON.stringify({ data: board }), { status: 200 });
@@ -419,6 +438,42 @@ describe('HandoffWorkspace', () => {
     });
   });
 
+  it('keeps server messages when transfer creation fails', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+    stubFetch(BOARD, {
+      itemPostFailure: new Response(JSON.stringify({ message: 'この仕事は既に渡されています' }), {
+        status: 409,
+      }),
+    });
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('handoff-outgoing-section')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId('handoff-open-transfer'));
+    fireEvent.change(await screen.findByLabelText('件名'), {
+      target: { value: 'セット先行準備(施設GH)' },
+    });
+    fireEvent.click(screen.getByLabelText('宛先(誰に渡すか)'));
+    fireEvent.click(screen.getByRole('option', { name: '鈴木 一郎(事務スタッフ)' }));
+    fireEvent.change(screen.getByLabelText('①何を(作業の範囲)'), {
+      target: { value: '数量セットまで' },
+    });
+    fireEvent.change(screen.getByLabelText('②なぜ(根拠)'), {
+      target: { value: '判断WIPが目安超過のため' },
+    });
+    fireEvent.change(screen.getByLabelText('③いつまで(期限)'), {
+      target: { value: '2026-06-11T17:00' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '渡す(責任を移す)' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('この仕事は既に渡されています');
+    });
+  });
+
   it('shows the priority label, not the raw enum, in the transfer dialog select', async () => {
     // bare <SelectValue /> は既定値 'normal' の生 enum を初期表示で漏らす。
     // 明示 children で常に日本語ラベル('通常')を表示することを固定する(SSR enum 漏れ封止)。
@@ -463,6 +518,41 @@ describe('HandoffWorkspace', () => {
     });
     expect(screen.getByRole('button', { name: '受領確認' })).toBeTruthy();
     expect(screen.queryByTestId('handoff-incoming-empty')).toBeNull();
+  });
+
+  it('falls back when receipt confirmation fails without a server message', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+    const board: HandoffBoardResponse = {
+      ...BOARD,
+      items: [
+        buildItem({
+          id: 'item_in',
+          content: '疑義照会の判断をお願いします',
+          created_by: 'user_2',
+          created_by_name: '鈴木 一郎',
+          recipient_user_id: 'user_1',
+          recipient_label: '山田さん(薬剤師)',
+          lifecycle_status: 'proposed',
+          rationale: '判断が必要なため',
+          direction: 'incoming',
+        }),
+      ],
+      summary: { outgoing_count: 0, incoming_count: 1 },
+    };
+    stubFetch(board, {
+      itemReadFailure: new Response('server error', { status: 500 }),
+    });
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '受領確認' })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '受領確認' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('受領確認に失敗しました');
+    });
   });
 
   it('keeps the newest incoming item primary and tucks the rest behind a receipt backlog disclosure', async () => {
