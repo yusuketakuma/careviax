@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R40/R44 Audit Logs readApiJson Partial - 2026-07-05 03:17 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx`
+    - `src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx`
+- Scope:
+  - Reused `readApiJson<{ data: AuditLog[] }>` for the admin audit-log list
+    GET helper.
+  - Preserved `/api/audit-logs`, query parameter construction,
+    `buildOrgHeaders`, React Query key, response envelope shape, filter UI,
+    empty/error behavior, and JSON/CSV export behavior.
+  - Strengthened the focused list test to assert the `x-org-id` header
+    contract on audit-log list requests.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `8` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `35837bcc`
+    (`refactor(ui): reuse readApiJson in audit logs`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Admin Metrics readApiJson Partial - 2026-07-05 03:13 JST
 
 - Status:
