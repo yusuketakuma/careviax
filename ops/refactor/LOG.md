@@ -1357,3 +1357,24 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - commit: `6ee51a5a` (`fix(admin): name settings route loading`)。
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
+## 2026-07-04 R55 admin facilities route loading label
+
+- 分類: UI loading-state cleanup / R55 route-shell generic loading residual。
+- 実施:
+  - `admin/facilities/page.tsx` の route-level Suspense fallback を generic `Loading` から
+    `施設マスターを読み込み中...` の画面固有 status へ変更。
+  - `admin/facilities/page.test.tsx` を追加し、header shell が維持されること、generic
+    `読み込み中...` が出ないこと、suspended content が出ないことを固定。
+- 挙動変更: route-shell loading label のみ。facilities content query、facility/unit fetch、
+  mutation、org header、contact profile linkage、validation rules、API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の Clear state / false-empty prevention と
+  route fallback は軽量で意味のある loading UI にする Next loading/Suspense guidance に整合。
+- 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、facility/unit/contact name・address・phone/fax・site id・org id・raw error
+  を出さない。
+- 検証: focused facilities route Vitest `1 file / 2 tests` green、targeted ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `e248ba1e` (`fix(admin): name facilities route loading`)。
+- 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。

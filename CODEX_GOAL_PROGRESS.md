@@ -1,5 +1,39 @@
 # CODEX Goal Progress
 
+## R55 Facilities Route Loading Label - 2026-07-04 20:29 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/admin/facilities/page.tsx`
+    - `src/app/(dashboard)/admin/facilities/page.test.tsx`
+- Scope:
+  - Replaced the route-level generic Suspense fallback `Loading` with a
+    screen-specific `施設マスターを読み込み中...` status.
+  - Added a route shell regression test proving the admin header remains
+    visible, the fallback is screen-specific, generic `読み込み中...` is absent,
+    and suspended facilities content is not rendered.
+- Safety:
+  - Route-shell loading presentation and tests only.
+  - No facilities content query, facility/unit fetch, mutation, org header,
+    contact profile linkage, validation rules, DB, auth, authorization, PHI,
+    billing, audit, deployment, package, or server behavior changed.
+  - Loading copy is PHI-free and does not echo facility names, unit names,
+    contact names, addresses, phone/fax numbers, site IDs, org IDs, or raw
+    errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/facilities/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `2` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the facilities route source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `e248ba1e`
+    (`fix(admin): name facilities route loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Settings Route Loading Label - 2026-07-04 20:25 JST
 
 - Status:
