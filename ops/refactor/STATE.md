@@ -122,6 +122,10 @@
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。queryFn contract test で
   org-scoped workflow/notification endpoints を固定。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 data-explorer readApiJson slice(e3d7cd4b) land。focused Vitest 10、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。queryFn contract test で
+  org-scoped model/row endpoints と PHI-free row action contract を維持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
