@@ -5,6 +5,22 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-workflow-phase-access cc0eba08
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/lib/hooks/use-workflow-phase-access.ts`,
+  `src/lib/hooks/use-workflow-phase-access.test.ts`
+- 実施: workflow phase access read GET を `readApiJson` へ移行し、failed response の
+  API JSON `message` 表面化テストを追加。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。endpoint、org header、queryKey、
+  realtime invalidation、enabled gate、response normalize、malformed fail-closed は維持。
+- 安全: product UI navigation read fetch internals のみ。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- 検証: focused workflow-phase-access Vitest `1 file / 8 tests` green。
+  scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit cc0eba08。
+- 残課題: R40/R44 は partial。
+
 ## 2026-07-05 R40/R44-patient-form-lookups bbf75619
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。

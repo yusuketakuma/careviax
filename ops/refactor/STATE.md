@@ -110,6 +110,12 @@
   care-team disabled,error states / duplicate check / qualification check / create-update mutations は保持。
   SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
   維持しつつ、本sliceでは不要。
+- codex: R40/R44 workflow-phase-access readApiJson slice(cc0eba08) land。focused Vitest 8、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。workflow phase access read GET を
+  readApiJson へ収束し、endpoint / org header / queryKey / realtime invalidation /
+  enabled gate / response normalize / malformed fail-closed behavior は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 - codex: R40/R44 prescription-history readApiJson slice(d65d08d5) land。focused Vitest 29、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient prescription history GET /
   drug-master batch enrichment POST を readApiJson へ収束し、patient path helper / hostile-id

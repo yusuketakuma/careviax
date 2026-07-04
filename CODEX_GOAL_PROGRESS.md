@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R40/R44 Workflow Phase Access readApiJson Partial - 2026-07-05 08:51 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/lib/hooks/use-workflow-phase-access.ts`
+    - `src/lib/hooks/use-workflow-phase-access.test.ts`
+- Scope:
+  - Reused `readApiJson` for the workflow phase access read GET.
+  - Extracted the hook query fetcher into `fetchWorkflowDashboardPhaseAccess`
+    and added coverage proving API JSON `message` from failed responses is
+    preserved while endpoint and `x-org-id` header contracts remain unchanged.
+  - Preserved React Query key, realtime invalidation topics, enabled gate,
+    workflow dashboard response normalization, and malformed-payload
+    fail-closed behavior.
+- Safety:
+  - Product UI navigation read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run src/lib/hooks/use-workflow-phase-access.test.ts` passed
+    `1` file / `8` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `cc0eba08`
+    (`refactor(ui): reuse readApiJson in workflow phase access`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Patient Form Lookups readApiJson Partial - 2026-07-05 08:46 JST
 
 - Status:
