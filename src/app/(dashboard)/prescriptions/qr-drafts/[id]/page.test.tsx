@@ -194,6 +194,33 @@ afterEach(() => {
 });
 
 describe('QrDraftReviewPage case lookup error handling', () => {
+  it('shows a QR draft skeleton instead of a generic spinner while loading', () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      switch (queryKey[0]) {
+        case 'qr-scan-draft':
+          return { data: undefined, isLoading: true, isError: false, refetch: refetchDraftMock };
+        case 'patient-cases':
+          return {
+            data: undefined,
+            isLoading: false,
+            isError: false,
+            refetch: refetchCasesMock,
+          };
+        default:
+          return { data: undefined, isLoading: false, isError: false, refetch: vi.fn() };
+      }
+    });
+
+    render(<QrDraftReviewPage />);
+
+    expect(screen.getByRole('status', { name: 'QRスキャン下書きを読み込み中' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('読み込み中...', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText(baseDraft.parsed_data.patientName)).toBeNull();
+    expect(screen.queryByText(baseDraft.parsed_data.lines[0].drugName)).toBeNull();
+    expect(screen.queryByRole('button', { name: '確定' })).toBeNull();
+  });
+
   it('surfaces a retryable error instead of a false missing-draft state', () => {
     useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
       switch (queryKey[0]) {

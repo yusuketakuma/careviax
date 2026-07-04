@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Loading, SkeletonRows } from '@/components/ui/loading';
+import { Skeleton, SkeletonRows } from '@/components/ui/loading';
 import { ErrorState } from '@/components/ui/error-state';
 import {
   Select,
@@ -181,6 +181,61 @@ type DraftFormState = {
   prescriberInstitution: string | null;
   prescribedDate: string | null;
 };
+
+function QrDraftLoadingState() {
+  return (
+    <PageScaffold>
+      <div
+        className="space-y-6"
+        role="status"
+        aria-label="QRスキャン下書きを読み込み中"
+        aria-live="polite"
+      >
+        <div className="space-y-2">
+          <Skeleton className="h-7 w-56" />
+          <Skeleton className="h-4 w-full max-w-2xl" />
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
+          <Card className="border-border shadow-sm" aria-hidden="true">
+            <CardHeader className="space-y-2">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-4 w-full max-w-md" />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <div key={index} className="space-y-2">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-10 w-full rounded-md" />
+                  </div>
+                ))}
+              </div>
+              <SkeletonRows rows={4} cols={4} status={false} />
+            </CardContent>
+          </Card>
+
+          <Card className="border-border shadow-sm" aria-hidden="true">
+            <CardHeader className="space-y-2">
+              <Skeleton className="h-5 w-36" />
+              <Skeleton className="h-4 w-full max-w-xs" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="space-y-2 rounded-md border border-border/70 p-3">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-2/3" />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+        <span className="sr-only">QRスキャン下書きを読み込み中</span>
+      </div>
+    </PageScaffold>
+  );
+}
 
 // ── Helpers ──
 
@@ -484,7 +539,7 @@ export default function QrDraftReviewPage() {
     });
   };
 
-  if (!orgId || isLoading) return <Loading />;
+  if (!orgId || isLoading) return <QrDraftLoadingState />;
   if (isDraftError) {
     return (
       <div className="p-6">
