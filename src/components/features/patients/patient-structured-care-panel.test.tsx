@@ -3,7 +3,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { createQueryClientWrapper } from '@/test/query-client-test-utils';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { PatientStructuredCarePanel } from './patient-structured-care-panel';
 import { stubJsonFetch as stubFetch } from '@/test/fetch-test-utils';
@@ -121,5 +121,30 @@ describe('PatientStructuredCarePanel', () => {
     expect(await screen.findByTestId('patient-structured-care-panel-error')).toBeTruthy();
     expect(screen.getByText('在宅医療処置・麻薬の取得に失敗しました。')).toBeTruthy();
     expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
+  });
+
+  it('failed structured-care reads keep API error messages in the query error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: '構造化ケアの閲覧権限がありません' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+      ),
+    );
+    const queryClient = createTestQueryClient();
+
+    render(<PatientStructuredCarePanel patientId="p1" />, {
+      wrapper: createQueryClientWrapper(queryClient),
+    });
+
+    await screen.findByTestId('patient-structured-care-panel-error');
+    const query = queryClient.getQueryCache().find({
+      queryKey: ['patient-structured-care', 'p1', 'org_1'],
+    });
+    expect(query?.state.error).toBeInstanceOf(Error);
+    expect((query?.state.error as Error).message).toBe('構造化ケアの閲覧権限がありません');
   });
 });
