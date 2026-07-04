@@ -70,6 +70,7 @@ vi.mock('@/server/services/operational-tasks', () => ({
   upsertOperationalTask: upsertOperationalTaskMock,
 }));
 
+import { selectLatestDrugPriceVersionsByDrugMasterIdForAsOf } from './drug-price-version-selection';
 import { POST as rawPOST } from './route';
 
 const POST = (req: NextRequest) => rawPOST(req);
@@ -211,6 +212,46 @@ describe('/api/dispense-results POST', () => {
     vi.clearAllMocks();
     setupAuthMocks();
     checkDispenseAlertsMock.mockResolvedValue([]);
+  });
+
+  it('keeps drug price version selection unchanged after prior open windows are closed', () => {
+    const versionBefore = {
+      id: 'dpv_before',
+      drug_master_id: 'drug_1',
+      effective_from: new Date(Date.UTC(2026, 3, 1)),
+      effective_to: null,
+    };
+    const versionBeforeClosed = {
+      ...versionBefore,
+      effective_to: new Date(Date.UTC(2026, 3, 30)),
+    };
+    const versionAfter = {
+      id: 'dpv_after',
+      drug_master_id: 'drug_1',
+      effective_from: new Date(Date.UTC(2026, 4, 1)),
+      effective_to: null,
+    };
+
+    const cases = [
+      { asOf: new Date(Date.UTC(2026, 3, 30)), expected: 'dpv_before' },
+      { asOf: new Date(Date.UTC(2026, 4, 1)), expected: 'dpv_after' },
+      { asOf: new Date(Date.UTC(2026, 4, 31)), expected: 'dpv_after' },
+      { asOf: new Date(Date.UTC(2027, 0, 1)), expected: 'dpv_after' },
+    ];
+
+    for (const { asOf, expected } of cases) {
+      const beforeClose = selectLatestDrugPriceVersionsByDrugMasterIdForAsOf(
+        [versionAfter, versionBefore],
+        asOf,
+      );
+      const afterClose = selectLatestDrugPriceVersionsByDrugMasterIdForAsOf(
+        [versionAfter, versionBeforeClosed],
+        asOf,
+      );
+
+      expect(beforeClose.get('drug_1')?.id).toBe(expected);
+      expect(afterClose.get('drug_1')?.id).toBe(expected);
+    }
   });
 
   it('rejects non-object create payloads before task lookup or safety checks', async () => {
@@ -1265,6 +1306,7 @@ describe('/api/dispense-results POST', () => {
         source_file_hash: 'hash_1',
         source_published_at: new Date(Date.UTC(2026, 4, 20)),
         effective_from: new Date(Date.UTC(2026, 4, 20)),
+        effective_to: null,
         drug_price: 7.1,
         import_log_id: 'log_1',
       },
@@ -1374,6 +1416,7 @@ describe('/api/dispense-results POST', () => {
         source_file_hash: true,
         source_published_at: true,
         effective_from: true,
+        effective_to: true,
         drug_price: true,
         import_log_id: true,
       },

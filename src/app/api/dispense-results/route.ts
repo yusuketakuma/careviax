@@ -33,6 +33,7 @@ import {
   verifyDispenseBarcodeForLine,
   type DispenseBarcodeVerificationEvidence,
 } from '@/lib/dispensing/dispense-barcode-verification';
+import { selectLatestDrugPriceVersionsByDrugMasterIdForAsOf } from './drug-price-version-selection';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
@@ -367,17 +368,16 @@ async function buildDrugPriceSnapshotByLineId(args: {
       source_file_hash: true,
       source_published_at: true,
       effective_from: true,
+      effective_to: true,
       drug_price: true,
       import_log_id: true,
     },
   });
 
-  const latestVersionByDrugMasterId = new Map<string, (typeof versions)[number]>();
-  for (const version of versions) {
-    if (!latestVersionByDrugMasterId.has(version.drug_master_id)) {
-      latestVersionByDrugMasterId.set(version.drug_master_id, version);
-    }
-  }
+  const latestVersionByDrugMasterId = selectLatestDrugPriceVersionsByDrugMasterIdForAsOf(
+    versions,
+    args.asOf,
+  );
 
   const snapshots = new Map<string, DrugPriceSnapshot>();
   for (const line of args.lines) {

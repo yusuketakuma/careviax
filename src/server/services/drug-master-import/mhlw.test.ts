@@ -307,11 +307,13 @@ describe('importMhlwPriceList', () => {
       create: vi.fn(),
     },
     $queryRaw: vi.fn(),
+    $transaction: vi.fn(),
     drugPriceVersion: {
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       findMany: vi.fn(),
+      updateMany: vi.fn(),
     },
   } as const;
 
@@ -331,6 +333,8 @@ describe('importMhlwPriceList', () => {
     db.drugPriceVersion.create.mockResolvedValue({ id: 'dpv_1' });
     db.drugPriceVersion.update.mockResolvedValue({ id: 'dpv_1' });
     db.drugPriceVersion.findMany.mockResolvedValue([]);
+    db.drugPriceVersion.updateMany.mockResolvedValue({ count: 0 });
+    db.$transaction.mockImplementation(async (callback) => callback(db));
   });
 
   it('imports all MHLW price category workbooks by default', async () => {
@@ -392,6 +396,7 @@ describe('importMhlwPriceList', () => {
           price_version_effective_from_source: 'source_published_at',
           price_version_create_count: 2,
           price_version_update_count: 0,
+          price_version_close_count: 0,
           price_version_skipped_missing_effective_from: 0,
         },
       }),
@@ -423,6 +428,109 @@ describe('importMhlwPriceList', () => {
         }),
       }),
     );
+  });
+
+  it('closes prior open price versions in the same transaction when creating a newer version', async () => {
+    const workbook = await workbookBlob({
+      ＨＰ用: [
+        ['区分', '薬価基準収載医薬品コード', '品名', '薬価'],
+        ['内用薬', '1124001F1022', 'ユーロジン１ｍｇ錠', '7.10'],
+      ],
+    });
+    const tx = {
+      $queryRaw: vi.fn(),
+      drugPriceVersion: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: 'dpv_new' }),
+        update: vi.fn().mockResolvedValue({ id: 'dpv_new' }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    db.$transaction.mockImplementationOnce(async (callback) => callback(tx));
+    db.drugMaster.findMany.mockResolvedValue([
+      {
+        id: 'drug_1',
+        yj_code: '1124001F1022',
+        drug_price: { toString: () => '6.30' },
+        transitional_expiry_date: null,
+      },
+    ]);
+
+    await importMhlwPriceList(db, {
+      workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/tp20260501-01_01.xlsx',
+      fetchImpl: async () => toWorkbookResponse(workbook),
+    });
+
+    expect(db.$transaction).toHaveBeenCalledOnce();
+    expect(allocateGlobalDisplayIdMock).toHaveBeenCalledWith(tx, 'DrugPriceVersion');
+    expect(tx.drugPriceVersion.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          drug_master_id: 'drug_1',
+          effective_from: new Date(Date.UTC(2026, 4, 1)),
+        }),
+      }),
+    );
+    expect(tx.drugPriceVersion.updateMany).toHaveBeenCalledWith({
+      where: {
+        drug_master_id: 'drug_1',
+        effective_from: { lt: new Date(Date.UTC(2026, 4, 1)) },
+        effective_to: null,
+      },
+      data: {
+        effective_to: new Date(Date.UTC(2026, 3, 30)),
+      },
+    });
+    expect(tx.drugPriceVersion.create.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.drugPriceVersion.updateMany.mock.invocationCallOrder[0],
+    );
+    expect(db.drugMasterImportLog.update).toHaveBeenCalledWith({
+      where: { id: 'log_1' },
+      data: expect.objectContaining({
+        status: 'completed',
+        change_summary: expect.objectContaining({
+          price_version_create_count: 1,
+          price_version_close_count: 1,
+        }),
+      }),
+    });
+  });
+
+  it('fails closed when prior-version close fails after creating a newer version', async () => {
+    const workbook = await workbookBlob({
+      ＨＰ用: [
+        ['区分', '薬価基準収載医薬品コード', '品名', '薬価'],
+        ['内用薬', '1124001F1022', 'ユーロジン１ｍｇ錠', '7.10'],
+      ],
+    });
+    const closeError = new Error('close failed');
+    const tx = {
+      $queryRaw: vi.fn(),
+      drugPriceVersion: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: 'dpv_new' }),
+        update: vi.fn().mockResolvedValue({ id: 'dpv_new' }),
+        updateMany: vi.fn().mockRejectedValue(closeError),
+      },
+    };
+    db.$transaction.mockImplementationOnce(async (callback) => callback(tx));
+
+    await expect(
+      importMhlwPriceList(db, {
+        workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/tp20260501-01_01.xlsx',
+        fetchImpl: async () => toWorkbookResponse(workbook),
+      }),
+    ).rejects.toThrow(closeError);
+
+    expect(tx.drugPriceVersion.create).toHaveBeenCalledOnce();
+    expect(tx.drugPriceVersion.updateMany).toHaveBeenCalledOnce();
+    expect(db.drugMasterImportLog.update).toHaveBeenLastCalledWith({
+      where: { id: 'log_1' },
+      data: {
+        status: 'failed',
+        error_log: '医薬品マスタ取込に失敗しました',
+      },
+    });
   });
 
   it('records price and transitional-expiry changes during import', async () => {
@@ -518,6 +626,7 @@ describe('importMhlwPriceList', () => {
             change_event_count: 0,
             price_version_create_count: 0,
             price_version_update_count: 0,
+            price_version_close_count: 0,
             price_version_skipped_missing_effective_from: 0,
           }),
         }),
@@ -549,6 +658,7 @@ describe('importMhlwPriceList', () => {
       change_event_count: 0,
       price_version_create_count: 0,
       price_version_update_count: 0,
+      price_version_close_count: 0,
       price_version_skipped_missing_effective_from: 1,
       sampled_rows: 1,
     });
@@ -627,6 +737,7 @@ describe('importMhlwPriceList', () => {
           change_event_count: 2,
           price_version_create_count: 2,
           price_version_update_count: 0,
+          price_version_close_count: 0,
           price_version_skipped_missing_effective_from: 0,
           sampled_rows: 2,
         },
@@ -656,6 +767,60 @@ describe('importMhlwPriceList', () => {
     expect(db.drugMasterImportLog.create).not.toHaveBeenCalled();
     expect(db.drugMasterImportLog.update).not.toHaveBeenCalled();
     expect(db.drugMaster.upsert).not.toHaveBeenCalled();
+    expect(db.drugMasterChangeEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('previews prior open price-version closes without writing rows', async () => {
+    const workbook = await workbookBlob({
+      ＨＰ用: [
+        ['区分', '薬価基準収載医薬品コード', '品名', '薬価'],
+        ['内用薬', '1124001F1022', 'ユーロジン１ｍｇ錠', '7.10'],
+      ],
+    });
+    db.drugMaster.findMany.mockResolvedValue([
+      {
+        id: 'drug_1',
+        yj_code: '1124001F1022',
+        drug_price: { toString: () => '6.30' },
+        transitional_expiry_date: null,
+      },
+    ]);
+    db.drugPriceVersion.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        drug_master_id: 'drug_1',
+        effective_from: new Date(Date.UTC(2026, 3, 1)),
+      },
+    ]);
+
+    const result = await previewMhlwPriceList(db, {
+      workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/tp20260501-01_01.xlsx',
+      fetchImpl: async () => toWorkbookResponse(workbook),
+      previewLimit: 10,
+    });
+
+    expect(result.preview.summary).toMatchObject({
+      price_version_create_count: 1,
+      price_version_close_count: 1,
+      price_version_update_count: 0,
+    });
+    expect(result.preview.rows[0]).toMatchObject({
+      price_version_action: 'create',
+      price_version_effective_from: '2026-05-01T00:00:00.000Z',
+      price_version_close_count: 1,
+      price_version_close_effective_to: '2026-04-30T00:00:00.000Z',
+    });
+    expect(db.drugPriceVersion.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          drug_master_id: { in: ['drug_1'] },
+          effective_from: { lt: new Date(Date.UTC(2026, 4, 1)) },
+          effective_to: null,
+        },
+      }),
+    );
+    expect(db.drugMaster.upsert).not.toHaveBeenCalled();
+    expect(db.drugPriceVersion.updateMany).not.toHaveBeenCalled();
     expect(db.drugMasterChangeEvent.create).not.toHaveBeenCalled();
   });
 
@@ -713,6 +878,7 @@ describe('importMhlwPriceList', () => {
       change_event_count: 0,
       price_version_create_count: 0,
       price_version_update_count: 0,
+      price_version_close_count: 0,
       price_version_skipped_missing_effective_from: 1,
       sampled_rows: 1,
     });
@@ -745,6 +911,7 @@ describe('importMhlwGenericFlags', () => {
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
   } as const;
 
@@ -758,6 +925,7 @@ describe('importMhlwGenericFlags', () => {
     db.drugPriceVersion.findUnique.mockResolvedValue(null);
     db.drugPriceVersion.create.mockResolvedValue({ id: 'dpv_1' });
     db.drugPriceVersion.update.mockResolvedValue({ id: 'dpv_1' });
+    db.drugPriceVersion.updateMany.mockResolvedValue({ count: 0 });
   });
 
   it('imports generic flags while reporting malformed YJ skips', async () => {
