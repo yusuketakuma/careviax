@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { jsonResponse } from '@/test/fetch-test-utils';
 import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import {
   BillingCandidatesContent,
@@ -182,6 +183,44 @@ describe('BillingCandidatesContent', () => {
     const rows = within(table).getAllByRole('row');
     const targetRow = rows.find((row) => row.textContent?.includes('在宅患者訪問薬剤管理指導料'));
     expect(targetRow?.className).toContain('ring-primary');
+  });
+
+  it('keeps API messages from failed billing candidate list fetches', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/billing-candidates?')) {
+        return jsonResponse({ message: '請求候補を表示できません' }, 403);
+      }
+      if (url.startsWith('/api/billing-candidates/export?') && url.includes('preview=1')) {
+        return jsonResponse({
+          data: {
+            billing_month: '2026-03-01',
+            billing_domain: 'home_care',
+            total_count: 0,
+            exportable_count: 0,
+            total_points: 0,
+            total_amount_yen: 0,
+            status_counts: {},
+            insurance_type_counts: { medical: 0, care: 0, self: 0 },
+            exclusion_reasons: [],
+            generated_at: '2026-06-18T00:00:00.000Z',
+          },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderBillingCandidatesContent();
+
+    expect(await screen.findByText('請求候補を表示できません')).toBeTruthy();
+    const listRequest = fetchMock.mock.calls.find(([input]) =>
+      String(input).startsWith('/api/billing-candidates?'),
+    );
+    expect(String(listRequest?.[0])).toContain('billing_month=2026-03-01');
+    expect(String(listRequest?.[0])).toContain('patient_id=patient_1');
+    expect(String(listRequest?.[0])).toContain('billing_domain=home_care');
+    expect(listRequest?.[1]).toMatchObject({ headers: { 'x-org-id': 'org_1' } });
   });
 
   it('describes the disabled monthly close action without leaking patient values', async () => {

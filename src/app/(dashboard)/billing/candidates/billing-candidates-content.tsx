@@ -25,6 +25,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -375,8 +376,7 @@ export function BillingCandidatesContent({
       const res = await fetch(`/api/billing-candidates?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('請求候補の取得に失敗しました');
-      return res.json() as Promise<BillingCandidatesResponse>;
+      return readApiJson<BillingCandidatesResponse>(res, '請求候補の取得に失敗しました');
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     initialPageParam: undefined as string | undefined,
