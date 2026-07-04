@@ -861,6 +861,27 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
 
+## 2026-07-04 R55 operating-hours route loading label
+
+- 分類: UI loading-state cleanup / R55 route-shell fallback residual。
+- 実施:
+  - `admin/operating-hours/page.tsx` の route-level Suspense fallback を generic
+    `Loading` から `Loading label="稼働日設定を読み込み中..."` に変更。
+  - page shell test を追加し、header が残ること、screen-specific status が出ること、
+    generic `読み込み中...` と suspended content が出ないことを固定。
+- 挙動変更: route-shell loading presentation のみ。content query、pharmacy-operating-hours API、
+  org header、site selector、calendar calculation、save mutation、API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の 5状態分離、領域固有 loading label、
+  Next loading/Suspense docs の meaningful loading UI 方針に整合。
+- 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、site id・org id・schedule detail・holiday data・operating-hour value・raw error
+  を出さない。
+- 検証: focused operating-hours page Vitest `1 file / 2 tests` green、targeted ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `25132627` (`fix(admin): name operating hours route loading`)。
+- 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
 ## 2026-07-04 R55 visit-record form loading skeleton
 
 - 分類: UI loading-state cleanup / R55 visible loading residual。

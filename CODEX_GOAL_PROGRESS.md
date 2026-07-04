@@ -1,5 +1,39 @@
 # CODEX Goal Progress
 
+## R55 Operating Hours Route Loading Label - 2026-07-04 20:16 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/admin/operating-hours/page.tsx`
+    - `src/app/(dashboard)/admin/operating-hours/page.test.tsx`
+- Scope:
+  - Replaced the route-level generic Suspense fallback `Loading` with a
+    screen-specific `稼働日設定を読み込み中...` status.
+  - Added a route shell regression test proving the admin header remains
+    visible, the fallback is screen-specific, generic `読み込み中...` is absent,
+    and suspended content is not rendered.
+- Safety:
+  - Route-shell loading presentation and tests only.
+  - No content component query, pharmacy-operating-hours API path, org header,
+    site selector, calendar calculation, save mutation, DB, auth,
+    authorization, billing, audit, deployment, package, or server behavior
+    changed.
+  - Loading copy is PHI-free and does not echo site IDs, org IDs, schedule
+    details, holiday data, operating-hour values, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/operating-hours/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `2` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the operating-hours route source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `25132627`
+    (`fix(admin): name operating hours route loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Dispense Audit Stats Loading State - 2026-07-04 20:13 JST
 
 - Status:
