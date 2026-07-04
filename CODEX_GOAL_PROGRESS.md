@@ -1,5 +1,41 @@
 # CODEX Goal Progress
 
+## R25 Admin Metrics ErrorState Retry Shorthand Partial - 2026-07-04 23:46 JST
+
+- Status:
+  - Implemented and validated the next bounded R25 slice:
+    - `src/app/(dashboard)/admin/metrics/metrics-dashboard-content.tsx`
+- Scope:
+  - Migrated two admin metrics ErrorState retry actions from hand-written
+    `action={{ label: '再読み込み', onClick }}` objects to `onRetry` +
+    `retryLabel`.
+  - Preserved the stale-data retry button as `outline` + `sm` via
+    `retryVariant="outline"` and `retrySize="sm"`.
+- Safety:
+  - UI presentation/refactor only.
+  - Visible retry copy, click handlers, assertive/polite live-region behavior,
+    stale-data explanatory copy, outline style, compact button size, and admin
+    metrics query behavior are preserved.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    audit, deployment, package dependency, live DB operation, external send,
+    secret handling, push, or destructive operation changed.
+- Validation:
+  - Targeted admin metrics scan for hand-written `再読み込み` retry actions
+    returned no matches.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/metrics/metrics-dashboard-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `7` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `90388a2e`
+    (`refactor(ui): route admin metrics retries through shorthand`).
+- Remaining:
+  - R25 is partial; remaining ErrorState retry action boilerplate should be
+    migrated in bounded screen/domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R25 Statistics ErrorState Retry Shorthand Partial - 2026-07-04 23:43 JST
 
 - Status:
