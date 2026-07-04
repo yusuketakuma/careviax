@@ -82,7 +82,7 @@ export default function DispenseAuditStatsPage() {
       </div>
 
       {isLoading ? (
-        <Loading />
+        <Loading label="調剤鑑査差戻し分析を読み込み中..." />
       ) : isError ? (
         // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
         <ErrorState

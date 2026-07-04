@@ -56,6 +56,18 @@ describe('DispenseAuditStatsPage', () => {
     }
   });
 
+  it('shows screen-specific loading status while stats are loading', () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => undefined)),
+    );
+    renderPage();
+
+    expect(screen.getByRole('status', { name: '調剤鑑査差戻し分析を読み込み中...' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('データがありません')).toBeNull();
+  });
+
   it('shows ErrorState (not a false-empty) with a retry when the query fails', async () => {
     const fetchMock = vi.fn(async () => new Response('boom', { status: 500 }));
     vi.stubGlobal('fetch', fetchMock);
