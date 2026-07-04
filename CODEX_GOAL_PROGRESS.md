@@ -1,5 +1,37 @@
 # CODEX Goal Progress
 
+## R32 Select/Schedule QueryClient Wrapper Convergence - 2026-07-04 22:28 JST
+
+- Status:
+  - Implemented and validated an eighth bounded R32 slice:
+    - `src/app/(dashboard)/select-site/select-site-content.test.tsx`
+    - `src/app/(dashboard)/select-mode/select-mode-content.test.tsx`
+    - `src/app/(dashboard)/schedules/calendar-view.test.tsx`
+    - `src/app/(dashboard)/schedules/schedule-day-planner-hooks.test.tsx`
+- Scope:
+  - Replaced four more local `QueryClient` / `QueryClientProvider` wrapper
+    implementations with `createQueryClientWrapper`.
+  - Preserved retry-disabled test defaults and left product runtime code
+    untouched.
+- Safety:
+  - Test harness convergence only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    deployment, package dependency, query, mutation, org header, audit logging,
+    or runtime behavior changed.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/select-site/select-site-content.test.tsx' 'src/app/(dashboard)/select-mode/select-mode-content.test.tsx' 'src/app/(dashboard)/schedules/calendar-view.test.tsx' 'src/app/(dashboard)/schedules/schedule-day-planner-hooks.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `4` files / `19` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `cdf6067a`
+    (`test(flow): share query client wrapper`).
+- Remaining:
+  - R32 remains partially open for the remaining local QueryClient wrappers.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R32 Shared/Comment/Billing QueryClient Wrapper Convergence - 2026-07-04 22:25 JST
 
 - Status:
