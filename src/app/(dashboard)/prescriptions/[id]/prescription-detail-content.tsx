@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { formatDisplayEntityLabel } from '@/lib/display-id/display-labels';
 import { buildPatientHref } from '@/lib/patient/navigation';
@@ -310,8 +311,7 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
       const res = await fetch(buildPrescriptionIntakeApiPath(intakeId), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('処方受付の取得に失敗しました');
-      return res.json() as Promise<PrescriptionIntakeDetail>;
+      return readApiJson<PrescriptionIntakeDetail>(res, '処方受付の取得に失敗しました');
     },
     enabled: !!orgId,
   });

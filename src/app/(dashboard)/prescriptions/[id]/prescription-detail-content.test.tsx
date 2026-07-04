@@ -166,6 +166,36 @@ describe('PrescriptionDetailContent', () => {
     expect(fetchMock.mock.calls[0]?.[0]).not.toContain('%25');
   });
 
+  it('keeps the API message when prescription intake detail fetch fails', async () => {
+    const intakeId = 'intake/1?x=y#z';
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    let queryConfig: QueryConfig | undefined;
+
+    useOrgIdMock.mockReturnValue('org_1');
+    buildOrgHeadersMock.mockReturnValueOnce(sentinelHeaders);
+    fetchMock.mockResolvedValue(jsonResponse({ message: '処方受付を表示できません' }, 403));
+    useQueryMock.mockImplementation((config: QueryConfig) => {
+      queryConfig = config;
+      return {
+        data: null,
+        isLoading: true,
+        error: null,
+      };
+    });
+
+    render(<PrescriptionDetailContent intakeId={intakeId} />);
+
+    if (!queryConfig) throw new Error('query config was not captured');
+    await expect(queryConfig.queryFn()).rejects.toThrow('処方受付を表示できません');
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/prescription-intakes/${encodeURIComponent(intakeId)}`,
+      {
+        headers: sentinelHeaders,
+      },
+    );
+    expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
+  });
+
   it('renders a retryable error state with reload + back when the detail fetch fails', () => {
     const refetchMock = vi.fn();
     useOrgIdMock.mockReturnValue('org_1');
