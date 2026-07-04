@@ -46724,6 +46724,48 @@ false` for every migrated column.
   - Existing unrelated `refactor-instructions.md` and local skill install files
     remain outside this slice.
 
+## R40/R44 PCA Pumps readApiJson Slice - 2026-07-05 04:58 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`
+  - `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx`
+- Status:
+  - Implemented and committed as `87712a79`
+    (`Converge PCA pump reads on shared JSON helper`).
+- Changes:
+  - Replaced PCA pump inventory, open rentals, return-inspection pending
+    rentals, and prescriber institution read GET queryFns with `readApiJson`.
+  - Preserved shared PCA path helpers, prescriber institutions static path,
+    `buildOrgHeaders(orgId)`, response envelopes, React Query keys, debounce
+    behavior, false-empty/error UI behavior, and mutation behavior.
+  - Reused the existing focused queryFn contract test that directly executes all
+    four read query functions and verifies path helper and org-header usage.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, destructive operation, path helper
+    encoding/fail-closed semantics, and all mutation/server behavior.
+  - The 2026-07-04 user instruction allowing product
+    API/DB/auth/authorization/PHI/billing/deploy/package dependency changes when
+    necessary is recorded in `ops/refactor/STATE.md`; this slice did not require
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `21` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx' 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx'`
+    passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx' 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx'`
+    initially required formatting the touched implementation file, then passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx' 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx'`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - R40/R44 remains partial and broad; continue per-fetcher body-read/PHI review
+    before converting additional client read fetchers.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Admin Performance readApiJson Slice - 2026-07-05 04:54 JST
 
 - Scope:

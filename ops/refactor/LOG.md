@@ -3792,6 +3792,31 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   個別確認してから段階移行する。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
 
+## 2026-07-05 R40/R44 PCA pumps readApiJson slice
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 実施:
+  - PCA pump inventory / open rentals / return-inspection pending rentals /
+    prescriber institutions GET fetchers を `readApiJson` へ移行。
+  - 既存 queryFn contract test で4つの read fetcher の shared path helper と org-scoped headers を
+    継続固定。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。shared PCA path helpers、prescriber
+  institutions static path、`buildOrgHeaders`、React Query keys、debounce behavior、
+  response envelopes、false-empty/error UI、mutation behavior は維持。
+- 安全性: product UI read fetch internals のみ変更。DB/schema、auth/authorization、
+  PHI projection、billing、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation、path helper encode/fail-closed semantics、
+  server/mutation behavior は不変。SSOT では必要時の product
+  API/DB/auth/authorization/PHI/billing/deploy/package dependency 変更許可を確認済みだが、
+  この slice では不要。
+- 検証: focused PCA pumps Vitest `1 file / 21 tests` green、scoped ESLint green、
+  targeted Prettier check は touched implementation formatting 後 green、targeted
+  `git diff --check` green、`pnpm typecheck` green。
+- commit: `87712a79` (`Converge PCA pump reads on shared JSON helper`)。
+- 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
 ## 2026-07-05 R40/R44 admin performance readApiJson slice
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。
