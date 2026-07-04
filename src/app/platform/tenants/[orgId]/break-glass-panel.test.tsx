@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
-import type { PropsWithChildren, ReactNode } from 'react';
+import type { PropsWithChildren } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { createJsonFetchMock } from '@/test/fetch-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { BreakGlassPanel } from './break-glass-panel';
 
 vi.mock('sonner', () => ({
@@ -49,15 +49,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  };
-}
-
 function stubSessionsFetch(sessions: unknown[]) {
   const fetchMock = createJsonFetchMock({ sessions });
   vi.stubGlobal('fetch', fetchMock);
@@ -69,7 +60,7 @@ describe('BreakGlassPanel', () => {
     const fetchMock = stubSessionsFetch([]);
 
     render(<BreakGlassPanel orgId="org_1" tenantName="さくら薬局" />, {
-      wrapper: createWrapper(),
+      wrapper: createQueryClientWrapper(),
     });
 
     expect(await screen.findByText('ブレークグラスアクセスを起動')).toBeTruthy();
@@ -106,7 +97,7 @@ describe('BreakGlassPanel', () => {
     ]);
 
     render(<BreakGlassPanel orgId="org_1" tenantName="さくら薬局" />, {
-      wrapper: createWrapper(),
+      wrapper: createQueryClientWrapper(),
     });
 
     expect(await screen.findByText('アクティブなブレークグラスセッション')).toBeTruthy();

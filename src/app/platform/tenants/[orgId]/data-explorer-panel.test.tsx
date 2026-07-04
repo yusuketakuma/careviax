@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
-import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { DataExplorerPanel } from './data-explorer-panel';
 
 setupDomTestEnv();
@@ -12,15 +11,6 @@ setupDomTestEnv();
 afterEach(() => {
   vi.unstubAllGlobals();
 });
-
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  };
-}
 
 describe('DataExplorerPanel', () => {
   it('uses a model-specific loading label while loading model metadata', async () => {
@@ -56,7 +46,7 @@ describe('DataExplorerPanel', () => {
       }),
     );
 
-    render(<DataExplorerPanel orgId="org_1" />, { wrapper: createWrapper() });
+    render(<DataExplorerPanel orgId="org_1" />, { wrapper: createQueryClientWrapper() });
 
     expect(await screen.findByText('データモデルを読み込み中...')).toBeTruthy();
     expect(screen.queryByText('読み込み中...')).toBeNull();

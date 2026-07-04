@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { AuditLogPanel } from './audit-log-panel';
 
 setupDomTestEnv();
@@ -12,15 +11,6 @@ setupDomTestEnv();
 afterEach(() => {
   vi.unstubAllGlobals();
 });
-
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  };
-}
 
 describe('AuditLogPanel', () => {
   it('renders entries on success', async () => {
@@ -49,7 +39,7 @@ describe('AuditLogPanel', () => {
       ),
     );
 
-    render(<AuditLogPanel orgId="org_1" />, { wrapper: createWrapper() });
+    render(<AuditLogPanel orgId="org_1" />, { wrapper: createQueryClientWrapper() });
 
     // DataTable renders both a desktop table and a mobile card list, so every
     // row's text appears twice in jsdom.
@@ -72,7 +62,7 @@ describe('AuditLogPanel', () => {
       ),
     );
 
-    render(<AuditLogPanel orgId="org_1" />, { wrapper: createWrapper() });
+    render(<AuditLogPanel orgId="org_1" />, { wrapper: createQueryClientWrapper() });
 
     expect(await screen.findByText('監査ログを表示できません')).toBeTruthy();
     expect(
@@ -91,7 +81,7 @@ describe('AuditLogPanel', () => {
       ),
     );
 
-    render(<AuditLogPanel orgId="org_1" />, { wrapper: createWrapper() });
+    render(<AuditLogPanel orgId="org_1" />, { wrapper: createQueryClientWrapper() });
 
     expect(await screen.findByText('監査ログを取得できませんでした')).toBeTruthy();
     expect(screen.getByRole('button', { name: '再試行' })).toBeTruthy();
