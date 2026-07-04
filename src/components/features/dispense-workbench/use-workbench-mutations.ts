@@ -29,6 +29,7 @@ import {
 import { toast } from 'sonner';
 
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { messageFromError } from '@/lib/utils/error-message';
 import {
   isRealDataEnabled,
   loadPatientsAsync,
@@ -86,7 +87,7 @@ export function reportWorkbenchError(error: unknown, fallback = '保存に失敗
     toast.error(error.message || fallback);
     return;
   }
-  toast.error(error instanceof Error && error.message ? error.message : fallback);
+  toast.error(messageFromError(error, fallback));
 }
 
 function conflictMessage(details: unknown): string {

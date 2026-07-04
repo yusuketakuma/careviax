@@ -58,6 +58,7 @@ import { WorkbenchConflictError } from './dispensing-workbench.write-types';
 import { useWorkbenchStore } from './dispensing-workbench.store';
 import {
   calendarQueryKey,
+  reportWorkbenchError,
   useWorkbenchMutations,
   workbenchQueryKey,
 } from './use-workbench-mutations';
@@ -111,6 +112,12 @@ describe('useWorkbenchMutations recovery', () => {
     const queryKey = calendarQueryKey('org_1', 'plan_1');
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey });
     expect(refetchSpy).toHaveBeenCalledWith({ queryKey, type: 'active' });
+  });
+
+  it('uses the fallback toast when a generic write error has an empty message', () => {
+    reportWorkbenchError(new Error(''), '保存に失敗しました');
+
+    expect(toastErrorMock).toHaveBeenCalledWith('保存に失敗しました');
   });
 
   it('rehydrates calendar store state directly after a cell conflict', async () => {
