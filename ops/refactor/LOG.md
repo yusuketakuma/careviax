@@ -5,6 +5,22 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-04 R25-admin-credential-template ad234b5a
+
+- 分類: pattern-inconsistency / ErrorState retry action convergence
+- 対象: `src/app/(dashboard)/admin/document-templates/template-content.tsx`,
+  `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx`
+- 実施: document templates と pharmacist credentials の ErrorState 2箇所を
+  `action={{ label: '再読み込み', onClick }}` から `onRetry` + `retryLabel` へ移行。
+- 挙動変更: なし。表示ラベル、refetch handler、false-empty-safe error branch、
+  document-template/pharmacist-credential query behavior は不変。
+- 安全: UI presentation/refactor のみ。product API/DB/auth/authorization/PHI/billing/deploy/package
+  dependency は変更不要。audit/live DB/external send/secret/push/destructive operation 不変。
+- 検証: targeted admin credential/template retry action scan 0件。focused template/credential vitest
+  2 files / 26 tests green。scoped eslint/prettier/diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit ad234b5a。
+- 残課題: R25 は partial。残りの ErrorState retry action は段階移行を継続。
+
 ## 2026-07-04 R25-admin-panel e56519ab
 
 - 分類: pattern-inconsistency / ErrorState retry action convergence
