@@ -1,5 +1,39 @@
 # CODEX Goal Progress
 
+## R32 Admin Metrics/Capacity/Contact QueryClient Wrapper Convergence - 2026-07-04 22:38 JST
+
+- Status:
+  - Implemented and validated an eleventh bounded R32 slice:
+    - `src/app/(dashboard)/admin/metrics/metrics-dashboard-content.test.tsx`
+    - `src/app/(dashboard)/admin/capacity/capacity-content.test.tsx`
+    - `src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx`
+    - `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`
+- Scope:
+  - Replaced four more local `QueryClient` / `QueryClientProvider` wrapper
+    implementations with `createQueryClientWrapper`.
+  - Used `createTestQueryClient` where the metrics test still needs direct
+    refetch control.
+  - Preserved retry-disabled test defaults and left product runtime code
+    untouched.
+- Safety:
+  - Test harness convergence only.
+  - No product API, DB, auth, authorization, PHI projection, billing semantics,
+    deployment, package dependency, query, mutation, org header, audit logging,
+    or runtime behavior changed.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/metrics/metrics-dashboard-content.test.tsx' 'src/app/(dashboard)/admin/capacity/capacity-content.test.tsx' 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `4` files / `40` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `d1848de5`
+    (`test(admin): share query client wrapper`).
+- Remaining:
+  - R32 remains partially open for the remaining local QueryClient wrappers.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R32 Schedule/Nav QueryClient Wrapper Convergence - 2026-07-04 22:35 JST
 
 - Status:
