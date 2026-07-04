@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   getSettingRangeError,
@@ -176,11 +177,7 @@ function ScopePanel({
       const response = await fetch(`/api/settings?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-        throw new Error(payload?.message ?? '設定の取得に失敗しました');
-      }
-      return response.json() as Promise<SettingResponse>;
+      return readApiJson<SettingResponse>(response, '設定の取得に失敗しました');
     },
     enabled: !!orgId && (scope !== 'site' || !!scopeId),
     staleTime: 300_000,
@@ -378,8 +375,7 @@ export function SettingsContent() {
     queryKey: ['me-profile', orgId, 'admin-settings'],
     queryFn: async () => {
       const response = await fetch('/api/me/profile');
-      if (!response.ok) throw new Error('プロフィールの取得に失敗しました');
-      return response.json() as Promise<{ data: CurrentProfile }>;
+      return readApiJson<{ data: CurrentProfile }>(response, 'プロフィールの取得に失敗しました');
     },
     enabled: !!orgId,
     staleTime: 300_000,
@@ -391,8 +387,7 @@ export function SettingsContent() {
       const response = await fetch('/api/pharmacy-sites', {
         headers: buildOrgHeaders(orgId),
       });
-      if (!response.ok) throw new Error('店舗一覧の取得に失敗しました');
-      return response.json() as Promise<{ data: SiteOption[] }>;
+      return readApiJson<{ data: SiteOption[] }>(response, '店舗一覧の取得に失敗しました');
     },
     enabled: !!orgId,
     staleTime: 300_000,

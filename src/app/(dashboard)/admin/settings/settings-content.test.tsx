@@ -30,6 +30,11 @@ import { SettingsContent } from './settings-content';
 
 setupDomTestEnv();
 
+type QueryOption = {
+  queryKey: readonly unknown[];
+  queryFn?: () => Promise<unknown>;
+};
+
 const SOURCE = readFileSync(
   join(process.cwd(), 'src/app/(dashboard)/admin/settings/settings-content.tsx'),
   'utf8',
@@ -41,7 +46,7 @@ describe('SettingsContent polling policy', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
     useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
-    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+    useQueryMock.mockImplementation(({ queryKey }: QueryOption) => {
       if (queryKey[0] === 'me-profile') {
         return { data: { data: { id: 'user_1', name: '管理者', defaultSiteId: 'site_1' } } };
       }
@@ -89,7 +94,7 @@ describe('SettingsContent polling policy', () => {
   });
 
   it('uses an announced skeleton while settings are loading', () => {
-    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+    useQueryMock.mockImplementation(({ queryKey }: QueryOption) => {
       if (queryKey[0] === 'me-profile') {
         return { data: { data: { id: 'user_1', name: '管理者', defaultSiteId: 'site_1' } } };
       }
@@ -109,7 +114,7 @@ describe('SettingsContent polling policy', () => {
   });
 
   function mockQueryErrorFor(errorKey: string, message: string, refetch: () => void) {
-    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+    useQueryMock.mockImplementation(({ queryKey }: QueryOption) => {
       if (queryKey[0] === errorKey) {
         return { data: undefined, isError: true, error: new Error(message), refetch };
       }
@@ -140,7 +145,7 @@ describe('SettingsContent polling policy', () => {
   });
 
   it('shows an inline range error and disables Save when a compliance numeric setting is out of range', () => {
-    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+    useQueryMock.mockImplementation(({ queryKey }: QueryOption) => {
       if (queryKey[0] === 'me-profile') {
         return { data: { data: { id: 'user_1', name: '管理者', defaultSiteId: 'site_1' } } };
       }
@@ -223,5 +228,55 @@ describe('SettingsContent polling policy', () => {
     expect(screen.getByText('店舗一覧の取得に失敗しました')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the shared JSON reader for read-only settings queries', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/me/profile') {
+        return Response.json({
+          data: { id: 'user_1', name: '管理者', defaultSiteId: 'site_1' },
+        });
+      }
+      if (url === '/api/pharmacy-sites') {
+        return Response.json({ data: [{ id: 'site_1', name: '本店' }] });
+      }
+      if (url === '/api/settings?scope=system') {
+        expect(init?.headers).toEqual({ 'x-org-id': 'org_1' });
+        return Response.json({ data: { scope: 'system', scope_id: null, items: [] } });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<SettingsContent />);
+
+    const queryOptions = useQueryMock.mock.calls.map(([options]) => options as QueryOption);
+    const profileQuery = queryOptions.find((option) => option.queryKey[0] === 'me-profile');
+    const sitesQuery = queryOptions.find((option) => option.queryKey[0] === 'pharmacy-sites');
+    const settingsQuery = queryOptions.find(
+      (option) =>
+        option.queryKey[0] === 'admin-settings' &&
+        option.queryKey[2] === 'system' &&
+        option.queryKey[3] === null,
+    );
+
+    await expect(profileQuery?.queryFn?.()).resolves.toEqual({
+      data: { id: 'user_1', name: '管理者', defaultSiteId: 'site_1' },
+    });
+    await expect(sitesQuery?.queryFn?.()).resolves.toEqual({
+      data: [{ id: 'site_1', name: '本店' }],
+    });
+    await expect(settingsQuery?.queryFn?.()).resolves.toEqual({
+      data: { scope: 'system', scope_id: null, items: [] },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/me/profile');
+    expect(fetchMock).toHaveBeenCalledWith('/api/pharmacy-sites', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/settings?scope=system', {
+      headers: { 'x-org-id': 'org_1' },
+    });
   });
 });
