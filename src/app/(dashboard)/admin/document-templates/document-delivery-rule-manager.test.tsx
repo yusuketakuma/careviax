@@ -244,6 +244,21 @@ describe('DocumentDeliveryRuleManager', () => {
       );
     });
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
+    const createCall = vi
+      .mocked(global.fetch)
+      .mock.calls.find(
+        ([url, init]) =>
+          String(url) === '/api/document-delivery-rules' &&
+          (init as RequestInit | undefined)?.method === 'POST',
+      ) as [string, RequestInit] | undefined;
+    expect(createCall).toBeTruthy();
+    expect(JSON.parse(String(createCall?.[1].body))).toEqual({
+      document_type: 'care_report',
+      target_role: 'physician',
+      channel: 'fax',
+      fallback_channels: ['email'],
+      is_active: true,
+    });
   });
 
   it('names the edit action and loads the selected delivery rule into the form', async () => {

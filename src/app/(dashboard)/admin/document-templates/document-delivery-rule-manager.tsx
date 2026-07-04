@@ -2,12 +2,16 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
+import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -24,6 +28,7 @@ import {
   buildDocumentDeliveryRulesApiPath,
   buildDocumentDeliveryRuleApiPath,
 } from '@/lib/document-templates/api-paths';
+import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
 
@@ -77,7 +82,18 @@ const CHANNEL_LABELS: Record<DeliveryChannel, string> = {
   mcs: 'MCS',
 };
 
-const EMPTY_FORM = {
+const documentDeliveryRuleFormSchema = z.object({
+  id: z.string(),
+  documentType: z.string(),
+  targetRole: z.string(),
+  channel: z.enum(['email', 'fax', 'mcs']),
+  fallbackChannelsText: z.string(),
+  isActive: z.boolean(),
+});
+
+type DocumentDeliveryRuleFormValues = z.infer<typeof documentDeliveryRuleFormSchema>;
+
+const EMPTY_FORM: DocumentDeliveryRuleFormValues = {
   id: '',
   documentType: 'care_report',
   targetRole: 'physician',
@@ -118,8 +134,37 @@ function deliveryRuleSummary(rule: DocumentDeliveryRuleRow) {
 export function DocumentDeliveryRuleManager() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
-  const [form, setForm] = useState(EMPTY_FORM);
+  const errorSummaryId = 'document-delivery-rule-error-summary';
+  const formMethods = useForm<DocumentDeliveryRuleFormValues>({
+    resolver: zodResolver(documentDeliveryRuleFormSchema),
+    defaultValues: EMPTY_FORM,
+  });
+  const {
+    control,
+    formState: { errors },
+    getValues,
+    handleSubmit,
+    register,
+    reset,
+  } = formMethods;
+  const watchedForm = useWatch({ control });
+  const form: DocumentDeliveryRuleFormValues = {
+    ...EMPTY_FORM,
+    ...watchedForm,
+  };
   const [deleteTarget, setDeleteTarget] = useState<DocumentDeliveryRuleRow | null>(null);
+  const errorSummaryItems = collectFormErrorSummaryItems(errors, {
+    documentType: '文書種別',
+    targetRole: '送達先ロール',
+    channel: '既定チャネル',
+    fallbackChannelsText: 'フォールバック順',
+    isActive: '有効化',
+  });
+
+  function focusErrorSummary() {
+    if (typeof document === 'undefined') return;
+    document.getElementById(errorSummaryId)?.focus();
+  }
 
   const rulesQuery = useQuery({
     queryKey: ['document-delivery-rules', orgId],
@@ -137,18 +182,24 @@ export function DocumentDeliveryRuleManager() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const fallbackChannels = normalizeFallbackChannels(form.fallbackChannelsText, form.channel);
+      const currentForm = getValues();
+      const fallbackChannels = normalizeFallbackChannels(
+        currentForm.fallbackChannelsText,
+        currentForm.channel,
+      );
       const res = await fetch(
-        form.id ? buildDocumentDeliveryRuleApiPath(form.id) : DOCUMENT_DELIVERY_RULES_API_PATH,
+        currentForm.id
+          ? buildDocumentDeliveryRuleApiPath(currentForm.id)
+          : DOCUMENT_DELIVERY_RULES_API_PATH,
         {
-          method: form.id ? 'PATCH' : 'POST',
+          method: currentForm.id ? 'PATCH' : 'POST',
           headers: buildOrgJsonHeaders(orgId),
           body: JSON.stringify({
-            document_type: form.documentType,
-            target_role: form.targetRole,
-            channel: form.channel,
+            document_type: currentForm.documentType,
+            target_role: currentForm.targetRole,
+            channel: currentForm.channel,
             fallback_channels: fallbackChannels,
-            is_active: form.isActive,
+            is_active: currentForm.isActive,
           }),
         },
       );
@@ -156,10 +207,11 @@ export function DocumentDeliveryRuleManager() {
         const error = await res.json().catch(() => ({}));
         throw new Error(error.message ?? '文書送達ルールの保存に失敗しました');
       }
+      return { wasEditing: Boolean(currentForm.id) };
     },
-    onSuccess: async () => {
-      toast.success(form.id ? '文書送達ルールを更新しました' : '文書送達ルールを登録しました');
-      setForm(EMPTY_FORM);
+    onSuccess: async ({ wasEditing }) => {
+      toast.success(wasEditing ? '文書送達ルールを更新しました' : '文書送達ルールを登録しました');
+      reset(EMPTY_FORM);
       await queryClient.invalidateQueries({ queryKey: ['document-delivery-rules', orgId] });
     },
     onError: (error) => {
@@ -179,8 +231,8 @@ export function DocumentDeliveryRuleManager() {
     },
     onSuccess: async (_data, ruleId) => {
       toast.success('文書送達ルールを削除しました');
-      if (form.id === ruleId) {
-        setForm(EMPTY_FORM);
+      if (getValues().id === ruleId) {
+        reset(EMPTY_FORM);
       }
       setDeleteTarget(null);
       await queryClient.invalidateQueries({ queryKey: ['document-delivery-rules', orgId] });
@@ -214,114 +266,135 @@ export function DocumentDeliveryRuleManager() {
             文書種別と相手ロールごとに、既定チャネルとフォールバック順を定義します。
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="delivery-document-type">文書種別</Label>
-            <Select
-              value={form.documentType}
-              onValueChange={(value) =>
-                value && setForm((current) => ({ ...current, documentType: value }))
-              }
-            >
-              <SelectTrigger id="delivery-document-type">
-                <SelectValue>{documentTypeLabel(form.documentType)}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {DOCUMENT_TYPE_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <CardContent>
+          <form
+            onSubmit={handleSubmit(() => saveMutation.mutate(), focusErrorSummary)}
+            noValidate
+            className="space-y-4"
+          >
+            <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
+            <div className="space-y-2">
+              <Label htmlFor="delivery-document-type">文書種別</Label>
+              <Controller
+                control={control}
+                name="documentType"
+                render={({ field }) => (
+                  <Select
+                    value={field.value}
+                    onValueChange={(value) => value && field.onChange(value)}
+                  >
+                    <SelectTrigger id="delivery-document-type">
+                      <SelectValue>{documentTypeLabel(field.value)}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DOCUMENT_TYPE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="delivery-target-role">送達先ロール</Label>
-            <Select
-              value={form.targetRole}
-              onValueChange={(value) =>
-                value && setForm((current) => ({ ...current, targetRole: value }))
-              }
-            >
-              <SelectTrigger id="delivery-target-role">
-                <SelectValue>{targetRoleLabel(form.targetRole)}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {TARGET_ROLE_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="delivery-target-role">送達先ロール</Label>
+              <Controller
+                control={control}
+                name="targetRole"
+                render={({ field }) => (
+                  <Select
+                    value={field.value}
+                    onValueChange={(value) => value && field.onChange(value)}
+                  >
+                    <SelectTrigger id="delivery-target-role">
+                      <SelectValue>{targetRoleLabel(field.value)}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TARGET_ROLE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="delivery-channel">既定チャネル</Label>
-            <Select
-              value={form.channel}
-              onValueChange={(value) =>
-                value && setForm((current) => ({ ...current, channel: value as DeliveryChannel }))
-              }
-            >
-              <SelectTrigger id="delivery-channel">
-                <SelectValue>{CHANNEL_LABELS[form.channel]}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(CHANNEL_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="delivery-channel">既定チャネル</Label>
+              <Controller
+                control={control}
+                name="channel"
+                render={({ field }) => (
+                  <Select
+                    value={field.value}
+                    onValueChange={(value) => value && field.onChange(value as DeliveryChannel)}
+                  >
+                    <SelectTrigger id="delivery-channel">
+                      <SelectValue>{CHANNEL_LABELS[field.value]}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(CHANNEL_LABELS).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="delivery-fallback">フォールバック順</Label>
-            <Input
-              id="delivery-fallback"
-              value={form.fallbackChannelsText}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, fallbackChannelsText: event.target.value }))
-              }
-              placeholder="email,mcs"
-            />
-            <p className="text-xs text-muted-foreground">
-              `email,fax,mcs` をカンマ区切りで入力します。既定チャネルは自動除外されます。
-            </p>
-          </div>
-
-          <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-            <div>
-              <p id="delivery-rule-active-label" className="text-sm font-medium">
-                有効化
-              </p>
-              <p id="delivery-rule-active-description" className="text-xs text-muted-foreground">
-                無効にするとこの組み合わせでは自動提案しません
+            <div className="space-y-2">
+              <Label htmlFor="delivery-fallback">フォールバック順</Label>
+              <Input
+                id="delivery-fallback"
+                {...register('fallbackChannelsText')}
+                aria-invalid={!!errors.fallbackChannelsText}
+                placeholder="email,mcs"
+              />
+              <p className="text-xs text-muted-foreground">
+                `email,fax,mcs` をカンマ区切りで入力します。既定チャネルは自動除外されます。
               </p>
             </div>
-            <Switch
-              checked={form.isActive}
-              aria-labelledby="delivery-rule-active-label"
-              aria-describedby="delivery-rule-active-description"
-              onCheckedChange={(checked) =>
-                setForm((current) => ({ ...current, isActive: checked }))
-              }
-            />
-          </div>
 
-          <div className="flex gap-2">
-            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-              {saveMutation.isPending ? '保存中...' : form.id ? '更新する' : '登録する'}
-            </Button>
-            {form.id ? (
-              <Button variant="outline" onClick={() => setForm(EMPTY_FORM)}>
-                キャンセル
+            <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+              <div>
+                <p id="delivery-rule-active-label" className="text-sm font-medium">
+                  有効化
+                </p>
+                <p id="delivery-rule-active-description" className="text-xs text-muted-foreground">
+                  無効にするとこの組み合わせでは自動提案しません
+                </p>
+              </div>
+              <Controller
+                control={control}
+                name="isActive"
+                render={({ field }) => (
+                  <Switch
+                    checked={field.value}
+                    aria-labelledby="delivery-rule-active-label"
+                    aria-describedby="delivery-rule-active-description"
+                    onCheckedChange={field.onChange}
+                  />
+                )}
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <Button type="submit" disabled={saveMutation.isPending}>
+                {saveMutation.isPending ? '保存中...' : form.id ? '更新する' : '登録する'}
               </Button>
-            ) : null}
-          </div>
+              {form.id ? (
+                <Button type="button" variant="outline" onClick={() => reset(EMPTY_FORM)}>
+                  キャンセル
+                </Button>
+              ) : null}
+            </div>
+          </form>
         </CardContent>
       </Card>
 
@@ -388,7 +461,7 @@ export function DocumentDeliveryRuleManager() {
                       variant="outline"
                       aria-label={`${deliveryRuleSummary(rule)} の送達ルールを編集`}
                       onClick={() =>
-                        setForm({
+                        reset({
                           id: rule.id,
                           documentType: rule.document_type,
                           targetRole: rule.target_role,
