@@ -557,7 +557,8 @@ export function PharmacistCredentialsContent() {
             <ErrorState
               size="inline"
               description="薬剤師認定情報を取得できませんでした。時間をおいて再読み込みしてください。"
-              action={{ label: '再読み込み', onClick: () => void refetch() }}
+              onRetry={() => void refetch()}
+              retryLabel="再読み込み"
               className="m-4"
             />
           ) : (

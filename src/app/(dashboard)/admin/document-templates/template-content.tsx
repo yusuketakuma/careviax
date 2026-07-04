@@ -707,7 +707,8 @@ export function DocumentTemplateContent() {
               <ErrorState
                 size="inline"
                 description="文書テンプレートを取得できませんでした。時間をおいて再読み込みしてください。"
-                action={{ label: '再読み込み', onClick: () => void refetch() }}
+                onRetry={() => void refetch()}
+                retryLabel="再読み込み"
               />
             ) : (
               <DataTable
