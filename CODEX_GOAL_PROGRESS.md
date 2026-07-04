@@ -1,5 +1,97 @@
 # CODEX Goal Progress
 
+## Single Codex Operation Switch - 2026-07-04 17:58 JST
+
+- Status:
+  - Implemented and validated the current operating-mode switch from
+    agmsg/multi-agent routing to single Codex operation.
+  - This supersedes the 17:53 Codex CLI/subagent persona note as an active
+    repository workflow: direct subagents remain disabled unless the user
+    explicitly re-enables them.
+- Scope:
+  - `AGENTS.md`, `ops/refactor/STATE.md`, and `.agent-loop/README.md` now make
+    Codex the sole active operator for planning, implementation, validation,
+    ledger updates, and scoped commits.
+  - agmsg, codex2/codex3/codex4, Claude, subagents, PATCH_REPORT waits, and
+    external maker/checker handoff are disabled unless explicitly re-enabled.
+  - `.codex/config.toml`, `.codex/agents/*.toml`,
+    `src/components/features/reports/report-edit-form.test.tsx`, and
+    `refactor-instructions.md` dirty diffs remain separate and unstaged.
+- Safety:
+  - Documentation/process-only change. No runtime source, API, DB, auth,
+    authorization, PHI logging, billing behavior, deployment, package
+    dependency, or production setting changed.
+- Validation:
+  - `git diff --check -- AGENTS.md ops/refactor/STATE.md .agent-loop/README.md`
+    passed.
+  - `./node_modules/.bin/prettier --check AGENTS.md ops/refactor/STATE.md .agent-loop/README.md`
+    passed.
+- Remaining:
+  - Continue repo work under single Codex operation. W3-B9
+    `monthly_cap_shared` rule-engine fix is already landed at `ae81a9f7`.
+
+## R21 Report Edit Form Sonner Mock - 2026-07-04 17:57 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/components/features/reports/report-edit-form.test.tsx`
+- Scope:
+  - Replaced the local partial `sonner` mock in the report edit form test with
+    the shared `createSonnerToastMock()` helper.
+  - Product runtime code was not changed.
+- Safety:
+  - Test-only change.
+  - No API, DB, auth, authorization, PHI, audit, billing, deployment, payload,
+    query, or component runtime behavior changed.
+- Validation:
+  - `pnpm vitest run src/components/features/reports/report-edit-form.test.tsx src/test/sonner-test-utils.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `7` tests.
+  - Targeted ESLint passed for the exact test/helper files.
+  - Targeted Prettier check passed for the exact test/helper files.
+  - Targeted `git diff --check` passed.
+- Remaining:
+  - Existing dirty Codex config/persona/operator-doc changes remain unrelated
+    and were not included in this slice.
+
+## Codex CLI/Subagent Persona Optimization - 2026-07-04 17:53 JST
+
+- Status:
+  - Codex CLI update command completed successfully. Installed version remains
+    current at `codex-cli 0.142.5`; Codex reported restart recommended.
+  - User-level defaults now make bare `codex` fast by default:
+    `gpt-5.5`, low reasoning, medium plan reasoning, cached web search, fast
+    service tier, concise summaries, and `agents.max_depth = 1`.
+  - `implement` and `plan` profiles now keep direct subagent delegation only
+    with `agents.max_depth = 1`.
+  - Global custom-agent personas were upgraded from common contract v2 to v3.
+  - Project custom agents gained direct-child/no-recursive-fanout and explicit
+    verdict rules.
+  - `AGENTS.md`, `.agent-loop/README.md`, `.codex/config.toml`, and
+    `ops/refactor/STATE.md` now describe Codex single-owner operation with
+    direct Codex CLI subagents, not agmsg/codex2/codex3/codex4/Claude lanes.
+- Safety:
+  - No product source, DB, migration, auth, authorization, API payload, PHI
+    logging, billing logic, dependency, deploy, or production setting changed.
+  - Changes are local Codex/runtime config and repository operator docs/agent
+    persona files only.
+- Validation:
+  - Official Codex manual fetched through the `openai-docs` skill reported the
+    local manual was current.
+  - `/Users/yusuke/.nvm/versions/node/v24.16.0/bin/codex update` succeeded.
+  - `/Users/yusuke/.nvm/versions/node/v24.16.0/bin/codex --strict-config doctor --summary --ascii`
+    passed with `16 ok`, `0 fail`; remaining warnings are unrestricted sandbox
+    and local rollout/thread housekeeping.
+  - Python `tomllib` parsed `63` user/project Codex TOML files successfully.
+  - Markdown Prettier write/check was used for operator docs. TOML Prettier was
+    attempted and correctly failed because this repo has no TOML parser for
+    Prettier, so TOML validation is `tomllib` + Codex strict doctor.
+  - Targeted `git diff --check` passed for the Codex config/persona/operator
+    doc paths.
+- Remaining:
+  - Restart Codex to load the updated CLI/runtime config in a fresh session.
+  - Existing `refactor-instructions.md` formatting churn remains unrelated and
+    intentionally unstaged.
+
 ## W3-B9 Online Shared Monthly Cap - 2026-07-04 17:50 JST
 
 - Status:

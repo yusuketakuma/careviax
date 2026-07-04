@@ -6,31 +6,30 @@
 
 ## 体制（2026-07-04 ユーザー指示）
 
-- codex = 全体統括 coordinator / checker / central-gate / committer / task-router。
-  メイン lane は実装で塞がず、Plans 棚卸し、割当、review、gate、scoped commit、例外処理を優先する。
-- 実行役: codex2 = frontend/UI、codex3 = cleanup/DataTable/API-helper、codex4 = backend/business-domain
-  recon/implementation。各 agent は exact path assignment 以外を編集しない。
-- Claude は今回の運用から削除済み（agmsg `phos` registration removed）。新規 work/review/gate は送らない。
-  既存メッセージは legacy handoff として扱う。
-- 規律: agmsg drain → exact LOCK/assignment → 実装/validation → PATCH_REPORT → codex review →
-  central gate/scoped commit。実行役の self-commit 禁止。
+- 現行は Codex 単独統括 + Codex CLI direct subagents。codex が Plans 棚卸し、実装、
+  validation、台帳更新、scoped commit、例外処理を一貫して担当する。
+- agmsg / codex2 / codex3 / codex4 / Claude / PATCH_REPORT 待ちは使わない。
+  Codex CLI subagent は direct child の bounded helper としてのみ使い、recursive fan-out はしない。
+  ユーザーが明示的に再有効化しない限り、過去の multi-agent 記述は歴史的記録として扱う。
+- 規律: `git status --short --untracked-files=all` → 対象 diff 確認 → 小スライス実装 →
+  focused validation → 台帳更新 → explicit path staging → scoped commit。
 - gate: lint / typecheck / typecheck:no-unused / format:check / test / build / colors:check
-  （build と typecheck は並列禁止。BUILD-LOCK 中は実行役が build/typecheck/no-unused を走らせない）
+  （build と typecheck は並列禁止。長い Next.js gate は同時実行しない）
 
-## 全エージェント共通の自律待機方針（2026-07-04 ユーザー指示）
+## Codex 単独統括 + direct subagents の自律待機方針（2026-07-04 ユーザー指示）
 
-- 対象: Codex / codex2 / codex3 / codex4 / future workers（Claude は今回の `phos` から削除済み）。
-- review待ち、LOCK待ち、land待ち、狭い blocker、担当slice hold中でも、完全停止しない。
-- まず agmsg と dirty tree を確認し、active LOCK・peer dirty・危険領域を避ける。
+- review待ち、land待ち、狭い blocker、担当slice hold中でも、完全停止しない。
+- まず dirty tree を確認し、既存 user/peer dirty・危険領域を避ける。
 - 編集できない場合も read-only recon、衝突表、候補scoring、focused validation、次に安全な作業の棚卸しを続ける。
-- 編集可能な候補が見つかった場合は exact path を LOCK/claim してから、小さく reviewable な差分だけ実装する。
-- maker/checker、人間承認、billing/算定/PHI隣接/authorization、migration/deploy/destructive gate は迂回しない。
+  必要なら `.codex/agents/*.toml` の read-only direct subagent を使い、要約だけを親に戻す。
+- 編集可能な候補が見つかった場合は、小さく reviewable な差分だけ実装する。
+- 人間承認、billing/算定/PHI隣接/authorization、migration/deploy/destructive gate は迂回しない。
 
 ## Phase
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: 3実行レーン+codex統括体制（2026-07-04〜）。
+- Phase C（実装ループ）: Codex 単独統括 + direct subagents 体制（2026-07-04〜）。
   現在の供給源は `Plans.md` 未完了40件（open 37 + partial 3）。即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
@@ -62,20 +61,11 @@
 
 ## 進行中 / 凍結
 
-- codex2: frontend/UI lane。`R55-ADMIN-JOBS-PAGE-SUSPENSE-LOADING-LABEL` は
-  66ae881e、`R55-ADMIN-MASTER-PAGE-SUSPENSE-LOADING-LABELS` は f0029164 で land。
-  `R55-SCHEDULE-OPERATIONAL-TASKS-LOADING-SKELETON` は a54484d3 で land。
-  次は `R55-VISIT-RECORD-BOOTSTRAP-LOADING-SKELETON`（visit-record-form bootstrap loading）を
-  exact path で GO 済み。
-- codex3: W3-E2/R55 cleanup lane。DataTable contract と prescriptions migration は land 済み。
-  `R55-DRUG-MASTER-IMPORT-HISTORY-LOADING-SKELETON` は fd065171 で land。
-  `R21-SONNER-MOCK-SMALL-WAVE` は 932d3d22 で land。
-  次は `R21-SONNER-MOCK-REPORT-EDIT-FORM`（report-edit-form.test の sonner helper migration）を
-  exact path で GO 済み。
-- codex4: W3-B9 billing-cycle lane。cycle-null/cycle-bound emergency category 欠落は
-  evidence 側 cbef13f4 + rule-engine 側 d535b4f6 で fail-closed 化済み。次は
-  `monthly_cap_shared` が rule-engine 上限計算で未消費の候補を、公式点数/単位確認つきで read-only
-  recon → 小スライス化する。
+- codex: Codex CLI 0.142.5 最適化と subagent persona 強化は検証済み。
+  user/profile config は fast/cached/direct-subagent 既定、global/project custom-agent personas は
+  v3/direct-child verdict ルールへ更新済み。scoped commit 待ち。
+- codex: W3-B9 `monthly_cap_shared` rule-engine fix は ae81a9f7 で land 済み。
+  ledger-only evidence 差分は本 Codex CLI/persona スライスと一緒に保存対象。
 - codex: `ID-1a` / `ID-1b` / `ID-2-W1` / `ID-2-W2` / `ID-2-W3` / `ID-2-W4` は land 済み。
   `ID-2-W5` も land 済み(86d9d273)。
   E1 は基準1 FAIL、E2（明示 tx allocator）正式採用。
@@ -88,9 +78,8 @@
 
 ## 次の一手
 
-1. codex2: `R55-VISIT-RECORD-BOOTSTRAP-LOADING-SKELETON` PATCH_REPORT 待ち。
-2. codex3: `R21-SONNER-MOCK-REPORT-EDIT-FORM` PATCH_REPORT 待ち。
-3. codex4: `W3-B9-ONLINE-SHARED-MONTHLY-CAP-RECON` read-only report 待ち。`monthly_cap_shared` / care online
-   46単位 / medical online 59点の cap 根拠と実装スライスを確認し、billing reviewer 前提で報告。
-4. codex: Plans.md 未完了40件（open 37 + partial 3）を継続棚卸しし、human/external gate と実装候補を分離して task supply を維持。
-5. held: `R40-PRINT-HUB-READAPIJSON` / high-risk W3-B6/ID migration/PMDA/AWS/UAT/legal は明示GOまたは human gate まで保留。
+1. codex: Codex CLI 0.142.5 最適化と subagent persona 強化差分を scoped commit。
+2. codex: W3-B9 `monthly_cap_shared` rule-engine fix は ae81a9f7 で land 済み。長い gate が走っていないことを確認後、
+   次の backend/business-domain 候補を read-only triage。
+3. codex: Plans.md 未完了40件（open 37 + partial 3）を継続棚卸しし、human/external gate と実装候補を分離して task supply を維持。
+4. held: `R40-PRINT-HUB-READAPIJSON` / high-risk W3-B6/ID migration/PMDA/AWS/UAT/legal は明示GOまたは human gate まで保留。

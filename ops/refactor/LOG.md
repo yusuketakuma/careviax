@@ -593,3 +593,55 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   Prettier check green、targeted `git diff --check` green、full `pnpm typecheck` green。
 - 安全性: DB/migration/auth/authorization/API payload/PHI logging/deploy/package dependencies は不変。
   算定上限の過小適用を防ぐ fail-closed 寄りの修正。
+
+## 2026-07-04 Codex CLI 0.142.5 / subagent persona optimization
+
+- 分類: developer/runtime operations / Codex CLI profile and custom-agent persona。
+- update: `/Users/yusuke/.nvm/versions/node/v24.16.0/bin/codex update` は成功。
+  実バージョンは `codex-cli 0.142.5` のままで、最新版としてローカル整合。
+- 変更:
+  - `~/.codex/config.toml`: bare `codex` 既定を `gpt-5.5` + low reasoning +
+    cached web + `service_tier="fast"` に調整し、`agents.max_depth=1`。
+  - `~/.codex/implement.config.toml` / `~/.codex/plan.config.toml`:
+    direct subagent delegation only の `max_depth=1`。
+  - `~/.codex/agents/*.toml`: 共通 persona contract を v3(Codex 0.142+)へ更新。
+  - `.codex/agents/*.toml`: direct child / no recursive fan-out / explicit verdict rule を追加。
+  - `AGENTS.md`、`.agent-loop/README.md`、`.codex/config.toml`、本 STATE:
+    agmsg/codex2/codex3/codex4/Claude なし、Codex CLI direct subagents ありの運用へ整合。
+- 検証: official Codex manual fetch current、Codex strict doctor `16 ok / 0 fail`、
+  TOML `63 files` parse ok、Markdown Prettier ok、targeted `git diff --check` ok。
+  Prettier は TOML parser 不在のため TOML には使わず、`tomllib` + strict doctor を採用。
+- 安全性: product source/API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+  ローカル Codex config と operator/persona 文書のみ。
+
+## 2026-07-04 R21 report edit form sonner mock
+
+- 分類: test-harness cleanup / R21 sonner mock residual。
+- 実施: `src/components/features/reports/report-edit-form.test.tsx` の local partial `sonner`
+  mock を既存 `createSonnerToastMock()` helper へ置換。
+- 変更ファイル: `src/components/features/reports/report-edit-form.test.tsx`。
+- 削除したコード: test-local の `success` / `error` のみの partial mock。
+- 共通化した処理: sonner toast mock surface を `src/test/sonner-test-utils.ts` に統一。
+- 挙動変更: なし。test-only で product runtime source は不変。
+- FE/BE整合性への影響: なし。
+- UI配置への影響: なし。
+- 性能への影響: なし。
+- 検証: focused Vitest `2 files / 7 tests` green、exact ESLint green、exact
+  Prettier check green、targeted `git diff --check` green。
+- 残課題: R21 の他の sonner mock residual は引き続き段階移行対象。
+- 次アクション: 単独 Codex 運用で、次の安全な R21/R55/R40 系 slice を選ぶ。
+
+## 2026-07-04 Single Codex operation switch
+
+- 分類: operator workflow / agmsg multi-agent shutdown。
+- 実施: ユーザー指示に従い、現行 SSOT を Codex 単独運用へ更新。
+  agmsg、codex2/codex3/codex4、Claude、subagent、PATCH_REPORT 待ち、外部
+  maker/checker handoff はユーザーが明示的に再有効化するまで使わない。
+- 変更: `AGENTS.md`、`.agent-loop/README.md`、`ops/refactor/STATE.md`。
+  17:53 の Codex CLI/subagent persona 記録は履歴として残すが、現行運用はこの単独運用設定を優先。
+- 検証: `git diff --check -- AGENTS.md ops/refactor/STATE.md .agent-loop/README.md` green、
+  `./node_modules/.bin/prettier --check AGENTS.md ops/refactor/STATE.md .agent-loop/README.md` green。
+- 安全性: process/docs-only。product source/API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+- 残課題: `.codex/config.toml` / `.codex/agents/*.toml` /
+  `src/components/features/reports/report-edit-form.test.tsx` / `refactor-instructions.md` の dirty diff は
+  別スライスとして保持し、この切替には混ぜない。

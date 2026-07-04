@@ -16,21 +16,24 @@ Work in YOLO mode.
 Use Ralph-loop execution.
 Do not stop until the concrete task is actually complete or an explicit blocker is proven.
 
-## Autonomous Idle Search — all agents
+## Autonomous Idle Search — single Codex operation
 
-This rule applies to every agent in this repository: Claude, Codex, codex2,
-codex3, codex4, opus, sonnet, haiku, and future workers.
+This repository is currently operated by this Codex session alone. Do not use
+agmsg, codex2/codex3/codex4, Claude, subagents, or external maker/checker
+workers unless the user explicitly re-enables that workflow in a later
+instruction.
 
 When a current slice is waiting on review, LOCK release, commit/land, another
 agent, or a narrow blocker, do not become passively idle. Continue looking for
 useful, safe work that moves the repository-level objective forward:
 
-- drain agmsg and respect active LOCKs, dirty peer work, and ownership notes;
+- inspect `git status --short --untracked-files=all` and preserve dirty work
+  that predates the current slice;
 - prefer read-only reconnaissance, conflict mapping, candidate scoring,
   focused validation, and documentation of next safe actions while blocked;
-- if editing is safe, claim exact paths before editing and keep the slice
-  small, reviewable, and behavior-preserving;
-- never use idle work to bypass maker/checker review, human gates, security,
+- if editing is safe, keep the slice small, reviewable, and
+  behavior-preserving;
+- never use idle work to bypass human gates, security,
   privacy, billing, auth/authorization, migration, deployment, or destructive
   operation restrictions;
 - report what was explored, what was proven, and what remains blocked.
@@ -40,47 +43,57 @@ useful, safe work that moves the repository-level objective forward:
 **現行の運用体制は `ops/refactor/STATE.md` が唯一の正（SSOT）。** このファイルや他の文書に
 残る体制記述（旧 Claude main / Codex-only / rev8 等）は歴史的記録であり、矛盾時は STATE.md に従う。
 
-2026-07-04 確定の骨子（詳細・更新は STATE.md）: `codex` が全体統括 coordinator /
-checker / central-gate / committer / task-router。実行役は `codex2`（frontend/UI lane）、
-`codex3`（cleanup/DataTable/API-helper lane）、`codex4`（backend/business-domain recon/implementation
-lane）。Claude は停止済みの歴史的 handoff 元であり、ユーザーが明示的に再有効化しない限り新規
-作業・review・gate は送らない。
+2026-07-04 ユーザー指示により、現行運用は **Codex 単独運用**。
+`codex` が計画、実装、検証、台帳更新、必要な scoped commit まで一貫して担当する。
+agmsg、codex2/codex3/codex4、Claude、subagent、PATCH_REPORT 待ちは使わない。
+ユーザーが明示的に再有効化しない限り、旧 multi-agent/maker-checker 記述は歴史的記録として扱う。
 
-全 agent は agmsg team `phos` で連絡を取り合う。作業開始前・PATCH_REPORT 前・land/hold 後に inbox
-を drain し、exact-path LOCK/assignment、PATCH_REPORT、coordinator review、scoped commit の順序を守る。
-Makers must not self-commit. Preserve all pre-existing dirty/user/peer changes: before claiming a file,
-inspect `git status --short --untracked-files=all` and the file diff.
+単独運用でも shared worktree 前提は維持する。編集前に `git status --short --untracked-files=all`
+と対象 diff を確認し、既存の user/peer dirty 変更を保存する。コミット時は明示した owned path だけを
+stage し、`git add -A` は使わない。
 
 ## Ralph-loop
 
 For each iteration:
 
-0. Inspect `git status --short --untracked-files=all` first and preserve pre-existing dirty work. If a legacy peer session may still be active, do a one-time agmsg drain/notification, but do not wait on peer review in Codex-only mode.
+0. Inspect `git status --short --untracked-files=all` first and preserve pre-existing dirty work.
 1. Read repository state and `.codex/ralph-state.md` if present.
 2. Choose the highest-value next action.
-3. Before editing, inspect affected diffs and confirm the target paths are not pre-existing user/Claude work unless explicitly claimed for the current Codex task.
+3. Before editing, inspect affected diffs and confirm the target paths are not pre-existing user work unless explicitly included in the current Codex task.
 4. Inspect affected code and impact radius.
 5. Make the smallest complete fix.
 6. Run available validation.
 7. Update `.codex/ralph-state.md` / `CODEX_GOAL_PROGRESS.md` when present and relevant.
 8. Before any commit, inspect `git status --short --untracked-files=all`, stage only explicit owned paths, and continue. Do not push unless the user explicitly asks.
 
-## Multi-agent coordination
+## Single-agent coordination
 
-The active loop is Codex-coordinated multi-agent execution.
+The active loop is single Codex execution.
 
-- `codex` assigns work, reviews reports, declares BUILD-LOCK, runs central folds, and makes scoped commits.
-- `codex2` / `codex3` / `codex4` implement only exact assigned paths and report validation; they do not self-commit.
-- Claude messages are legacy handoff context only unless the user explicitly re-enables Claude.
-- Keep long Next.js gates serialized: do not run `pnpm build` concurrently with `pnpm typecheck` or `pnpm typecheck:no-unused`; `.next/types` can race. Workers must not run those long gates while a BUILD-LOCK is active.
+- `codex` owns planning, implementation, verification, ledger updates, and scoped commits.
+- Do not use agmsg, subagents, codex2/codex3/codex4, or Claude unless the user explicitly re-enables them.
+- Keep long Next.js gates serialized: do not run `pnpm build` concurrently with `pnpm typecheck` or `pnpm typecheck:no-unused`; `.next/types` can race.
 - For commits, stage only explicit owned files. Never use `git add -A` in this shared dirty worktree.
+
+## Codex CLI 0.142+ optimization
+
+- Runtime defaults live in user/profile config: `~/.codex/config.toml` plus `~/.codex/<profile>.config.toml`.
+  Do not reintroduce legacy `[profiles.*]` tables or a top-level `profile = ...` selector.
+- Bare `codex` should stay optimized for fast local turns: `gpt-5.5`, cached web search, fast service tier,
+  low default reasoning, concise summaries, and no worker spawning by default.
+- Escalate with `--profile goal`, `--profile max`, or `--profile yolo` when the task needs endurance or deep reasoning.
+- Verify runtime/config changes with the real Codex binary:
+  `/Users/yusuke/.nvm/versions/node/v24.16.0/bin/codex --strict-config doctor --summary --ascii`.
+- Prefer the current top-level `web_search = "cached" | "live" | "disabled"` setting over deprecated web-search feature flags.
+- Project custom agents may exist in `.codex/agents/*.toml` and user-global agents may exist in
+  `~/.codex/agents/*.toml`, but they are dormant in current single-Codex operation.
 
 ## Agent loop SSOT
 
 The current operational SSOT is `ops/refactor/STATE.md`, with `.agent-loop/README.md` as the operator guide.
-Historical Claude x Codex x agmsg rules remain useful background, but the active loop is codex-led coordination
-with three execution agents plus validation/gbrain. Before editing, inspect the dirty tree; before committing,
-stage only owned files; and follow the objective gates in `.agent-loop/GATE_CONFIG.md`.
+Historical Claude x Codex x agmsg rules remain background only. The active loop is single-Codex execution
+plus validation/gbrain. Before editing, inspect the dirty tree; before committing, stage only owned files;
+and follow the objective gates in `.agent-loop/GATE_CONFIG.md`.
 
 ## gbrain memory writeback
 
@@ -103,7 +116,7 @@ For long-running Ralph loops, do not let validated work accumulate indefinitely.
 - Never use `git add -A` or broad staging in a shared dirty worktree. Do not include peer-owned files, peer locks, generated artifacts, or unrelated user changes.
 - Prefer small commit groups such as implementation, tests, validation/CI wiring, and progress-ledger updates. If one file contains unrelated hunks, split or delay the commit rather than mixing ownership.
 - If automatic commit is skipped because validation is failing, the slice is not coherent, files are peer-locked, or unrelated hunks cannot be separated safely, record the skip reason in the progress ledger or user-facing update and continue toward the next safe commit boundary.
-- After committing, send an `agmsg` `FYI:` with the commit hash, scope, validation summary, and any remaining locks or review needs.
+- After committing, record the commit hash, scope, validation summary, and remaining work in the progress ledgers.
 - Automatic commits do not imply automatic push, deploy, migration application, secret rotation, or destructive operations; those still require explicit current-task instruction.
 
 ## Whole-repository scope

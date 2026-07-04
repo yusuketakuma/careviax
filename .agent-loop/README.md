@@ -4,11 +4,12 @@
 
 # Agent Loop — Operator Guide
 
-> Current mode (2026-07-04 JST): **codex-led coordinator mode** for **careviax (PH-OS Pharmacy)**.
-> `codex` is the coordinator/checker/central-gate/committer/task-router. `codex2`, `codex3`, and
-> `codex4` are execution agents that take exact-path assignments, run focused validation, and report
-> PATCH_REPORTs for review/landing. Claude is stopped and kept only as historical handoff context unless
-> the user explicitly re-enables it. gbrain remains long-term memory subordinate to live repository state.
+> Current mode (2026-07-04 JST): **single Codex operation** for **careviax (PH-OS Pharmacy)**.
+> `codex` owns planning, implementation, verification, ledgers, and scoped commits. Do not use agmsg,
+> codex2/codex3/codex4, Claude, or external worker lanes unless the user explicitly re-enables that
+> workflow. Codex CLI built-in subagents may be used as direct child helpers for bounded exploration,
+> review, planning, or verification; they must not recursively spawn more agents or own commits.
+> gbrain remains long-term memory subordinate to live repository state.
 
 This directory holds the human/operator entry points and the live operational artifacts for the loop. Start here.
 
@@ -18,61 +19,35 @@ This directory holds the human/operator entry points and the live operational ar
 
 Current active loop:
 
-- **codex** — overall coordinator/checker/central-gate/committer/task-router. Keeps the main lane free for
-  planning, review, gate folds, scoped commits, and exception handling.
-- **codex2** — frontend/UI execution lane. Takes exact-path UI assignments, preserves PH-OS design rules,
-  and reports focused validation. No self-commit.
-- **codex3** — cleanup/DataTable/API-helper execution lane. Takes exact-path refactor/presentation/helper
-  assignments and reports focused validation. No self-commit.
-- **codex4** — complex backend/business-domain lane. Starts with read-only recon for billing/medical/high-risk
-  tasks, then implements only after explicit coordinator assignment. No self-commit.
-- **claude** — inactive/stopped for new work. Treat any Claude messages as legacy handoff only unless the user
-  explicitly re-enables Claude.
+- **codex** — single active operator. Plans from live repo state, implements the smallest complete slice,
+  runs focused validation, updates ledgers, creates scoped commits when a coherent validated slice is ready,
+  and may use direct Codex CLI subagents for bounded evidence gathering.
 - **gbrain** — long-term memory subordinate. Provides recall (past decisions, prior art) but **never overrides live repo state**. When repo and gbrain disagree, the repo wins; gbrain gets a writeback correction.
 
-Historical two-supervisor model, retained for context:
+Disabled unless the user explicitly re-enables them: agmsg, codex2, codex3, codex4, Claude,
+PATCH_REPORT routing, external maker/checker handoff, and recursive subagent fan-out.
+Historical references below explain the previous loop only.
+
+Historical two-supervisor model, retained for context only and not active:
 
 - **claude-lead** (= agmsg identity `claude` on team `phos`) — the **main implementer**. Owns UI/UX and main feature implementation: `src/app/(dashboard)/**`, `src/components/**`. Studies existing code first, implements, runs the objective gate.
 - **codex-lead** (= agmsg identity `codex` on team `phos`) — the **independent peer reviewer / strict verifier / limited assisting implementer**. Owns backend/perf/refactor/test-review review passes. Reviews Claude's diffs and returns `APPROVED` or `CHANGES_REQUESTED`. Implements only within an explicitly LOCKed scope.
 - **gbrain** — long-term memory subordinate. Provides recall (past decisions, prior art) but **never overrides live repo state**. When repo and gbrain disagree, the repo wins; gbrain gets a writeback correction.
 
-In the current codex-led multi-agent mode, agmsg is the coordination bus. Every execution agent drains inbox
-before starting, before reporting, and after land/hold. The coordinator grants assignments, reviews reports,
-declares BUILD-LOCK, runs central folds, and performs scoped commits.
-
-```
-send:  ~/.agents/skills/agmsg/scripts/send.sh phos <from> <to> "<msg>"
-inbox: ~/.agents/skills/agmsg/scripts/inbox.sh phos <name>
-```
-
 ### 1.1 Communication mode
 
-Manual inbox drains are the reliable delivery path. Monitor delivery can stay
-enabled as a latency optimization, but workers must not change agmsg runtime
-settings while holding implementation work. Check Codex monitor mode only when
-coordinating runtime health:
-
-```bash
-~/.agents/skills/agmsg/scripts/delivery.sh status codex "$(pwd)"
-~/.agents/skills/agmsg/scripts/delivery.sh set monitor codex "$(pwd)"
-```
-
-Historical note: monitor mode installs the `~/.agents/bin/codex` shim. A Codex session that was
-already running before the mode change does not become fully monitored until it
-is restarted and receives its first turn, so supervisors still drain inboxes
-manually at every loop boundary.
+Current communication is direct user ⇄ Codex only. Do not drain or send agmsg messages, do not wait for
+PATCH_REPORTs, and do not route work to worker lanes. Direct Codex CLI subagents return summaries to the
+parent thread; they are not an external communication channel. If a later instruction re-enables agmsg,
+update `ops/refactor/STATE.md` first, then revive the historical protocol intentionally.
 
 Operational compression rules:
 
-- Send `STATE_SUMMARY` for compact current state instead of long narrative
-  catch-up.
-- Use `LONG_GATE_LOCK` / `LONG_GATE_RELEASE` plus
-  `.agent-loop/scripts/long-gate-lock.sh` before Next.js long gates.
-- Batch only homogeneous low-risk reviews with `BATCH_REVIEW_REQUEST`.
-- Keep review envelopes short: changed paths, delta, validation, risk, verdict
-  requested.
-- ACK only messages that are blocking or request receipt; `FYI`, `DONE`,
-  `STATE_SUMMARY`, and `LONG_GATE_RELEASE` do not need ACK by default.
+- Record compact state in `ops/refactor/STATE.md`, `ops/refactor/LOG.md`, `.codex/ralph-state.md`,
+  and `CODEX_GOAL_PROGRESS.md` instead of chat-style routing messages.
+- Keep long Next.js gates serialized. Do not run `pnpm build` concurrently with `pnpm typecheck`
+  or `pnpm typecheck:no-unused`; `.next/types` can race.
+- Keep validation summaries short: changed paths, delta, validation, risk, and remaining work.
 
 Long gate lease helper:
 
@@ -82,26 +57,8 @@ Long gate lease helper:
 .agent-loop/scripts/long-gate-lock.sh release codex "PASS pnpm build"
 ```
 
-If `acquire` reports `status=locked`, do not start the gate; drain agmsg and
-wait or negotiate with the peer.
-
-Idle assistance helper:
-
-```bash
-.agent-loop/scripts/idle-assist.sh request codex
-.agent-loop/scripts/idle-assist.sh request claude
-.agent-loop/scripts/idle-assist.sh delegate claude codex F-20260628-901 \
-  "Harden one bounded backend/API route" \
-  "src/app/api/example/route.ts,src/app/api/example/route.test.ts" \
-  "src/components/**,prisma/**" \
-  "focused vitest + scoped eslint + prettier + typecheck"
-```
-
-Use `request` when the local supervisor is free after draining agmsg and has no
-higher-priority user/review/lock work. It sends `REQUEST_DELEGATE` to the peer.
-Use `delegate` to offer a concrete narrow task back. The helper only sends the
-coordination packet; the receiver still ACKs or declines, claims exact paths via
-LOCK before editing, and runs the normal validation/review flow.
+If `acquire` reports `status=locked`, do not start the gate. In current single-Codex mode, prefer direct
+process inspection and wait for the conflicting local gate to finish rather than using agmsg negotiation.
 
 ---
 
@@ -114,22 +71,22 @@ LOCK before editing, and runs the normal validation/review flow.
 | `CONTROL_PLANE_CONFIG.yml`  | Machine-readable advisory policy for the Control Plane MVP. Descriptive only until runtime enforcement is implemented.                                                               |
 | `STATE.md`                  | Single source of truth for the current run/cycle; resume point on hard-stop.                                                                                                         |
 | `FEATURE_QUEUE.md`          | Feature intake queue (task_id, status, owner/reviewer, acceptance criteria).                                                                                                         |
-| `LOCKS.md`                  | Edit-conflict ledger mirroring the live agmsg LOCK discipline.                                                                                                                       |
+| `LOCKS.md`                  | Historical edit-conflict ledger from the previous agmsg LOCK discipline. Current single-Codex mode uses live `git status` + scoped staging.                                          |
 | `LOOP_POLICY.md`            | Per-run policy distilled from gbrain (ApplyNow / Consider / Ignore / BlockedContext).                                                                                                |
 | `MEMORY_REVIEW.md`          | Classification of gbrain search results (gbrain connected 2026-06-20).                                                                                                               |
 | `PROMOTION_QUEUE.md`        | CandidateLesson → AGENTS.md/CLAUDE.md/Skill promotion candidates (§13 criteria).                                                                                                     |
 | `GBRAIN_SCHEMA.md`          | **SSOT for gbrain memory**: 26 memory types, common metadata, slug/type design, graph edges, save timing, redaction, quality score, Claude/Codex split, writeback rule, MVP phasing. |
 | `templates/gbrain/`         | Fill-in `gbrain put`-ready page templates for the MVP memory types (loop-run, gate-result, decision, …).                                                                             |
-| `MESSAGE_PROTOCOL.md`       | The AGLOOP v5 agmsg envelope + message types + transport (§8).                                                                                                                       |
-| `SUBAGENT_JOBS.md`          | Registry of subagent job types (explorer/dup-scanner/verifier/…).                                                                                                                    |
-| `REVIEW_LOG.md`             | Append-only peer-review (PLAN/PATCH) results log.                                                                                                                                    |
+| `MESSAGE_PROTOCOL.md`       | Historical AGLOOP v5 agmsg envelope + message types + transport (§8).                                                                                                                |
+| `SUBAGENT_JOBS.md`          | Historical registry of subagent job types (explorer/dup-scanner/verifier/…).                                                                                                         |
+| `REVIEW_LOG.md`             | Append-only review results log. In current single-Codex mode, use this only when it adds durable evidence beyond the main ledgers.                                                   |
 | `VERIFY_LOG.md`             | Append-only objective-gate results log.                                                                                                                                              |
 | `PATCH_INBOX.md`            | Changes-requested items awaiting the owner.                                                                                                                                          |
 | `BLOCKED.md`                | Items needing human/external input (auth/billing/security/destructive/prod).                                                                                                         |
 | `GATE_CONFIG.md`            | Objective gate definition with real `pnpm` commands + wired/TODO status.                                                                                                             |
 | `METRICS.md`                | Per-run quality/speed/memory/safety/cost metrics template.                                                                                                                           |
-| `prompts/claude-lead.md`    | Supervisor prompt for the Claude Code main-implementer lane (§9).                                                                                                                    |
-| `prompts/codex-lead.md`     | Supervisor prompt for the Codex peer-reviewer lane (§10).                                                                                                                            |
+| `prompts/claude-lead.md`    | Historical supervisor prompt for the old Claude Code main-implementer lane (§9).                                                                                                     |
+| `prompts/codex-lead.md`     | Historical supervisor prompt for the old Codex peer-reviewer lane (§10).                                                                                                             |
 | `prompts/feature-intake.md` | Reusable feature-intake prompt (§11); paste to either side to register + route a feature.                                                                                            |
 
 > All state files are seeded at initial run id `RUN-20260620-001`, cycle 0, idle, `next_action: bootstrap`, and are maintained by the supervisors during the loop.
@@ -147,17 +104,17 @@ LOOP_POLICY, and current user priority decide which are active.
 > Verification and Q6 Memory Writeback are **always-present meta-phases, not peers of Q1–Q4**: Q5
 > (Verification) gates any/all of the primary loops, and Q6 (Memory Writeback) runs post-verify.
 > Loop-Engineering PDCA is a **parallel process-improvement track**, not product work and not a
-> bypass around the maker/checker gate.
+> bypass around validation, human approval, or hard-stop gates.
 
-| ID     | Loop             | Focus                                                                                                                                                                                                                                   | Primary owner                                     |
-| ------ | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| **Q1** | Refactor         | Remove duplication, simplify, raise cohesion; no behavior change.                                                                                                                                                                       | claude-lead implements, codex-lead scans for dup. |
-| **Q2** | Stability        | Error handling, async-safety, RLS/tenant-isolation correctness, offline (Dexie) integrity, regressions.                                                                                                                                 | codex-lead audits, claude-lead fixes.             |
-| **Q3** | Product-adjacent | Small UX-complete gaps: empty states, permission-insufficient states, error surfaces, edge data.                                                                                                                                        | claude-lead.                                      |
-| **Q4** | UI/UX            | Conformance to `docs/ui-ux-design-guidelines.md` (state colors, hierarchy, density, a11y/WCAG AA).                                                                                                                                      | claude-lead.                                      |
-| **Q5** | Verification     | Objective gate: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`; targeted `pnpm test:e2e` / `pnpm test:e2e:audit`.                                                                                                             | codex-lead verifies, claude-lead supplies.        |
-| **Q6** | Memory Writeback | Persist verified decisions/learnings; correct stale gbrain entries against live repo. **STATUS: gbrain connected (2026-06-20)** — careviax indexed (read-write); writeback can target gbrain (CLI now; `mcp__gbrain__*` after restart). | both.                                             |
-| **LE** | Loop Engineering | Improve the loop itself: extract useful methods and anti-patterns from past implementations/reviews, store them in gbrain, analyze recurrence/efficiency, and run bounded PDCA experiments in parallel with coding.                     | both; codex leads analysis/check metrics.         |
+| ID     | Loop             | Focus                                                                                                                                                                                                                                   | Primary owner                             |
+| ------ | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| **Q1** | Refactor         | Remove duplication, simplify, raise cohesion; no behavior change.                                                                                                                                                                       | codex.                                    |
+| **Q2** | Stability        | Error handling, async-safety, RLS/tenant-isolation correctness, offline (Dexie) integrity, regressions.                                                                                                                                 | codex.                                    |
+| **Q3** | Product-adjacent | Small UX-complete gaps: empty states, permission-insufficient states, error surfaces, edge data.                                                                                                                                        | codex.                                    |
+| **Q4** | UI/UX            | Conformance to `docs/ui-ux-design-guidelines.md` (state colors, hierarchy, density, a11y/WCAG AA).                                                                                                                                      | codex.                                    |
+| **Q5** | Verification     | Objective gate: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`; targeted `pnpm test:e2e` / `pnpm test:e2e:audit`.                                                                                                             | codex.                                    |
+| **Q6** | Memory Writeback | Persist verified decisions/learnings; correct stale gbrain entries against live repo. **STATUS: gbrain connected (2026-06-20)** — careviax indexed (read-write); writeback can target gbrain (CLI now; `mcp__gbrain__*` after restart). | both.                                     |
+| **LE** | Loop Engineering | Improve the loop itself: extract useful methods and anti-patterns from past implementations/reviews, store them in gbrain, analyze recurrence/efficiency, and run bounded PDCA experiments in parallel with coding.                     | both; codex leads analysis/check metrics. |
 
 ### 3.1 Loop behavior per cycle
 
@@ -184,61 +141,52 @@ separate PDCA track, not a reason to delay an active user-priority implementatio
 - **Check** — compare against `METRICS.md`: review turnaround, recurrence, stale-memory rate,
   candidate lesson conversion, gate misses caught by review, and rework after approval.
 - **Act** — if the method proves useful across independent cycles, propose a `PROMOTION_QUEUE.md`
-  entry or a `LOOP_POLICY.md` patch. Never auto-promote; require the normal peer/human gate.
+  entry or a `LOOP_POLICY.md` patch. Never auto-promote; require normal human approval where needed.
 
 Guardrails: no raw conversation, full command output, PHI, secrets, `.env` values, or unverified
-speculation enters gbrain. LE work still drains agmsg, respects LOCKs, stages explicit paths, and
-uses maker/checker separation.
+speculation enters gbrain. LE work still inspects the dirty tree, stages explicit paths, and respects
+hard-stop gates.
 
 ---
 
 ## 4. Feature intake flow (§7)
 
 ```
-register → gbrain search (prior art) → classify → LOOP_POLICY patch
-        → peer approval → Claude implements → Codex reviews → gates → writeback
+register → gbrain search (prior art) → classify → implement → gates → writeback
 ```
 
 1. **Register** the feature into `FEATURE_QUEUE.md`.
 2. **gbrain search** for prior art / past decisions — `gbrain search "<terms>"` / `gbrain query "<question>"` over the indexed careviax + brain sources (record the hits in `gbrain_memory_used`). Recall stays subordinate to live repo state.
 3. **Classify**: which of Q1–Q6 apply, scope, risk, affected paths.
-4. **LOOP_POLICY patch**: claude-lead proposes a policy delta; codex-lead must approve over agmsg before implementation.
-5. **Claude implements** in its lane after LOCKing paths.
-6. **Codex reviews** → `CHANGES_REQUESTED` (loop back) or `APPROVED`.
-7. **Gates** (Q5) must be green.
-8. **Writeback** (Q6) the outcome.
+4. **LOOP_POLICY patch** only when policy changes are needed; otherwise continue with the task.
+5. **Codex implements** a bounded slice after checking live diffs.
+6. **Gates** (Q5) must be green for the affected surface.
+7. **Writeback** (Q6) the outcome when it creates reusable knowledge.
 
 Use `prompts/feature-intake.md` verbatim to drive this.
 
 ---
 
-## 5. Maker / checker separation (§2.3)
+## 5. Single-agent review discipline (§2.3)
 
-- The implementer (maker) and the reviewer (checker) are **different identities in different lanes**. claude-lead never self-approves; codex-lead's `APPROVED` is required before a change is considered done.
-- **Lane discipline**: LOCK a path via agmsg before editing it; **drain your inbox before committing**; stage only your own files.
-- Codex may implement, but **only inside an explicitly LOCKed scope** recorded in `LOCKS.md`. Outside that scope it reviews, it does not write.
-- The objective gate (Q5) is the tie-breaker: opinions yield to green/red gate evidence.
+- Current operation has no separate maker/checker identity. Codex must compensate with small scoped slices,
+  explicit validation, and honest ledger updates.
+- Before editing, inspect `git status --short --untracked-files=all` and affected diffs. Preserve unrelated
+  user/peer changes.
+- Before committing, stage only explicit owned files. Never use `git add -A`.
+- The objective gate (Q5) is the tie-breaker: assumptions yield to green/red gate evidence.
 
 ### 5.1 Workload-balancing handoff
 
-When one Supervisor is saturated and the other has spare capacity, the current owner may hand off
-a task or narrow subtask to the available Supervisor. This is an exception to the default lane
-split, not a bypass of the loop:
-
-- Send an AGLOOP `HANDOFF` or owner-decision envelope and wait for ACK before work starts.
-- Reuse the same stable `idempotency_key` on retries so ownership is not flipped twice.
-- Update `owner_agent` / `reviewer_agent`; the original owner becomes reviewer when appropriate.
-- Declare `locked_paths` / `forbidden_paths`; the receiver edits only the granted paths.
-- Run the same objective gate before `PATCH_REVIEW_REQUEST`; hard-stop surfaces stay human-gated.
+Disabled in current single-Codex mode. Do not hand off to agmsg peers, codex2/codex3/codex4, Claude,
+or recursive subagent chains unless the user explicitly re-enables that workflow.
 
 ### 5.2 Idle-capacity work
 
-This idle-capacity contract applies to every active or future agent in this
-repository: Claude, Codex, codex2, codex3, codex4, opus, sonnet, haiku, and replacement
-workers. A local hold, review wait, land wait, or narrow blocker is not a reason
-to stop searching for useful work.
+This idle-capacity contract applies to current single Codex operation. A local hold, review wait,
+land wait, or narrow blocker is not a reason to stop searching for useful work.
 
-When no review, plan, VERIFY, LOCK, or user-priority task is actionable, the loop should still
+When no review, plan, VERIFY, or user-priority task is actionable, the loop should still
 improve the repo deliberately. Idle work is allowed only when it is small, owned, and reviewable.
 
 Good idle work:
@@ -254,9 +202,9 @@ Good idle work:
 
 Guardrails:
 
-- Drain agmsg before choosing idle work, before editing, and before committing.
-- Prefer read-only reconnaissance first; create/claim a task and LOCK exact paths before any edit.
-- Keep maker/checker separation. The idle worker does not self-approve.
+- Inspect the dirty tree before choosing idle work, before editing, and before committing.
+- Prefer read-only reconnaissance first; keep any edit narrowly scoped.
+- Do not treat unvalidated work as approved.
 - Do not start broad rewrites, speculative new features, cross-lane edits, or hard-stop surfaces
   (auth, billing/payments, security policy, destructive migration, production deploy).
 - Do not write raw logs, conversation, secrets, tokens, `.env` values, or PHI into gbrain or loop
@@ -264,20 +212,17 @@ Guardrails:
 
 Idle auto-discovery contract:
 
-1. At every cycle boundary, drain agmsg and handle `URGENT`, `LOCK`, `PAUSE_REQUEST`,
-   `HANDOFF_REQUEST`, `REQUEST CHANGES`, review requests, and user-priority work first.
+1. At every cycle boundary, handle user-priority work, hard stops, and existing dirty work first.
 2. If nothing is actionable, do not wait passively. Build an idle candidate list from the live
-   `FEATURE_QUEUE.md`, `STATE.md`, dirty worktree, pending peer requests, gbrain recall, and recent
+   `FEATURE_QUEUE.md`, `STATE.md`, dirty worktree, gbrain recall, and recent
    gate/review ledgers.
-3. Rank candidates by risk-adjusted value: unblock peer review first, then read-only prep for the
-   next queued task, approved handoff work, targeted test/validation hygiene, gbrain/loop cleanup,
+3. Rank candidates by risk-adjusted value: preserve dirty work first, then read-only prep for the
+   next queued task, targeted test/validation hygiene, gbrain/loop cleanup,
    and coherent commits of already-reviewed owned slices.
 4. Execute the first candidate that is bounded, non-conflicting, and reviewable. Before any write,
-   send a path `LOCK`, confirm no peer conflict, and stay inside the declared paths.
+   confirm no dirty-work conflict and stay inside the declared paths.
 5. If no candidate is safe to edit, still produce useful output: a read-only recon note,
-   `REQUEST_DELEGATE` via `.agent-loop/scripts/idle-assist.sh request <agent>`, stale-ledger
-   finding, conflict matrix, focused validation result, candidate scoring note, or explicit blocked context. The peer can answer with
-   `.agent-loop/scripts/idle-assist.sh delegate <from> <to> ...` to provide a concrete scoped task.
+   stale-ledger finding, conflict matrix, focused validation result, candidate scoring note, or explicit blocked context.
    `zero_actionable_count` should increase only after this exploration is recorded.
 6. Yield immediately when a higher-priority inbound message arrives, then resume selection after
    that message is handled.
@@ -293,7 +238,7 @@ Stop the loop and write a **resume point** (current state, what's done, what's p
 - **More than 20 files** would be touched.
 - **The same gate fails 3 times** in a row.
 - The work reaches **auth / billing / payments / security / destructive (irreversible) migration / production deploy** — stop, write the resume point, and request human approval. Do not proceed autonomously.
-- **Memory/policy conflict unresolved** — when the two supervisors cannot agree on a LOOP_POLICY delta, or a gbrain `MemoryConflict` cannot be peer-resolved (recall contradicts live repo with no agreed resolution), stop, write the resume point, and escalate to a human.
+- **Memory/policy conflict unresolved** — when a gbrain `MemoryConflict` contradicts live repo and cannot be resolved from evidence, stop, write the resume point, and escalate to a human.
 
 A resume point is a short block the next session (or human) can pick up from without re-deriving context.
 
@@ -304,7 +249,7 @@ A resume point is a short block the next session (or human) can pick up from wit
 - **Never** commit secrets, credentials, tokens, connection strings, or `.env` values. PH-OS handles 要配慮個人情報 (medical PHI) — treat all patient data as confidential.
 - **Never** weaken or bypass **PostgreSQL RLS / tenant isolation** (`SET LOCAL app.current_org_id`) or the org-wide access model.
 - **Never** disable, skip, or weaken a failing test/gate to make it pass.
-- **Never** log PHI or write it into RUNLOG / agmsg / memory.
+- **Never** log PHI or write it into RUNLOG / memory.
 - **Never** perform a destructive migration or production deploy inside the loop (see §14 hard-stop).
 - Security-relevant changes require an explicit checker pass and human approval.
 
@@ -317,21 +262,20 @@ A resume point is a short block the next session (or human) can pick up from wit
 | Phase | Description                                              | Status                                                                                                                                                                  |
 | ----- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1     | Scaffold `.agent-loop/` docs + supervisor prompts        | **Complete** (this directory).                                                                                                                                          |
-| 2     | agmsg coordination live (claude/codex on team `phos`)    | **Live.**                                                                                                                                                               |
+| 2     | agmsg coordination live (claude/codex on team `phos`)    | **Disabled by 2026-07-04 user instruction. Current mode is single Codex operation.**                                                                                    |
 | 3     | gbrain long-term memory connected (recall + writeback)   | **Connected (2026-06-20).** Local postgres; careviax imported (131 pages / 1408 chunks), repo policy read-write. `mcp__gbrain__*` tools load on next Claude Code start. |
 | 4     | Full automated intake → review → gate cycle hardening    | **In progress.** F-008 adds the docs/config Control Plane MVP; runtime enforcement remains deferred.                                                                    |
 | 5     | Memory-driven continuous loop (gbrain-informed planning) | Pending.                                                                                                                                                                |
 
-**CURRENT STATUS:** Phase 1 scaffold complete; Phase 2 agmsg live (claude/codex on team phos); Phase 3 gbrain connected (local postgres, careviax imported — **keyword AND semantic search both work now; embeddings generated via local `ollama:mxbai-embed-large` (1024d, no external egress) as of 2026-06-20, default source embed 100% — `BLOCKED.md` gbrain-embeddings is RESOLVED**; restart Claude Code for `mcp__gbrain__*` tools); Phase 4 Control Plane MVP docs/config is in progress; Phase 5 pending. See CLAUDE.md `## GBrain Configuration`.
+**CURRENT STATUS:** Phase 1 scaffold complete; Phase 2 agmsg coordination is disabled by the 2026-07-04 user instruction; Phase 3 gbrain connected (local postgres, careviax imported — **keyword AND semantic search both work now; embeddings generated via local `ollama:mxbai-embed-large` (1024d, no external egress) as of 2026-06-20, default source embed 100% — `BLOCKED.md` gbrain-embeddings is RESOLVED**); Phase 4 Control Plane MVP docs/config is in progress; Phase 5 pending.
 
 ---
 
 ## 9. Quick start for an operator
 
-**Canonical startup procedure → `STARTUP_RUNBOOK.md`** (Claude Code-originated, Codex joins via agmsg as
-auditor/assistant; team `phos` / agents `claude`+`codex`; the exact paste-ready prompts for both sessions).
+Current single-Codex startup:
 
-1. Confirm agmsg reachable: `~/.agents/skills/agmsg/scripts/inbox.sh phos claude`.
-2. Follow `STARTUP_RUNBOOK.md` §1–§3: start Claude (`/agmsg` → `/effort ultracode` → loop prompt), then Codex (`$agmsg` → `/goal`).
-3. To add work, paste the feature-intake block (`STARTUP_RUNBOOK.md` §5 or `prompts/feature-intake.md`).
+1. Read `ops/refactor/STATE.md`, `ops/refactor/LOG.md` tail, `ops/refactor/BACKLOG.md`, `.codex/ralph-state.md`, and `CODEX_GOAL_PROGRESS.md`.
+2. Run `git status --short --untracked-files=all` and inspect any relevant dirty diffs before editing.
+3. Select the highest-value bounded slice from `Plans.md` / `BACKLOG.md`, implement it, run focused validation, update ledgers, and commit explicit owned paths when the slice is coherent.
 4. Watch for hard-stops (§6) and the resume point if the loop pauses.

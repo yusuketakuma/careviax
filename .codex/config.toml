@@ -3,6 +3,12 @@
 # Keep runtime-like keys in ~/.codex/*.config.toml so --profile fast/goal/max
 # can select the intended model, reasoning, service tier, and search behavior.
 # Keep PH-OS-specific behavior in AGENTS.md.
+#
+# Codex 0.142+ note:
+# - custom agents are standalone TOML files under .codex/agents/;
+# - the [agents.<name>] registry below is kept for discoverability and stable
+#   nicknames/config_file routing;
+# - max_depth stays at 1 so only the coordinator spawns direct child agents.
 ################################################################################
 project_doc_max_bytes = 131072
 project_doc_fallback_filenames = [
@@ -13,7 +19,7 @@ project_doc_fallback_filenames = [
 ]
 [agents]
 max_threads = 32
-max_depth = 2
+max_depth = 1
 job_max_runtime_seconds = 7200
 
 [agents.code_mapper]
