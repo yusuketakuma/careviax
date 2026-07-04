@@ -26,6 +26,7 @@ import {
   PACKAGING_METHOD_OPTIONS,
   type PackagingMethodValue,
 } from '@/lib/dispensing/packaging';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
@@ -85,8 +86,7 @@ export function PatientPackagingCard({ patientId, orgId }: { patientId: string; 
       const res = await fetch(buildPatientApiPath(patientId, '/packaging'), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('患者配薬設定の取得に失敗しました');
-      return res.json() as Promise<PackagingResponse>;
+      return readApiJson<PackagingResponse>(res, '患者配薬設定の取得に失敗しました');
     },
     enabled: !!orgId,
   });

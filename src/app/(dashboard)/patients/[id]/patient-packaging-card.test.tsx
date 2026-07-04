@@ -134,6 +134,26 @@ describe('PatientPackagingCard', () => {
     }
   });
 
+  it('surfaces API error messages when packaging settings fail to load', async () => {
+    const { queryConfigs } = captureConfigs();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ message: '配薬設定の閲覧権限がありません' }, 403));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientPackagingCard patientId="patient_1" orgId="org_1" />);
+
+      await expect(queryConfigs[0]?.queryFn?.()).rejects.toThrow('配薬設定の閲覧権限がありません');
+      expect(fetchMock).toHaveBeenCalledWith('/api/patients/patient_1/packaging', {
+        headers: buildOrgHeaders('org_1'),
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
   it('saves packaging settings via PUT to an encoded path with JSON headers, preserving every non-empty field', async () => {
     const hostileId = 'pt/1?x=y#z';
     const mutationConfigs: CapturedConfig[] = [];
