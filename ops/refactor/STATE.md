@@ -158,6 +158,11 @@
   readApiJson へ収束し、queryKey/month/date/limit/supporting-master error/mutation contract は保持。
   SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
   維持しつつ、本sliceでは不要。
+- codex: R40/R44 admin-incidents readApiJson slice(f8a1e025) land。focused Vitest 15、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。incident-report list read GET を
+  readApiJson へ収束し、collection path/org-header/response envelope/error UI/mutation contract は保持。
+  SSOT の必要時変更許可 (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は
+  維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 

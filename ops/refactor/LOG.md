@@ -3815,6 +3815,27 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   個別確認してから段階移行する。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
 
+## 2026-07-05 R40/R44 admin incidents readApiJson slice
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 実施:
+  - admin incidents の incident-report list GET fetcher を `readApiJson` へ移行。
+  - 既存 focused test で collection endpoint と org-scoped header contract を継続固定。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。collection endpoint、
+  `buildOrgHeaders`、React Query key、response envelope unwrap、loading/error UI、
+  refetch behavior、memo/status PATCH、create POST は維持。
+- 安全性: product UI read fetch internals のみ変更。DB/schema、auth/authorization、
+  PHI projection、billing、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation、mutation/server behavior は不変。SSOT では
+  必要時の product API/DB/auth/authorization/PHI/billing/deploy/package dependency
+  変更許可を確認済みだが、この slice では不要。
+- 検証: focused admin incidents Vitest `1 file / 15 tests` green、scoped ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `f8a1e025` (`Converge incident reads on shared JSON helper`)。
+- 残課題: R40/R44 は broad。追加の client fetcher は response body read が PHI-safe かを
+  個別確認してから段階移行する。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
 ## 2026-07-05 R40/R44 external professionals readApiJson slice
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。
