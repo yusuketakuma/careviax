@@ -275,6 +275,8 @@ describe('SignalTuningPanel', () => {
     renderPanel();
 
     expect(screen.getByTestId('signal-tuning-loading')).toBeTruthy();
+    expect(screen.getByRole('status', { name: '表示設定を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('表示設定を読み込み中...', { selector: 'p' })).toBeNull();
     expect(screen.queryByTestId('signal-tuning-panel')).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });

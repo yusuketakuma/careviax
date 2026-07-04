@@ -14,6 +14,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SkeletonRows } from '@/components/ui/loading';
 import { Switch } from '@/components/ui/switch';
 import {
   Select,
@@ -436,9 +437,9 @@ export function DocumentDeliveryRuleManager() {
             // isPending (not isLoading) so an unresolved orgId — which disables the query
             // (enabled: !!orgId) and leaves it pending-but-not-fetching — also shows loading
             // rather than the empty-state.
-            <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
-              送達ルールを読み込み中...
-            </p>
+            <div role="status" aria-label="送達ルールを読み込み中" aria-live="polite">
+              <SkeletonRows rows={2} cols={3} status={false} />
+            </div>
           ) : rules.length === 0 ? (
             <p className="text-sm text-muted-foreground">文書送達ルールはまだありません。</p>
           ) : (

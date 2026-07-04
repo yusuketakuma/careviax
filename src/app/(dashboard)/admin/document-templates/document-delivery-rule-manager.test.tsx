@@ -379,7 +379,8 @@ describe('DocumentDeliveryRuleManager', () => {
     );
     renderManager();
 
-    expect(screen.getByText('送達ルールを読み込み中...')).toBeTruthy();
+    expect(screen.getByRole('status', { name: '送達ルールを読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('送達ルールを読み込み中...', { selector: 'p' })).toBeNull();
     expect(screen.queryByText('文書送達ルールはまだありません。')).toBeNull();
   });
 
@@ -393,7 +394,8 @@ describe('DocumentDeliveryRuleManager', () => {
     vi.stubGlobal('fetch', fetchMock);
     renderManager();
 
-    expect(screen.getByText('送達ルールを読み込み中...')).toBeTruthy();
+    expect(screen.getByRole('status', { name: '送達ルールを読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('送達ルールを読み込み中...', { selector: 'p' })).toBeNull();
     expect(screen.queryByText('文書送達ルールはまだありません。')).toBeNull();
     // the disabled query must not have fired a fetch
     expect(fetchMock).not.toHaveBeenCalled();

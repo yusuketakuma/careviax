@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
+import { SkeletonRows } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
@@ -160,14 +161,14 @@ export function SignalTuningPanel() {
     // (enabled: !!orgId) and leaves it pending-but-not-fetching in React Query v5 — shows
     // loading rather than buildSignalTuningState([]) defaulting every signal to 標準.
     return (
-      <p
+      <div
         role="status"
+        aria-label="表示設定を読み込み中"
         aria-live="polite"
-        className="text-sm text-muted-foreground"
         data-testid="signal-tuning-loading"
       >
-        表示設定を読み込み中...
-      </p>
+        <SkeletonRows rows={2} cols={2} status={false} />
+      </div>
     );
   }
 
