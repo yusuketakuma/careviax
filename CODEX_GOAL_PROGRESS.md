@@ -1,5 +1,42 @@
 # CODEX Goal Progress
 
+## R23 MFA Setup Error Message Helper Partial - 2026-07-05 01:05 JST
+
+- Status:
+  - Implemented and validated the next bounded R23 slice:
+    - `src/app/(auth)/mfa/setup/page.tsx`
+    - `src/app/(auth)/mfa/setup/page.test.tsx`
+- Scope:
+  - Reused the existing `messageFromError` helper for MFA setup loading and
+    verification error formatting.
+  - Added UI coverage that empty thrown Error messages fall back to:
+    - `MFA設定情報の取得に失敗しました`
+    - `確認コードが正しくありません。もう一度お試しください。`
+- Safety:
+  - Client/helper error message formatting only.
+  - No product API, DB, auth flow semantics, authorization, PHI projection,
+    billing semantics, audit semantics, deployment, package dependency, live DB
+    operation, external send, secret handling, push, or destructive operation
+    changed.
+  - The PH-OS UI/UX SSOT already records the 2026-07-04 user direction that
+    product API/DB/auth/authorization/PHI/billing/deploy/package dependency may
+    be changed when needed for the product contract; this slice did not need
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(auth)/mfa/setup/page.test.tsx' src/lib/utils/error-message.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `5` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `bae0f7c1`
+    (`refactor(auth): reuse error message helper in mfa setup`).
+- Remaining:
+  - R23 is partial; remaining hand-rolled error-message ternaries should be
+    migrated by bounded domain chunks.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R23 Billing Rules Error Message Helper Partial - 2026-07-05 01:02 JST
 
 - Status:
