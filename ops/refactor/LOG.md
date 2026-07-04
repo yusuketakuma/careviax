@@ -814,6 +814,28 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
 
+## 2026-07-04 R55 report detail loading skeleton
+
+- 分類: UI loading-state cleanup / R55 visible loading residual。
+- 実施:
+  - `reports/[id]/page.tsx` の org 未解決 / care-report loading 分岐で使っていた generic
+    `Loading` return を、intro・患者識別 band・report body・readiness・delivery history の形を保つ
+    領域固有 `role="status"` + skeleton へ置換。
+  - loading 中に generic `読み込み中...` status、最終 report workspace、患者 header、患者名、薬剤名、送付ボタンが出ないことを
+    `page.test.tsx` に追加。
+- 挙動変更: loading presentation のみ。query key、fetcher、org header、enabled behavior、
+  report navigation、send/resend logic、composer behavior、mutation/cache invalidation、
+  API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の 5状態分離、領域固有 loading label、
+  generic loading copy 禁止、report detail workspace 形状に沿う skeleton loading に整合。
+- 安全性: Loading copy は PHI-free で、patient name・drug name・report body・report id・patient id・visit date・delivery recipient・org id・raw error
+  を出さない。
+- 検証: focused report-detail Vitest `1 file / 37 tests` green、targeted ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `76c799e6` (`fix(reports): show skeleton for report detail loading`)。
+- 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
 ## 2026-07-04 R55 QR scan draft loading skeleton
 
 - 分類: UI loading-state cleanup / R55 visible loading residual。

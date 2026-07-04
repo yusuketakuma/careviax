@@ -1,5 +1,41 @@
 # CODEX Goal Progress
 
+## R55 Report Detail Loading State - 2026-07-04 19:50 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/reports/[id]/page.tsx`
+    - `src/app/(dashboard)/reports/[id]/page.test.tsx`
+- Scope:
+  - Replaced the generic `Loading` return in the report-detail page with a named
+    skeleton region that preserves the intro, patient identity band, report body,
+    readiness, and delivery-history rhythm without rendering final report
+    content.
+  - Loading no longer exposes generic `読み込み中...` semantics or final patient /
+    report details before org context and report data resolve.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, fetcher, org header, `enabled` behavior, report
+    navigation, send/resend logic, composer behavior, mutations, cache
+    invalidation, DB, auth, authorization, billing, audit, deployment, package,
+    or server behavior changed.
+  - Loading copy is PHI-free and does not echo patient names, drug names, report
+    body, report ids, patient ids, visit dates, delivery recipients, org ids, or
+    raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/reports/[id]/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `37` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the report-detail source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `76c799e6`
+    (`fix(reports): show skeleton for report detail loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Interprofessional Report Share Loading State - 2026-07-04 19:46 JST
 
 - Status:
