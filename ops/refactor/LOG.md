@@ -525,3 +525,19 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 安全性: DB/migration/auth/authorization/PHI/API payload は不変。算定根拠欠落時の過請求防止のみ。
 - 次: codex4 は W3-B9 candidate2 として `monthly_cap_shared` が rule-engine で未消費の問題を
   read-only で公式根拠確認し、care online 46単位 / medical online 59点の shared cap 実装スライスを提案する。
+
+## 2026-07-04 R55 schedule loading + R21 sonner mock 932d3d22/a54484d3
+
+- land: codex3 の `R21-SONNER-MOCK-SMALL-WAVE` を coordinator 再検証後に
+  `932d3d22 test(reports): use shared sonner mock` として scoped commit。
+  `report-delivery-dashboard.test.tsx` の local partial `sonner` mock を既存
+  `createSonnerToastMock()` helper に置換。test-only で product runtime は不変。
+- land: codex2 の `R55-SCHEDULE-OPERATIONAL-TASKS-LOADING-SKELETON` を coordinator
+  再検証後に `a54484d3 refactor(schedules): skeletonize operational task loading` として
+  scoped commit。再架電タスク / 運用タスク loading を visible plain text から named
+  `role=status` skeleton に置換し、false-empty 分離を test 固定。
+- 検証: report delivery dashboard focused Vitest `1 file / 9 tests` green、schedule
+  operational tasks focused Vitest `1 file / 8 tests` green、両スライスとも exact ESLint /
+  exact Prettier check / exact `git diff --check` green。
+- 安全性: report slice は test-only。schedule slice は query/action/API/DB/auth/billing/audit/PHI
+  と empty-state semantics 不変。R22b infra deletion / AWS timeout/env-catalog dirt は混ぜず別スライスとして保持。

@@ -48,9 +48,10 @@
   / FIX-CATALOG-IDSEQ(a42065fa) / R21-SONNER1(68688360) / ID-2-W5(86d9d273) / ID-2-W6(d2bcde00) — 全 opus/committer APPROVE
 - codex2 lane: R16-MIN(da5889f0) / R16-SWEEP(6f26c04c) / FE-FALSEEMPTY(27496917) /
   R55 admin-jobs route loading label(66ae881e) / R55 admin master loading labels(f0029164) —
-  coordinator validation green
+  coordinator validation green。R55 schedule operational task loading(a54484d3) — focused validation green
 - codex3 lane: R22-EXEC(759b4dbc) / R08-EXEC(cee20c66) /
-  R55 drug-master import-history skeleton(fd065171) — coordinator validation green
+  R55 drug-master import-history skeleton(fd065171) / R21 report delivery sonner mock(932d3d22) —
+  coordinator validation green
 - codex4 lane: W3-B9 evidence-side missing emergency category blocker(cbef13f4) /
   W3-B9 rule-engine missing emergency category fail-closed(d535b4f6) — focused validation green
 - legacy Claude/Opus lane（削除前の履歴）: X01(e02cec50) / CE19(2136c93a) / N18(ad0ff309) /
@@ -61,12 +62,12 @@
 
 - codex2: frontend/UI lane。`R55-ADMIN-JOBS-PAGE-SUSPENSE-LOADING-LABEL` は
   66ae881e、`R55-ADMIN-MASTER-PAGE-SUSPENSE-LOADING-LABELS` は f0029164 で land。
-  次は `R55-SCHEDULE-OPERATIONAL-TASKS-LOADING-SKELETON`
-  （schedule-day-operational-tasks-panel only）を GO 済み。
+  `R55-SCHEDULE-OPERATIONAL-TASKS-LOADING-SKELETON` は a54484d3 で land。
+  次は frontend/UI の安全な read-only 候補探索または coordinator 割当待ち。
 - codex3: W3-E2/R55 cleanup lane。DataTable contract と prescriptions migration は land 済み。
   `R55-DRUG-MASTER-IMPORT-HISTORY-LOADING-SKELETON` は fd065171 で land。
-  次は `R21-SONNER-MOCK-SMALL-WAVE`（report-delivery-dashboard.test の sonner helper migration）を
-  GO 済み。
+  `R21-SONNER-MOCK-SMALL-WAVE` は 932d3d22 で land。
+  次は R55/DataTable/API-helper/test-helper の安全な候補探索または coordinator 割当待ち。
 - codex4: W3-B9 billing-cycle lane。cycle-null/cycle-bound emergency category 欠落は
   evidence 側 cbef13f4 + rule-engine 側 d535b4f6 で fail-closed 化済み。次は
   `monthly_cap_shared` が rule-engine 上限計算で未消費の候補を、公式点数/単位確認つきで read-only
@@ -83,8 +84,8 @@
 
 ## 次の一手
 
-1. codex2: `R55-SCHEDULE-OPERATIONAL-TASKS-LOADING-SKELETON` PATCH_REPORT 待ち。
-2. codex3: `R21-SONNER-MOCK-SMALL-WAVE` PATCH_REPORT 待ち。
+1. codex2: frontend/UI の次候補を read-only recon し、exact-path LOCK/assignment 待ち。
+2. codex3: R55/DataTable/API-helper/test-helper の次候補を read-only recon し、exact-path LOCK/assignment 待ち。
 3. codex4: W3-B9 `online shared monthly cap` read-only recon。`monthly_cap_shared` / care online
    46単位 / medical online 59点の cap 根拠と実装スライスを確認し、billing reviewer 前提で報告。
 4. codex: Plans.md 未完了40件（open 37 + partial 3）を継続棚卸しし、human/external gate と実装候補を分離して task supply を維持。

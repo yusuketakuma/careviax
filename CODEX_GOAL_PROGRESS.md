@@ -1,5 +1,31 @@
 # CODEX Goal Progress
 
+## R55 Schedule Operational Tasks + R21 Sonner Mock - 2026-07-04 17:33 JST
+
+- Status:
+  - Reviewed, validated, and landed two small coordinator-assigned slices:
+    - `932d3d22 test(reports): use shared sonner mock`
+    - `a54484d3 refactor(schedules): skeletonize operational task loading`
+- Scope:
+  - `report-delivery-dashboard.test.tsx` now uses the shared
+    `createSonnerToastMock()` helper instead of a local partial `sonner` mock.
+  - `ScheduleDayOperationalTasksPanel` loading states now use named
+    `role="status"` skeleton rows for callback and scheduling task loading.
+- Safety:
+  - Report slice is test-only.
+  - Schedule slice preserves task data, query/action semantics, empty-state
+    behavior, API, DB, auth, authorization, billing, audit, PHI, and payload
+    behavior.
+- Validation:
+  - Report delivery dashboard focused Vitest passed `1` file / `9` tests.
+  - Schedule operational tasks focused Vitest passed `1` file / `8` tests.
+  - Targeted ESLint, Prettier check, and `git diff --check` passed for both
+    exact path groups.
+- Routing:
+  - Notified codex2 and codex3 of landed commits.
+  - R22b infra deletion remains a separate dirty slice and was not mixed into
+    either commit.
+
 ## R55 Admin Master + Drug Master Loading States - 2026-07-04 17:25 JST
 
 - Status:
