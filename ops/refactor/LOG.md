@@ -2673,3 +2673,24 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: R24/R46 は partial。`meta.has_more`、keyset cursor encoding、scan-window、
   hidden-count、route-specific metadata を持つ route は個別分析後に継続。
   未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。
+
+## 2026-07-05 R24/R46 correction-requests audit cursor helper slice
+
+- 分類: pattern-inconsistency / view-audit visible-row slicing → `buildCursorPage` 収束。
+- 実施:
+  - `/api/patient-share-cases/[id]/correction-requests` GET で、response page と view-audit
+    metadata が同じ `buildCursorPage` 結果を共有するよう変更。
+  - `limit=1` overflow で visible correction request 1件、`nextCursor: correction_1`、
+    audit の `correction_request_ids/statuses/has_more` が visible page と一致することを test-lock。
+- 挙動変更: API内部の重複 helper 収束のみ。外部 response page contract、share-case scoping、
+  status filter behavior、GET audit behavior、POST behavior は維持。
+- 安全性: `canVisit`、`withOrgContext`、share-case scoping、sensitive no-store、response PHI
+  minimization、view-audit fail-closed behavior、visible-row-only audit metadata、DB query shape、
+  schema/migrations/data、billing、deployment、package dependency、live DB operation、external send、
+  secret handling、push、destructive operation は不変。
+- 検証: focused correction-requests/pagination Vitest `2 files / 25 tests` green、scoped ESLint
+  green、targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `5febff57` (`refactor(api): reuse cursor page helper in correction request audits`)。
+- 残課題: R24/R46 は partial。`meta.has_more`、keyset cursor encoding、scan-window、
+  hidden-count、route-specific metadata を持つ route は個別分析後に継続。
+  未所有 `refactor-instructions.md` と `.agents/skills/**` / `skills-lock.json` は保持。

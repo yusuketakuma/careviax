@@ -1,5 +1,43 @@
 # CODEX Goal Progress
 
+## R24/R46 Correction Requests Cursor Helper Partial - 2026-07-05 01:24 JST
+
+- Status:
+  - Implemented and validated the next bounded R24/R46 slice:
+    - `src/app/api/patient-share-cases/[id]/correction-requests/route.ts`
+    - `src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts`
+- Scope:
+  - Reused the existing `buildCursorPage` helper for correction-request
+    view-audit visible-row selection and response page construction.
+  - Added route coverage that `limit=1` fetches `take: 2`, returns only the
+    visible correction request, emits `nextCursor: correction_1`, and audits
+    only visible correction request ids/statuses.
+- Safety:
+  - Product API implementation internals changed; response page contract and
+    audit semantics are unchanged.
+  - Preserved `canVisit`, `withOrgContext`, share-case scoping, status filter
+    validation, sensitive no-store wrapping, response PHI minimization,
+    view-audit fail-closed behavior, visible-row-only audit metadata, POST
+    behavior, DB query shape, schema/migrations/data, billing behavior,
+    deployment, package dependency, live DB operation, external send, secret
+    handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts' src/lib/api/pagination.test.ts --reporter=dot --testTimeout=30000`
+    passed `2` files / `25` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `5febff57`
+    (`refactor(api): reuse cursor page helper in correction request audits`).
+- Remaining:
+  - R24/R46 are partial; continue compatible hand-rolled cursor page routes.
+  - Routes with `meta.has_more`, keyset cursor encoding, scan-window filtering,
+    hidden-count semantics, or additive route-specific metadata need
+    route-specific analysis before helper convergence.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R24/R46 Consent Records Cursor Helper Partial - 2026-07-05 01:21 JST
 
 - Status:
