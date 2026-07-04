@@ -85,6 +85,22 @@ function holidayFixture(id = 'holiday_1') {
   };
 }
 
+function currentMonthDate(day: number) {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(
+    day,
+  ).padStart(2, '0')}`;
+}
+
+function getHolidaySheetForm() {
+  const title = screen.getByText(/休日を(追加|編集)/);
+  const form = title.closest('[role="dialog"]')?.querySelector('form');
+  if (!form) {
+    throw new Error('Expected business holiday sheet form');
+  }
+  return form;
+}
+
 function stubFetchWithHoliday(holiday = holidayFixture()) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -311,11 +327,37 @@ describe('BusinessHolidaysContent', () => {
     );
     const init = postCall![1] as RequestInit;
     expect(init.headers).toEqual(buildOrgJsonHeaders('org_1'));
-    expect(JSON.parse(init.body as string)).toMatchObject({
+    expect(JSON.parse(init.body as string)).toEqual({
+      date: currentMonthDate(1),
       name: '臨時休業',
       holiday_type: 'site_closure',
       is_closed: true,
     });
+  });
+
+  it('mirrors individual holiday required blockers into the RHF error summary', async () => {
+    const fetchMock = stubFetchWithHoliday();
+    renderContent();
+
+    await screen.findByLabelText('店舗フィルタ');
+    fireEvent.click(await screen.findByLabelText('1日'));
+    fireEvent.change(screen.getByLabelText('日付'), { target: { value: '' } });
+
+    const saveButton = screen.getByRole('button', { name: '登録する' });
+    expect((saveButton as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.submit(getHolidaySheetForm());
+
+    expect(await screen.findByText('入力内容を確認してください')).toBeTruthy();
+    const summaryText =
+      document.getElementById('business-holiday-form-error-summary')?.textContent ?? '';
+    expect(summaryText).toContain('日付を入力してください。');
+    expect(summaryText).toContain('休日名を入力してください。');
+
+    const postCalls = fetchMock.mock.calls.filter(
+      ([, init]) => (init as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(postCalls).toHaveLength(0);
   });
 
   it('bulk create (POST) delegates to buildOrgJsonHeaders and preserves each selected date body', async () => {
@@ -370,6 +412,19 @@ describe('BusinessHolidaysContent', () => {
       );
     });
     expect(buildBusinessHolidayApiPath).toHaveBeenCalledWith('a/b c');
+    const patchCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input) === '/api/business-holidays/a%2Fb%20c' &&
+        (init as RequestInit | undefined)?.method === 'PATCH',
+    );
+    const init = patchCall![1] as RequestInit;
+    expect(JSON.parse(init.body as string)).toEqual({
+      site_id: 'site_1',
+      date: '2026-01-01',
+      name: '年始休業',
+      holiday_type: 'site_closure',
+      is_closed: true,
+    });
   });
 
   it('update (PATCH) with a dot-segment holiday id fails closed before any PATCH fetch', async () => {

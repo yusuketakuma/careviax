@@ -2,8 +2,11 @@
 
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Controller, useForm, useWatch } from 'react-hook-form';
+import { z } from 'zod';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,6 +30,7 @@ import {
 } from '@/components/ui/sheet';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
+import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { SkeletonRows } from '@/components/ui/loading';
 import { MonthGrid } from '@/components/ui/month-grid';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
@@ -35,6 +39,7 @@ import {
   buildBusinessHolidaysApiPath,
 } from '@/lib/business-holidays/api-paths';
 import { formatDateKey } from '@/lib/date-key';
+import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
 
@@ -80,6 +85,45 @@ const HOLIDAY_TYPE_OPTIONS = [
 ] as const;
 
 const HOLIDAY_TYPE_LABELS: Record<string, string> = Object.fromEntries(HOLIDAY_TYPE_OPTIONS);
+const HOLIDAY_FORM_REQUIRED_MESSAGES = {
+  date: '日付を入力してください。',
+  name: '休日名を入力してください。',
+} as const;
+
+type HolidayRequiredField = keyof typeof HOLIDAY_FORM_REQUIRED_MESSAGES;
+type HolidayFormErrors = Partial<Record<HolidayRequiredField, string>>;
+
+function getHolidayFormErrors(form: HolidayForm): HolidayFormErrors {
+  const errors: HolidayFormErrors = {};
+  if (!form.date) errors.date = HOLIDAY_FORM_REQUIRED_MESSAGES.date;
+  if (!form.name.trim()) errors.name = HOLIDAY_FORM_REQUIRED_MESSAGES.name;
+  return errors;
+}
+
+function isHolidayFormSaveBlocked(form: HolidayForm) {
+  const errors = getHolidayFormErrors(form);
+  return Boolean(errors.date || errors.name);
+}
+
+const holidayFormSchema = z
+  .object({
+    site_id: z.string(),
+    date: z.string(),
+    name: z.string(),
+    holiday_type: z.string(),
+    is_closed: z.boolean(),
+  })
+  .superRefine((form, ctx) => {
+    const errors = getHolidayFormErrors(form);
+    for (const [path, message] of Object.entries(errors)) {
+      if (!message) continue;
+      ctx.addIssue({
+        code: 'custom',
+        path: [path],
+        message,
+      });
+    }
+  });
 
 function formatYearMonth(year: number, month: number) {
   return `${year}年${month + 1}月`;
@@ -105,7 +149,6 @@ export function BusinessHolidaysContent() {
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
-  const [form, setForm] = useState<HolidayForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Holiday | null>(null);
@@ -115,6 +158,35 @@ export function BusinessHolidaysContent() {
   const [bulkType, setBulkType] = useState('site_closure');
   const [bulkSiteId, setBulkSiteId] = useState('');
   const [filterSiteId, setFilterSiteId] = useState<string>('');
+  const errorSummaryId = 'business-holiday-form-error-summary';
+  const {
+    control,
+    formState: { errors },
+    getValues,
+    handleSubmit,
+    register,
+    reset,
+  } = useForm<HolidayForm>({
+    resolver: zodResolver(holidayFormSchema),
+    defaultValues: EMPTY_FORM,
+  });
+  const watchedForm = useWatch({ control });
+  const form: HolidayForm = {
+    ...EMPTY_FORM,
+    ...watchedForm,
+  };
+  const errorSummaryItems = collectFormErrorSummaryItems(errors, {
+    site_id: '対象店舗',
+    date: '日付',
+    name: '休日名',
+    holiday_type: '種別',
+    is_closed: '休業日',
+  });
+
+  function focusErrorSummary() {
+    if (typeof document === 'undefined') return;
+    document.getElementById(errorSummaryId)?.focus();
+  }
 
   const dateFrom = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-01`;
   const dateToMonth = viewMonth === 11 ? 0 : viewMonth + 1;
@@ -169,28 +241,30 @@ export function BusinessHolidaysContent() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const url = editingId
-        ? buildBusinessHolidayApiPath(editingId)
+      const currentForm = getValues();
+      const currentEditingId = editingId;
+      const url = currentEditingId
+        ? buildBusinessHolidayApiPath(currentEditingId)
         : buildBusinessHolidaysApiPath();
-      const method = editingId ? 'PATCH' : 'POST';
+      const method = currentEditingId ? 'PATCH' : 'POST';
       const response = await fetch(url, {
         method,
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
-          ...form,
-          site_id: form.site_id || undefined,
+          ...currentForm,
+          site_id: currentForm.site_id || undefined,
         }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error((payload as { message?: string }).message ?? '保存に失敗しました');
       }
-      return payload;
+      return { wasEditing: Boolean(currentEditingId) };
     },
-    onSuccess: async () => {
-      toast.success(editingId ? '休日設定を更新しました' : '休日を登録しました');
+    onSuccess: async ({ wasEditing }) => {
+      toast.success(wasEditing ? '休日設定を更新しました' : '休日を登録しました');
       setShowForm(false);
-      setForm(EMPTY_FORM);
+      reset(EMPTY_FORM);
       setEditingId(null);
       await queryClient.invalidateQueries({ queryKey: ['business-holidays', orgId] });
     },
@@ -271,7 +345,7 @@ export function BusinessHolidaysContent() {
 
   function openEdit(holiday: Holiday) {
     setEditingId(holiday.id);
-    setForm({
+    reset({
       site_id: holiday.site_id ?? '',
       date: dateKey(holiday.date),
       name: holiday.name,
@@ -291,7 +365,7 @@ export function BusinessHolidaysContent() {
       });
       return;
     }
-    setForm({ ...EMPTY_FORM, date: dateStr });
+    reset({ ...EMPTY_FORM, date: dateStr });
     setEditingId(null);
     setShowForm(true);
   }
@@ -613,7 +687,7 @@ export function BusinessHolidaysContent() {
         onOpenChange={(open) => {
           if (!open) {
             setShowForm(false);
-            setForm(EMPTY_FORM);
+            reset(EMPTY_FORM);
             setEditingId(null);
           }
         }}
@@ -623,88 +697,107 @@ export function BusinessHolidaysContent() {
             <SheetTitle>{editingId ? '休日を編集' : '休日を追加'}</SheetTitle>
             <SheetDescription>休日情報を入力してください。</SheetDescription>
           </SheetHeader>
-          <div className="mt-6 space-y-4">
+          <form
+            onSubmit={handleSubmit(() => saveMutation.mutate(), focusErrorSummary)}
+            noValidate
+            className="mt-6 space-y-4"
+          >
+            <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
             <Field label="日付" htmlFor="holiday-form-date">
               <Input
                 id="holiday-form-date"
                 type="date"
-                value={form.date}
-                onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+                {...register('date')}
+                aria-invalid={Boolean(errors.date)}
               />
             </Field>
             <Field label="休日名" htmlFor="holiday-form-name">
               <Input
                 id="holiday-form-name"
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                {...register('name')}
+                aria-invalid={Boolean(errors.name)}
                 placeholder="例: 元日"
               />
             </Field>
             <Field label="種別" htmlFor="holiday-form-type">
-              <Select
-                value={form.holiday_type}
-                onValueChange={(v) => setForm((f) => ({ ...f, holiday_type: v ?? '' }))}
-              >
-                <SelectTrigger id="holiday-form-type">
-                  <SelectValue>
-                    {HOLIDAY_TYPE_LABELS[form.holiday_type] ?? form.holiday_type}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {HOLIDAY_TYPE_OPTIONS.map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Controller
+                control={control}
+                name="holiday_type"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={(v) => field.onChange(v ?? '')}>
+                    <SelectTrigger id="holiday-form-type">
+                      <SelectValue>
+                        {HOLIDAY_TYPE_LABELS[form.holiday_type] ?? form.holiday_type}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {HOLIDAY_TYPE_OPTIONS.map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
             </Field>
             <Field label="対象店舗" htmlFor="holiday-form-site">
-              <Select
-                value={form.site_id}
-                onValueChange={(v) =>
-                  setForm((f) => ({ ...f, site_id: v === '__all' ? '' : (v ?? '') }))
-                }
-              >
-                <SelectTrigger id="holiday-form-site">
-                  <SelectValue placeholder="全店舗共通" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all">全店舗共通</SelectItem>
-                  {sites.map((site) => (
-                    <SelectItem key={site.id} value={site.id}>
-                      {site.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Controller
+                control={control}
+                name="site_id"
+                render={({ field }) => (
+                  <Select
+                    value={field.value}
+                    onValueChange={(v) => field.onChange(v === '__all' ? '' : (v ?? ''))}
+                  >
+                    <SelectTrigger id="holiday-form-site">
+                      <SelectValue placeholder="全店舗共通" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all">全店舗共通</SelectItem>
+                      {sites.map((site) => (
+                        <SelectItem key={site.id} value={site.id}>
+                          {site.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
             </Field>
             <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={form.is_closed}
-                onCheckedChange={(c) => setForm((f) => ({ ...f, is_closed: c === true }))}
+              <Controller
+                control={control}
+                name="is_closed"
+                render={({ field }) => (
+                  <Checkbox
+                    checked={field.value}
+                    onCheckedChange={(c) => field.onChange(c === true)}
+                  />
+                )}
               />
               休業日として扱う
             </label>
             <div className="flex justify-end gap-2 pt-4">
               <Button
+                type="button"
                 variant="outline"
                 onClick={() => {
                   setShowForm(false);
-                  setForm(EMPTY_FORM);
+                  reset(EMPTY_FORM);
                   setEditingId(null);
                 }}
               >
                 キャンセル
               </Button>
               <Button
-                onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending || !form.date || !form.name.trim()}
+                type="submit"
+                disabled={saveMutation.isPending || isHolidayFormSaveBlocked(form)}
               >
                 {saveMutation.isPending ? '保存中...' : editingId ? '更新する' : '登録する'}
               </Button>
             </div>
-          </div>
+          </form>
         </SheetContent>
       </Sheet>
 
