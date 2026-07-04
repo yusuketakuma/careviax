@@ -12,6 +12,7 @@ import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildCareReportPrintAuditApiPath } from '@/lib/reports/api-paths';
+import { messageFromError } from '@/lib/utils/error-message';
 import {
   careReportPrintAuditResponseSchema,
   type CareReportPrintAuditResponse,
@@ -886,9 +887,7 @@ export function PrintHubContent() {
       await firstVisitPrintHistoryMutation.mutateAsync();
       setFirstVisitPrintConfirmationKey(null);
     } catch (error) {
-      setPrintError(
-        error instanceof Error ? error.message : '初回文書の印刷履歴を記録できませんでした',
-      );
+      setPrintError(messageFromError(error, '初回文書の印刷履歴を記録できませんでした'));
     }
   };
 

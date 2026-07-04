@@ -293,6 +293,39 @@ describe('PrintHubContent', () => {
     );
   });
 
+  it('uses the first-visit print history fallback when the thrown error has an empty message', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/patients/patient_1/documents') {
+        return new Response(JSON.stringify(firstVisitDocumentsResponse('patient_1')), {
+          status: 200,
+        });
+      }
+      if (url === '/api/first-visit-documents/print-batch') {
+        throw new Error('');
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    renderPrintHubContent();
+
+    await screen.findByTestId('print-target-first_visit_documents');
+    const printButton = await screen.findByTestId('print-submit-button');
+
+    await waitFor(() => {
+      expect(printButton).toHaveProperty('disabled', false);
+    });
+    fireEvent.click(printButton);
+    fireEvent.click(await screen.findByTestId('first-visit-print-confirm-button'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain(
+        '初回文書の印刷履歴を記録できませんでした',
+      );
+    });
+    expect(window.print).toHaveBeenCalledTimes(1);
+  });
+
   it('encodes the first-visit document patient path while preserving the raw print body', async () => {
     const patientId = 'patient/1?x=y#z';
     const encodedPatientId = encodeURIComponent(patientId);
