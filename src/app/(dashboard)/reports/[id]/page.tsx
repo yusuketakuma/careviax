@@ -33,7 +33,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton, SkeletonRows } from '@/components/ui/loading';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
@@ -208,6 +208,85 @@ const PROFESSION_AUDIENCE_LABELS: Record<string, string> = {
 };
 
 type SendFormErrors = CareReportSendFormErrors;
+
+function ReportDetailLoadingState() {
+  return (
+    <PageScaffold>
+      <WorkflowBackLink href="/reports" label="報告書一覧へ戻る" className="mb-3" />
+      <div
+        className="space-y-6"
+        role="status"
+        aria-label="報告書詳細を読み込み中"
+        aria-live="polite"
+      >
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-8 w-52" />
+          <Skeleton className="h-4 w-full max-w-2xl" />
+          <div className="flex flex-wrap gap-2">
+            <Skeleton className="h-9 w-24 rounded-md" />
+            <Skeleton className="h-9 w-24 rounded-md" />
+            <Skeleton className="h-9 w-28 rounded-md" />
+          </div>
+        </div>
+
+        <section className="rounded-lg border border-border/70 bg-card p-4" aria-hidden="true">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-4 w-56" />
+            </div>
+            <Skeleton className="h-7 w-24 rounded-full" />
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="space-y-2 rounded-md border border-border/70 p-3">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-4 w-28" />
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
+          <section className="rounded-lg border border-border/70 bg-card p-4" aria-hidden="true">
+            <Skeleton className="h-5 w-36" />
+            <div className="mt-4 space-y-3">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="rounded-lg border border-border/70 bg-background p-4">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="mt-3 h-4 w-full" />
+                  <Skeleton className="mt-2 h-4 w-5/6" />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <aside className="space-y-4" aria-hidden="true">
+            <section className="rounded-lg border border-border/70 bg-card p-4">
+              <Skeleton className="h-5 w-32" />
+              <div className="mt-4 space-y-3">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className="flex items-center gap-3">
+                    <Skeleton className="size-4 rounded-full" />
+                    <Skeleton className="h-4 flex-1" />
+                  </div>
+                ))}
+              </div>
+            </section>
+            <section className="rounded-lg border border-border/70 bg-card p-4">
+              <Skeleton className="h-5 w-28" />
+              <div className="mt-4">
+                <SkeletonRows rows={3} cols={2} status={false} />
+              </div>
+            </section>
+          </aside>
+        </div>
+        <span className="sr-only">報告書詳細を読み込み中</span>
+      </div>
+    </PageScaffold>
+  );
+}
 
 type CareReportDirectSendChannel = (typeof CARE_REPORT_SEND_CHANNELS)[number];
 const CARE_REPORT_SEND_CHANNEL_SET = new Set<string>(CARE_REPORT_SEND_CHANNELS);
@@ -686,12 +765,7 @@ export default function ReportDetailPage() {
   }
 
   if (isBootstrappingOrg || isLoading) {
-    return (
-      <PageScaffold>
-        <WorkflowBackLink href="/reports" label="報告書一覧へ戻る" className="mb-3" />
-        <Loading />
-      </PageScaffold>
-    );
+    return <ReportDetailLoadingState />;
   }
 
   if (error) {

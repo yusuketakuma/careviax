@@ -251,6 +251,36 @@ describe('ReportDetailPage send safety dialog', () => {
     });
   });
 
+  it('shows a report detail skeleton instead of a generic spinner while loading', () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: { data: [] },
+          isLoading: false,
+          isFetching: false,
+        };
+      }
+
+      return {
+        data: undefined,
+        isLoading: true,
+        error: null,
+        refetch: vi.fn(),
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    expect(screen.getByRole('status', { name: '報告書詳細を読み込み中' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByTestId('report-detail-workspace')).toBeNull();
+    expect(screen.queryByTestId('patient-header')).toBeNull();
+    expect(screen.queryByText('佐藤 花子')).toBeNull();
+    expect(screen.queryByText('アムロジピン錠5mg')).toBeNull();
+    expect(screen.queryByRole('button', { name: '送付' })).toBeNull();
+  });
+
   it('pins the shared patient identity band above the fold', () => {
     render(<ReportDetailPage />);
 
