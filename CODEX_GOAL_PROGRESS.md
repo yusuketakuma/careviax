@@ -1,5 +1,38 @@
 # CODEX Goal Progress
 
+## R55 Users Route Loading Label - 2026-07-04 20:20 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/admin/users/page.tsx`
+    - `src/app/(dashboard)/admin/users/page.test.tsx`
+- Scope:
+  - Replaced the route-level generic Suspense fallback `Loading` with a
+    screen-specific `ユーザー管理を読み込み中...` status.
+  - Added a route shell regression test proving the admin header remains
+    visible, the fallback is screen-specific, generic `読み込み中...` is absent,
+    and suspended users content is not rendered.
+- Safety:
+  - Route-shell loading presentation and tests only.
+  - No users content query, pharmacist/users API path, org header, invite,
+    role/status mutation, activation/deactivation behavior, DB, auth,
+    authorization, PHI, audit, deployment, package, or server behavior changed.
+  - Loading copy is PHI-free and does not echo user names, emails, phone
+    numbers, roles, site IDs, org IDs, account state, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/users/page.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `2` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the users route source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `a504a8e5`
+    (`fix(admin): name users route loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Operating Hours Route Loading Label - 2026-07-04 20:16 JST
 
 - Status:

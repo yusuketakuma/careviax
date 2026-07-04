@@ -882,6 +882,27 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
 
+## 2026-07-04 R55 users route loading label
+
+- 分類: UI loading-state cleanup / R55 route-shell fallback residual。
+- 実施:
+  - `admin/users/page.tsx` の route-level Suspense fallback を generic
+    `Loading` から `Loading label="ユーザー管理を読み込み中..."` に変更。
+  - page shell test を追加し、header が残ること、screen-specific status が出ること、
+    generic `読み込み中...` と suspended users content が出ないことを固定。
+- 挙動変更: route-shell loading presentation のみ。users content query、pharmacist/users API、
+  org header、invite、role/status mutation、activation/deactivation、API/DB/auth/authorization/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の 5状態分離、領域固有 loading label、
+  Next loading/Suspense docs の meaningful loading UI 方針に整合。
+- 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、user name・email・phone・role・site id・org id・account state・raw error
+  を出さない。
+- 検証: focused users page Vitest `1 file / 2 tests` green、targeted ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `a504a8e5` (`fix(admin): name users route loading`)。
+- 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
 ## 2026-07-04 R55 visit-record form loading skeleton
 
 - 分類: UI loading-state cleanup / R55 visible loading residual。
