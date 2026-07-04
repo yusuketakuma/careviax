@@ -1,12 +1,15 @@
 'use client';
 
 import { useState } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { FileText, Pencil, Trash2 } from 'lucide-react';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminDocumentTemplatesShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { DataTable } from '@/components/ui/data-table';
@@ -14,6 +17,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +32,7 @@ import {
 } from '@/components/ui/select';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import {
   DOCUMENT_TEMPLATES_API_PATH,
   buildDocumentTemplateApiPath,
@@ -81,6 +86,18 @@ type DocumentTemplatesResponse = {
   limit?: number;
 };
 
+type TemplateForm = {
+  name: string;
+  templateType: TemplateType;
+  targetRole: string;
+  format: TemplateFormat;
+  version: string;
+  effectiveFrom: string;
+  effectiveTo: string;
+  isDefault: boolean;
+  contentText: string;
+};
+
 const TEMPLATE_TYPE_LABELS: Record<TemplateType, string> = {
   care_report: '報告書',
   tracing_report: 'トレーシング',
@@ -129,23 +146,12 @@ const DEFAULT_TEMPLATE_CONTENT: Record<TemplateType, Record<string, unknown>> = 
   },
 };
 
-export function DocumentTemplateContent() {
-  const orgId = useOrgId();
-  const queryClient = useQueryClient();
-  const [filterType, setFilterType] = useState<'all' | TemplateType>('all');
-  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<DocumentTemplateRow | null>(null);
-  const [form, setForm] = useState<{
-    name: string;
-    templateType: TemplateType;
-    targetRole: string;
-    format: TemplateFormat;
-    version: string;
-    effectiveFrom: string;
-    effectiveTo: string;
-    isDefault: boolean;
-    contentText: string;
-  }>({
+const TEMPLATE_CONTENT_ERROR_MESSAGE = 'テンプレート本文は JSON オブジェクト形式で入力してください';
+const TEMPLATE_CONTENT_ERROR_ID = 'template-content-json-error';
+const TEMPLATE_SAVE_BLOCKER_ID = 'template-save-blocker';
+
+function createEmptyTemplateForm(): TemplateForm {
+  return {
     name: '',
     templateType: 'care_report',
     targetRole: '',
@@ -155,7 +161,124 @@ export function DocumentTemplateContent() {
     effectiveTo: '',
     isDefault: false,
     contentText: JSON.stringify(DEFAULT_TEMPLATE_CONTENT.care_report, null, 2),
+  };
+}
+
+function normalizeTemplateForm(form?: Partial<TemplateForm> | null): TemplateForm {
+  return {
+    name: form?.name ?? '',
+    templateType: form?.templateType ?? 'care_report',
+    targetRole: form?.targetRole ?? '',
+    format: form?.format ?? 'html',
+    version: form?.version ?? '1',
+    effectiveFrom: form?.effectiveFrom ?? '',
+    effectiveTo: form?.effectiveTo ?? '',
+    isDefault: form?.isDefault ?? false,
+    contentText: form?.contentText ?? JSON.stringify(DEFAULT_TEMPLATE_CONTENT.care_report, null, 2),
+  };
+}
+
+function toTemplateForm(template: DocumentTemplateRow): TemplateForm {
+  return {
+    name: template.name,
+    templateType: template.template_type,
+    targetRole: template.target_role ?? '',
+    format: template.format,
+    version: String(template.version),
+    effectiveFrom: template.effective_from?.slice(0, 10) ?? '',
+    effectiveTo: template.effective_to?.slice(0, 10) ?? '',
+    isDefault: template.is_default,
+    contentText: JSON.stringify(template.content, null, 2),
+  };
+}
+
+function getTemplateContentError(contentText: string) {
+  try {
+    parseJsonObjectText(contentText, TEMPLATE_CONTENT_ERROR_MESSAGE);
+    return null;
+  } catch (error) {
+    return messageFromError(error, TEMPLATE_CONTENT_ERROR_MESSAGE);
+  }
+}
+
+function getTemplateFormBlocker(form: TemplateForm, contentError: string | null) {
+  if (form.name.trim().length === 0) return 'テンプレート名は必須です。';
+  return contentError;
+}
+
+function getTemplateFormBlockerPath(
+  form: TemplateForm,
+  contentError: string | null,
+): keyof TemplateForm {
+  if (form.name.trim().length === 0) return 'name';
+  if (contentError) return 'contentText';
+  return 'name';
+}
+
+const templateFormSchema = z
+  .object({
+    name: z.string(),
+    templateType: z.custom<TemplateType>(),
+    targetRole: z.string(),
+    format: z.custom<TemplateFormat>(),
+    version: z.string(),
+    effectiveFrom: z.string(),
+    effectiveTo: z.string(),
+    isDefault: z.boolean(),
+    contentText: z.string(),
+  })
+  .superRefine((value, ctx) => {
+    const form = normalizeTemplateForm(value);
+    const contentError = getTemplateContentError(form.contentText);
+    const blocker = getTemplateFormBlocker(form, contentError);
+    if (!blocker) return;
+
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [getTemplateFormBlockerPath(form, contentError)],
+      message: blocker,
+    });
   });
+
+export function DocumentTemplateContent() {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  const errorSummaryId = 'document-template-form-error-summary';
+  const [filterType, setFilterType] = useState<'all' | TemplateType>('all');
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DocumentTemplateRow | null>(null);
+  const {
+    control,
+    formState: { errors },
+    getValues,
+    handleSubmit,
+    register,
+    reset,
+  } = useForm<TemplateForm>({
+    resolver: zodResolver(templateFormSchema),
+    defaultValues: createEmptyTemplateForm(),
+  });
+  const form = normalizeTemplateForm(
+    useWatch({ control, defaultValue: createEmptyTemplateForm() }),
+  );
+  const contentError = getTemplateContentError(form.contentText);
+  const formBlocker = getTemplateFormBlocker(form, contentError);
+  const errorSummaryItems = collectFormErrorSummaryItems(errors, {
+    name: 'テンプレート名',
+    templateType: '種別',
+    targetRole: '対象ロール',
+    format: '形式',
+    version: '版',
+    effectiveFrom: '有効開始日',
+    effectiveTo: '有効終了日',
+    isDefault: '既定テンプレート',
+    contentText: 'テンプレート本文(JSON)',
+  });
+
+  function focusErrorSummary() {
+    if (typeof document === 'undefined') return;
+    document.getElementById(errorSummaryId)?.focus();
+  }
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['document-templates', orgId, filterType],
@@ -187,26 +310,31 @@ export function DocumentTemplateContent() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const currentForm = normalizeTemplateForm(getValues());
+      const currentContentError = getTemplateContentError(currentForm.contentText);
+      const blocker = getTemplateFormBlocker(currentForm, currentContentError);
+      if (blocker) throw new Error(blocker);
       const parsedContent = parseJsonObjectText(
-        form.contentText,
-        'テンプレート本文は JSON オブジェクト形式で入力してください',
+        currentForm.contentText,
+        TEMPLATE_CONTENT_ERROR_MESSAGE,
       );
 
       const payload = {
-        name: form.name.trim(),
-        template_type: form.templateType,
-        target_role: form.targetRole.trim() || undefined,
-        format: form.format,
-        version: Number.parseInt(form.version, 10) || 1,
-        effective_from: form.effectiveFrom || undefined,
-        effective_to: form.effectiveTo || undefined,
-        is_default: form.isDefault,
+        name: currentForm.name.trim(),
+        template_type: currentForm.templateType,
+        target_role: currentForm.targetRole.trim() || undefined,
+        format: currentForm.format,
+        version: Number.parseInt(currentForm.version, 10) || 1,
+        effective_from: currentForm.effectiveFrom || undefined,
+        effective_to: currentForm.effectiveTo || undefined,
+        is_default: currentForm.isDefault,
         content: parsedContent,
       };
-      const url = editingTemplateId
-        ? buildDocumentTemplateApiPath(editingTemplateId)
+      const templateId = editingTemplateId;
+      const url = templateId
+        ? buildDocumentTemplateApiPath(templateId)
         : DOCUMENT_TEMPLATES_API_PATH;
-      const method = editingTemplateId ? 'PATCH' : 'POST';
+      const method = templateId ? 'PATCH' : 'POST';
 
       const res = await fetch(url, {
         method,
@@ -217,12 +345,11 @@ export function DocumentTemplateContent() {
         const error = await res.json().catch(() => ({}));
         throw new Error(error.message ?? 'テンプレートの保存に失敗しました');
       }
-      return res.json();
+      const responsePayload = await res.json();
+      return { responsePayload, wasEditing: Boolean(templateId) };
     },
-    onSuccess: async () => {
-      toast.success(
-        editingTemplateId ? 'テンプレートを更新しました' : 'テンプレートを登録しました',
-      );
+    onSuccess: async ({ wasEditing }) => {
+      toast.success(wasEditing ? 'テンプレートを更新しました' : 'テンプレートを登録しました');
       resetForm();
       await queryClient.invalidateQueries({ queryKey: ['document-templates', orgId] });
     },
@@ -256,32 +383,12 @@ export function DocumentTemplateContent() {
 
   function resetForm() {
     setEditingTemplateId(null);
-    setForm({
-      name: '',
-      templateType: 'care_report',
-      targetRole: '',
-      format: 'html',
-      version: '1',
-      effectiveFrom: '',
-      effectiveTo: '',
-      isDefault: false,
-      contentText: JSON.stringify(DEFAULT_TEMPLATE_CONTENT.care_report, null, 2),
-    });
+    reset(createEmptyTemplateForm());
   }
 
   function loadTemplate(template: DocumentTemplateRow) {
     setEditingTemplateId(template.id);
-    setForm({
-      name: template.name,
-      templateType: template.template_type,
-      targetRole: template.target_role ?? '',
-      format: template.format,
-      version: String(template.version),
-      effectiveFrom: template.effective_from?.slice(0, 10) ?? '',
-      effectiveTo: template.effective_to?.slice(0, 10) ?? '',
-      isDefault: template.is_default,
-      contentText: JSON.stringify(template.content, null, 2),
-    });
+    reset(toTemplateForm(template));
   }
 
   const columns: ColumnDef<DocumentTemplateRow>[] = [
@@ -369,157 +476,189 @@ export function DocumentTemplateContent() {
             </CardTitle>
             <CardDescription>JSON 形式でブロック構成や固定文言を管理します。</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="template-name">テンプレート名</Label>
-              <Input
-                id="template-name"
-                value={form.name}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, name: event.target.value }))
-                }
-                placeholder="主治医報告 基本"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="template-type">種別</Label>
-              <Select
-                value={form.templateType}
-                onValueChange={(value) => {
-                  if (!value) return;
-                  setForm((current) => ({
-                    ...current,
-                    templateType: value,
-                    contentText:
-                      current.name.trim().length === 0 && !editingTemplateId
-                        ? JSON.stringify(DEFAULT_TEMPLATE_CONTENT[value], null, 2)
-                        : current.contentText,
-                  }));
-                }}
-              >
-                <SelectTrigger id="template-type">
-                  <SelectValue>{TEMPLATE_TYPE_LABELS[form.templateType]}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(TEMPLATE_TYPE_LABELS).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="template-target-role">対象ロール</Label>
-              <Input
-                id="template-target-role"
-                value={form.targetRole}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, targetRole: event.target.value }))
-                }
-                placeholder="例: physician / care_manager / patient_family"
-              />
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
+          <CardContent>
+            <form
+              className="space-y-4"
+              onSubmit={handleSubmit(() => saveMutation.mutate(), focusErrorSummary)}
+              noValidate
+            >
+              <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
               <div className="space-y-2">
-                <Label htmlFor="template-format">形式</Label>
-                <Select
-                  value={form.format}
-                  onValueChange={(value) =>
-                    value && setForm((current) => ({ ...current, format: value as TemplateFormat }))
-                  }
+                <Label htmlFor="template-name">テンプレート名</Label>
+                <Input
+                  id="template-name"
+                  aria-invalid={Boolean(errors.name)}
+                  {...register('name')}
+                  placeholder="主治医報告 基本"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="template-type">種別</Label>
+                <Controller
+                  control={control}
+                  name="templateType"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value}
+                      onValueChange={(value) => {
+                        if (!value) return;
+                        const nextType = value as TemplateType;
+                        const currentForm = normalizeTemplateForm(getValues());
+                        field.onChange(nextType);
+                        if (currentForm.name.trim().length === 0 && !editingTemplateId) {
+                          reset({
+                            ...currentForm,
+                            templateType: nextType,
+                            contentText: JSON.stringify(
+                              DEFAULT_TEMPLATE_CONTENT[nextType],
+                              null,
+                              2,
+                            ),
+                          });
+                        }
+                      }}
+                    >
+                      <SelectTrigger id="template-type" aria-invalid={Boolean(errors.templateType)}>
+                        <SelectValue>{TEMPLATE_TYPE_LABELS[form.templateType]}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(TEMPLATE_TYPE_LABELS).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="template-target-role">対象ロール</Label>
+                <Input
+                  id="template-target-role"
+                  aria-invalid={Boolean(errors.targetRole)}
+                  {...register('targetRole')}
+                  placeholder="例: physician / care_manager / patient_family"
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="template-format">形式</Label>
+                  <Controller
+                    control={control}
+                    name="format"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value}
+                        onValueChange={(value) => value && field.onChange(value as TemplateFormat)}
+                      >
+                        <SelectTrigger id="template-format" aria-invalid={Boolean(errors.format)}>
+                          <SelectValue>{form.format === 'pdf' ? 'PDF' : 'HTML'}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="html">HTML</SelectItem>
+                          <SelectItem value="pdf">PDF</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="template-version">版</Label>
+                  <Input
+                    id="template-version"
+                    type="number"
+                    min={1}
+                    aria-invalid={Boolean(errors.version)}
+                    {...register('version')}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="template-effective-from">有効開始日</Label>
+                  <Input
+                    id="template-effective-from"
+                    type="date"
+                    aria-invalid={Boolean(errors.effectiveFrom)}
+                    {...register('effectiveFrom')}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="template-effective-to">有効終了日</Label>
+                  <Input
+                    id="template-effective-to"
+                    type="date"
+                    aria-invalid={Boolean(errors.effectiveTo)}
+                    {...register('effectiveTo')}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium">既定テンプレート</p>
+                  <p className="text-xs text-muted-foreground">同種別の既定は 1 件だけ保持します</p>
+                </div>
+                <Controller
+                  control={control}
+                  name="isDefault"
+                  render={({ field }) => (
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      aria-label="既定テンプレートにする"
+                      aria-invalid={Boolean(errors.isDefault)}
+                    />
+                  )}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="template-content">テンプレート本文(JSON)</Label>
+                <Textarea
+                  id="template-content"
+                  rows={14}
+                  aria-invalid={contentError ? true : undefined}
+                  aria-describedby={contentError ? TEMPLATE_CONTENT_ERROR_ID : undefined}
+                  {...register('contentText')}
+                  className="font-mono text-xs"
+                />
+                {contentError ? (
+                  <p id={TEMPLATE_CONTENT_ERROR_ID} className="text-xs text-destructive">
+                    {contentError}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  type="submit"
+                  disabled={saveMutation.isPending || Boolean(formBlocker)}
+                  aria-describedby={formBlocker ? TEMPLATE_SAVE_BLOCKER_ID : undefined}
                 >
-                  <SelectTrigger id="template-format">
-                    <SelectValue>{form.format === 'pdf' ? 'PDF' : 'HTML'}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="html">HTML</SelectItem>
-                    <SelectItem value="pdf">PDF</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="template-version">版</Label>
-                <Input
-                  id="template-version"
-                  type="number"
-                  min={1}
-                  value={form.version}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, version: event.target.value }))
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="template-effective-from">有効開始日</Label>
-                <Input
-                  id="template-effective-from"
-                  type="date"
-                  value={form.effectiveFrom}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, effectiveFrom: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="template-effective-to">有効終了日</Label>
-                <Input
-                  id="template-effective-to"
-                  type="date"
-                  value={form.effectiveTo}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, effectiveTo: event.target.value }))
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-              <div>
-                <p className="text-sm font-medium">既定テンプレート</p>
-                <p className="text-xs text-muted-foreground">同種別の既定は 1 件だけ保持します</p>
-              </div>
-              <Switch
-                checked={form.isDefault}
-                onCheckedChange={(checked) =>
-                  setForm((current) => ({ ...current, isDefault: checked }))
-                }
-                aria-label="既定テンプレートにする"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="template-content">テンプレート本文(JSON)</Label>
-              <Textarea
-                id="template-content"
-                rows={14}
-                value={form.contentText}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, contentText: event.target.value }))
-                }
-                className="font-mono text-xs"
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <Button
-                onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending || form.name.trim().length === 0}
-              >
-                {saveMutation.isPending ? '保存中...' : editingTemplateId ? '更新する' : '登録する'}
-              </Button>
-              {editingTemplateId ? (
-                <Button variant="outline" onClick={resetForm}>
-                  キャンセル
+                  {saveMutation.isPending
+                    ? '保存中...'
+                    : editingTemplateId
+                      ? '更新する'
+                      : '登録する'}
                 </Button>
+                {editingTemplateId ? (
+                  <Button type="button" variant="outline" onClick={resetForm}>
+                    キャンセル
+                  </Button>
+                ) : null}
+              </div>
+              {formBlocker ? (
+                <p id={TEMPLATE_SAVE_BLOCKER_ID} className="text-xs text-destructive">
+                  {formBlocker}
+                </p>
               ) : null}
-            </div>
+            </form>
           </CardContent>
         </Card>
 

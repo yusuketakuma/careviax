@@ -309,6 +309,45 @@ describe('DocumentTemplateContent', () => {
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
   });
 
+  it('blocks invalid JSON template content without mutating', async () => {
+    renderContent();
+
+    await screen.findByText('先頭1件を表示 / 他2件');
+    vi.mocked(global.fetch).mockClear();
+
+    fireEvent.change(screen.getByLabelText('テンプレート名'), {
+      target: { value: '新規テンプレート' },
+    });
+    const contentField = screen.getByLabelText('テンプレート本文(JSON)');
+    fireEvent.change(contentField, { target: { value: '[]' } });
+
+    const saveButton = screen.getByRole('button', { name: '登録する' }) as HTMLButtonElement;
+    expect(saveButton.disabled).toBe(true);
+    expect(saveButton.getAttribute('aria-describedby')).toBe('template-save-blocker');
+    expect(contentField.getAttribute('aria-invalid')).toBe('true');
+    expect(document.getElementById('template-content-json-error')?.textContent).toBe(
+      'テンプレート本文は JSON オブジェクト形式で入力してください',
+    );
+    expect(document.getElementById('template-save-blocker')?.textContent).toBe(
+      'テンプレート本文は JSON オブジェクト形式で入力してください',
+    );
+
+    const form = saveButton.closest('form');
+    expect(form).not.toBeNull();
+    fireEvent.submit(form as HTMLFormElement);
+
+    const summaryTitle = await screen.findByText('入力内容を確認してください');
+    const summary = summaryTitle.closest('[role="alert"]');
+    expect(summary?.textContent).toContain('テンプレート本文(JSON)');
+    expect(summary?.textContent).toContain(
+      'テンプレート本文は JSON オブジェクト形式で入力してください',
+    );
+    const mutationCalls = vi
+      .mocked(global.fetch)
+      .mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method);
+    expect(mutationCalls).toHaveLength(0);
+  });
+
   it('names the edit action and loads the selected template into the form', async () => {
     renderContent();
 
