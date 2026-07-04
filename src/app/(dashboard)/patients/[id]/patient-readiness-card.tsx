@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -18,6 +18,40 @@ function ReadinessHeading() {
     <h2 className="font-heading text-base leading-snug font-medium">
       患者情報・訪問開始 readiness
     </h2>
+  );
+}
+
+function PatientReadinessLoadingCard() {
+  return (
+    <Card>
+      <CardHeader>
+        <ReadinessHeading />
+      </CardHeader>
+      <CardContent
+        className="space-y-3"
+        role="status"
+        aria-label="患者情報・訪問開始 readiness を読み込み中"
+      >
+        <div className="flex flex-wrap gap-2">
+          <Skeleton className="h-5 w-16 rounded-full" />
+          <Skeleton className="h-5 w-16 rounded-full" />
+          <Skeleton className="h-5 w-20 rounded-full" />
+        </div>
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div key={index} className="rounded-lg border border-border/70 bg-background p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-4 w-36" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-5/6" />
+              </div>
+              <Skeleton className="h-8 w-20 rounded-md" />
+            </div>
+          </div>
+        ))}
+        <span className="sr-only">患者情報・訪問開始 readiness を読み込んでいます。</span>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -38,29 +72,11 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
   });
 
   if (!orgId) {
-    return (
-      <Card>
-        <CardHeader>
-          <ReadinessHeading />
-        </CardHeader>
-        <CardContent>
-          <Loading label="患者情報・訪問開始 readiness を読み込み中..." />
-        </CardContent>
-      </Card>
-    );
+    return <PatientReadinessLoadingCard />;
   }
 
   if (readinessQuery.isLoading) {
-    return (
-      <Card>
-        <CardHeader>
-          <ReadinessHeading />
-        </CardHeader>
-        <CardContent>
-          <Loading label="患者情報・訪問開始 readiness を読み込み中..." />
-        </CardContent>
-      </Card>
-    );
+    return <PatientReadinessLoadingCard />;
   }
 
   if (readinessQuery.error instanceof Error) {

@@ -38,6 +38,24 @@ vi.mock('next/link', () => ({
 }));
 
 describe('PatientReadinessCard', () => {
+  it('renders a PH-OS skeleton while readiness data loads', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+    });
+
+    render(<PatientReadinessCard patientId="patient_1" />);
+
+    expect(
+      screen.getByRole('status', { name: '患者情報・訪問開始 readiness を読み込み中' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
+    expect(screen.queryByText('対象ケースがありません')).toBeNull();
+    expect(screen.queryByText('オンボーディング状況の取得に失敗しました')).toBeNull();
+  });
+
   it('renders readiness summary with a semantic section heading', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useQueryMock.mockReturnValue({

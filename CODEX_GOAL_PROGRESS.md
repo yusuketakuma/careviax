@@ -1,5 +1,34 @@
 # CODEX Goal Progress
 
+## R55 Patient Readiness Loading State - 2026-07-04 19:01 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/patients/[id]/patient-readiness-card.tsx`
+    - `src/app/(dashboard)/patients/[id]/patient-readiness-card.test.tsx`
+- Scope:
+  - Replaced the spinner-style `Loading` returns in the patient readiness card
+    with a named skeleton region inside the existing card shell.
+  - Loading no longer exposes generic `読み込み中...` semantics, empty copy, or
+    error copy before the readiness query resolves.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, fetcher, org header, `enabled` behavior, cache
+    timing, DB, auth, authorization, billing, audit, deployment, package, or
+    server behavior changed.
+  - Loading copy is PHI-free and does not echo patient identifiers, readiness
+    item labels, case status, org ids, raw errors, or completed counts.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-readiness-card.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `6` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the patient readiness card source/test files.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Patient Field Revision Timeline Loading State - 2026-07-04 18:57 JST
 
 - Status:
