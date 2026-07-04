@@ -211,8 +211,27 @@ describe('/api/visit-vehicle-resources/[id]', () => {
 
     expect(response.status).toBe(400);
     expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {},
+    });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitVehicleResourceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON PATCH bodies with the body validation contract', async () => {
+    const response = await createMalformedPatchRequest('vehicle_1');
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitVehicleResourceUpdateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('rejects out-of-range max_stops', async () => {

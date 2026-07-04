@@ -392,6 +392,42 @@ describe('/api/visit-vehicle-resources', () => {
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
+  it('rejects malformed JSON POST bodies with the body validation contract', async () => {
+    const response = await POST(createMalformedPostRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitVehicleResourceCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects empty JSON POST objects with schema details before reference checks', async () => {
+    const response = await POST(createPostRequest({}));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        site_id: expect.arrayContaining([expect.any(String)]),
+        label: expect.arrayContaining([expect.any(String)]),
+      },
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitVehicleResourceCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
   it('rejects invalid vehicle resource payloads before reference checks', async () => {
     const response = await POST(
       createPostRequest({

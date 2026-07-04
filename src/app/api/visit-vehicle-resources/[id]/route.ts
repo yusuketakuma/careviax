@@ -3,7 +3,7 @@ import { unstable_rethrow } from 'next/navigation';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
-import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { parseJsonObjectRequestBodyOrError } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -28,13 +28,8 @@ async function authenticatedPATCH(req: NextRequest, params: Promise<{ id: string
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('車両IDが不正です');
 
-    const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
-
-    const parsed = updateVisitVehicleResourceSchema.safeParse(payload);
-    if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-    }
+    const parsed = await parseJsonObjectRequestBodyOrError(req, updateVisitVehicleResourceSchema);
+    if (!parsed.ok) return parsed.response;
 
     // 指定されたフィールドのみ更新対象にする(undefined は据え置き、null はクリア)。
     const data = {

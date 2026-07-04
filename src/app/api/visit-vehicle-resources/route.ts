@@ -6,7 +6,7 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { buildCountedListEnvelope } from '@/lib/api/list-envelope';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
-import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { parseJsonObjectRequestBodyOrError } from '@/lib/api/request-body';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
@@ -120,13 +120,8 @@ async function authenticatedPOST(req: NextRequest) {
   const { ctx } = authResult;
 
   return runWithRequestAuthContext(ctx, async () => {
-    const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
-
-    const parsed = createVisitVehicleResourceSchema.safeParse(payload);
-    if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-    }
+    const parsed = await parseJsonObjectRequestBodyOrError(req, createVisitVehicleResourceSchema);
+    if (!parsed.ok) return parsed.response;
 
     const refResult = await validateOrgReferences(ctx.orgId, { site_id: parsed.data.site_id });
     if (!refResult.ok) return refResult.response;
