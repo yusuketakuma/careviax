@@ -20,7 +20,7 @@ export default function OperatingHoursPage() {
         supportingContent={null}
       />
 
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={<Loading label="稼働日設定を読み込み中..." />}>
         <OperatingHoursContent />
       </Suspense>
     </PageScaffold>
