@@ -1,5 +1,45 @@
 # CODEX Goal Progress
 
+## R40/R44 Patient Readiness Cards readApiJson Partial - 2026-07-05 07:02 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/patients/[id]/patient-readiness-card.tsx`
+    - `src/app/(dashboard)/patients/[id]/patient-readiness-card.test.tsx`
+    - `src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx`
+    - `src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx`
+- Scope:
+  - Reused `readApiJson` for two patient-card read GETs:
+    - patient readiness
+    - patient workflow preview
+  - Added queryFn contract coverage proving API JSON `message` from failed read
+    GETs is surfaced through the shared helper.
+  - Preserved patient readiness path helper, workflow-preview path helper, org
+    headers, React Query keys, enabled gates, dot-segment fail-closed behavior,
+    patient link helpers, and loading/error UI.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/patients/[id]/patient-readiness-card.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx'`
+    passed `2` files / `16` tests.
+  - Scoped ESLint, targeted Prettier check after formatting, targeted
+    `git diff --check`, and `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `3e1ba2b9`
+    (`refactor(ui): reuse readApiJson in patient readiness cards`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Patient Compare readApiJson Partial - 2026-07-05 06:57 JST
 
 - Status:

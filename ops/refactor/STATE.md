@@ -313,6 +313,11 @@
   readApiJson へ収束し、patient API path helper、org header、queryKey、enabled gate、
   compare card error UI、compare-card open link helper は保持。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 patient-readiness-cards readApiJson slice(3e1ba2b9) land。focused Vitest 16、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。patient readiness / workflow preview の
+  read GET を readApiJson へ収束し、patient path helpers、org header、queryKey、enabled gate、
+  dot-segment fail-closed、patient links、loading/error UI は保持。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 

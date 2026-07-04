@@ -5,6 +5,23 @@
 > エントリ書式: `## <日付> <変更ID> <commit>` — 分類 / 対象 / 実施内容 / 挙動変更 /
 > 検証(コマンドと結果) / レビュー verdict / 残課題。簡潔に（1エントリ 15 行以内目安）。
 
+## 2026-07-05 R40/R44-patient-readiness-cards 3e1ba2b9
+
+- 分類: query-helper / client fetch error handling → `readApiJson` 収束。
+- 対象: `src/app/(dashboard)/patients/[id]/patient-readiness-card.tsx`,
+  `src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx` と各 test。
+- 実施: patient readiness / workflow preview の read GET 2本を `readApiJson` へ移行し、
+  failed GET の API JSON `message` 表面化テストを追加。
+- 挙動変更: read fetch 実装内部の helper 収束のみ。patient path helpers、org header、
+  queryKey、enabled gate、dot-segment fail-closed、patient links、loading/error UI は維持。
+- 安全: product UI read fetch internals のみ。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+  live DB/external send/secret/push/destructive operation 不変。
+- 検証: focused readiness/workflow Vitest `2 files / 16 tests` green。
+  scoped eslint green。prettier は workflow test formatting 後 green。diff-check green。`pnpm typecheck` green。
+- レビュー: self-verified。commit 3e1ba2b9。
+- 残課題: R40/R44 は partial。追加 fetcher は response body read の PHI safety を個別確認して段階移行。
+
 ## 2026-07-05 R40/R44-patient-compare 1bbbca61
 
 - 分類: query-helper / client fetch error handling → `readApiJson` 収束。
