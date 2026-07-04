@@ -308,6 +308,108 @@ describe('ExternalShareContent', () => {
     expect(vi.mocked(buildCommunicationRequestApiPath)).toHaveBeenCalledWith(requestId);
   });
 
+  it('surfaces API messages from patient share read queries', async () => {
+    const patientId = 'patient_1';
+    const requestId = 'request_1';
+    const queryConfigs: QueryConfig[] = [];
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url === `/api/patients/${patientId}`) {
+        return new Response(JSON.stringify({ message: '共有状況の閲覧権限がありません' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url === `/api/patients/${patientId}/care-team`) {
+        return new Response(JSON.stringify({ message: 'ケアチームの閲覧権限がありません' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url === `/api/patients/${patientId}/contacts`) {
+        return new Response(JSON.stringify({ message: '連絡先の閲覧権限がありません' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.startsWith('/api/communication-requests?')) {
+        return new Response(JSON.stringify({ message: '返信状況の閲覧権限がありません' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url === `/api/communication-requests/${requestId}`) {
+        return new Response(JSON.stringify({ message: '返信内容の閲覧権限がありません' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockImplementation((config: QueryConfig) => {
+      queryConfigs.push(config);
+      const scope = config.queryKey?.[0];
+      if (scope === 'communication-requests') {
+        return {
+          data: {
+            data: [
+              {
+                id: requestId,
+                recipient_role: 'care_manager',
+                recipient_name: '田中ケアマネ',
+                status: 'responded',
+                subject: '共有確認',
+                requested_at: '2026-06-01T00:00:00.000Z',
+                responses: [{ id: 'response_1', responded_at: '2026-06-02T00:00:00.000Z' }],
+              },
+            ],
+          },
+          isLoading: false,
+          isError: false,
+        };
+      }
+      return {
+        data: {
+          name: '佐藤 花子',
+          external_shares: [],
+          self_reports: [],
+          current_medications: [],
+          visit_schedules: [],
+          care_reports: [],
+        },
+        isLoading: false,
+        isError: false,
+      };
+    });
+
+    render(<ExternalShareContent patientId={patientId} />);
+
+    const overviewQuery = queryConfigs.find(
+      (config) => config.queryKey?.[0] === 'external-share-overview',
+    );
+    const careTeamQuery = queryConfigs.find(
+      (config) => config.queryKey?.[0] === 'patient-care-team',
+    );
+    const contactsQuery = queryConfigs.find(
+      (config) => config.queryKey?.[0] === 'patient-contacts',
+    );
+    const requestsQuery = queryConfigs.find(
+      (config) => config.queryKey?.[0] === 'communication-requests',
+    );
+    const replyDetailQuery = queryConfigs.find(
+      (config) => config.queryKey?.[0] === 'communication-request',
+    );
+
+    await expect(overviewQuery?.queryFn?.()).rejects.toThrow('共有状況の閲覧権限がありません');
+    await expect(careTeamQuery?.queryFn?.()).rejects.toThrow('ケアチームの閲覧権限がありません');
+    await expect(contactsQuery?.queryFn?.()).rejects.toThrow('連絡先の閲覧権限がありません');
+    await expect(requestsQuery?.queryFn?.()).rejects.toThrow('返信状況の閲覧権限がありません');
+    await expect(replyDetailQuery?.queryFn?.()).rejects.toThrow('返信内容の閲覧権限がありません');
+  });
+
   it('creates a patient-scoped reply request for the selected audience', async () => {
     const mutationConfigs: MutationConfig[] = [];
     const createReplyMutate = vi.fn();

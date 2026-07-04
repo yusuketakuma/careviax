@@ -35,6 +35,7 @@ import {
 import { cn } from '@/lib/utils';
 import { messageFromError } from '@/lib/utils/error-message';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   buildNextCheckTaskInput,
@@ -229,11 +230,11 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
         headers: buildOrgHeaders(orgId),
         cache: 'no-store',
       });
-      if (!response.ok) {
-        throw new Error('共有状況を取得できませんでした');
-      }
 
-      const payload = (await response.json()) as ExternalShareOverview;
+      const payload = await readApiJson<ExternalShareOverview>(
+        response,
+        '共有状況を取得できませんでした',
+      );
       return {
         name: payload.name ?? null,
         external_shares: payload.external_shares ?? [],
@@ -254,8 +255,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
       const res = await fetch(buildPatientApiPath(patientId, '/care-team'), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('ケアチームの取得に失敗しました');
-      return res.json() as Promise<{ data: CareTeamMemberSummary[] }>;
+      return readApiJson<{ data: CareTeamMemberSummary[] }>(res, 'ケアチームの取得に失敗しました');
     },
   });
 
@@ -266,8 +266,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
       const res = await fetch(buildPatientApiPath(patientId, '/contacts'), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('連絡先の取得に失敗しました');
-      return res.json() as Promise<{ data: ContactPartySummary[] }>;
+      return readApiJson<{ data: ContactPartySummary[] }>(res, '連絡先の取得に失敗しました');
     },
   });
 
@@ -286,8 +285,10 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
           headers: buildOrgHeaders(orgId),
         },
       );
-      if (!res.ok) throw new Error('返信状況の取得に失敗しました');
-      return res.json() as Promise<{ data: ShareCommunicationRequest[] }>;
+      return readApiJson<{ data: ShareCommunicationRequest[] }>(
+        res,
+        '返信状況の取得に失敗しました',
+      );
     },
   });
 
@@ -390,8 +391,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
       const res = await fetch(buildCommunicationRequestApiPath(requestId), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('返信内容の取得に失敗しました');
-      return res.json() as Promise<{ data: ShareReplyDetail }>;
+      return readApiJson<{ data: ShareReplyDetail }>(res, '返信内容の取得に失敗しました');
     },
   });
   const latestReply = replyDetailQuery.data?.data?.responses?.[0] ?? null;
