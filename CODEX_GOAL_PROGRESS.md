@@ -1,5 +1,46 @@
 # CODEX Goal Progress
 
+## R55 Patient Card Workspace Loading State - 2026-07-04 20:09 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/patients/[id]/card-workspace.tsx`
+    - `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`
+- Scope:
+  - Replaced the generic full-page `Loading` return for unresolved org /
+    patient overview loading with a named skeleton region that preserves the
+    card workspace heading, action area, main workbench rhythm, and side rail
+    outline without rendering final patient content.
+  - Replaced the embedded first-visit documents panel `Loading` state with a
+    named documents skeleton that keeps the panel in place while avoiding final
+    document actions/details.
+  - Added regression coverage for both loading branches so generic `読み込み中...`
+    status, patient name, false-error/not-found copy, document print links, and
+    final document labels are absent while loading.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, fetcher, org header, `enabled` behavior, patient
+    API helper, document fetch behavior, mutation payload, cache invalidation,
+    navigation helper usage, DB, auth, authorization, billing, audit,
+    deployment, package, or server behavior changed.
+  - Loading copy is PHI-free and does not echo patient names, patient ids,
+    contact details, document labels, document statuses, prescription content,
+    billing collection details, MCS notes, conference notes, org ids, or raw
+    errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `69` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the patient card workspace source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `1cf761b4`
+    (`fix(patients): show skeleton for card workspace loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Visit Record Form Loading State - 2026-07-04 20:03 JST
 
 - Status:

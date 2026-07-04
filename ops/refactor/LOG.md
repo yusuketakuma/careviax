@@ -814,6 +814,31 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
 
+## 2026-07-04 R55 patient card workspace loading skeleton
+
+- 分類: UI loading-state cleanup / R55 visible loading residual。
+- 実施:
+  - `patients/[id]/card-workspace.tsx` の org 未解決 / patient overview loading 分岐で使っていた
+    generic `Loading` return を、処方カード作業台の heading・actions・main workspace・side rail の形を保つ
+    領域固有 `role="status"` + skeleton へ置換。
+  - 同ファイルの初回訪問文書・交付記録パネル loading を、panel context を保つ
+    領域固有 `role="status"` + skeleton へ置換。
+  - loading 中に generic `読み込み中...` status、患者名、error/not-found copy、印刷プレビュー link、
+    最終文書 label が出ないことを `card-workspace.test.tsx` に追加。
+- 挙動変更: loading presentation のみ。query key、fetcher、org header、enabled behavior、
+  patient API helper、document fetch、mutation payload、cache invalidation、navigation helper、
+  API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の高頻度優先（患者詳細）、5状態分離、
+  領域固有 loading label、generic loading copy 禁止、患者作業台 shape に沿う skeleton loading に整合。
+- 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、patient name・patient id・contact detail・document label/status・prescription content・billing collection detail・MCS note・conference note・org id・raw error
+  を出さない。
+- 検証: focused card-workspace Vitest `1 file / 69 tests` green、targeted ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `1cf761b4` (`fix(patients): show skeleton for card workspace loading`)。
+- 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
 ## 2026-07-04 R55 visit-record form loading skeleton
 
 - 分類: UI loading-state cleanup / R55 visible loading residual。
