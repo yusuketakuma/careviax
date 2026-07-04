@@ -1,5 +1,44 @@
 # CODEX Goal Progress
 
+## R40/R44 Collaboration Overview readApiJson Partial - 2026-07-05 06:01 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.tsx`
+    - `src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.test.tsx`
+- Scope:
+  - Reused `readApiJson<PatientOverview>` for the patient collaboration
+    overview GET.
+  - Added a queryFn contract test proving API JSON `message` from a failed GET
+    is surfaced through the shared helper.
+  - Preserved `buildPatientApiPath(patientId, '/overview')`,
+    `buildOrgHeaders`, React Query key, enabled gate, hostile patient-id
+    encoding, dot-segment rejection, response envelope, workflow back link,
+    presence heartbeat/users, comment thread entity id, and refresh
+    invalidation.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.test.tsx'`
+    passed `1` file / `10` tests.
+  - Scoped ESLint, targeted Prettier check after formatting, targeted
+    `git diff --check`, and `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `aa2c3955`
+    (`refactor(ui): reuse readApiJson in collaboration overview`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Patient Insurance readApiJson Partial - 2026-07-05 05:58 JST
 
 - Status:
