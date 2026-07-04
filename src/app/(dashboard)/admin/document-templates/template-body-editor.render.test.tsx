@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { TemplateBodyEditor } from './template-body-editor';
@@ -76,5 +77,38 @@ describe('TemplateBodyEditor render hierarchy', () => {
       });
     });
     expect(String(vi.mocked(global.fetch).mock.calls[0][0])).not.toContain('%25');
+  });
+
+  it('keeps server save error messages', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: 'テンプレートが更新されています' }), {
+            status: 409,
+          }),
+      ),
+    );
+    renderEditor();
+
+    fireEvent.click(screen.getByRole('button', { name: '本文を保存する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('テンプレートが更新されています');
+    });
+  });
+
+  it('falls back to the save message when PATCH fails without a message', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({}), { status: 500 })),
+    );
+    renderEditor();
+
+    fireEvent.click(screen.getByRole('button', { name: '本文を保存する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('文面の保存に失敗しました');
+    });
   });
 });

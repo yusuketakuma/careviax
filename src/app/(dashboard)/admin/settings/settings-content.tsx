@@ -30,6 +30,7 @@ import {
 } from '@/lib/admin/settings-catalog';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { messageFromError } from '@/lib/utils/error-message';
 
 type SettingResponse = {
   data: {
@@ -275,8 +276,8 @@ function ScopePanel({
       await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
       toast.success(`${SCOPE_LABELS[scope].label}設定を保存しました`);
     },
-    onError: (error: Error) => {
-      toast.error(error.message);
+    onError: (error) => {
+      toast.error(messageFromError(error, '設定の保存に失敗しました'));
     },
   });
 

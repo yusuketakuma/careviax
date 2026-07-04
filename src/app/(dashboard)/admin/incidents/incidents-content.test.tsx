@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { toast } from 'sonner';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   INCIDENT_REPORTS_API_PATH,
@@ -260,6 +261,44 @@ describe('IncidentsContent', () => {
     });
   });
 
+  it('keeps server memo save messages', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: [makeReport()] }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: '同時更新されています' }), { status: 409 }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    render(<IncidentsContent />, { wrapper: createWrapper() });
+
+    await screen.findByText('取り違えヒヤリ');
+    fireEvent.submit(screen.getByTestId('incident-memo-form'));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('同時更新されています');
+    });
+  });
+
+  it('falls back to the memo save message when PATCH fails without a message', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: [makeReport()] }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<IncidentsContent />, { wrapper: createWrapper() });
+
+    await screen.findByText('取り違えヒヤリ');
+    fireEvent.submit(screen.getByTestId('incident-memo-form'));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('再発防止メモの保存に失敗しました');
+    });
+  });
+
   it('renders the narrative memo fields as textareas while keeping the related-process select', async () => {
     stubReports([
       makeReport({
@@ -358,6 +397,32 @@ describe('IncidentsContent', () => {
         });
       });
     });
+
+    it('falls back to the status-change message when status PATCH fails without a message', async () => {
+      useAuthStore.getState().setCurrentUser({ role: 'admin' });
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ data: [makeReport({ id: 'incident_1', status: 'open' })] }),
+            {
+              status: 200,
+            },
+          ),
+        )
+        .mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 500 }));
+      vi.stubGlobal('fetch', fetchMock);
+      render(<IncidentsContent />, { wrapper: createWrapper() });
+
+      await screen.findByText('取り違えヒヤリ');
+      fireEvent.change(screen.getByTestId('incident-status-select'), {
+        target: { value: 'reviewed' },
+      });
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith('ステータスの変更に失敗しました');
+      });
+    });
   });
 
   describe('create flow', () => {
@@ -398,6 +463,29 @@ describe('IncidentsContent', () => {
           title: '新規記録',
           occurred_at: null,
         });
+      });
+    });
+
+    it('falls back to the create message when record creation fails without a message', async () => {
+      const fetchMock = vi.fn(
+        async (_input: RequestInfo | URL, init?: RequestInit) =>
+          new Response(
+            init?.method === 'POST' ? JSON.stringify({}) : JSON.stringify({ data: [] }),
+            {
+              status: init?.method === 'POST' ? 500 : 200,
+            },
+          ),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      render(<IncidentsContent />, { wrapper: createWrapper() });
+
+      await screen.findByText('ヒヤリハット記録はまだありません');
+      fireEvent.click(screen.getByRole('button', { name: '新規記録' }));
+      fireEvent.change(screen.getByLabelText('表題'), { target: { value: '新規記録' } });
+      fireEvent.click(screen.getByRole('button', { name: '作成する' }));
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith('記録の作成に失敗しました');
       });
     });
   });

@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fireEvent, render, screen } from '@testing-library/react';
+import { toast } from 'sonner';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
@@ -170,6 +171,24 @@ describe('SettingsContent polling policy', () => {
     expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(
       false,
     );
+  });
+
+  it('keeps save mutation error messages', () => {
+    render(<SettingsContent />);
+
+    const saveMutationOptions = useMutationMock.mock.calls[0][0];
+    saveMutationOptions.onError(new Error('セッションタイムアウトは30以下で入力してください'));
+
+    expect(toast.error).toHaveBeenCalledWith('セッションタイムアウトは30以下で入力してください');
+  });
+
+  it('falls back to the save message when mutation failure has no message', () => {
+    render(<SettingsContent />);
+
+    const saveMutationOptions = useMutationMock.mock.calls[0][0];
+    saveMutationOptions.onError({});
+
+    expect(toast.error).toHaveBeenCalledWith('設定の保存に失敗しました');
   });
 
   it('surfaces a retryable error instead of an empty store selector when /api/pharmacy-sites fails', () => {

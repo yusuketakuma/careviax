@@ -9,6 +9,7 @@ import { buildDocumentTemplateApiPath } from '@/lib/document-templates/api-paths
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 
 /**
  * p1_10「報告テンプレート編集」: テンプレートを選び、{差し込み項目} 入りの
@@ -103,7 +104,7 @@ export function TemplateBodyEditor({ templates }: { templates: TemplateBodyEdito
       toast.success('文面を保存しました');
       void queryClient.invalidateQueries({ queryKey: ['document-templates'] });
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error) => toast.error(messageFromError(error, '文面の保存に失敗しました')),
   });
 
   function handleInsertField(label: string) {

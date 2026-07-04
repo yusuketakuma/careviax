@@ -35,6 +35,7 @@ import {
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 import {
   EMPTY_INCIDENT_CREATE_FORM,
   INCIDENT_PROCESS_OPTIONS,
@@ -137,7 +138,7 @@ export function IncidentsContent() {
       toast.success('再発防止メモを保存しました');
       void queryClient.invalidateQueries({ queryKey: ['incident-reports', orgId] });
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error) => toast.error(messageFromError(error, '再発防止メモの保存に失敗しました')),
   });
 
   const viewerRole = useAuthStore((s) => s.currentUser.role);
@@ -165,7 +166,7 @@ export function IncidentsContent() {
       toast.success('ステータスを更新しました');
       void queryClient.invalidateQueries({ queryKey: ['incident-reports', orgId] });
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error) => toast.error(messageFromError(error, 'ステータスの変更に失敗しました')),
   });
 
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -195,7 +196,7 @@ export function IncidentsContent() {
       setForm(toIncidentMemoForm(result.data));
       void queryClient.invalidateQueries({ queryKey: ['incident-reports', orgId] });
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error) => toast.error(messageFromError(error, '記録の作成に失敗しました')),
   });
 
   if (!orgId || reportsQuery.isLoading) {
