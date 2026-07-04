@@ -13,6 +13,7 @@ import {
   buildDrugAlertRuleApiPath,
 } from '@/lib/drug-alert-rules/api-paths';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 import {
   buildSignalTuningState,
   diffSignalTuning,
@@ -122,7 +123,7 @@ export function SignalTuningPanel() {
       setDesiredOverrides({});
       await queryClient.invalidateQueries({ queryKey: ['drug-alert-rules', orgId] });
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error) => toast.error(messageFromError(error, '表示設定の保存に失敗しました')),
   });
 
   const strongItems = SIGNAL_TUNING_ITEMS.filter((item) => desired[item.alertType]);
