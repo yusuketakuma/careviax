@@ -655,6 +655,23 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
   - `billing-candidates-content.test.tsx` と `pharmacy-cooperation-workflow-content.test.tsx` の
     local QueryClient wrapper を共有 helper に置換。
   - 両テストの local partial `sonner` mock を `createSonnerToastMock()` helper に置換。
+
+## 2026-07-04 Codex-only design SSOT / W3-E2 sync
+
+- 分類: operator workflow / design SSOT / W3-E2 documentation sync。
+- 実施:
+  - 新規追加された `design-taste-frontend` skill を PH-OS 用の監査チェックリストとして読み、landing /
+    portfolio 向け規範は採用せず、`docs/ui-ux-design-guidelines.md` の既存 PH-OS SSOT に従う方針を確認。
+  - `ops/refactor/STATE.md` と `.agent-loop/README.md` の現行体制を、agmsg / external worker lanes /
+    subagents 禁止の Codex 単独運用へ整合。
+  - `.codex/hooks.json` の agmsg session start/end hooks を無効化。
+  - `Plans.md` の W3-E2 を current-code scan ベースで完了へ同期し、workflow DataTable test comment の
+    「変換前」表現を更新。
+- 安全性: docs/config/test-comment only。product source/API/DB/auth/authorization/PHI/billing/deploy/package
+  dependency は不変。
+- 検証: residual wording scan no matches、W3-E2 raw-table scan no matches、focused workflow Vitest
+  `1 file / 3 tests` green、targeted Prettier green、targeted `git diff --check` green。
+
 - 変更ファイル:
   - `src/test/query-client-test-utils.tsx`
   - `src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx`
@@ -755,3 +772,25 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
     （`pnpm build` で Next route type artifacts を再生成後に実行）。
 - 残課題: source/test は `8fee04d8` で land 済み。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
+## 2026-07-04 R55 report delivery analytics loading skeleton
+
+- 分類: UI loading-state cleanup / R55 visible loading residual。
+- 実施:
+  - `report-delivery-dashboard.tsx` の初回 loading 中に、KPI・未確認報告一覧・月別/医師別/チャネル別
+    小集計へ領域固有 `role="status"` + skeleton を表示するようにした。
+  - loading 中の可視 empty 代替文言 `未確認報告を集計しています…` と `集計中です…` を削除し、
+    真の empty copy は analytics data が取得できた後だけ表示するよう分離。
+  - `report-delivery-dashboard.test.tsx` へ named status region と旧 plain loading copy 不在の
+    assertion を追加。
+- 挙動変更: loading presentation のみ。query key、fetch path、org headers、mutation payload、
+  reminder disabled 条件、error/empty branch、リンク生成、API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の 5状態分離、false-empty/false-zero 防止、
+  領域固有 loading label、可視 generic loading copy 禁止に整合。
+- 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+  Loading/disabled copy は PHI-free で、患者名・report id・org id・連絡先・raw error を出さない。
+- 検証: focused Vitest `1 file / 9 tests` green、targeted ESLint green、targeted Prettier
+  check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- 残課題: R55 残として current-code scan で `operating-hours` loading state が次候補。
+  既存 dirty の `Plans.md` / `.codex/hooks.json` / `refactor-instructions.md` /
+  `workflow-dashboard-view.test.tsx` / `.agents/skills/**` は別スライスとして保持する。

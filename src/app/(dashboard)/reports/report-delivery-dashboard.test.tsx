@@ -257,7 +257,7 @@ describe('ReportDeliveryDashboard', () => {
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
-  it('describes the reminder action while analytics are loading', () => {
+  it('shows named skeleton regions while analytics are loading', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
     useMutationMock.mockReturnValue({
@@ -275,9 +275,18 @@ describe('ReportDeliveryDashboard', () => {
     const reminderButton = screen.getByRole('button', { name: 'リマインドタスク起票' });
     const reminderReason = screen.getByText('送達分析を読み込んでいます。');
 
-    expect(container.querySelectorAll('.animate-pulse')).toHaveLength(4);
+    expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThan(4);
+    expect(screen.getByRole('status', { name: '送達KPIを読み込み中' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: '未確認報告を集計中' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: '月別送達成功率を集計中' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: '医師別送達を集計中' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'チャネル別送達を集計中' })).toBeTruthy();
     expect(screen.queryByText('—')).toBeNull();
     expect(screen.queryByText('今月の送達成功率')).toBeNull();
+    expect(screen.queryByText('未確認報告を集計しています…')).toBeNull();
+    expect(screen.queryByText('集計中です…')).toBeNull();
+    expect(screen.queryByText('7日超の未確認報告はありません。')).toBeNull();
+    expect(screen.queryByText('送達データがありません')).toBeNull();
     expect(reminderButton).toHaveProperty('disabled', true);
     expect(reminderButton.getAttribute('aria-describedby')).toBe(reminderReason.id);
     expect(reminderReason.textContent).not.toMatch(/patient_|report_|山田|田中|患者A/);

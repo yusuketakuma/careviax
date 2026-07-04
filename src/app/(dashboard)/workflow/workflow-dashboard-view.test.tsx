@@ -25,9 +25,9 @@ vi.mock('@/components/features/workflow/main-workflow-route', () => ({
 setupDomTestEnv();
 
 /**
- * このテストは W3-E2「継続調剤 - 次回対応」テーブルの DataTable 変換前の
- * characterization test。view 内の `workflow?.foo.bar` は `foo` が undefined の
- * ときに `.bar` で例外になるため、参照される最上位フィールドはすべて埋めておく
+ * W3-E2「継続調剤 - 次回対応」DataTable の characterization test。
+ * view 内の `workflow?.foo.bar` は `foo` が undefined のときに `.bar` で例外になるため、
+ * 参照される最上位フィールドはすべて埋めておく
  * (buildWorkflowData と同型の最小構成、参照値は 0 / 空配列)。
  */
 function buildWorkflowDataBase(): WorkflowData {

@@ -6,22 +6,20 @@
 
 ## 体制（2026-07-04 ユーザー指示）
 
-- 現行は Codex 単独統括 + Codex CLI direct subagents。codex が Plans 棚卸し、実装、
-  validation、台帳更新、scoped commit、例外処理を一貫して担当する。
-- agmsg / codex2 / codex3 / codex4 / Claude / PATCH_REPORT 待ちは使わない。
-  Codex CLI subagent は direct child の bounded helper としてのみ使い、recursive fan-out はしない。
+- 現行は Codex 単独運用。codex が Plans 棚卸し、実装、validation、台帳更新、scoped commit、
+  例外処理を一貫して担当する。
+- agmsg / codex2 / codex3 / codex4 / Claude / subagent / PATCH_REPORT 待ちは使わない。
   ユーザーが明示的に再有効化しない限り、過去の multi-agent 記述は歴史的記録として扱う。
 - 規律: `git status --short --untracked-files=all` → 対象 diff 確認 → 小スライス実装 →
   focused validation → 台帳更新 → explicit path staging → scoped commit。
 - gate: lint / typecheck / typecheck:no-unused / format:check / test / build / colors:check
   （build と typecheck は並列禁止。長い Next.js gate は同時実行しない）
 
-## Codex 単独統括 + direct subagents の自律待機方針（2026-07-04 ユーザー指示）
+## Codex 単独運用の自律待機方針（2026-07-04 ユーザー指示）
 
 - review待ち、land待ち、狭い blocker、担当slice hold中でも、完全停止しない。
 - まず dirty tree を確認し、既存 user/peer dirty・危険領域を避ける。
-- 編集できない場合も read-only recon、衝突表、候補scoring、focused validation、次に安全な作業の棚卸しを続ける。
-  必要なら `.codex/agents/*.toml` の read-only direct subagent を使い、要約だけを親に戻す。
+- 編集できない場合も Codex 本体で read-only recon、衝突表、候補scoring、focused validation、次に安全な作業の棚卸しを続ける。
 - 編集可能な候補が見つかった場合は、小さく reviewable な差分だけ実装する。
 - 人間承認、billing/算定/PHI隣接/authorization、migration/deploy/destructive gate は迂回しない。
 
@@ -29,7 +27,7 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: Codex 単独統括 + direct subagents 体制（2026-07-04〜）。
+- Phase C（実装ループ）: Codex 単独運用体制（2026-07-04〜）。
   現在の供給源は `Plans.md` 未完了40件（open 37 + partial 3）。即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
@@ -64,9 +62,9 @@
 
 ## 進行中 / 凍結
 
-- codex: Codex CLI 0.142.5 最適化と subagent persona 強化は検証済み。
-  user/profile config は fast/cached/direct-subagent 既定、global/project custom-agent personas は
-  v3/direct-child verdict ルールへ更新済み。repo docs は direct subagents 体制へ整合済み。
+- codex: Codex CLI 0.142.5 最適化は検証済み。subagent persona 強化は履歴として保持するが、
+  現行運用では subagent を使わない。user/profile config は fast/cached 既定、repo docs は
+  Codex 単独運用へ整合済み。
 - codex: W3-B9 `monthly_cap_shared` rule-engine fix は ae81a9f7 で land 済み。
   ledger-only evidence 差分は本 Codex CLI/persona スライスと一緒に保存対象。
 - codex: `ID-1a` / `ID-1b` / `ID-2-W1` / `ID-2-W2` / `ID-2-W3` / `ID-2-W4` は land 済み。
@@ -82,7 +80,7 @@
 ## 次の一手
 
 1. codex: R55 schedule proposals は 8fee04d8 で land 済み。次の安全な high-score 候補を
-   direct subagents で read-only triage し、P0/human gate と実装候補を分離する。
+   Codex 本体で read-only triage し、P0/human gate と実装候補を分離する。
 2. codex: W3-B9 `monthly_cap_shared` rule-engine fix は ae81a9f7 で land 済み。長い gate が走っていないことを確認後、
    次の backend/business-domain 候補を read-only triage。
 3. codex: Plans.md 未完了40件（open 37 + partial 3）を継続棚卸しし、human/external gate と実装候補を分離して task supply を維持。

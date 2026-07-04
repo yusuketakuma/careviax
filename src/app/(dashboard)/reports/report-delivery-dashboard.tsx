@@ -9,7 +9,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/loading';
+import { Skeleton, SkeletonRows } from '@/components/ui/loading';
 import { StatCard } from '@/components/ui/stat-card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
@@ -163,6 +163,7 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
   });
 
   const analytics = data?.data;
+  const isInitialLoading = isLoading && !analytics;
   const reminderDisabledReason = !analytics ? REPORT_DELIVERY_REMINDER_DISABLED_REASON : null;
 
   return (
@@ -189,11 +190,18 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
       ) : (
         <>
           <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {isLoading && !analytics ? (
-                Array.from({ length: 4 }).map((_, index) => (
-                  <Skeleton key={index} className="h-[88px] rounded-lg" />
-                ))
+            <div
+              className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"
+              role={isInitialLoading ? 'status' : undefined}
+              aria-label={isInitialLoading ? '送達KPIを読み込み中' : undefined}
+            >
+              {isInitialLoading ? (
+                <>
+                  {Array.from({ length: 4 }).map((_, index) => (
+                    <Skeleton key={index} className="h-[88px] rounded-lg" />
+                  ))}
+                  <span className="sr-only">送達KPIを読み込んでいます。</span>
+                </>
               ) : (
                 <>
                   <StatCard
@@ -390,11 +398,11 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
                     </div>
                   ))}
                 </div>
+              ) : isInitialLoading ? (
+                <OverdueDeliveriesLoadingState />
               ) : (
                 <div className="rounded-xl border border-dashed border-border/70 px-4 py-8 text-sm text-muted-foreground">
-                  {isLoading
-                    ? '未確認報告を集計しています…'
-                    : `${normalizedOverdueDays}日超の未確認報告はありません。`}
+                  {`${normalizedOverdueDays}日超の未確認報告はありません。`}
                 </div>
               )}
             </CardContent>
@@ -411,7 +419,8 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
                 `${item.failed_count}件`,
                 `${item.response_waiting_count}件`,
               ])}
-              emptyMessage={isLoading ? '集計中です…' : '送達データがありません'}
+              isLoading={isInitialLoading}
+              emptyMessage="送達データがありません"
             />
             <AnalyticsTableCard
               title="医師別送達"
@@ -421,7 +430,8 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
                 `${item.success_rate}% (${item.success_count}/${item.total_count})`,
                 `${item.confirmed_count}件`,
               ])}
-              emptyMessage={isLoading ? '集計中です…' : '医師宛送達がありません'}
+              isLoading={isInitialLoading}
+              emptyMessage="医師宛送達がありません"
             />
             <AnalyticsTableCard
               title="チャネル別送達"
@@ -431,7 +441,8 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
                 `${item.success_rate}% (${item.success_count}/${item.total_count})`,
                 `${item.failed_count}件`,
               ])}
-              emptyMessage={isLoading ? '集計中です…' : 'チャネル別データがありません'}
+              isLoading={isInitialLoading}
+              emptyMessage="チャネル別データがありません"
             />
           </div>
         </>
@@ -440,15 +451,55 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
   );
 }
 
+function OverdueDeliveriesLoadingState() {
+  return (
+    <div className="space-y-3" role="status" aria-label="未確認報告を集計中">
+      {Array.from({ length: 2 }).map((_, index) => (
+        <div
+          key={index}
+          className="flex flex-col gap-3 rounded-xl border border-border/70 p-4 lg:flex-row lg:items-center lg:justify-between"
+        >
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Skeleton className="h-5 w-36" />
+              <Skeleton className="h-6 w-20 rounded-full" />
+              <Skeleton className="h-6 w-16 rounded-full" />
+            </div>
+            <Skeleton className="h-4 w-full max-w-sm" />
+            <Skeleton className="h-3 w-32" />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {Array.from({ length: 4 }).map((_, actionIndex) => (
+              <Skeleton key={actionIndex} className="h-10 w-24 rounded-md" />
+            ))}
+          </div>
+        </div>
+      ))}
+      <span className="sr-only">未確認報告を集計しています。</span>
+    </div>
+  );
+}
+
+function AnalyticsTableLoadingState({ title, cols }: { title: string; cols: number }) {
+  return (
+    <div role="status" aria-label={`${title}を集計中`}>
+      <SkeletonRows rows={3} cols={cols} status={false} />
+      <span className="sr-only">{title}を集計しています。</span>
+    </div>
+  );
+}
+
 function AnalyticsTableCard({
   title,
   headers,
   rows,
+  isLoading,
   emptyMessage,
 }: {
   title: string;
   headers: string[];
   rows: string[][];
+  isLoading?: boolean;
   emptyMessage: string;
 }) {
   // 3〜5行の小集計に DataTable の検索/列切替 toolbar は過剰。意味的な軽量テーブルにする。
@@ -459,7 +510,9 @@ function AnalyticsTableCard({
         <CardTitle className="text-base">{title}</CardTitle>
       </CardHeader>
       <CardContent>
-        {rows.length ? (
+        {isLoading ? (
+          <AnalyticsTableLoadingState title={title} cols={headers.length} />
+        ) : rows.length ? (
           <div className="overflow-x-auto" role="region" aria-label={title}>
             <table className="w-full text-sm">
               <caption className="sr-only">{title}</caption>

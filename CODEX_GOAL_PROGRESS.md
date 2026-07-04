@@ -1,5 +1,73 @@
 # CODEX Goal Progress
 
+## R55 Report Delivery Analytics Loading States - 2026-07-04 18:31 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/reports/report-delivery-dashboard.tsx`
+    - `src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx`
+- Scope:
+  - Replaced remaining visible loading-as-empty copy in the report delivery
+    analytics dashboard with named skeleton/status regions for KPI cards,
+    overdue deliveries, and the three compact analytics tables.
+  - Kept loading, empty, and error states separate: initial loading no longer
+    renders `未確認報告を集計しています…` or `集計中です…` as visible empty text.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, request payload, mutation payload, DB, auth,
+    authorization, billing, audit, deployment, package, or server behavior
+    changed.
+  - Loading/disabled copy is PHI-free and does not echo patient names, report
+    ids, org ids, contact data, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `9` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the report delivery dashboard source/test files.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - Broader R55 residuals remain open, including operating-hours loading states
+    identified by current-code scan.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
+## Codex-Only Design SSOT and W3-E2 Sync - 2026-07-04 18:35 JST
+
+- Status:
+  - Implemented and validated:
+    - `ops/refactor/STATE.md`
+    - `.agent-loop/README.md`
+    - `.codex/hooks.json`
+    - `Plans.md`
+    - `src/app/(dashboard)/workflow/workflow-dashboard-view.test.tsx`
+- Scope:
+  - Applied the newly installed `design-taste-frontend` guidance as a checklist,
+    not as a replacement design system, because the skill explicitly targets
+    landing/portfolio/redesign work rather than dashboards/data tables.
+  - The PH-OS design SSOT already records that translation in
+    `docs/ui-ux-design-guidelines.md`, including code-scan-confirmed common
+    components and exclusions for marketing-style motion/hero patterns.
+  - Removed current-mode permission for direct Codex CLI child subagents while
+    disabling repo-local agmsg session hooks and external worker lanes.
+  - Marked W3-E2 DataTable consolidation complete after scanning current code
+    and updated the stale pre-conversion workflow test comment.
+- Safety:
+  - Documentation/config/test-comment only.
+  - No runtime app behavior, API, DB, auth, authorization, PHI, billing, audit,
+    deployment, package, or production data path changed.
+- Validation:
+  - Residual direct-subagent/agmsg hook scan returned no matches after the final
+    `STATE.md` / README / hooks cleanup.
+  - W3-E2 residual raw-table scan returned no matches for the previously listed
+    candidate files.
+  - `pnpm exec vitest run 'src/app/(dashboard)/workflow/workflow-dashboard-view.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `3` tests.
+  - Targeted Prettier check passed for the changed docs/config/test/ledger files.
+  - Targeted `git diff --check` passed.
+- Remaining:
+  - Preserve unrelated `refactor-instructions.md` and untracked local skill
+    install files unless the user asks to commit or clean them.
+
 ## R55 Schedule Proposals False-Empty Error Guard - 2026-07-04 18:14 JST
 
 - Status:
@@ -88,9 +156,9 @@
 - Status:
   - Implemented and validated the current operating-mode switch from
     agmsg/multi-agent routing to single Codex operation.
-  - This supersedes the 17:53 Codex CLI/subagent persona note as an active
-    repository workflow: direct subagents remain disabled unless the user
-    explicitly re-enables them.
+  - Historical note: this 17:58 switch was reaffirmed by the later 18:35
+    Codex-only cleanup. The active workflow disables subagents and external
+    worker lanes unless the user explicitly re-enables them.
 - Scope:
   - `AGENTS.md`, `ops/refactor/STATE.md`, and `.agent-loop/README.md` now make
     Codex the sole active operator for planning, implementation, validation,
