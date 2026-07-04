@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { LoadingButton } from '@/components/ui/loading-button';
+import { SkeletonRows } from '@/components/ui/loading';
 import { PageSection } from '@/components/layout/page-section';
 import {
   Select,
@@ -192,7 +193,9 @@ export function DrugMasterDetailSheet({
 
         <div className="space-y-6 p-4">
           {detailQuery.isLoading ? (
-            <p className="text-sm text-muted-foreground">医薬品詳細を読み込み中です…</p>
+            <div role="status" aria-label="医薬品詳細を読み込み中" aria-live="polite">
+              <SkeletonRows rows={4} cols={2} status={false} />
+            </div>
           ) : detailQuery.isError ? (
             <p className="text-sm text-state-blocked">
               {detailQuery.error instanceof Error
@@ -213,7 +216,9 @@ export function DrugMasterDetailSheet({
                       先に対象拠点を選択してください。
                     </p>
                   ) : stockConfigQuery.isLoading ? (
-                    <p className="text-sm text-muted-foreground">採用品設定を読み込み中です…</p>
+                    <div role="status" aria-label="採用品設定を読み込み中" aria-live="polite">
+                      <SkeletonRows rows={3} cols={3} status={false} />
+                    </div>
                   ) : stockConfigQuery.isError ? (
                     <ErrorState
                       variant="server"
@@ -713,7 +718,9 @@ export function DrugMasterDetailSheet({
                       対象拠点を選択すると採用品の変更履歴を確認できます。
                     </p>
                   ) : stockHistoryQuery.isLoading ? (
-                    <p className="text-sm text-muted-foreground">採用品履歴を読み込み中です…</p>
+                    <div role="status" aria-label="採用品履歴を読み込み中" aria-live="polite">
+                      <SkeletonRows rows={3} cols={3} status={false} />
+                    </div>
                   ) : stockHistoryQuery.isError ? (
                     <ErrorState
                       variant="server"

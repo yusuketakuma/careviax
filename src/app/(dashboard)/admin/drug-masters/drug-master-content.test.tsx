@@ -40,6 +40,7 @@ const {
   ingredientGroupDataMock,
   importLogsDataMock,
   queryErrorKeys,
+  queryLoadingKeys,
   staleQueryDataByKey,
   refetchSpies,
   toastSuccessMock,
@@ -74,6 +75,7 @@ const {
   // Tests can mark query keys as failed to exercise the fetch-error affordances
   // (import logs / master status / site picker) without affecting success-path tests.
   queryErrorKeys: new Set<string>(),
+  queryLoadingKeys: new Set<string>(),
   staleQueryDataByKey: new Map<string, unknown>(),
   refetchSpies: new Map<string, ReturnType<typeof vi.fn>>(),
   toastSuccessMock: vi.fn(),
@@ -162,6 +164,11 @@ vi.mock('@tanstack/react-query', () => ({
       : queryErrorKeys.has(shortKey)
         ? shortKey
         : null;
+    const loadingKey = queryLoadingKeys.has(fullKey)
+      ? fullKey
+      : queryLoadingKeys.has(shortKey)
+        ? shortKey
+        : null;
     if (failedKey) {
       let refetch = refetchSpies.get(failedKey);
       if (!refetch) {
@@ -169,6 +176,9 @@ vi.mock('@tanstack/react-query', () => ({
         refetchSpies.set(failedKey, refetch);
       }
       return { data: staleQueryDataByKey.get(failedKey), isLoading: false, isError: true, refetch };
+    }
+    if (loadingKey) {
+      return { data: undefined, isLoading: true, isError: false, refetch: vi.fn() };
     }
     if (key === 'drug-masters') {
       return { data: { data: [], totalCount: 0, hasMore: false }, isLoading: false };
@@ -2799,14 +2809,56 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     importLogsDataMock.current = [];
     capturedQueryOptions.length = 0;
     queryErrorKeys.clear();
+    queryLoadingKeys.clear();
     staleQueryDataByKey.clear();
     refetchSpies.clear();
   });
 
   afterEach(() => {
     queryErrorKeys.clear();
+    queryLoadingKeys.clear();
     staleQueryDataByKey.clear();
     refetchSpies.clear();
+  });
+
+  it('uses an announced skeleton while the drug detail sheet loads the selected drug', () => {
+    queuePendingFormularyRequest();
+    queryLoadingKeys.add('drug-master-detail');
+
+    render(<DrugMasterContent variant="formulary" />);
+    fireEvent.click(screen.getByText('採用追加'));
+
+    expect(screen.getByRole('status', { name: '医薬品詳細を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('医薬品詳細を読み込み中です…', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText('医薬品詳細の取得に失敗しました')).toBeNull();
+  });
+
+  it('uses an announced skeleton while the stock config panel loads', () => {
+    queuePendingFormularyRequest();
+    detailDataMock.current = buildGenericDetail();
+    queryLoadingKeys.add('pharmacy-drug-stock');
+
+    render(<DrugMasterContent variant="formulary" />);
+    fireEvent.click(screen.getByText('採用追加'));
+
+    expect(screen.getByRole('status', { name: '採用品設定を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('採用品設定を読み込み中です…', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText('採用品設定を読み込めませんでした')).toBeNull();
+    expect(screen.queryByText('未登録')).toBeNull();
+  });
+
+  it('uses an announced skeleton while the stock history panel loads', () => {
+    queuePendingFormularyRequest();
+    detailDataMock.current = buildGenericDetail();
+    queryLoadingKeys.add('pharmacy-drug-stock-history');
+
+    render(<DrugMasterContent variant="formulary" />);
+    fireEvent.click(screen.getByText('採用追加'));
+
+    expect(screen.getByRole('status', { name: '採用品履歴を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('採用品履歴を読み込み中です…', { selector: 'p' })).toBeNull();
+    expect(screen.queryByText('採用品変更履歴を読み込めませんでした')).toBeNull();
+    expect(screen.queryByText('この薬剤の採用品変更履歴はまだありません。')).toBeNull();
   });
 
   it('shows a retryable error instead of an empty import history when the audit log fetch fails', () => {
