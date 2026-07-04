@@ -151,6 +151,21 @@ describe('NotificationSettingsContent', () => {
     vi.unstubAllGlobals();
   });
 
+  it('uses announced skeletons while notification settings and escalation rules are loading', () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+
+    render(<NotificationSettingsContent />);
+
+    expect(screen.getByRole('status', { name: '通知設定を読み込み中' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'エスカレーションルールを読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('通知設定を読み込み中です')).toBeNull();
+    expect(screen.queryByText('エスカレーションルールを読み込み中です')).toBeNull();
+    expect(screen.queryByText('まだエスカレーションルールはありません。')).toBeNull();
+  });
+
   it('delegates list reads to shared path and org-header helpers', async () => {
     render(<NotificationSettingsContent />);
 

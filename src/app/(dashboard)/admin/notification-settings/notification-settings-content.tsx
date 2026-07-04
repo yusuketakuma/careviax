@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bell, BellRing, Loader2, MessageSquareText, ShieldAlert, Smartphone } from 'lucide-react';
+import { Bell, BellRing, MessageSquareText, ShieldAlert, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
 import { messageFromError } from '@/lib/utils/error-message';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
@@ -28,6 +28,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { ErrorState } from '@/components/ui/error-state';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { SkeletonRows } from '@/components/ui/loading';
 import {
   Dialog,
   DialogContent,
@@ -727,9 +728,8 @@ export function NotificationSettingsContent() {
         </CardHeader>
         <CardContent className="space-y-4">
           {loading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              通知設定を読み込み中です
+            <div role="status" aria-label="通知設定を読み込み中" aria-live="polite">
+              <SkeletonRows rows={3} cols={3} status={false} />
             </div>
           ) : rulesLoadError ? (
             // 取得失敗時はトーストに加えてインライン ErrorState を出し、再読み込み導線を提供する。
@@ -910,9 +910,8 @@ export function NotificationSettingsContent() {
         </CardHeader>
         <CardContent className="space-y-3">
           {escalationLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              エスカレーションルールを読み込み中です
+            <div role="status" aria-label="エスカレーションルールを読み込み中" aria-live="polite">
+              <SkeletonRows rows={3} cols={3} status={false} />
             </div>
           ) : escalationLoadError ? (
             // 取得失敗を「まだありません」の偽 empty に潰さず、再読込導線つき ErrorState を出す。
