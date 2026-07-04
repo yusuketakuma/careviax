@@ -492,6 +492,52 @@ describe('/api/care-reports/today-workspace', () => {
     expect(json.data.draft_rows[0].action.href).not.toBe(`/reports/${HOSTILE_EXISTING_REPORT_ID}`);
   });
 
+  it('treats finalized draft-compatible reports as existing detail targets', async () => {
+    mockTx({
+      schedules: [
+        {
+          id: 'sched_finalized_draft',
+          schedule_status: 'completed',
+          time_window_start: new Date('2026-06-11T05:00:00.000Z'),
+          facility_batch_id: null,
+          facility_batch: null,
+          case_: {
+            patient: { id: 'p2', name: '田中 一郎' },
+            care_team_links: [{ role: 'care_manager', name: '中島 桜', is_primary: true }],
+          },
+          cycle: { prescription_intakes: [{ lines: [] }] },
+          visit_record: { id: 'visit_record_1' },
+        },
+      ],
+      draftReports: [
+        {
+          id: HOSTILE_EXISTING_REPORT_ID,
+          visit_record_id: 'visit_record_1',
+          report_type: 'care_manager_report',
+          status: 'draft',
+          finalized_at: new Date('2026-06-11T04:50:00.000Z'),
+          locked_at: new Date('2026-06-11T04:50:00.000Z'),
+          voided_at: null,
+        },
+      ],
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+    expect(json.data.draft_rows[0]).toMatchObject({
+      status: 'report_existing',
+      visit_record_id: 'visit_record_1',
+      generation_targets: [],
+      action: {
+        label: '→ 詳細へ',
+        href: `/reports/${encodeURIComponent(HOSTILE_EXISTING_REPORT_ID)}`,
+      },
+    });
+    expect(json.data.draft_rows[0].action.href).not.toBe(`/reports/${HOSTILE_EXISTING_REPORT_ID}`);
+  });
+
   it('keeps missing professional report types as generation targets when one report already exists', async () => {
     mockTx({
       schedules: [
@@ -991,6 +1037,51 @@ describe('/api/care-reports/today-workspace', () => {
     expect(responseText).not.toContain('SMTP 550');
     expect(json.data.counts.created).toBe(3);
     expect(json.data.counts.open_issues).toBe(4);
+  });
+
+  it('does not require draft confirmation for finalized draft-compatible created reports', async () => {
+    mockTx({
+      recentReports: [
+        {
+          id: HOSTILE_DRAFT_REPORT_ID,
+          patient_id: 'p_kato',
+          report_type: 'care_manager_report',
+          status: 'draft',
+          finalized_at: new Date('2026-06-11T04:50:00.000Z'),
+          locked_at: new Date('2026-06-11T04:50:00.000Z'),
+          voided_at: null,
+          content: {
+            title: '確定済み下書き互換',
+            source_provenance: {
+              medication_cycle_id: 'cycle_1',
+              prescription_line_ids: ['line_1'],
+            },
+            billing_context: { payer_basis: 'medical' },
+          },
+          created_at: new Date('2026-06-11T03:00:00.000Z'),
+          updated_at: new Date('2026-06-11T04:50:00.000Z'),
+          delivery_records: [],
+        },
+      ],
+      patients: [{ id: 'p_kato', name: '加藤 ミサ' }],
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+
+    expect(json.data.created_reports[0]).toMatchObject({
+      id: HOSTILE_DRAFT_REPORT_ID,
+      action: {
+        label: '→ 詳細へ',
+        href: `/reports/${encodeURIComponent(HOSTILE_DRAFT_REPORT_ID)}`,
+      },
+    });
+    expect(JSON.stringify(json.data.open_issues)).not.toContain(
+      `${HOSTILE_DRAFT_REPORT_ID}-draft-confirmation`,
+    );
+    expect(json.data.open_issues).toEqual([]);
   });
 
   it('adds same-workspace billing candidate blockers to report open issues', async () => {

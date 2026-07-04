@@ -136,6 +136,9 @@ type ExistingScheduleReport = {
   visit_record_id: string | null;
   status: string;
   report_type: string;
+  finalized_at: Date | null;
+  locked_at: Date | null;
+  voided_at: Date | null;
 };
 
 function pickPrimaryCareTeamLink(links: CareTeamLinkRow[], role: string): CareTeamLinkRow | null {
@@ -170,11 +173,25 @@ function buildDraftGenerationTargets(
   return targets;
 }
 
+function isEditableDraftReport(report: {
+  status: string;
+  finalized_at?: Date | null;
+  locked_at?: Date | null;
+  voided_at?: Date | null;
+}) {
+  return (
+    report.status === 'draft' &&
+    report.finalized_at == null &&
+    report.locked_at == null &&
+    report.voided_at == null
+  );
+}
+
 function selectExistingScheduleReport(
   reports: ExistingScheduleReport[],
 ): ExistingScheduleReport | null {
   return (
-    reports.find((report) => report.status === 'draft') ??
+    reports.find((report) => isEditableDraftReport(report)) ??
     reports.find((report) => report.status === 'confirmed') ??
     reports[0] ??
     null
@@ -337,6 +354,9 @@ function buildReportOpenIssues(args: {
     id: string;
     status: string;
     report_type: string;
+    finalized_at?: Date | null;
+    locked_at?: Date | null;
+    voided_at?: Date | null;
     content: unknown;
     delivery_records: WorkspaceDeliveryRecord[];
   };
@@ -347,7 +367,7 @@ function buildReportOpenIssues(args: {
   const issues: ReportOpenIssue[] = [];
   const href = buildReportHref(args.report.id);
 
-  if (args.report.status === 'draft') {
+  if (isEditableDraftReport(args.report)) {
     issues.push({
       kind: 'report',
       id: `${args.report.id}-draft-confirmation`,
@@ -609,6 +629,9 @@ const authenticatedGET = withAuthContext(
             patient_id: true,
             report_type: true,
             status: true,
+            finalized_at: true,
+            locked_at: true,
+            voided_at: true,
             content: true,
             created_at: true,
             updated_at: true,
@@ -691,7 +714,15 @@ const authenticatedGET = withAuthContext(
                     org_id: ctx.orgId,
                     visit_record_id: { in: visitRecordIds },
                   },
-                  select: { id: true, visit_record_id: true, status: true, report_type: true },
+                  select: {
+                    id: true,
+                    visit_record_id: true,
+                    status: true,
+                    report_type: true,
+                    finalized_at: true,
+                    locked_at: true,
+                    voided_at: true,
+                  },
                 });
 
           const facilityIds = [
@@ -800,6 +831,8 @@ const authenticatedGET = withAuthContext(
             existingReportsForRecord,
           );
           const existingReport = selectExistingScheduleReport(existingReportsForRecord);
+          const hasEditableDraftReport =
+            existingReport !== null && isEditableDraftReport(existingReport);
           const canGenerateDraft =
             schedule.schedule_status === 'completed' && Boolean(visitRecordId);
           draftRows.push({
@@ -811,7 +844,7 @@ const authenticatedGET = withAuthContext(
               canGenerateDraft && generationTargets.length > 0
                 ? 'ready_to_generate'
                 : existingReport
-                  ? existingReport.status === 'draft'
+                  ? hasEditableDraftReport
                     ? 'draft_ready'
                     : 'report_existing'
                   : 'before_visit',
@@ -821,7 +854,7 @@ const authenticatedGET = withAuthContext(
             generation_targets: canGenerateDraft ? generationTargets : [],
             action: existingReport
               ? {
-                  label: existingReport.status === 'draft' ? '→ 下書きへ' : '→ 詳細へ',
+                  label: hasEditableDraftReport ? '→ 下書きへ' : '→ 詳細へ',
                   href: buildReportHref(existingReport.id),
                 }
               : canGenerateDraft
