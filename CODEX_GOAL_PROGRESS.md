@@ -1,5 +1,40 @@
 # CODEX Goal Progress
 
+## R40/R44 Intake Triage readApiJson Partial - 2026-07-05 02:39 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/prescriptions/intake/intake-triage-content.tsx`
+    - `src/app/(dashboard)/prescriptions/intake/intake-triage-content.test.tsx`
+- Scope:
+  - Reused `readApiJson<{ data: IntakeTriageResponse }>` for the intake triage
+    GET fetcher.
+  - Reused `readApiJson<{ data: DashboardCockpitResponse }>` for the cockpit
+    rail GET fetcher on the intake triage page.
+  - Added a focused queryFn contract test using standard Response mocks for
+    both endpoints.
+  - Preserved API paths, `buildOrgHeaders`, React Query keys, response envelope
+    unwrapping, and rendered UI behavior.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/prescriptions/intake/intake-triage-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `6` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `6a6a2390`
+    (`refactor(ui): reuse readApiJson in intake triage`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Workflow Dashboard readApiJson Partial - 2026-07-05 02:36 JST
 
 - Status:
