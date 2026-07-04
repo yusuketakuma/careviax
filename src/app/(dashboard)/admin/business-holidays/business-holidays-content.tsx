@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/sheet';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
+import { SkeletonRows } from '@/components/ui/loading';
 import { MonthGrid } from '@/components/ui/month-grid';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
@@ -377,7 +378,9 @@ export function BusinessHolidaysContent() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-sm text-muted-foreground">読み込み中...</div>
+            <div role="status" aria-label="休日カレンダーを読み込み中">
+              <SkeletonRows rows={3} cols={7} status={false} />
+            </div>
           ) : (
             <MonthGrid
               year={viewYear}

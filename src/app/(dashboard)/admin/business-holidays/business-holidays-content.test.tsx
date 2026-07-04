@@ -151,6 +151,27 @@ function stubFetchWithSitesError(holiday = holidayFixture()) {
   return fetchMock;
 }
 
+function stubFetchWithPendingHolidays() {
+  const fetchMock = vi.fn((input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === '/api/pharmacy-sites') {
+      return Promise.resolve(
+        new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+          status: 200,
+        }),
+      );
+    }
+    if (url.startsWith(`${BUSINESS_HOLIDAYS_API_PATH}?`)) {
+      return new Promise<Response>(() => undefined);
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 }),
+    );
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
 describe('BusinessHolidaysContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -254,6 +275,14 @@ describe('BusinessHolidaysContent', () => {
         name: '2026-01-01 年始休業（本店 / 薬局休業日 / 休業）を編集',
       }).className,
     ).toContain('sm:min-h-[44px]');
+  });
+
+  it('uses an announced skeleton while the holiday calendar is loading', async () => {
+    stubFetchWithPendingHolidays();
+    renderContent();
+
+    expect(await screen.findByRole('status', { name: '休日カレンダーを読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('読み込み中...', { selector: 'div' })).toBeNull();
   });
 
   it('create (POST) delegates to buildOrgJsonHeaders and the collection path helper', async () => {
