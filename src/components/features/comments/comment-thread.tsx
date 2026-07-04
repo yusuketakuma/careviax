@@ -6,6 +6,7 @@ import { MessageSquare, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   COMMENTS_API_PATH,
@@ -52,8 +53,7 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
       const res = await fetch(buildCommentsApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('コメントの取得に失敗しました');
-      return res.json();
+      return readApiJson<{ data: Comment[] }>(res, 'コメントの取得に失敗しました');
     },
     enabled: !!orgId && !!entityId,
     invalidateOn: ['comment_refresh'],
@@ -72,11 +72,7 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
           mentions,
         }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(err?.message ?? 'コメントの投稿に失敗しました');
-      }
-      return res.json();
+      return readApiJson(res, 'コメントの投稿に失敗しました');
     },
     onSuccess: () => {
       setContent('');
@@ -94,11 +90,7 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(err?.message ?? 'コメントの削除に失敗しました');
-      }
-      return res.json();
+      return readApiJson(res, 'コメントの削除に失敗しました');
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey });
