@@ -1,5 +1,40 @@
 # CODEX Goal Progress
 
+## R55 Patient Edit Loading State - 2026-07-04 19:25 JST
+
+- Status:
+  - Implemented and validated:
+    - `src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx`
+    - `src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx`
+- Scope:
+  - Replaced the generic `Loading` return in patient edit with a named skeleton
+    region that preserves the edit form section, field, and action layout
+    without rendering final patient defaults.
+  - Loading no longer exposes generic `読み込み中...` semantics or final
+    patient-specific form content before the overview query resolves.
+- Safety:
+  - UI loading-state presentation and tests only.
+  - No API path, query key, fetcher, org header, `enabled` behavior, refetch
+    settings, patient form defaults, redirect helper, validation logic, DB,
+    auth, authorization, billing, audit, deployment, package, or server
+    behavior changed.
+  - Loading copy is PHI-free and does not echo patient names, addresses,
+    insurance identifiers, phone numbers, allergy details, requester contact
+    details, clinical notes, org ids, or raw errors.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.test.ts' --reporter=dot --testTimeout=30000`
+    passed `2` files / `8` tests.
+  - Scoped ESLint, Prettier check, and targeted `git diff --check` passed for
+    the patient edit source/test files.
+  - `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `4792e87c`
+    (`fix(patients): show skeleton for edit loading`).
+- Remaining:
+  - Broader R55 residuals and Plans.md objective remain open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R55 Prescription History Loading State - 2026-07-04 19:21 JST
 
 - Status:

@@ -1002,3 +1002,25 @@ claude` が 1 registration を削除。最終 `team.sh phos` は `codex` / `code
 - commit: `39087d5c` (`fix(patients): show skeleton for prescription history loading`)。
 - 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
   `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
+
+## 2026-07-04 R55 patient edit loading skeleton
+
+- 分類: UI loading-state cleanup / R55 visible loading residual。
+- 実施:
+  - `patient-edit-content.tsx` の org 未解決 / patient overview loading 分岐で使っていた
+    generic `Loading` return を、patient edit form の section・field・action layout を保つ
+    領域固有 `role="status"` + skeleton へ置換。
+  - loading 中に generic `読み込み中...` status、最終 form content、`PatientForm` が出ないことを
+    `patient-edit-content.fetch.test.tsx` に追加。
+- 挙動変更: loading presentation のみ。query key、fetcher、org header、enabled behavior、
+  refetch settings、patient form defaults、redirect helper、validation logic、API/DB/auth/authorization/billing/audit は不変。
+- UI/UX根拠: `docs/ui-ux-design-guidelines.md` の 5状態分離、領域固有 loading label、
+  generic loading copy 禁止、実フォーム形状に沿う skeleton loading に整合。
+- 安全性: product API/DB/auth/authorization/PHI/billing/deploy/package dependency は不変。
+  Loading copy は PHI-free で、patient name・address・insurance identifier・phone number・allergy detail・requester contact・clinical note・org id・raw error
+  を出さない。
+- 検証: focused patient edit Vitest `2 files / 8 tests` green、targeted ESLint green、
+  targeted Prettier check green、targeted `git diff --check` green、`pnpm typecheck` green。
+- commit: `4792e87c` (`fix(patients): show skeleton for edit loading`)。
+- 残課題: broad Plans.md / R55 residual scan は継続。`refactor-instructions.md` と
+  `.agents/skills/**` / `skills-lock.json` は別スライスとして保持する。
