@@ -316,6 +316,9 @@ async function authenticatedPATCH(
       visit_record_id: true,
       content: true,
       updated_at: true,
+      finalized_at: true,
+      locked_at: true,
+      voided_at: true,
     },
   });
   if (!existing) return sensitiveResponse(notFound('報告書が見つかりません'));
@@ -335,13 +338,21 @@ async function authenticatedPATCH(
   // p1_04: 薬剤師確認(draft → confirmed)のみステータス遷移を許可する。
   // confirmed は薬学的判断のトレースなので AuditLog に記録する。
   // 送信系ステータス(sent/failed/response_waiting)は送信APIの責務。
-  const isDraftConfirmTransition = updateData.status === 'confirmed' && existing.status === 'draft';
+  const isEditableDraft =
+    existing.status === 'draft' &&
+    existing.finalized_at == null &&
+    existing.locked_at == null &&
+    existing.voided_at == null;
+  const isDraftConfirmTransition = updateData.status === 'confirmed' && isEditableDraft;
   if (updateData.status && updateData.status !== 'draft' && !isDraftConfirmTransition) {
     return sensitiveResponse(conflict('報告書の送信状態は送信APIからのみ更新できます'));
   }
 
   if (
-    existing.status !== 'draft' &&
+    (existing.status !== 'draft' ||
+      existing.finalized_at != null ||
+      existing.locked_at != null ||
+      existing.voided_at != null) &&
     (content !== undefined || updateData.template_id !== undefined)
   ) {
     return sensitiveResponse(

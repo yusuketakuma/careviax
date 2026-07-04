@@ -51,6 +51,9 @@ type ExistingCareReport = {
   report_type: ReportType;
   status: string;
   updated_at: Date;
+  finalized_at: Date | null;
+  locked_at: Date | null;
+  voided_at: Date | null;
 };
 type GenerateReportsFromVisitOptions = {
   expectedVisitRecordUpdatedAt?: Date | null;
@@ -98,6 +101,17 @@ function readConferenceActionItems(value: unknown): string[] {
 
 function readGeneratedReportContent(value: unknown): Record<string, unknown> {
   return readJsonObject(value) ?? {};
+}
+
+function isRefreshableDraftReport(
+  report: ExistingCareReport | undefined,
+): report is ExistingCareReport {
+  return (
+    report?.status === 'draft' &&
+    report.finalized_at == null &&
+    report.locked_at == null &&
+    report.voided_at == null
+  );
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -458,7 +472,7 @@ export async function generateReportsFromVisit(
     .map((type) => existingByType.get(type))
     .filter(
       (report): report is ExistingCareReport =>
-        report?.status === 'draft' &&
+        isRefreshableDraftReport(report) &&
         contentByType.has(report.report_type) &&
         options.expectedReportUpdatedAt != null,
     );
@@ -466,7 +480,7 @@ export async function generateReportsFromVisit(
     .map((type) => existingByType.get(type))
     .filter(
       (report): report is ExistingCareReport =>
-        report?.status === 'draft' && contentByType.has(report.report_type),
+        isRefreshableDraftReport(report) && contentByType.has(report.report_type),
     );
   if (existingDraftsRequiringVersion.length > 0 && options.expectedReportUpdatedAt == null) {
     throw new Error('CARE_REPORT_DRAFT_VERSION_REQUIRED_FOR_REPORT_GENERATION');
@@ -505,6 +519,9 @@ export async function generateReportsFromVisit(
                   org_id: orgId,
                   status: 'draft',
                   updated_at: options.expectedReportUpdatedAt ?? undefined,
+                  finalized_at: null,
+                  locked_at: null,
+                  voided_at: null,
                 },
                 data: { content: toPrismaJsonInput(contentByType.get(report.report_type)) },
               }),
@@ -536,7 +553,15 @@ export async function generateReportsFromVisit(
               visit_record_id: visitRecordId,
               report_type: { in: typesToGenerate },
             },
-            select: { id: true, report_type: true, status: true, updated_at: true },
+            select: {
+              id: true,
+              report_type: true,
+              status: true,
+              updated_at: true,
+              finalized_at: true,
+              locked_at: true,
+              voided_at: true,
+            },
           });
         });
 

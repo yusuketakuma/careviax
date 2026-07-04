@@ -757,6 +757,29 @@ describe('care-reports/[id] route', () => {
     expect(careReportUpdateManyMock).not.toHaveBeenCalled();
   });
 
+  it('rejects content edits after legal finalization even if the compatibility status is still draft', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'draft',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      content: { summary: '確定済み' },
+      finalized_at: new Date('2026-03-30T01:00:00.000Z'),
+      locked_at: new Date('2026-03-30T01:00:00.000Z'),
+      voided_at: null,
+    });
+
+    const response = await PATCH(createRequest({ content: { summary: '改変' } }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+  });
+
   it('rejects template changes after the report has been sent', async () => {
     careReportFindFirstMock.mockResolvedValue({
       id: 'report_1',
@@ -886,6 +909,31 @@ describe('care-reports/[id] route', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects confirming a legally finalized draft without changing the report', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'draft',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      content: {},
+      finalized_at: new Date('2026-03-30T01:00:00.000Z'),
+      locked_at: new Date('2026-03-30T01:00:00.000Z'),
+      voided_at: null,
+    });
+
+    const response = await PATCH(createRequest({ status: 'confirmed' }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(careReportUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();

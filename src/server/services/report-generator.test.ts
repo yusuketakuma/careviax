@@ -676,6 +676,9 @@ describe('generateReportsFromVisit', () => {
         org_id: 'org-1',
         status: 'draft',
         updated_at: reportDraftUpdatedAt,
+        finalized_at: null,
+        locked_at: null,
+        voided_at: null,
       },
       data: {
         content: expect.objectContaining({
@@ -701,7 +704,15 @@ describe('generateReportsFromVisit', () => {
         visit_record_id: 'vr-1',
         report_type: { in: ['physician_report'] },
       },
-      select: { id: true, report_type: true, status: true, updated_at: true },
+      select: {
+        id: true,
+        report_type: true,
+        status: true,
+        updated_at: true,
+        finalized_at: true,
+        locked_at: true,
+        voided_at: true,
+      },
     });
     expect(result.reports).toEqual([
       {
@@ -1342,7 +1353,15 @@ describe('generateReportsFromVisit', () => {
         visit_record_id: 'vr-1',
         report_type: { in: ['physician_report'] },
       },
-      select: { id: true, report_type: true, status: true, updated_at: true },
+      select: {
+        id: true,
+        report_type: true,
+        status: true,
+        updated_at: true,
+        finalized_at: true,
+        locked_at: true,
+        voided_at: true,
+      },
     });
     expect(result.reports).toEqual([
       {

@@ -148,6 +148,9 @@ const careReportSourceExistingReportSelect = {
   report_type: true,
   status: true,
   updated_at: true,
+  finalized_at: true,
+  locked_at: true,
+  voided_at: true,
 } satisfies Prisma.CareReportSelect;
 
 export type CareReportSourcePatient = Prisma.PatientGetPayload<{
