@@ -46324,3 +46324,46 @@ false` for every migrated column.
     before converting additional client read fetchers.
   - Existing unrelated `refactor-instructions.md` and local skill install files
     remain outside this slice.
+
+## R40/R44 Vehicles readApiJson Slice - 2026-07-05 04:06 JST
+
+- Scope:
+  - `src/app/(dashboard)/admin/vehicles/vehicles-content.tsx`
+  - `src/app/(dashboard)/admin/vehicles/vehicles-content.test.tsx`
+- Status:
+  - Implemented and committed as `8b264fb7`
+    (`refactor(ui): reuse readApiJson in vehicles`).
+- Changes:
+  - Replaced the vehicle-resource list GET helper for `buildListPath()` /
+    `buildVisitVehicleResourcesApiPath(params)` with
+    `readApiJson<VisitVehicleResourcesResponse>` while preserving query key,
+    limit param, `buildOrgHeaders(orgId)`, and count metadata.
+  - Replaced the site-option GET helper for `PHARMACY_SITES_API_PATH` with
+    `readApiJson<PharmacySitesResponse>` while preserving the vehicle form site
+    selector behavior.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, destructive operation, DataTable false-empty error
+    state, form validation, mutating POST/PATCH behavior, and path helper
+    encoding/fail-closed behavior.
+  - The 2026-07-04 user instruction allowing product
+    API/DB/auth/authorization/PHI/billing/deploy/package dependency changes when
+    necessary is recorded in `ops/refactor/STATE.md`; this slice did not require
+    those changes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/vehicles/vehicles-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `9` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/vehicles/vehicles-content.tsx' 'src/app/(dashboard)/admin/vehicles/vehicles-content.test.tsx'`
+    passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/vehicles/vehicles-content.tsx' 'src/app/(dashboard)/admin/vehicles/vehicles-content.test.tsx'`
+    passed after formatting the changed file.
+  - `git diff --check -- 'src/app/(dashboard)/admin/vehicles/vehicles-content.tsx' 'src/app/(dashboard)/admin/vehicles/vehicles-content.test.tsx'`
+    passed.
+  - `pnpm typecheck` passed.
+- Remaining:
+  - R40/R44 remains partial and broad; continue per-fetcher body-read/PHI review
+    before converting additional client read fetchers.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.

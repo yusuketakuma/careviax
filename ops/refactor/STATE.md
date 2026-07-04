@@ -96,6 +96,9 @@
 - codex: R40/R44 institutions readApiJson slice(9d3f1755) land。focused Vitest 21、
   scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。SSOT の必要時変更許可
   (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
+- codex: R40/R44 vehicles readApiJson slice(8b264fb7) land。focused Vitest 9、
+  scoped ESLint/Prettier/diff-check、`pnpm typecheck` green。SSOT の必要時変更許可
+  (product API/DB/auth/authorization/PHI/billing/deploy/package dependency) は維持しつつ、本sliceでは不要。
 
 ## 進行中 / 凍結
 
