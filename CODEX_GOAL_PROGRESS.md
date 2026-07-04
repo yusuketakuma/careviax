@@ -1,5 +1,41 @@
 # CODEX Goal Progress
 
+## R40/R44 Operations Insights readApiJson Partial - 2026-07-05 03:20 JST
+
+- Status:
+  - Implemented, validated, and committed the next bounded R40/R44 slice:
+    - `src/app/(dashboard)/admin/operations-insights/operations-insights-content.tsx`
+- Scope:
+  - Reused `readApiJson<{ data: OperationsInsights }>` for the admin
+    operations-insights GET helper.
+  - Preserved `/api/admin/operations-insights`, `buildOrgHeaders`, React Query
+    key, response envelope unwrapping, rendered charts/KPIs/hints,
+    no-org loading behavior, and server-error fail-closed behavior.
+  - Existing focused tests already assert the static API path, `x-org-id`
+    header, query cache value, and raw error text non-leakage.
+- Safety:
+  - Product UI read fetch implementation internals changed only.
+  - The 2026-07-04 user instruction allowing product API/DB/auth/authorization/
+    PHI/billing/deploy/package dependency changes when necessary is recorded in
+    `ops/refactor/STATE.md`; this slice did not require those changes.
+  - Preserved DB/schema, auth/authorization semantics, PHI projection, billing
+    behavior, deployment, package dependency, live DB operation, external send,
+    secret handling, push, and destructive operation boundaries.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/operations-insights/operations-insights-content.test.tsx' --reporter=dot --testTimeout=30000`
+    passed `1` file / `5` tests.
+  - Scoped ESLint, targeted Prettier check, targeted `git diff --check`, and
+    `pnpm typecheck` passed.
+- Commit:
+  - Implementation slice landed at `3e4ceb4e`
+    (`refactor(ui): reuse readApiJson in operations insights`).
+- Remaining:
+  - R40/R44 remain broad and require per-fetcher PHI/body-read review before
+    converting additional `if (!res.ok) throw` paths.
+  - Broader Plans.md objective remains open.
+  - Existing unrelated `refactor-instructions.md` and local skill install files
+    remain outside this slice.
+
 ## R40/R44 Audit Logs readApiJson Partial - 2026-07-05 03:17 JST
 
 - Status:
